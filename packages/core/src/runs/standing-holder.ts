@@ -7,6 +7,7 @@ import type {
   RunState,
 } from '@forge/contracts/run-standing';
 import { classifyLease } from '../issues/index.js';
+import { isPipelineSessionKind } from '../jobs/index.js';
 import { after, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
 
 function verdictAt(at: Date, now: Date, lapsed: IssueLeaseVerdict): IssueLeaseVerdict {
@@ -118,6 +119,52 @@ function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext)
   );
 }
 
+// cm: mirrors jobs/queue-hop.ts reapQueueHop: a queued pipeline session no worker claimed fails at queueMs (queue_timeout); one that beat once and went quiet fails at heartbeatMs (turn_never_reported).
+function queueClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock {
+  const kind = job.sessionKind as Parameters<typeof isPipelineSessionKind>[0] | null;
+  if (!kind || !isPipelineSessionKind(kind)) {
+    return {
+      expiry: null,
+      detail:
+        "the job's session is queued but not a pipeline session, so the queue hop does not sweep it",
+    };
+  }
+  if (job.sessionBeat) {
+    return clock(
+      after(job.sessionBeat, ctx.jobHeartbeatMs),
+      ctx.now,
+      `the loop monitor fails a queued session that beat once and reported no turn for ${ctx.jobHeartbeatMs / 60_000} min (turn_never_reported); last beat ${job.sessionBeat.toISOString()}`,
+    );
+  }
+  const since = job.sessionDispatchedAt ?? job.sessionCreatedAt;
+  if (!since)
+    return { expiry: null, detail: "the job's queued session carries no dispatch or create time" };
+  return clock(
+    after(since, ctx.jobQueueMs),
+    ctx.now,
+    `the loop monitor fails a queued session no worker claimed within ${ctx.jobQueueMs / 60_000} min (queue_timeout); queued ${since.toISOString()}`,
+  );
+}
+
+// cm: mirrors jobs/loop-monitor.ts reapResultMisses: a job quiet (no event, no run phase) for RESULT_QUIET_MINUTES is failed after the kill grace, unless parked or already holding its result.
+function resultClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock | null {
+  if (job.sessionRuntimeState === 'awaiting_input') return null;
+  if (job.hasResult && job.sessionRuntimeState === null) return null;
+  if (!job.lastProgressAt) return null;
+  return clock(
+    after(job.lastProgressAt, ctx.resultQuietMs + ctx.killGraceMs),
+    ctx.now,
+    `the loop monitor fails a job with no event or phase for ${ctx.resultQuietMs / 60_000} min, after a ${ctx.killGraceMs / 1000} s kill grace (stale); last progress ${job.lastProgressAt.toISOString()}`,
+  );
+}
+
+/** The clock that fires first; a clock with no expiry yields to one that has one. */
+function earlierOf(a: Clock, b: Clock | null): Clock {
+  if (!b?.expiry) return a;
+  if (!a.expiry) return b;
+  return a.expiry.at <= b.expiry.at ? a : b;
+}
+
 function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
   const s = f.session;
   if (f.run.rawLane === 'run_session' && s?.status === 'running') {
@@ -129,9 +176,15 @@ function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
     );
   }
   const job = f.job;
-  if (job?.status === 'dispatched' && !job.ackedAt) return ackClock(job, ctx);
-  if (job && (job.status === 'running' || job.status === 'dispatched'))
-    return heartbeatClock(job, ctx);
+  if (job && (job.status === 'running' || job.status === 'dispatched')) {
+    const session =
+      job.status === 'dispatched' && !job.ackedAt
+        ? ackClock(job, ctx)
+        : job.sessionStatus === 'queued'
+          ? queueClock(job, ctx)
+          : heartbeatClock(job, ctx);
+    return earlierOf(session, resultClock(job, ctx));
+  }
   if (job?.status === 'queued' && job.heldBy && f.master?.lastBeatAt) {
     return clock(
       after(f.master.lastBeatAt, ctx.silenceReapMs),

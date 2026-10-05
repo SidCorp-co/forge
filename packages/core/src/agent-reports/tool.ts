@@ -15,9 +15,7 @@ import {
   agentReportTargets,
 } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
-import { resolvePipelineContext } from '../jobs/index.js';
-import { env } from '../lib/env.js';
-import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
+import { buildListEnvelope } from '../lib/list-envelope.js';
 import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
@@ -26,23 +24,15 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
-import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../lib/untrusted-text.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   listVisibleProjectsWithRole,
   resolveEffectiveProjectId,
   type VisibleProjectWithRole,
 } from '../projects/index.js';
-import {
-  countReportsForJob,
-  fireOfSession,
-  insertReport,
-  listReports,
-  readReport,
-  reportViews,
-  visibleIssue,
-  writableProjectIds,
-} from './service.js';
+import { fileReport, readOneReport, readReportFeed, submitReportSchema } from './reports.js';
+import { readReport, visibleIssue, writableProjectIds } from './service.js';
 import { triageReports } from './triage.js';
 
 const inputSchema = z
@@ -112,15 +102,6 @@ function frameReport<T extends ReportRow>(r: T): T {
   };
 }
 
-function buildSignalKey(
-  target: string,
-  targetRef: string | null | undefined,
-  kind: string,
-): string {
-  const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
-  return `self_report:${target}:${safeRef}:${kind}`;
-}
-
 const DESCRIPTION =
   'Submit, list, get, or triage agent friction reports. ' +
   'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
@@ -161,75 +142,32 @@ async function submit(ctx: McpContext, input: Input) {
         'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `GET /api/projects` prints it beside each slug.',
     );
   }
-  const projectId = input.projectId;
-  await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
-  if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
-  if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
-  if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
-
-  const resolved = await resolvePipelineContext(ctx.principal);
-  const active = resolved.ok ? resolved.context : null;
-  const jobId = active?.jobId ?? null;
-  const sessionId = active?.agentSessionId ?? null;
-  const scheduleRunId = await fireOfSession(sessionId);
-  // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
-  // have no pipeline run to cap by; skip the check.
-  if (jobId) {
-    const limit = env.FEEDBACK_MAX_PER_JOB;
-    if ((await countReportsForJob(jobId)) >= limit)
-      return { ok: false, reason: 'rate_limited', limit };
+  for (const field of ['kind', 'target', 'summary'] as const) {
+    if (!input[field]) throw new Error(`BAD_REQUEST: ${field} is required for submit`);
   }
-  const signalKey = buildSignalKey(input.target, input.targetRef, input.kind);
-  const insertedId = await insertReport({
-    projectId,
-    issueId: active?.issueId ?? undefined,
-    runId: active?.runId ?? undefined,
-    jobId: jobId ?? undefined,
-    stage: active?.stage ?? undefined,
-    kind: input.kind,
-    severity: input.severity ?? 'low',
-    target: input.target,
-    targetRef: input.targetRef ?? undefined,
-    summary: input.summary,
-    detail: input.detail ?? undefined,
-    suggestion: input.suggestion ?? undefined,
-    signalKey,
-    sessionId: sessionId ?? undefined,
-    scheduleRunId: scheduleRunId ?? undefined,
-  });
-  if (!insertedId) throw new Error('forge_agent_report: insert returned no row');
-  return { ok: true, id: insertedId, signalKey };
+  const { action: _a, scope: _s, filters: _f, limit: _l, ...fields } = input;
+  const parsed = submitReportSchema.safeParse(fields);
+  if (!parsed.success) {
+    throw new Error(`BAD_REQUEST: ${parsed.error.issues.map((i) => i.message).join('; ')}`);
+  }
+  return fileReport(ctx.principal, parsed.data);
 }
 
 async function list(ctx: McpContext, input: Input) {
-  const f = input.filters ?? {};
-  let scopeCondition: SQL;
-  let limit: number;
-  if (input.scope === 'all') {
-    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
-    if (visibleIds.length === 0)
-      return { reports: [], returned: 0, limit: input.limit ?? 50, hasMore: false };
-    scopeCondition = inArray(agentReports.projectId, visibleIds);
-    limit = input.limit ?? 50;
+  const all = input.scope === 'all';
+  const limit = input.limit ?? (all ? 50 : 25);
+  let projectIds: string[];
+  if (all) {
+    projectIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
   } else {
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
     await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
-    scopeCondition = eq(agentReports.projectId, projectId);
-    limit = input.limit ?? 25;
+    projectIds = [projectId];
   }
-  const rows = await listReports(
-    [
-      scopeCondition,
-      f.kind ? eq(agentReports.kind, f.kind) : undefined,
-      f.target ? eq(agentReports.target, f.target) : undefined,
-      f.severity ? eq(agentReports.severity, f.severity) : undefined,
-      f.triage ? eq(agentReports.triage, f.triage) : undefined,
-    ],
-    overfetch(limit),
-  );
+  const views = await readReportFeed(projectIds, input.filters ?? {}, limit);
   return buildListEnvelope({
     key: 'reports',
-    items: (await reportViews(rows)).map((r) => frameReport(r)),
+    items: views.map((r) => frameReport(r)),
     limit,
     hint: 'narrow with kind/target/severity/triage filters',
   });
@@ -237,13 +175,9 @@ async function list(ctx: McpContext, input: Input) {
 
 async function get(ctx: McpContext, input: Input) {
   if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for get');
-  const row = await readReport(input.reportId);
-  if (!row) throw new Error('NOT_FOUND: agent report not found');
-  // No caller-supplied project here — membership is checked against the
-  // row's own project, resolved only after the row is known.
-  await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(row.projectId));
-  const [view] = await reportViews([row]);
-  return { report: view ? frameReport(view) : null };
+  const view = await readOneReport(ctx.principal.userId, input.reportId);
+  if (!view) throw new Error('NOT_FOUND: agent report not found');
+  return { report: frameReport(view) };
 }
 
 const ACTIONS = { submit, list, get, triage } as const;

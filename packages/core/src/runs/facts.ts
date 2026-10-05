@@ -113,8 +113,12 @@ function jobFacts(j: Row | undefined): RunFacts['job'] {
     sessionStartedAt: date(j.session_started_at),
     sessionUpdatedAt: date(j.session_updated_at),
     sessionCreatedAt: date(j.session_created_at),
+    sessionDispatchedAt: date(j.session_dispatched_at),
+    sessionKind: str(j.session_kind),
+    lastProgressAt: date(j.job_last_progress_at),
     sessionHeartbeatReaped: j.session_heartbeat_reaped === true,
     hasEvents: j.job_has_events === true,
+    hasResult: j.job_has_result === true,
   };
 }
 

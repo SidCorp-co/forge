@@ -18,7 +18,7 @@ export {
   type LoopMonitorCoverage,
   loopMonitorCoverage,
 } from './loop-monitor-axis.js';
-export { getLoopThresholds } from './loop-monitor-thresholds.js';
+export { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 export {
   dispatchHeldJob,
   holdQueuedJob,
@@ -41,6 +41,7 @@ export {
   prepareClaimedJob,
   resolveRunnerForDevice,
 } from './prepare-claimed-job.js';
+export { JOB_LAST_PROGRESS_SQL } from './progress-signal.js';
 export {
   buildBarrierFragments,
   freshRunnerAvailability,

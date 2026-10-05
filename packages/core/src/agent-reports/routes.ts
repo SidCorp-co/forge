@@ -11,11 +11,19 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { agentReports } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { buildListEnvelope } from '../lib/list-envelope.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { strictBody } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
+import {
+  fileReport,
+  readOneReport,
+  readReportFeed,
+  reportFiltersSchema,
+  submitReportSchema,
+} from './reports.js';
 import { readReport, visibleIssue, writableProjectIds } from './service.js';
 import { type ReportActor, type TriageOutcome, triageReports } from './triage.js';
 
@@ -47,6 +55,64 @@ async function answer(c: Ctx, out: TriageOutcome) {
 
 export const agentReportRoutes = new Hono<{ Variables: AuthVars }>();
 agentReportRoutes.use('*', requireAuth(), assertEmailVerified());
+const feedQuerySchema = reportFiltersSchema
+  .extend({
+    projectId: z.uuid().optional(),
+    scope: z.enum(['project', 'all']).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+  })
+  .strict();
+
+agentReportRoutes.post(
+  '/',
+  strictBody(
+    submitReportSchema,
+    '{ projectId, kind, target, summary, severity?, targetRef?, detail?, suggestion? }',
+  ),
+  async (c) => {
+    const body = c.req.valid('json');
+    const deviceId = c.get('patDeviceId') ?? null;
+    const out = await fileReport(
+      { userId: c.get('userId'), deviceId, boundProjectId: body.projectId },
+      body,
+    );
+    return c.json(out, out.ok ? 201 : 200);
+  },
+);
+
+agentReportRoutes.get(
+  '/',
+  zValidator('query', feedQuerySchema, (r) => {
+    if (!r.success) throw badRequest(r.error);
+  }),
+  async (c) => {
+    const { projectId, scope, limit: asked, ...filters } = c.req.valid('query');
+    const userId = c.get('userId');
+    const all = scope === 'all';
+    if (!all && !projectId) throw badRequest('projectId is required unless scope=all');
+    if (!all && projectId) requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
+    const limit = asked ?? (all ? 50 : 25);
+    const projectIds = all ? await loadVisibleProjectIds(userId) : [projectId as string];
+    const items = await readReportFeed(projectIds, filters, limit);
+    return c.json(
+      buildListEnvelope({
+        key: 'reports',
+        items,
+        limit,
+        hint: 'narrow with kind/target/severity/triage filters',
+      }),
+    );
+  },
+);
+
+agentReportRoutes.get('/:id', async (c) => {
+  const reportId = c.req.param('id');
+  if (!z.uuid().safeParse(reportId).success) throw badRequest('id must be a valid uuid');
+  const report = await readOneReport(c.get('userId'), reportId);
+  if (!report) throw notFound(`agent report ${reportId} not found`);
+  return c.json({ report });
+});
+
 agentReportRoutes.post(
   '/triage',
   strictBody(triageAgentReportsBySignalRequestSchema, TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE),
