@@ -279,7 +279,7 @@ async function attemptScheduleFailover(
     const dispatched = await dispatchInteractiveTurn({
       session,
       project,
-      client: { deviceId: authority.deviceId, isLocal: false, migrated: false },
+      client: { deviceId: authority.deviceId, migrated: false },
       authority,
       message: firstUser,
       broadcastEvent: 'agent-session.created',
@@ -296,7 +296,7 @@ async function attemptScheduleFailover(
       { err, failedSessionId: sessionId, scheduleId: meta.scheduleId, attempt },
       'schedule.failover: re-dispatch failed',
     );
-    await failUndeliveredRun(session);
+    await failUndeliveredRun(session, err);
     return { ok: false, status: 'error' };
   }
 }

@@ -1,6 +1,5 @@
 import { SKILL_NAME_RE } from '@forge/contracts/skills';
 import { z } from 'zod';
-import { agentSessionStatuses } from '../db/schema.js';
 import { pageContextSchema } from './page-context.js';
 import { modelTierSchema } from './session-model.js';
 
@@ -12,7 +11,6 @@ export const startBodySchema = z
     preBuilt: z.boolean().optional(),
     issueIds: z.array(z.uuid()).max(50).optional(),
     type: z.string().max(80).optional(),
-    origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
     /** ISS-499 — session attachments to attach to the first turn. */
     attachmentIds: z.array(z.uuid()).max(10).optional(),
@@ -36,7 +34,6 @@ export const sendBodySchema = z
     message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
     deviceId: z.uuid().nullable().optional(),
-    origin: z.string().max(40).optional(),
     pageContext: pageContextSchema.optional(),
     attachmentIds: z.array(z.uuid()).max(10).optional(),
     model: modelTierSchema.nullable().optional(),
@@ -54,11 +51,3 @@ export const abortBodySchema = z
   .strict();
 
 export const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
-
-export const desktopStatusSchema = z
-  .object({
-    sessionId: z.uuid(),
-    status: z.enum(agentSessionStatuses),
-    note: z.string().max(2000).nullable().optional(),
-  })
-  .strict();

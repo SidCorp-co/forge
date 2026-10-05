@@ -139,7 +139,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
     inserted = await dispatchInteractiveTurn({
       session,
       project,
-      client: { deviceId: authorised.authority.deviceId, isLocal: false, migrated: false },
+      client: { deviceId: authorised.authority.deviceId, migrated: false },
       authority: authorised.authority,
       message: schedule.prompt,
       broadcastEvent: 'agent-session.created',
@@ -151,7 +151,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
       { err, sessionId: session.id, scheduleId: schedule.id },
       'schedule.dispatch: chat-turn dispatch failed',
     );
-    await failUndeliveredRun(session);
+    await failUndeliveredRun(session, err);
     return {
       result: { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id },
       settle: null,

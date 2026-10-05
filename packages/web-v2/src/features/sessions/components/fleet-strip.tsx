@@ -11,7 +11,8 @@
 // useQueueStats(projectId) (per-device queued/running). Liveness is the shared
 // deriveLiveness threshold so the strip, list, and detail never diverge.
 import { useMemo } from "react";
-import { Banner, enumLabel, HealthDot, Icon, MonoTag } from "@/design";
+import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { useProject } from "@/features/projects/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
@@ -66,7 +67,8 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
 
   const onlineRunners = devicePool.filter((d) => d.status === "online").length;
   const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
-  const dispatchStalled = queuedCount > 0 && onlineRunners === 0;
+  // Zero online runners is read only off a loaded pool: a pending or failed read is not an empty fleet.
+  const dispatchStalled = projectQ.isSuccess && queuedCount > 0 && onlineRunners === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -78,7 +80,13 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
         </Banner>
       )}
 
-      {devicePool.length === 0 ? (
+      {projectQ.isError ? (
+        <ErrorState
+          title="Couldn't load the runner pool"
+          message={formatApiError(projectQ.error)}
+          onRetry={() => projectQ.refetch()}
+        />
+      ) : !projectQ.isSuccess ? null : devicePool.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line px-4 py-3 fg-body-sm text-muted">
           No runners paired to this project yet.
         </div>

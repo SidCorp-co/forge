@@ -73,7 +73,7 @@ export function buildBarrierFragments(args: {
       SELECT 1 FROM jobs other
       WHERE other.issue_id = j.issue_id
         AND other.id <> j.id
-        AND other.status IN ('dispatched','running','held')
+        AND other.status IN ('dispatched','held')
     )`,
   };
 

@@ -114,7 +114,7 @@ export async function dispatchAgentTurn(input: {
   const dispatched = await dispatchChatTurn({
     session: input.session,
     project: input.project,
-    client: { deviceId: input.deviceId, isLocal: false, migrated: false },
+    client: { deviceId: input.deviceId, migrated: false },
     credential,
     message: input.message,
     ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),

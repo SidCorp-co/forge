@@ -12,6 +12,15 @@ const LAST_PHASE_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(GREATEST(p.started_
 
 const LAST_PROGRESS_AT = sql`GREATEST(COALESCE(le.max_ts, j.dispatched_at), COALESCE(lp.max_ts, j.dispatched_at), j.dispatched_at)`;
 
+/**
+ * The same last-progress time as a scalar over a `jobs j` row, for a read model that shows when the
+ * result hop will fail the job (GREATEST skips the NULL of a job with no event or phase yet).
+ */
+export const JOB_LAST_PROGRESS_SQL = sql`GREATEST(
+  (SELECT max(e.ts) FROM job_events e WHERE e.job_id = j.id),
+  (SELECT max(GREATEST(p.started_at, COALESCE(p.ended_at, p.started_at))) FROM phase_journal p WHERE p.run_id = j.pipeline_run_id),
+  j.dispatched_at)`;
+
 interface QuietJobCandidateOptions {
   /** Columns to select off the driving `jobs` row, which is aliased `j`. */
   columns: SQL;
@@ -60,7 +69,7 @@ export function quietJobCandidateQuery(opts: QuietJobCandidateOptions): SQL {
     ${LAST_PHASE_LATERAL}
     ${RESIDENT_SESSION_JOIN}
     ${RESULT_EVENT_LATERAL}
-    WHERE j.status IN ('dispatched', 'running')
+    WHERE j.status = 'dispatched'
       AND ${RESULT_GUARD}
       AND ${NOT_PARKED}
       AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(opts.quietMinutes))} minutes'

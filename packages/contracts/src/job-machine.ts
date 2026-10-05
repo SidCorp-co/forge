@@ -6,7 +6,6 @@ import { defineMachine, fromEach } from "./state-machine.js";
 export const JOB_STATUSES = [
 	"queued",
 	"dispatched",
-	"running",
 	"held",
 	"done",
 	"failed",
@@ -15,20 +14,23 @@ export const JOB_STATUSES = [
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 /** The job is not over: it holds a runner slot, waits for one, or waits for a person. */
-export const LIVE_JOB_STATUSES: readonly JobStatus[] = ["queued", "dispatched", "running", "held"];
+export const LIVE_JOB_STATUSES: readonly JobStatus[] = ["queued", "dispatched", "held"];
 
 /** Live and moving: `held` waits on a person or a gate, not on a runner. */
-export const UNHELD_LIVE_JOB_STATUSES: readonly JobStatus[] = ["queued", "dispatched", "running"];
+export const UNHELD_LIVE_JOB_STATUSES: readonly JobStatus[] = ["queued", "dispatched"];
 
-/** Out with a runner, so it occupies one of that runner's slots. */
-export const OCCUPYING_JOB_STATUSES: readonly JobStatus[] = ["dispatched", "running"];
+/**
+ * Out with a runner, so it occupies one of that runner's slots. A job has no `running` state: the
+ * runner moves it `queued → dispatched`, and only its agent session goes on to `running`.
+ */
+export const OCCUPYING_JOB_STATUSES: readonly JobStatus[] = ["dispatched"];
 
 /** Over, whichever exit it took. */
 export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = ["done", "failed", "cancelled"];
 
 export const JOB_MACHINE = defineMachine({
 	entity: "job",
-	shapes: ["df8e6dc6"],
+	shapes: ["df8e6dc6", "d9ce0d45"],
 	design: null,
 	states: JOB_STATUSES,
 	initial: ["queued", "held"],

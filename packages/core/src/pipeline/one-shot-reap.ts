@@ -75,7 +75,7 @@ export async function reapOrphanedOneShotRuns(
   for (const row of candidates) {
     try {
       // A session already completed or failed is left as-is — the run still
-      // needs closing (the missed-`/desktop/status` case).
+      // needs closing.
       const flipped = (
         await transitionSessions(db, {
           returning: SWEEP_SESSION_COLUMNS,

@@ -123,7 +123,7 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
     await dispatchChatTurn({
       session,
       project: args.project,
-      client: { deviceId, isLocal: false, migrated: false },
+      client: { deviceId, migrated: false },
       credential: await mintTurnCredential({
         sessionId: session.id,
         deviceId,

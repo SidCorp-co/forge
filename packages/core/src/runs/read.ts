@@ -21,7 +21,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { SESSION_SILENCE_TIMEOUT_MS } from '../devices/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { getLoopThresholds, killGraceMs } from '../jobs/index.js';
+import { getLoopThresholds, killGraceMs, RESULT_QUIET_MINUTES } from '../jobs/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -81,6 +81,8 @@ async function contextFor(projectId: string, viewer: RunViewer | null) {
     silenceReapMs: SESSION_SILENCE_TIMEOUT_MS,
     jobHeartbeatMs: getLoopThresholds().heartbeatMs,
     jobAckMs: getLoopThresholds().ackMs,
+    jobQueueMs: getLoopThresholds().queueMs,
+    resultQuietMs: RESULT_QUIET_MINUTES * 60_000,
     killGraceMs: killGraceMs(),
   };
   return { master, ctx };

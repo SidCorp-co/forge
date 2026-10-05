@@ -8,12 +8,13 @@ import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds } from '../permissions/index.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { SYNTHETIC_REAP_ERRORS } from './agent-session-link.js';
 import { cancelJob } from './cancel-job.js';
 import { readJobGate } from './job-queries.js';
 import { salvageSchema } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
+import { resumeHeldJob } from './resume-job.js';
 import {
   completeJobFromRunner,
   failJobFromRunner,
@@ -216,6 +217,27 @@ jobLifecycleUserRoutes.post(
       actorUserId: userId,
       actorAgency: restActor(c).agency,
       reason: body.reason ?? 'manual cancel (REST)',
+      source: 'rest',
+    });
+    return c.json(result);
+  },
+);
+
+jobLifecycleUserRoutes.post(
+  '/:id/resume',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', cancelBodySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    const job = await loadJob(id);
+    requireHeld(await loadProjectAccess(job.projectId, userId), 'project.write');
+    const result = await resumeHeldJob(id, {
+      actorUserId: userId,
+      actor: restActor(c),
+      reason: c.req.valid('json').reason ?? 'manual resume (REST)',
       source: 'rest',
     });
     return c.json(result);

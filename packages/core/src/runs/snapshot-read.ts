@@ -59,7 +59,7 @@ export async function readPmSnapshot(projectId: string) {
         sql`NOT EXISTS (
           SELECT 1 FROM ${jobs} j
           WHERE j.issue_id = ${issues.id}
-            AND j.status IN ('queued','dispatched','running')
+            AND j.status IN ('queued','dispatched')
         )`,
       ),
     )

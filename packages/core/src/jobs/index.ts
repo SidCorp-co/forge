@@ -1,7 +1,7 @@
 export { type PipelineCaller, resolvePipelineContext } from './active-job-context.js';
 export { broadcastSessionEvent, syncAgentSessionLifecycle } from './agent-session-link.js';
 export { finalizeJobDone } from './finalize-done.js';
-export { type HoldState, holdReleasesItself, readHoldState } from './hold.js';
+export { type HoldState, holdReleasesItself, readHoldState, releaseHeldJobs } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
 export { type InterventionEventInput, insertInterventionEvent } from './intervention-event.js';
 export { extractStageStatus, resolveJobPolicy } from './job-policy.js';
@@ -19,7 +19,7 @@ export {
   type LoopMonitorCoverage,
   loopMonitorCoverage,
 } from './loop-monitor-axis.js';
-export { getLoopThresholds } from './loop-monitor-thresholds.js';
+export { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 export {
   dispatchHeldJob,
   holdQueuedJob,
@@ -42,6 +42,7 @@ export {
   prepareClaimedJob,
   resolveRunnerForDevice,
 } from './prepare-claimed-job.js';
+export { JOB_LAST_PROGRESS_SQL } from './progress-signal.js';
 export {
   buildBarrierFragments,
   freshRunnerAvailability,

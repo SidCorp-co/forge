@@ -417,7 +417,7 @@ export const ENUM_LABELS = {
 	},
 	/** A connection binding's role (core `project-config/schema.ts:BINDING_ROLES`). */
 	bindingRole: { deploy: "Deploy", source: "Source", service: "Service" },
-	/** An agent report's kind and target (web `agent-reports/types.ts`). */
+	/** An agent report's kind and target (core `db/schema-agent-reports.ts:agentReportKinds`). */
 	agentReportKind: {
 		friction: "Friction",
 		bug: "Bug",

@@ -91,13 +91,6 @@ const patchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const relayBodySchema = z
-  .object({
-    event: z.string().min(1).max(200),
-    data: z.unknown(),
-  })
-  .strict();
-
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );
@@ -308,6 +301,12 @@ agentSessionRoutes.patch(
       requireHeld(access, 'project.write');
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
+    // A user_cancelled session is final: a late worker write is refused whole, status never moves.
+    const isUserCancelled =
+      existing.status === 'failed' && existing.failureReason === 'user_cancelled';
+    if (isUserCancelled && (c.get('principal') === 'device' || patch.status !== undefined)) {
+      throw refuseSession('SESSION_CANCELLED', `session ${id} was cancelled; the write is dropped`);
+    }
 
     const transcript = await applyTranscriptPatch({
       sessionId: id,
@@ -340,16 +339,7 @@ agentSessionRoutes.patch(
       patch.usage !== undefined ||
       patch.status !== undefined ||
       patch.diff !== undefined;
-    // A user_cancelled session must never silently revive — once cancelled,
-    // a worker stream that arrives late should be dropped, not re-attached.
-    const isUserCancelled =
-      existing.status === 'failed' && existing.failureReason === 'user_cancelled';
-    if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
-      throw refuseSession('SESSION_CANCELLED', 'session was cancelled by user');
-    }
-    if (isWorkerActivity && !isUserCancelled) {
-      updates.lastHeartbeatAt = patchNow;
-    }
+    if (isWorkerActivity && !isUserCancelled) updates.lastHeartbeatAt = patchNow;
     if (patch.status === undefined && isWorkerActivity && existing.status === 'queued') {
       updates.status = 'running';
       updates.startedAt = patchNow;
@@ -435,7 +425,7 @@ agentSessionRoutes.patch(
     }
 
     const classification =
-      patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
+      patch.status === 'failed' && existing.failureReason !== 'user_cancelled'
         ? await finalizeScheduleSessionFailure({
             sessionId: id,
             messages: patchedMessages ?? existing.messages,
@@ -512,22 +502,6 @@ agentSessionRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) 
   broadcastSession(existing, 'agent-session.deleted');
   return c.body(null, 204);
 });
-
-agentSessionRoutes.post(
-  '/:id/relay',
-  zValidator('param', idParamSchema),
-  zValidator('json', relayBodySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { event, data } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const { session: existing } = await ensureSessionRole(id, userId, 'project.write');
-
-    broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
-    return c.json({ relayed: true });
-  },
-);
 
 // Pipeline pause/health/telemetry control surface (GET/POST ×3).
 agentSessionRoutes.route('/', agentSessionPipelineControlRoutes);

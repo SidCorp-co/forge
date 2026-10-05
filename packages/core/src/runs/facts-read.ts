@@ -13,7 +13,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/index.js';
-import { heartbeatReapedSql } from '../jobs/index.js';
+import { heartbeatReapedSql, JOB_LAST_PROGRESS_SQL } from '../jobs/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import {
@@ -188,9 +188,11 @@ function runRows(projectId: string, ids: string[]) {
              s.failure_reason AS session_failure_reason, s.failure_detail AS session_failure_detail,
              s.status AS session_status, s.runtime_state AS session_runtime_state,
              s.started_at AS session_started_at, s.updated_at AS session_updated_at,
-             s.created_at AS session_created_at,
+             s.created_at AS session_created_at, s.dispatched_at AS session_dispatched_at,
+             s.kind AS session_kind, ${JOB_LAST_PROGRESS_SQL} AS job_last_progress_at,
              ${heartbeatReapedSql(sql`s`)} AS session_heartbeat_reaped,
-             EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id) AS job_has_events
+             EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id) AS job_has_events,
+             EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id AND e.kind = 'result') AS job_has_result
         FROM jobs j
         LEFT JOIN devices d ON d.id = j.device_id
         LEFT JOIN agent_sessions s ON s.id = j.agent_session_id

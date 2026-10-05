@@ -22,6 +22,7 @@ import {
   type SessionRefusal,
   sessionRoleRefusal,
   transitionSessions,
+  undeliveredTurnCause,
 } from '../agent-sessions/index.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
@@ -110,14 +111,15 @@ export async function recordRefusedRun(args: {
   });
 }
 
-/** A run whose frame never reached its box is failed, never left `idle` for the sweeper to guess at. */
-export async function failUndeliveredRun(session: AgentSessionRow): Promise<void> {
+/** A run whose frame never reached its box is failed with the real cause (binding, credential or hand-over), never left `idle`. */
+export async function failUndeliveredRun(session: AgentSessionRow, err: unknown): Promise<void> {
+  const cause = undeliveredTurnCause(err);
   try {
     await transitionSessions(db, {
       to: 'failed',
-      set: { failureReason: 'ws_publish_failed' },
+      set: { failureReason: cause },
       where: eq(agentSessions.id, session.id),
-      reason: 'ws-publish-failed',
+      reason: cause,
       actor: { type: 'system' },
       source: 'schedule',
     });

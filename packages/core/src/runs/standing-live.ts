@@ -194,8 +194,11 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
     outcome: null,
     waitingOn: NO_WAIT('claimed: its holder has not started it'),
   });
-  if (job?.status === 'running')
-    return running(job.ackedAt ?? job.dispatchedAt, 'jobs.status running');
+  if (job?.status === 'dispatched' && job.sessionStatus === 'running')
+    return running(
+      job.sessionStartedAt ?? job.ackedAt ?? job.dispatchedAt,
+      'jobs.status dispatched and its agent session running',
+    );
   if (job?.status === 'dispatched')
     return claimed(job.dispatchedAt, 'jobs.status dispatched: a box took it and has not acked');
   if (job?.status === 'queued' && job.heldBy) {

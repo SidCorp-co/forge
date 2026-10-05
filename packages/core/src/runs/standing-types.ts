@@ -86,8 +86,13 @@ export interface RunFacts {
     sessionStartedAt: Date | null;
     sessionUpdatedAt: Date | null;
     sessionCreatedAt: Date | null;
+    sessionDispatchedAt: Date | null;
+    sessionKind: string | null;
+    /** The newest job event or run phase, else the dispatch: what the result hop measures quiet from. */
+    lastProgressAt: Date | null;
     sessionHeartbeatReaped: boolean;
     hasEvents: boolean;
+    hasResult: boolean;
   } | null;
   liveJobs: number;
   lastBeatAt: Date | null;
@@ -124,6 +129,8 @@ export interface StandingContext {
   silenceReapMs: number;
   jobHeartbeatMs: number;
   jobAckMs: number;
+  jobQueueMs: number;
+  resultQuietMs: number;
   killGraceMs: number;
 }
 

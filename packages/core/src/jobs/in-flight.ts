@@ -6,7 +6,7 @@ const OCCUPYING_JOBS_FOR = (runnerFilter: ReturnType<typeof sql>) => sql`
   FROM jobs j
   LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
   WHERE ${runnerFilter}
-    AND j.status IN ('dispatched', 'running')
+    AND j.status = 'dispatched'
     AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
   GROUP BY j.runner_id
 `;
