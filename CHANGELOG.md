@@ -8,6 +8,105 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.27] - 2026-10-05
+
+Forge sheds features nobody used, and an independent review's fixes land
+
+
+### Changed
+
+- **Every module names the requirement or workflow step it serves (ISS-221).** The Modules screen
+  shows what each serves and how many code units are untraced; a new module serving nothing is
+  refused before it lands.
+
+- **The runner drops the hidden `login --no-browser` and `bind --project-id` flags and the
+  `[runner] register_enabled` switch (ISS-216).** `forge-runner status` no longer prints a register
+  line.
+
+- **The chat tool catalog lists its two metrics tools last (ISS-203).** The conversations data layer
+  no longer depends on the assistant; chat, Rocket.Chat rooms, web conversations and notifications
+  behave as before.
+
+- **A clean install no longer depends on hoisting (ISS-207, ISS-217).** Unused dependencies are
+  removed (drizzle-orm from contracts, @codemirror/language from web, dependency-cruiser and
+  google-auth-library from core) and the tools the checks use are declared.
+
+- **Module boundaries restructured, with no visible change (ISS-199, ISS-200, ISS-201, ISS-202,
+  ISS-204, ISS-205, ISS-206).** Execution, work, design, adapters, release, project config,
+  ecosystem, knowledge, platform, operations and access reach other modules through ports.
+
+- **The boundary checks catch table writes, queries in routes, hand-built refusals and stray
+  fetches that text patterns missed (ISS-196).** A new violation or a stale allowance fails the
+  check.
+
+- **Duplicated helpers and one-caller wrappers are collapsed, and 43 hand-written validator hooks
+  use the shared default (ISS-218).** Migration 0396 drops columns the earlier cleanup left dead. No
+  visible change intended.
+
+- **Storage left behind by removed features is dropped (ISS-226).** Migration 0395 deletes contract
+  waits and measurements, chunked memory, knowledge edges, the task list, token fence edits, the git
+  key pool and unused settings. Irreversible without a backup.
+
+- **The development checks pass on dev again after the cleanup (ISS-225).** No user-visible change.
+
+### Removed
+
+- **Runners no longer receive or use an SSH deploy key (ISS-222).** Every checkout clones and pushes
+  over HTTPS with the box's own credential; without a source host binding, branch divergence is not
+  read.
+
+- **The Resources / Private Keys screen and the runners page's deploy-key card are gone (ISS-215).**
+  So are the What's New page, its sidebar dot and feed, PAT rotate, audit and fence editing, and
+  agent retire and re-assignment.
+
+- **The Improvement loop catalog is gone (ISS-208, ISS-210).** A schedule runs only its own prompt,
+  the command palette no longer offers the tab, and a feedback item's agent-report link opens
+  Automation's Reports tab.
+
+- **API routes nothing called are removed (ISS-208, ISS-209, ISS-213):** among them skill activity
+  and facts, the feedback-reports alias, runner exclude/include/health-check, the per-issue Tasks
+  API, six analytics endpoints, generic app-config and release attempts.
+
+- **Google Sheets is gone (ISS-211):** the Google provider in Settings > Integrations, the
+  forge_google_sheets agent tool and its guide. Google sign-in still works.
+
+- **Leftovers of deleted code are gone (ISS-223):** the Sessions PM tab, schedule Mode and Template
+  rows, the chat slash-skills button and empty coupling fields. Only platform admins can list or
+  replay dead outbox deliveries now.
+
+- **Contract waits and change-request landing are removed (ISS-214).** A published change request no
+  longer files a draft requirement at the provider, and a release is no longer held for a provider
+  not yet live.
+
+- **Land measurements, the Measurements tab, the Memory settings tab, issue Tasks tabs and knowledge
+  edges are removed (ISS-214).** Memory extraction stores facts only.
+
+- **Features with no design backing are removed (ISS-220):** the assistant bench and
+  weekly report, forge-runner top, chat audit logs, the Rocket.Chat comment mirror, assistant agents,
+  domain templates, skill reconcile, the PM agent, the Usage screen and Postman.
+
+- **Also removed (ISS-220):** outbound webhooks, notification silences, core's runner release cut,
+  editable admin thresholds, git credential provisioning, the /kit page and the prompt preview. Chat
+  on a model is kept.
+
+### Fixed
+
+- **Starting a project's onboarding (Build Project Brain) works (ISS-212).** Forge installs its
+  built-in onboarding skill first; every attempt used to fail with 'forge-onboard is not installed'.
+
+- **A contract's `{path}` interface artifact, once accepted and silently ignored, is refused by name
+  (ISS-224):** UNKNOWN_KEY at `/publishes/<contract>/artifact/path`. An artifact is an upload or
+  empty.
+
+- **Held jobs release, closed runs take no new work, and several silent failures refuse by name
+  (ISS-219).**
+
+### Security
+
+- **An independent review of the rewrite fixed defects (ISS-219).** A box credential sees only its
+  own projects' live rooms, a revoked device's tokens stop at once, comment and issue text is
+  scrubbed of secrets, and logout ends session tokens.
+
 ## [0.4.0-dev.26] - 2026-10-05
 
 Refusals answer the status that says what to do, and approving takes a named grant
