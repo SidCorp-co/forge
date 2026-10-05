@@ -1,9 +1,4 @@
 {
   "generatedAt": "2026-10-04T23:29:40.238Z",
-  "files": {
-    "packages/core/src/agent-sessions/routes.ts": {
-      "fileLines": 598,
-      "maxFunctionLines": 0
-    }
-  }
+  "files": {}
 }

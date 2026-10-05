@@ -62,7 +62,6 @@ interface SkillBodyRow {
   version: number;
   scope: 'global' | 'project';
   skillMd: string | null;
-  prompt: string;
   files: unknown;
   installOnly: boolean;
   basedOnGlobalVersion?: number | null;
@@ -70,18 +69,9 @@ interface SkillBodyRow {
   pinnedReason?: string | null;
 }
 
-/**
- * The effective markdown body for a skill ignoring overrides: `skill_md` when
- * present, else the legacy `prompt` fallback (skills seeded pre-v0.1 have
- * `skill_md = NULL`). Shared so the override route and the resolver derive the
- * global body identically.
- */
-export function globalEffectiveMd(skill: {
-  skillMd: string | null;
-  prompt: string | null;
-}): string {
-  if (skill.skillMd != null && skill.skillMd.trim() !== '') return skill.skillMd;
-  return skill.prompt ?? '';
+/** The markdown body for a skill ignoring overrides; shared by the override route and the resolver. */
+export function globalEffectiveMd(skill: { skillMd: string | null }): string {
+  return skill.skillMd ?? '';
 }
 
 function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
@@ -114,7 +104,6 @@ const skillBodyProjection = {
   version: skills.version,
   scope: skills.scope,
   skillMd: skills.skillMd,
-  prompt: skills.prompt,
   files: skills.files,
   installOnly: skills.installOnly,
   basedOnGlobalVersion: skills.basedOnGlobalVersion,
@@ -170,7 +159,6 @@ export async function resolveManagedMetaPrompts(
       description: skills.description,
       scope: skills.scope,
       skillMd: skills.skillMd,
-      prompt: skills.prompt,
     })
     .from(skills)
     .where(and(inArray(skills.name, names), scopeCond));

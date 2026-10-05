@@ -21,7 +21,6 @@ async function loadHealth(sessionId: string): Promise<PipelineHealth | null> {
 
 function emptyHealth(): PipelineHealth {
   return {
-    retryCount: 0,
     recoveryStats: { ...DEFAULT_RECOVERY_STATS, byKind: { ...DEFAULT_RECOVERY_STATS.byKind } },
     lastError: null,
     updatedAt: new Date(0).toISOString(),

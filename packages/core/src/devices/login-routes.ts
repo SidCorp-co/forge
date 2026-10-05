@@ -60,7 +60,7 @@ function generateCanonical(): string {
   while (out.length < CODE_LEN) {
     for (const b of randomBytes(CODE_LEN * 2)) {
       if (out.length >= CODE_LEN) break;
-      out.push(CROCKFORD_ALPHABET[b & 0x1f]!);
+      out.push(CROCKFORD_ALPHABET.charAt(b & 0x1f));
     }
   }
   return out.join('');

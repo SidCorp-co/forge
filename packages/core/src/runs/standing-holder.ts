@@ -51,12 +51,7 @@ function clock(at: Date, now: Date, rule: string): Clock {
   };
 }
 
-function laterOf(a: Date | null, b: Date | null): Date | null {
-  if (!a || !b) return a ?? b;
-  return a.getTime() >= b.getTime() ? a : b;
-}
-
-// cm: mirrors jobs/loop-monitor.ts reapAckMisses: a dispatch with no ack and no job event is failed at ackMs, and the kill gate adds one grace before the fail lands.
+// Predicts jobs/loop-monitor.ts reapAckMisses: a dispatch with no ack and no job event is failed at ackMs, and the kill gate adds one grace before the fail lands.
 function ackClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock {
   if (!job.dispatchedAt)
     return {
@@ -79,7 +74,7 @@ function ackClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cloc
   );
 }
 
-// cm: mirrors jobs/loop-monitor.ts reapZombieSessions: only a running session of a reaped kind, not awaiting input, is failed for silence, and its beat falls back as the reaper's does.
+// The heartbeat reaper (jobs/zombie-session-reaper.ts) fails only a running session of a reaped kind, not awaiting input; its beat is `heartbeatBeatSql`, read here as `sessionHeartbeatBeat`.
 function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock {
   if (job.sessionStatus !== 'running') {
     return {
@@ -101,11 +96,7 @@ function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext)
         "the job's session is not of a kind the heartbeat reaper sweeps, so no silence clock runs",
     };
   }
-  const beat =
-    job.sessionBeat ??
-    (job.sessionStartedAt
-      ? laterOf(job.sessionStartedAt, job.sessionUpdatedAt)
-      : laterOf(job.sessionUpdatedAt, job.sessionCreatedAt));
+  const beat = job.sessionHeartbeatBeat;
   if (!beat)
     return {
       expiry: null,
@@ -119,7 +110,7 @@ function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext)
   );
 }
 
-// cm: mirrors jobs/queue-hop.ts reapQueueHop: a queued pipeline session no worker claimed fails at queueMs (queue_timeout); one that beat once and went quiet fails at heartbeatMs (turn_never_reported).
+// Predicts jobs/queue-hop.ts reapQueueHop: a queued pipeline session no worker claimed fails at queueMs (queue_timeout); one that beat once and went quiet fails at heartbeatMs (turn_never_reported).
 function queueClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock {
   const kind = job.sessionKind as Parameters<typeof isPipelineSessionKind>[0] | null;
   if (!kind || !isPipelineSessionKind(kind)) {
@@ -146,7 +137,7 @@ function queueClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cl
   );
 }
 
-// cm: mirrors jobs/loop-monitor.ts reapResultMisses: a job quiet (no event, no run phase) for RESULT_QUIET_MINUTES is failed after the kill grace, unless parked or already holding its result.
+// Predicts jobs/loop-monitor.ts reapResultMisses (its query is `quietJobCandidateQuery`): a job quiet (no event, no run phase) for RESULT_QUIET_MINUTES is failed after the kill grace, unless parked or already holding its result.
 function resultClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock | null {
   if (job.sessionRuntimeState === 'awaiting_input') return null;
   if (job.hasResult && job.sessionRuntimeState === null) return null;

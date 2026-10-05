@@ -1,11 +1,11 @@
 import { UNMINTABLE_JOB_TYPES } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { jobStatuses, jobTypes, modelTiers } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/index.js';
@@ -14,12 +14,6 @@ import { noPromptMessage, poolPrompt } from './pool-served.js';
 import { issueProjectId, jobDeviceSummary, listProjectJobs } from './read.js';
 import { refuseJob } from './refusals.js';
 import { createQueuedJob, patchJob } from './service.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const jobCreateSchema = z
   .object({

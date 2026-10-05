@@ -1,13 +1,11 @@
 export { persistSessionAttachment } from './attachment-service.js';
-export { createChatSessionRow, dispatchChatTurn, noClaudeClient } from './chat-turn.js';
+export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 export {
-  authorizeInteractiveTurn,
   dispatchInteractiveTurn,
   type InteractiveAuthority,
   RUNNER_OUTDATED_REFUSAL,
   readBoxAuthority,
   refusalError,
-  resolveInteractiveClient,
   type SessionRefusal,
   sessionRoleRefusal,
   undeliveredTurnCause,
@@ -30,11 +28,7 @@ export {
   resolveSessionAuthority,
   type SessionAsker,
 } from './session-credential.js';
-export {
-  AGENT_SESSION_KIND_LIST,
-  isAgentSessionKind,
-  isPipelineSessionKind,
-} from './session-kinds.js';
+export { isPipelineSessionKind } from './session-kinds.js';
 export { requestSessionSend, resolveSessionSend } from './session-send.js';
 export {
   deriveSessionFinal,
@@ -51,9 +45,7 @@ export { provideTerminalSessionBridge } from './terminal-effects.js';
 export { firstUserMessageText, messageRoleToTurnRole } from './turns-helpers.js';
 export { materializeJobUsage } from './usage-materialize.js';
 export {
-  canonicalSessionId,
   EMPTY_USAGE_TOTALS,
-  type UsageTotals,
   usageSessionMatch,
   usageTotalsByRun,
   usageTotalsForRun,

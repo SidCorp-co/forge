@@ -114,6 +114,7 @@ function jobFacts(j: Row | undefined): RunFacts['job'] {
     sessionKind: str(j.session_kind),
     lastProgressAt: date(j.job_last_progress_at),
     sessionHeartbeatReaped: j.session_heartbeat_reaped === true,
+    sessionHeartbeatBeat: date(j.session_heartbeat_beat),
     hasEvents: j.job_has_events === true,
     hasResult: j.job_has_result === true,
   };

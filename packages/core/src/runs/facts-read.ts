@@ -13,7 +13,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/index.js';
-import { heartbeatReapedSql, JOB_LAST_PROGRESS_SQL } from '../jobs/index.js';
+import { heartbeatBeatSql, heartbeatReapedSql, JOB_LAST_PROGRESS_SQL } from '../jobs/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import {
@@ -193,6 +193,7 @@ function runRows(projectId: string, ids: string[]) {
              s.created_at AS session_created_at, s.dispatched_at AS session_dispatched_at,
              s.kind AS session_kind, ${JOB_LAST_PROGRESS_SQL} AS job_last_progress_at,
              ${heartbeatReapedSql(sql`s`)} AS session_heartbeat_reaped,
+             ${heartbeatBeatSql(sql`s`)} AS session_heartbeat_beat,
              EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id) AS job_has_events,
              EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id AND e.kind = 'result') AS job_has_result
         FROM jobs j

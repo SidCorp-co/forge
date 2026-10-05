@@ -1,12 +1,11 @@
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { cancelJob } from './cancel-job.js';
@@ -16,9 +15,6 @@ import { refuseJob } from './refusals.js';
 import { resumeHeldJob } from './resume-job.js';
 import { failJobFromRunner } from './runner-finish.js';
 import { ackJob, confirmJobKill } from './service.js';
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
@@ -54,8 +50,8 @@ export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
 // The runner calls this right after its pre-claim preflight passes (ISS-451)
-// and before spawning the agent; the first job_event batch doubles as a
-// fallback ack for older runners (events-routes.ts). Idempotent: a repeat
+// and before spawning the agent; the first job_event batch stamps the ack
+// when this call was lost (events-routes.ts). Idempotent: a repeat
 // call (or a call racing the event fallback) keeps the first timestamp and
 // reports `acked:false`. A terminal job is NOT an error — the runner treats
 // ack as best-effort and must not abort the job over a late/lost ack.

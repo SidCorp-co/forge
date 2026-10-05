@@ -18,6 +18,10 @@
   binding, a bound checkout answers the head. Documents and bind take SSH remotes and local paths;
   provisioning never rewrites tracked files.
 
+- **Execution sheds its legacy paths.** Six timing env overrides become constants, a skill's body
+  is only `skill_md`, transcripts no longer convert `contentBlocks`, `pipelineHealth.retryCount`
+  is gone, and the heartbeat reaper and the run standing read one beat expression.
+
 ## [0.4.0-dev.33] - 2026-10-05
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
@@ -28,9 +32,6 @@ Dead routes and unread data removed; unknown API filters are refused, not ignore
 - **Unknown query keys are refused; audit 4's dead paths go.** Bulk triage by signal has a
   REST route, contract-change filings wake masters, onboarding drafts read "Plan from code",
   and the retrieval log, plan-baseline column and build unlink are gone.
-
-- **A refused move and an unapproved design answer in the refusal envelope at both doors.**
-  Record history reads events only: pre-event record comments get their event in a backfill.
 
 ## [0.4.0-dev.32] - 2026-10-05
 

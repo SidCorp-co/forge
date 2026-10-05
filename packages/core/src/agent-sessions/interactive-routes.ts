@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { broadcastSession } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
@@ -15,7 +16,7 @@ import { assertCallerDeclaresNoKind } from './kind-query.js';
 import { sendBodySchema } from './lifecycle-schemas.js';
 import { projectHandle } from './read.js';
 import { refuseSession } from './refusals.js';
-import { badRequest, ensureSessionOwnerOrAdmin, notFound } from './session-access.js';
+import { ensureSessionOwnerOrAdmin } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 
 const createSchema = z

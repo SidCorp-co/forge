@@ -15,28 +15,6 @@ const ROLE_TO_TYPE: Readonly<Record<string, string>> = {
   tool: 'tool_result',
 };
 
-/** One legacy `contentBlocks` member as the canonical `blocks` member. */
-function convertBlock(
-  block: unknown,
-  at: string,
-): { ok: true; block: unknown } | { ok: false; why: string } {
-  if (!block || typeof block !== 'object' || Array.isArray(block)) {
-    return { ok: false, why: `${at} is not an object` };
-  }
-  const b = block as Record<string, unknown>;
-  const type = b.type;
-  if (type === 'text') return { ok: true, block: { type: 'text', text: b.text } };
-  if (type === 'todos') return { ok: true, block: { type: 'todos', todos: b.todos } };
-  if (type === 'tool_use') return { ok: true, block: { type: 'tool', toolCall: b.tool } };
-  // Already canonical members pass through untouched — a mixed array is a real
-  // shape on disk, because an edited turn kept its neighbours as they were.
-  if (type === 'tool' || type === 'thinking') return { ok: true, block: b };
-  return {
-    ok: false,
-    why: `${at} has block type ${JSON.stringify(type)}, which the canonical shape has no member for`,
-  };
-}
-
 /**
  * One transcript entry in the canonical shape.
  *
@@ -53,9 +31,7 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
     };
   }
   const entry = raw as Record<string, unknown>;
-  const hasRole = entry.role !== undefined;
-  const hasLegacyBlocks = Array.isArray(entry.contentBlocks);
-  if (!hasRole && !hasLegacyBlocks) {
+  if (entry.role === undefined) {
     const type = entry.type;
     if (typeof type !== 'string' || !CANONICAL_TYPES.has(type)) {
       return {
@@ -68,38 +44,25 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
 
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entry)) {
-    if (key === 'role' || key === 'contentBlocks') continue;
+    if (key === 'role') continue;
     out[key] = value;
   }
 
-  if (hasRole) {
-    const role = entry.role;
-    if (typeof role !== 'string') {
-      return {
-        ok: false,
-        why: `entry has a \`role\` of type ${typeof role}, which names no canonical kind`,
-      };
-    }
-    const type = ROLE_TO_TYPE[role];
-    if (!type) {
-      return {
-        ok: false,
-        why: `entry has \`role: ${JSON.stringify(role)}\`, which names no canonical kind`,
-      };
-    }
-    if (out.type === undefined) out.type = type;
+  const role = entry.role;
+  if (typeof role !== 'string') {
+    return {
+      ok: false,
+      why: `entry has a \`role\` of type ${typeof role}, which names no canonical kind`,
+    };
   }
-
-  if (hasLegacyBlocks) {
-    const blocks: unknown[] = [];
-    const legacy = entry.contentBlocks as unknown[];
-    for (let i = 0; i < legacy.length; i += 1) {
-      const converted = convertBlock(legacy[i], `contentBlocks[${i}]`);
-      if (!converted.ok) return { ok: false, why: converted.why };
-      blocks.push(converted.block);
-    }
-    if (out.blocks === undefined) out.blocks = blocks;
+  const type = ROLE_TO_TYPE[role];
+  if (!type) {
+    return {
+      ok: false,
+      why: `entry has \`role: ${JSON.stringify(role)}\`, which names no canonical kind`,
+    };
   }
+  if (out.type === undefined) out.type = type;
 
   const producedType = out.type;
   if (typeof producedType !== 'string' || !CANONICAL_TYPES.has(producedType)) {

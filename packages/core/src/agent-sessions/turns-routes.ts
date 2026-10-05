@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, restActor } from '../middleware/auth.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { openOneShotRun } from '../pipeline/index.js';
@@ -25,7 +26,6 @@ import {
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   idParamSchema,
-  notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import {

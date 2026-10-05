@@ -1,6 +1,5 @@
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
 import type { JobStatus } from '../db/schema.js';
@@ -14,7 +13,7 @@ import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
@@ -23,9 +22,6 @@ import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 

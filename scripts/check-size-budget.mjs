@@ -20,6 +20,7 @@ const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
 function collect(scopes) {
   const measured = new Map();
   let sawAnyDiagnostic = false;
+  let scanned = 0;
 
   const missing = absentPrerequisites(ROOT, ['deps']);
   if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
@@ -30,6 +31,7 @@ function collect(scopes) {
 
     const diags = parsed.diagnostics ?? [];
     if (diags.length > 0) sawAnyDiagnostic = true;
+    scanned += (parsed.summary?.changed ?? 0) + (parsed.summary?.unchanged ?? 0);
 
     for (const d of diags) {
       if (d.category !== FILE_RULE && d.category !== FN_RULE) continue;
@@ -46,7 +48,7 @@ function collect(scopes) {
 
   if (!sawAnyDiagnostic)
     return { error: 'biome reported zero diagnostics — the scope matched nothing' };
-  return { measured };
+  return { measured, scanned };
 }
 
 const parsed = parseMode(
@@ -66,7 +68,7 @@ if (cfg.error) {
   process.exit(2);
 }
 
-const { measured, error } = collect(cfg.scopes);
+const { measured, scanned, error } = collect(cfg.scopes);
 if (error) {
   console.error(`check-size-budget: ${error}`);
   process.exit(2);
@@ -126,7 +128,9 @@ for (const [file, now] of measured) {
   if (reasons.length) failures.push({ file, reasons });
 }
 
-console.log(`size-budget: ${measured.size} file(s) over budget, frozen against the baseline`);
+console.log(
+  `size-budget: ${scanned} file(s) scanned, ${measured.size} over budget, frozen against the baseline`,
+);
 if (failures.length === 0) process.exit(0);
 
 for (const f of failures) {

@@ -29,23 +29,14 @@ import { refuseSession } from './refusals.js';
 
 type SessionInboxRow = typeof sessionInbox.$inferSelect;
 
-const SEND_ACK_MS_DEFAULT = 10_000;
-const SEND_ACK_MS_FLOOR = 2_000;
-
-function sendGraceMs(): number {
-  const raw = process.env.SESSION_SEND_ACK_MS;
-  if (!raw) return SEND_ACK_MS_DEFAULT;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= SEND_ACK_MS_FLOOR ? n : SEND_ACK_MS_DEFAULT;
-}
+/** How long a send waits for the box's ack. */
+const SEND_GRACE_MS = 10_000;
 
 /** How long one send stays the CURRENT episode. Two grace windows, matching the kill gate. */
-function sendEpisodeWindowMs(): number {
-  return sendGraceMs() * 2;
-}
+const SEND_EPISODE_WINDOW_MS = SEND_GRACE_MS * 2;
 
 function isSendEpisodeLive(row: SessionInboxRow, now: number = Date.now()): boolean {
-  return now - row.sendRequestedAt.getTime() <= sendEpisodeWindowMs();
+  return now - row.sendRequestedAt.getTime() <= SEND_EPISODE_WINDOW_MS;
 }
 
 interface SessionSendActor {
@@ -181,7 +172,7 @@ export async function requestSessionSend(
       seq: row.seq,
       kind: row.kind,
       body: row.body ?? undefined,
-      deadlineMs: sendGraceMs(),
+      deadlineMs: SEND_GRACE_MS,
       jobId: await jobKeyOf(req.agentSessionId),
     },
   });

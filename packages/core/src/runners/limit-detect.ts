@@ -71,7 +71,11 @@ function zonedClock(
     minute: '2-digit',
     hour12: false,
   }).formatToParts(at);
-  const part = (type: string) => Number.parseInt(parts.find((p) => p.type === type)!.value, 10);
+  const part = (type: string) => {
+    const value = parts.find((p) => p.type === type)?.value;
+    if (value === undefined) throw new Error(`zonedClock: ${tz} formats no ${type} part`);
+    return Number.parseInt(value, 10);
+  };
   return {
     year: part('year'),
     month: part('month'),

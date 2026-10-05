@@ -188,7 +188,7 @@ export async function appendJobEvents(
   });
 }
 
-/** The first event batch doubles as the ACK for runners that never call /ack. */
+/** The first event batch stamps the ACK when the runner's own POST /ack was lost: the runner only logs a failed ack. */
 export async function stampJobAckFromEvents(jobId: string): Promise<void> {
   await db
     .update(jobs)

@@ -16,7 +16,7 @@ import {
   requireUserOrDevice,
   restActor,
 } from '../middleware/auth.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
@@ -26,13 +26,13 @@ import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { agentSessionOpsRoutes } from './ops-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import {
   type AgentSessionListFilter,
   linkedIssueOf,
   listAgentSessionsPage,
   sessionCost,
-  sessionQueueDepth,
 } from './read.js';
 import { refuseSession } from './refusals.js';
 import {
@@ -45,7 +45,6 @@ import {
   assertAgentChatOwner,
   assertDeviceOwnsSession,
   assertSessionOwnerOrAdmin,
-  badRequest,
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   ensureSessionRole,
@@ -101,6 +100,7 @@ agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInteractiveRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
+agentSessionRoutes.route('/', agentSessionOpsRoutes);
 
 // A retry offers the issue to the project's masters again; while a job is still
 // active for it, or no box serves the project, it is refused by name.
@@ -151,57 +151,6 @@ agentSessionRoutes.get('/:id/cost', zValidator('param', idParamSchema), async (c
 
   const { totals, models } = await sessionCost(id);
   return c.json({ sessionId: id, projectId: session.projectId, ...totals, models });
-});
-
-// Queue depth per device — backs the worker panel + session placeholder.
-const queueStatsQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-  })
-  .strict();
-
-agentSessionRoutes.get('/queue-stats', zValidator('query', queueStatsQuerySchema), async (c) => {
-  const { projectId } = c.req.valid('query');
-  const userId = c.get('userId');
-
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
-
-  // Group counts by deviceId × status. Devices without any active session
-  // simply don't appear; the UI lists those via the standard devices API.
-  const rows = await sessionQueueDepth(projectId);
-
-  type Bucket = { deviceId: string | null; queued: number; running: number };
-  const buckets = new Map<string, Bucket>();
-  for (const r of rows) {
-    const key = r.deviceId ?? '__null__';
-    const b = buckets.get(key) ?? { deviceId: r.deviceId, queued: 0, running: 0 };
-    if (r.status === 'queued') b.queued = Number(r.count);
-    if (r.status === 'running') b.running = Number(r.count);
-    buckets.set(key, b);
-  }
-  return c.json({ devices: Array.from(buckets.values()) });
-});
-
-// Manual sweep trigger — flush zombies without waiting for the cron tick.
-const sweepQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-  })
-  .strict();
-
-agentSessionRoutes.post('/sweep-zombies', zValidator('query', sweepQuerySchema), async (c) => {
-  const { projectId } = c.req.valid('query');
-  const userId = c.get('userId');
-
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.admin');
-
-  // ISS-449 — the loop monitor owns session reaps now; the sweeper's
-  // sweepZombieSessions was demoted to an alarm pass.
-  const { reapZombieSessions } = await import('../jobs/index.js');
-  const result = await reapZombieSessions(new Date(), { projectId });
-  return c.json(result);
 });
 
 agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {

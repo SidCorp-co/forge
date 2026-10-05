@@ -170,14 +170,10 @@ interface UpdateProjectSkillPatch {
 /**
  * Apply a partial update to a project skill. `existing` is the current row
  * (fetched + authorized by the caller). Bumps `version` + recomputes
- * `contentHash` whenever the body (skillMd) or files change; backfills the
- * canonical `skillMd` for legacy prompt-only rows on first edit.
+ * `contentHash` whenever the body (skillMd) or files change.
  */
 export async function updateProjectSkill(
-  existing: Pick<
-    SkillRow,
-    'id' | 'skillMd' | 'prompt' | 'files' | 'version' | 'name' | 'description'
-  > &
+  existing: Pick<SkillRow, 'id' | 'skillMd' | 'files' | 'version' | 'name' | 'description'> &
     Partial<Pick<SkillRow, 'basedOnGlobalSkillId'>>,
   patch: UpdateProjectSkillPatch,
 ): Promise<SkillRow> {
@@ -187,7 +183,7 @@ export async function updateProjectSkill(
     const scanFindings = scanSkillContent({
       name: patch.name ?? existing.name,
       description: patch.description ?? existing.description,
-      skillMd: patch.skillMd ?? existing.skillMd ?? existing.prompt ?? '',
+      skillMd: patch.skillMd ?? existing.skillMd ?? '',
     });
     const blockers = scanFindings.filter((f) => f.severity === 'blocker');
     if (blockers.length > 0) throw contentBlocked(blockers);
@@ -213,12 +209,10 @@ export async function updateProjectSkill(
   if (normalizedFiles !== undefined) updates.files = normalizedFiles;
   if (patch.localGuide !== undefined) updates.localGuide = patch.localGuide;
   if (patch.skillMd !== undefined || patch.files !== undefined) {
-    const canonicalSkillMd = patch.skillMd ?? existing.skillMd ?? existing.prompt;
-    if (patch.skillMd === undefined && existing.skillMd === null) {
-      updates.skillMd = canonicalSkillMd;
-      updates.prompt = canonicalSkillMd;
-    }
-    updates.contentHash = hashSkillBody(canonicalSkillMd, normalizedFiles ?? existing.files);
+    updates.contentHash = hashSkillBody(
+      patch.skillMd ?? existing.skillMd ?? '',
+      normalizedFiles ?? existing.files,
+    );
     updates.version = (existing.version ?? 1) + 1;
   }
   const [updated] = (await db

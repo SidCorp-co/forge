@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runnerStatuses, runnerTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
@@ -21,9 +22,6 @@ import { getRunnerAdapter } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { deleteRunner, insertRunner, updateRunner } from './service.js';
 import type { Runner } from './types.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = () =>
   new HTTPException(404, { message: 'runner not found', cause: { code: 'NOT_FOUND' } });

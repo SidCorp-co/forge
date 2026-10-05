@@ -5,7 +5,7 @@ import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
@@ -14,9 +14,6 @@ import { sessionPlacement } from './read.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 const sessionIdParamSchema = z.object({ sessionId: z.uuid() });
 const downloadParamSchema = z.object({ sessionId: z.uuid(), id: z.uuid() });
 
