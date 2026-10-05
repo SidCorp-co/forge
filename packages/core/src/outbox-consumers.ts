@@ -17,6 +17,7 @@ import {
   registerRequirementNotifications,
   registerTransitionNotifications,
 } from './notifications/index.js';
+import { registerFirstRequirementsCase } from './onboarding/index.js';
 import {
   registerAnswerResume,
   registerPausedRunWedgeResolve,
@@ -56,4 +57,5 @@ export function registerOutboxConsumers(): void {
   registerLiveReadingInvalidation();
   registerRequirementDelivery();
   registerRequirementNotifications();
+  registerFirstRequirementsCase();
 }

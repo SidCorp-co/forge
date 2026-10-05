@@ -197,11 +197,13 @@ export function breakdownBuilds(
     return null;
   });
   p.issues.forEach((issue, i) => {
-    if (issue.steps && builds[i] === null && issue.builds !== undefined) {
+    if (builds[i] !== null || (issue.builds === undefined && pins.length > 1)) return;
+    for (const field of ['steps', 'observedSteps'] as const) {
+      if (!issue[field]) continue;
       refusals.push({
         code: 'SUGGESTION_BUILD_STEPS_UNBUILT',
-        path: `/payload/issues/${i}/steps`,
-        detail: `issue ${i} names steps but builds no design; steps are steps of the design it builds, so name that design in builds.`,
+        path: `/payload/issues/${i}/${field}`,
+        detail: `issue ${i} names ${field} but builds no design; they are nodes of the design it builds, so name that design in builds.`,
       });
     }
   });

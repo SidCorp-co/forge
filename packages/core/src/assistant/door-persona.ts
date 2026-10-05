@@ -1,6 +1,7 @@
 import { composeLayers } from './prompt/layer.js';
 import {
   BA_DOOR_LAYERS,
+  BA_FIRST_DOOR_LAYERS,
   ROCKETCHAT_DOOR_LAYERS,
   WEB_AGENT_DOOR_LAYERS,
   WEB_DOOR_LAYERS,
@@ -74,6 +75,14 @@ export function baDoorPersona(
     projectName,
     venue: `answering in the Forge web app about requirement ${requirementKey}`,
     requirementKey,
+    askedBy: askedBy ?? 'the person asking',
+  });
+}
+/** The BA door in a first-requirements case room (workflow project-onboarding `req-case`). */
+export function baFirstRequirementsPersona(projectName: string, askedBy: string | null): string {
+  return composeLayers(BA_FIRST_DOOR_LAYERS, {
+    projectName,
+    venue: 'answering in the Forge web app about its first requirements',
     askedBy: askedBy ?? 'the person asking',
   });
 }

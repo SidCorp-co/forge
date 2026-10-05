@@ -233,7 +233,7 @@ export function ConversationChat({
           <h2 className="truncate text-[13.5px] font-bold leading-snug text-fg @2xl:text-[22px] @2xl:leading-tight">
             {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
           </h2>
-          <ThreadSub kind={roomQ.data?.kind} status={roomQ.data?.threadStatus} />
+          <ThreadSub kind={roomQ.data?.kind} status={roomQ.data?.threadStatus} projectId={projectId} />
         </div>
         {roomQ.data && (
           <IconButton

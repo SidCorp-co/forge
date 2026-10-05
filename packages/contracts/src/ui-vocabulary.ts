@@ -225,6 +225,11 @@ export const STATE_READINGS = {
 		open: ["Open", "ready", "✓"],
 		held: ["Held", "blocked", "○"],
 	},
+	/** Whether a design is reconciled with its code (contracts `workflow-health.ts:WorkflowReconciliation`). */
+	reconciliation: {
+		reconciled: ["Reconciled", "done", "✓"],
+		open: ["Not reconciled", "neutral", "○"],
+	},
 	runStanding: {
 		queued: ["Queued", "ready", "○"],
 		claimed: ["Claimed", "run", "◔"],

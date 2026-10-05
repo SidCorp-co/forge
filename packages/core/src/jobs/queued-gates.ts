@@ -20,7 +20,8 @@ type GateSkipReason =
   | 'runner_too_old'
   | 'runner_stale'
   | 'release_label_missing'
-  | 'contract_wait_unsettled';
+  | 'contract_wait_unsettled'
+  | 'checkout_unbound';
 
 interface BarrierFragments {
   /** Shared CTE chunk: `fresh_capable_runners`.
@@ -54,7 +55,9 @@ export function buildBarrierFragments(args: {
              -- runners, which reads as "a usable box exists" for a project that has none.
              r.project_id,
              r.labels,
-             ${claimCapableSql('d')} AS claim_capable
+             ${claimCapableSql('d')} AS claim_capable,
+             -- claim refuses a binding that names no checkout (POOL_CHECKOUT_UNBOUND)
+             COALESCE(btrim(r.repo_path), '') <> '' AS has_checkout
       FROM runners r
       JOIN devices d ON d.id = r.device_id
       WHERE ${projectScope}
@@ -106,6 +109,12 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
           SELECT 1 FROM fresh_capable_runners WHERE project_id = j.project_id AND claim_capable
         )
           THEN 'runner_too_old'
+        -- every box that could take it is bound to the project with no checkout, so each claim is
+        -- refused POOL_CHECKOUT_UNBOUND and the job stays queued until a person binds one.
+        WHEN NOT EXISTS (
+          SELECT 1 FROM fresh_capable_runners
+          WHERE project_id = j.project_id AND claim_capable AND has_checkout
+        ) THEN 'checkout_unbound'
         -- ISS-1128 — a question about the JOB: may anything that could claim
         -- take it. Since the label became a preference, and since ISS-1275 made
         -- no preference admit the pool, that leaves one shape: the production

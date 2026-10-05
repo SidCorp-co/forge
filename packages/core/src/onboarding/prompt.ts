@@ -90,11 +90,11 @@ export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string })
     tools(ctx.projectId),
     `Do, in order, then stop:
 1. P/onboarding/answers: each item with its state (answered / open / void) and the answer.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
-2. For each answered question or clarification, write a new revision of the design it affects that cites the item (in the step's does or the revision reason) and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED).
-3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds } } naming what changed.
+2. For each design the answered questions and clarifications affect, write ONE new revision carrying every answer that shaped it, and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED). Leave an unanswered item open: never apply its inferred default.
+3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds }, cites: [{ itemId, workflowId, revision } | { itemId, suggestionId }] } naming what changed; cites records on each item the revision or suggestion it landed in (an open item is refused ONBOARDING_CITE_UNANSWERED, two revisions of one design ONBOARDING_CITE_REVISION_TWICE).
 4. Then exactly one of:
    - items stayed open (or the answers raised new questions) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post a questionnaire with ONLY the open items (same ids) and the new ones (isNew: true);
-   - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }, list what stays open on its design as an open question, then mark done.`,
+   - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }, then mark done. What stays open is listed on its design as an open question by Forge, from the items' own records: do not restate it.`,
     FINDINGS,
     questionnaireRules(ctx.roundsSent),
   ].join('\n\n');

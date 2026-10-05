@@ -113,6 +113,8 @@ export const workflowBuilds = pgTable(
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
     /** The steps the issue builds, for an issue whose criteria trace no business criterion naming them. */
     stepIds: text('step_ids').array(),
+    /** The observed steps it removes or rebuilds: nodes of the latest observation the design does not hold. */
+    observedStepIds: text('observed_step_ids').array(),
   },
   (t) => ({
     workflowIdx: index('workflow_builds_workflow_idx').on(t.workflowId),

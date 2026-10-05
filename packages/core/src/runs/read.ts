@@ -238,3 +238,15 @@ export async function readRunStanding(
   const { events, hasMore } = await eventsOf(run);
   return { generatedAt: ctx.now.toISOString(), run, attempts, events, eventsHasMore: hasMore };
 }
+
+/** What the run read model says `runId` waits on now; null when the project holds no such run. */
+export async function runWaitingOf(
+  projectId: string,
+  runId: string,
+): Promise<RunStanding['waitingOn'] | null> {
+  const [one] = await baseRuns(projectId, sql`r.id = ${runId}::uuid`, 1, 0);
+  if (!one) return null;
+  const { ctx } = await contextFor(projectId, null);
+  const [run] = await standingsOf(projectId, [one], ctx);
+  return run?.waitingOn ?? null;
+}

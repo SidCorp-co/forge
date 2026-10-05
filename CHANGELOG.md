@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Onboarding hands off to first requirements, and a design reads reconciled.** Approved designs
+  open a BA first-requirements room; the hint offers re-analysis and names a checkout wait. A design
+  names its reconciling version and proven criteria.
+
 ## [0.4.0-dev.30] - 2026-10-05
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts

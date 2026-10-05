@@ -2,6 +2,7 @@ import {
   MARK_DONE_SHAPE,
   markDoneRequestSchema,
   type OnboardingResponse,
+  type OnboardingStateResponse,
   POST_QUESTIONNAIRE_SHAPE,
   POST_UPDATE_SHAPE,
   postQuestionnaireRequestSchema,
@@ -21,6 +22,7 @@ import {
   postOnboardingQuestionnaire,
   postOnboardingUpdate,
 } from './agent-writes.js';
+import { readFirstRequirements } from './first-requirements.js';
 import { readOnboardingState } from './read.js';
 import { joinOnboarding, readAnswers, reanalyzeOnboarding, startOnboarding } from './service.js';
 
@@ -55,9 +57,15 @@ function answer(c: Context, outcome: OnboardingOutcome) {
 
 const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
 
-onboardingRoutes.get('/:id/onboarding', projectParam, async (c) =>
-  c.json(await readOnboardingState(c.req.valid('param').id, c.get('userId'))),
-);
+onboardingRoutes.get('/:id/onboarding', projectParam, async (c) => {
+  const { id } = c.req.valid('param');
+  const state = await readOnboardingState(id, c.get('userId'));
+  const body: OnboardingStateResponse = {
+    ...state,
+    firstRequirements: await readFirstRequirements(id),
+  };
+  return c.json(body);
+});
 
 onboardingRoutes.post('/:id/onboarding/start', projectParam, emptyBody, async (c) =>
   answer(c, await startOnboarding({ projectId: c.req.valid('param').id, actor: actorOf(c) })),

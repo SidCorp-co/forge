@@ -5,6 +5,7 @@
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
+import { VERDICT_VALUES } from '@forge/contracts/verdict-identity';
 import { designChangePayloadSchema, nodeDecisionSchema } from '@forge/contracts/workflow-health';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -47,10 +48,15 @@ export async function criteriaOf(workflowId: string): Promise<HealthFacts['crite
     edge_from: string | null;
     edge_to: string | null;
     edge_label: string | null;
+    proof: string | null;
   }>(
     await db.execute(sql`
       SELECT r.req_seq, s.code, c.since_revision, rr.decided_at AS accepted_at,
-             s.step_id, s.edge_from, s.edge_to, s.edge_label
+             s.step_id, s.edge_from, s.edge_to, s.edge_label,
+             (SELECT v.verdict FROM issue_criteria ic
+                JOIN criterion_verdicts v ON v.criterion_id = ic.id
+               WHERE ic.requirement_criterion_id = c.id AND ic.retired_at IS NULL
+               ORDER BY v.created_at DESC LIMIT 1) AS proof
         FROM requirement_criterion_steps s
         JOIN requirement_workflows l ON l.requirement_id = s.requirement_id AND l.workflow_id = s.workflow_id
         JOIN requirements r ON r.id = s.requirement_id
@@ -70,6 +76,7 @@ export async function criteriaOf(workflowId: string): Promise<HealthFacts['crite
       sinceRevision: Number(r.since_revision),
       sinceAcceptedAt: date(r.accepted_at),
       targets: [],
+      proof: VERDICT_VALUES.find((v) => v === r.proof) ?? null,
     };
     const t = traceOf(r);
     if (t) entry.targets.push(t);
@@ -177,11 +184,15 @@ export async function buildsOf(
     merged_at: string | null;
     linked_at: string;
     step_ids: string[] | null;
+    observed_step_ids: string[] | null;
+    release_version: string | null;
+    release_released_at: string | null;
   }>(
     await db.execute(sql`
       SELECT i.id AS issue_id, i.iss_seq, i.status, i.reopen_count, i.updated_at, i.merged_at,
-             b.linked_at, b.step_ids
+             b.linked_at, b.step_ids, b.observed_step_ids, r.release_version, r.release_released_at
         FROM workflow_builds b JOIN issues i ON i.id = b.issue_id
+        LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.release_version IS NOT NULL
        WHERE b.workflow_id = ${workflowId} AND i.archived_at IS NULL`),
   );
   if (builds.length === 0) return [];
@@ -243,6 +254,10 @@ export async function buildsOf(
       linkedAt: new Date(b.linked_at),
       closedAt: closed ? new Date(b.merged_at ?? b.updated_at) : null,
       targets,
+      observedSteps: b.observed_step_ids ?? [],
+      release: b.release_version
+        ? { version: b.release_version, releasedAt: date(b.release_released_at) }
+        : null,
       failing: mine
         .filter((v) => v.verdict === 'fail')
         .map((v) => ({ n: Number(v.n), reason: v.reason, at: new Date(v.created_at) })),

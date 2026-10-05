@@ -19,6 +19,16 @@ describe('a breakdown issue names the steps on its build link (design-reconcilia
     expect(out.refusals[0]?.path).toBe('/payload/issues/0/steps');
   });
 
+  it('refuses observed steps on an issue that builds no design, named or defaulted', () => {
+    const named = breakdownBuilds(
+      breakdown(item({ builds: null, observedSteps: ['o-extra'] })),
+      pins,
+    );
+    expect(named.refusals.map((r) => r.path)).toEqual(['/payload/issues/0/observedSteps']);
+    const unpinned = breakdownBuilds(breakdown(item({ steps: ['check'] })), []);
+    expect(unpinned.refusals.map((r) => r.code)).toEqual(['SUGGESTION_BUILD_STEPS_UNBUILT']);
+  });
+
   it('admits steps on an issue that builds the pinned design', () => {
     const out = breakdownBuilds(breakdown(item({ builds: 'pilot', steps: ['check'] })), pins);
     expect(out.refusals).toEqual([]);

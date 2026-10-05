@@ -2633,6 +2633,13 @@
       "when": 1818115200000,
       "tag": "0407_an_issue_waits_on_a_contract_version_not_on_another_issue",
       "breakpoints": true
+    },
+    {
+      "idx": 408,
+      "version": "7",
+      "when": 1818201600000,
+      "tag": "0408_a_build_names_the_observed_nodes_it_deletes",
+      "breakpoints": true
     }
   ]
 }

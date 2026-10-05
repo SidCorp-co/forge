@@ -183,6 +183,7 @@ export function summaryOfHealth(h: WorkflowHealth): WorkflowHealthSummary {
     needsYou: h.needsYou,
     workflowLevelOnly: h.markers.length > 0 && h.markers.every((m) => m.target.kind === 'workflow'),
     observed: h.observation !== null,
+    reconciled: h.reconciliation.state === 'reconciled',
   };
 }
 
@@ -191,6 +192,7 @@ export const noHealthSummary = (): WorkflowHealthSummary => ({
   needsYou: 0,
   workflowLevelOnly: false,
   observed: false,
+  reconciled: false,
 });
 
 /** Every design's health of one project, by workflow id: what the workflows list and Needs you read. */
