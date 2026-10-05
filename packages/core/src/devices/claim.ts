@@ -21,7 +21,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import {
   activeIssuePrefix,
-  assertDispatchGatesForIssue,
+  assertDesignApprovedForIssue,
   type DispatchGateCode,
   heldTakeRefusal,
   refuseBlockedTake,
@@ -204,7 +204,7 @@ async function designGateFor(job: JobRow): Promise<Extract<PrepareResult, { ok: 
   if (!job.issueId) return null;
   try {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
-    await assertDispatchGatesForIssue(job.projectId, job.issueId);
+    await assertDesignApprovedForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
     const refused = heldTakeRefusal(err);

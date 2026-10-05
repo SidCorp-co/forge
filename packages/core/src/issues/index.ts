@@ -82,11 +82,10 @@ export { holderFanout, readClaim } from './lease-fanout.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { publishPipelineHealthChanged } from './pipeline-health.js';
-// The dispatch gate is the design gate: every dispatch door asks it, so none can skip it.
 export {
-  assertDesignApprovedForIssue as assertDispatchGatesForIssue,
+  assertDesignApprovedForIssue,
   type DispatchGateCode,
-  designUnapprovedSql as dispatchGateHeldSql,
+  designUnapprovedSql,
   isDispatchGateError,
   provideIssuePorts,
 } from './ports.js';
