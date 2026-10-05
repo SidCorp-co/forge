@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { RefusalError } from '../lib/refusal.js';
 
 const bound = vi.fn();
 const inserted = vi.fn();
@@ -49,8 +51,12 @@ const { runnerRoutes } = await import('./routes.js');
 function app(): Hono {
   const a = new Hono();
   a.onError((err, c) => {
-    const status = err instanceof HTTPException ? err.status : 500;
-    const code = (err as { cause?: { code?: string } }).cause?.code ?? null;
+    const code =
+      err instanceof RefusalError
+        ? (err.refusals[0]?.code ?? null)
+        : ((err as { cause?: { code?: string } }).cause?.code ?? null);
+    const status =
+      err instanceof HTTPException ? err.status : err instanceof RefusalError && code ? refusalStatusOf(code) : 500;
     return c.json({ code, error: err.message }, status);
   });
   a.route('/api/projects', projectRunnerRoutes);
@@ -64,18 +70,18 @@ describe('a project admin cannot bind a device somebody else owns', () => {
     inserted.mockReset();
   });
 
-  it('POST /api/projects/:id/runners refuses DEVICE_NOT_OWNED', async () => {
+  it('POST /api/projects/:id/runners refuses DEVICE_BIND_FORBIDDEN', async () => {
     const res = await app().request(`/api/projects/${PROJECT}/runners`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ deviceId: DEVICE }),
     });
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { code: string }).code).toBe('DEVICE_NOT_OWNED');
+    expect(((await res.json()) as { code: string }).code).toBe('DEVICE_BIND_FORBIDDEN');
     expect(bound).not.toHaveBeenCalled();
   });
 
-  it('POST /api/runners refuses DEVICE_NOT_OWNED', async () => {
+  it('POST /api/runners refuses DEVICE_BIND_FORBIDDEN', async () => {
     const res = await app().request('/api/runners', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -87,7 +93,7 @@ describe('a project admin cannot bind a device somebody else owns', () => {
       }),
     });
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { code: string }).code).toBe('DEVICE_NOT_OWNED');
+    expect(((await res.json()) as { code: string }).code).toBe('DEVICE_BIND_FORBIDDEN');
     expect(inserted).not.toHaveBeenCalled();
   });
 });
