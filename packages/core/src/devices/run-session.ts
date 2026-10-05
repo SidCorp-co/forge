@@ -22,6 +22,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import {
   insertSessionRow,
   liveMasterSessionId,
+  settleHandBacks,
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
@@ -335,7 +336,8 @@ async function finishFailedClose(runId: string | null, failing: boolean): Promis
 }
 
 /**
- * Record that a run session ended. Its flip hands back what it left `in_progress`, whatever the outcome.
+ * Record that a run session ended. Once the flip commits, it hands back what it left `in_progress`,
+ * whatever the outcome, and answers those keys.
  */
 export async function closeRunSession(args: {
   deviceId: string;
@@ -362,18 +364,22 @@ export async function closeRunSession(args: {
   // The run is locked first and closed with the session's flip, in one transaction (ISS-219).
   const closed = await db.transaction(async (tx) => {
     if (row.runId) await lockRunForClose(tx, row.runId);
-    const flip = await transitionSessions(tx, {
-      to: failing ? 'failed' : 'completed',
-      set: {
-        failureReason: failing ? 'agent_exited_without_result' : null,
-        failureDetail: args.detail ?? null,
-        updatedAt: new Date(),
+    const flip = await transitionSessions(
+      tx,
+      {
+        to: failing ? 'failed' : 'completed',
+        set: {
+          failureReason: failing ? 'agent_exited_without_result' : null,
+          failureDetail: args.detail ?? null,
+          updatedAt: new Date(),
+        },
+        where: and(eq(agentSessions.id, args.sessionId), eq(agentSessions.status, row.status)),
+        reason: `run_session_${args.outcome}`,
+        actor: { type: 'system' },
+        source: 'run-session-close',
       },
-      where: and(eq(agentSessions.id, args.sessionId), eq(agentSessions.status, row.status)),
-      reason: `run_session_${args.outcome}`,
-      actor: { type: 'system' },
-      source: 'run-session-close',
-    });
+      { handBack: 'caller' },
+    );
     if (flip.rows.length > 0 && row.runId) {
       await closeRunIfOneShotInTx(tx, row.runId, failing ? 'failed' : 'completed');
     }
@@ -383,7 +389,11 @@ export async function closeRunSession(args: {
     return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
   }
 
-  const { returned } = closed;
+  // The close has committed, so the hand-back it owes is done now and its keys answered.
+  const returned = await settleHandBacks(
+    closed.owedHandBacks,
+    `its run session ended (run_session_${args.outcome})`,
+  );
   logger.info(
     { runSessionId: args.sessionId, outcome: args.outcome },
     'run-session: closed by the box',

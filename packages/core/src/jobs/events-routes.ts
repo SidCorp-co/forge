@@ -10,9 +10,7 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { activeChildUnderTerminalRun } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal } from '../lib/refusal.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -123,42 +121,33 @@ function isPartialStreamEvent(e: { kind: string; data?: unknown }): boolean {
 }
 
 /**
- * A session write the kernel refused because its run closed: it reaches the box as a 409, which
- * the runner reads as disowned, never a warning behind a 200.
+ * The linked session hears the batch: a heartbeat, and the last reported runtime state. It runs
+ * BEFORE the events are stored, and any failure fails the request: a refusal (409, which the
+ * runner reads as disowned, for a session under a closed run) or a 500 the runner retries. Run
+ * after the store, the same failure would either hide behind a 200 or make the runner's retry
+ * store the batch twice.
  */
-function runClosed(err: unknown): boolean {
-  return activeChildUnderTerminalRun(err) !== null || isRefusal(err, 'RUN_NOT_ACCEPTING_WORK');
-}
-
-/** The linked session hears the batch: a heartbeat, the last reported runtime state, an incremental derive. */
 async function syncLinkedSession(
-  jobId: string,
   sessionId: string,
   events: ReadonlyArray<{ kind: string; data?: unknown }>,
   deviceId: string,
 ): Promise<void> {
   if (events.some((e) => !isParkEvent(e))) {
-    try {
-      const started = await beatLinkedSession(
-        sessionId,
-        new Date(),
-        events.some(isTurnEvidence),
-        deviceId,
-      );
-      if (started) {
-        broadcastSessionEvent(
-          started.id,
-          started.projectId,
-          started.deviceId,
-          'agent-session.status',
-          { status: 'running' },
-        );
-      }
-    } catch (err) {
-      if (runClosed(err)) throw err;
-      logger.warn(
-        { err, jobId, agentSessionId: sessionId },
-        'events-routes: agent_sessions heartbeat sync failed',
+    const started = await beatLinkedSession(
+      sessionId,
+      new Date(),
+      events.some(isTurnEvidence),
+      deviceId,
+    );
+    if (started) {
+      broadcastSessionEvent(
+        started.id,
+        started.projectId,
+        started.deviceId,
+        'agent-session.status',
+        {
+          status: 'running',
+        },
       );
     }
   }
@@ -166,16 +155,7 @@ async function syncLinkedSession(
     (acc, e) => runtimeStateOf(e) ?? acc,
     undefined,
   );
-  if (reported) {
-    try {
-      await setSessionRuntimeState(sessionId, reported);
-    } catch (err) {
-      if (runClosed(err)) throw err;
-      logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
-    }
-  }
-  const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
-  void maybeDeriveIncremental(jobId, sessionId, stdoutCount);
+  if (reported) await setSessionRuntimeState(sessionId, reported);
 }
 
 jobEventsRoutes.post(
@@ -196,6 +176,8 @@ jobEventsRoutes.post(
     if (TERMINAL_STATUSES.has(job.status)) {
       throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }
+
+    if (job.agentSessionId) await syncLinkedSession(job.agentSessionId, events, device.id);
 
     const persisted = await scrubJobOutput(
       [jobId],
@@ -220,7 +202,10 @@ jobEventsRoutes.post(
       }
     }
 
-    if (job.agentSessionId) await syncLinkedSession(job.id, job.agentSessionId, events, device.id);
+    if (job.agentSessionId) {
+      const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
+      void maybeDeriveIncremental(jobId, job.agentSessionId, stdoutCount);
+    }
 
     return c.json({
       accepted: inserted.length,

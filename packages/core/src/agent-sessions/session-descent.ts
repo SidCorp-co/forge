@@ -86,7 +86,8 @@ export async function closeSessionsOwnedBy(
             source: DESCENT_SOURCE,
           })
         ).rows;
-        // The flip handed its issues back (`session-transition.ts:transitionSessions`).
+        // The flip wrote its hand-back owed; it runs once the outer close commits
+        // (`session-transition.ts:transitionSessions`).
         if (rows.length > 0 && runSession) {
           await closeRunIfOneShotInTx(tx, child.pipelineRunId, 'failed');
         }
@@ -99,7 +100,7 @@ export async function closeSessionsOwnedBy(
         result.runsReturned.push(child.pipelineRunId);
         logger.warn(
           { sessionId: child.id, runId: child.pipelineRunId, reason: cause.reason },
-          'session-descent: a run session closed with its owner, and its issues went back',
+          'session-descent: a run session closed with its owner; its issues go back once the close commits',
         );
       }
     }

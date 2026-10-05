@@ -39,6 +39,7 @@ export {
 export {
   retryOwedHandBacks,
   SWEEP_SESSION_COLUMNS,
+  settleHandBacks,
   transitionSessions,
 } from './session-transition.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
