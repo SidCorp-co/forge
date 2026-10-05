@@ -1,6 +1,4 @@
-import { db } from '../db/client.js';
 import { logger } from '../lib/logger.js';
-import { emitEvent } from '../outbox/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { schedulesPorts } from './ports.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
@@ -50,13 +48,6 @@ export async function routeScheduleScriptFire(
       );
     }
   }
-
-  await emitEvent(db, 'schedule.fired', {
-    scheduleId: schedule.id,
-    projectId: resolvedProjectId,
-    sessionId: fireId,
-    actorUserId: userId,
-  });
 
   if (outcome.status === 'failed') {
     return {

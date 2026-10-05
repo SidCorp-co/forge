@@ -7,7 +7,6 @@ import {
 import { db } from '../db/client.js';
 import { type agentSessions, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { emitEvent } from '../outbox/index.js';
 import type {
   DispatchScheduleInput,
   DispatchScheduleResult,
@@ -157,13 +156,6 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
       settle: null,
     };
   }
-
-  await emitEvent(db, 'schedule.fired', {
-    scheduleId: schedule.id,
-    projectId: resolvedProjectId,
-    sessionId: inserted.id,
-    actorUserId: authorised.authority.value.authority.userId,
-  });
 
   return {
     result: { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId },

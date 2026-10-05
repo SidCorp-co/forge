@@ -16,12 +16,10 @@ export const OUTBOX_EVENT_TYPES = [
 	"comment.deleted",
 	"comment.mentioned",
 	"question.answered",
-	"schedule.fired",
 	"notification.created",
 	"notification.read",
 	"user.preferencesChanged",
 	"skill.syncRequested",
-	"skill.globalUpdated",
 	"runner.provisionRequested",
 	"runner.provisionStatus",
 	"source.pushed",
@@ -191,12 +189,6 @@ export interface OutboxEventPayloads {
 		answeredBy: string;
 		body: string;
 	};
-	"schedule.fired": {
-		scheduleId: string;
-		projectId: string;
-		sessionId: string;
-		actorUserId: string;
-	};
 	"notification.created": {
 		notificationId: string;
 		userId: string;
@@ -226,12 +218,6 @@ export interface OutboxEventPayloads {
 		deviceIds: string[];
 		skillNames: string[] | null;
 		actorUserId: string;
-	};
-	"skill.globalUpdated": {
-		name: string;
-		oldVersion: number;
-		newVersion: number;
-		contentHash: string;
 	};
 	"runner.provisionRequested": {
 		projectId: string;
