@@ -443,12 +443,6 @@ export const HUMAN_RESUMED_PAUSE_KINDS = ["stage_stalled"] as const;
 export const LIVE_PAUSE_REASON_KINDS = [...MACHINE_RESUMED_PAUSE_KINDS, ...HUMAN_RESUMED_PAUSE_KINDS] as const;
 
 export type PauseReasonKind = (typeof LIVE_PAUSE_REASON_KINDS)[number];
-
-/** The only way to spell a machine pause reason — the kind must be registered. */
-export function pauseReasonFor(kind: PauseReasonKind, detail: string): string {
-	return `${kind}:${detail}`;
-}
-
 /** True when `reason` names a kind that still exists in this build. */
 export function isLivePauseReason(reason: string | null | undefined): boolean {
 	if (!reason) return false;

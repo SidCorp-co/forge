@@ -98,7 +98,7 @@ export function parseBuilderRun(raw: unknown, projectId: string): Checked<Builde
 export const writerRefusal = (facts: PermissionFacts, what: string): EcosystemRefusal | null =>
   permissionRefusal(facts, 'ecosystem-links.write', what);
 
-export interface ProviderSide {
+interface ProviderSide {
   id: string;
   activeIn: ReadonlySet<string>;
   interface: InterfaceDocument | null;

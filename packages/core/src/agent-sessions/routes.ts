@@ -28,7 +28,6 @@ import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
-import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import {
   type AgentSessionListFilter,
   linkedIssueOf,
@@ -502,9 +501,6 @@ agentSessionRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) 
   broadcastSession(existing, 'agent-session.deleted');
   return c.body(null, 204);
 });
-
-// Pipeline pause/health/telemetry control surface (GET/POST ×3).
-agentSessionRoutes.route('/', agentSessionPipelineControlRoutes);
 
 // Per-turn handlers: /turns, /turns/:turnId (+ regenerate), /fork, /rerun.
 agentSessionRoutes.route('/', agentSessionTurnsRoutes);

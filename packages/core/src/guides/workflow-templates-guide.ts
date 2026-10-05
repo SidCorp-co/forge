@@ -14,7 +14,7 @@ import {
 import type { CoreGuide } from './types.js';
 
 /** What the agent builder is drawing, and the template that draws it. */
-export const TEMPLATE_CHOICES: readonly [string, string][] = [
+const TEMPLATE_CHOICES: readonly [string, string][] = [
   [
     'what the business does when an event happens: the source, the context read, the rules that decide, the case and tasks people work, what they do, the outcome and the feedback',
     'operational-flow',
@@ -60,7 +60,7 @@ const MACHINE = `(▶) ──case.opened──▶ (Open) ──accepted──▶
                        └┄┄┄┄ back: needs.more_info ┄┄┄┄┘`;
 
 /** The shape each built-in draws, small enough to read at a glance. */
-export const TEMPLATE_SKETCHES: Readonly<Record<string, string>> = {
+const TEMPLATE_SKETCHES: Readonly<Record<string, string>> = {
   'operational-flow': `Trigger     [SOURCE] ──emits──▶ [EVENT]
 Understand  [CONTEXT] ┈┈enriches┈┈┐    │ evaluates
 Decide                        └─▶ [RULE] → [STATE] → [EXPECTATION]

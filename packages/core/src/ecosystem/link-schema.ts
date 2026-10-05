@@ -55,7 +55,7 @@ const CALL_SITE_SHAPE =
   'a call site names either a repository path and line (a git consumer) or a storefront artefact (a storefront consumer), exactly one of the two';
 
 // cm:why one site, two readings: a git consumer's code is a file and a line, a storefront consumer's is an artefact the provider holds; which one the consumer may write is its source type's, checked in `link-rules.ts:callSiteRefusals`
-export const callSiteSchema = z
+const callSiteSchema = z
   .strictObject({
     path: repoPath().optional(),
     line: z.number().int().min(1).max(10_000_000).optional(),

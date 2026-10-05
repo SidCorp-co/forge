@@ -7,7 +7,7 @@ export interface MemberCommitment {
   responseDays: { rfi: number; 'change-request': number };
 }
 
-export interface EcosystemWorld {
+interface EcosystemWorld {
   current: EcosystemDocument | null;
   slugHeldBy: string | null;
   codeHeldBy: string | null;

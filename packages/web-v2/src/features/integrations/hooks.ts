@@ -257,37 +257,6 @@ export function useIntegrationDeliveries(
 }
 
 
-/** Re-dispatch a failed outbound delivery (202). Caller passes the deliveryId
- *  to `mutate`. On success, invalidates the delivery-list key so the new row
- *  appears once the worker records it. */
-export function useRetryDelivery(
-  projectId: string | undefined,
-  bindingId: string | null,
-) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (deliveryId: string) =>
-      integrationsApi.retryDelivery(
-        projectId as string,
-        bindingId as string,
-        deliveryId,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["integrations", "deliveries", projectId, bindingId],
-      });
-      toast({ title: "Retry queued", tone: "success" });
-    },
-    onError: (err) =>
-      toast({
-        title: "Couldn't retry delivery",
-        description: formatApiError(err),
-        tone: "error",
-      }),
-  });
-}
-
 // Connections belong to the authenticated principal, NOT a project, so these
 // keys are NOT project-scoped: a single `['integration-connections']` cache
 // entry serves every project view. The event-router invalidates this exact key

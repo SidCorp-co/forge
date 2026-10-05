@@ -73,18 +73,6 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
     .orderBy(asc(schedules.createdAt));
   return withLastFires(projectId, rows);
 }
-
-export async function getSchedule(id: string, actorUserId: string) {
-  const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
-  if (!row) throw notFound('schedule not found');
-
-  const access = await loadProjectAccess(row.projectId, actorUserId);
-  requireHeld(access, 'project.read');
-
-  const last = await lastFires(row.projectId, [row.id]);
-  return withLastFire(row, last.get(row.id));
-}
-
 interface CreateScheduleInput {
   projectId: string;
   name: string;

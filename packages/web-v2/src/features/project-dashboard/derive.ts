@@ -10,7 +10,6 @@ import {
   runnerLimitDisplay,
 } from "@/features/runners/types";
 import { NON_OPEN_STATUSES as NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/issue-machine";
-import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
 /* ------------------------------------------------------------------ *
@@ -158,11 +157,6 @@ export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(isAwaitingRelease);
 }
-
-export function inFlightSpend(runs: PipelineRunListItem[] | undefined): number {
-  return liveRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
-}
-
 /** Sum of estimated cost across genuinely-active runs only. */
 export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
   return activeRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
@@ -240,16 +234,3 @@ export function runnersSummary(
   };
 }
 
-/* ------------------------------------------------------------------ *
- * Upcoming schedules (AC#6)
- * ------------------------------------------------------------------ */
-
-/** Schedules ordered by soonest next run (nulls last). Pure — no slicing; the
- *  card caps the visible rows. */
-export function upcomingSchedules(rows: ScheduleRow[] | undefined): ScheduleRow[] {
-  return [...(rows ?? [])].sort((a, b) => {
-    const at = a.nextRunAt ? Date.parse(a.nextRunAt) : Number.POSITIVE_INFINITY;
-    const bt = b.nextRunAt ? Date.parse(b.nextRunAt) : Number.POSITIVE_INFINITY;
-    return at - bt;
-  });
-}

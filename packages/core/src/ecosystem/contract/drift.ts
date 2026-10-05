@@ -16,7 +16,7 @@ import { db } from '../../db/client.js';
 import { projectsWhere } from '../store.js';
 import { currentOf, versionsOf } from './store.js';
 
-export interface NamedContract {
+interface NamedContract {
   /** `<project>/<contract>` as the issue wrote it. */
   readonly ref: string;
   readonly contract: string;
@@ -39,7 +39,7 @@ export function contractsNamedIn(text: string): NamedContract[] {
 
 export { LANDED_CONTRACT };
 
-export interface DriftRefusal {
+interface DriftRefusal {
   code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED';
   detail: string;
   details: Record<string, unknown>;

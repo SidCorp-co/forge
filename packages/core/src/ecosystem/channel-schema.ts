@@ -37,7 +37,7 @@ const prose = () => z.string().min(1).max(4000);
 const element = () => z.string().min(1).max(200);
 const contractRef = () => z.string().regex(CONTRACT_REF);
 
-export const authorSchema = z.discriminatedUnion('kind', [
+const authorSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('agent'),
     id: z.string().min(1).max(100),
@@ -59,7 +59,7 @@ const exampleSchema = z.strictObject({
   payload: z.unknown(),
 });
 
-export const CLASSIFICATIONS = ['breaking', 'non-breaking', 'unknown'] as const;
+const CLASSIFICATIONS = ['breaking', 'non-breaking', 'unknown'] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
 
 const changeNoticeBody = z.strictObject({
@@ -290,7 +290,7 @@ export const documentSchema = z
 
 export type ChannelDocument = z.infer<typeof documentSchema>;
 
-export const HOLD_ACTIONS = ['hold', 'release'] as const;
+const HOLD_ACTIONS = ['hold', 'release'] as const;
 export type HoldAction = (typeof HOLD_ACTIONS)[number];
 
 export const holdSchema = z

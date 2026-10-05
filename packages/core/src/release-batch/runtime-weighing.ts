@@ -31,9 +31,9 @@ import { carriageOf, changedPathsOf } from './carriage.js';
 
 /** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
  *  carriages, so neither can starve the other; a cached answer costs none. */
-export const WEIGHING_READ_LIMIT = 60;
+const WEIGHING_READ_LIMIT = 60;
 
-export interface WeighingDeps {
+interface WeighingDeps {
   host?: (projectId: string) => Promise<SourceHost>;
   now?: () => Date;
 }

@@ -9,7 +9,7 @@ export interface ProviderView {
   activeIn: ReadonlySet<string>;
 }
 
-export interface ConsumerEdge {
+interface ConsumerEdge {
   consumer: { id: string; slug: string };
   contractSlug: string;
   ecosystemId: string;

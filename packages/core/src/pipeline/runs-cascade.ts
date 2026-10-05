@@ -24,7 +24,7 @@ type RunRow = typeof pipelineRuns.$inferSelect;
 
 type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
 
-export interface CascadeResult {
+interface CascadeResult {
   cancelledJobIds: string[];
   abortedSessionIds: string[];
   deviceBySession: Map<string, string>;
@@ -173,7 +173,7 @@ export async function closeRunsInTx(
 }
 
 // cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
-export async function cascadeCancelChildJobs(
+async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,
   reason: CascadeReason,

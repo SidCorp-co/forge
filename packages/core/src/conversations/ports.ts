@@ -101,7 +101,7 @@ export interface ConversationTransport {
 }
 
 /** The inbound half: typed to the transport's own frame, so it is called where that frame exists. */
-export interface ConversationInbound<Frame> {
+interface ConversationInbound<Frame> {
   resolveVenue(frame: Frame): Promise<ConversationVenue | null>;
   resolveSpeaker(frame: Frame): Promise<SpeakerResolution>;
 }

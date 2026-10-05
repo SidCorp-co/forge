@@ -27,7 +27,7 @@ interface StoredProfile extends StoredDocument {
   profileId: string;
 }
 
-export interface BindingRow {
+interface BindingRow {
   id: string;
   role: BindingRole;
   provider: string;
@@ -40,7 +40,7 @@ export interface SecretName {
   updatedAt: Date;
 }
 
-export interface DeviceCheckout {
+interface DeviceCheckout {
   deviceId: string;
   repoPath: string | null;
   branch: string | null;

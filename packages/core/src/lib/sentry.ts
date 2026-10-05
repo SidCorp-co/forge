@@ -28,11 +28,6 @@ function sentryBeforeSend<E extends Parameters<typeof scrubSentryEvent>[0]>(
 ): E {
   return scrubSentryEvent(withoutQueryParams(event, hint.originalException));
 }
-
-export function isSentryEnabled(): boolean {
-  return initialized;
-}
-
 type ReportLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
 
 interface ReportContext {

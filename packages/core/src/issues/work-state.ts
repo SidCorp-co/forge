@@ -213,12 +213,6 @@ function workStateObjectSql(withSteps: boolean): SQL {
 /** `WorkStateView` of the issue row in scope as `issues`, or SQL NULL where it has no work state. */
 export const workStateViewSql = sql<WorkStateView | null>`${workStateObjectSql(true)}`;
 export const workStateListSql = sql<WorkStateListView | null>`${workStateObjectSql(false)}`;
-
-/** cm:hack the `sessionContext` a reply carries: the row's blob with its lease put back. */
-export function composedSessionContextSql(issueId: SQL | string, context: SQL): SQL {
-  return sql`issue_session_context(${issueId}, ${context})`;
-}
-
 /**
  * Who holds the issue: a live lease on its work state, or a job, run or fleet lease over it. A lease
  * whose holder stopped beating is abandoned, not held — the wedge net's reading (`classifyLease`).

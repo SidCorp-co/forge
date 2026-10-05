@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { broadcastSession } from './broadcast.js';
@@ -13,9 +12,8 @@ import {
   resolveInteractiveClient,
 } from './interactive-credential.js';
 import { assertCallerDeclaresNoKind } from './kind-query.js';
-import { sendBodySchema, startBodySchema } from './lifecycle-schemas.js';
-import { agentSessionsPorts } from './ports.js';
-import { issueRefsOf, loadProjectBySlug, projectHandle } from './read.js';
+import { sendBodySchema } from './lifecycle-schemas.js';
+import { projectHandle } from './read.js';
 import { refuseSession } from './refusals.js';
 import { badRequest, ensureSessionOwnerOrAdmin, notFound } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
@@ -62,96 +60,6 @@ agentSessionInteractiveRoutes.post('/', zValidator('json', createSchema), async 
 
   return c.json(inserted, 201);
 });
-
-/** A started session is titled by its issues when it names any, else by its prompt. */
-async function startTitle(prompt: string, issueIds: string[] | undefined): Promise<string> {
-  if (!issueIds || issueIds.length === 0) {
-    return prompt
-      .replace(/^You are working on issue:\s*/i, '')
-      .replace(/^You are working on the following issues:\s*/i, '')
-      .replace(/^You are working on:\s*/i, '')
-      .slice(0, 120);
-  }
-  const rows = await issueRefsOf(issueIds);
-  const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
-  if (refs.length === 1) return `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
-  if (refs.length > 1) return refs.join(', ').slice(0, 120);
-  return prompt.slice(0, 120);
-}
-
-/**
- * ISS-733 — a skillName must resolve to an install_only effective skill for
- * THIS project before it can ride turn 1 as a slash-command; otherwise any
- * caller could slash-inject an arbitrary command via /start.
- */
-async function assertInstallOnlySkill(projectId: string, skillName: string): Promise<void> {
-  const effective = await agentSessionsPorts().resolveRegisteredEffectiveSkills(projectId);
-  if (!effective.some((s) => s.name === skillName && s.installOnly)) {
-    throw badRequest({ message: `skillName '${skillName}' is not install_only for this project` });
-  }
-}
-
-agentSessionInteractiveRoutes.post('/start', zValidator('json', startBodySchema), async (c) => {
-  const input = c.req.valid('json');
-  const userId = c.get('userId');
-
-  if (input.type) {
-    throw badRequest({
-      type: 'typed agent sessions are unavailable without the retired desktop client',
-    });
-  }
-  if (!input.prompt) {
-    throw badRequest({ message: 'prompt is required' });
-  }
-
-  const project = await loadProjectBySlug(input.projectSlug);
-  if (!project) throw notFound('project not found');
-
-  const access = await loadProjectAccess(project.id, userId);
-  assertMayRunSession(access);
-
-  const client = await resolveInteractiveClient(
-    { projectId: project.id, deviceId: null, metadata: null },
-    { scope: 'project' },
-  );
-  const authority = await authorizeInteractiveTurn({
-    client,
-    projectId: project.id,
-    asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
-  });
-
-  const rawPrompt = input.prompt;
-
-  const title = await startTitle(rawPrompt, input.issueIds);
-  if (input.skillName) await assertInstallOnlySkill(project.id, input.skillName);
-
-  const metadata: Record<string, unknown> = {};
-  if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
-  const session = await createChatSessionRow({
-    projectId: project.id,
-    userId,
-    title,
-    repoPath: input.repoPath ?? null,
-    metadata: Object.keys(metadata).length ? metadata : null,
-  });
-  const updated = await dispatchInteractiveTurn({
-    session,
-    project: { id: project.id, slug: project.slug },
-    client,
-    authority,
-    message: rawPrompt,
-    pageContext: input.pageContext ?? null,
-    preBuilt: input.preBuilt ?? false,
-    attachmentIds: input.attachmentIds,
-    skillName: input.skillName ?? null,
-    model: input.model,
-    broadcastEvent: 'agent-session.created',
-  });
-
-  await recordSessionCreatedActivity(updated, restActor(c));
-  return c.json(updated, 201);
-});
-
 agentSessionInteractiveRoutes.post('/send', zValidator('json', sendBodySchema), async (c) => {
   const input = c.req.valid('json');
   const userId = c.get('userId');

@@ -34,7 +34,7 @@ export interface ReleasedIssue {
  * memory (Work and Execution after Knowledge), so memory names what it needs and the composition
  * root fills it at boot.
  */
-export interface MemoryIssueReads {
+interface MemoryIssueReads {
   /** `ISS-nn` for each issue id. */
   displayIds(issueIds: string[]): Promise<Map<string, string>>;
   /** Every dependency edge of each issue, both directions, expired ones included. */

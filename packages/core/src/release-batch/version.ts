@@ -1,5 +1,4 @@
-// Three integers. A new release raises MINOR; PATCH is reserved for a re-cut of one that failed,
-// and whether a version is eligible to be re-cut is the store's ruling, not this file's. Nine
+// Three integers. A new release raises MINOR and PATCH stays 0. Nine
 // digits per component is the `int4` bound `db/column-checks.ts` mirrors inside Postgres.
 
 interface PrereleaseTag {
@@ -72,11 +71,9 @@ export function compareReleaseVersions(a: ReleaseVersion, b: ReleaseVersion): nu
 /** `highest` is the highest EVER cut, failed releases included: that is the whole of the burn. */
 export function nextReleaseVersion(
   highest: ReleaseVersion | null,
-  recutOf: ReleaseVersion | null,
   line: PrereleaseLine | null = null,
 ): ReleaseVersion {
   if (line) return nextOnLine(highest, line);
-  if (recutOf) return { major: recutOf.major, minor: recutOf.minor, patch: recutOf.patch + 1 };
   if (!highest) return FIRST_RELEASE_VERSION;
   if (highest.pre) return releaseCore(highest);
   return { major: highest.major, minor: highest.minor + 1, patch: 0 };

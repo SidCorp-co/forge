@@ -4,9 +4,6 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { stepDurationsForProject } from '../pipeline/index.js';
-import { buildInterventionsReport } from './interventions-report.js';
-import { buildRetryRescuesReport, buildSessionFailuresReport } from './session-failures-report.js';
 import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
 /**
@@ -48,74 +45,5 @@ projectMetricsRoutes.get(
       groupByStep: groupBy === 'step',
     });
     return c.json(result);
-  },
-);
-
-const stepDurationsQuerySchema = z.object({
-  days: z.coerce.number().int().min(1).max(90).default(30),
-  step: z.string().trim().min(1).max(64).optional(),
-  breakdown: z.enum(['device', 'model']).optional(),
-});
-
-projectMetricsRoutes.get(
-  '/:id/metrics/step-durations',
-  zValidator('param', idParamSchema),
-  zValidator('query', stepDurationsQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const access = await loadProjectAccess(id, c.get('userId'));
-    requireHeld(access, 'project.read');
-
-    const { days, step, breakdown } = c.req.valid('query');
-    return c.json({
-      rows: await stepDurationsForProject(id, days, step, breakdown),
-      windowDays: days,
-    });
-  },
-);
-
-const daysQuerySchema = z.object({
-  days: z.coerce.number().int().min(1).max(90).default(30),
-});
-
-projectMetricsRoutes.get(
-  '/:id/metrics/retry-rescues',
-  zValidator('param', idParamSchema),
-  zValidator('query', daysQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const access = await loadProjectAccess(id, c.get('userId'));
-    requireHeld(access, 'project.read');
-
-    const { days } = c.req.valid('query');
-    return c.json(await buildRetryRescuesReport(id, days));
-  },
-);
-
-projectMetricsRoutes.get(
-  '/:id/metrics/session-failures',
-  zValidator('param', idParamSchema),
-  zValidator('query', daysQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const access = await loadProjectAccess(id, c.get('userId'));
-    requireHeld(access, 'project.read');
-
-    const { days } = c.req.valid('query');
-    return c.json(await buildSessionFailuresReport(id, days));
-  },
-);
-
-projectMetricsRoutes.get(
-  '/:id/metrics/interventions',
-  zValidator('param', idParamSchema),
-  zValidator('query', daysQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const access = await loadProjectAccess(id, c.get('userId'));
-    requireHeld(access, 'project.read');
-
-    const { days } = c.req.valid('query');
-    return c.json(await buildInterventionsReport([id], days));
   },
 );

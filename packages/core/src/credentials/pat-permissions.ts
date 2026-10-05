@@ -101,12 +101,6 @@ export const PAT_PERMISSION_RESOURCES = {
 // takes that prefix's epoch, read off the prefix itself, and keeps its mount's grant word
 export const PAT_NESTED_SURFACES = Object.freeze({
   '/api/projects/:id/agent-sessions': '/api/agent-sessions',
-  '/api/projects/:id/run-sessions': '/api/agent-sessions',
-  '/api/projects/:id/metrics/session-failures': '/api/agent-sessions',
-  '/api/projects/:id/metrics/step-durations': '/api/pipeline',
-  '/api/projects/:id/metrics/retry-rescues': '/api/pipeline',
-  '/api/projects/:id/metrics/interventions': '/api/pipeline',
-  '/api/projects/:id/analytics': '/api/pipeline',
   '/api/projects/:id/metrics/timeseries': '/api/pipeline',
   '/api/projects/:id/runners': '/api/runners',
   '/api/projects/:id/masters/standing': '/api/agent-sessions',

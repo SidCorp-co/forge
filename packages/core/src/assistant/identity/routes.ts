@@ -1,24 +1,20 @@
 /**
- * ISS-977 — the four steps a person walks to link their chat account to their
- * Forge user, and to take the link back.
+ * ISS-977 — the two steps a person walks to link their chat account to their Forge user.
  *
  * propose and confirm are project-scoped because the project supplies the chat
  * credential the speaker's address is read through; the map they write is keyed
- * on the channel instance and resolves for every project reading it. list and
- * unlink are the person's own and name no project.
+ * on the channel instance and resolves for every project reading it.
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import { Hono, type MiddlewareHandler } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
-import { listSpeakerLinks } from '../read.js';
-import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
+import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
 import {
@@ -171,39 +167,10 @@ speakerLinkProjectRoutes.post(
       throw refuseSpeaker(
         'SPEAKER_ALREADY_LINKED',
         confirmed.heldBy === userId
-          ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
-          : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
+          ? 'that speaker is already linked to you.'
+          : 'that speaker is already linked to another Forge user.',
       );
     }
     return c.json({ link: confirmed.link }, 201);
   },
 );
-
-export const speakerLinkMeRoutes = new Hono<{ Variables: AuthVars }>();
-speakerLinkMeRoutes.use('/me/speaker-links', requireAuth(), assertEmailVerified());
-speakerLinkMeRoutes.use('/me/speaker-links/*', requireAuth(), assertEmailVerified());
-
-speakerLinkMeRoutes.get('/me/speaker-links', async (c) => {
-  const links = await listSpeakerLinks(c.get('userId'));
-  return c.json({ links });
-});
-
-speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', async (c) => {
-  const source = c.req.param('source');
-  if (!isConversationAdapter(source)) {
-    throw refused(sourceUnknownRefusal(source), '/source');
-  }
-  const unlinked = await unlinkSpeaker(
-    c.get('userId'),
-    source,
-    c.req.param('namespace'),
-    c.req.param('externalId'),
-  );
-  if (unlinked === 0) {
-    throw new HTTPException(404, {
-      message: 'you hold no link for that speaker, so there is nothing to unlink.',
-      cause: { code: 'SPEAKER_UNLINKED' },
-    });
-  }
-  return c.json({ unlinked });
-});

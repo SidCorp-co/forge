@@ -113,11 +113,6 @@ function cacheSet(key: string, graded: Graded, now: number): void {
     if (oldest !== undefined) cache.delete(oldest);
   }
 }
-
-export function resetRerankCache(): void {
-  cache.clear();
-}
-
 const limiter = createLimiter(CONCURRENT_GRADES);
 
 async function gradeOne(

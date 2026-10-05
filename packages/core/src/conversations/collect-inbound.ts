@@ -4,7 +4,7 @@ import type { ConversationAdapterPorts } from './ports.js';
 import { appendMessagesIn, type ConversationImage, openConversation } from './store.js';
 import { openOrExtendWindow } from './windows.js';
 
-export interface InboundCollection<Frame> {
+interface InboundCollection<Frame> {
   ports: ConversationAdapterPorts<Frame>;
   frame: Frame;
   /** What was said. */
@@ -33,7 +33,7 @@ export interface InboundCollection<Frame> {
 /**
  * How collecting a frame ended.
  */
-export type CollectOutcome =
+type CollectOutcome =
   | {
       kind: 'collected';
       conversationId: string;

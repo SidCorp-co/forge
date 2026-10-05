@@ -30,7 +30,7 @@ const runtimePathSchema = z
  * project's online runner devices reports, so it is for a project whose repository builds its own
  * runner. Absent, the deployment is the one runtime.
  */
-export const releaseRuntimesSchema = z
+const releaseRuntimesSchema = z
   .array(
     z.strictObject({
       name: z
@@ -71,9 +71,6 @@ export const releaseRuntimesSchema = z
       });
     });
   });
-
-export type ReleaseRuntimesConfig = z.infer<typeof releaseRuntimesSchema>;
-
 // cm:why read by `release-batch/approvals.ts` (approval), `release-batch/version.ts` (prerelease)
 // and `release-batch/runtime-weighing.ts` (runtimes)
 export const releaseRuleSchema = z.strictObject({

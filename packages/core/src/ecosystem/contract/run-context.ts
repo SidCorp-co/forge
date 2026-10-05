@@ -18,7 +18,7 @@ export interface ContextVersion {
   changes: readonly ImpactChange[];
 }
 
-export type DiffNote = 'measured' | 'already-on-latest' | 'no-version-recorded';
+type DiffNote = 'measured' | 'already-on-latest' | 'no-version-recorded';
 
 export interface LoadedContract {
   link: string;

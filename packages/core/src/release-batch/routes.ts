@@ -45,13 +45,6 @@ const createBodySchema = z
      * a schema's `Invalid input` (ISS-1127 criterion 1).
      */
     issueIds: rosterIdsSchema,
-    /**
-     * The version of a FAILED release being cut again, which raises the patch digit instead of the
-     * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
-     * version with the same named refusal that rules on the four other ways a re-cut can be wrong,
-     * and one refusal carrying the whole rule beats a zod message carrying half of it.
-     */
-    recutOf: z.string().trim().max(100).optional(),
   })
   .strict();
 
@@ -64,13 +57,13 @@ releaseBatchRoutes.post(
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds, recutOf } = c.req.valid('json');
+    const { issueIds } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
+    const result = await createReleaseBatch({ projectId, issueIds, userId });
     return c.json(result, 201);
   },
 );

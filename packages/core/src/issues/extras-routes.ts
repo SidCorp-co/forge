@@ -1,11 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { triggerPipelineStepManual } from '../pipeline/index.js';
-import { patchIssueBatch } from './batch-patch.js';
 import {
   heldIssue,
   issueRouteIdParamSchema,
@@ -15,27 +13,8 @@ import {
 import { issueUsageTotals } from './read-service.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
-
-const batchPatchBodySchema = z
-  .object({
-    ids: z.array(z.uuid()).min(1).max(100),
-    data: z
-      .object({
-        status: z.enum(issueStatuses).optional(),
-        priority: z.enum(issuePriorities).optional(),
-        category: z.string().trim().min(1).max(100).nullable().optional(),
-      })
-      .strict()
-      .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
-  })
-  .strict();
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
-
-issueExtrasRoutes.patch('/batch', zValidator('json', batchPatchBodySchema), async (c) => {
-  const { ids, data } = c.req.valid('json');
-  return c.json(await patchIssueBatch(ids, data, c.get('userId'), restActor(c)));
-});
 
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',

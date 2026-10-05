@@ -1,21 +1,19 @@
 // The issue routes under a project: create, look up by display id, and list.
 
 import { Hono } from 'hono';
-import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
-import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
-import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
 import { assertAssigneeIsMember, toHttpCreateError } from './issue-write-refusals.js';
 import { listIssueLabels } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
@@ -24,7 +22,7 @@ import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildsWorkflowOf, fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
-import { findIssueByDisplaySeq, type IssueRow } from './read-service.js';
+import { type IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 
@@ -101,35 +99,6 @@ issueProjectRoutes.post(
     return c.json(response, 201);
   },
 );
-
-const displayIdParamSchema = z.object({
-  id: z.uuid(),
-  displayId: z.string().regex(/^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/),
-});
-
-issueProjectRoutes.get(
-  '/:id/issues/by-display/:displayId',
-  zValidator('param', displayIdParamSchema),
-  async (c) => {
-    const { id: projectId, displayId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-
-    const parsed = parseIssueRef(
-      displayId,
-      issueRefNeedsHeldPrefixes(displayId) ? await heldIssuePrefixes(projectId) : [],
-    );
-    if (!parsed.ok) throw badRequest(parsed.message);
-    const found = await findIssueByDisplaySeq(projectId, parsed.issSeq);
-    if (!found) throw notFound('issue not found');
-    const issue = await egressForRequest(restActor(c).agency, projectId, 'issue', found, displayId);
-
-    return c.json(await issueDetailOf(issue));
-  },
-);
-
 issueProjectRoutes.get(
   '/:id/issues',
   zValidator('param', idParamSchema),

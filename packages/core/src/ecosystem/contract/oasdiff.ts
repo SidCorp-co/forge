@@ -11,14 +11,14 @@ const run = promisify(execFile);
 
 export const OASDIFF_VERSION = '1.32.1';
 
-export const OASDIFF_RELEASES: Readonly<Record<string, string>> = {
+const OASDIFF_RELEASES: Readonly<Record<string, string>> = {
   'linux-x64': '7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f',
   'linux-arm64': '32fff58a120f75a723d6c2422444691c37fa6813fed61d23f53dbcb604b30f6d',
   'darwin-x64': 'e4d74b7e2dfb9d4819e7fc720c905ec86547e4637ac270a2b0187c0f1fb7187e',
   'darwin-arm64': 'e4d74b7e2dfb9d4819e7fc720c905ec86547e4637ac270a2b0187c0f1fb7187e',
 };
 
-export const IMAGE_OASDIFF = '/usr/local/bin/oasdiff';
+const IMAGE_OASDIFF = '/usr/local/bin/oasdiff';
 
 function asset(platform: string): { name: string; sha256: string } {
   const sha256 = OASDIFF_RELEASES[platform];

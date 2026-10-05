@@ -1,7 +1,7 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { MembershipDocument, MembershipState } from './schema.js';
 
-export const MEMBERSHIP_VERBS = ['accept', 'decline', 'leave', 'remove'] as const;
+const MEMBERSHIP_VERBS = ['accept', 'decline', 'leave', 'remove'] as const;
 export type MembershipVerb = (typeof MEMBERSHIP_VERBS)[number];
 
 type MembershipSide = 'project' | 'steward';

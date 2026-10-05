@@ -2,18 +2,16 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
 import { RULES } from '../lib/rate-limits.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
@@ -29,13 +27,7 @@ import {
   listOwnedDevices,
 } from './read.js';
 import { refuseDevice } from './refusals.js';
-import {
-  mintPairingCode,
-  recordHeartbeat,
-  reportProvisionStatus,
-  revokeDevice,
-  updateDevice,
-} from './service.js';
+import { recordHeartbeat, reportProvisionStatus, revokeDevice, updateDevice } from './service.js';
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
@@ -68,9 +60,6 @@ const heartbeatBodySchema = z
     pool: z.unknown().optional(),
   })
   .strict();
-
-const mintCodeParamSchema = z.object({ id: z.uuid() });
-
 // Public — no auth middleware; device exchanges a pairing code for a token.
 export const devicePublicRoutes = new Hono();
 
@@ -225,25 +214,6 @@ deviceOwnerRoutes.get(
 export const deviceUserRoutes = new Hono<{ Variables: AuthVars }>();
 deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());
 
-deviceUserRoutes.post(
-  '/:id/devices/pairing-codes',
-  zValidator('param', mintCodeParamSchema),
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
-    // The code redeems into a box credential granted everything its holder holds.
-    assertMayMintFullCredential(c);
-
-    // 5-minute TTL, server-minted. Retry on unique-violation (collision).
-    const minted = await mintPairingCode({ projectId, userId, grantEpoch: mintEpochFor(c) });
-    if (!minted) throw new HTTPException(500, { message: 'failed to mint pairing code' });
-    return c.json({ code: minted.code, expiresAt: minted.expiresAt.toISOString() }, 201);
-  },
-);
-
 // Device-auth — agent reports in every ~30s.
 export const deviceAuthRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -382,4 +352,3 @@ export { deviceLoginRoutes } from './login-routes.js';
 export { deviceMcpServerRoutes } from './mcp-servers-routes.js';
 export { deviceOrgRoutes } from './org-routes.js';
 export { devicePoolRoutes } from './pool-routes.js';
-export { runLedgerRoutes } from './run-ledger-routes.js';

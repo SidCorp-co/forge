@@ -22,7 +22,7 @@ import {
 import { env } from '../lib/env.js';
 import { refuseConversation } from './refusals.js';
 
-export interface PersistConversationAttachmentInput {
+interface PersistConversationAttachmentInput {
   conversationId: string;
   name: string;
   mime: string;
@@ -154,7 +154,7 @@ export async function listConversationAttachmentsByIds(
   });
 }
 
-export interface ConversationAttachmentForFetch {
+interface ConversationAttachmentForFetch {
   id: string;
   conversationId: string;
   name: string;

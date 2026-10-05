@@ -24,16 +24,16 @@ const LOOP_LIMIT = 3;
 /** How far back the guards read. Bounded, because every turn pays for this query. */
 export const GUARD_WINDOW = 60;
 
-export type ProactivityGuard = Extract<
+type ProactivityGuard = Extract<
   ConversationWindowDecision,
   'guard-backoff' | 'guard-agent-loop' | 'guard-dormant'
 >;
 
-export type ProactivityVerdict =
+type ProactivityVerdict =
   | { speak: true }
   | { speak: false; decision: ProactivityGuard; detail: Record<string, unknown> };
 
-export interface ProactivityInput {
+interface ProactivityInput {
   conversationId: string;
   now?: Date;
   /** The room's numbers; absent, today's constants (ISS-1034). */
@@ -41,7 +41,7 @@ export interface ProactivityInput {
 }
 
 /** The four numbers the guards read. Semantics never move; only these do. */
-export interface ProactivityThresholds {
+interface ProactivityThresholds {
   dormantMs: number;
   backoffAfter: number;
   loopBounceMs: number;

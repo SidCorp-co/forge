@@ -22,7 +22,7 @@ column already stored beside the version.
 The version is three integers, and the middle one is a plain counter.
 
 - **MINOR increments once per release.** This is the release number.
-- **PATCH is reserved for a re-cut** of a release that failed, and is otherwise `0`.
+- **PATCH is `0`.** A failed release is followed by the next MINOR; there is no re-cut.
 - **MAJOR is a product era.** No release moves it: `nextReleaseVersion` keeps `major` unchanged on
   every branch it takes. It moves only by a deliberate human decision recorded in a later ADR.
   `0` is the current era.

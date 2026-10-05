@@ -12,7 +12,7 @@ import { handleForProject } from './participants.js';
 import type { DeliveryReceipt } from './ports.js';
 import { appendMessage, findConversation } from './store.js';
 
-export interface DeliveredReply {
+interface DeliveredReply {
   conversationId: string;
   projectId: string;
   /** The exact text the venue was shown. */

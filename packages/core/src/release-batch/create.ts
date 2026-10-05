@@ -27,11 +27,6 @@ interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
   userId: string;
-  /**
-   * The version of a FAILED release being cut again. Raises the patch digit instead of the minor;
-   * refused by name unless it names this project's highest release and that release never shipped.
-   */
-  recutOf?: string | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -126,14 +121,13 @@ async function enqueueReleaseJob(args: {
 async function openClaimedRun(args: {
   projectId: string;
   issueIds: string[];
-  recutOf: string | undefined;
   metadata: Record<string, unknown>;
 }) {
-  const { projectId, issueIds, recutOf, metadata } = args;
+  const { projectId, issueIds, metadata } = args;
   const runSpec: OneShotRunSpec = { projectId, kind: 'system', metadata };
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, runSpec);
-    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, recutOf });
+    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId });
     return { run: row, version: cut };
   });
   const claimed = await claimRoster(projectId, issueIds, run.id);
@@ -163,7 +157,7 @@ function runnerPreferenceMet(
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
 ): Promise<CreateReleaseBatchResult> {
-  const { projectId, userId, recutOf } = args;
+  const { projectId, userId } = args;
 
   const { report, issueIds } = await admitBatch(projectId, args.issueIds);
 
@@ -196,7 +190,6 @@ export async function createReleaseBatch(
   const { run, version } = await openClaimedRun({
     projectId,
     issueIds,
-    recutOf,
     metadata: {
       source: 'release-batch',
       gateStatus,

@@ -1,4 +1,4 @@
-export { findCommentAttachmentByName, persistCommentAttachment } from './attachment-service.js';
+export { persistCommentAttachment } from './attachment-service.js';
 export { commentsSince, recentCommentBodies } from './memory-reads.js';
 export { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './notices.js';
 export { provideCommentPorts } from './ports.js';

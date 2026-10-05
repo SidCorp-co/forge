@@ -29,7 +29,7 @@ type SessionRow = typeof agentSessions.$inferSelect;
 
 const MAX_FAILOVERS = 2;
 
-export type ConversationAgentFailoverResult =
+type ConversationAgentFailoverResult =
   | { ok: true; sessionId: string; deviceId: string }
   | {
       ok: false;

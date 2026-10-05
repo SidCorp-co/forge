@@ -19,15 +19,4 @@ export function initSentry(): boolean {
   });
   initialized = true;
   return true;
-}
-
-export function isSentryEnabled(): boolean {
-  return initialized;
-}
-
-export function captureDiag(message: string, extra?: Record<string, unknown>): void {
-  if (!initialized) return;
-  Sentry.captureMessage(message, { level: "info", extra });
-}
-
-export { Sentry };
+}export { Sentry };

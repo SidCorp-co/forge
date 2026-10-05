@@ -23,10 +23,6 @@ import {
   type ReleaseVersion,
 } from './version.js';
 
-/** The four ways a re-cut can be wrong, each refused by its own reason. */
-const recutRefused = (recutOf: string, reason: string) =>
-  refuseRelease('RELEASE_RECUT_REFUSED', `${recutOf} cannot be re-cut: ${reason}`, '/recutOf');
-
 /** Allocation is serialized per project, so a second writer of the column is refused, not retried. */
 const versionConflict = (projectId: string, version: string) =>
   refuseRelease(
@@ -36,10 +32,6 @@ const versionConflict = (projectId: string, version: string) =>
       'project, so this means a writer other than `cutReleaseVersion` set ' +
       '`pipeline_runs.release_version`. Nothing was cut.',
   );
-
-/** Statuses a release run is still open at, which `queries.ts` reads the same way. */
-const OPEN_RUN_STATUSES = ['running', 'paused'] as const;
-
 /** Serialize allocation per project for the transaction, so two cuts queue rather than race. */
 async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
   await lockXact(tx, 'releaseVersion', projectId);
@@ -110,55 +102,6 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
   return rows[0]?.release_version ?? null;
 }
 
-/**
- * Each of the four ways a caller can be wrong is refused by its own reason: a re-cut silently
- * turned into a fresh minor is the burn rule failing in the one direction nobody would notice.
- */
-function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
-  const asked = parseReleaseVersion(recutOf);
-  if (!asked) {
-    throw recutRefused(recutOf, `it is not a version. Send ${RELEASE_VERSION_SHAPE}`);
-  }
-  if (asked.pre) {
-    throw recutRefused(
-      recutOf,
-      'a prerelease is never re-cut: the next cut on its line takes the next number, the failed ' +
-        'one stays burned. Omit `recutOf`',
-    );
-  }
-  if (!highest) {
-    throw recutRefused(
-      recutOf,
-      'this project has cut no release at all, so there is nothing to re-cut. Omit `recutOf` and ' +
-        'the first release cuts 0.1.0',
-    );
-  }
-  const highestText = formatReleaseVersion(highest.version);
-  if (highestText !== formatReleaseVersion(asked)) {
-    throw recutRefused(
-      recutOf,
-      `this project's highest release is ${highestText}, and the patch digit is reserved for ` +
-        'a re-cut of the LAST release. Re-cutting anything older would put a lower version after a ' +
-        `higher one. Send \`recutOf\` as ${highestText}, or omit it to cut a new release`,
-    );
-  }
-  if ((OPEN_RUN_STATUSES as readonly string[]).includes(highest.status)) {
-    throw recutRefused(
-      recutOf,
-      `release run ${highest.runId} is still ${highest.status}, so that release has not failed ` +
-        'yet. Abort it first, then re-cut',
-    );
-  }
-  if (highest.shipped) {
-    throw recutRefused(
-      recutOf,
-      `release run ${highest.runId} SHIPPED, and the patch digit is reserved for a re-cut after a ` +
-        'FAILED release. Omit `recutOf` to cut a new release',
-    );
-  }
-  return highest.version;
-}
-
 function ruleAboveHighest(
   projectId: string,
   next: ReleaseVersion,
@@ -178,8 +121,6 @@ function ruleAboveHighest(
 interface CutReleaseVersionArgs {
   runId: string;
   projectId: string;
-  /** The failed release being cut again, which raises the patch digit instead of the minor. */
-  recutOf?: string | undefined;
 }
 
 /**
@@ -187,23 +128,12 @@ interface CutReleaseVersionArgs {
  * release row, so no committed release row ever exists without a version.
  */
 export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Promise<string> {
-  const { runId, projectId, recutOf } = args;
+  const { runId, projectId } = args;
   await lockProjectVersions(tx, projectId);
 
   const highest = await highestCutVersion(tx, projectId);
   const line = await releaseLineOf(projectId);
-  if (line && recutOf !== undefined) {
-    throw recutRefused(
-      recutOf,
-      `this project numbers every release as a prerelease of ${formatReleaseVersion(line.of)} ` +
-        '(project document `release.prerelease`), so a failed one is followed by the next number ' +
-        'on that line. Omit `recutOf`',
-    );
-  }
-  // `!== undefined`, not truthiness: `recutOf: ''` asked for a re-cut with a value that is not a
-  // version, and truthiness would absorb it as "no re-cut asked for" and cut a fresh minor.
-  const recutFrom = recutOf !== undefined ? ruleOnRecut(recutOf, highest) : null;
-  const next = nextReleaseVersion(highest?.version ?? null, recutFrom, line);
+  const next = nextReleaseVersion(highest?.version ?? null, line);
   // Refused here rather than at the column, which would name itself instead of the rule.
   if (!isStorableReleaseVersion(next)) {
     throw refuseRelease(

@@ -8,34 +8,10 @@
  * `connection-routes.ts` (re-exported below for `src/index.ts`).
  */
 
-import { randomBytes } from 'node:crypto';
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import {
-  adapterOrRefuse,
-  applySecretsPatch,
-  type BindingWithConnection,
-  bindingWriteMoved,
-  buildContextFromBinding,
-  configSchemaForProvider,
-  enqueueOutboundDispatch,
-  findBindingWithConnectionById,
-  findDeliveryById,
-  getAdapter,
-  listBindingDeliveries,
-  listBindingsForConnection,
-  listBindingsForProject,
-  mintInboundSecret,
-  notFound,
-  notifyConnectionChanged,
-  rotateHeldInboundSecret,
-  splitProviderConfig,
-  summarizeBinding,
-  updateConnection,
-  updateSchema,
-  withdrawNulls,
-} from '../integrations/index.js';
+import { adapterOrRefuse, applySecretsPatch, type BindingWithConnection, bindingWriteMoved, buildContextFromBinding, configSchemaForProvider, findBindingWithConnectionById, getAdapter, listBindingDeliveries, listBindingsForConnection, listBindingsForProject, mintInboundSecret, notFound, notifyConnectionChanged, rotateHeldInboundSecret, splitProviderConfig, summarizeBinding, updateConnection, updateSchema, withdrawNulls } from '../integrations/index.js';
 import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocketchat/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
@@ -259,52 +235,6 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   const id = c.req.param('id');
   await projectBinding(projectId, id, c.get('userId'));
   return c.json({ items: await listBindingDeliveries(id) });
-});
-
-// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the SAME outbound path
-// the original used (enqueueOutboundDispatch → worker → dispatchThrough → that binding's own
-// adapter) with a FRESH requestId, so the worker/adapter records the new delivery row. The route
-// must NOT pre-record it — the (binding_id, request_id) partial unique index would collide.
-integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/retry', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const deliveryId = c.req.param('deliveryId');
-  const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
-
-  const delivery = await findDeliveryById(deliveryId);
-  if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
-
-  if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
-    throw refuse(
-      'NOT_RETRYABLE',
-      `delivery ${deliveryId} is ${delivery.direction} and ${delivery.status}; only a failed outbound delivery is retried`,
-    );
-  }
-  if (!adapterOrRefuse(existing.binding.provider).dispatchOutbound) {
-    throw refuse(
-      'NOT_RETRYABLE',
-      `${existing.binding.provider} dispatches nothing outbound, so delivery ${deliveryId} (\`${delivery.eventName}\`) cannot be re-sent; a merge is asked again on POST /api/issues/:id/merge-pull-request`,
-    );
-  }
-
-  if (!existing.binding.active || !existing.connection.active) {
-    throw refuse(
-      'BINDING_INACTIVE',
-      `delivery ${deliveryId} is not re-sent: its ${existing.binding.active ? 'connection' : 'binding'} is switched off${existing.binding.active ? ' (the breaker may have opened it)' : ''}; switch it back on, then retry`,
-    );
-  }
-  const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
-  const requestId = `retry_${randomBytes(12).toString('hex')}`;
-  await enqueueOutboundDispatch({
-    jobKind: 'coolify.dispatch',
-    bindingId: id,
-    runId: p.runId ?? null,
-    issueId: p.issueId ?? null,
-    eventName: delivery.eventName,
-    requestId,
-    payload: (delivery.payload ?? {}) as Record<string, unknown>,
-  });
-  return c.json({ requestId, queued: true }, 202);
 });
 
 // ISS-305 — composed read-only integrations status for the web hub; the

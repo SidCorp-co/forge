@@ -33,7 +33,7 @@ const SOURCE_LABEL_CAP = 40;
 const SOURCE_EXTERNAL_ID_CAP = 64;
 
 /** One message a passage was built from. */
-export interface PassageSource {
+interface PassageSource {
   messageId: string;
   seq: number;
   at: string;
@@ -42,7 +42,7 @@ export interface PassageSource {
   externalId: string | null;
 }
 
-export interface PassageHit {
+interface PassageHit {
   passageId: string;
   firstSeq: number;
   lastSeq: number;
@@ -56,7 +56,7 @@ export interface PassageHit {
   sources: PassageSource[];
 }
 
-export interface IndexCoverage {
+interface IndexCoverage {
   /** The highest transcript seq the index has read, or {@link WATERMARK_EMPTY} where it has read none. */
   indexedThroughSeq: number;
   indexedThroughAt: string | null;
@@ -66,7 +66,7 @@ export interface IndexCoverage {
   messagesBeyondIndex: number;
 }
 
-export interface TranscriptSearchResult {
+interface TranscriptSearchResult {
   conversationId: string;
   query: string;
   matches: PassageHit[];
@@ -75,7 +75,7 @@ export interface TranscriptSearchResult {
   limitation: string | null;
 }
 
-export interface TranscriptSearchArgs {
+interface TranscriptSearchArgs {
   conversationId: string;
   userId: string | null | undefined;
   query: string;

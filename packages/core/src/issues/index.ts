@@ -18,8 +18,7 @@ export {
   transitionIssueStatus,
 } from './apply-transition.js';
 export { issueArchiveSide } from './archive.js';
-export { findIssueAttachmentByName, persistIssueAttachment } from './attachment-service.js';
-export { closeBacklogStreams } from './backlog/open-streams.js';
+export { persistIssueAttachment } from './attachment-service.js';
 export {
   blockedByUnsettledSql,
   heldTakeRefusal,
@@ -36,11 +35,7 @@ export {
   verdictWeighingInputs,
 } from './criteria-verdicts.js';
 export type { IssueDependencyExecutor } from './dependency-executor.js';
-export {
-  allRelationDigests,
-  emptyIssueRelations,
-  loadIssueRelationsForIssues,
-} from './dependency-read.js';
+export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { registerDependencyHealth } from './dependency-service.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';

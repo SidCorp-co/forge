@@ -158,7 +158,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
 
 /**
  * The identity a comment fence's criterion block names, in the order the release hold prefers it
- * (`criteria-verdicts.ts:verdictPairsIn`): runtime, then commit, then design, then contract. A design written in
+ * runtime, then commit, then design, then contract. A design written in
  * the wrong shape is kept as a malformed draft so its refusal names it.
  *
  */

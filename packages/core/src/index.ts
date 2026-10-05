@@ -36,7 +36,6 @@ import {
   archivedIssueIdsSql,
   citedIssues,
   claimIssuePrefix,
-  closeBacklogStreams,
   heldIssuePrefixes,
   issueDisplayIds,
   issueHead,
@@ -218,7 +217,6 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
-    await closeBacklogStreams();
     await stopRocketChatManager();
     await stopTimers();
     await stopOutboxWorker();

@@ -35,8 +35,3 @@ export function scheduleInvalidation(qc: QueryClient, queryKey: readonly unknown
 		timer: setTimeout(() => fire(hash), INVALIDATE_WINDOW_MS),
 	});
 }
-
-/** Close every open window now. The test seam; nothing in the app calls it. */
-export function flushInvalidations(): void {
-	for (const hash of [...open.keys()]) fire(hash);
-}

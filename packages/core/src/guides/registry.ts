@@ -34,7 +34,7 @@ import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
 import { WORKFLOW_TEMPLATES_GUIDE } from './workflow-templates-guide.js';
 
-export const FORGE_GUIDES: readonly CoreGuide[] = [
+const FORGE_GUIDES: readonly CoreGuide[] = [
   {
     slug: 'project-settings-and-test-credentials',
     audience: 'agent',

@@ -1,6 +1,6 @@
 import { type Actor, safeRecordActivity } from '../issues/index.js';
 
-export function extractIssueId(metadata: unknown): string | null {
+function extractIssueId(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
   const raw = (metadata as Record<string, unknown>).issueId;
   if (typeof raw !== 'string') return null;

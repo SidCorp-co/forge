@@ -11,7 +11,7 @@ import type { ConversationImage } from './store.js';
 export const CONVERSATION_AGENT_MARKER = 'conversationAgent';
 
 /** What the venue is shown when this lane has no model answer to give it. */
-export interface ConversationAgentReplies {
+interface ConversationAgentReplies {
   /** A turn is already running in this room. */
   dedup: string;
   /** No device could take it. */

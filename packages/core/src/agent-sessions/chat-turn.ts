@@ -280,7 +280,7 @@ export interface DispatchChatTurnArgs {
 }
 
 /** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
-export function checkoutUnbound(projectId: string, deviceId: string | null): RefusalError {
+function checkoutUnbound(projectId: string, deviceId: string | null): RefusalError {
   return refuseSession(
     'CHECKOUT_UNBOUND',
     `device ${deviceId ?? '(none)'}'s binding to project ${projectId} names no checkout, so no turn runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/:runnerId { repoPath }.`,

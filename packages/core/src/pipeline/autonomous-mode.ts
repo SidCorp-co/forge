@@ -18,7 +18,7 @@ export function autonomousStepFor(
   return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
 }
 
-export const AUTONOMOUS_SKILL_NAME = 'issue-flow';
+const AUTONOMOUS_SKILL_NAME = 'issue-flow';
 
 /** A project runs the driver exactly when it has a policy: the policy is what says how it runs. */
 export function isAutonomous(policy: ProjectPolicy | null): policy is ProjectPolicy {

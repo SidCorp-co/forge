@@ -89,52 +89,6 @@ export async function stepDurationsForProject(
   `);
   return result as unknown as ProjectStepDurationRow[];
 }
-
-/** A project's cost over the last `days`: the total, a per-step rollup and the top 10 issues. */
-export async function readCostSummary(projectId: string, days: number) {
-  const totalRows = await db.execute(sql`
-    SELECT COALESCE(SUM(cost_usd), 0)::float AS total
-    FROM pipeline_run_step_durations
-    WHERE project_id = ${projectId}
-      AND started_at >= now() - (${days}::int * interval '1 day')
-  `);
-  const total = Number((totalRows as unknown as Array<{ total: number }>)[0]?.total ?? 0);
-
-  const byStateRows = await db.execute(sql`
-    SELECT step, SUM(cost_usd)::float AS total, COUNT(*)::int AS runs
-    FROM pipeline_run_step_durations
-    WHERE project_id = ${projectId}
-      AND started_at >= now() - (${days}::int * interval '1 day')
-    GROUP BY step
-    ORDER BY total DESC
-  `);
-
-  const byIssueRows = await db.execute(sql`
-    SELECT issue_id, SUM(cost_usd)::float AS total
-    FROM pipeline_run_step_durations
-    WHERE project_id = ${projectId}
-      AND started_at >= now() - (${days}::int * interval '1 day')
-      AND issue_id IS NOT NULL
-    GROUP BY issue_id
-    ORDER BY total DESC
-    LIMIT 10
-  `);
-
-  const byState = (
-    byStateRows as unknown as Array<{ step: string; total: number; runs: number }>
-  ).map((r) => {
-    const totalCost = Number(r.total);
-    const runs = Number(r.runs);
-    return { state: r.step, total: totalCost, runs, avgPerRun: runs > 0 ? totalCost / runs : 0 };
-  });
-
-  const byIssue = (byIssueRows as unknown as Array<{ issue_id: string; total: number }>).map(
-    (r) => ({ issueId: r.issue_id, total: Number(r.total) }),
-  );
-
-  return { total, byState, byIssue };
-}
-
 /** The project a pipeline run belongs to, or null when no such run exists. */
 export async function pipelineRunProjectId(runId: string): Promise<string | null> {
   const [row] = await db
