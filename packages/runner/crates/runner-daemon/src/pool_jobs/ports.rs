@@ -264,9 +264,25 @@ impl Records for NoRecords {
 
 pub struct TmuxPanes;
 
+/// Tools whose only effect is to stop the turn until a person answers, denied in every job pane.
+/// Nothing on a box answers a job pane, so each of these held a slot until a sweep ended it; a
+/// master pane keeps them, because its owner is the one answering.
+pub const JOB_PANE_DENIED: [&str; 3] = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"];
+
+/// [`JOB_PANE_DENIED`] and the tools a job's policy state denies, each named once.
+pub fn job_denied_tools(policy: &[String]) -> Vec<String> {
+    let mut all: Vec<String> = JOB_PANE_DENIED.iter().map(|t| (*t).to_string()).collect();
+    for tool in policy {
+        if !all.contains(tool) {
+            all.push(tool.clone());
+        }
+    }
+    all
+}
+
 /// The command a job pane is started with: the launch a master pane takes, handed the project's
-/// declared servers through a config of the job's own, and the model and denied tools of its
-/// policy state. A declaration that cannot be written is a refusal, because the pane it would
+/// declared servers through a config of the job's own, the model and denied tools of its policy
+/// state, and every tool that waits on a person, which no job pane may call. A declaration that cannot be written is a refusal, because the pane it would
 /// start carries none of it.
 pub(crate) fn job_pane_argv(dir: &Path, name: &str, launch: &Launch<'_>) -> Result<Vec<String>> {
     let servers = launch.servers;
@@ -281,7 +297,7 @@ pub(crate) fn job_pane_argv(dir: &Path, name: &str, launch: &Launch<'_>) -> Resu
         config.as_deref(),
         None,
         Some(launch.model),
-        launch.denied_tools,
+        &job_denied_tools(launch.denied_tools),
     ))
 }
 

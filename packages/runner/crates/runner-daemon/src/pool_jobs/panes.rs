@@ -76,6 +76,9 @@ pub struct JobPanes {
     /// The projects this box has said it holds no master session for, so the
     /// condition is stated on its edges rather than on every pass.
     pub(crate) unsessioned: Mutex<std::collections::HashSet<String>>,
+    /// The project each job this daemon took was taken for. A pane adopted
+    /// across a restart has none, and is counted for every project.
+    pub(crate) projects: Mutex<HashMap<String, String>>,
 }
 
 impl Default for JobPanes {
@@ -91,6 +94,7 @@ impl JobPanes {
             swept_at: Mutex::new(None),
             said_at_bound: Mutex::new(None),
             unsessioned: Mutex::new(std::collections::HashSet::new()),
+            projects: Mutex::new(HashMap::new()),
         }
     }
 
@@ -178,6 +182,29 @@ impl JobPanes {
         if let Ok(mut map) = self.inner.lock() {
             map.remove(job_id);
         }
+        if let Ok(mut projects) = self.projects.lock() {
+            projects.remove(job_id);
+        }
+    }
+
+    /// Which project a job this daemon took belongs to.
+    pub fn note_project(&self, job_id: &str, project_id: &str) {
+        if let Ok(mut projects) = self.projects.lock() {
+            projects.insert(job_id.to_string(), project_id.to_string());
+        }
+    }
+
+    /// The job panes held that may belong to `project_id`: its own, and every
+    /// adopted one whose project this daemon never learned. A master is not
+    /// idle while one runs, because core holds a pool job under the master's
+    /// session and closes the job's session with it.
+    pub fn holds_for(&self, project_id: &str) -> usize {
+        let (Ok(map), Ok(projects)) = (self.inner.lock(), self.projects.lock()) else {
+            return 0;
+        };
+        map.keys()
+            .filter(|job| projects.get(*job).is_none_or(|p| p == project_id))
+            .count()
     }
 
     pub fn live(&self) -> Vec<Live> {

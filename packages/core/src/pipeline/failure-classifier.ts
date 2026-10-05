@@ -10,13 +10,14 @@ import {
   PERMISSION_PATTERNS,
   PREFLIGHT_PATTERNS,
   REPO_CONTENTION_PATTERNS,
+  STOPPED_ON_QUESTION_PATTERNS,
   TERMINAL_INFRA_PATTERNS,
   TIMEOUT_PATTERNS,
   TRANSIENT_PATTERNS,
 } from './failure-patterns.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export const CLASSIFIER_VERSION = 11;
+export const CLASSIFIER_VERSION = 12;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -82,7 +83,7 @@ interface ClassifyInput {
  * Match order: structured `meta.error.type` → runner token → the three
  * pre-spawn verdicts (TERMINAL_INFRA / PREFLIGHT / BOX_SATURATION /
  * REPO_CONTENTION, all above the cc-startup signal) → spend-cap →
- * usage/session limit → cc-startup signal → PERMISSION (infra) →
+ * usage/session limit → stopped on a question (terminal) → cc-startup signal → PERMISSION (infra) →
  * DUPLEX_SESSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
@@ -243,6 +244,19 @@ function classifyKind(
 
   const preSpawn = firstRule(PRE_SPAWN_RULES, text, base);
   if (preSpawn) return preSpawn;
+
+  // Before the startup signal: a pane job streams no events, so that signal reads every one of
+  // them as a death before its first tool. A rerun of the same prompt asks the same question,
+  // so this fails terminal with the runner's sentence instead of retrying blind.
+  if (STOPPED_ON_QUESTION_PATTERNS.some((p) => p.test(text))) {
+    return {
+      kind: 'code',
+      cause: 'agent_stopped_on_question',
+      reason: `stopped on a question → no retry: ${truncate(text.replace(/^stopped on a question:\s*/i, ''), 170)}`,
+      meta,
+      action: 'terminal',
+    };
+  }
 
   if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {

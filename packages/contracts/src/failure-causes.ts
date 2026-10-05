@@ -23,6 +23,10 @@ export const FAILURE_CAUSES = [
 	"agent_exited_without_result",
 	/** killed by a signal. 1 job/60d (`[SIGNAL_KILLED]`). */
 	"agent_killed",
+	/** a job pane stopped on a question only a person can answer, and nothing on
+	 *  the box answers one (the runner's `job_exit::STOPPED_ON_A_QUESTION`). Three
+	 *  attempts of one release on dev, 2026-10-05, each read as a startup death. */
+	"agent_stopped_on_question",
 	/** the chat lane's skill-sync race. Writer: agent-sessions/routes.ts. */
 	"skill_not_synced",
 	/** repo_path / work_tree / origin_remote preflight. 1,073 jobs/60d. */
@@ -133,6 +137,7 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	agent_skill_missing: "failure",
 	agent_exited_without_result: "failure",
 	agent_killed: "failure",
+	agent_stopped_on_question: "failure",
 	skill_not_synced: "failure",
 	workspace_preflight_failed: "failure",
 	workspace_disk_full: "failure",

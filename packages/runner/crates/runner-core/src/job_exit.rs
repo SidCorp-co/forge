@@ -36,6 +36,17 @@ use crate::turn_evidence::Watch;
 /// Nothing reported since a turn ENDED for this long: the agent is done.
 pub const IDLE_BEFORE_FINISHED: Duration = Duration::from_secs(15 * 60);
 
+/// Stopped on a question with nothing written since, for this long: nobody is
+/// coming. Nothing on a box answers a job pane, so the wait has no end of its
+/// own; the window is short of `IDLE_BEFORE_FINISHED` because it only spares a
+/// dialog a hook resolves, or an operator who happens to be attached.
+pub const ASKED_BEFORE_STOPPED: Duration = Duration::from_secs(5 * 60);
+
+/// A transcript write this long after the question is the agent moving again,
+/// so the question was answered. The slack keeps the write that records the
+/// question itself, which can land just after its hook, from reading as one.
+pub const ANSWERED_AFTER: Duration = Duration::from_secs(10);
+
 /// Nothing reported and nothing written since a boundary that ended NOTHING for
 /// this long. Longer than the one above, because a compaction is the one report
 /// `agent_activity` reads as idle while the agent may still be mid-turn behind
@@ -190,7 +201,21 @@ pub fn verdict(
             quiet_for: silent_for,
         },
         Doing::Working => Verdict::Keep(KeepReason::Working),
-        Doing::AwaitingPermission if past(quiet_for, IDLE_BEFORE_FINISHED) => {
+        // No hook reports an answer: the turn simply carries on, writing its
+        // transcript, so a write after the question is read as one.
+        Doing::AwaitingPermission
+            if written_at
+                .is_some_and(|w| w.saturating_sub(r.at) >= ANSWERED_AFTER.as_millis() as i64) =>
+        {
+            if past(silent_for, SILENT_BEFORE_ABANDONED) {
+                Verdict::LeadSilent {
+                    quiet_for: silent_for,
+                }
+            } else {
+                Verdict::Keep(KeepReason::Working)
+            }
+        }
+        Doing::AwaitingPermission if past(quiet_for, ASKED_BEFORE_STOPPED) => {
             Verdict::Blocked { quiet_for }
         }
         Doing::AwaitingPermission => Verdict::Keep(KeepReason::RecentlyAsked),
@@ -214,6 +239,11 @@ pub fn verdict(
     }
 }
 
+/// The words a job ended on a question opens with. Core classifies the ending
+/// by them (`packages/core/src/pipeline/failure-classifier.ts`), so they are a
+/// contract and not prose.
+pub const STOPPED_ON_A_QUESTION: &str = "stopped on a question";
+
 impl Verdict {
     /// What core is told where this verdict ends the job. `None` is a keep.
     ///
@@ -228,7 +258,7 @@ impl Verdict {
                 minutes(quiet_for)
             ),
             Verdict::Blocked { quiet_for } => format!(
-                "the job's pane `{pane}` has been stopped on a question only a human can answer for {} — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
+                "{STOPPED_ON_A_QUESTION}: the job's pane `{pane}` has waited on a question only a human can answer for {} — nothing on this box answers a job pane's question, so that wait had no end of its own and the slot was holding it",
                 minutes(quiet_for)
             ),
             Verdict::Silent { quiet_for } => format!(
@@ -277,5 +307,64 @@ pub fn holding_phrase(
         Verdict::LeadSilent { .. } => {
             "its turn never reported an end and its transcript has been still since, and this sweep has not let it go yet"
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ASKED_AT: i64 = 1_000_000;
+
+    fn asked() -> Reported {
+        Reported {
+            doing: Doing::AwaitingPermission,
+            last_event: Event::PermissionRequested,
+            at: ASKED_AT,
+            prompts: 1,
+        }
+    }
+
+    fn after(d: Duration) -> i64 {
+        ASKED_AT + d.as_millis() as i64
+    }
+
+    #[test]
+    fn an_unanswered_question_ends_the_job_at_its_own_window_naming_the_question() {
+        let w = Watch::Unhooked;
+        let just_short = after(ASKED_BEFORE_STOPPED) - 1;
+        assert_eq!(
+            verdict(&w, Some(asked()), Some(ASKED_AT), just_short),
+            Verdict::Keep(KeepReason::RecentlyAsked)
+        );
+        let at = after(ASKED_BEFORE_STOPPED);
+        let v = verdict(&w, Some(asked()), Some(ASKED_AT), at);
+        assert!(matches!(v, Verdict::Blocked { .. }), "{v:?}");
+        let reason = v.reason("forge-job-x").unwrap();
+        assert!(reason.starts_with(STOPPED_ON_A_QUESTION), "{reason}");
+    }
+
+    #[test]
+    fn a_write_after_the_question_is_an_answer_and_keeps_the_turn() {
+        let w = Watch::Unhooked;
+        let wrote = after(ANSWERED_AFTER);
+        let now = after(ASKED_BEFORE_STOPPED * 3);
+        assert_eq!(
+            verdict(&w, Some(asked()), Some(wrote), now),
+            Verdict::Keep(KeepReason::Working)
+        );
+        let long_after = wrote + SILENT_BEFORE_ABANDONED.as_millis() as i64;
+        assert!(matches!(
+            verdict(&w, Some(asked()), Some(wrote), long_after),
+            Verdict::LeadSilent { .. }
+        ));
+    }
+
+    #[test]
+    fn the_write_recording_the_question_itself_is_not_an_answer() {
+        let w = Watch::Unhooked;
+        let wrote = after(ANSWERED_AFTER) - 1;
+        let v = verdict(&w, Some(asked()), Some(wrote), after(ASKED_BEFORE_STOPPED));
+        assert!(matches!(v, Verdict::Blocked { .. }), "{v:?}");
     }
 }

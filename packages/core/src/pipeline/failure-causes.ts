@@ -33,6 +33,7 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   agent_skill_missing: 'agent',
   agent_exited_without_result: 'agent',
   agent_killed: 'agent',
+  agent_stopped_on_question: 'agent',
   skill_not_synced: 'agent',
   workspace_preflight_failed: 'workspace',
   workspace_disk_full: 'workspace',

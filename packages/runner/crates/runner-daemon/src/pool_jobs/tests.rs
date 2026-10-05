@@ -129,3 +129,49 @@ fn the_missing_master_session_is_said_on_its_edges() {
     assert!(panes.note_master_session("p", true));
     assert!(!panes.note_master_session("p", true));
 }
+
+#[test]
+fn a_job_pane_keeps_its_own_projects_master_and_an_adopted_one_keeps_every_master() {
+    let panes = JobPanes::new();
+    panes.hold("job-a", "forge-job-a", Watch::Unhooked, None, None, None);
+    panes.note_project("job-a", "project-1");
+    assert_eq!(panes.holds_for("project-1"), 1);
+    assert_eq!(panes.holds_for("project-2"), 0);
+
+    panes.hold("job-b", "forge-job-b", Watch::Unhooked, None, None, None);
+    assert_eq!(
+        panes.holds_for("project-2"),
+        1,
+        "a project never learned is counted for all"
+    );
+
+    panes.forget("job-a");
+    panes.forget("job-b");
+    assert_eq!(panes.holds_for("project-1"), 0);
+}
+
+#[test]
+fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() {
+    use runner_workspace::terminal::{job_argv, pane_argv};
+    let policy = vec![
+        "Bash(git push:*)".to_string(),
+        "AskUserQuestion".to_string(),
+    ];
+    let denied = ports::job_denied_tools(&policy);
+    for tool in ports::JOB_PANE_DENIED {
+        assert_eq!(
+            denied.iter().filter(|t| *t == tool).count(),
+            1,
+            "{denied:?}"
+        );
+    }
+    assert!(denied.contains(&"Bash(git push:*)".to_string()));
+    let job = job_argv(None, None, None, &ports::job_denied_tools(&[])).join(" ");
+    assert!(
+        job.contains("--disallowed-tools 'AskUserQuestion'"),
+        "{job}"
+    );
+    assert!(!pane_argv(None, None)
+        .join(" ")
+        .contains("--disallowed-tools"));
+}

@@ -151,9 +151,10 @@ function wedgeCopy(
 /**
  * ISS-450 — derive the structured cc-startup-death signal from the failed
  * job's event stream: the CLI spawned (≥1 event) but died having emitted zero
- * `tool_call` events and ≤3 assistant (`stdout`) messages. A job with ZERO
- * events never spawned at all (dispatch_unclaimed class) — that is an infra
- * failure, not a cc-startup death, so `diedBeforeFirstToolUse` stays false.
+ * `tool_call` events and ≤3 assistant (`stdout`) messages. Only a job that streamed the CLI's
+ * output can say so: a pool job runs in a pane, emits `progress` events alone, and read here
+ * without that guard every one of its failures was a death before the first tool, however much
+ * the agent had done. A job with ZERO events never spawned at all (dispatch_unclaimed class).
  * Best-effort: a query failure returns null (classifier falls through to its
  * text patterns).
  */
@@ -163,7 +164,7 @@ async function deriveCcStartupSignals(
   try {
     const [row] = await db
       .select({
-        total: sql<number>`count(*)::int`,
+        streamed: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout')::int`,
         toolCalls: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'tool_call')::int`,
         messages: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout' AND ${jobEvents.data}->'line'->>'type' = 'assistant')::int`,
       })
@@ -171,7 +172,7 @@ async function deriveCcStartupSignals(
       .where(eq(jobEvents.jobId, job.id));
     if (!row) return null;
     return {
-      diedBeforeFirstToolUse: row.total > 0 && row.toolCalls === 0,
+      diedBeforeFirstToolUse: row.streamed > 0 && row.toolCalls === 0,
       sessionMessageCount: row.messages,
     };
   } catch (err) {
