@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.27] - 2026-10-05
+
+Forge sheds features nobody used, and an independent review's fixes land
+
+
 ### Changed
 
 - **Every module names the requirement or workflow step it serves (ISS-221).** The Modules screen
