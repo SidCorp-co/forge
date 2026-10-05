@@ -1,7 +1,7 @@
 export { latestBaselineIn } from './baselines.js';
 export { type InterfaceContracts, provideInterfaceContracts } from './contract-links.js';
 export { provideRequirementDependents, type RequirementDependents } from './dependents.js';
-export { similarRequirements } from './embeddings.js';
+export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
 export { planDriftOf } from './plan-drift.js';

@@ -79,6 +79,12 @@ export {
 } from './issue-route-ref.js';
 export { landingShapeOf, landingShortfall, requireLandingShape } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
+export {
+  archivedIssueIdsSql,
+  issueHead,
+  releasedIssueOf,
+  statusChangesSince,
+} from './memory-reads.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { publishPipelineHealthChanged } from './pipeline-health.js';

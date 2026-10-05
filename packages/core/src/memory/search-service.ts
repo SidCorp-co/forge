@@ -7,9 +7,9 @@ import {
   embedQuery,
   fastModelConfigured,
 } from '../integrations/llm/index.js';
-import { clampTopK } from '../knowledge/index.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
+import { clampTopK } from '../lib/search-fusion.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';
