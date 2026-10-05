@@ -1,4 +1,6 @@
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../../db/schema.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -8,6 +10,7 @@ import {
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
+  recordRefusedInbound,
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
@@ -115,6 +118,8 @@ async function grantShortfall(
   return grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
 }
 
+const refuseInbound = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecretField: 'webhookSecret',
   inboundSecretHome:
@@ -191,19 +196,45 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     input: InboundDispatchInput,
   ): Promise<InboundDispatchResult> {
     const eventType = input.headers['x-github-event'];
-    if (!eventType) throw new Error('github webhook: x-github-event missing');
-
     const payload = input.payload as GitHubEventPayload & {
       repository?: { full_name?: string };
     };
+    const guid = input.headers['x-github-delivery'];
+    // A verified delivery that cannot be applied is a recorded refusal, never a throw the door
+    // answers 500 with and no row remembers.
+    const refuseRecorded = async (
+      code: Extract<IntegrationRefusalCode, `WEBHOOK_${string}`>,
+      detail: string,
+      path: string,
+    ): Promise<never> => {
+      const deliveryId = await recordRefusedInbound({
+        bindingId: ctx.bindingId,
+        eventName: `${eventType ?? 'unknown'}.${payload?.action ?? 'unknown'}`,
+        payload,
+        requestId: guid,
+        code,
+        detail,
+      });
+      throw refuseInbound(code, `${detail} (delivery ${deliveryId})`, path);
+    };
+    if (!eventType) {
+      return refuseRecorded(
+        'WEBHOOK_EVENT_MISSING',
+        'github webhook: the x-github-event header is missing, so there is no event to apply',
+        '',
+      );
+    }
 
     const arrived = payload?.repository?.full_name;
     const expected =
       ctx.config?.owner && ctx.config?.repo ? `${ctx.config.owner}/${ctx.config.repo}` : null;
     if (arrived && expected && arrived.toLowerCase() !== expected.toLowerCase()) {
-      throw new Error(`github webhook: delivery is for ${arrived}, this binding is ${expected}`);
+      return refuseRecorded(
+        'WEBHOOK_FOREIGN_REPOSITORY',
+        `github webhook: delivery is for ${arrived}, this binding is ${expected}`,
+        '/repository/full_name',
+      );
     }
-    const guid = input.headers['x-github-delivery'];
     const facts: InboundFact[] = [];
     const { deliveryId, result } = await applyClaimedInbound(
       {

@@ -14,6 +14,7 @@ import {
 } from '../integrations/index.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { emitEvents } from '../outbox/index.js';
@@ -171,6 +172,13 @@ webhookInboundRoutes.post(
       });
     } catch (err) {
       if (err instanceof HTTPException) throw err;
+      if (isRefusal(err)) {
+        logger.warn(
+          { slug, provider: map.provider, bindingId: pair.binding.id, refusal: err.message },
+          'integration adapter: delivery refused',
+        );
+        throw err;
+      }
       logger.error(
         { err, slug, provider: map.provider, bindingId: pair.binding.id },
         'integration adapter: handler threw',

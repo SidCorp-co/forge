@@ -352,6 +352,8 @@ export const INTEGRATION_REFUSAL_CODES = [
   'HOST_UNAVAILABLE',
   'ORG_MISMATCH',
   'MCP_PREVIEW_UNCLAIMED',
+  'WEBHOOK_EVENT_MISSING',
+  'WEBHOOK_FOREIGN_REPOSITORY',
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
