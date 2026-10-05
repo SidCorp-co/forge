@@ -197,7 +197,7 @@ fn file_name(path: &str) -> &str {
 
 /// Whether `pid` is a Claude Code process: its executable is Claude Code's
 /// native build or is named `claude`, or it runs Claude Code's npm package.
-fn is_claude(root: &Path, pid: u32) -> bool {
+pub(crate) fn is_claude(root: &Path, pid: u32) -> bool {
     let dir = root.join(pid.to_string());
     if let Ok(exe) = std::fs::read_link(dir.join("exe")) {
         let exe = exe.to_string_lossy();

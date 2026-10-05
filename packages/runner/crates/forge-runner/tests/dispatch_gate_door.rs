@@ -37,7 +37,7 @@ use std::process::{Command, Stdio};
 use forge_runner_core::daemon::dispatch_gate::REFUSAL;
 use forge_runner_core::daemon::hook_install;
 
-const DISPATCH_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","transcript_path":"/x.jsonl","cwd":"/tmp/x","prompt_id":"5f063c37","permission_mode":"bypassPermissions","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Take ISS-12","prompt":"work it","subagent_type":"runner","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
+const DISPATCH_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","transcript_path":"/x.jsonl","cwd":"/tmp/x","prompt_id":"5f063c37","permission_mode":"bypassPermissions","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Take ISS-12","prompt":"work it","subagent_type":"forge:runner","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
 
 struct Scratch(forge_runner_core::test_scratch::Scratch);
 
@@ -167,7 +167,7 @@ fn the_registered_command_refuses_an_undeclared_dispatch() {
     )
     .expect("the frame must be json the daemon can read");
     assert_eq!(sent["op"], "dispatch_gate");
-    assert_eq!(sent["subagentType"], "runner");
+    assert_eq!(sent["subagentType"], "forge:runner");
     assert_eq!(sent["toolUseId"], "toolu_01WFynvjwEmYFcgyKTMn4J91");
     assert!(
         sent["agentId"].is_null(),

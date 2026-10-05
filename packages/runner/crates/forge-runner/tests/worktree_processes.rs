@@ -302,3 +302,91 @@ fn libc_sigterm() -> i32 {
 fn libc_sigkill() -> i32 {
     9
 }
+
+/// ISS-1378's half of the same reproduction: a gate a live agent started is
+/// living in the checkout, and the removal leaves it running and the checkout
+/// standing, whatever the ledger said about the run that held it.
+///
+/// The agent is a shell run under the name `claude`, which is how the box
+/// recognises a Claude Code process by its arguments. It stays outside the
+/// checkout and a subshell of it enters and becomes the gate, so the gate
+/// runs BENEATH it as a real tool call's process does. It is this test's child and never an
+/// ancestor of this test, so the reading cannot take it for the reaper's own.
+#[test]
+fn a_removal_leaves_a_live_agents_gate_running_and_its_checkout_standing() {
+    let scratch = Scratch::new("wt1378");
+    let (repo, wt) = a_repo_with_a_worktree(scratch.path());
+    let bin = scratch.join("bin");
+    std::fs::create_dir_all(&bin).expect("a bin directory");
+    let claude = bin.join("claude");
+    std::os::unix::fs::symlink("/bin/sh", &claude).expect("a process named claude");
+
+    let mut agent = Kept(
+        Command::new(&claude)
+            .arg("-c")
+            .arg(format!("(cd {} && exec sleep 100000); :", wt.display()))
+            .current_dir(scratch.path())
+            .spawn()
+            .expect("an agent running a gate in the checkout"),
+    );
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let gate = loop {
+        // Exactly one resident, and it is not the agent: the subshell that
+        // entered the checkout became the gate, and the agent itself never
+        // stood there.
+        if let [pid] = living_in(&wt)[..] {
+            assert_ne!(
+                pid,
+                agent.pid(),
+                "the gate is beneath the agent, not the agent"
+            );
+            break pid;
+        }
+        assert!(
+            std::time::Instant::now() < until,
+            "the agent's gate never entered {}, so nothing below would measure what it claims",
+            wt.display()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    // The gate is the agent's child and not this test's, so taking the agent
+    // leaves it orphaned and holding the harness's stdout, which is the hung
+    // run this file's header describes. It is taken by pid on the way out.
+    let _gate = Grandchild(gate);
+
+    let removal = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime")
+        .block_on(worktree::remove_at(
+            &repo.to_string_lossy(),
+            &wt,
+            "the ledger reads its run as ended",
+        ));
+    let said = removal
+        .expect_err("a live agent's checkout is not given back")
+        .to_string();
+
+    assert!(
+        still_running(gate),
+        "the gate runs on, which is the run's own work: {said}"
+    );
+    assert!(wt.is_dir(), "and its checkout stands: {said}");
+    assert!(
+        said.contains(&format!("pid {gate}")) && said.contains("beneath Claude Code pid"),
+        "and the refusal names it and the agent it runs beneath: {said}"
+    );
+    let _ = agent.0.kill();
+    let _ = agent.0.wait();
+}
+
+/// A process this test's child made, taken by pid however the case leaves.
+struct Grandchild(u32);
+
+impl Drop for Grandchild {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .args(["-9", &self.0.to_string()])
+            .status();
+    }
+}

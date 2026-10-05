@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **A run's checkout is no longer taken while its agent works in it.** A master's helper no
+  longer takes a declared run. An update that will not start is rolled back, and `status` names a
+  refused one.
+
 - **An automatic release no longer waits on a commit it already serves.** A verdict judged at an
   earlier commit counts once production runs a later one containing it, and a runner-only change is
   weighed against the runner build (ISS-1368).

@@ -4419,9 +4419,7 @@ async fn outdated_resident(
         }
         OutdatedAct::Leave(reason) => {
             if masters.note_outdated(project_id, Some(format!("{why} / {reason}"))) {
-                tracing::warn!(
-                    "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
-                );
+                tracing::warn!("{}", outdated_left_line(slug, pane_name, &why, &reason));
             }
             true
         }
@@ -4702,8 +4700,36 @@ async fn end_master(
     masters.forget(project_id);
 }
 
+/// The line an outdated pane left running is given, naming every condition
+/// of its replacement: `top` named four and this line three, so a sweep that
+/// rightly left a pane whose conversation could not be resumed read here as
+/// one contradicting its own rule (ISS-1379 judge 3, finding 3).
+fn outdated_left_line(slug: &str, pane_name: &str, why: &str, reason: &str) -> String {
+    format!(
+        "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor and a conversation that can be resumed; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
+    )
+}
 #[cfg(test)]
 mod tests {
+    /// ISS-1378 criterion 17.
+    #[test]
+    fn the_outdated_line_names_every_condition_of_the_replacement() {
+        let line = super::outdated_left_line(
+            "forge-dev",
+            "forge-master-forge-dev",
+            "built 0.17.89",
+            "a run is open",
+        );
+        for condition in [
+            "holding no run",
+            "at its prompt",
+            "with work for its successor",
+            "a conversation that can be resumed",
+        ] {
+            assert!(line.contains(condition), "{condition}: {line}");
+        }
+    }
+
     use super::*;
     use crate::daemon::master_skill::ASSET as MASTER_SKILL;
 

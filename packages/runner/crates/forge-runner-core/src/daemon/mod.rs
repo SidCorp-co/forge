@@ -250,6 +250,30 @@ fn hand_over(
     }
 }
 
+/// End the probation of the build this process serves, which has stayed up.
+fn confirm_probation() {
+    let exe = match crate::exe::own() {
+        Ok(own) => own.path,
+        Err(e) => {
+            tracing::warn!("[update] this build's probation cannot be confirmed: {e}");
+            return;
+        }
+    };
+    match crate::update::probation::confirm(&exe, crate::update::CURRENT_VERSION) {
+        Ok(true) => tracing::info!(
+            "[update] {} has served {}s and is confirmed: its probation is over",
+            crate::update::CURRENT_VERSION,
+            crate::update::probation::PERIOD.as_secs()
+        ),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(
+            "[update] the probation of {} at {} could not be ended ({e}); a later restart counts against it as though this one had not stayed up",
+            crate::update::CURRENT_VERSION,
+            crate::update::probation::path(&exe).display()
+        ),
+    }
+}
+
 /// Serve the master panes the image before this one handed on, where this
 /// process is that image's exec, and say what was found.
 fn take_handed_masters(masters: &master::Masters) {
@@ -648,6 +672,13 @@ pub async fn run(
     let masters = Arc::new(master::Masters::new());
     take_handed_masters(&masters);
 
+    // A build an update installed serves on probation until it has stayed up
+    // this long, and is then confirmed (ISS-1378).
+    tokio::spawn(async {
+        tokio::time::sleep(crate::update::probation::PERIOD).await;
+        confirm_probation();
+    });
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
     if let Some(url) =
@@ -688,6 +719,7 @@ pub async fn run(
                         if auto {
                             match crate::update::apply(&m, Some(&served)).await {
                                 Ok(Some(o)) => {
+                                    drain.update_settled();
                                     // The new binary is already swapped on disk;
                                     // this process hands over to it once its
                                     // own in-process work has ended.
@@ -752,11 +784,17 @@ pub async fn run(
                                     }
                                 }
                                 Ok(None) => {}
-                                Err(e) => tracing::warn!("[update] apply failed: {e}"),
+                                Err(e) => {
+                                    tracing::warn!("[update] apply failed: {e}");
+                                    drain.update_refused(&m.version, &e.to_string());
+                                }
                             }
                         }
                     }
-                    Ok(_) => tracing::debug!("[update] up to date"),
+                    Ok(_) => {
+                        tracing::debug!("[update] up to date");
+                        drain.update_settled();
+                    }
                     Err(e) => tracing::debug!("[update] check failed: {e}"),
                 }
                 }

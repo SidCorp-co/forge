@@ -222,6 +222,8 @@ pub struct Drain {
     record_dir: Option<PathBuf>,
     identity: Record,
     socket: Socket,
+    /// The last update not installed, carried on every record written.
+    refused: Mutex<Option<serving::UpdateRefused>>,
 }
 
 impl Drain {
@@ -240,6 +242,7 @@ impl Drain {
             record_dir,
             identity: Record::this_process(now_ms()),
             socket: Socket::new(),
+            refused: Mutex::new(None),
         };
         drain.publish(None);
         drain
@@ -462,12 +465,44 @@ impl Drain {
         });
     }
 
+    /// An update to `version` was downloaded and not installed, for `why`:
+    /// `status` says so until a later check settles it.
+    pub fn update_refused(&self, version: &str, why: &str) {
+        *self.refused.lock().unwrap_or_else(|p| p.into_inner()) = Some(serving::UpdateRefused {
+            version: version.to_string(),
+            why: why.to_string(),
+            at_ms: now_ms(),
+        });
+        let state = self.lock().state.clone();
+        self.publish(state);
+    }
+
+    /// A later check installed an update or found none newer, so the last
+    /// refusal no longer describes this box.
+    pub fn update_settled(&self) {
+        let had = self
+            .refused
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+            .is_some();
+        if had {
+            let state = self.lock().state.clone();
+            self.publish(state);
+        }
+    }
+
     fn publish(&self, drain: Option<DrainState>) {
         let Some(dir) = &self.record_dir else {
             return;
         };
         let record = Record {
             drain,
+            update_refused: self
+                .refused
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone(),
             ..self.identity.clone()
         };
         if let Err(e) = serving::write(dir, &record) {
@@ -939,6 +974,24 @@ mod tests {
     /// request and acknowledges between two reads inside one loop turn of
     /// `closing_window`. Only reading the acknowledgement first makes a count
     /// read after it complete, so the order is asserted on the source itself.
+    /// ISS-1378 criterion 16: the record carries a refused update until a
+    /// later check settles it.
+    #[test]
+    fn a_refused_update_stays_on_the_record_until_a_later_check_settles_it() {
+        let dir = crate::test_scratch::Scratch::new("drain-refused");
+        let drain = Drain::new(Some(dir.path().to_path_buf()));
+        drain.update_refused("0.17.91", "the pre-flight refused it");
+        let read = serving::read(dir.path()).unwrap().unwrap();
+        let refused = read.update_refused.expect("on the record");
+        assert_eq!(refused.version, "0.17.91");
+        assert_eq!(refused.why, "the pre-flight refused it");
+        drain.update_settled();
+        assert_eq!(
+            serving::read(dir.path()).unwrap().unwrap().update_refused,
+            None
+        );
+    }
+
     #[test]
     fn the_window_reads_the_acknowledgement_before_the_count() {
         let source = crate::test_scratch::lf(include_str!("drain.rs"));
