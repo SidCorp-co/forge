@@ -76,7 +76,7 @@ export const devices = pgTable(
 export const pairingCodes = pgTable(
   'pairing_codes',
   {
-    code: text('code').primaryKey(),
+    codeHash: text('code_hash').primaryKey(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

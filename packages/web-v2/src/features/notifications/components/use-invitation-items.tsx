@@ -23,11 +23,11 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
         id: "accept",
         label: "Accept",
         variant: "primary",
-        loading: accept.isPending && accept.variables?.token === inv.token,
+        loading: accept.isPending && accept.variables?.ref === inv.ref,
         disabled: busy,
         onClick: () =>
           accept.mutate(
-            { kind: inv.kind, token: inv.token },
+            { kind: inv.kind, ref: inv.ref },
             {
               onSuccess: () => toast({ title: `You joined ${inv.name} as ${enumLabel("role", inv.role)}`, tone: "success" }),
               onError: (err) => toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
@@ -38,7 +38,7 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
         id: "decline",
         label: "Decline",
         variant: "ghost",
-        loading: decline.isPending && decline.variables?.token === inv.token,
+        loading: decline.isPending && decline.variables?.ref === inv.ref,
         disabled: busy,
         // The confirmation is a dialog in the page, under the dropdown's portal, so the dropdown steps aside.
         onClick: () => {
@@ -60,7 +60,7 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
       onConfirm={() => {
         if (!declining) return;
         decline.mutate(
-          { kind: declining.kind, token: declining.token },
+          { kind: declining.kind, ref: declining.ref },
           {
             onSuccess: () => toast({ title: "Invitation declined", tone: "success" }),
             onError: (err) => toast({ title: "Failed to decline invitation", description: formatApiError(err), tone: "error" }),

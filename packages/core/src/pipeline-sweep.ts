@@ -2,8 +2,8 @@
 // notifications run once a minute, each isolated so one that throws cannot starve the rest.
 
 import { type LoopMonitorResult, recordPipelineSweeperTick, runLoopMonitor } from './jobs/index.js';
+import { reportFailure } from './lib/error-tracking.js';
 import { logger } from './lib/logger.js';
-import { reportFailure } from './lib/sentry.js';
 import { type ReevaluateResult, reevaluateConditions } from './notifications/index.js';
 import {
   alarmAgedHolds,

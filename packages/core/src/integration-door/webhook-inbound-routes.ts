@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import {
   type BindingWithConnection,
+  bindingInboundSecret,
   buildContextFromBinding,
   dropPreviousHeldInboundSecret,
   getAdapter,
@@ -133,7 +134,7 @@ webhookInboundRoutes.post(
         ? verifySharedToken(secret, signatureHeader)
         : verifyHmacSignature(secret, raw, signatureHeader));
     // A rotated provider-held secret: the replaced one verifies until the new one first does.
-    let pair = candidatePairs.find((p) => verifies(p.binding.integrationSecret));
+    let pair = candidatePairs.find((p) => verifies(bindingInboundSecret(p.binding)));
     if (pair && previousHeldInboundSecret(pair.connection)) {
       await dropPreviousHeldInboundSecret(pair.connection.id);
     }

@@ -49,7 +49,8 @@ export interface NotificationMember {
 // ISS-597 — pending invitation returned by GET /api/invitations/pending.
 export interface PendingInvitation {
   kind: "project" | "org";
-  token: string;
+  /** The stored digest naming this invitation; the emailed token itself is never listed. */
+  ref: string;
   name: string;
   inviterEmail: string;
   role: string;

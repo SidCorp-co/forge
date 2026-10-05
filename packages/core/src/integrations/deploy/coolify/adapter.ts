@@ -1,5 +1,5 @@
+import { traceStep } from '../../../lib/error-tracking.js';
 import { logger } from '../../../lib/logger.js';
-import { traceStep } from '../../../lib/sentry.js';
 import {
   type AdapterContext,
   type DeployTargetDispatch,

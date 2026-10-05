@@ -61,7 +61,7 @@ export const oauthAccounts = pgTable(
 export const emailVerificationTokens = pgTable(
   'email_verification_tokens',
   {
-    token: text('token').primaryKey(),
+    tokenHash: text('token_hash').primaryKey(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

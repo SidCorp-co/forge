@@ -2,9 +2,9 @@ import type { ResumeDropReason } from '@forge/contracts/resume-drop';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { traceStep } from '../lib/error-tracking.js';
 import { recordResumeDrop } from '../lib/hold-metrics.js';
 import { logger } from '../lib/logger.js';
-import { traceStep } from '../lib/sentry.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
 
 /** What this attempt did with the prior session, durable on `agent_sessions.metadata.resume`. */

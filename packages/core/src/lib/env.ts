@@ -4,7 +4,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
   DEVICE_TOKEN_PEPPER: z.string().min(32),
-  PAT_PEPPER: z.string().min(32).default('dev-pat-pepper-replace-in-production-0123456789'),
+  PAT_PEPPER: z.string().min(32).optional(),
   RATE_LIMIT_PAT_READ_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_PAT_READ_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_PAT_WRITE_MAX: z.coerce.number().int().positive().optional(),
@@ -15,7 +15,13 @@ const EnvSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
-  SMTP_DEBUG: z.coerce.boolean().default(false),
+  SMTP_DEBUG: z
+    .enum(['true', 'false', '1', '0'], {
+      error: (i) =>
+        `SMTP_DEBUG must be one of true, false, 1, 0 (or unset); got ${JSON.stringify(i.input)}`,
+    })
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   APP_BASE_URL: z.url().default('http://localhost:3000'),
   PUBLIC_API_BASE_URL: z.url().optional(),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
@@ -101,6 +107,31 @@ const EnvSchema = z.object({
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 });
 
+/**
+ * The pepper every PAT was hashed with while PAT_PEPPER had a built-in default. A PAT hashed under it
+ * still verifies and is rehashed under the configured pepper on use; the amnesty ends when no live
+ * hash is left unproven (`.forge/conformance.json` $amnesties, credentials/pat.ts:countUnprovenPatPeppers).
+ */
+export const LEGACY_PAT_PEPPER = 'dev-pat-pepper-replace-in-production-0123456789';
+
+const DEPLOYED_ENVS: ReadonlySet<string> = new Set(['production', 'staging']);
+
+/** What the schema cannot say alone: the settings a deployed core refuses to boot without. */
+function deployedEnvIssues(parsed: Env): string[] {
+  if (!DEPLOYED_ENVS.has(parsed.NODE_ENV)) return [];
+  if (parsed.PAT_PEPPER === undefined) {
+    return [
+      `  - PAT_PEPPER: required when NODE_ENV=${parsed.NODE_ENV}; set a random value of at least 32 characters (openssl rand -hex 32). It has no built-in default.`,
+    ];
+  }
+  if (parsed.PAT_PEPPER === LEGACY_PAT_PEPPER) {
+    return [
+      `  - PAT_PEPPER: is the retired built-in default, which is public in the source; set a random value of at least 32 characters.`,
+    ];
+  }
+  return [];
+}
+
 const RETIRED_ENV_VARS: Record<string, string> = {
   RATE_LIMIT_PAT_MAX: 'RATE_LIMIT_PAT_READ_MAX and RATE_LIMIT_PAT_WRITE_MAX',
   RATE_LIMIT_PAT_WINDOW_MS: 'RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS',
@@ -133,6 +164,10 @@ function loadEnv(): Env {
       .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`[@forge/core] Invalid environment:\n${issues}`);
+  }
+  const deployed = deployedEnvIssues(parsed.data);
+  if (deployed.length > 0) {
+    throw new Error(`[@forge/core] Invalid environment:\n${deployed.join('\n')}`);
   }
 
   return parsed.data;

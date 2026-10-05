@@ -21,6 +21,7 @@ import {
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { type InvitationKey, invitationDigest } from '../lib/invitation.js';
 import {
   addProjectMembers,
   regrantAgentCredentials,
@@ -198,23 +199,26 @@ export async function revokeProjectInvitation(projectId: string, email: string):
         isNull(projectInvitations.acceptedAt),
       ),
     )
-    .returning({ token: projectInvitations.token });
+    .returning({ tokenHash: projectInvitations.tokenHash });
   return deleted.length > 0;
 }
 
 /** Dismiss the pending invitation `token` when it was sent to `email`; false when none matched. */
-export async function declineProjectInvitation(token: string, email: string): Promise<boolean> {
+export async function declineProjectInvitation(
+  key: InvitationKey,
+  email: string,
+): Promise<boolean> {
   const [updated] = await db
     .update(projectInvitations)
     .set({ dismissedAt: new Date() })
     .where(
       and(
-        eq(projectInvitations.token, token),
+        eq(projectInvitations.tokenHash, invitationDigest(key)),
         sql`lower(${projectInvitations.email}) = lower(${email})`,
         isNull(projectInvitations.acceptedAt),
       ),
     )
-    .returning({ token: projectInvitations.token });
+    .returning({ tokenHash: projectInvitations.tokenHash });
   return updated !== undefined;
 }
 

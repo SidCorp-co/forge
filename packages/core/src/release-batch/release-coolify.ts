@@ -8,8 +8,8 @@ import {
   enqueueOutboundDispatch,
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
+import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { traceStep } from '../lib/sentry.js';
 import {
   abandonDeployDispatchHold,
   acquireDeployLocks,

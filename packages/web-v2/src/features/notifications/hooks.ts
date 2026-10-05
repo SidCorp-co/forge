@@ -73,8 +73,8 @@ function useInvalidateInvitations() {
 export function useAcceptInvitation() {
   const invalidate = useInvalidateInvitations();
   return useMutation({
-    mutationFn: ({ kind, token }: { kind: "project" | "org"; token: string }) =>
-      invitationsApi.accept(kind, token),
+    mutationFn: ({ kind, ref }: { kind: "project" | "org"; ref: string }) =>
+      invitationsApi.accept(kind, ref),
     onSuccess: invalidate,
   });
 }
@@ -82,8 +82,8 @@ export function useAcceptInvitation() {
 export function useDeclineInvitation() {
   const invalidate = useInvalidateInvitations();
   return useMutation({
-    mutationFn: ({ kind, token }: { kind: "project" | "org"; token: string }) =>
-      invitationsApi.decline(kind, token),
+    mutationFn: ({ kind, ref }: { kind: "project" | "org"; ref: string }) =>
+      invitationsApi.decline(kind, ref),
     onSuccess: invalidate,
   });
 }

@@ -115,6 +115,11 @@ export function storedText(level: SensitiveDataLevel, text: string) {
   return { text: scrub.text, redactions: redactionCount(scrub.redactions), scrubbed: true };
 }
 
+/** A structured value as it is stored: every string scrubbed, ids, times and bare URLs kept, at any level but off. */
+export function storedDeep<T>(level: SensitiveDataLevel, value: T): T {
+  return level === 'off' ? value : (scrubDeep(value, { n: 0 }) as T);
+}
+
 export function storedAnswers<A extends { text?: string | undefined }>(
   level: SensitiveDataLevel,
   answers: readonly A[],

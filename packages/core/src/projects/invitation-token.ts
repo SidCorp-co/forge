@@ -2,7 +2,13 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ProjectMemberRole, projectInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { generateInvitationToken, INVITATION_TTL_MS } from '../lib/invitation.js';
+import {
+  generateInvitationToken,
+  INVITATION_TTL_MS,
+  type InvitationKey,
+  invitationDigest,
+} from '../lib/invitation.js';
+import { digestToken } from '../lib/token-digest.js';
 import { addProjectMembers } from '../permissions/index.js';
 
 const MAX_INSERT_RETRIES = 3;
@@ -47,7 +53,7 @@ export async function issueInvitationToken(
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
         await tx.insert(projectInvitations).values({
-          token,
+          tokenHash: digestToken(token),
           projectId: input.projectId,
           email: input.email,
           role: input.role,
@@ -74,9 +80,10 @@ type ConsumeInvitationResult =
   | { status: 'email_mismatch'; invitedEmail: string };
 
 export async function consumeInvitationToken(
-  token: string,
+  key: InvitationKey,
   accepting: { userId: string; email: string },
 ): Promise<ConsumeInvitationResult> {
+  const tokenHash = invitationDigest(key);
   return db.transaction(async (tx) => {
     const rows = await tx.execute<{
       project_id: string;
@@ -87,7 +94,7 @@ export async function consumeInvitationToken(
     }>(
       sql`SELECT project_id, email, role, expires_at, accepted_at
           FROM ${projectInvitations}
-          WHERE token = ${token}
+          WHERE token_hash = ${tokenHash}
           FOR UPDATE`,
     );
     const row = rows[0];
@@ -118,7 +125,7 @@ export async function consumeInvitationToken(
     await tx
       .update(projectInvitations)
       .set({ acceptedAt: new Date() })
-      .where(eq(projectInvitations.token, token));
+      .where(eq(projectInvitations.tokenHash, tokenHash));
 
     return { status: 'ok', projectId: row.project_id, role: row.role };
   });

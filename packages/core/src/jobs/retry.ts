@@ -14,9 +14,9 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
+import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { traceStep } from '../lib/sentry.js';
 import {
   assertRunAcceptsWork,
   capacityWedgeEntityId,

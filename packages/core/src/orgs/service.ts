@@ -7,6 +7,7 @@ import {
   orgInvitations,
   users,
 } from '../db/schema.js';
+import { type InvitationKey, invitationDigest } from '../lib/invitation.js';
 import { addOrgMember, removeOrgMember, updateOrgMember } from '../permissions/index.js';
 
 /** The user's personal org (created at signup, or by migration 0106 for older users). */
@@ -171,7 +172,7 @@ export async function revokeOrgInvitation(orgId: string, email: string): Promise
         isNull(orgInvitations.acceptedAt),
       ),
     )
-    .returning({ token: orgInvitations.token });
+    .returning({ tokenHash: orgInvitations.tokenHash });
   return deleted.length > 0;
 }
 
@@ -190,17 +191,17 @@ export async function dropOrgMember(orgId: string, userId: string): Promise<void
 }
 
 /** Dismiss the pending invitation `token` when it was sent to `email`; false when none matched. */
-export async function declineOrgInvitation(token: string, email: string): Promise<boolean> {
+export async function declineOrgInvitation(key: InvitationKey, email: string): Promise<boolean> {
   const [updated] = await db
     .update(orgInvitations)
     .set({ dismissedAt: new Date() })
     .where(
       and(
-        eq(orgInvitations.token, token),
+        eq(orgInvitations.tokenHash, invitationDigest(key)),
         sql`lower(${orgInvitations.email}) = lower(${email})`,
         isNull(orgInvitations.acceptedAt),
       ),
     )
-    .returning({ token: orgInvitations.token });
+    .returning({ tokenHash: orgInvitations.tokenHash });
   return updated !== undefined;
 }

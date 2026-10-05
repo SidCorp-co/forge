@@ -29,17 +29,7 @@ export default [
       'module-shape/table-writer': 'error',
       'module-shape/route-query': 'error',
       'module-shape/refusal': 'error',
-      'module-shape/global-fetch': [
-        'error',
-        {
-          allow: [
-            {
-              file: 'packages/core/src/schedules/script/worker-entry.ts',
-              why: "The sandboxed schedule script's ctx.http.fetch: user code in a worker calling a URL the user wrote, held to https: and a timeout by the sandbox, not Forge reaching a system. There is no port to put between a user's script and the URL that script names; the sandbox is the boundary.",
-            },
-          ],
-        },
-      ],
+      'module-shape/global-fetch': 'error',
     },
   },
 ];
