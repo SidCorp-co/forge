@@ -78,6 +78,7 @@ import {
 import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
 import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
 import {
+  policyGapsOf,
   policyRefusal,
   readEffectivePolicy,
   readLandingBranches,
@@ -206,6 +207,7 @@ export function provideWorkPorts(): void {
     requirementOfIssue,
     plannedRevisionFor,
     approvalRequired,
+    policyGapsOf,
     contractDrift: async (issue, landed) =>
       landingDriftRefusal(landed, await landingWorld(issue, landed)),
     guideRef,

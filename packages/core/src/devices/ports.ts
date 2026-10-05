@@ -31,6 +31,12 @@ interface DevicesPorts {
   /** The refusal a dispatch against a project's policy is answered with. */
   policyRefusal(code: 'POLICY_UNDECLARED', projectId: string, status: string | null): RefusalError;
   policyRefusalOf(err: unknown): { code: PolicyRefusalCode; detail: string } | null;
+  /** The refusal a dispatch at `status` would meet under `held`, or null when it would run. */
+  policyGapOf(
+    projectId: string,
+    held: { document: unknown } | null,
+    status: string,
+  ): { code: PolicyRefusalCode; detail: string } | null;
   /** Throws the policy refusal when the project declares no policy. */
   requirePolicy(projectId: string): Promise<unknown>;
   /** Every pull request linked to each issue, open first, as the repository projection holds them. */

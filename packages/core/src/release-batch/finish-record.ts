@@ -7,7 +7,7 @@ import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
-import type { ReleaseVerification } from './plan.js';
+import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
 
 type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -39,13 +39,13 @@ export interface ReleaseFinishRecord {
   closed: string[] | null;
   failed: Array<{ id: string; reason: string }> | null;
   refusal: FinishRefusal | null;
-  /** How the close was proved (ISS-1321); a resume re-reads an `unverified` one. `null` before
+  /** How the close was proved; a resume re-reads a historical `unverified` one. `null` before
    *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
-  verification: ReleaseVerification | null;
+  verification: RecordedVerification | null;
   finishedAt: string | null;
 }
 
-const VERIFICATIONS: ReadonlySet<string> = new Set<ReleaseVerification>(['probed', 'unverified']);
+const VERIFICATIONS: ReadonlySet<string> = new Set<string>(RECORDED_VERIFICATIONS);
 
 function str(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
@@ -104,7 +104,7 @@ export function readFinishRecord(metadata: unknown): ReleaseFinishRecord | null 
           }
         : null,
     verification: VERIFICATIONS.has(str(r.verification) ?? '')
-      ? (r.verification as ReleaseVerification)
+      ? (r.verification as RecordedVerification)
       : null,
     finishedAt: str(r.finishedAt),
   };

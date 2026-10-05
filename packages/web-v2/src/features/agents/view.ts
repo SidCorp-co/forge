@@ -30,11 +30,14 @@ export function leaseLeft(r: Pick<RunStanding, "holder">): string | null {
   return ms > 0 ? `expires ${formatCountdown(h.expiresAt)}` : `expired ${formatRelativeTime(h.expiresAt)}`;
 }
 
-/** Core's waiting-on, its deadline drawn as a countdown. */
+/** Core's waiting-on, a gate named by its label and its deadline drawn as a countdown. */
 export function waitingView(r: RunStanding): WaitingOnView {
   const w = r.waitingOn;
+  if (w.kind === "gate") {
+    const act = w.resumesAt ? `resumes ${formatCountdown(w.resumesAt)}` : "resumes itself, no deadline";
+    return { kind: "gate", who: enumLabel("runGate", w.gate), act, rule: w.rule };
+  }
   if (w.kind === "run") return { ...w, act: [w.act, leaseLeft(r)].filter(Boolean).join(" · ") };
-  if (w.kind === "gate" && w.dueAt) return { ...w, act: `resumes ${formatCountdown(w.dueAt)}` };
   return w;
 }
 

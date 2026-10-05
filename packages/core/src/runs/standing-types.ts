@@ -9,8 +9,9 @@ import type {
   RunOutcome,
   RunState,
   RunWaitingKind,
+  RunWaitingOn,
 } from '@forge/contracts/run-standing';
-import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
+import { nobodyWaits } from '@forge/contracts/standing';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import type { HoldState } from '../jobs/index.js';
 import type { PipelineRunLane } from '../pipeline/index.js';
@@ -111,6 +112,14 @@ export interface RunFacts {
       held: boolean;
     }
   >;
+  /** The project's deploy locks another run holds: what a release's deploy would be refused on. */
+  foreignLocks: Array<{
+    environment: string;
+    runId: string;
+    subject: string;
+    acquiredAt: Date;
+    expiresAt: Date;
+  }>;
   question: { id: string; createdAt: Date; admin: boolean; issueKey: string | null } | null;
   approval: { id: string; requestedAt: Date } | null;
   releaseAttempt: { stage: string; verdict: string | null; startedAt: Date } | null;
@@ -152,12 +161,16 @@ export interface Derived {
   waitingOn: RunWaitingOn;
 }
 
-export type RunWaitingOn = WaitingOn<RunWaitingKind>;
+export type { RunWaitingOn };
+
+/** A release run: the one lane whose deploy takes the environment's deploy lock (ISS-1279). */
+export const isReleaseRun = (f: Pick<RunFacts, 'run' | 'job'>): boolean =>
+  f.run.releaseVersion !== null || f.job?.type === 'release_batch';
 
 export const NO_WAIT = nobodyWaits;
 
 export const runWait = (
-  kind: RunWaitingKind,
+  kind: Exclude<RunWaitingKind, 'gate'>,
   who: string,
   act: string,
   rule: string,

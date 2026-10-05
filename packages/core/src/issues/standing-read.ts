@@ -6,7 +6,7 @@
  */
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_TERMINAL_STATUSES, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -15,6 +15,7 @@ import type {
   IssueStandingRow,
   IssueStandingScope,
   IssueStepHandoff,
+  IssueWithheld,
 } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { changedSincePlan } from '@forge/contracts/requirements';
@@ -25,14 +26,24 @@ import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { isRefusal } from '../lib/refusal.js';
 import { holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
+import { assertContractWaitsSettledForIssue, contractWaitUnsettledSql } from './contract-waits.js';
 import { designHoldPhrase } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { approvalRequired, handoffContextsOf, holdsOpenHumanQuestion } from './ports.js';
+import {
+  approvalRequired,
+  assertDesignApprovedForIssue,
+  designUnapprovedSql,
+  handoffContextsOf,
+  holdsOpenHumanQuestion,
+  isDispatchGateError,
+  policyGapsOf,
+} from './ports.js';
 import { classifyLease } from './session-claim.js';
 import {
   deriveIssueStanding,
@@ -88,6 +99,8 @@ interface IssueRowRaw {
   moving: boolean;
   owes_answer: boolean;
   holds_dependents: boolean;
+  design_unapproved: boolean;
+  contract_unsettled: boolean;
 }
 
 function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
@@ -110,6 +123,8 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
              ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
+             ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
+             ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,
@@ -167,6 +182,7 @@ type Facts = {
   people: Awaited<ReturnType<typeof peopleOf>>;
   releaseApproval: boolean;
   viewer: Awaited<ReturnType<typeof viewerOf>>;
+  withheld: Map<string, IssueWithheld>;
   now: Date;
 };
 
@@ -248,8 +264,54 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
     releaseApproval: f.releaseApproval,
     viewer: f.viewer,
+    withheld: f.withheld.get(r.id) ?? null,
     now: f.now,
   };
+}
+
+const gateDetail = async (ask: () => Promise<void>): Promise<string | null> => {
+  try {
+    await ask();
+    return null;
+  } catch (err) {
+    if (isDispatchGateError(err)) return err.message.replace(/^WORKFLOW_DESIGN_NOT_APPROVED: /, '');
+    if (isRefusal(err)) return err.refusals.map((r) => r.detail).join(' ');
+    throw err;
+  }
+};
+
+/**
+ * Why the admissible list withholds each takeable row, asked of the gates that withhold it (the
+ * policy, the design gate, the contract-wait gate), first that holds; a row that is not withheld is
+ * absent. A gate is asked again only for the rows its predicate already held, so a page asks none.
+ */
+async function withheldOf(
+  projectId: string,
+  raws: readonly IssueRowRaw[],
+): Promise<Map<string, IssueWithheld>> {
+  const out = new Map<string, IssueWithheld>();
+  const takeable = raws.filter((r) => TAKEABLE_STATUSES.includes(r.status));
+  if (takeable.length === 0) return out;
+  const gapOf = await policyGapsOf(projectId);
+  for (const r of takeable) {
+    const gap = gapOf(r.status);
+    if (gap) {
+      out.set(r.id, gap);
+      continue;
+    }
+    if (r.design_unapproved) {
+      const detail = await gateDetail(() => assertDesignApprovedForIssue(projectId, r.id));
+      if (detail !== null) {
+        out.set(r.id, { code: 'WORKFLOW_DESIGN_NOT_APPROVED', detail });
+        continue;
+      }
+    }
+    if (r.contract_unsettled) {
+      const detail = await gateDetail(() => assertContractWaitsSettledForIssue(projectId, r.id));
+      if (detail !== null) out.set(r.id, { code: 'CONTRACT_WAIT_UNSETTLED', detail });
+    }
+  }
+  return out;
 }
 
 async function standingRows(
@@ -260,15 +322,17 @@ async function standingRows(
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
-  const [prefix, edges, criteria, modules, feedback, releaseApproval, who] = await Promise.all([
-    activeIssuePrefix(projectId),
-    blockingEdgesIn(db, projectId, ids),
-    criteriaOf(projectId, ids),
-    modulesOf(projectId, ids),
-    feedbackOf(ids),
-    approvalRequired(projectId),
-    viewerOf(viewer, projectId),
-  ]);
+  const [prefix, edges, criteria, modules, feedback, releaseApproval, who, withheld] =
+    await Promise.all([
+      activeIssuePrefix(projectId),
+      blockingEdgesIn(db, projectId, ids),
+      criteriaOf(projectId, ids),
+      modulesOf(projectId, ids),
+      feedbackOf(ids),
+      approvalRequired(projectId),
+      viewerOf(viewer, projectId),
+      withheldOf(projectId, raws),
+    ]);
   const [requirements, people] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
@@ -284,6 +348,7 @@ async function standingRows(
     people,
     releaseApproval,
     viewer: who,
+    withheld,
     now,
   };
   const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => [r, standingInputOf(r, facts)]);

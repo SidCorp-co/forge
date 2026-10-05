@@ -168,7 +168,7 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: string;
-  verification: "probed" | "unverified";
+  verification: "probed" | "deployment";
 }
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";

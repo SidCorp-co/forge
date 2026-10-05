@@ -42,6 +42,7 @@ import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
   dispatchStateOf,
+  policyGapOf,
   policyRefusal,
   policyRefusalOf,
   readContentLanguage,
@@ -132,6 +133,8 @@ export function provideExecutionPorts(): void {
     readEffectivePolicy,
     policyRefusal,
     policyRefusalOf,
+    policyGapOf: (projectId, held, status) =>
+      policyGapOf(projectId, held as Parameters<typeof policyGapOf>[1], status),
     requirePolicy,
     readPullRequestsForIssues,
     readDeclaredSource,

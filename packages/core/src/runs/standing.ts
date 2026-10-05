@@ -20,6 +20,7 @@ import { type StuckReading, stuckField, stuckOf } from './standing-stuck.js';
 import {
   type Derived,
   iso,
+  isReleaseRun,
   none,
   type RunFacts,
   type RunWaitingOn,
@@ -47,7 +48,7 @@ function stepFor(f: RunFacts, live: boolean): RunStep {
 }
 
 function laneOfRun(f: Pick<RunFacts, 'run' | 'issue' | 'job' | 'deployLocks'>): RunLane {
-  if (f.run.releaseVersion !== null || f.job?.type === 'release_batch') return 'release';
+  if (isReleaseRun(f)) return 'release';
   if (f.issue || f.run.rawLane === 'run_session') return 'issue';
   if (f.deployLocks.length > 0) return 'deploy';
   return 'job';

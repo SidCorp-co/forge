@@ -56,19 +56,36 @@ export type Admission = {
   projectId: string;
   limit: number;
   entryOnRelease: boolean;
+  /** The takeable statuses the policy declares a state for; a row at any other is withheld. */
+  statuses: readonly string[];
 };
 
 /** A project this device serves that admits nothing, and the refusal that says why. */
 type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: string };
 
-function admissionOf(
+/**
+ * A project's admission under its policy, and a refusal for each takeable status the policy declares
+ * no state for: a row there would be refused POLICY_STATE_UNDECLARED at the claim, so it is withheld
+ * here and named, never handed out to fail.
+ */
+export function admissionOf(
   projectId: string,
-  policy: Parameters<typeof isEntryGateClosed>[0],
-): Admission {
+  held: { document: unknown },
+): { admission: Admission; refused: AdmissionRefusal[] } {
+  const refused: AdmissionRefusal[] = [];
+  const statuses = TAKEABLE_STATUSES.filter((status) => {
+    const gap = devicesPorts().policyGapOf(projectId, held, status);
+    if (gap) refused.push({ projectId, code: gap.code, message: gap.detail });
+    return gap === null;
+  });
   return {
-    projectId,
-    limit: DEFAULT_ADMISSIBLE_LIMIT,
-    entryOnRelease: isEntryGateClosed(policy),
+    admission: {
+      projectId,
+      limit: DEFAULT_ADMISSIBLE_LIMIT,
+      entryOnRelease: isEntryGateClosed(held.document as Parameters<typeof isEntryGateClosed>[0]),
+      statuses,
+    },
+    refused,
   };
 }
 
@@ -97,9 +114,9 @@ async function readAdmissions(args: {
     const projectId = String(row.id);
     const held = await devicesPorts().readEffectivePolicy(projectId);
     if (held) {
-      admissions.push(
-        admissionOf(projectId, held.document as Parameters<typeof isEntryGateClosed>[0]),
-      );
+      const { admission, refused: undeclared } = admissionOf(projectId, held);
+      if (admission.statuses.length > 0) admissions.push(admission);
+      refused.push(...undeclared);
       continue;
     }
     const [refusal] = devicesPorts().policyRefusal('POLICY_UNDECLARED', projectId, null).refusals;
@@ -122,7 +139,7 @@ export async function readAdmissibleIssues(args: {
   const out: AdmissibleIssue[] = [];
   for (const a of admissions) {
     const takeableList = sql.join(
-      TAKEABLE_STATUSES.map((s) => sql`${s}`),
+      a.statuses.map((s) => sql`${s}`),
       sql`, `,
     );
     const rows = (await db.execute(sql`
@@ -138,8 +155,9 @@ export async function readAdmissibleIssues(args: {
         AND i.status IN (${takeableList})
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
         AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
-        -- an issue that builds a workflow whose design is not approved waits; the issue read names
-        -- which (workflows/build-gate.ts). No contract-version wait is checked here.
+        -- an issue that builds a workflow whose design is not approved, or waits on a contract
+        -- version no approved version settles, is withheld; Issues > Stuck names the refusal
+        -- (issues/standing.ts:withheldTurn).
         AND NOT ${designUnapprovedSql(sql`i.id`)}
         AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that

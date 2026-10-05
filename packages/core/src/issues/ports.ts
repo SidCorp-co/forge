@@ -6,6 +6,7 @@
 // pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -173,6 +174,10 @@ interface IssuePorts {
     plan: string | null,
   ) => Promise<{ plannedRevision: number | null; plannedBaselineSeq: number | null } | null>;
   approvalRequired: (projectId: string) => Promise<boolean>;
+  /** The project's policy read once: the refusal a dispatch at a status would meet, or null. */
+  policyGapsOf: (
+    projectId: string,
+  ) => Promise<(status: string) => { code: PolicyRefusalCode; detail: string } | null>;
   contractDrift: (
     issue: {
       projectId: string;
@@ -270,6 +275,7 @@ export const proposesWorkflowOf = port('proposesWorkflowOf');
 export const requirementOfIssue = port('requirementOfIssue');
 export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');
+export const policyGapsOf = port('policyGapsOf');
 export const contractDrift = port('contractDrift');
 
 export const guideRef = port('guideRef');
