@@ -108,18 +108,18 @@ The choices inside that, and why:
 Four decisions the box still takes are each one too-long function kept under a `too_many_lines`
 amnesty, whose reason names its entry here. Each is deleted, not split, once core answers it:
 
-- **Placement** — `ensure_master` (`runner-daemon/src/master/place.rs`): whether a project gets a
+- **Placement** — `ensure_master` (`packages/runner/crates/runner-daemon/src/master/place.rs`): whether a project gets a
   master on this box now, and whether it resumes its predecessor's conversation or starts cold.
   Core already holds the master session (`POST /api/devices/me/master-session`) and the limit
   (`/api/devices/me/limit`); it answers *place* or *do not place, because*, and the box opens the
   pane and reports whether a transcript exists.
-- **Retirement** — `sweep` (`runner-daemon/src/master/sweep.rs`): when an idle, deaf, limited or
+- **Retirement** — `sweep` (`packages/runner/crates/runner-daemon/src/master/sweep.rs`): when an idle, deaf, limited or
   outdated master is nudged, retired or placed again. Core decides from the pass record
   (`/master-session/pass`) and the pane facts the box reports; the box ends the pane it is told to.
-- **Recovery verdict** — `recovery::reconcile` (`runner-daemon/src/recovery/mod.rs`): at boot,
+- **Recovery verdict** — `recovery::reconcile` (`packages/runner/crates/runner-daemon/src/recovery/mod.rs`): at boot,
   whether a run the ledger names is over. The box reports the pid, pane and transcript facts; core
   takes the verdict on the run session (`/api/devices/me/run-sessions/:id`) and closes it.
-- **Idle verdict** — `ClaudeCodeRunner::start` (`runner-agent/src/claude_code/mod.rs`): when a
+- **Idle verdict** — `ClaudeCodeRunner::start` (`packages/runner/crates/runner-agent/src/claude_code/mod.rs`): when a
   resident turn has been idle long enough to end. Core's job timeouts take it once the box stops
   acking a job at pane open and posting progress every tick.
 
