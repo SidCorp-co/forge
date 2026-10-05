@@ -8,6 +8,27 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **An issue can wait on a contract version (ISS-228).** It is not dispatched until an approved
+  version reaches it, and a production release waits until the provider's production carries that
+  version. Migration 0407.
+
+- **Job panes never stop to ask a person (ISS-228).** A pane that stops on a question fails by name
+  as `agent_stopped_on_question` instead of being retried as a startup death.
+
+- **Every ingest path stores through the secret scrubber (ISS-228).** Session errors, job failures,
+  run evidence and the other text a box sends are scrubbed before they are written.
+
+- **Every router checks its credential, and only a device's owner binds it to a project (ISS-228).**
+  An unowned bind is refused as `DEVICE_BIND_FORBIDDEN`.
+
+- **A refused webhook or merge is recorded and named, not a failure (ISS-228).** A webhook for a
+  foreign repository is a refused delivery named `WEBHOOK_FOREIGN_REPOSITORY` rather than a 500.
+
+- **Reporters reopen their own feedback, and schedule owners edit their own schedules (ISS-228).**
+  The module map covers every live directory, and its 12 false claims are fixed.
+
 ## [0.4.0-dev.28] - 2026-10-05
 
 Secrets rest digested or encrypted, and pool claims and release failures are repaired
