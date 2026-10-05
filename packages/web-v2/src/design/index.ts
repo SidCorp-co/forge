@@ -61,7 +61,6 @@ export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dia
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
 export { PageContainer, type PageContainerProps } from "./patterns/page-container";
-export { RefusalLine } from "./patterns/refusal-line";
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
 export {

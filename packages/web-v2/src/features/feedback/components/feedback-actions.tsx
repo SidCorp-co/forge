@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea, RefusalLine } from "@/design";
+import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useFeedbackAction } from "../hooks";

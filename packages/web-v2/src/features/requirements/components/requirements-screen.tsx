@@ -14,7 +14,8 @@ import {
 } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ActorChip, AGENT_TINT, Button, EmptyState, ErrorState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, ProjectLoader, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn, RefusalLine } from "@/design";
+import { ActorChip, AGENT_TINT, Button, EmptyState, ErrorState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, ProjectLoader, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";

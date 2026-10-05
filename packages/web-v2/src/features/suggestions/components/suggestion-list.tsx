@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AGENT_TINT, Button, Input, RefusalLine } from "@/design";
+import { AGENT_TINT, Button, Input } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";

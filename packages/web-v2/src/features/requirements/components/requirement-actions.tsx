@@ -7,7 +7,8 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Button, Input, showToast, Tooltip, RefusalLine } from "@/design";
+import { Button, Input, showToast, Tooltip } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/conversations/dock";
 import { formatApiError } from "@/lib/api/error";
 import { requirementsApi } from "../api";

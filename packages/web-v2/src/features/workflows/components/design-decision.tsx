@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Textarea, RefusalLine } from "@/design";
+import { Button, Textarea } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import type { useDesignDecision } from "../hooks";
 import type { WorkflowDesign } from "../types";
 

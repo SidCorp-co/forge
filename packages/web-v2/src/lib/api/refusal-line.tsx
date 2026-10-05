@@ -1,9 +1,9 @@
 "use client";
 
-import { ApiError } from "@/lib/api/client";
-import { formatApiError } from "@/lib/api/error";
-import { namedRefusals } from "@/lib/api/refusals";
-import { LEGEND } from "../vocabulary";
+import { ApiError } from "./client";
+import { formatApiError } from "./error";
+import { namedRefusals } from "./refusals";
+import { LEGEND } from "@/design";
 
 /** The first refusal core named, with how many more; a failure that named none reads as `formatApiError` words it. */
 function lineOf(err: unknown): { code: string | null; detail: string } {
