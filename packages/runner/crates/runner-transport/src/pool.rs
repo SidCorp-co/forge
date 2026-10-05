@@ -329,11 +329,15 @@ mod refused_claim_tests {
 
     #[test]
     fn a_pool_refusal_reads_back_as_its_reason() {
-        let body = r#"{"status":409,"detail":"job j was taken","error":{"code":"POOL_ALREADY_HELD"}}"#;
+        let body =
+            r#"{"status":409,"detail":"job j was taken","error":{"code":"POOL_ALREADY_HELD"}}"#;
         let refused = refused_claim(body).expect("a POOL_ code is a claim refusal");
         assert!(!refused.ok);
         assert_eq!(
-            Refusal::of(refused.reason.as_deref().unwrap(), refused.detail.as_deref()),
+            Refusal::of(
+                refused.reason.as_deref().unwrap(),
+                refused.detail.as_deref()
+            ),
             Refusal::AlreadyHeld
         );
         assert_eq!(refused.detail.as_deref(), Some("job j was taken"));
@@ -341,7 +345,8 @@ mod refused_claim_tests {
 
     #[test]
     fn a_refusal_outside_the_pool_codes_is_not_a_claim_answer() {
-        let body = r#"{"status":404,"detail":"not yours","error":{"code":"MASTER_SESSION_NOT_HELD"}}"#;
+        let body =
+            r#"{"status":404,"detail":"not yours","error":{"code":"MASTER_SESSION_NOT_HELD"}}"#;
         assert!(refused_claim(body).is_none());
         assert!(refused_claim("not json").is_none());
     }

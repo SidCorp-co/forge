@@ -60,6 +60,14 @@ type PrepareResult = {
 
 type StartResult = { ok: true };
 
+/** A run dispatches only while it is `running`: a paused run's job is `run_paused`, any other stop `run_not_running`. */
+function runNotRunning(jobId: string, runStatus: string, after: string): RefusalError {
+  return refusePool(
+    runStatus === 'paused' ? 'POOL_RUN_PAUSED' : 'POOL_RUN_NOT_RUNNING',
+    `job ${jobId} belongs to a run that is ${runStatus}, and a run dispatches only while it is running; resume the run first.${after}`,
+  );
+}
+
 const HOLD_LOST = (args: { jobId: string; sessionId: string }) =>
   `job ${args.jobId} is no longer held by session ${args.sessionId}, so it was not started`;
 
@@ -186,12 +194,7 @@ export async function prepareJobForMaster(args: {
     } as const;
   });
 
-  if (claimed.kind === 'run_not_running') {
-    throw refusePool(
-      'POOL_RUN_NOT_RUNNING',
-      `job ${args.jobId} belongs to a run that is ${claimed.runStatus}; a run dispatches only while it is running, so resume the run first`,
-    );
-  }
+  if (claimed.kind === 'run_not_running') throw runNotRunning(args.jobId, claimed.runStatus, '');
   if (claimed.kind === 'not_found') throw refusePool('POOL_NOT_FOUND', `no job ${args.jobId}`);
   if (claimed.kind === 'already_held') {
     throw refusePool(
@@ -313,10 +316,7 @@ export async function startJobForMaster(args: {
   if (!job) throw refusePool('POOL_HOLD_LOST', HOLD_LOST(args));
   if (job.runStatus !== null && job.runStatus !== 'running') {
     await releaseJobHold(args.jobId, args.sessionId);
-    throw refusePool(
-      'POOL_RUN_NOT_RUNNING',
-      `job ${args.jobId} belongs to a run that is ${job.runStatus}; its hold was given back and it starts once the run is resumed`,
-    );
+    throw runNotRunning(args.jobId, job.runStatus, ' Its hold was given back.');
   }
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 

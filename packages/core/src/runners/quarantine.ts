@@ -8,8 +8,7 @@ import { classifyBoxFault } from './attribute-failure.js';
 
 /**
  * Consecutive identical box-scoped failures on one runner that trip
- * quarantine. Override via `RUNNER_QUARANTINE_STREAK` env. Default 3 (mirrors
- * `DEVICE_FAILURE_STREAK`).
+ * quarantine. Override via `RUNNER_QUARANTINE_STREAK` env. Default 3.
  */
 const RUNNER_QUARANTINE_STREAK = (() => {
   const n = Number.parseInt(process.env.RUNNER_QUARANTINE_STREAK ?? '', 10);
