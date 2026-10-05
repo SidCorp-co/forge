@@ -1,4 +1,4 @@
-// cm:why what a run is told about the plan it holds against the requirement: re-pinned onto newly
+// What a run is told about the plan it holds against the requirement: re-pinned onto newly
 // approved designs since the plan (ISS-86), another revision, current, or not yet planned
 export function planLine(
   changed: boolean,

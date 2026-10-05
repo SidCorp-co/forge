@@ -1,9 +1,9 @@
 "use client";
 
-import { ErrorState, PeekHead, PeekPanel, type PeekState, ProjectLoader } from "@/design";
+import { ErrorState, PeekHead, PeekPanel, type PeekState, ProjectLoader, StatusBadge } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useContractDetail } from "../hooks";
-import { AdoptionStrip, ContractAction, ContractBanner, ContractStateBadge } from "./contract-bits";
+import { AdoptionStrip, ContractAction, ContractBanner } from "./contract-bits";
 import { ContractFacts } from "./contract-facts";
 
 export function ContractPeek({
@@ -36,7 +36,7 @@ export function ContractPeek({
           <PeekHead
             noun="Contract"
             itemKey={d.contract.ref}
-            badge={<ContractStateBadge row={d.contract} />}
+            badge={<StatusBadge family="contractState" value={d.contract.state} />}
             title={d.contract.title}
             action={<ContractAction row={d.contract} slug={slug} onVersions={onOpenFull} />}
           />

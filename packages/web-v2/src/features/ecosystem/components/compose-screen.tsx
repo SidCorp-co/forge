@@ -5,13 +5,12 @@ import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design
 import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
-import { type DocumentType, type DocumentView, REPLY_TYPES } from "../types";
+import { type DocumentType, type DocumentView, REPLY_TYPES, TYPE_LABEL } from "../types";
 import { canWriteProject } from "@/features/projects/write-access";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
 import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";
 import { useProjectNames } from "./people";
-import { TYPE_LABEL } from "../types";
 
 /** The body each type carries, as a starting point to fill; core's checks decide whether it stands. */
 const BODY_TEMPLATES: Record<DocumentType, Record<string, unknown>> = {
@@ -73,7 +72,7 @@ function initialForm(opts: { draft?: DocumentView; parent?: DocumentView }): For
 }
 
 /** The body as JSON, or the refusal that names why it is not. */
-export function parseBody(text: string): { ok: true; body: unknown } | { ok: false; refusal: Refusal } {
+function parseBody(text: string): { ok: true; body: unknown } | { ok: false; refusal: Refusal } {
   try {
     return { ok: true, body: JSON.parse(text) };
   } catch (e) {
@@ -84,15 +83,29 @@ export function parseBody(text: string): { ok: true; body: unknown } | { ok: fal
   }
 }
 
-function ComposeForm({
-  projectId,
-  slug,
-  ecosystem,
-  draft,
-  parent,
-  counterparties,
-  onSaved,
-}: {
+function ToField({ slug, counterparties, to, onTo }: { slug: string; counterparties: { id: string; name: string }[]; to: string[]; onTo: (to: string[]) => void }) {
+  return (
+    <fieldset className="space-y-1">
+      <legend className="fg-label text-fg">To</legend>
+      {counterparties.length === 0 ? (
+        <p className="fg-caption">
+          {slug} has no counterparty in this ecosystem: a document goes only to a project it publishes to or consumes from.
+        </p>
+      ) : (
+        counterparties.map((p) => (
+          <Checkbox
+            key={p.id}
+            label={p.name}
+            checked={to.includes(p.id)}
+            onChange={(on) => onTo(on ? [...to, p.id] : to.filter((t) => t !== p.id))}
+          />
+        ))
+      )}
+    </fieldset>
+  );
+}
+
+interface ComposeProps {
   projectId: string;
   slug: string;
   ecosystem: string;
@@ -100,17 +113,14 @@ function ComposeForm({
   parent?: DocumentView;
   counterparties: { id: string; name: string }[];
   onSaved: (view: DocumentView) => void;
-}) {
-  const [form, setForm] = useState<Form>(() => initialForm({ draft, parent }));
+}
+
+function useComposeSave({ projectId, ecosystem, draft, onSaved }: ComposeProps, form: Form, inReplyTo: string | undefined) {
   const [local, setLocal] = useState<Refusal | null>(null);
   const submitting = useSubmitGuard();
   const save = useChannelWrite((input: Parameters<typeof ecosystemApi.draft>[2]) =>
     draft ? ecosystemApi.edit(projectId, draft.id, input) : ecosystemApi.draft(projectId, ecosystem, input),
   );
-  const types = parent ? (REPLY_TYPES[parent.document.type] ?? []) : draft ? [draft.document.type] : OPENERS;
-  const inReplyTo = parent?.document.number ?? draft?.document.inReplyTo ?? undefined;
-  const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
-
   const submit = () => {
     const body = parseBody(form.body);
     if (!body.ok) {
@@ -131,7 +141,16 @@ function ComposeForm({
       { onSuccess: onSaved, onSettled: submitting.release },
     );
   };
+  return { save, submit, local };
+}
 
+function ComposeForm(props: ComposeProps) {
+  const { slug, draft, parent, counterparties } = props;
+  const [form, setForm] = useState<Form>(() => initialForm({ draft, parent }));
+  const types = parent ? (REPLY_TYPES[parent.document.type] ?? []) : draft ? [draft.document.type] : OPENERS;
+  const inReplyTo = parent?.document.number ?? draft?.document.inReplyTo ?? undefined;
+  const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
+  const { save, submit, local } = useComposeSave(props, form, inReplyTo);
   return (
     <form
       className="max-w-2xl space-y-3"
@@ -153,23 +172,7 @@ function ComposeForm({
         />
       </Field>
       {inReplyTo ? <p className="fg-caption">In reply to {inReplyTo}</p> : null}
-      <fieldset className="space-y-1">
-        <legend className="fg-label text-fg">To</legend>
-        {counterparties.length === 0 ? (
-          <p className="fg-caption">
-            {slug} has no counterparty in this ecosystem: a document goes only to a project it publishes to or consumes from.
-          </p>
-        ) : (
-          counterparties.map((p) => (
-            <Checkbox
-              key={p.id}
-              label={p.name}
-              checked={form.to.includes(p.id)}
-              onChange={(on) => set({ to: on ? [...form.to, p.id] : form.to.filter((t) => t !== p.id) })}
-            />
-          ))
-        )}
-      </fieldset>
+      <ToField slug={slug} counterparties={counterparties} to={form.to} onTo={(to) => set({ to })} />
       <Field label="Subject" htmlFor="doc-subject" hint="8 to 160 characters, in English: the other side may be another org.">
         <Input id="doc-subject" value={form.subject} onChange={(e) => set({ subject: e.target.value })} />
       </Field>

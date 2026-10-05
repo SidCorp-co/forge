@@ -23,6 +23,7 @@ import {
 import type { WaitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
+import { liveAt } from './rules.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -101,15 +102,7 @@ function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): Requir
   return phase === 'in_delivery' || phase === 'delivered' ? phase : 'agreed';
 }
 
-const wordingsAt = (criteria: readonly StandingCriterion[], revision: number) =>
-  criteria
-    .filter(
-      (c) =>
-        c.sinceRevision <= revision && (c.retiredRevision === null || c.retiredRevision > revision),
-    )
-    .sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3)));
-
-// cm:why a business criterion is proven by the issue criteria that trace to it
+// A business criterion is proven by the issue criteria that trace to it
 // (issue_criteria.requirement_criterion_id, ISS-55). Only links to the wording live at the shown
 // revision count as proof; a link to an earlier wording of the same code is stale evidence. Over
 // the live links: any latest verdict `fail` → failing; every one `pass` or `short` → passing;
@@ -117,7 +110,7 @@ const wordingsAt = (criteria: readonly StandingCriterion[], revision: number) =>
 // at all → gap. A dropped issue proves nothing and is left out.
 function coverageOf(input: StandingInput, shownRevision: number | null): RequirementCoverage[] {
   if (shownRevision === null) return [];
-  const live = wordingsAt(input.criteria, shownRevision);
+  const live = liveAt(input.criteria, shownRevision);
   const byId = new Map(input.criteria.map((c) => [c.id, c]));
   const issues = new Map(
     input.issues.filter((i) => i.status !== 'dropped').map((i) => [i.id, i] as const),
@@ -182,7 +175,7 @@ function feedbackTurn(input: StandingInput): Turn | null {
   );
 }
 
-// cm:why whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
+// Whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
 // its author; 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a signer
 // triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every

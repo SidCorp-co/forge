@@ -74,7 +74,7 @@ export function sizeRefusal(kind: MockupKind, size: number): MockupRefusal | nul
   );
 }
 
-// cm:guard a requirement mockup is proposed against a revision that can still be agreed: a
+// A requirement mockup is proposed against a revision that can still be agreed: a
 // superseded revision is evidence and takes nothing (MOCKUP_REVISION_SUPERSEDED); a current one
 // takes it as an explicitly additive proposal, pinned only by a baseline a person writes after
 // accepting it, so nothing under an agreed baseline changes silently

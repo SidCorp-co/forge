@@ -8,7 +8,7 @@ import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import { type IssueRelationEdge, memoryIssueReads } from './ports.js';
-import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
+import { MEMORY_HIT_COLUMNS, type MemoryHit, type MemoryVia, toMemoryHit } from './search.js';
 
 const EXPAND_SEED_LIMIT = 5;
 const EXPAND_RELATION_KINDS: ReadonlyArray<MemoryVia['relation']> = ['blocks', 'relates'];
@@ -65,14 +65,7 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
   if (chosen.length === 0) return [];
 
   const rows = await db
-    .select({
-      id: memories.id,
-      source: memories.source,
-      sourceRef: memories.sourceRef,
-      text: memories.textContent,
-      metadata: memories.metadata,
-      embeddedAt: memories.embeddedAt,
-    })
+    .select(MEMORY_HIT_COLUMNS)
     .from(memories)
     .where(
       and(
@@ -93,17 +86,7 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
     if (appended.length >= input.topK) break;
     const row = bySourceRef.get(n.issueId);
     if (!row) continue;
-    appended.push({
-      id: row.id,
-      source: 'issue',
-      sourceRef: row.sourceRef,
-      text: row.text,
-      metadata: row.metadata,
-      score: 0,
-      embeddedAt: row.embeddedAt,
-      ...deriveMemoryStaleness(row.metadata),
-      via: n.via,
-    });
+    appended.push({ ...toMemoryHit(row, 0), via: n.via });
   }
   return appended;
 }

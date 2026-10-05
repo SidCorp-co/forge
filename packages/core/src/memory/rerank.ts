@@ -61,10 +61,6 @@ export function inRerankHoldout(): boolean {
   return randomInt(RERANK_HOLDOUT_ONE_IN) === 0;
 }
 
-function shownText(hit: MemoryHit): string {
-  return hit.text;
-}
-
 function buildGradePrompt(query: string, text: string): string {
   return [
     'Grade how well the passage answers the query.',
@@ -91,7 +87,7 @@ function gradeCacheKey(model: string, query: string, hit: MemoryHit): string {
     .update('|')
     .update(hit.id)
     .update(':')
-    .update(shownText(hit))
+    .update(hit.text)
     .digest('hex');
 }
 
@@ -133,15 +129,10 @@ async function gradeOne(
   const cached = cacheGet(key, Date.now());
   if (cached) return cached;
   const answer = await limiter.run(() =>
-    callFastModelObject(
-      { surface: 'memory' },
-      buildGradePrompt(query, shownText(hit)),
-      gradeAnswer,
-      {
-        maxTokens: GRADE_MAX_TOKENS,
-        model,
-      },
-    ),
+    callFastModelObject({ surface: 'memory' }, buildGradePrompt(query, hit.text), gradeAnswer, {
+      maxTokens: GRADE_MAX_TOKENS,
+      model,
+    }),
   );
   if (!answer.ok) return { miss: answer.miss, detail: answer.detail };
   const graded = { grade: answer.value.relevance, modelId: answer.modelId };

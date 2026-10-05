@@ -19,7 +19,7 @@ import { conversationMessages } from '../db/schema-conversations.js';
 import { conversationIndexState, conversationPassages } from '../db/schema-transcript-index.js';
 import { identifierTsQuery } from '../db/schema-types.js';
 import { readableConversation } from './access.js';
-import { hasText, PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-index.js';
+import { hasText, PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-passages.js';
 
 /** Passages one call may return, however many the caller asks for. */
 export const RETRIEVAL_MAX_RESULTS = 5;

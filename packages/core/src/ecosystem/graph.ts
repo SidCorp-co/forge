@@ -1,8 +1,10 @@
 import { db } from '../db/client.js';
 import { heldEcosystem } from './ecosystem-service.js';
+import { edgesIn } from './interface-store.js';
+import { membershipsWhere } from './membership-store.js';
 import type { PartyGraph } from './party.js';
 import type { VisibilityMode } from './schema.js';
-import { edgesIn, membershipsWhere, readEcosystems } from './store.js';
+import { readEcosystems } from './store.js';
 
 export async function loadGraph(ecosystemIds: readonly string[]): Promise<PartyGraph> {
   const ids = [...new Set(ecosystemIds)];

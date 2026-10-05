@@ -34,7 +34,7 @@ export const ESCALATION_NO_DEVICE_REPLY = (botName: string): string =>
 export const ESCALATION_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
-export interface StartEscalationArgs {
+interface StartEscalationArgs {
   projectId: string;
   project: { id: string; slug: string };
   connectionId: string;
@@ -48,7 +48,7 @@ export interface StartEscalationArgs {
   asker: SessionAsker;
 }
 
-export type StartEscalationResult =
+type StartEscalationResult =
   | { started: true; sessionId: string }
   | {
       started: false;

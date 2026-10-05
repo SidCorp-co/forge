@@ -13,7 +13,7 @@ import { zValidator } from '../../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/index.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
-import { decideContractVersion } from './decide.js';
+import { decideContractVersion, decidedView } from './decide.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
 import { consumedContract, consumedVersions } from './party-read.js';
 import { publishContractVersion } from './publish.js';
@@ -195,11 +195,7 @@ contractRoutes.post(
       actor: { userId: actor.id, agency: actor.agency },
     });
     if (!out.ok) return refused(c, out.refusals, 'ECOSYSTEM_REFUSED');
-    return c.json({
-      version: out.version.document,
-      approval: approvalView(out.version),
-      filedFeedback: out.filed.length,
-    });
+    return c.json(decidedView(out));
   },
 );
 

@@ -2,23 +2,19 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative, sep } from 'node:path';
 import { parseMode, readManifest } from './lib/debt-ratchet.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import { declarationFaults, unusableReport } from './lib/integration-declarations.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-integration-declarations');
+
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
 const REGISTRY = join(ROOT, 'packages', 'core', 'src', 'integrations', 'registry.ts');
 const CONTRACT = join(ROOT, 'packages', 'contracts', 'src', 'deploy-capability.ts');
 const OPEN = '<<<FORGE_DECLARATIONS';
 const CLOSE = 'FORGE_DECLARATIONS>>>';
-
-function die(message) {
-  console.error(`check-integration-declarations: ${message}`);
-  process.exit(2);
-}
 
 /** The nearest ancestor of `file` holding a package.json — the module world the probe must join. */
 function packageRootOf(file) {

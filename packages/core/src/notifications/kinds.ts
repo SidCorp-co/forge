@@ -12,7 +12,7 @@ export const INITIAL_STATE: Record<NotificationKind, string> = {
   task: 'open',
 };
 
-export interface NotificationKindEntry {
+interface NotificationKindEntry {
   kind: NotificationKind;
   tier: NotificationTier;
   /** Prometheus's `for`, counted in evaluations of a PERIODIC detector. */
@@ -48,13 +48,13 @@ export function pendingEvaluationsFor(type: NotificationType): number {
   return NOTIFICATION_KIND_TABLE[type].pendingEvaluations ?? 0;
 }
 
-export interface InhibitRule {
+interface InhibitRule {
   source: NotificationType;
   target: NotificationType;
   scope: 'project';
 }
 
-export const INHIBIT_RULES: readonly InhibitRule[] = [
+const INHIBIT_RULES: readonly InhibitRule[] = [
   { source: 'pipeline_wedge', target: 'issue_stranded', scope: 'project' },
 ];
 

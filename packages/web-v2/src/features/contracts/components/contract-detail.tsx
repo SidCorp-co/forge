@@ -12,21 +12,18 @@ import {
   FieldLabel,
   StatusBadge,
   Textarea,
-  useUrlTab,
   ViewHeading,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatStamp } from "@/lib/utils/format";
 import { useDecideVersion } from "../hooks";
 import type { ContractConsumerView, ContractStandingDetail, ContractVersionView } from "../types";
-import { AdoptionStrip, ContractBanner, ContractStateBadge } from "./contract-bits";
+import { AdoptionStrip, ContractBanner } from "./contract-bits";
 import { ContractFacts } from "./contract-facts";
 import { VersionTimeline } from "./version-timeline";
 
 export const CONTRACT_TABS = ["overview", "versions", "adoption"] as const;
-export type ContractTab = (typeof CONTRACT_TABS)[number];
-
-export const useContractTab = () => useUrlTab(CONTRACT_TABS);
+type ContractTab = (typeof CONTRACT_TABS)[number];
 
 function Party({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -71,7 +68,7 @@ function Overview({ d }: { d: ContractStandingDetail }) {
                 {c.pending ? ` → ${c.pending.version} proposed` : ""}
               </span>
               <span>
-                <ContractStateBadge row={c} />
+                <StatusBadge family="contractState" value={c.state} />
               </span>
             </div>
           </Party>
@@ -224,7 +221,7 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
         </FactsRail>
       }
     >
-      <DetailMobileTitle itemKey={c.ref} title={c.title} badge={<ContractStateBadge row={c} />} />
+      <DetailMobileTitle itemKey={c.ref} title={c.title} badge={<StatusBadge family="contractState" value={c.state} />} />
       <ContractBanner row={c} slug={slug} className="px-8 py-2.5 max-md:px-4" />
       <DetailTabs tabs={tabs} value={shown} onChange={onTab} testId="contract-tabs" />
       <DetailPane label={tabs.find((t) => t.value === shown)?.label ?? "Overview"}>

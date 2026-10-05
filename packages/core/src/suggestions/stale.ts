@@ -13,9 +13,9 @@ import {
 import { and, eq, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { transition } from '../lifecycle/index.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 
-// cm:guard a newer revision of the target is written → every proposed suggestion whose base is not
+// A newer revision of the target is written → every proposed suggestion whose base is not
 // that revision is stale, in the same transaction, so no accept can apply it on a moved head
 export async function staleOnTargetRevised(
   tx: Tx,
@@ -73,4 +73,22 @@ export async function sweepSuggestions(now: Date = new Date()): Promise<Suggesti
     )
     .returning({ id: suggestions.id });
   return { staled: staled.length, purged: purged.length };
+}
+
+/** An accept or revise that found the base moved rolled back; the row is then marked stale on its own. */
+export async function markMovedStale(
+  id: string,
+  reason: string,
+  actor: KernelActor,
+): Promise<void> {
+  await transition(db, SUGGESTION_MACHINE, {
+    to: 'stale',
+    from: 'proposed',
+    set: { decidedAt: new Date(), reason },
+    where: eq(suggestions.id, id),
+    reason,
+    actor,
+    source: 'suggestions-stale',
+    returning: ['id'],
+  });
 }

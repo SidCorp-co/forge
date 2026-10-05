@@ -1,25 +1,15 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { dieAs, ROOT, stripComments, walkFiles } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-merged-at-writers');
+
 const OWNER = 'packages/core/src/issues/merge-record.ts';
 const ROOTS = ['packages/core/src', 'packages/web-v2/src'];
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle']);
+const SKIP_DIRS = ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle'];
 const COLUMNS = ['mergedAt', 'mergedCommitSha', 'mergedLanding'];
-
-function die(message) {
-  console.error(`check-merged-at-writers: ${message}`);
-  process.exit(2);
-}
-
-function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
-}
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
@@ -52,22 +42,8 @@ export function faultsIn(rel, source) {
   return faults;
 }
 
-function walk(rel, acc) {
-  const abs = join(ROOT, rel);
-  if (!existsSync(abs)) return acc;
-  for (const entry of readdirSync(abs, { withFileTypes: true })) {
-    const path = `${rel}/${entry.name}`;
-    if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) walk(path, acc);
-      continue;
-    }
-    if (!/\.(ts|tsx)$/.test(entry.name)) continue;
-    if (/\.test\.(ts|tsx)$/.test(entry.name)) continue;
-    if (path === OWNER) continue;
-    acc.push(path);
-  }
-  return acc;
-}
+const keep = (path, name) =>
+  /\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name) && path !== OWNER;
 
 function main() {
   const mode = process.argv[2];
@@ -77,7 +53,7 @@ function main() {
     die(`${OWNER} is not there, so nothing owns these columns and this rule cannot be checked`);
   }
 
-  const files = ROOTS.reduce((acc, rel) => walk(rel, acc), []);
+  const files = ROOTS.flatMap((rel) => walkFiles(rel, { skipDirs: SKIP_DIRS, keep }));
   if (files.length === 0) die(`no source files found under ${ROOTS.join(', ')}`);
 
   const faults = files.flatMap((rel) => faultsIn(rel, readFileSync(join(ROOT, rel), 'utf8')));

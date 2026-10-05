@@ -65,15 +65,6 @@ function routeRemoved(): HTTPException {
   });
 }
 
-/**
- * Header → provider lookup, DERIVED from the declarations rather than listed here.
- *
- * Order matters only when a request carries several provider headers — first match wins, which is
- * registry order. Until ISS-1071 this was a literal array in this file, and a provider that declared
- * a webhook without also being added to it was routed nowhere: the delivery answered 404 with the
- * integration reporting healthy, and nothing in the array's neighbourhood said a second edit was
- * owed.
- */
 interface ProviderRoute {
   header: string;
   /** Absent only where a provider declares an inbound surface and forgets how it is signed. */
@@ -82,6 +73,7 @@ interface ProviderRoute {
   provider: IntegrationProvider;
 }
 
+// cm:why derived from the integration declarations, never listed here: a hand-kept list let a provider that declared a webhook route nowhere while it reported healthy (ISS-1071). A request carrying several provider headers takes the first in registry order.
 function providerHeaderMap(): ProviderRoute[] {
   return listIntegrations()
     .filter((d) => d.capabilities.canReceiveWebhook && d.capabilities.webhookHeader)
@@ -105,86 +97,82 @@ webhookInboundRoutes.post(
     const slug = c.req.param('slug');
     if (!slug) throw badRequest({ slug: 'required' });
 
-    if (!providerHeaderMap().some((m) => c.req.header(m.header))) throw routeRemoved();
+    const map = providerHeaderMap().find((m) => c.req.header(m.header));
+    if (!map) throw routeRemoved();
 
     // Raw body first — HMAC covers the untouched bytes.
-    const rawBody = await c.req.raw.clone().text();
+    const raw = await c.req.raw.clone().text();
 
     const projectId = await findProjectIdBySlug(slug);
     if (!projectId) throw notFound();
 
-    for (const map of providerHeaderMap()) {
-      if (!c.req.header(map.header)) continue;
-      const adapter = getAdapter(map.provider);
-      if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
+    const adapter = getAdapter(map.provider);
+    if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-      const candidatePairs = await listActiveBindingsForProjectProvider(projectId, map.provider);
-      if (candidatePairs.length === 0) {
-        throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
-      }
-
-      if (!map.signatureHeader) {
-        throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
-      }
-      const shared = map.verification === 'shared-token';
-      const signatureHeader = c.req.header(map.signatureHeader);
-      if (!signatureHeader) {
-        const code = shared ? 'MISSING_WEBHOOK_TOKEN' : 'MISSING_SIGNATURE';
-        await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
-        throw unauthorized(code);
-      }
-
-      const pair = candidatePairs.find(
-        (p) =>
-          p.binding.integrationSecret !== null &&
-          (shared
-            ? verifySharedToken(p.binding.integrationSecret, signatureHeader)
-            : verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader)),
-      );
-      if (!pair) {
-        const code = shared ? 'WEBHOOK_TOKEN_MISMATCH' : 'INVALID_SIGNATURE';
-        await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
-        throw unauthorized(code);
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
-      } catch {
-        throw badRequest({ body: 'invalid json' });
-      }
-      const ctx = buildContextFromBinding(pair);
-      try {
-        const result = await adapter.handleInbound(ctx, {
-          headers: collectHeaders(c.req.raw.headers),
-          rawBody,
-          payload: parsed,
-        });
-        // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
-        // outbox, and the module that owns each effect consumes it.
-        if (result.facts?.length) await emitEvents(db, result.facts);
-        return c.json({
-          accepted: true,
-          handler: map.provider,
-          role: pair.binding.role,
-          deliveryId: result.deliveryId,
-          actions: result.actions,
-          ...(result.refusal ? { refusal: result.refusal } : {}),
-        });
-      } catch (err) {
-        if (err instanceof HTTPException) throw err;
-        logger.error(
-          { err, slug, provider: map.provider, bindingId: pair.binding.id },
-          'integration adapter: handler threw',
-        );
-        throw new HTTPException(500, {
-          message: 'handler failed',
-          cause: { code: 'HANDLER_FAILED' },
-        });
-      }
+    const candidatePairs = await listActiveBindingsForProjectProvider(projectId, map.provider);
+    if (candidatePairs.length === 0) {
+      throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
 
-    throw routeRemoved();
+    if (!map.signatureHeader) {
+      throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
+    }
+    const shared = map.verification === 'shared-token';
+    const signatureHeader = c.req.header(map.signatureHeader);
+    if (!signatureHeader) {
+      const code = shared ? 'MISSING_WEBHOOK_TOKEN' : 'MISSING_SIGNATURE';
+      await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
+      throw unauthorized(code);
+    }
+
+    const pair = candidatePairs.find(
+      (p) =>
+        p.binding.integrationSecret !== null &&
+        (shared
+          ? verifySharedToken(p.binding.integrationSecret, signatureHeader)
+          : verifyHmacSignature(p.binding.integrationSecret, raw, signatureHeader)),
+    );
+    if (!pair) {
+      const code = shared ? 'WEBHOOK_TOKEN_MISMATCH' : 'INVALID_SIGNATURE';
+      await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
+      throw unauthorized(code);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = raw.length > 0 ? JSON.parse(raw) : {};
+    } catch {
+      throw badRequest({ body: 'invalid json' });
+    }
+    const ctx = buildContextFromBinding(pair);
+    try {
+      const result = await adapter.handleInbound(ctx, {
+        headers: collectHeaders(c.req.raw.headers),
+        rawBody: raw,
+        payload: parsed,
+      });
+      // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
+      // outbox, and the module that owns each effect consumes it.
+      if (result.facts?.length) await emitEvents(db, result.facts);
+      return c.json({
+        accepted: true,
+        handler: map.provider,
+        role: pair.binding.role,
+        deliveryId: result.deliveryId,
+        actions: result.actions,
+        ...(result.refusal ? { refusal: result.refusal } : {}),
+      });
+    } catch (err) {
+      if (err instanceof HTTPException) throw err;
+      logger.error(
+        { err, slug, provider: map.provider, bindingId: pair.binding.id },
+        'integration adapter: handler threw',
+      );
+      throw new HTTPException(500, {
+        message: 'handler failed',
+        cause: { code: 'HANDLER_FAILED' },
+      });
+    }
   },
 );
 

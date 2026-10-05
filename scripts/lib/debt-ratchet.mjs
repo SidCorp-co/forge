@@ -23,6 +23,13 @@ export function readManifest(root, { required = true } = {}) {
   }
 }
 
+/** A checker's block of the manifest laid over its defaults; an unreadable manifest is `die`d on. */
+export function checkerConfig(root, name, defaults, die) {
+  const { manifest, error } = readManifest(root, { required: false });
+  if (error) die(error);
+  return { ...defaults, ...(manifest.checkers?.[name] ?? {}) };
+}
+
 /** The `scopes` array a biome checker registers against, fail-closed on every way it can be absent. */
 export function scopeConfig(root, key) {
   const { manifest, error } = readManifest(root);

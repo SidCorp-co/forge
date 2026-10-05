@@ -1,7 +1,6 @@
 // cm:edge contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
-export const LINK_STATES = ["building", "current", "behind", "breaking", "unverified"] as const;
-export type LinkState = (typeof LINK_STATES)[number];
+export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
 
 export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "superseded";
 
@@ -164,7 +163,9 @@ export const STATE_MEANING: Record<LinkState, string> = {
   unverified: "The guide is written but nothing has checked it against the contract",
 };
 
-export const contractKey = (c: ContractRef) => `${c.provider}/${c.slug}`;
+const contractKey = (c: ContractRef) => `${c.provider}/${c.slug}`;
+
+export const slugsOf = (bus: Bus) => new Map(bus.projects.map((p) => [p.id, p.slug]));
 
 export interface BusRow {
   key: string;

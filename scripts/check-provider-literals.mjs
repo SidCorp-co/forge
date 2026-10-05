@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseMode, readManifest } from './lib/debt-ratchet.mjs';
+import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 import {
   allowedFaults,
   byFile,
@@ -12,14 +12,10 @@ import {
   scanEntries,
 } from './lib/provider-literals.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TYPES_PATH = 'packages/core/src/integrations/types.ts';
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo']);
+const die = dieAs('check-provider-literals');
 
-function die(message) {
-  console.error(`check-provider-literals: ${message}`);
-  process.exit(2);
-}
+const TYPES_PATH = 'packages/core/src/integrations/types.ts';
+const SKIP_DIRS = ['node_modules', 'dist', 'coverage', '.next', '.turbo'];
 
 function declaredProviders() {
   const path = join(ROOT, TYPES_PATH);
@@ -30,20 +26,6 @@ function declaredProviders() {
   const names = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
   if (names.length === 0) return { error: `INTEGRATION_PROVIDERS in ${TYPES_PATH} is empty` };
   return { names };
-}
-
-function walk(rel, acc, exts) {
-  for (const entry of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
-    const path = `${rel}/${entry.name}`;
-    if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) walk(path, acc, exts);
-      continue;
-    }
-    if (/\.test\.tsx?$/.test(entry.name)) continue;
-    if (/\.fixture\.tsx?$/.test(entry.name)) continue;
-    if (exts.some((ext) => entry.name.endsWith(ext))) acc.push(path);
-  }
-  return acc;
 }
 
 const parsed = parseMode(process.argv, ['--all'], 'check-provider-literals.mjs');
@@ -99,7 +81,15 @@ if (configFaults.length > 0) {
 const files = [];
 for (const root of scanRoots) {
   if (!existsSync(join(ROOT, root))) die(`scan root missing: ${root}`);
-  walk(root, files, scanExts);
+  walkFiles(
+    root,
+    {
+      skipDirs: SKIP_DIRS,
+      keep: (_, name) =>
+        !/\.(test|fixture)\.tsx?$/.test(name) && scanExts.some((ext) => name.endsWith(ext)),
+    },
+    files,
+  );
 }
 
 const entries = files.map((path) => ({ path, text: readFileSync(join(ROOT, path), 'utf8') }));

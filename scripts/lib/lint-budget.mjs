@@ -1,4 +1,34 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileTotal } from './debt-ratchet.mjs';
+
+/** One scope's biome JSON report, or `{error}` naming why biome could not give one. */
+export function biomeReport(root, scope) {
+  const cwd = join(root, scope.cwd);
+  if (!existsSync(cwd)) return { error: `scope directory missing: ${scope.cwd}` };
+  let stdout;
+  try {
+    stdout = execFileSync(
+      'npx',
+      ['biome', ...scope.args, '--reporter=json', '--max-diagnostics=5000'],
+      {
+        cwd,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    );
+  } catch (err) {
+    stdout = err.stdout;
+    if (!stdout) return { error: `biome produced no output in ${scope.cwd}: ${err.message}` };
+  }
+  try {
+    return { cwd, report: JSON.parse(stdout) };
+  } catch {
+    return { error: `biome output in ${scope.cwd} was not JSON` };
+  }
+}
 
 export const SIZE_RULES = new Set([
   'lint/style/noExcessiveLinesPerFile',

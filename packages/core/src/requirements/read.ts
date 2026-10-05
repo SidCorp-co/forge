@@ -1,13 +1,11 @@
-/**
- * The reads of requirements: the list, the detail a person or an agent opens, and the helpers
- * every write resolves a requirement and its signer with.
- */
-
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { RequirementStanding } from '@forge/contracts/requirements';
-import { changedSincePlan, requirementKey } from '@forge/contracts/requirements';
+import {
+  changedSincePlan,
+  type RequirementStanding,
+  requirementKey,
+} from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -35,7 +33,7 @@ import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
-import { type LinkedDesign, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -52,12 +50,10 @@ export interface RequirementSpec {
 
 export type Row = typeof requirements.$inferSelect;
 export type RevisionRow = typeof requirementRevisions.$inferSelect;
-type CriterionRow = typeof requirementCriteria.$inferSelect;
+export type CriterionRow = typeof requirementCriteria.$inferSelect;
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const NO_PERSON: RequirementActor = { userId: '', agency: 'agent' };
 
 /** A requirement of `projectId` by uuid, `REQ-n` or `n`; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row> {
@@ -81,15 +77,7 @@ export async function signerRefusal(actor: RequirementActor, projectId: string, 
   return signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
 }
 
-const rowsOfRevision = (rows: readonly CriterionRow[], revision: number) =>
-  rows
-    .filter(
-      (c) =>
-        c.sinceRevision <= revision && (c.retiredRevision === null || c.retiredRevision > revision),
-    )
-    .sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3)));
-
-const criterionView = (c: CriterionRow) => ({
+export const criterionView = (c: CriterionRow) => ({
   id: c.id,
   code: c.code,
   body: c.body,
@@ -98,11 +86,15 @@ const criterionView = (c: CriterionRow) => ({
   retiredRevision: c.retiredRevision,
 });
 
-export async function linkedDesigns(tx: Tx, requirementId: string): Promise<LinkedDesign[]> {
+export async function linkedDesigns(
+  tx: Tx,
+  requirementId: string,
+): Promise<(LinkedDesign & { title: string | null })[]> {
   const rows = await tx
     .select({
       workflowId: projectWorkflows.id,
       flow: projectWorkflows.flow,
+      title: sql<string | null>`${projectWorkflows.document}->>'title'`,
       designStatus: projectWorkflows.designStatus,
       approvedRevision: projectWorkflows.approvedRevision,
     })
@@ -113,7 +105,7 @@ export async function linkedDesigns(tx: Tx, requirementId: string): Promise<Link
   return rows;
 }
 
-function summaryOf(
+export function summaryOf(
   row: Row,
   latest: { revision: number; state: RevisionState } | null,
   delivery: RequirementStanding['delivery'],
@@ -131,7 +123,7 @@ function summaryOf(
   };
 }
 
-async function standingViewer(viewer: RequirementActor | null, projectId: string) {
+export async function standingViewer(viewer: RequirementActor | null, projectId: string) {
   if (!viewer) return null;
   const refusal = await signerRefusal(viewer, projectId, 'a sign-off');
   return { userId: viewer.userId, canSignOff: refusal === null };
@@ -173,46 +165,57 @@ export async function listRequirementsAs(viewer: RequirementActor, projectId: st
   });
 }
 
-export async function detailOf(row: Row, viewer: RequirementActor | null, door: ReadDoor = {}) {
-  const [
-    revisions,
-    criteria,
-    designs,
-    baselines,
-    pins,
-    linked,
-    prefix,
-    standing,
-    history,
-    readiness,
-    deferral,
-    releaseApproval,
-    feedback,
-    traces,
-    contracts,
-  ] = await Promise.all([
+type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
+
+// Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
+// table, so the readiness result at a revision is the newest accepted readiness suggestion on it
+export async function readinessAt(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+): Promise<(ReadinessAtHead & { decidedAt: Date | null }) | null> {
+  const [s] = await tx
+    .select({
+      id: suggestions.id,
+      payload: suggestions.payload,
+      decidedAt: suggestions.decidedAt,
+    })
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.requirementId, requirementId),
+        eq(suggestions.kind, 'readiness'),
+        eq(suggestions.status, 'accepted'),
+        eq(suggestions.baseRevision, revision),
+      ),
+    )
+    .orderBy(desc(suggestions.decidedAt))
+    .limit(1);
+  if (!s) return null;
+  const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
+    .filter((c) => !c.passed)
+    .map((c) => c.check);
+  return { suggestionId: s.id, failed, decidedAt: s.decidedAt };
+}
+
+const NO_PERSON: RequirementActor = { userId: '', agency: 'agent' };
+
+function detailRowsOf(requirementId: string) {
+  return Promise.all([
     db
       .select()
       .from(requirementRevisions)
-      .where(eq(requirementRevisions.requirementId, row.id))
+      .where(eq(requirementRevisions.requirementId, requirementId))
       .orderBy(desc(requirementRevisions.revision)),
-    db.select().from(requirementCriteria).where(eq(requirementCriteria.requirementId, row.id)),
     db
-      .select({
-        workflowId: projectWorkflows.id,
-        flow: projectWorkflows.flow,
-        title: sql<string | null>`${projectWorkflows.document}->>'title'`,
-        designStatus: projectWorkflows.designStatus,
-        approvedRevision: projectWorkflows.approvedRevision,
-      })
-      .from(requirementWorkflows)
-      .innerJoin(projectWorkflows, eq(projectWorkflows.id, requirementWorkflows.workflowId))
-      .where(eq(requirementWorkflows.requirementId, row.id))
-      .orderBy(asc(projectWorkflows.flow)),
+      .select()
+      .from(requirementCriteria)
+      .where(eq(requirementCriteria.requirementId, requirementId)),
+    linkedDesigns(db, requirementId),
     db
       .select()
       .from(requirementBaselines)
-      .where(eq(requirementBaselines.requirementId, row.id))
+      .where(eq(requirementBaselines.requirementId, requirementId))
       .orderBy(desc(requirementBaselines.revision), desc(requirementBaselines.seq)),
     db
       .select({
@@ -228,7 +231,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
       })
       .from(requirementBaselinePins)
       .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
-      .where(eq(requirementBaselinePins.requirementId, row.id)),
+      .where(eq(requirementBaselinePins.requirementId, requirementId)),
     db
       .select({
         id: issues.id,
@@ -240,10 +243,86 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
         plannedBaselineSeq: issues.plannedBaselineSeq,
       })
       .from(issues)
-      .where(eq(issues.requirementId, row.id))
+      .where(eq(issues.requirementId, requirementId))
       .orderBy(asc(issues.issSeq)),
+  ]);
+}
+
+type DetailRows = Awaited<ReturnType<typeof detailRowsOf>>;
+
+function baselineViews(
+  baselines: DetailRows[3],
+  pins: DetailRows[4],
+  name: (id: string | null) => string | null,
+) {
+  return baselines.map((b) => ({
+    revision: b.revision,
+    seq: b.seq,
+    act: b.act,
+    agreedBy: b.agreedBy,
+    agreedByName: name(b.agreedBy),
+    agreedAt: b.agreedAt.toISOString(),
+    reason: b.reason,
+    readiness: b.readiness,
+    pins: pins
+      .filter((p) => p.revision === b.revision && p.baselineSeq === b.seq)
+      .map((p) => ({
+        kind: p.workflowId
+          ? ('workflow-design' as const)
+          : p.mockupId
+            ? ('mockup' as const)
+            : ('contract-version' as const),
+        workflowId: p.workflowId,
+        flow: p.flow,
+        designRevision: p.designRevision,
+        providerProjectId: p.providerProjectId,
+        contractSlug: p.contractSlug,
+        contractVersion: p.contractVersion,
+        mockupId: p.mockupId,
+      })),
+  }));
+}
+
+function issueViews(
+  row: Row,
+  linked: DetailRows[5],
+  baselines: DetailRows[3],
+  prefix: string | null,
+  releaseApproval: boolean,
+) {
+  return linked.map((i) => ({
+    issueId: i.id,
+    displayId: formatIssueRef(prefix, i.issSeq),
+    title: i.title,
+    status: i.status,
+    // awaiting_release is a person's turn only where this project requires a release approval
+    tone: issueStatusToneOn(i.status as IssueStatus, releaseApproval),
+    plannedRevision: i.plannedRevision,
+    changedSincePlan: changedSincePlan({
+      ...i,
+      currentRevision: row.currentRevision,
+      latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
+    }),
+  }));
+}
+
+export async function detailOf(row: Row, viewer: RequirementActor | null, door: ReadDoor = {}) {
+  const viewerFacts = standingViewer(viewer, row.projectId);
+  const [
+    [revisions, criteria, designs, baselines, pins, linked],
+    prefix,
+    standing,
+    history,
+    readiness,
+    deferral,
+    releaseApproval,
+    feedback,
+    traces,
+    contracts,
+  ] = await Promise.all([
+    detailRowsOf(row.id),
     activeIssuePrefix(row.projectId),
-    standingViewer(viewer, row.projectId)
+    viewerFacts
       .then((v) => standingsOf(row.projectId, [row], v))
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
@@ -268,55 +347,13 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     ),
     revisions: revisions.map((r) => revisionView(r, criteria, people)),
     criteria:
-      row.currentRevision === null
-        ? []
-        : rowsOfRevision(criteria, row.currentRevision).map(criterionView),
+      row.currentRevision === null ? [] : liveAt(criteria, row.currentRevision).map(criterionView),
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),
     contracts,
     traces,
-    baselines: baselines.map((b) => ({
-      revision: b.revision,
-      seq: b.seq,
-      act: b.act,
-      agreedBy: b.agreedBy,
-      agreedByName: name(b.agreedBy),
-      agreedAt: b.agreedAt.toISOString(),
-      reason: b.reason,
-      readiness: b.readiness,
-      pins: pins
-        .filter((p) => p.revision === b.revision && p.baselineSeq === b.seq)
-        .map((p) => ({
-          kind: p.workflowId
-            ? ('workflow-design' as const)
-            : p.mockupId
-              ? ('mockup' as const)
-              : ('contract-version' as const),
-          workflowId: p.workflowId,
-          flow: p.flow,
-          designRevision: p.designRevision,
-          providerProjectId: p.providerProjectId,
-          contractSlug: p.contractSlug,
-          contractVersion: p.contractVersion,
-          mockupId: p.mockupId,
-        })),
-    })),
-    issues: linked.map((i) => ({
-      issueId: i.id,
-      displayId: formatIssueRef(prefix, i.issSeq),
-      title: i.title,
-      status: i.status,
-      // awaiting_release is a person's turn only where this project requires a release approval
-      tone: issueStatusToneOn(i.status as IssueStatus, releaseApproval),
-      plannedRevision: i.plannedRevision,
-      changedSincePlan: changedSincePlan({
-        ...i,
-        currentRevision: row.currentRevision,
-        latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
-      }),
-    })),
-    canSignOff: viewer
-      ? (await signerRefusal(viewer, row.projectId, 'a sign-off')) === null
-      : false,
+    baselines: baselineViews(baselines, pins, name),
+    issues: issueViews(row, linked, baselines, prefix, releaseApproval),
+    canSignOff: (await viewerFacts)?.canSignOff ?? false,
     standing,
     history,
     readiness,
@@ -350,41 +387,8 @@ function revisionView(
     returnReason: r.returnReason,
     acceptReason: r.acceptReason,
     fromSuggestionId: r.fromSuggestionId,
-    criteria: rowsOfRevision(criteria, r.revision).map(criterionView),
+    criteria: liveAt(criteria, r.revision).map(criterionView),
   };
-}
-
-type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
-
-// cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
-// table, so the readiness result at a revision is the newest accepted readiness suggestion on it
-export async function readinessAt(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-): Promise<(ReadinessAtHead & { decidedAt: Date | null }) | null> {
-  const [s] = await tx
-    .select({
-      id: suggestions.id,
-      payload: suggestions.payload,
-      decidedAt: suggestions.decidedAt,
-    })
-    .from(suggestions)
-    .where(
-      and(
-        eq(suggestions.requirementId, requirementId),
-        eq(suggestions.kind, 'readiness'),
-        eq(suggestions.status, 'accepted'),
-        eq(suggestions.baseRevision, revision),
-      ),
-    )
-    .orderBy(desc(suggestions.decidedAt))
-    .limit(1);
-  if (!s) return null;
-  const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
-    .filter((c) => !c.passed)
-    .map((c) => c.check);
-  return { suggestionId: s.id, failed, decidedAt: s.decidedAt };
 }
 
 async function readinessOf(row: Row) {

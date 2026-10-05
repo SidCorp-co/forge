@@ -169,18 +169,17 @@ async function pinnedDesignsIn(tx: Tx, workflowIds: readonly string[]): Promise<
     .orderBy(projectWorkflows.flow);
 }
 
-/** A stored breakdown that no longer parses (one proposed before complexity was required) is
- *  refused at accept by its path, never thrown; a reviewer revises it with the field added. */
+/** A stored breakdown that no longer parses is refused at accept by its path, never thrown. */
 function storedBreakdownRefusal(row: Row): Refusal | null {
   const refusal = payloadRefusal('breakdown', 'requirement', row.payload);
   if (!refusal) return null;
   return {
     ...refusal,
-    detail: `${refusal.detail} The stored payload predates this shape; revise the suggestion (POST /suggestions/${row.id}/revise) with the field added.`,
+    detail: `${refusal.detail} The stored payload does not match this shape; revise the suggestion (POST /suggestions/${row.id}/revise) to it.`,
   };
 }
 
-// cm:why workflow requirement-to-delivery step `approve`: core creates every issue with
+// Workflow requirement-to-delivery step `approve`: core creates every issue with
 // requirement_id, planned_revision, issue_criteria and blocks edges in one transaction; they are
 // filed at draft, so nothing dispatches before a person promotes them. Each is sized as its item
 // says and linked as the build of the pinned design it builds, so the build gate holds it (ISS-117)
@@ -201,6 +200,7 @@ export async function breakdownEffect(
   const { codes, blockers, builds } = guard;
   const req = await rowIn(tx, projectId, target.id);
   const ids: string[] = [];
+  const seqOf = new Map<string, number>();
   const filed: Omit<SuggestionBreakdownIssue, 'key'>[] = [];
   for (const [i, item] of p.issues.entries()) {
     const priority = item.priority ?? BREAKDOWN_ISSUE_DEFAULTS.priority;
@@ -227,6 +227,7 @@ export async function breakdownEffect(
       { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
     );
     ids.push(issue.id);
+    seqOf.set(issue.id, issue.issSeq);
     const design = builds[i] ?? null;
     if (design) {
       await linkBuild(tx, {
@@ -268,16 +269,6 @@ export async function breakdownEffect(
     relations.push(...(await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx)));
   }
   const prefix = await activeIssuePrefix(projectId);
-  const seqs = await tx
-    .select({ id: issues.id, seq: issues.issSeq })
-    .from(issues)
-    .where(
-      sql`${issues.id} IN (${sql.join(
-        ids.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
-  const seqOf = new Map(seqs.map((s) => [s.id, s.seq]));
   return {
     refusals: null,
     relations,

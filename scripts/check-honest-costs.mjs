@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { ROOT } from './lib/gate.mjs';
 import { judge, listProposals } from './lib/honest-costs.mjs';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const VISION = 'docs/VISION.md';
 const PROPOSALS = 'docs/proposals';

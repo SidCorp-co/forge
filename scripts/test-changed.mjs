@@ -2,12 +2,12 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
 import { baseRev } from './lib/baseline-ratchet.mjs';
 import { selectionFor } from './lib/changed-selection.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('test-changed');
 
 const TREE_COUPLED =
   /from ['"]node:fs['"]|readFileSync|readdirSync|globSync|execFileSync|spawnSync/;
@@ -18,11 +18,6 @@ const PACKAGES = [
   { name: '@forge/core', dir: 'packages/core', testGlob: /\.test\.ts$/ },
   { name: 'web-v2', dir: 'packages/web-v2', testGlob: /\.test\.tsx?$/ },
 ];
-
-function die(msg) {
-  console.error(`test-changed: ${msg}`);
-  process.exit(2);
-}
 
 function vitest(pkgDir, args, capture) {
   return spawnSync('npx', ['vitest', ...args], {

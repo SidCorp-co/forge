@@ -62,7 +62,7 @@ export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResu
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
     conditions.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
   }
-  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+  const where = and(...conditions);
 
   const orderColumn =
     input.orderBy === 'updatedAt'

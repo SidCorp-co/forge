@@ -9,19 +9,15 @@
 //   forge project on that instance)
 
 import { writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('design-index');
+
 const OUT = '.forge/design-index.json';
 const API = (process.env.FORGE_API_URL ?? 'https://forge-dev-api.sidcorp.co').replace(/\/$/, '');
 const PROJECT = process.env.FORGE_PROJECT_ID ?? 'd1bb4907-74d9-4228-85ff-76121523af7d';
 const TOKEN = process.env.FORGE_TOKEN;
-
-function die(message) {
-  console.error(`design-index: ${message}`);
-  process.exit(2);
-}
 
 if (!TOKEN) die('FORGE_TOKEN is unset; a personal access token with project.read is needed');
 
