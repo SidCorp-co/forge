@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.26] - 2026-10-05
+
+Refusals answer the status that says what to do, and approving takes a named grant
+
+
 ### Changed
 
 - **A refused request answers the status that says what to do (ISS-186):** 403 for a missing
