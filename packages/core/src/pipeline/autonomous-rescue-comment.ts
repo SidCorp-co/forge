@@ -5,19 +5,19 @@ import { postIssueNoticeOnce } from './ports.js';
 function buildCapReachedCommentBody(args: {
   fromStatus: IssueStatus;
   cap: number;
-  driveSessions: number;
+  runSessions: number;
 }): string {
   return [
-    `🛑 **The driver stopped at \`${args.fromStatus}\` ${args.cap} times without finishing** — this issue is now waiting on you.`,
+    `🛑 **${args.runSessions} run sessions ended on this issue without it moving on** — it stopped at \`${args.fromStatus}\` and is now waiting on you.`,
     '',
-    `Each time, the \`drive\` job exited cleanly but left the issue at \`${args.fromStatus}\` with no work queued behind it, so nothing in the pipeline could carry it forward. The reconciler re-entered the driver ${args.cap} times; a ${args.cap + 1}th would mint another session with no reason to expect a different ending.`,
+    `Each run session handed the issue back without delivering it, so nothing in the pipeline could carry it forward. The cap is ${args.cap}; another run would have no reason to expect a different ending.`,
     '',
     'What to look at:',
-    '- Read the last drive session on this issue. An agent that stops here usually hit a decision it could not make alone, or a limit mid-turn.',
+    '- Read the last run session on this issue. An agent that stops here usually hit a decision it could not make alone, or a limit mid-turn.',
     '- If the work is genuinely blocked on an answer, answer it here — the issue resumes from this status on your reply.',
     '- If the work is already done (branch pushed, PR open), close the issue rather than resuming it.',
     '',
-    `Rescue counting resets once the issue moves on, so a resumed issue gets a full allowance again. This run has burned ${args.driveSessions} drive sessions so far.`,
+    'Counting resets once the issue moves on (a park, a delivery or a reopen), so an answered issue gets a full allowance again.',
   ].join('\n');
 }
 
@@ -26,7 +26,7 @@ export async function postCapReachedComment(args: {
   authorId: string;
   fromStatus: IssueStatus;
   cap: number;
-  driveSessions: number;
+  runSessions: number;
 }): Promise<void> {
   try {
     const body = buildCapReachedCommentBody(args);

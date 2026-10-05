@@ -8,12 +8,34 @@ export const JOB_REFUSAL_CODES = [
 	"NOT_CANCELLABLE",
 	"NOT_HELD",
 	"POOL_JOB_NO_PROMPT",
+	"JOB_TYPE_NOT_MINTABLE",
 	"JOB_CONTEXT_REFUSED",
 	"CONTRACT_CONTEXT_UNLOADABLE",
 	"ARTIFACT_CONTEXT_UNLOADABLE",
 ] as const;
 
 export type JobRefusalCode = (typeof JOB_REFUSAL_CODES)[number];
+
+/**
+ * Why a job type cannot be minted through `POST /api/projects/:id/jobs`. A runner serves a pool job
+ * by its prompt alone and never branches on the type, so what decides is who mints the type: core's
+ * own flows mint some, and no lane mints the rest any more (the staged lane and the `drive` job).
+ */
+export const UNMINTABLE_JOB_TYPES = {
+	release_batch: "core mints it from the release flow (POST /api/projects/:id/release-batches)",
+	onboarding: "core mints it from project onboarding",
+	drive: "core no longer mints drive jobs: a master opens a run session over the issue instead",
+	triage: "the staged lane that minted it was removed",
+	clarify: "the staged lane that minted it was removed",
+	plan: "the staged lane that minted it was removed",
+	code: "the staged lane that minted it was removed",
+	review: "the staged lane that minted it was removed",
+	test: "the staged lane that minted it was removed",
+	staging: "the staged lane that minted it was removed",
+	release: "the staged lane that minted it was removed",
+	fix: "the staged lane that minted it was removed",
+	smoke: "the staged lane that minted it was removed",
+} as const;
 
 /** Payload key carrying the hold bookkeeping on the successor row. */
 export const HOLD_PAYLOAD_KEY = "__hold";

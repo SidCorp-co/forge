@@ -1,16 +1,17 @@
+import {
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+} from '@forge/contracts/agent-sessions';
+import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { transitionIssueStatus } from '../issues/index.js';
+import { issueWorkInFlightSql, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { traceStep } from '../lib/sentry.js';
 import { countOverdueDeliveries } from '../outbox/index.js';
-import {
-  AUTONOMOUS_ENTRY_STATUS,
-  AUTONOMOUS_INFLIGHT_STATUSES,
-  AUTONOMOUS_JOB_TYPE,
-} from './autonomous-mode.js';
-import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
+import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
+import { checkAutonomousRescueCap } from './autonomous-rescue-cap.js';
 import {
   holdsOpenHumanQuestion,
   personOwesAnAnswer,
@@ -33,6 +34,12 @@ const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
 const WEDGE_SCAN_PAGE = 200;
 
+/** The status a wedge stands at, and where the issue machine's recovery edges may hand it back. */
+const WEDGE_STATUS: IssueStatus = 'in_progress';
+const RECOVERY_TARGETS: readonly IssueStatus[] = ISSUE_MACHINE.edges
+  .filter((e) => e.recovery && e.from === WEDGE_STATUS)
+  .map((e) => e.to);
+
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
   stale: number;
@@ -53,7 +60,6 @@ export async function runReconcilerOnce(): Promise<{
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
-      AND i.merged_at IS NULL
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
@@ -72,7 +78,6 @@ export async function runReconcilerOnce(): Promise<{
         reopenCount: row.reopen_count,
       });
       if (cap.capped) continue;
-      const autonomousRunId: string | null = cap.runId;
 
       const { boxes } = await wakeMastersForProject({
         projectId: row.project_id,
@@ -81,8 +86,6 @@ export async function runReconcilerOnce(): Promise<{
       });
 
       if (boxes === 0) continue;
-
-      if (autonomousRunId) await recordAutonomousRescue(autonomousRunId);
 
       rescued++;
       traceStep({
@@ -135,62 +138,48 @@ type WedgeCandidate = {
   status: string;
   reopen_count: number;
   lease: unknown;
+  /** The status the last run session naming the issue took it from, or null. */
+  claimed_from: string | null;
 };
 
-/** Candidates are read in id order a page at a time, so rows a live lease holds cannot fill every
- *  slot of {@link WEDGE_RESET_LIMIT} and keep a wedge that really is one from being reached. */
+/**
+ * Candidates are issues at `in_progress` that nothing holds: no live job, pipeline run or run
+ * session lease (issue-delivery `rule-wedge`). Read in id order a page at a time, so rows a live
+ * work-state lease holds cannot fill every slot of {@link WEDGE_RESET_LIMIT}.
+ */
 async function selectWedgeCandidates(after: string | null): Promise<WedgeCandidate[]> {
-  const inflightList = sql.join(
-    AUTONOMOUS_INFLIGHT_STATUSES.map((s) => sql`${s}`),
-    sql`, `,
-  );
   const past = after === null ? sql`` : sql`AND i.id > ${after}::uuid`;
   return (await db.execute<WedgeCandidate>(sql`
     SELECT i.id, i.project_id, i.status, i.reopen_count,
-           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
+           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease,
+           (SELECT r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> ('ISS-' || i.iss_seq)
+              FROM pipeline_runs r
+             WHERE r.project_id = i.project_id
+               AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} ? ('ISS-' || i.iss_seq)
+             ORDER BY r.created_at DESC
+             LIMIT 1) AS claimed_from
     FROM issues i
-    CROSS JOIN LATERAL (
-      SELECT j.type, j.status
-      FROM jobs j
-      WHERE j.issue_id = i.id
-      ORDER BY j.created_at DESC
-      LIMIT 1
-    ) lj
-    WHERE i.status IN (${inflightList})
+    WHERE i.status = ${WEDGE_STATUS}
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
-      AND lj.type = ${AUTONOMOUS_JOB_TYPE}
       AND NOT ${holdsOpenHumanQuestion(sql`i.id`)}
-      AND NOT EXISTS (
-        SELECT 1 FROM jobs j2
-        WHERE j2.issue_id = i.id
-          AND j2.status IN ('queued', 'dispatched')
-      )
-      AND (
-        (
-          lj.status = 'done'
-          AND EXISTS (
-            SELECT 1 FROM pipeline_runs r
-            WHERE r.issue_id = i.id AND r.kind = 'issue' AND r.status = 'running'
-          )
-        )
-        OR (
-          i.merged_at IS NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM pipeline_runs r2
-            WHERE r2.issue_id = i.id
-              AND r2.kind = 'issue'
-              AND r2.status IN ('running', 'paused')
-          )
-        )
-      )
+      AND NOT ${issueWorkInFlightSql({
+        issueId: sql`i.id`,
+        projectId: sql`i.project_id`,
+        issueKey: sql`'ISS-' || i.iss_seq`,
+      })}
       ${past}
     ORDER BY i.id
     LIMIT ${WEDGE_SCAN_PAGE}
   `)) as unknown as WedgeCandidate[];
 }
 
+/** Back to the status the run took it from; the entry status where no run recorded one. */
+function wedgeTarget(row: WedgeCandidate): IssueStatus {
+  const named = row.claimed_from as IssueStatus | null;
+  return named !== null && RECOVERY_TARGETS.includes(named) ? named : AUTONOMOUS_ENTRY_STATUS;
+}
+
 async function resetAutonomousWedgesOnce(): Promise<number> {
-  if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
   let reset = 0;
   let after: string | null = null;
 
@@ -218,7 +207,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
   }
   let stood = null as StoodSinceSelected | null;
   try {
-    const { capped, runId } = await checkAutonomousRescueCap({
+    const { capped } = await checkAutonomousRescueCap({
       projectId: row.project_id,
       issueId: row.id,
       status: row.status as IssueStatus,
@@ -226,6 +215,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     });
     if (capped) return false;
 
+    const target = wedgeTarget(row);
     const actor = await reconcilerActorFor(row.project_id);
     await transitionIssueStatus(
       {
@@ -234,7 +224,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
         status: row.status as IssueStatus,
         reopenCount: row.reopen_count,
       },
-      AUTONOMOUS_ENTRY_STATUS,
+      target,
       actor,
       {
         reason: 'reconciler_autonomous_wedge_reset',
@@ -255,7 +245,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
               authorId: actor.id,
               body: buildWedgeResetBody({
                 from: row.status,
-                to: AUTONOMOUS_ENTRY_STATUS,
+                to: target,
                 grace: WEDGE_GRACE,
                 reading,
               }),
@@ -266,11 +256,9 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
       },
     );
 
-    if (runId) await recordAutonomousRescue(runId);
-
     logger.warn(
-      { issueId: row.id, from: row.status, to: AUTONOMOUS_ENTRY_STATUS },
-      'reconciler: reset autonomous driver wedge to the entry status',
+      { issueId: row.id, from: row.status, to: target },
+      'reconciler: handed a wedge nothing holds back to the status its run took it from',
     );
     traceStep({
       category: 'pipeline.reconciler.autonomous_wedge_reset',

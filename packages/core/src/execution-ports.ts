@@ -61,6 +61,7 @@ import {
   answerOf,
   askQuestion,
   registerWaiter,
+  voidCancelledRunQuestions,
   waiterFor,
 } from './questions/index.js';
 import { createReleaseBatch, loadReleaseRoster } from './release-batch/index.js';
@@ -118,6 +119,7 @@ export function provideExecutionPorts(): void {
     readContentLanguage,
     resolveRegisteredEffectiveSkills,
     settleSessionFires,
+    voidCancelledRunQuestions,
     redispatchScheduleSessionOnFailover,
     deviceHolderUserId,
     insertInterventionEvent,

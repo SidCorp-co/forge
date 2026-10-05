@@ -1,6 +1,7 @@
 import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import {
   type AgentSessionStatus,
+  CANCELLED_AGENT_SESSION_STATUSES,
   LIVE_SESSION_STATUSES,
   SESSION_MACHINE,
   TERMINAL_AGENT_SESSION_STATUSES,
@@ -33,6 +34,16 @@ export const SWEEP_SESSION_COLUMNS = [
 ] as const satisfies ReadonlyArray<keyof SessionRow>;
 
 const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
+
+const CANCEL_REASONS: readonly string[] = ['user_cancelled', 'pipeline_cancelled'];
+
+/** A session end that stops the run on purpose (agent-run-standing, `cancelled`). */
+function isCancelEnd(args: { to: string; reason?: string | null }): boolean {
+  return (
+    CANCELLED_AGENT_SESSION_STATUSES.includes(args.to as AgentSessionStatus) ||
+    CANCEL_REASONS.includes(args.reason ?? '')
+  );
+}
 
 /**
  * A session's status move: the kernel transition on the session machine, and, once a session has
@@ -87,6 +98,15 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
           actor: args.actor,
           source: args.source,
         });
+        if (isCancelEnd(args) && rows.length > 0) {
+          await agentSessionsPorts().voidCancelledRunQuestions(tx, {
+            issueId: null,
+            sessionIds: rows.map((r) => r.id),
+            reason: args.reason ?? args.to,
+            actor: args.actor,
+            source: args.source,
+          });
+        }
         const owed = runSessionRuns(rows);
         await markHandBacksOwed(tx, owed);
         if (owed.length > 0 && exec !== db && opts.handBack !== 'caller') {

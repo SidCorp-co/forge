@@ -263,7 +263,12 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   const by = authorOf(actor);
   const waiver = { waived: false };
   let unblockedDependents: UnblockedDependent[] = [];
-  const facts = await readIssueMoveFacts({ issue, actorUserId: by, to: toStatus });
+  const facts = await readIssueMoveFacts({
+    issue,
+    actorUserId: by,
+    actorDeviceId: actor.type === 'device' ? actor.id : null,
+    to: toStatus,
+  });
   const moved = await transition(db, ISSUE_MACHINE, {
     to: toStatus,
     where: eq(issues.id, issue.id),

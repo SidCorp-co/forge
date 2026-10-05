@@ -13,7 +13,9 @@
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED
  *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
  *                      where the project document sets `plan.approval.required`
- *   awaiting_release   the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
+ *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
+ *                      `releases.approve` or `project.admin` does
+ *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move
@@ -38,15 +40,18 @@ import {
 } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Refusal } from '../lib/refusal.js';
 import { isRefusal } from '../lib/refusal.js';
 import type { Guard, GuardInput } from '../lifecycle/index.js';
 import {
+  actorFor,
+  can,
   type PermissionFacts,
   permissionFactsOf,
   permissionRefusal,
+  projectResource,
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
@@ -107,16 +112,57 @@ interface IssueMoveFacts {
   permissions: PermissionFacts;
   /** The drafts the criteria's storefront verdicts name, as the source holds them now. */
   drafts: CurrentDrafts;
+  /** Who is asking, as the run lane names a holder: the box the device or its token belongs to. */
+  callerDeviceId: string | null;
+  /** The permission that lets the mover make a move another run's hold reserves, or null. */
+  holdOverride: HoldOverride | null;
+}
+
+const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
+type HoldOverride = (typeof HOLD_OVERRIDES)[number];
+
+/** Only the move into `awaiting_release` asks who holds the issue. */
+const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['awaiting_release'];
+
+async function callerDeviceOf(
+  actorUserId: string,
+  deviceId: string | null,
+): Promise<string | null> {
+  if (deviceId) return deviceId;
+  const tokenId = actorFor(actorUserId).tokenId;
+  if (!tokenId) return null;
+  const rows = (await db.execute(
+    sql`SELECT device_id FROM personal_access_tokens WHERE id = ${tokenId}`,
+  )) as unknown as Array<{ device_id: string | null }>;
+  return rows[0]?.device_id ?? null;
+}
+
+async function holdOverrideOf(
+  actorUserId: string,
+  projectId: string,
+): Promise<HoldOverride | null> {
+  const actor = actorFor(actorUserId);
+  for (const permission of HOLD_OVERRIDES) {
+    if (await can(actor, permission, projectResource(projectId))) return permission;
+  }
+  return null;
 }
 
 export async function readIssueMoveFacts(args: {
   issue: { id: string; projectId: string };
   actorUserId: string;
+  /** The box making the move, where the actor is the device itself. */
+  actorDeviceId?: string | null;
   to: IssueStatus;
 }): Promise<IssueMoveFacts> {
   const { issue } = args;
   const document = (await readProjectDocument(issue.projectId))?.document;
+  const asksForHolder = ASKS_FOR_HOLDER.includes(args.to);
   return {
+    callerDeviceId: asksForHolder
+      ? await callerDeviceOf(args.actorUserId, args.actorDeviceId ?? null)
+      : null,
+    holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     planApprovalRequired: document?.plan?.approval.required === true,
     verdictsRequired: verdictsRequiredOf(document?.delivery),
     source: document?.source.type ?? null,
@@ -157,6 +203,44 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
     code: 'NO_HOLDER',
     detail: `\`in_progress\` says a run is working this issue, and nothing holds it: no live lease on its work state, and no job, run or fleet lease over it. Claim it first (a lease, or a run session), then move it — an issue nobody holds stays at ${quote(ctx.from)} where a master can take it.`,
     details: { from: ctx.from, to: ctx.to },
+  };
+}
+
+/**
+ * awaiting_release is the holding run's own move (issue-lifecycle `awaiting_release`): the box
+ * whose run session leases the issue makes it, or someone holding `releases.approve` or
+ * `project.admin` does on purpose. Anyone else is refused, the holder named.
+ */
+async function runHolderGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  if (ctx.facts.holdOverride) return null;
+  const rows = (await ctx.executor.execute(sql`
+    SELECT l.device_id, l.session_id, l.run_id
+      FROM issue_leases l
+      JOIN issues i ON i.project_id = l.project_id AND l.issue_key = 'ISS-' || i.iss_seq
+     WHERE i.id = ${ctx.issue.id}
+  `)) as unknown as Array<{ device_id: string; session_id: string; run_id: string }>;
+  const lease = rows[0];
+  const caller = ctx.facts.callerDeviceId;
+  if (lease && caller !== null && lease.device_id === caller) return null;
+  const held = lease
+    ? `run session ${lease.session_id} on device ${lease.device_id} holds it`
+    : 'no run session holds it';
+  const asking =
+    caller === null
+      ? 'the caller is not a paired box or its token'
+      : `the caller is device ${caller}`;
+  return {
+    code: 'NOT_THE_HOLDER',
+    detail: `\`awaiting_release\` is the move of the run holding the issue, and ${held} while ${asking}. Make the move from the holding run, or as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      holder: lease
+        ? { deviceId: lease.device_id, sessionId: lease.session_id, runId: lease.run_id }
+        : null,
+      callerDeviceId: caller,
+      permissions: HOLD_OVERRIDES,
+    },
   };
 }
 
@@ -368,6 +452,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
       return refusalOf((await heldTakeGuard(ctx)) ?? (await holderGuard(ctx)));
     },
     plan_checkpoint: async (input) => refusalOf(await planGuard(ctxOf(input))),
+    run_holder: async (input) => refusalOf(await runHolderGuard(ctxOf(input))),
     merged: async (input) => {
       const missing = await mergeNotRecorded(input.tx, { issueId: input.row.id, to: input.to });
       return missing

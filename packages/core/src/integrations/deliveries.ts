@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, isNotNull, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   type IntegrationDeliveryDirection,
   type IntegrationDeliveryStatus,
@@ -84,33 +84,42 @@ async function claimInbound(input: Omit<RecordDeliveryInput, 'direction' | 'stat
 
 /**
  * Apply one inbound event under its claimed row, then settle the row with what happened: `ok`, or
- * `failed` with the throw or the refusal the event answered. `result` is null for a redelivery whose
- * first attempt already succeeded or is in flight, which is not applied twice.
+ * `failed` with the throw or the refusal the event answered. `settle` writes what the delivery
+ * reports on the same transaction as the settle, so the row never reads `ok` while its facts are
+ * unwritten: a throw from either leaves it `failed`, which a redelivery takes over and applies again.
+ * `result` is null for a redelivery whose first attempt already succeeded or is in flight, which is
+ * not applied twice.
  */
 export async function applyClaimedInbound<
   R extends { actions: number; refusal?: string | null | undefined },
 >(
   input: Omit<RecordDeliveryInput, 'direction' | 'status'>,
   apply: () => Promise<R>,
+  settle: (tx: Tx) => Promise<void>,
 ): Promise<{ deliveryId: string; result: R | null }> {
   const claim = await claimInbound(input);
   if (!claim)
     throw new Error(`inbound delivery ${input.requestId}: no row could be claimed or found`);
   if (!claim.claimed) return { deliveryId: claim.id, result: null };
-  let result: R;
   try {
-    result = await apply();
+    const result = await apply();
+    await db.transaction(async (tx) => {
+      await settle(tx);
+      await tx
+        .update(integrationDeliveries)
+        .set({
+          status: result.refusal ? 'failed' : 'ok',
+          ...(result.refusal ? { errorMessage: result.refusal } : {}),
+          completedAt: new Date(),
+        })
+        .where(eq(integrationDeliveries.id, claim.id));
+    });
+    return { deliveryId: claim.id, result };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     await updateDelivery(claim.id, { status: 'failed', errorMessage, completedAt: new Date() });
     throw err;
   }
-  await updateDelivery(claim.id, {
-    status: result.refusal ? 'failed' : 'ok',
-    ...(result.refusal ? { errorMessage: result.refusal } : {}),
-    completedAt: new Date(),
-  });
-  return { deliveryId: claim.id, result };
 }
 
 export async function updateDelivery(id: string, patch: UpdateDeliveryInput): Promise<void> {

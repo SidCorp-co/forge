@@ -8,8 +8,8 @@
 // — never when runners are merely all-busy (healthy backpressure).
 //
 // Data: useProject(projectId).devicePool (project-scoped) ×
-// useQueueStats(projectId) (per-device queued/running). Liveness is the shared
-// deriveLiveness threshold so the strip, list, and detail never diverge.
+// useQueueStats(projectId) (per-device queued/running). Liveness reads core's stuck runs
+// (runs/standing) through deriveLiveness so the strip, list, and detail never diverge.
 import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -21,6 +21,7 @@ import {
   sessionStep,
   type AgentSessionDisplayStatus,
   type SessionRow,
+  type StuckRuns,
 } from "../types";
 
 /** Pull a friendly `ISS-<seq>` token from a session title (the session row only
@@ -38,9 +39,10 @@ interface FleetStripProps {
   rows: SessionRow[];
   displays: AgentSessionDisplayStatus[];
   now: number;
+  stuck: StuckRuns;
 }
 
-export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) {
+export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStripProps) {
   const projectQ = useProject(projectId);
   const queueQ = useQueueStats(projectId);
 
@@ -95,7 +97,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
           {devicePool.map((d) => {
             const bound = boundByDevice.get(d.id);
             const busy = !!bound;
-            const liveness = bound ? deriveLiveness(bound.row, now) : null;
+            const liveness = bound ? deriveLiveness(bound.row, stuck, now) : null;
             const stale = liveness?.state === "stale" || liveness?.state === "reaping";
             const health = busy && stale ? "attention" : deviceHealth(d.status as never);
             const queued = queuedByDevice.get(d.id) ?? 0;

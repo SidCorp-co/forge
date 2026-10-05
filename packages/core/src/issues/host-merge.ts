@@ -33,6 +33,7 @@ async function stampHostMerge(
   const creator = await projectCreatorOf(args.projectId);
   const stamp = await recordIssueMerge(executor, {
     issueId,
+    via: 'event',
     // a host-reported merge is recorded on the project owner's behalf, as the review note is
     actor: creator ? { type: 'user', id: creator, agency: 'agent' } : null,
     evidence: {

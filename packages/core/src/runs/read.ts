@@ -21,7 +21,12 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { SESSION_SILENCE_TIMEOUT_MS } from '../devices/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { getLoopThresholds, killGraceMs, RESULT_QUIET_MINUTES } from '../jobs/index.js';
+import {
+  gateReasonsForQueuedJobsIn,
+  getLoopThresholds,
+  killGraceMs,
+  RESULT_QUIET_MINUTES,
+} from '../jobs/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -65,9 +70,10 @@ async function viewerOf(viewer: RunViewer | null, projectId: string) {
 }
 
 async function contextFor(projectId: string, viewer: RunViewer | null) {
-  const [master, who] = await Promise.all([
+  const [master, who, queuedGates] = await Promise.all([
     readMasterStanding(projectId),
     viewerOf(viewer, projectId),
+    gateReasonsForQueuedJobsIn([projectId]),
   ]);
   const slots =
     master.slots && master.slots.max !== null
@@ -78,6 +84,7 @@ async function contextFor(projectId: string, viewer: RunViewer | null) {
     viewer: who,
     slots,
     stuckAfterMs: RUN_STUCK_AFTER_MS,
+    queuedGates,
     silenceReapMs: SESSION_SILENCE_TIMEOUT_MS,
     jobHeartbeatMs: getLoopThresholds().heartbeatMs,
     jobAckMs: getLoopThresholds().ackMs,

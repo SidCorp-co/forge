@@ -1,3 +1,4 @@
+import { UNMINTABLE_JOB_TYPES } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -58,6 +59,18 @@ async function loadJob(jobId: string) {
   return row;
 }
 
+/** A type minted only by core's own flow, or by no lane any more, is refused here by name. */
+function refuseUnmintableType(type: (typeof jobTypes)[number]): void {
+  const why = (UNMINTABLE_JOB_TYPES as Record<string, string | undefined>)[type];
+  if (!why) return;
+  const mintable = jobTypes.filter((t) => !(t in UNMINTABLE_JOB_TYPES));
+  throw refuseJob(
+    'JOB_TYPE_NOT_MINTABLE',
+    `a \`${type}\` job is not minted here: ${why}. This route mints ${mintable.map((t) => `\`${t}\``).join(', ')}.`,
+    '/type',
+  );
+}
+
 export const jobProjectRoutes = new Hono<{ Variables: AuthVars }>();
 jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -73,6 +86,7 @@ jobProjectRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
 
+    refuseUnmintableType(input.type);
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
     if (poolPrompt(input.payload) === null) {
       throw refuseJob('POOL_JOB_NO_PROMPT', noPromptMessage(input.type), '/payload');

@@ -139,3 +139,51 @@ export async function settleOpenQuestions(
   });
   return null;
 }
+
+const QUESTION_ENDED_WITH_RUN = 'run_cancelled';
+
+/**
+ * Void the open questions a cancelled run leaves: those its sessions asked and, for an issue run,
+ * those on its issue. Called inside the cancel's own transaction (agent-run-standing, `cancelled`:
+ * its open questions are voided), so a cancel that rolls back keeps them open.
+ */
+export async function voidCancelledRunQuestions(
+  tx: Executor,
+  args: {
+    issueId: string | null;
+    sessionIds: readonly string[];
+    reason: string;
+    actor: KernelActor;
+    source: string;
+  },
+): Promise<string[]> {
+  const owners: SQL[] = [];
+  if (args.issueId) owners.push(eq(agentQuestions.issueId, args.issueId));
+  if (args.sessionIds.length > 0) {
+    owners.push(inArray(agentQuestions.agentSessionId, [...args.sessionIds]));
+  }
+  if (owners.length === 0) return [];
+  const owned = owners.length === 1 ? owners[0] : sql`(${sql.join(owners, sql` OR `)})`;
+  const open = await tx
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(and(eq(agentQuestions.status, 'open'), owned));
+  if (open.length === 0) return [];
+  const ids = open.map((r) => r.id);
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: {
+      voidReason: `the run that asked was cancelled (${args.reason})`,
+      endedBy: args.actor.id ?? args.actor.type,
+      endedReason: QUESTION_ENDED_WITH_RUN,
+      updatedAt: new Date(),
+    },
+    where: inArray(agentQuestions.id, ids),
+    reason: args.reason,
+    actor: args.actor,
+    source: args.source,
+    returning: ['id'],
+  });
+  return ids;
+}

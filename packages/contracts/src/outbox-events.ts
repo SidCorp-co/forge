@@ -38,6 +38,14 @@ export const OUTBOX_EVENT_TYPES = [
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
+/**
+ * The route a merge stamp arrived by (github-merge-sequence `m-stamp`): the host's webhook
+ * (`event`), Forge's own merge (`kernel`), a mark whose commit Forge read from the repository or its
+ * record of the pull request (`repository`), or a mark resting on its writer's word (`mark`).
+ */
+export const MERGE_STAMP_VIAS = ["event", "kernel", "repository", "mark"] as const;
+export type MergeStampVia = (typeof MERGE_STAMP_VIAS)[number];
+
 /** Who acted. A runner box, the sweeper or the system records as a device, always an agent. */
 export interface OutboxActor {
 	type: "user" | "device";
@@ -142,6 +150,8 @@ export interface OutboxEventPayloads {
 		fields: string[];
 		before: Record<string, unknown>;
 		after: Record<string, unknown>;
+		/** Set by the merge stamp alone: the route the merge arrived by. */
+		via?: MergeStampVia;
 	};
 	"issue.transitioned": TransitionEvent<"issue">;
 	"job.transitioned": TransitionEvent<"job">;
