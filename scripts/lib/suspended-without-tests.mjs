@@ -10,3 +10,12 @@ export function suspendedWithoutTests(root, line) {
   console.log(`${line} — suspended on dev until the QA phase restores the tests (ISS-172)`);
   return true;
 }
+
+// cm:hack ISS-172 until:QA phase on dev — single tests return with their lanes before the suites do,
+// so a gate whose own population (`count`) is still empty stays suspended until one of its files is
+// back. Deleted with the hack above when the QA phase restores the suites.
+export function suspendedUntilReturned(count, line) {
+  if (count > 0) return false;
+  console.log(`${line} — suspended on dev until the QA phase restores the tests (ISS-172)`);
+  return true;
+}

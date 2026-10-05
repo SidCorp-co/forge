@@ -18,7 +18,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { dieAs } from './lib/gate.mjs';
-import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
+import { suspendedUntilReturned, suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
@@ -103,6 +103,16 @@ if (exit === 1) {
     console.error('they list, so an undeclared walk of the root passes under it unrefused.');
   }
   process.exit(1);
+}
+
+if (
+  exit === 2 &&
+  suspendedUntilReturned(
+    declared.length,
+    `whole-tree-gates: ${tests} test file(s) read, none declares \`@gate-input whole-tree\``,
+  )
+) {
+  process.exit(0);
 }
 
 if (exit === 2) {
