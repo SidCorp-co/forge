@@ -266,5 +266,5 @@ Two things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, 
 When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline.
 
 ### A crash is not a reason to hold
-If your job fails mechanically (process crash, non-zero exit), the system itself reverts the issue to the stage's entry status and re-dispatches with a retry budget — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,
+If your job fails mechanically (process crash, non-zero exit), the system itself retries the job with a retry budget and leaves the issue where it is — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,
 };

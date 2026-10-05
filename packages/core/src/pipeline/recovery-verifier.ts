@@ -1,57 +1,14 @@
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus, JobType } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { issues, type jobs } from '../db/schema.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-type RecoveryVerdict = 'advanced' | 'pending' | 'reverted';
+type RecoveryVerdict = 'advanced' | 'pending';
 
-// A job's step is progress inside `in_progress` (ISS-54), so what a job leaves behind is read off
-// the statuses a run hands an issue on to: the plan checkpoint, the release gate, a park, a close.
-export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus[]> = {
-  triage: ['needs_info', 'approved'],
-  clarify: ['approved', 'needs_info'],
-  plan: ['approved'],
-  code: ['awaiting_release', 'closed'],
-  review: ['awaiting_release', 'reopen'],
-  test: ['awaiting_release', 'reopen'],
-  staging: ['reopen'],
-  fix: ['awaiting_release', 'closed'],
-  release: ['awaiting_release', 'closed'],
-  custom: [],
-  drive: [],
-  // smoke canaries (ISS-455) are issue-less; there is no status to advance.
-  smoke: [],
-  release_batch: [],
-  // the onboarding analysis (ISS-63) is issue-less too.
-  onboarding: [],
-};
-
-export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
-  triage: 'open',
-  clarify: 'open',
-  plan: 'open',
-  code: 'approved',
-  fix: 'reopen',
-  release: 'awaiting_release',
-};
-
-// Where a step job's work stands while it runs: inside `in_progress`, whatever the step.
-const JOB_TYPE_INFLIGHT_STATUS: Partial<Record<JobType, IssueStatus>> = {
-  triage: 'in_progress',
-  clarify: 'in_progress',
-  plan: 'in_progress',
-  code: 'in_progress',
-  review: 'in_progress',
-  test: 'in_progress',
-  fix: 'in_progress',
-};
-
-export async function verifyRecovery(
-  job: Pick<JobRow, 'issueId' | 'type'>,
-): Promise<RecoveryVerdict> {
+export async function verifyRecovery(job: Pick<JobRow, 'issueId'>): Promise<RecoveryVerdict> {
   if (!job.issueId) return 'pending';
 
   const [row] = await db
@@ -61,28 +18,11 @@ export async function verifyRecovery(
     .limit(1);
 
   if (!row) return 'pending';
-  return classifyVerdict(row.status, job.type);
+  return classifyVerdict(row.status);
 }
 
-/**
- * Pure verdict helper exported for unit tests — no DB roundtrip.
- */
-export function classifyVerdict(currentStatus: IssueStatus, jobType: JobType): RecoveryVerdict {
-  const entry = JOB_TYPE_ENTRY_STATUS[jobType];
-  if (entry && currentStatus === entry) return 'pending';
-
-  // The job is still mid-flight inside `in_progress` — not advanced, not stale; the retry path
-  // stays live.
-  if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
-
-  const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
-  if (exits.includes(currentStatus)) return 'advanced';
-
-  if (ISSUE_RESOLVED_STATUSES.includes(currentStatus)) return 'advanced';
-
-  // No entry mapping (e.g. `custom`) and not in any exit set —
-  // verifier cannot decide; default to pending so the retry path proceeds.
-  if (!entry) return 'pending';
-
-  return 'reverted';
+// No mintable job type names a step status of its own, so the only progress a failed job can have
+// left behind is an issue that was resolved under it.
+function classifyVerdict(currentStatus: IssueStatus): RecoveryVerdict {
+  return ISSUE_RESOLVED_STATUSES.includes(currentStatus) ? 'advanced' : 'pending';
 }
