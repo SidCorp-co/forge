@@ -212,7 +212,12 @@ export async function recordPerformedRelease(
   // clears it the same way and for the same reason.
   await releaseRunClaims(run.id);
 
-  await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed');
+  await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed', {
+    code: 'release_record_incomplete',
+    detail: `${failed.length} of the recorded issues would not close: ${failed
+      .map((f) => `${f.id} (${f.reason})`)
+      .join('; ')}`,
+  });
 
   return {
     runId: run.id,

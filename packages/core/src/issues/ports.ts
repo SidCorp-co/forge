@@ -217,7 +217,7 @@ interface IssuePorts {
   >;
   closeOpenRunForIssue: (
     issueId: string,
-    outcome: 'completed' | 'failed' | 'cancelled',
+    outcome: 'completed' | 'cancelled',
   ) => Promise<'settled' | 'deferred'>;
 }
 

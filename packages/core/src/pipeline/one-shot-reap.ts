@@ -122,7 +122,10 @@ export async function reapOrphanedOneShotRuns(
         );
         const outcome = oneShotRunOutcome({ anyCompleted, anyFailed });
 
-        return closeRunIfOneShotInTx(tx, row.id, outcome);
+        return closeRunIfOneShotInTx(tx, row.id, outcome, {
+          code: 'heartbeat_timeout',
+          detail: `its sessions stopped heartbeating and the sweeper failed them; none had completed`,
+        });
       });
       if (!closed) continue;
       reaped++;

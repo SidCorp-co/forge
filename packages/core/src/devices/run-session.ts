@@ -43,6 +43,7 @@ import {
   insertOneShotRun,
   lockRunForClose,
   type OneShotRunSpec,
+  type RunFailureCause,
 } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
@@ -330,9 +331,26 @@ interface ClosedRunSession {
 
 /** A close over a session already terminal: its flip handed the issues back, and a one-shot run it
  *  failed is closed here if the first close did not get that far. */
-async function finishFailedClose(runId: string | null, failing: boolean): Promise<string[]> {
-  if (failing && runId) await closeRunIfOneShot(runId, 'failed');
+async function finishFailedClose(
+  runId: string | null,
+  failing: boolean,
+  cause: RunFailureCause,
+): Promise<string[]> {
+  if (failing && runId) await closeRunIfOneShot(runId, 'failed', cause);
   return [];
+}
+
+/** Why a run fails when its run session ends on a failing outcome. */
+function runSessionCause(args: {
+  sessionId: string;
+  outcome: RunSessionOutcome;
+  detail?: string;
+}): RunFailureCause {
+  const said = args.detail ? `: ${args.detail}` : ', and the box gave no detail';
+  return {
+    code: 'agent_exited_without_result',
+    detail: `its run session ${args.sessionId} ended \`${args.outcome}\`${said}`,
+  };
 }
 
 /**
@@ -357,8 +375,9 @@ export async function closeRunSession(args: {
     );
   if (!row) return null;
   const failing = FAILING_OUTCOMES.includes(args.outcome);
+  const cause = runSessionCause(args);
   if ((terminalAgentSessionStatuses as readonly string[]).includes(row.status)) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing, cause) };
   }
 
   // The run is locked first and closed with the session's flip, in one transaction (ISS-219).
@@ -381,12 +400,12 @@ export async function closeRunSession(args: {
       { handBack: 'caller' },
     );
     if (flip.rows.length > 0 && row.runId) {
-      await closeRunIfOneShotInTx(tx, row.runId, failing ? 'failed' : 'completed');
+      await closeRunIfOneShotInTx(tx, row.runId, failing ? 'failed' : 'completed', cause);
     }
     return flip;
   });
   if (closed.rows.length === 0) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing, cause) };
   }
 
   // The close has committed, so the hand-back it owes is done now and its keys answered.

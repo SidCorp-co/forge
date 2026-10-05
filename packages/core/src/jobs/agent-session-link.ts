@@ -8,7 +8,7 @@ import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
-import type { FailureCause } from '../pipeline/index.js';
+import type { FailureCause, RunFailureCause } from '../pipeline/index.js';
 import { assertRunAcceptsWork, classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
 
@@ -210,6 +210,15 @@ export const SYNTHETIC_REAP_ERRORS = new Set([
  * `error` and leaves the other holding a sentence. When both name a cause,
  * `CAUSE_RULES` order decides, most-specific-first — not the column.
  */
+/** Why a one-shot run fails with the job it ran: the job's own classified failure. */
+function jobFailureCause(job: JobRow): RunFailureCause {
+  const { failureReason, failureDetail } = deriveSessionFailure(job);
+  return {
+    code: failureReason,
+    detail: `its job ${job.id} (${job.type}) failed: ${failureDetail ?? 'the job recorded no error'}`,
+  };
+}
+
 function deriveSessionFailure(job: JobRow): {
   failureReason: FailureCause;
   failureDetail: string | null;
@@ -250,7 +259,7 @@ export async function syncAgentSessionLifecycle(
       try {
         const runOutcome =
           outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-        await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+        await closeRunIfOneShot(job.pipelineRunId, runOutcome, jobFailureCause(job));
       } catch (err) {
         logger.warn({ err, jobId: job.id }, 'agent-session-link: close-run (no-session) failed');
       }
@@ -278,7 +287,7 @@ export async function syncAgentSessionLifecycle(
     if (!options?.retryPending) {
       const runOutcome =
         outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-      await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+      await closeRunIfOneShot(job.pipelineRunId, runOutcome, jobFailureCause(job));
     }
   } catch (err) {
     logger.warn(

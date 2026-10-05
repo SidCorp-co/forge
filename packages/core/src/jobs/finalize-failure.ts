@@ -166,7 +166,10 @@ async function reconcileIssueStatusAfterFailure(
   }
 
   try {
-    await closeOpenRunForIssue(row.id, 'failed');
+    await closeOpenRunForIssue(row.id, 'failed', {
+      code: 'job_failed',
+      detail: `its job ${job.id} (${job.type}) failed with \`${reason}\` and no retry was scheduled${job.error ? `: ${job.error}` : ''}`,
+    });
   } catch (err) {
     logger.warn({ err, issueId: row.id }, 'finalize-failure: closeOpenRunForIssue failed');
   }

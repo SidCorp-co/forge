@@ -24,6 +24,18 @@ type RunRow = typeof pipelineRuns.$inferSelect;
 
 type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
 
+/**
+ * Why a run failed, in the words of the writer that failed it. Required on every failed close:
+ * the run keeps it as `metadata.failure`, and each job and session the cascade stops carries it,
+ * so no run goes `failed` with nothing on record to say why.
+ */
+export interface RunFailureCause {
+  /** A stable, machine-readable name for the condition, e.g. `deploy_failed`. */
+  code: string;
+  /** What was read and where, in a sentence a person can act on. */
+  detail: string;
+}
+
 interface CascadeResult {
   cancelledJobIds: string[];
   abortedSessionIds: string[];
@@ -124,6 +136,28 @@ export interface RunClose {
   reason: CascadeReason;
   actor: KernelActor;
   source: string;
+  /** Required when `to` is `failed`, and refused otherwise. */
+  cause?: RunFailureCause | undefined;
+}
+
+/** The record a failed close leaves on its run, merged over whatever `set.metadata` writes. */
+function failureMetadata(close: RunClose, at: Date): TransitionArgs<'run', never>['set'] {
+  if (close.to !== 'failed') {
+    if (close.cause) {
+      throw new Error(
+        `closeRunsInTx: ${close.source} named a failure cause (${close.cause.code}) on a close to \`${close.to}\`; only a failed close carries one`,
+      );
+    }
+    return {};
+  }
+  if (!close.cause) {
+    throw new Error(
+      `closeRunsInTx: ${close.source} closes runs \`failed\` without naming why; pass \`cause\` so the run records what failed it`,
+    );
+  }
+  const failure = JSON.stringify({ failure: { ...close.cause, source: close.source, at } });
+  const base = close.set?.metadata ?? sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb)`;
+  return { metadata: sql`${base} || ${failure}::jsonb` };
 }
 
 /**
@@ -146,10 +180,11 @@ export async function closeRunsInTx(
     locked.map((r) => r.id),
   );
   const now = new Date();
+  const failure = failureMetadata(close, now);
   const rows = settled(
     await transition(tx, RUN_MACHINE, {
       to: close.to,
-      set: { finishedAt: now, updatedAt: now, ...close.set },
+      set: { finishedAt: now, updatedAt: now, ...close.set, ...failure },
       where: and(
         inArray(
           pipelineRuns.id,
@@ -166,7 +201,7 @@ export async function closeRunsInTx(
   for (const row of rows) {
     cascades.push({
       runId: row.id,
-      result: await cascadeCancelChildJobs(tx, row.id, close.reason),
+      result: await cascadeCancelChildJobs(tx, row.id, close.reason, close.cause),
     });
   }
   return { rows, cascades };
@@ -177,8 +212,10 @@ async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,
   reason: CascadeReason,
+  cause: RunFailureCause | undefined,
 ): Promise<CascadeResult> {
   const now = new Date();
+  const runFailure = cause ? JSON.stringify({ runFailure: cause }) : null;
 
   // ISS-444 amendment 2 — the JOB axis mirrors the ISS-352 session branch
   // below: a run closing as `pipeline_completed` is the cascade's SUCCESS
@@ -216,6 +253,9 @@ async function cascadeCancelChildJobs(
         cancellationRequested: true,
         failureKind: 'infra',
         failureReason: reason,
+        ...(runFailure
+          ? { failureMeta: sql`coalesce(${jobs.failureMeta}, '{}'::jsonb) || ${runFailure}::jsonb` }
+          : {}),
       },
       where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
       reason,
@@ -251,7 +291,11 @@ async function cascadeCancelChildJobs(
       to: sessionTarget,
       set: completedSuccess
         ? { failureReason: null, failureDetail: null, updatedAt: now }
-        : { failureReason: reason, updatedAt: now },
+        : {
+            failureReason: reason,
+            ...(cause ? { failureDetail: cause.detail } : {}),
+            updatedAt: now,
+          },
       where: and(
         or(
           eq(agentSessions.pipelineRunId, runId),

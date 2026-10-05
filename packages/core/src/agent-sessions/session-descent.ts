@@ -89,7 +89,10 @@ export async function closeSessionsOwnedBy(
         // The flip wrote its hand-back owed; it runs once the outer close commits
         // (`session-transition.ts:transitionSessions`).
         if (rows.length > 0 && runSession) {
-          await closeRunIfOneShotInTx(tx, child.pipelineRunId, 'failed');
+          await closeRunIfOneShotInTx(tx, child.pipelineRunId, 'failed', {
+            code: 'session_lost',
+            detail: `its run session ${child.id} was lost with its parent: ${cause.detail}`,
+          });
         }
         return rows.length > 0;
       });

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import {
@@ -10,6 +10,7 @@ import {
   buildContextFromBinding,
   findBindingById,
   findConnectionById,
+  findDeliveryById,
   recordDelivery,
 } from '../integrations/index.js';
 import { logger } from '../lib/logger.js';
@@ -26,7 +27,9 @@ import {
 } from '../pipeline/index.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
+import { resolveReleaseChannels } from './channel.js';
 import { enqueueCoolifyHealthGate, healthGateFor } from './coolify-health-gate.js';
+import { deploymentConfirms, readLiveState } from './verify.js';
 
 export interface CoolifyConfirmJob {
   jobKind: 'coolify.confirm';
@@ -38,9 +41,20 @@ export interface CoolifyConfirmJob {
   targetLabel: string;
   /** ISO-8601. Past this, an unconfirmed deploy is a failure, never a wait. */
   deadlineAt: string;
+  /** Set once Coolify has reported this deployment failed, while that report is held against
+   *  what the target serves. */
+  failureReported?: { status: string; at: string };
 }
 
 const POLL_INTERVAL_SECONDS = 20;
+
+/**
+ * How long Coolify's failure report is held against what the target serves before it is believed.
+ * Coolify has reported `failed` two seconds into a deployment that went on to build and serve its
+ * commit (deployment h888sk8c0s0coscwo4kg00s0, release 0.4.0-dev.27), so the status field alone
+ * cannot fail a run where the target's own identity can still answer.
+ */
+const CONTESTED_FAILURE_WINDOW_MS = 10 * 60_000;
 
 const SUCCESS_STATUSES = new Set(['finished', 'success', 'succeeded', 'completed']);
 const FAILURE_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'cancelled-by-user']);
@@ -102,7 +116,9 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
   try {
     const dep = await buildClient(ctx).getDeployment(data.deploymentUuid);
     verdict = classifyDeploymentStatus(dep.status);
-    if (verdict === 'failed') detail = `coolify reported ${dep.status}`;
+    if (verdict === 'failed') {
+      return contestFailure(data, binding.projectId, String(dep.status), dep.commit ?? null);
+    }
   } catch (err) {
     verdict = 'pending';
     detail = err instanceof Error ? err.message : 'unknown error';
@@ -159,6 +175,79 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
 
   await enqueueCoolifyConfirm(data);
   return { settled: null, closedRun: false, ...(detail ? { detail } : {}) };
+}
+
+/** What the target serves, read through the probes its project declares for this binding. */
+type ServedReading =
+  | { kind: 'read'; identity: string | null; readings: string[] }
+  | { kind: 'unreadable'; why: string };
+
+async function readServed(projectId: string, bindingId: string): Promise<ServedReading> {
+  const channel = (await resolveReleaseChannels(projectId)).find((c) => c.bindingId === bindingId);
+  if (!channel?.verify) {
+    return {
+      kind: 'unreadable',
+      why: `binding ${bindingId} declares no runtime probe that reports the commit it serves`,
+    };
+  }
+  const live = await readLiveState(channel.verify);
+  return { kind: 'read', identity: live.identity, readings: live.readings };
+}
+
+/**
+ * Coolify said the deployment failed. Believe it only once what the target serves agrees: a
+ * target serving the deployment's own commit settles it succeeded, naming the contradiction; one
+ * still serving something else is re-read until the contested window closes, then fails naming
+ * both readings; one nothing can read fails at once, as the report alone says.
+ */
+async function contestFailure(
+  data: CoolifyConfirmJob,
+  projectId: string,
+  status: string,
+  commit: string | null,
+): Promise<ConfirmOutcome> {
+  const reported = data.failureReported ?? { status, at: new Date().toISOString() };
+  const said = `coolify reported deployment ${data.deploymentUuid} \`${status}\` at ${reported.at}`;
+  if (!commit)
+    return settle(data, 'failed', `${said}, and named no commit to compare the target with`);
+
+  let served: ServedReading;
+  try {
+    served = await readServed(projectId, data.bindingId);
+  } catch (err) {
+    served = { kind: 'unreadable', why: err instanceof Error ? err.message : String(err) };
+  }
+  if (served.kind === 'unreadable') return settle(data, 'failed', `${said}; ${served.why}`);
+
+  if (served.identity !== null && deploymentConfirms(commit, served.identity)) {
+    const detail = `${said}, but the target serves its commit ${commit} (${served.readings.join('; ')}), so the deploy is serving`;
+    logger.warn(
+      { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
+      'coolify confirm: a failure report the target contradicts',
+    );
+    return settle(data, 'succeeded', detail);
+  }
+
+  const until = Math.min(
+    Date.parse(reported.at) + CONTESTED_FAILURE_WINDOW_MS,
+    Date.parse(data.deadlineAt),
+  );
+  const serving = `the target serves ${served.identity ?? 'no agreed commit'} (${served.readings.join('; ')}), not ${commit}`;
+  if (Date.now() >= until) {
+    return settle(data, 'failed', `${said}, and at ${new Date().toISOString()} ${serving}`);
+  }
+  if (!data.failureReported) {
+    logger.warn(
+      { runId: data.runId, deploymentUuid: data.deploymentUuid, status, commit },
+      'coolify confirm: Coolify reported a failure — holding it against what the target serves before failing the run',
+    );
+  }
+  await enqueueCoolifyConfirm({ ...data, failureReported: reported });
+  return {
+    settled: null,
+    closedRun: false,
+    detail: `${said}; ${serving}; re-read until ${new Date(until).toISOString()}`,
+  };
 }
 
 /** Write the inbound audit row, then settle the hold it reports on. */
@@ -230,20 +319,7 @@ export async function applyDeploySettlement(
     status: verdict,
     ...(detail ? { detail } : {}),
   });
-  await db
-    .update(releaseAttempts)
-    .set({
-      settledAt: new Date(),
-      verdict: verdict === 'succeeded' ? 'ok' : 'failed',
-      verdictReason: detail ?? null,
-    })
-    .where(
-      and(
-        eq(releaseAttempts.runId, data.runId),
-        eq(releaseAttempts.idempotencyKey, data.deliveryId),
-        isNull(releaseAttempts.settledAt),
-      ),
-    );
+  await settleDeployAttempt(data.runId, data.deliveryId, data.bindingId, holds);
 
   // ISS-1279 — the environment is free once nothing of this run is still reaching it, and this
   // target's own recorded hold is the evidence that the record can answer that at all. Absent, the
@@ -258,12 +334,16 @@ export async function applyDeploySettlement(
   }
 
   if (verdict === 'failed') {
+    const why = detail ?? 'the deploy settled failed with no detail recorded';
     logger.error(
-      { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
+      { runId: data.runId, deploymentUuid: data.deploymentUuid, detail: why },
       'coolify confirm: deploy failed — failing the run',
     );
-    await closeRun(data.runId, 'failed');
-    return { settled: 'failed', closedRun: 'failed', ...(detail ? { detail } : {}) };
+    await closeRun(data.runId, 'failed', {
+      code: 'deploy_failed',
+      detail: `deploy of target \`${data.targetLabel}\` (deployment ${data.deploymentUuid}) failed: ${why}`,
+    });
+    return { settled: 'failed', closedRun: 'failed', detail: why };
   }
 
   const gate = resolveDeployGate(holds);
@@ -273,4 +353,46 @@ export async function applyDeploySettlement(
   if (!(await isCloseDeferred(data.runId))) return { settled: 'succeeded', closedRun: false };
   await closeRun(data.runId, 'completed');
   return { settled: 'succeeded', closedRun: 'completed' };
+}
+
+/**
+ * The run's `deploy` attempt for this binding, settled once every target it dispatched has: failed
+ * if any did. The attempt is keyed by the dispatch's request id, and each target's delivery by
+ * that id and the target, so the delivery's request id is what finds it.
+ */
+async function settleDeployAttempt(
+  runId: string,
+  deliveryId: string,
+  bindingId: string,
+  holds: Awaited<ReturnType<typeof settleDeployTarget>>,
+): Promise<void> {
+  const mine = Object.values(holds).filter((h) => h.bindingId === bindingId);
+  if (mine.some((h) => h.status === 'pending')) return;
+  const delivery = await findDeliveryById(deliveryId);
+  if (!delivery?.requestId) {
+    logger.error(
+      { runId, deliveryId, bindingId },
+      'coolify confirm: the delivery carries no request id, so no deploy attempt can be settled from it',
+    );
+    return;
+  }
+  const failed = mine.filter((h) => h.status === 'failed');
+  const reason = (failed.length > 0 ? failed : mine)
+    .map((h) => `${h.targetLabel}: ${h.detail ?? h.status}`)
+    .join('; ');
+  await db
+    .update(releaseAttempts)
+    .set({
+      settledAt: new Date(),
+      verdict: failed.length > 0 ? 'failed' : 'ok',
+      verdictReason: reason,
+    })
+    .where(
+      and(
+        eq(releaseAttempts.runId, runId),
+        eq(releaseAttempts.stage, 'deploy'),
+        isNull(releaseAttempts.settledAt),
+        sql`starts_with(${delivery.requestId}, ${releaseAttempts.idempotencyKey} || ':')`,
+      ),
+    );
 }
