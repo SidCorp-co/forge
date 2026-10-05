@@ -1,8 +1,8 @@
 export { dropAsDuplicateIn } from './acceptance.js';
 export { latestBaselineIn } from './baselines.js';
-export { type InterfaceContracts, provideInterfaceContracts } from './contract-links.js';
+export { provideInterfaceContracts } from './contract-links.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
-export { provideRequirementDependents, type RequirementDependents } from './dependents.js';
+export { provideRequirementDependents } from './dependents.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';

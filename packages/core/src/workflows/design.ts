@@ -6,6 +6,7 @@ import {
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import type { DesignRefusalCode } from '@forge/contracts/workflows';
+import { RefusalError } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
@@ -155,16 +156,23 @@ export function designNotApprovedDetail(args: {
   return `${args.issue} builds workflow "${args.flow}" (${args.workflowId}), whose design is ${args.status ?? 'not in a design lifecycle'}; work that builds a flow starts only once its design is approved. Propose it (POST …/workflows/${args.workflowId}/design/propose) and wait for its approver.`;
 }
 
-/** Dispatch of an issue that builds a workflow whose design is not approved, refused by name. */
-export class WorkflowDesignNotApprovedError extends Error {
-  readonly code = 'WORKFLOW_DESIGN_NOT_APPROVED' as const;
-  readonly blocked: { issue: string; workflowId: string; flow: string; status: string | null }[];
+export type DesignBlock = {
+  issue: string;
+  workflowId: string;
+  flow: string;
+  status: DesignStatus | null;
+};
 
-  constructor(
-    blocked: { issue: string; workflowId: string; flow: string; status: DesignStatus | null }[],
-  ) {
-    super(`WORKFLOW_DESIGN_NOT_APPROVED: ${blocked.map(designNotApprovedDetail).join(' ')}`);
-    this.name = 'WorkflowDesignNotApprovedError';
-    this.blocked = blocked;
-  }
+/**
+ * Dispatch of an issue that builds a workflow whose design is not approved, refused by name: one
+ * refusal naming every blocked issue, the list itself beside it as `blocked`.
+ */
+export function designNotApproved(blocked: readonly DesignBlock[]): RefusalError {
+  const refusal = {
+    code: 'WORKFLOW_DESIGN_NOT_APPROVED',
+    path: '',
+    detail: blocked.map(designNotApprovedDetail).join(' '),
+    blocked,
+  };
+  return new RefusalError([refusal], 'WORKFLOW_DESIGN_NOT_APPROVED');
 }

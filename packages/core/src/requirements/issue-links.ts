@@ -20,9 +20,10 @@ import {
   resolveIssueRouteRef,
   unlinkIssueFromRequirement,
 } from '../issues/index.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { planDriftOf } from './plan-drift.js';
-import { notFound, type RequirementActor, rowIn, signerRefusal } from './read.js';
+import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { linkIssueRefusal, refuseRequirement } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 

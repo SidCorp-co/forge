@@ -18,7 +18,6 @@ import { suggestions } from '../db/schema-suggestions.js';
 import {
   activeIssuePrefix,
   resolveIssueRouteRef,
-  TransitionError,
   transitionIssueStatus,
   writeIssueRelations,
 } from '../issues/index.js';
@@ -143,9 +142,6 @@ async function acceptDuplicateOfIssue(
     );
   } catch (err) {
     if (err instanceof RefusalError) return { ok: false, refusals: [...err.refusals] };
-    if (err instanceof TransitionError) {
-      return { ok: false, refusals: [{ code: err.code, path: '', detail: err.detail }] };
-    }
     throw err;
   }
   return answer(first.id, {

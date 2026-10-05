@@ -16,13 +16,9 @@ import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
-import {
-  accountActor,
-  releaseRunClaims,
-  TransitionError,
-  transitionIssueStatus,
-} from '../issues/index.js';
+import { accountActor, releaseRunClaims, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import {
@@ -130,7 +126,7 @@ async function closeRecorded(
       );
       closed.push(issue.id);
     } catch (err) {
-      if (err instanceof TransitionError && err.code === 'NO_OP') {
+      if (isRefusal(err, 'NO_OP')) {
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-record: could not close');

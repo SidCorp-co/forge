@@ -4,9 +4,9 @@ import {
   resolveProjectTemplates,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { userNames } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { bindRefusalsIn } from './bind-check.js';
@@ -44,9 +44,6 @@ export interface WorkflowWriter {
 export type WorkflowOutcome =
   | { ok: true; row: StoredWorkflow; document: WorkflowWrite; created: boolean }
   | { ok: false; refusals: WorkflowRefusal[] };
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
   const parsed = readStoredWorkflow(row.document);

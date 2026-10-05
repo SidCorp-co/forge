@@ -3,14 +3,10 @@ import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import {
-  fileDetectedIssue,
-  rewriteIssueMetadata,
-  TransitionError,
-  transitionIssueStatus,
-} from '../issues/index.js';
+import { fileDetectedIssue, rewriteIssueMetadata, transitionIssueStatus } from '../issues/index.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './rules.js';
 
 /** The status a Sentry issue is filed at, and the only one this path ever writes on a create. */
@@ -355,13 +351,13 @@ async function reopenOnRegression(
       transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },
   ).catch((err: unknown) => {
-    if (err instanceof TransitionError && err.code === 'ISSUE_ARCHIVED') return err;
+    if (isRefusal(err, 'ISSUE_ARCHIVED')) return err;
     throw err;
   });
-  if (reopened instanceof TransitionError) {
+  if (reopened instanceof RefusalError) {
     return {
       kind: 'refused',
-      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it is archived, so it is left where it is rather than reopened. ${reopened.detail}. Its counts were still refreshed.`,
+      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it is archived, so it is left where it is rather than reopened. ${reopened.refusals[0]?.detail}. Its counts were still refreshed.`,
     };
   }
 

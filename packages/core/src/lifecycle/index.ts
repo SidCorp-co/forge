@@ -1,4 +1,4 @@
-export { type MachineRow, machineTable } from './machine-tables.js';
+export type { MachineRow } from './machine-tables.js';
 export { kernelTransitionsRetention } from './retention.js';
 export {
   type Guard,

@@ -1,10 +1,7 @@
 export { accountActor } from './account-actor.js';
 export { type Actor, resolveActor, safeRecordActivity } from './activity.js';
-export { insertActivityRow } from './activity-log.js';
 export { registerActivitySubscribers } from './activity-subscribers.js';
 export {
-  actorAgency,
-  type DeviceLite,
   principalAgency,
   type TransitionActor,
 } from './actor-agency.js';
@@ -13,12 +10,9 @@ export { actorKey } from './actor-identity.js';
 export { resolveActors, userLabel } from './actor-resolution.js';
 export {
   applyStatusTransition,
-  TransitionError,
-  type TransitionIssueRow,
   transitionIssueStatus,
 } from './apply-transition.js';
 export { issueArchiveSide } from './archive.js';
-export { persistIssueAttachment } from './attachment-service.js';
 export {
   blockedByUnsettledSql,
   heldTakeRefusal,
@@ -37,7 +31,6 @@ export {
   issuesSettledBy,
   liveWaitOn,
   retractContractWaitIn,
-  type SettledWait,
   settleContractWaitsIn,
 } from './contract-waits.js';
 export { insertIssueRow } from './create-service.js';
@@ -56,7 +49,6 @@ export { issueDisplayIds } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export {
   fileDetectedIssue,
-  type IssueTriage,
   rewriteIssueMetadata,
   setIssueTriage,
   stampRunStarted,
@@ -76,9 +68,7 @@ export {
 } from './issue-lease-read.js';
 export {
   activeIssuePrefix,
-  canonicalIssueKey,
   heldIssuePrefixes,
-  issueRefFormatter,
 } from './issue-prefix-read.js';
 export { claimIssuePrefix } from './issue-prefix-service.js';
 export {
@@ -103,7 +93,6 @@ export {
   assertDesignApprovedForIssue,
   type DispatchGateCode,
   designUnapprovedSql,
-  isDispatchGateError,
   provideIssuePorts,
 } from './ports.js';
 export {
@@ -111,7 +100,7 @@ export {
   computeProjectProgress,
   type ProjectProgress,
 } from './progress.js';
-export { findIssueByDisplaySeq, findIssueById, issueScopeOf } from './read-service.js';
+export { findIssueById, issueScopeOf } from './read-service.js';
 export { type CollapseResult, collapseNarration } from './record-events/collapse.js';
 export {
   dropCommentMirror,
@@ -120,7 +109,6 @@ export {
 } from './record-events/mirror.js';
 export type { RecordEvent } from './record-events/store.js';
 export { mirroredEventsFor, recordOfEvent, writeRecordEvent } from './record-events/store.js';
-export type { PendingIssueRelation } from './relations-service.js';
 export { writeIssueRelations } from './relations-service.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export { reopenedAtOf } from './release-evidence.js';
@@ -142,12 +130,10 @@ export { buildIlikePattern } from './search-predicate.js';
 export {
   classifyLease,
   type LeaseReading,
-  type LeaseVerdict,
   leaseHolderOf,
   leaseIsReleasable,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
-  leaseWriteTakes,
 } from './session-claim.js';
 export { listIssueStanding } from './standing-read.js';
 export {
@@ -170,5 +156,4 @@ export {
   UNWEIGHED,
   type Weighing,
 } from './weighing.js';
-export { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
 export { readWorkState, setWorkStep } from './work-state.js';

@@ -132,7 +132,6 @@ import {
   proposesWorkflowOf,
   provideWorkflowHealthPorts,
   provideWorkflowPorts,
-  WorkflowDesignNotApprovedError,
 } from './workflows/index.js';
 import { wakeMastersForProject } from './ws/index.js';
 
@@ -209,8 +208,6 @@ export function provideWorkPorts(): void {
     designUnapprovedSql,
     assertDesignsApprovedForSeqs,
     assertDesignApprovedForIssue,
-    isDispatchGateError: (err): err is WorkflowDesignNotApprovedError =>
-      err instanceof WorkflowDesignNotApprovedError,
     buildsWorkflowOf,
     settlingContractVersion,
     proposesWorkflowOf,

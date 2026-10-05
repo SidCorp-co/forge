@@ -11,7 +11,6 @@ import {
   requirementKey,
 } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -31,6 +30,7 @@ import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
@@ -52,9 +52,6 @@ export interface RequirementActor {
 export type Row = typeof requirements.$inferSelect;
 export type RevisionRow = typeof requirementRevisions.$inferSelect;
 export type CriterionRow = typeof requirementCriteria.$inferSelect;
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** A requirement of `projectId` by uuid, `REQ-n` or `n`; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row> {

@@ -1,12 +1,11 @@
 import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
@@ -66,9 +65,6 @@ function viewerOf(c: Context<{ Variables: AuthVars }>) {
   if (!agency) throw new Error('modules: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
 }
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 

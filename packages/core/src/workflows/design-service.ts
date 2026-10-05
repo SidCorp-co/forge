@@ -1,9 +1,9 @@
 import { approvalPermission } from '@forge/contracts/permissions';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import {
@@ -42,9 +42,6 @@ export type DesignView = Awaited<ReturnType<typeof designView>> & {
 export type DesignOutcome =
   | { ok: true; design: DesignView }
   | { ok: false; refusals: DesignRefusal[] };
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 async function approverRefusalFor(
   actor: WorkflowWriter,

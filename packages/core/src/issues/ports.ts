@@ -62,11 +62,6 @@ export interface RunnerAvailability {
 
 export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED' | 'CONTRACT_WAIT_UNSETTLED';
 
-interface DispatchGateError extends Error {
-  readonly code: DispatchGateCode;
-  readonly blocked: readonly unknown[];
-}
-
 export type GateReader = Pick<Tx, 'execute' | 'select'>;
 
 type UsageTotalsSelection = {
@@ -162,7 +157,6 @@ interface IssuePorts {
     issueId: string,
     executor?: GateReader,
   ) => Promise<void>;
-  isDispatchGateError: (err: unknown) => err is DispatchGateError;
   buildsWorkflowOf: (issueId: string) => Promise<unknown>;
   /** The newest approved version of the provider's contract at or above `minVersion` in its own scheme; null while none is. */
   settlingContractVersion: (
@@ -281,7 +275,6 @@ export const issueDeleteRefusal = port('issueDeleteRefusal');
 export const designUnapprovedSql = port('designUnapprovedSql');
 export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs');
 export const assertDesignApprovedForIssue = port('assertDesignApprovedForIssue');
-export const isDispatchGateError = port('isDispatchGateError');
 export const buildsWorkflowOf = port('buildsWorkflowOf');
 export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowOf = port('proposesWorkflowOf');

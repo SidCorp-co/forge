@@ -34,9 +34,10 @@ import {
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { TransitionError, transitionIssueStatus } from '../issues/index.js';
+import { transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey, seqOfCanonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 
 interface ReturnedIssue {
   issueKey: string;
@@ -192,8 +193,8 @@ export async function returnIssuesForRun(
       );
       returned.push({ issueKey: key, from: issue.status as IssueStatus, to: target });
     } catch (err) {
-      if (err instanceof TransitionError && err.code === 'NO_OP') continue;
-      if (err instanceof TransitionError && err.code === 'STALE_TRANSITION') {
+      if (isRefusal(err, 'NO_OP')) continue;
+      if (isRefusal(err, 'STALE_TRANSITION')) {
         logger.info(
           { runId, issueKey: key, from: issue.status, to: target },
           'run-issue-return: the issue moved while this return was in flight, so it belongs to whoever moved it',

@@ -8,11 +8,12 @@
 import { requirementKey } from '@forge/contracts/requirements';
 import { eq } from 'drizzle-orm';
 import { requirementContracts, requirements } from '../db/schema-requirements.js';
+import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import { contractsOfProject } from './contract-links.js';
-import { notFound, type RequirementActor } from './read.js';
+import type { RequirementActor } from './read.js';
 import type { RevisionWrite } from './revision-write.js';
 import { createRequirementIn } from './revision-write.js';
 import { type RequirementRefusal, reasonRefusal } from './rules.js';

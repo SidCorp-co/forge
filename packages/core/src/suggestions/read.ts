@@ -13,14 +13,10 @@ import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import type { KernelActor } from '../lifecycle/index.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn } from '../requirements/index.js';
-import {
-  notFound,
-  resolveTarget,
-  type SuggestionTarget,
-  type SuggestionTargetRef,
-} from './target.js';
+import { resolveTarget, type SuggestionTarget, type SuggestionTargetRef } from './target.js';
 
 export interface SuggestionActor {
   userId: string;

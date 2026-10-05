@@ -91,6 +91,10 @@ for (const block of config) {
     if (!existsSync(join(ROOT, entry.file)))
       faults.push(`${CONFIG}: global-fetch allows ${entry.file}, which no longer exists`);
   }
+  for (const entry of block.rules?.['module-shape/table-writer']?.[1]?.generic ?? []) {
+    if (!existsSync(join(ROOT, entry.file)))
+      faults.push(`${CONFIG}: table-writer names ${entry.file} generic, which no longer exists`);
+  }
 }
 const readJson = (path, text) => {
   try {

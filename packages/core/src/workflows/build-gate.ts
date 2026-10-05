@@ -1,6 +1,6 @@
 /**
  * The build gate: an issue that names the workflow it builds is not dispatched until that
- * workflow's design is approved (`design.ts:WorkflowDesignNotApprovedError`).
+ * workflow's design is approved (`design.ts:designNotApproved`).
  *
  * One predicate, asked three ways: the admissible list leaves such an issue out, a run session
  * opening over it is refused by name, and a job claimed for it is refused by name. The issue read
@@ -12,7 +12,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { designNotApprovedDetail, WorkflowDesignNotApprovedError } from './design.js';
+import { designNotApproved, designNotApprovedDetail } from './design.js';
 
 export function designUnapprovedSql(issueId: SQL): SQL {
   return sql`EXISTS (
@@ -63,7 +63,7 @@ async function refuseBlocked(
 ): Promise<void> {
   if (blocked.length === 0) return;
   const prefix = await activeIssuePrefix(projectId, executor);
-  throw new WorkflowDesignNotApprovedError(
+  throw designNotApproved(
     blocked.map((b) => ({
       issue: formatIssueRef(prefix, b.issSeq),
       workflowId: b.workflowId,

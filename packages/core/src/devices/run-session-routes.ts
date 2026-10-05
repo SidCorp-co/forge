@@ -10,8 +10,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isDispatchGateError } from '../issues/index.js';
-import { RefusalError } from '../lib/refusal.js';
+import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -60,9 +59,9 @@ deviceRunSessionRoutes.post(
     } catch (err) {
       // The refusal IS the deliverable here: a box told only that the open
       // failed retries against the same holder until the lease lapses.
-      if (isDispatchGateError(err)) {
+      if (isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')) {
         throw new RefusalError(
-          [{ code: err.code, path: '/issueKeys', detail: err.message }],
+          err.refusals.map(({ code, detail }) => ({ code, path: '/issueKeys', detail })),
           'RUN_SESSION_REFUSED',
         );
       }

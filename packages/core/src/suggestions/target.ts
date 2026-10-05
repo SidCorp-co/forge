@@ -1,10 +1,10 @@
 // What a suggestion is about: a requirement, issue, feedback item or workflow of the project, resolved by uuid or key.
 
 import type { SuggestionTargetType } from '@forge/contracts/suggestions';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { rowIn as feedbackRowIn } from '../feedback/index.js';
 import { resolveIssueRouteRef } from '../issues/index.js';
+import { notFound } from '../middleware/route-errors.js';
 import { rowIn } from '../requirements/index.js';
 import { designNodesIn } from '../workflows/index.js';
 
@@ -17,9 +17,6 @@ export interface SuggestionTarget {
   type: SuggestionTargetType;
   id: string;
 }
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** A target of `projectId` by requirement, issue or feedback uuid or key, or a workflow by uuid or flow; 404 otherwise. */
 export async function resolveTarget(

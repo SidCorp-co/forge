@@ -9,13 +9,9 @@ import {
 } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
-import {
-  accountActor,
-  readWorkState,
-  TransitionError,
-  transitionIssueStatus,
-} from '../issues/index.js';
+import { accountActor, readWorkState, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
@@ -65,7 +61,7 @@ async function resumeUnasked(
     });
     return true;
   } catch (err) {
-    if (!(err instanceof TransitionError) || err.code !== 'OPEN_QUESTIONS') throw err;
+    if (!isRefusal(err, 'OPEN_QUESTIONS')) throw err;
     logger.info(
       { issueId: issue.id },
       'answer-resume: another question on this issue is still open, so it waits on that one',

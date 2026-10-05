@@ -237,8 +237,8 @@ for archmap.
 
 Pattern v2's declaration and semantic rules (ISS-196, ADR 0008). It first refuses a
 `packages/core/src/modules.json` that contradicts itself (`lib/module-shape.mjs:parseDeclaration`)
-or leaves a directory under `packages/core/src` with no kind, and a `global-fetch` allow entry
-naming a file that no longer exists. Then it runs ESLint with
+or leaves a directory under `packages/core/src` with no kind, and a `global-fetch` allow entry or
+a `table-writer` generic entry naming a file that no longer exists. Then it runs ESLint with
 `eslint-module-shape/eslint.config.mjs` over `packages/core/src`, tests excluded, with type
 information from `packages/core/tsconfig.json`:
 
@@ -247,7 +247,10 @@ information from `packages/core/tsconfig.json`:
   table type, so an alias or a variable holding the table is the table), and raw SQL in a `sql`
   template or `sql.raw` that writes a declared table, a `${table}` interpolation included — each
   outside the module `modules.json` names as the table's owner. A write whose table type does not
-  carry its name (a `PgTable` parameter) is refused too, since its owner cannot be judged.
+  carry its name (a `PgTable` parameter) is refused too, since its owner cannot be judged, except
+  in a file the config's `generic` entries name with their `why`: the kernel's one status writer
+  (`packages/core/src/lifecycle/transition.ts`), which writes whichever machine's table moves. A
+  write to a concrete table there is still judged.
 - `route-query`: a database call on a value of either type in a route file
   (`lib/module-shape.mjs:isRouteFile`).
 - `refusal`: an `HTTPException` with a rule status, an `Error` subclass outside platform and

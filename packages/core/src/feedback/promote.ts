@@ -19,9 +19,10 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { detailAs, type FeedbackActor, notFound, rowIn } from './read.js';
+import { detailAs, type FeedbackActor, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 

@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { TransitionError, transitionIssueStatus } from '../issues/index.js';
+import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import {
@@ -188,7 +188,7 @@ async function closeRoster(
       closed.push(issue.id);
     } catch (err) {
       if (isRefusal(err, FENCE_LOST)) throw err;
-      if (err instanceof TransitionError && err.code === 'NO_OP') {
+      if (isRefusal(err, 'NO_OP')) {
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');

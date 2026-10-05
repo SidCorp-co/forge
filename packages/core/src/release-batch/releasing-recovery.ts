@@ -9,7 +9,6 @@ import {
   readWorkState,
   releaseRunClaims,
   setWorkStep,
-  TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -138,7 +137,7 @@ async function recoverOne(
     return true;
   } catch (err) {
     if (isRefusal(err, FENCE_LOST)) throw err;
-    if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
+    if (!isRefusal(err, 'NO_OP')) {
       logger.warn(
         { err, issueId: issue.id, runId },
         'release-batch: could not recover a stranded releasing issue',

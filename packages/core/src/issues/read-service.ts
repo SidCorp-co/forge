@@ -1,4 +1,4 @@
-import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueAttachments, issues, jobs, projectMembers, usageRecords } from '../db/schema.js';
 import { emptyUsageTotals, usageSessionMatch, usageTotalsSelection } from './ports.js';
@@ -107,23 +107,6 @@ export async function attachmentWithProject(attachmentId: string) {
     .where(eq(issueAttachments.id, attachmentId))
     .limit(1);
   return row ?? null;
-}
-
-/** The columns a batch edit reads for each named issue that exists. */
-export async function batchIssueRows(issueIds: string[]) {
-  return db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      projectId: issues.projectId,
-      status: issues.status,
-      priority: issues.priority,
-      category: issues.category,
-      complexity: issues.complexity,
-      reopenCount: issues.reopenCount,
-    })
-    .from(issues)
-    .where(inArray(issues.id, issueIds));
 }
 
 /** The usage totals of every session an issue's jobs ran in. */

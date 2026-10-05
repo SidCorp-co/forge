@@ -7,10 +7,11 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementContracts } from '../db/schema-requirements.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import { linkedContracts } from './baselines.js';
-import { notFound, type RequirementActor, rowIn } from './read.js';
+import { type RequirementActor, rowIn } from './read.js';
 import { contractLinkRefusal } from './rules.js';
 import { answer, type RequirementOutcome } from './write-tx.js';
 

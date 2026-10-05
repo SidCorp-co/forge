@@ -13,7 +13,6 @@ import {
   type QuestionnaireView,
 } from '@forge/contracts/onboarding';
 import { and, asc, eq, gte, inArray } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
@@ -24,6 +23,7 @@ import {
   egressAt,
   isProviderBound,
 } from '../lib/data-egress.js';
+import { notFound } from '../middleware/route-errors.js';
 import { questionnaireSurface } from '../questions/index.js';
 
 export { questionnaireSurface };
@@ -34,9 +34,6 @@ type ItemRow = typeof agentQuestions.$inferSelect;
 
 /** The item as stored on its row: the posted item and where it sat in the batch. */
 export type StoredItem = QuestionnaireItem & { position: number };
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export function answerOf(item: QuestionnaireItem, step: QuestionStep | undefined) {
   if (!step?.answeredAt) return null;

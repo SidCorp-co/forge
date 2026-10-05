@@ -6,14 +6,8 @@ import { requirementRevisions } from '../db/schema-requirements.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
-import {
-  detailOf,
-  notFound,
-  type RequirementActor,
-  type RevisionRow,
-  type Row,
-  rowIn,
-} from './read.js';
+import { notFound } from '../middleware/route-errors.js';
+import { detailOf, type RequirementActor, type RevisionRow, type Row, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 
 export type RequirementOutcome =
