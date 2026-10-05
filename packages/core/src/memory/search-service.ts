@@ -1,7 +1,6 @@
 import type { RerankReport } from '@forge/contracts/memory';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { type MemorySource, memorySources, retrievalAnalytics } from '../db/schema.js';
+import { type MemorySource, memorySources } from '../db/schema.js';
 import {
   EmbeddingUnavailableError,
   embedQuery,
@@ -14,7 +13,6 @@ import { clampTopK } from '../lib/search-fusion.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import {
-  type HybridBreakdown,
   hybridSearchMemories,
   keywordSearchMemories,
   type MemoryHit,
@@ -91,14 +89,12 @@ interface MemorySearchResult {
   demotedStale?: number;
 }
 
-/** What one search did beyond retrieving — the fields both the response and the analytics row carry. */
+/** What one search did beyond retrieving — the fields the response carries. */
 interface SearchOutcome {
   reranked: boolean;
   rerank?: RerankReport;
-  rerankMs?: number;
   rerankHoldout?: true;
   expanded: boolean;
-  expandedCount?: number;
   demotedStale?: number;
 }
 
@@ -125,7 +121,6 @@ async function retrieve(
   hits: MemoryHit[];
   resolved: MemorySearchStrategy;
   degraded: boolean;
-  breakdown?: HybridBreakdown;
   embedMs?: number;
 }> {
   const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
@@ -155,7 +150,6 @@ async function retrieve(
         hits: fused.hits,
         resolved: requested,
         degraded: false,
-        breakdown: fused.breakdown,
         ...embedMs,
       };
     }
@@ -195,7 +189,6 @@ async function expand(
 
 export async function runMemorySearch(input: RunMemorySearchInput): Promise<MemorySearchResult> {
   const startedAt = Date.now();
-  const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
   const topK = clampTopK(input.topK);
   const flags = RETRIEVAL_FLAGS;
   const eligible = rerankEligible(input, flags);
@@ -212,7 +205,6 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     hits = result.hits;
     outcome.reranked = result.report.path === 'model';
     outcome.rerank = result.report;
-    outcome.rerankMs = result.rerankMs;
   } else if (hits.length > topK) {
     hits = hits.slice(0, topK);
   }
@@ -226,13 +218,10 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     if (appended.length > 0) {
       hits = [...hits, ...appended];
       outcome.expanded = true;
-      outcome.expandedCount = appended.length;
     }
   }
 
   const tookMs = Date.now() - startedAt;
-  logRetrieval(input, hits, retrieved.resolved, requested, tookMs, retrieved.breakdown, outcome);
-
   if (hits.length > 0) {
     const hitIds = hits.map((h) => h.id);
     queueMicrotask(() => {
@@ -258,66 +247,4 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     expanded: outcome.expanded,
     ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
   };
-}
-
-/** The `metadata` jsonb of one `retrieval_analytics` row; the breakdown keys exist only when hybrid ran, so their absence means "one list", never "zero hits". */
-function buildRetrievalMetadata(
-  resolved: MemorySearchStrategy,
-  requested: MemorySearchStrategy,
-  breakdown: HybridBreakdown | undefined,
-  outcome: SearchOutcome & { hitIds?: string[] | undefined },
-): Record<string, unknown> {
-  return {
-    strategy: resolved,
-    requestedStrategy: requested,
-    ...(breakdown ?? {}),
-    ...(outcome.reranked ? { reranked: true } : {}),
-    ...(outcome.rerank
-      ? {
-          rerankMs: outcome.rerankMs,
-          rerankPath: outcome.rerank.path,
-          ...(outcome.rerank.model ? { rerankModel: outcome.rerank.model } : {}),
-          ...(outcome.rerank.degraded ? { rerankDegraded: outcome.rerank.degraded } : {}),
-        }
-      : {}),
-    ...(outcome.rerankHoldout ? { rerankHoldout: true } : {}),
-    ...(outcome.expanded ? { expanded: true, expandedCount: outcome.expandedCount } : {}),
-    ...(outcome.hitIds ? { hitIds: outcome.hitIds } : {}),
-  };
-}
-
-/**
- * Append-only retrieval log (ISS-274 `retrieval_analytics`). Detached and
- * best-effort — an analytics outage must never fail or slow a search.
- */
-function logRetrieval(
-  input: RunMemorySearchInput,
-  hits: MemoryHit[],
-  resolved: MemorySearchStrategy,
-  requested: MemorySearchStrategy,
-  durationMs: number,
-  breakdown: HybridBreakdown | undefined,
-  outcome: SearchOutcome,
-): void {
-  const hitIds =
-    requested === 'hybrid' && input.surface === 'agent' ? hits.map((h) => h.id) : undefined;
-  queueMicrotask(() => {
-    db.insert(retrievalAnalytics)
-      .values({
-        projectId: input.projectId,
-        query: input.query,
-        hitCount: hits.length,
-        topScore: hits.length > 0 ? (hits[0]?.score ?? null) : null,
-        model: env.EMBEDDINGS_MODEL,
-        durationMs,
-        source: 'api-search',
-        metadata: buildRetrievalMetadata(resolved, requested, breakdown, { ...outcome, hitIds }),
-      })
-      .catch((err) => {
-        logger.warn(
-          { err: (err as Error).message, projectId: input.projectId },
-          'memory.search: retrieval analytics insert failed',
-        );
-      });
-  });
 }

@@ -163,9 +163,11 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
 
 function readinessNote(r: BaselineRow['readiness']): string {
   if (!r) return '';
-  if (r.ready) return ' (ready)';
-  if (r.suggestionId === null) return ' (no readiness result)';
-  return ` (not ready: ${r.failed.join(', ')})`;
+  const dedup = r.dedup && !r.dedup.ran ? ` (${r.dedup.why})` : '';
+  if (r.gate === 'off') return dedup;
+  if (r.ready) return ` (ready)${dedup}`;
+  if (r.suggestionId === null) return ` (no readiness result)${dedup}`;
+  return ` (not ready: ${r.failed.join(', ')})${dedup}`;
 }
 
 function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[] {

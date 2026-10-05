@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Unknown query keys are refused; audit 4's dead paths go.** Bulk triage by signal has a
+  REST route, contract-change filings wake masters, onboarding drafts read "Plan from code",
+  and the retrieval log, plan-baseline column and build unlink are gone.
+
 ## [0.4.0-dev.32] - 2026-10-05
 
 Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates

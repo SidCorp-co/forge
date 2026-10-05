@@ -174,9 +174,6 @@ export async function touchMemories(ids: string[]): Promise<void> {
     .where(inArray(memories.id, ids));
 }
 
-/** Sizes of the two ranked lists hybrid fused, and how many ids they shared — what `retrieval_analytics` records per hybrid call. */
-export type HybridBreakdown = { semanticHits: number; keywordHits: number; overlap: number };
-
 /**
  * Hybrid strategy — dense + keyword in parallel, fused with weighted RRF
  * (`fuseHybrid`). Returned `score` is the fused RRF value
@@ -185,16 +182,11 @@ export type HybridBreakdown = { semanticHits: number; keywordHits: number; overl
  */
 export async function hybridSearchMemories(
   input: SearchInput & KeywordSearchInput,
-): Promise<{ hits: MemoryHit[]; breakdown: HybridBreakdown }> {
+): Promise<{ hits: MemoryHit[] }> {
   const topK = clampTopK(input.topK);
   const [semantic, keyword] = await Promise.all([
     searchMemories(input),
     keywordSearchMemories(input),
   ]);
-  const keywordIds = new Set(keyword.map((h) => h.id));
-  const overlap = semantic.filter((h) => keywordIds.has(h.id)).length;
-  return {
-    hits: fuseHybrid(semantic, keyword, topK),
-    breakdown: { semanticHits: semantic.length, keywordHits: keyword.length, overlap },
-  };
+  return { hits: fuseHybrid(semantic, keyword, topK) };
 }

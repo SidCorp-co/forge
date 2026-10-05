@@ -159,9 +159,6 @@ export const issues = pgTable(
     // revision the plan was written against, set when the plan is written (ISS-57)
     requirementId: uuid('requirement_id').references(() => requirements.id),
     plannedRevision: integer('planned_revision'),
-    // cm:why which baseline at planned_revision the plan read: a re-pin onto newly approved designs
-    // writes a later one at the same revision, and a plan that predates it has changed since (ISS-86)
-    plannedBaselineSeq: integer('planned_baseline_seq'),
     // cm:why an issue filed as an accepted suggestion's effect points back at it, as a revision does
     // (workflow suggestion-lifecycle step accepted)
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
@@ -228,10 +225,6 @@ export const issues = pgTable(
     plannedRevisionChk: check(
       'issues_planned_revision_chk',
       sql`${t.plannedRevision} IS NULL OR ${t.requirementId} IS NOT NULL`,
-    ),
-    plannedBaselineChk: check(
-      'issues_planned_baseline_chk',
-      sql`${t.plannedBaselineSeq} IS NULL OR (${t.plannedRevision} IS NOT NULL AND ${t.plannedBaselineSeq} >= 1)`,
     ),
   }),
 );

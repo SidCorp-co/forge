@@ -177,7 +177,7 @@ interface IssuePorts {
     tx: Tx,
     issueId: string,
     plan: string | null,
-  ) => Promise<{ plannedRevision: number | null; plannedBaselineSeq: number | null } | null>;
+  ) => Promise<{ plannedRevision: number | null } | null>;
   approvalRequired: (projectId: string) => Promise<boolean>;
   /** The project's policy read once: the refusal a dispatch at a status would meet, or null. */
   policyGapsOf: (

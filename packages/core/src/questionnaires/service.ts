@@ -10,7 +10,7 @@ import type { QuestionnaireItem, QuestionnaireView } from '@forge/contracts/onbo
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
@@ -269,13 +269,19 @@ export async function postQuestionnaireIn(
   return { batchId: batch.id, messageId: message.id };
 }
 
-/** Supersedes every open or skipped batch of an onboarding, voiding their open items. */
+/**
+ * Supersedes every open or skipped batch of an onboarding, its first-requirements ask included,
+ * voiding their open items.
+ */
 export async function supersedeOpenIn(tx: TxOnly, onboardingId: string, reason: string) {
   const { rows: open } = await transition(tx, QUESTIONNAIRE_MACHINE, {
     to: 'superseded',
     from: ['open', 'skipped'],
     set: { supersededAt: new Date(), supersededReason: reason },
-    where: eq(questionnaireBatches.onboardingId, onboardingId),
+    where: or(
+      eq(questionnaireBatches.onboardingId, onboardingId),
+      eq(questionnaireBatches.firstRequirementsOf, onboardingId),
+    ),
     reason,
     actor: { type: 'system' },
     source: 'questionnaire-supersede',

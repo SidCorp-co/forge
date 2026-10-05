@@ -64,11 +64,12 @@ async function projectsAdministeredBy(userId: string): Promise<string[]> {
 
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });
 const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
-const manifestCallbackQuerySchema = z.object({
+// GitHub redirects to both and adds keys of its own (setup_action on an install)
+const manifestCallbackQuerySchema = z.looseObject({
   code: z.string().optional(),
   state: z.string().optional(),
 });
-const installedQuerySchema = z.object({
+const installedQuerySchema = z.looseObject({
   installation_id: z.string().optional(),
   state: z.string().optional(),
 });

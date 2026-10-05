@@ -3,13 +3,15 @@
  * -> duplicate suggestion: merge or link before agreeing"): the requirements whose head vectors sit
  * within REQUIREMENT_NEAR_DUPLICATE_SIMILARITY of this head's, each with whether a duplicate
  * suggestion naming the pair was decided. The stored head vector is read, never a fresh embedding,
- * so a head with no vector (no provider, a no-egress policy, not embedded yet) is not compared and
- * the agree is not refused for it.
+ * so a head with no vector (no provider, a no-egress policy, not embedded yet) is not compared: the
+ * agree is not refused for it, and its readiness says dedup was not checked (the similar -> ready
+ * edge's failure).
  */
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   REQUIREMENT_NEAR_DUPLICATE_SIMILARITY,
+  type RequirementDedupCheck,
   requirementKey,
 } from '@forge/contracts/requirements';
 import { and, eq, inArray, ne } from 'drizzle-orm';
@@ -103,21 +105,50 @@ const named = (payload: unknown): string | null => {
   return typeof of === 'string' ? of.trim().toUpperCase() : null;
 };
 
-/** The near-duplicates of `row`'s head, or none when its head has no vector to compare. */
+type StoredVector = Awaited<ReturnType<typeof itemEmbeddingOf>>;
+
+function checkOf(own: StoredVector): RequirementDedupCheck {
+  if (own?.status === 'embedded' && own.embedding && own.model) return { ran: true };
+  return {
+    ran: false,
+    why: `dedup was not checked: the head revision's vector is ${own ? own.status : 'not written yet'}`,
+  };
+}
+
+/** Whether `requirementId`'s head holds a vector an agree can compare. */
+export async function dedupCheckOf(requirementId: string): Promise<RequirementDedupCheck> {
+  return checkOf(await itemEmbeddingOf({ requirementId }));
+}
+
+export interface NearDuplicateRead {
+  check: RequirementDedupCheck;
+  near: NearDuplicate[];
+}
+
+/** The near-duplicates of `row`'s head, and whether its head had a vector to compare at all. */
 export async function nearDuplicatesOf(row: {
   id: string;
   projectId: string;
   reqSeq: number;
   currentRevision: number | null;
-}): Promise<NearDuplicate[]> {
+}): Promise<NearDuplicateRead> {
   const own = await itemEmbeddingOf({ requirementId: row.id });
-  if (own?.status !== 'embedded' || !own.embedding || !own.model) return [];
+  const check = checkOf(own);
+  if (!check.ran || !own?.embedding || !own.model) return { check, near: [] };
+  return { check, near: await nearOf(row, own.embedding, own.model) };
+}
+
+async function nearOf(
+  row: { id: string; projectId: string; reqSeq: number; currentRevision: number | null },
+  embedding: number[],
+  model: string,
+): Promise<NearDuplicate[]> {
   const nearest = (
     await nearestItems({
       projectId: row.projectId,
       kind: 'requirement',
-      vector: own.embedding,
-      model: own.model,
+      vector: embedding,
+      model,
       exclude: row.id,
       limit: 5,
     })

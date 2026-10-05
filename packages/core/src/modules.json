@@ -294,7 +294,7 @@
       "owns": ["deviceLoginCodes", "deviceRunLedger", "devices"],
       "serves": [
         "issue-delivery#box",
-        "issue-delivery#rule-dispatch",
+        "issue-delivery#admissible",
         "agent-run-standing#master",
         "personal-data-flow#ds-box-creds",
         "personal-data-flow#pr-provision",
@@ -328,8 +328,7 @@
         "requirement-to-delivery#contract-first",
         "feedback-triage#breaking",
         "requirement-to-delivery#provider-live",
-        "feedback-triage#upgrade",
-        "core-components#door-mcp"
+        "feedback-triage#upgrade"
       ]
     },
     "error-intake": {
@@ -390,7 +389,8 @@
       "serves": [
         "github-merge-sequence#m-webhook",
         "github-merge-sequence#m-verify",
-        "issue-delivery#github"
+        "issue-delivery#github",
+        "core-components#door-mcp"
       ]
     },
     "integrations": {
@@ -646,7 +646,7 @@
     "memory": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["memories", "memoryRevisions", "retrievalAnalytics"],
+      "owns": ["memories", "memoryRevisions"],
       "serves": ["personal-data-flow#pr-memory", "personal-data-flow#ds-memory"]
     },
     "messaging": {
@@ -932,7 +932,7 @@
       "kind": "kernel",
       "context": "execution",
       "owns": ["runnerEvents", "runners"],
-      "serves": ["REQ-15"]
+      "serves": ["REQ-15", "issue-delivery#rule-dispatch"]
     },
     "runs": {
       "kind": "read-model",
@@ -1004,7 +1004,7 @@
       "kind": "domain",
       "context": "work",
       "owns": ["downloadTickets", "uploadTickets"],
-      "serves": ["personal-data-flow#ds-uploads"]
+      "serves": ["personal-data-flow#ds-uploads", "core-components#door-mcp"]
     },
     "workflows": {
       "kind": "domain",
@@ -1160,7 +1160,7 @@
       "serves": ["REQ-11"]
     },
     "pairing": {
-      "serves": ["personal-data-flow#ds-box-creds"]
+      "serves": ["personal-data-flow#ds-audit"]
     },
     "pipeline": {
       "serves": ["REQ-1", "issue-delivery#act-build"]
@@ -1239,7 +1239,7 @@
       "serves": [
         "REQ-15",
         "issue-delivery#rule-dispatch",
-        "issue-delivery#ev-run-ended",
+        "issue-delivery#box",
         "agent-run-standing#claimed",
         "agent-run-standing#master"
       ]

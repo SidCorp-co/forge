@@ -1,4 +1,4 @@
-// The suggestion machine: workflow `suggestion-lifecycle`, approved revision 3.
+// The suggestion machine: workflow `suggestion-lifecycle`, approved revision 5.
 
 import { defineMachine } from "./state-machine.js";
 import { SUGGESTION_STATUSES } from "./suggestions.js";
@@ -6,7 +6,7 @@ import { SUGGESTION_STATUSES } from "./suggestions.js";
 export const SUGGESTION_MACHINE = defineMachine({
 	entity: "suggestion",
 	shapes: ["a6ba4087"],
-	design: { flow: "suggestion-lifecycle", revision: 3 },
+	design: { flow: "suggestion-lifecycle", revision: 5 },
 	states: SUGGESTION_STATUSES,
 	initial: ["proposed"],
 	terminal: ["accepted", "rejected", "stale", "withdrawn"],

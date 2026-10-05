@@ -49,13 +49,6 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     why: 'The audit of every terminal kernel flip, and of every issue status transition. A row is never deleted while the job, session, run or issue it records is still non-terminal, whatever its age. A month is the shortest span over which this table still answers an incident question.',
   },
   {
-    table: 'retrieval_analytics',
-    days: 90,
-    env: 'RETENTION_RETRIEVAL_ANALYTICS_DAYS',
-    floorDays: 7,
-    why: 'One row per memory search, written for analysis and read by no route.',
-  },
-  {
     table: 'mcp_audit_log',
     days: null,
     env: null,

@@ -1,11 +1,11 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { storedText } from '../lib/data-egress.js';
-import { lockFeedback } from './service.js';
+import { insertFeedbackIn, lockFeedback } from './service.js';
 
 interface ContractChangeFiling {
   consumerId: string;
@@ -44,30 +44,21 @@ export async function fileContractChangeIn(
     `${f.provider.slug}/${f.contractSlug} ${f.version} is breaking`.slice(0, FEEDBACK_LIMITS.title),
   );
   const body = storedText(f.level, bodyOf(f));
-  const [{ next } = { next: 1 }] = await tx
-    .select({ next: sql<number>`coalesce(max(${feedback.fbSeq}), 0)::int + 1` })
-    .from(feedback)
-    .where(eq(feedback.projectId, f.consumerId));
-  const [row] = await tx
-    .insert(feedback)
-    .values({
-      projectId: f.consumerId,
-      fbSeq: next,
-      kind: 'contract_change',
-      severity: 'high',
-      title: title.text,
-      body: body.text,
-      contractProviderProjectId: f.provider.id,
-      contractSlug: f.contractSlug,
-      contractVersion: f.version,
-      dueAt: f.dueAt,
-      reportedBy: f.filer.userId,
-      reporterAgency: f.filer.agency,
-      scrubbed: title.scrubbed,
-      redactions: title.redactions + body.redactions,
-      dedupKey,
-    })
-    .returning({ id: feedback.id });
-  if (!row) throw new Error('feedback: the contract change insert returned no row');
-  return { id: row.id, created: true };
+  const id = await insertFeedbackIn(tx, {
+    projectId: f.consumerId,
+    kind: 'contract_change',
+    severity: 'high',
+    title: title.text,
+    body: body.text,
+    contractProviderProjectId: f.provider.id,
+    contractSlug: f.contractSlug,
+    contractVersion: f.version,
+    dueAt: f.dueAt,
+    reportedBy: f.filer.userId,
+    reporterAgency: f.filer.agency,
+    scrubbed: title.scrubbed,
+    redactions: title.redactions + body.redactions,
+    dedupKey,
+  });
+  return { id, created: true };
 }

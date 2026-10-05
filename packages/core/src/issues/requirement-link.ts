@@ -4,10 +4,9 @@ import { issues } from '../db/schema.js';
 
 type PlannedAgainst = {
   plannedRevision: number | null;
-  plannedBaselineSeq: number | null;
 };
 
-/** The issue delivers this requirement, planned against the revision and baseline named. */
+/** The issue delivers this requirement, planned against the revision named. */
 export async function linkIssueToRequirement(
   tx: Tx,
   issueId: string,
@@ -20,7 +19,7 @@ export async function linkIssueToRequirement(
     .where(eq(issues.id, issueId));
 }
 
-/** The issue's existing plan is recorded as read against the revision and baseline named. */
+/** The issue's existing plan is recorded as read against the revision named. */
 export async function adoptIssuePlan(
   tx: Tx,
   issueId: string,
@@ -42,7 +41,6 @@ export async function unlinkIssueFromRequirement(
     .set({
       requirementId: null,
       plannedRevision: null,
-      plannedBaselineSeq: null,
       updatedAt: new Date(),
     })
     .where(and(eq(issues.id, issueId), eq(issues.requirementId, requirementId)));

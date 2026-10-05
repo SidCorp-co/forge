@@ -120,7 +120,8 @@ refused \`REQUIREMENT_SIGNOFF_FORBIDDEN\`.
 ### Screen bindings
 A design step's \`node.binds: [{ provider, slug, element }]\` names the contract elements a screen
 uses. A baseline pinning that design pins them with it, and the detail's \`bindings\` lists each with
-\`brokenBy\`, the version past the pin that removed or broke it. Binding a contract that is not
+\`brokenBy\`, the version past the pin that removed or broke it, and \`buildingIssues\`, the issues whose
+build link names that design's flow (empty while nothing broke it). Binding a contract that is not
 element-indexed (asyncapi, protobuf, opaque) is refused \`REQUIREMENT_BINDING_NOT_INDEXED\` both when the
 design is written (\`PUT\`/\`POST\` on workflows, at the bind's pointer) and when the baseline is written.`,
 };

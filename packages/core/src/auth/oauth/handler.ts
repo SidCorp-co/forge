@@ -66,7 +66,8 @@ type StartQuery = z.infer<typeof startQuery>;
 
 export const refuseStartQuery = invalid('redirect takes one same-origin path');
 
-export const callbackQuery = z.object({
+// the provider redirects here and adds keys of its own (Google: scope, authuser, prompt, hd)
+export const callbackQuery = z.looseObject({
   code: z.string().optional(),
   state: z.string().optional(),
   error: z.string().optional(),

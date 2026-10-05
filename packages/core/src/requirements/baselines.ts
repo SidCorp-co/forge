@@ -39,15 +39,6 @@ export async function latestBaselineIn(tx: Tx, requirementId: string, revision: 
   return { seq: b.seq, readiness: b.readiness, pins };
 }
 
-export async function plannedBaselineSeqIn(
-  tx: Tx,
-  requirementId: string,
-  revision: number | null,
-): Promise<number | null> {
-  if (revision === null) return null;
-  return (await latestBaselineIn(tx, requirementId, revision))?.seq ?? null;
-}
-
 // A baseline pins every accepted mockup proposed against its revision or an earlier one,
 // beside the designs (ISS-78): a mockup's bytes never change, so the pin is the row
 export async function acceptedMockupIds(

@@ -22,8 +22,9 @@ import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
 export const MCP_TOOLS = {
-  // Every action has a REST twin under /api/agent-reports, and every prompt in this repo names the
-  // route; kept only for forge-plugin clients, until mcp_audit_log shows no call (reported there).
+  // Every action has a REST twin under /api/agent-reports (POST /, GET /, POST /:id/triage, and
+  // POST /triage by signalKey), and get's is GET /api/projects/:id/automation/reports/:reportId.
+  // Kept only for forge-plugin clients, until mcp_audit_log shows no call (reported there).
   forge_agent_report: (ctx) => forgeAgentReportTool(ctx),
   // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
   forge_uploads: (ctx) => forgeUploadsTool(ctx),

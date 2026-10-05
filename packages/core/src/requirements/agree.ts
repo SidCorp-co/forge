@@ -130,9 +130,16 @@ export async function acceptRevision(input: {
         rebaseline: true,
       });
       if (guards.length) return guards;
-      readiness = baselineReadiness(gate, await readinessAt(tx, row.id, target.revision));
+      // the accept that re-baselines passes every agree guard, the near-duplicate one included
+      const { check, near } = await nearDuplicatesOf({
+        ...current,
+        currentRevision: target.revision,
+      });
+      readiness = baselineReadiness(gate, await readinessAt(tx, row.id, target.revision), check);
       const notReady = readinessRefusal(readiness, target.revision);
       if (notReady) return [notReady];
+      const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
+      if (duplicate) return [duplicate];
     }
     if (current.currentRevision !== null) {
       await tx
@@ -217,15 +224,16 @@ export async function agreeRequirement(input: {
       rebaseline: false,
     });
     if (guards.length) return guards;
+    const { check, near } = await nearDuplicatesOf(current);
     const readiness = baselineReadiness(
       gate,
       current.currentRevision === null
         ? null
         : await readinessAt(tx, row.id, current.currentRevision),
+      check,
     );
     const notReady = readinessRefusal(readiness, current.currentRevision);
     if (notReady) return [notReady];
-    const near = await nearDuplicatesOf(current);
     const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
     if (duplicate) {
       undecided = { near, currentRevision: current.currentRevision };

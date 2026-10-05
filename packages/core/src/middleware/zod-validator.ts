@@ -46,6 +46,17 @@ function unknownQueryKeys(schema: unknown, error: z.core.$ZodError): HTTPExcepti
   });
 }
 
+// a query key no route reads is refused by name rather than dropped, so a misspelt filter never
+// answers as if it were absent; a route a third party redirects to (OAuth, GitHub) declares a
+// z.looseObject, and its catchall is left as declared
+function strictQuery<S>(schema: S): S {
+  const object = schema as unknown as z.ZodObject;
+  const def = object._zod?.def as { type?: string; catchall?: unknown } | undefined;
+  return def?.type === 'object' && def.catchall === undefined
+    ? (object.strict() as unknown as S)
+    : schema;
+}
+
 function inputRefusal(error: unknown, { hint, code }: Shape): HTTPException {
   return new HTTPException(400, {
     message: hint ?? 'Invalid input',
@@ -56,7 +67,7 @@ function inputRefusal(error: unknown, { hint, code }: Shape): HTTPException {
 /**
  * The one answer to an input its schema refuses: 400, a refusal row per failing field, and `hint`
  * (the valid shape, in words) as the envelope's detail where the route gives one. A query naming a
- * key its strict schema does not take is refused by that key, with the keys the route takes.
+ * key its schema does not take is refused by that key, with the keys the route takes.
  * `code` stays BAD_REQUEST unless the route answers this shape under a code of its own.
  */
 export function invalid(hint?: string, code = 'BAD_REQUEST'): Hook {
@@ -70,7 +81,8 @@ export function invalid(hint?: string, code = 'BAD_REQUEST'): Hook {
 
 // cm:why the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
-  const [target, schema, hook, ...rest] = args;
+  const [target, declaredSchema, hook, ...rest] = args;
+  const schema = target === 'query' ? strictQuery(declaredSchema) : declaredSchema;
   const shape = (hook && shapes.get(hook)) ?? (hook ? null : { code: 'BAD_REQUEST' });
   // a route's own hook answers first; one that lets a failure through gets the shared answer
   const answer = (async (r: Failed, c: Context) => {
@@ -81,7 +93,7 @@ export const zValidator = ((...args: Args) => {
   }) as Hook;
   const middleware = honoZodValidator(target, schema, answer, ...rest);
   const guarded = args[0] === 'json' ? refuseUndeclaredBodyType(middleware) : middleware;
-  declared.set(guarded, { target: args[0], schema: args[1] });
+  declared.set(guarded, { target, schema });
   return guarded;
 }) as typeof honoZodValidator;
 

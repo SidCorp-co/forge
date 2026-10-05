@@ -35,7 +35,7 @@ A single migration:
 
 Nothing is re-classified, so the rule migration 0192 relies on holds: a historical row keeps the
 verdict it already reads as, and only where that verdict is stored changes. Once this lands, the
-three `LEGACY_CAUSE_ALIAS` entries and the read-time fold can be removed, because the column holds
+two `LEGACY_CAUSE_ALIAS` entries (`job_failed`, `usage_limit`) and the read-time fold can be removed, because the column holds
 only the cause set.
 
 ## Why ISS-1157 did not do it

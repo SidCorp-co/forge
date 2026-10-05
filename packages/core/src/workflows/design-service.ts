@@ -32,7 +32,6 @@ import {
   readWorkflow,
   type StoredWorkflow,
   setBuildSteps,
-  unlinkBuild,
   workflowsOf,
 } from './store.js';
 
@@ -341,34 +340,5 @@ export async function linkBuildAs(input: {
     return null;
   });
   if (refusal) return { ok: false, refusals: [refusal] };
-  return { ok: true, design: await designView(await rowIn(projectId, id), actor) };
-}
-
-// Lifting the link lifts the gate, so it is the approver's act and never the master's escape from a design nobody approved
-export async function unlinkBuildAs(input: {
-  projectId: string;
-  id: string;
-  actor: WorkflowWriter;
-  issue: string;
-}): Promise<DesignOutcome> {
-  const { projectId, id, actor } = input;
-  await rowIn(projectId, id);
-  const refusal = await approverRefusalFor(actor, projectId);
-  if (refusal) return { ok: false, refusals: [refusal] };
-  const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
-  const missing = await db.transaction(async (tx): Promise<DesignRefusal | null> => {
-    await lockWorkflows(tx, projectId);
-    const held = await buildOfIssue(tx, issue.id);
-    if (held?.workflowId !== id) {
-      return {
-        code: 'WORKFLOW_BUILD_NOT_LINKED',
-        path: '/issue',
-        detail: `${input.issue} does not build workflow ${id}${held ? `; it builds ${held.workflowId}` : ''}.`,
-      };
-    }
-    await unlinkBuild(tx, issue.id);
-    return null;
-  });
-  if (missing) return { ok: false, refusals: [missing] };
   return { ok: true, design: await designView(await rowIn(projectId, id), actor) };
 }

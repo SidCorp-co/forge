@@ -4,7 +4,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  real,
   text,
   timestamp,
   uniqueIndex,
@@ -72,39 +71,4 @@ export const memories = pgTable(
 
 export const memoriesRelations = relations(memories, ({ one }) => ({
   project: one(projects, { fields: [memories.projectId], references: [projects.id] }),
-}));
-
-// v1 EPIC 5 (ISS-274) — append-only retrieval log. Today only `/api/memory/search`
-// (`source='api-search'`) populates this; EPIC 1's chat-prompt-builder will add
-// `source='chat'` rows. No retention sweep yet — see ISS-274 plan Risks.
-export const retrievalSources = ['api-search', 'chat'] as const;
-
-export type RetrievalSource = (typeof retrievalSources)[number];
-
-export const retrievalAnalytics = pgTable(
-  'retrieval_analytics',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    query: text('query').notNull(),
-    hitCount: integer('hit_count').notNull(),
-    topScore: real('top_score'),
-    model: text('model'),
-    durationMs: integer('duration_ms'),
-    source: text('source', { enum: retrievalSources }).notNull().default('api-search'),
-    metadata: jsonb('metadata').notNull().default(sql`'{}'::jsonb`),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectCreatedIdx: index('retrieval_analytics_project_created_idx').on(
-      t.projectId,
-      t.createdAt,
-    ),
-  }),
-);
-
-export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one }) => ({
-  project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));

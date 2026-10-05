@@ -1,7 +1,9 @@
 import {
   TRIAGE_AGENT_REPORT_SHAPE,
+  TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE,
   type TriageAgentReportRequest,
   triageAgentReportRequestSchema,
+  triageAgentReportsBySignalRequestSchema,
 } from '@forge/contracts/agent-reports';
 import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
@@ -14,14 +16,10 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import {
-  fileReport,
-  readOneReport,
-  readReportFeed,
-  reportFiltersSchema,
-  submitReportSchema,
-} from './reports.js';
-import { readReport, visibleIssue } from './service.js';
+import { listVisibleProjectsWithRole } from '../projects/index.js';
+import { fileReport, readReportFeed, reportFiltersSchema, submitReportSchema } from './reports.js';
+import { readReport, visibleIssue, writableProjectIds } from './service.js';
+import { triageBySignal } from './signal-triage.js';
 import { type ReportActor, type TriageOutcome, triageReports } from './triage.js';
 
 const badRequest = (details: unknown) =>
@@ -102,13 +100,31 @@ agentReportRoutes.get(
   },
 );
 
-agentReportRoutes.get('/:id', async (c) => {
-  const reportId = c.req.param('id');
-  if (!z.uuid().safeParse(reportId).success) throw badRequest('id must be a valid uuid');
-  const report = await readOneReport(c.get('userId'), reportId);
-  if (!report) throw notFound(`agent report ${reportId} not found`);
-  return c.json({ report });
-});
+agentReportRoutes.post(
+  '/triage',
+  strictBody(triageAgentReportsBySignalRequestSchema, TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+    const out = await triageBySignal(
+      {
+        signalKey: body.signalKey,
+        scope: body.scope ?? 'project',
+        projectId: body.projectId ?? null,
+        act: body.triage,
+        actor: actorOf(c),
+        channel: 'web',
+        linkIssue: await linkOf(c, body.triage),
+      },
+      {
+        requireWrite: async (projectId) =>
+          requireHeld(await loadProjectAccess(projectId, userId), 'project.write'),
+        writableProjects: async () => writableProjectIds(await listVisibleProjectsWithRole(userId)),
+      },
+    );
+    return answer(c, out);
+  },
+);
 
 agentReportRoutes.post(
   '/:id/triage',

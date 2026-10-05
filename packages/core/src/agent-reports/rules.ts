@@ -128,3 +128,37 @@ export function filedIntoIssueRefusal(issueKey: string, reportIds: readonly stri
     `${issueKey} carries ${reportIds.length} filed agent report(s) (${reportIds.join(', ')}); deleting it would leave each with no target. Reopen them ({ act: reopen }) first.`,
   );
 }
+
+/** Where a triage by signal reaches: one named project, or every project the caller can write. */
+export interface SignalReach {
+  signalKey: string;
+  scope: 'project' | 'all';
+  projectId: string | null;
+  act: TriageAgentReportRequest;
+}
+
+export function signalTriageRefusal(t: SignalReach): Refusal | null {
+  if (t.scope === 'project' && !t.projectId) {
+    return refusal(
+      'AGENT_REPORT_BULK_PROJECT_REQUIRED',
+      '/projectId',
+      `a triage of signal ${t.signalKey} in one project names that project; pass projectId, or scope: all for every project you can write.`,
+    );
+  }
+  if (t.scope === 'all' && t.act.act === 'file' && t.act.createIssue) {
+    return refusal(
+      'AGENT_REPORT_BULK_CREATE_ACROSS_PROJECTS',
+      '/triage/createIssue',
+      'createIssue files into one project, so a scope: all triage names an existing issue instead.',
+    );
+  }
+  return null;
+}
+
+export function noWritableProjectRefusal(signalKey: string): Refusal {
+  return refusal(
+    'AGENT_REPORT_NO_WRITABLE_PROJECT',
+    '/scope',
+    `a scope: all triage of signal ${signalKey} reaches no project: you can write to none that holds agent reports.`,
+  );
+}

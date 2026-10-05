@@ -122,7 +122,6 @@ export async function breakdownGuardIn(
   codes: ReadonlyMap<string, string>;
   blockers: ReadonlyMap<string, string>;
   builds: (PinnedDesign | null)[];
-  baselineSeq: number | null;
 }> {
   const req = await rowIn(tx, projectId, requirementId);
   const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
@@ -138,7 +137,6 @@ export async function breakdownGuardIn(
       codes: new Map(),
       blockers: new Map(),
       builds: [],
-      baselineSeq: null,
     };
   }
   const codes = await liveCodes(tx, req.id, head);
@@ -160,7 +158,6 @@ export async function breakdownGuardIn(
     codes,
     blockers: named.ids,
     builds: planned.builds,
-    baselineSeq: baseline?.seq ?? null,
   };
 }
 
@@ -264,7 +261,6 @@ export async function breakdownEffect(
         createdVia: channel,
         requirementId: req.id,
         plannedRevision: head,
-        plannedBaselineSeq: guard.baselineSeq,
         fromSuggestionId: row.id,
       },
       { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
