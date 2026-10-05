@@ -7,7 +7,6 @@ import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
-import { deriveConnectionStatus } from "../derive";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
@@ -202,7 +201,7 @@ export function ConnectionRow({
       </button>
 
       <span id={statusId}>
-        <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
+        <DirectoryStatusPill status={connection.directoryStatus} />
       </span>
 
       <span className="flex shrink-0 items-center gap-1">

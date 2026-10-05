@@ -4,13 +4,10 @@
 // (`issues/archive.ts`) has to be left out here too, or its text stays reachable.
 import { type SQL, sql } from 'drizzle-orm';
 import { memories } from '../db/schema.js';
+import { memoryIssueReads } from './ports.js';
 
-/**
- * A memory row that is not the text of an archived issue, nor a fact extracted from one. `NOT IN`
- * over the project's archived ids is a hashed subplan, evaluated once per query rather than once
- * per memory row.
- */
+/** A memory row that is not the text of an archived issue, nor a fact extracted from one. */
 export function memoryOfLiveIssue(projectId: string): SQL {
-  const archived = sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
+  const archived = memoryIssueReads().archivedIssueIds(projectId);
   return sql`((${memories.source} <> 'issue' OR ${memories.sourceRef} NOT IN ${archived}) AND coalesce(${memories.metadata}->>'issueId', '') NOT IN ${archived})`;
 }

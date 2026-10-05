@@ -244,11 +244,3 @@ export async function updateKnowledgeLinks(
     })
     .where(eq(knowledgeEntries.id, nodeId));
 }
-
-/** A knowledge entry that had no embedding is given one; a concurrent writer's stays. */
-export async function fillKnowledgeEmbedding(entryId: string, vector: number[]): Promise<void> {
-  await db
-    .update(knowledgeEntries)
-    .set({ embedding: vector })
-    .where(and(eq(knowledgeEntries.id, entryId), isNull(knowledgeEntries.embedding)));
-}

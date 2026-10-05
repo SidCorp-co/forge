@@ -1,11 +1,9 @@
 import { scrubLogText } from '@forge/observability';
-import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import {
   type BindingWithConnection,
   describeInboundDoor,
   effectiveConfig,
+  forgeReads,
   getIntegration,
   grantHolds,
   healthWithInboundDoor,
@@ -111,13 +109,9 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
   const pairs = await githubPairs(projectId);
   if (pairs.length === 0) return [];
 
-  const [project] = await db
-    .select({ slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
+  const slug = await forgeReads().projectSlug(projectId);
   const apiBase = resolveApiBaseUrl();
-  const expectedUrl = apiBase && project?.slug ? inboundWebhookUrl(apiBase, project.slug) : null;
+  const expectedUrl = apiBase && slug ? inboundWebhookUrl(apiBase, slug) : null;
   const inboundUnprompted = decl?.capabilities.inboundUnprompted ?? false;
 
   return Promise.all(

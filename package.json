@@ -27,9 +27,9 @@
     "eslint": "^10.11.0",
     "postgres": "^3.4.9",
     "tsx": "^4.23.15",
-    "turbo": "^2.11.4",
+    "turbo": "^2.11.6",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.70.1",
+    "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.2"
   },
   "pnpm": {

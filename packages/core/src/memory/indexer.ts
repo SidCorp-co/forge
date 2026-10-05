@@ -5,6 +5,7 @@ import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
+import { type IssueHead, memoryIssueReads } from './ports.js';
 import { searchMemories } from './search.js';
 import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
 
@@ -59,26 +60,9 @@ function upsertParent(
     });
 }
 
-function describe(row: { description?: unknown; descriptionFormat?: unknown }): string {
-  const description = typeof row.description === 'string' ? row.description : '';
-  if (!description) return '';
-  const format = typeof row.descriptionFormat === 'string' ? row.descriptionFormat : null;
-  return bodyText(description, format);
+function describe(head: Pick<IssueHead, 'description' | 'descriptionFormat'>): string {
+  return head.description ? bodyText(head.description, head.descriptionFormat) : '';
 }
-
-/**
- * Consume the issue outbox events and keep the `memories` table in sync via
- * the embeddings service.
- *
- * The consumer detaches its work with `queueMicrotask` so a slow LiteLLM call
- * never holds the outbox worker; it uses `indexMemoryBestEffort`,
- * which logs and swallows failures — eventually consistent. Explicit callers
- * (REST `POST /api/memory`, knowledge ingest) use
- * `indexMemory` which throws so the caller can report or retry.
- *
- * If higher durability is required later (bursts, retry-on-process-restart),
- * migrate the detached call to a pg-boss job; the queue is already running.
- */
 
 export const MAX_EMBED_CHARS = 8192;
 
@@ -274,9 +258,8 @@ async function findNearDuplicate(
 }
 
 /**
- * Best-effort variant — swallows failures with structured logging. Use from
- * hook subscribers where the request path must not see indexer errors and a
- * later edit will re-attempt indexing. Embeddings OUTAGES never reach here —
+ * Best-effort variant — swallows failures with structured logging, for a record
+ * written beside work that must not fail on it. Embeddings OUTAGES never reach here —
  * `indexMemory` absorbs them as degraded writes — so anything caught is a DB
  * failure or a non-outage embed error (e.g. dimension mismatch).
  */
@@ -321,53 +304,38 @@ export async function deleteMemory(
 }
 
 /**
- * The memory index's consumers. Indexing calls the embedding provider, so it is handed off rather
- * than awaited, and the outbox worker is not held behind it.
+ * The memory index's consumers. Each awaits its write, so a failure throws and the outbox retries
+ * the event; an embeddings outage never throws here, `indexMemory` stores it as a degraded row.
  */
 export function registerMemoryIndexer(): void {
-  const detach = (fn: () => Promise<void>) =>
-    queueMicrotask(() => {
-      fn().catch((err) => {
-        logger.error({ err: (err as Error).message }, 'memory.indexer: detached task failed');
-      });
-    });
-
   consume('issue.created', {
     name: 'memory-indexer',
-    handle: (p) => {
-      const text = [p.snapshot.title, describe(p.snapshot)].filter(Boolean).join('\n\n');
-      if (!text) return;
-      detach(() =>
-        indexMemoryBestEffort({
-          projectId: p.projectId,
-          source: 'issue',
-          sourceRef: p.issueId,
-          text,
-          metadata: { priority: p.snapshot.priority, category: p.snapshot.category ?? undefined },
-        }),
-      );
-    },
+    handle: (p) =>
+      indexIssue(p.projectId, p.issueId, {
+        ...p.snapshot,
+        descriptionFormat: p.snapshot.descriptionFormat ?? null,
+      }),
   });
 
   consume('issue.updated', {
     name: 'memory-indexer',
-    handle: (p) => {
+    handle: async (p) => {
       if (!p.fields.includes('title') && !p.fields.includes('description')) return;
-      const title = (p.after.title ?? '') as string;
-      const text = [title, describe(p.after)].filter(Boolean).join('\n\n');
-      if (!text) return;
-      detach(() =>
-        indexMemoryBestEffort({
-          projectId: p.projectId,
-          source: 'issue',
-          sourceRef: p.issueId,
-          text,
-          metadata: {
-            priority: p.after.priority as string | undefined,
-            category: (p.after.category as string | null) ?? undefined,
-          },
-        }),
-      );
+      // cm:why `after` holds only the changed fields, so the text is rebuilt from the whole row.
+      const head = await memoryIssueReads().head(p.issueId);
+      if (head) await indexIssue(p.projectId, p.issueId, head);
     },
+  });
+}
+
+async function indexIssue(projectId: string, issueId: string, head: IssueHead): Promise<void> {
+  const text = [head.title, describe(head)].filter(Boolean).join('\n\n');
+  if (!text) return;
+  await indexMemory({
+    projectId,
+    source: 'issue',
+    sourceRef: issueId,
+    text,
+    metadata: { priority: head.priority, category: head.category ?? undefined },
   });
 }

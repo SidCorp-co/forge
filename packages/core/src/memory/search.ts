@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { clampTopK, fuseHybrid } from '../knowledge/index.js';
+import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 
 interface BaseSearchInput {

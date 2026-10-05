@@ -72,7 +72,7 @@ export interface SentryIntakeContext {
   thresholds: SentryAdmissionThresholds;
   /** The declared target this issue was confined to, named in the filed issue's body. */
   target: ErrorTrackerTarget;
-  /** The schedule fire that pulled it, or null for the webhook door. */
+  /** The schedule fire that pulled it, or null outside a schedule fire. */
   scheduleRunId: string | null;
 }
 
@@ -80,8 +80,7 @@ export interface SentryIntakeContext {
  * What one intake decision did, in the vocabulary both doors report in.
  *
  * `refused` carries its own sentence rather than a code: the pull writes it into the schedule run's
- * output and the webhook onto its delivery row, and in both places a person reading it has to be
- * able to fix the cause without opening the source.
+ * output, where a person reading it has to be able to fix the cause without opening the source.
  */
 type SentryIntakeOutcome =
   | { kind: 'filed' }
@@ -99,7 +98,7 @@ export async function projectCreatedById(projectId: string): Promise<string | nu
   return row?.createdBy ?? null;
 }
 
-/** The admission policy — the SAME read for the webhook's sightings and the scheduled pull. */
+/** The admission policy the scheduled pull reads. */
 export function readSentryThresholds(): SentryAdmissionThresholds {
   return {
     minEventCount: ADMIN_THRESHOLDS.sentryMinEventCount,
@@ -356,7 +355,7 @@ async function reopenOnRegression(
       reopenCount: existing.reopenCount,
     },
     'reopen',
-    // No credential is behind a detector reopen — the Sentry webhook is the
+    // No credential is behind a detector reopen — the scheduled pull is the
     // writer and `ctx.createdById` only says whose intake configuration it ran
     // under. The audit row names the machine, said here rather than left to a
     // collapse in `actorAgency` (ISS-1137).
@@ -387,8 +386,7 @@ async function reopenOnRegression(
 /**
  * ONE Sentry issue, decided. The whole of what Forge does with an error.
  *
- * Both routes — `pull.ts`'s scheduled pull and `sightings.ts`'s reaction to a webhook's sighting —
- * reach this and nothing else, so neither can answer differently about whether an error is work.
+ * The scheduled pull (`pull.ts`) reaches this and nothing else.
  */
 export async function intakeSentryIssue(
   issue: ErrorTrackerIssue,

@@ -14,11 +14,12 @@ import type { GitRefusalCode } from '@forge/contracts/git';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
-import { integrationBindings, integrationConnections, runners } from '../../db/schema.js';
+import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { refuser } from '../../lib/refusal.js';
 import {
   decryptConnectionSecrets,
   effectiveConfig,
+  forgeReads,
   type GitCredentialMint,
   listIntegrations,
 } from '../index.js';
@@ -41,6 +42,26 @@ function mints(): Map<string, GitCredentialMint> {
   );
 }
 
+/** Active bindings of a minting provider on these projects, oldest first, with their connections. */
+async function activeHostPairs(byProvider: Map<string, GitCredentialMint>, projectIds: string[]) {
+  if (projectIds.length === 0 || byProvider.size === 0) return [];
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationConnections.id, integrationBindings.connectionId),
+    )
+    .where(
+      and(
+        inArray(integrationBindings.provider, [...byProvider.keys()]),
+        eq(integrationBindings.active, true),
+        inArray(integrationBindings.projectId, projectIds),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
+}
+
 /**
  * Mint a git credential for one device and one repository, or refuse saying which thing is missing:
  * a path git did not send, a binding on no project this device runs, a switched-off connection, or a
@@ -59,27 +80,7 @@ export async function mintGitCredentialForDevice(args: {
     });
   }
   const byProvider = mints();
-  const providers = [...byProvider.keys()];
-  const rows =
-    providers.length === 0
-      ? []
-      : await db
-          .select({ binding: integrationBindings, connection: integrationConnections })
-          .from(integrationBindings)
-          .innerJoin(
-            integrationConnections,
-            eq(integrationConnections.id, integrationBindings.connectionId),
-          )
-          .innerJoin(runners, eq(runners.projectId, integrationBindings.projectId))
-          .where(
-            and(
-              inArray(integrationBindings.provider, providers),
-              eq(integrationBindings.active, true),
-              eq(runners.deviceId, args.deviceId),
-            ),
-          )
-          .orderBy(asc(integrationBindings.createdAt));
-
+  const rows = await activeHostPairs(byProvider, await forgeReads().deviceProjects(args.deviceId));
   const pair = rows.find((r) =>
     byProvider.get(r.binding.provider)?.reaches(effectiveConfig(r), args.host, path),
   );
@@ -117,21 +118,7 @@ export async function mintGitCredentialForDevice(args: {
  */
 export async function projectsWithHostCredential(projectIds: string[]): Promise<Set<string>> {
   const byProvider = mints();
-  if (projectIds.length === 0 || byProvider.size === 0) return new Set();
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationConnections.id, integrationBindings.connectionId),
-    )
-    .where(
-      and(
-        inArray(integrationBindings.provider, [...byProvider.keys()]),
-        eq(integrationBindings.active, true),
-        inArray(integrationBindings.projectId, projectIds),
-      ),
-    );
+  const rows = await activeHostPairs(byProvider, projectIds);
   return new Set(
     rows
       .filter((r) => byProvider.get(r.binding.provider)?.serves(effectiveConfig(r)))

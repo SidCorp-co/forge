@@ -1,8 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
-import { pipelineRuns } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { recordDelivery, updateDelivery } from '../index.js';
+import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { markPullRequestMerged } from './projection.js';
 import { sourceHostForBinding } from './resolve.js';
@@ -95,17 +94,13 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
     );
   }
   if (!req.runId) return;
-  const [run] = await db
-    .select({ projectId: pipelineRuns.projectId })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, req.runId))
-    .limit(1);
-  if (!run) {
+  const runProjectId = await forgeReads().runProjectOf(req.runId);
+  if (runProjectId === null) {
     throw new MergeInputError(
       `merge: \`runId\` ${req.runId} names no pipeline run, so there is no run this merge is made for`,
     );
   }
-  if (run.projectId !== projectId) {
+  if (runProjectId !== projectId) {
     throw new MergeInputError(
       `merge: \`runId\` ${req.runId} belongs to another project than the change request it was sent with — a merge is authorised by a run on its own project, and Forge will not record one project's run as the authority for another's merge`,
     );
@@ -188,50 +183,61 @@ export async function mergeStoredChangeRequest(
     status: 'pending',
   });
 
-  let host: SourceHost;
+  // A throw past this point — the host unreachable, a 5xx, evidence that failed to write — settles
+  // the delivery as failed with its message; a merge delivery is never left pending.
   try {
-    host = await sourceHostForBinding(row.bindingId);
+    let host: SourceHost;
+    try {
+      host = await sourceHostForBinding(row.bindingId);
+    } catch (err) {
+      if (err instanceof SourceHostUnavailable) return refuse(deliveryId, err.reason, err.message);
+      throw err;
+    }
+
+    const method = req.method ?? 'merge';
+    if (!host.words.mergeMethods.includes(method)) {
+      return refuse(
+        deliveryId,
+        'method-unsupported',
+        `${host.provider} has no \`${method}\` merge — it has ${host.words.mergeMethods.map((m) => `\`${m}\``).join(', ')}. It is refused rather than defaulted, because a different method lands a different shape of history on the base branch.`,
+      );
+    }
+
+    const result = await host.merge({
+      number: row.number,
+      expectedHeadSha: req.expectedHeadSha,
+      method,
+    });
+    if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
+
+    const { stamped } = await writeEvidence({
+      row,
+      host,
+      commitSha: result.commitSha,
+      mergedAt: result.mergedAt,
+      stampIssue,
+    });
+    await updateDelivery(deliveryId, {
+      status: 'ok',
+      response:
+        result.kind === 'already-merged'
+          ? { alreadyMerged: true, commitSha: result.commitSha, stamped }
+          : { commitSha: result.commitSha, requestedBy: req.requestedBy, stamped },
+      completedAt: new Date(),
+    });
+    return {
+      kind: result.kind,
+      deliveryId,
+      commitSha: result.commitSha,
+      mergedAt: result.mergedAt,
+      stamped,
+    };
   } catch (err) {
-    if (err instanceof SourceHostUnavailable) return refuse(deliveryId, err.reason, err.message);
+    await updateDelivery(deliveryId, {
+      status: 'failed',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      completedAt: new Date(),
+    });
     throw err;
   }
-
-  const method = req.method ?? 'merge';
-  if (!host.words.mergeMethods.includes(method)) {
-    return refuse(
-      deliveryId,
-      'method-unsupported',
-      `${host.provider} has no \`${method}\` merge — it has ${host.words.mergeMethods.map((m) => `\`${m}\``).join(', ')}. It is refused rather than defaulted, because a different method lands a different shape of history on the base branch.`,
-    );
-  }
-
-  const result = await host.merge({
-    number: row.number,
-    expectedHeadSha: req.expectedHeadSha,
-    method,
-  });
-  if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
-
-  const { stamped } = await writeEvidence({
-    row,
-    host,
-    commitSha: result.commitSha,
-    mergedAt: result.mergedAt,
-    stampIssue,
-  });
-  await updateDelivery(deliveryId, {
-    status: 'ok',
-    response:
-      result.kind === 'already-merged'
-        ? { alreadyMerged: true, commitSha: result.commitSha, stamped }
-        : { commitSha: result.commitSha, requestedBy: req.requestedBy, stamped },
-    completedAt: new Date(),
-  });
-  return {
-    kind: result.kind,
-    deliveryId,
-    commitSha: result.commitSha,
-    mergedAt: result.mergedAt,
-    stamped,
-  };
 }

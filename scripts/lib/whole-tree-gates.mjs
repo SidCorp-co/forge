@@ -101,6 +101,48 @@ export function fsListing(name, args, cwd) {
   return [toPath(args[0], cwd)];
 }
 
+/** Whether a process may still be running: only its absence (`ESRCH`, or no `/proc` entry for it)
+ * or a zombie's state says it has ended; a state that cannot be read is running. */
+export function processRunning(pid, { signal, stat }) {
+  try {
+    signal(pid);
+  } catch (e) {
+    return e?.code !== 'ESRCH';
+  }
+  try {
+    return !/^\d+ \(.*\) Z /s.test(stat(pid));
+  } catch (e) {
+    return e?.code !== 'ENOENT' || !existsSync('/proc/self');
+  }
+}
+
+/**
+ * The whole JSON lines a log holds past `offset`, and the offset to read from next. A log only ever
+ * grows, so a line appended during a read is read next time; an unended line stays, and `pending`
+ * says so, and a line that is not JSON comes back as `{ malformed }`. A log shorter than `offset`
+ * was emptied, and is read from its start.
+ */
+export function logLines(bytes, offset) {
+  const from = bytes.length < offset ? 0 : offset;
+  const end = Math.max(bytes.lastIndexOf(0x0a) + 1, from);
+  const pending = bytes.length > end;
+  const text = bytes.subarray(from, end).toString('utf8');
+  return {
+    lines: text
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return { malformed: line };
+        }
+      }),
+    offset: end,
+    pending,
+  };
+}
+
 /**
  * What a test's run owes when it listed a directory covering the repository root: nothing when its
  * source declares a whole-tree input, and otherwise a refusal naming the file, each listing, where
@@ -190,8 +232,9 @@ export function runDirOf(path, root) {
   return packageOf(dirname(path), root);
 }
 
-/** Every vitest config has to install the guard, named from the `root` vitest resolved it at, and
- * a config it could not load (`error`) is refused, not trusted. */
+/** Every vitest config has to install the guard as its first setup file, named from the `root`
+ * vitest resolved it at: one before it can take a listing function while it is still unwatched. A
+ * config it could not load (`error`) is refused, not trusted. */
 export function judgeConfigs(configs, root) {
   const guard = resolve(root, GUARD_PATH);
   const refused = [];
@@ -206,6 +249,11 @@ export function judgeConfigs(configs, root) {
       refused.push({
         path,
         why: `does not install the guard that refuses an undeclared root walk — add '${expected}' to its \`test.setupFiles\``,
+      });
+    } else if (setupFiles[0] !== guard) {
+      refused.push({
+        path,
+        why: `runs '${relative(configRoot, setupFiles[0])}' before the guard, so a listing function it takes is never watched — put '${expected}' first in its \`test.setupFiles\``,
       });
     }
   }

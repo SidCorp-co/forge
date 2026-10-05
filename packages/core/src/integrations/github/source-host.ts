@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import type { HostCompare, SourceHost, SourceHostFactory } from '../source-host/index.js';
+import type {
+  HostCommitFiles,
+  HostCompare,
+  HostFileCompare,
+  SourceHost,
+  SourceHostFactory,
+} from '../source-host/index.js';
 import {
   buildGitHubAgentClient,
   type GitHubAgentClient,
@@ -19,6 +25,30 @@ import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const COMPARE_STATES: readonly HostCompare[] = ['ahead', 'behind', 'identical', 'diverged'];
+
+/** GitHub names at most this many files in one compare, and says nothing of the rest. */
+const COMPARE_FILE_CEILING = 300;
+
+interface CompareFile {
+  filename?: string;
+  previous_filename?: string;
+}
+
+/** Each file a compare names, a rename by both its names: the old path no longer holds it either.
+ *  A reason where the list cannot be taken whole, since a missing list is not an empty one. */
+function filesOf(files: CompareFile[] | undefined): string[] | string {
+  if (!Array.isArray(files)) return 'the compare answered no file list';
+  if (files.length >= COMPARE_FILE_CEILING) {
+    return `${COMPARE_FILE_CEILING} or more files differ, and the repository names no more than that in one compare`;
+  }
+  const named = (p: unknown) => typeof p === 'string' && p !== '';
+  const unnamed = files.some(
+    (f) =>
+      !named(f?.filename) || (f.previous_filename !== undefined && !named(f.previous_filename)),
+  );
+  if (unnamed) return 'the compare answered a file entry with no name';
+  return files.flatMap((f) => [f.filename, f.previous_filename].filter(named) as string[]);
+}
 
 /** The host a GitHub binding reaches: github.com, or the Enterprise host its API base names. */
 export function githubHostOf(config: Record<string, unknown>): string {
@@ -92,6 +122,25 @@ function githubSourceHostOf(
     }
     return status;
   };
+  const compareFiles = async (base: string, head: string): Promise<HostFileCompare> => {
+    const read = await client.get<{ status?: string; files?: CompareFile[] }>(
+      `${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
+    );
+    const status = COMPARE_STATES.find((s) => s === read.status);
+    if (!status) return { why: `${client.fullName} answered no compare status` };
+    const files = filesOf(read.files);
+    if (typeof files === 'string') return { why: files };
+    return { status, files };
+  };
+  const commitFiles = async (sha: string): Promise<HostCommitFiles> => {
+    const commit = await client.get<{ parents?: Array<{ sha?: string }> }>(
+      `${repo}/commits/${encodeURIComponent(sha)}`,
+    );
+    const parent = commit.parents?.[0]?.sha;
+    if (!parent) return { why: `${sha} has no parent to diff it against` };
+    const read = await compareFiles(parent, sha);
+    return 'why' in read ? read : { files: read.files };
+  };
   return {
     provider: 'github',
     bindingId: client.bindingId,
@@ -127,6 +176,8 @@ function githubSourceHostOf(
       return sha;
     },
     compare,
+    compareFiles,
+    commitFiles,
     async branchContains(branch, sha) {
       const status = await compare(sha, branch);
       return status === 'ahead' || status === 'identical';

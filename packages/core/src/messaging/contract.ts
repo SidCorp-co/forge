@@ -1,3 +1,4 @@
+import type { DoorId } from '@forge/contracts/messaging';
 import type { MessageFacts } from './facts.js';
 
 export type Audience = string;
@@ -73,16 +74,7 @@ export type DoorPolicy =
       readonly why: string;
     };
 
-export type DoorId =
-  | 'comment-write'
-  | 'record-event-write'
-  | 'question-ask'
-  | 'question-delivery'
-  | 'chat-sync'
-  | 'web-chat-reply'
-  | 'escalation-synthesis'
-  | 'agent-chat-completion'
-  | 'web-agent-completion';
+export type { DoorId };
 
 /** The refusal a caller gets when it reaches a write door with a message that cannot pass. */
 export class MessageRefusedError extends Error {

@@ -1,7 +1,7 @@
 import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, memories, projects } from '../db/schema.js';
+import { memories } from '../db/schema.js';
 import {
   callFastModel,
   EmbeddingUnavailableError,
@@ -15,6 +15,7 @@ import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
 import { indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { firstItems, parseFencedJson, type ScriptRefuser, scriptRefuser } from './model-output.js';
+import { memoryIssueReads, type ReleasedIssue } from './ports.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
 // Closes the code→memory loop that the nightly consolidation cannot:
@@ -138,26 +139,6 @@ async function reconcileForReleasedIssue(
     runningReconciles.delete(key);
   }
 }
-
-async function readReleasedIssue(projectId: string, issueId: string) {
-  const [issueRow] = await db
-    .select({
-      issSeq: issues.issSeq,
-      issuePrefix: projects.issuePrefix,
-      title: issues.title,
-      description: issues.description,
-      plan: issues.plan,
-      releaseNotes: issues.releaseNotes,
-      mergedAt: issues.mergedAt,
-    })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId), isNull(issues.archivedAt)))
-    .limit(1);
-  return issueRow;
-}
-
-type ReleasedIssue = NonNullable<Awaited<ReturnType<typeof readReleasedIssue>>>;
 
 async function alreadyReconciled(projectId: string, decisionRef: string): Promise<boolean> {
   const [existing] = await db
@@ -287,7 +268,7 @@ async function recordReconcile(
 }
 
 async function reconcile(projectId: string, issueId: string): Promise<ReconcileResult> {
-  const issueRow = await readReleasedIssue(projectId, issueId);
+  const issueRow = await memoryIssueReads().releasedIssue(projectId, issueId);
   if (!issueRow) {
     return emptyReconcileResult('issue-not-found', 'issue not found in this project, or archived');
   }

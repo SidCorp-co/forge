@@ -9,7 +9,7 @@ import {
   recordContractContext,
   sessionInProject,
 } from './contract/run-context-service.js';
-import { commitmentsSetter, loadInterface, writeInterface } from './interface-service.js';
+import { interfaceView, loadInterface, writeInterface } from './interface-service.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -59,15 +59,7 @@ export const HANDLERS: Record<
 > = {
   interface: async (ctx, side) => {
     await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
-    const held = await loadInterface(side);
-    return held
-      ? {
-          declared: true,
-          revision: held.revision,
-          document: held.document,
-          commitmentsSetBy: await commitmentsSetter(side),
-        }
-      : { declared: false, revision: null, document: null };
+    return interfaceView(side, await loadInterface(side));
   },
   links: async (ctx, side) => {
     const links = await listLinksAs(ctx.principal.userId, side);
@@ -96,14 +88,7 @@ export const HANDLERS: Record<
   interface_write: async (ctx, side, a) => {
     const outcome = await writeInterface({ projectId: side, ...writeOf(ctx, a) });
     if (!outcome.ok) return refusedWith(outcome.refusals);
-    const { held } = outcome;
-    return {
-      declared: true,
-      revision: held.revision,
-      document: held.document,
-      created: outcome.created,
-      commitmentsSetBy: await commitmentsSetter(side),
-    };
+    return { ...(await interfaceView(side, outcome.held)), created: outcome.created };
   },
   contract_version_publish: async (ctx, side, a) => {
     const out = await publishContractVersion({

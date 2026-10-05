@@ -14,4 +14,3 @@ export {
 export { isSentryRefusal, SentryRefusal } from './refusals.js';
 export { resolveSentryTargets } from './targets.js';
 export type { SentryTarget } from './types.js';
-export { settleSentryDelivery } from './webhook.js';

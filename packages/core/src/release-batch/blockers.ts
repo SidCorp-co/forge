@@ -378,7 +378,14 @@ async function gatedBlockers(
     );
     if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
     if (!issueIds && found) {
-      await criteriaHold(projectId, found.unclaimed, out, warnings, options.serving);
+      await criteriaHold(
+        projectId,
+        found.unclaimed,
+        out,
+        warnings,
+        options.serving,
+        options.weighing,
+      );
     }
   }
   return channels;
