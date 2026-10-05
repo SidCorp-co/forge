@@ -8,7 +8,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -24,14 +23,7 @@ moduleDiagramRoutes.use('*', requireAuth(), assertEmailVerified());
 
 moduleDiagramRoutes.get(
   '/:id/module-diagrams/:kind',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-    }
-  }),
+  zValidator('param', paramSchema),
   async (c) => {
     const { id: projectId, kind } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

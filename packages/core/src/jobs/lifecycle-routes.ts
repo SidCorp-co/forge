@@ -21,9 +21,6 @@ import {
 } from './runner-finish.js';
 import { ackJob, confirmJobKill } from './service.js';
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -77,12 +74,8 @@ export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
 jobLifecycleDeviceRoutes.post(
   '/:id/ack',
   requireDevice(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', ackBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', ackBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -123,12 +116,8 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/complete',
   requireDevice(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', completeBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', completeBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
@@ -157,12 +146,8 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/fail',
   requireDevice(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', failBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', failBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
@@ -190,12 +175,8 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/kill-ack',
   requireDevice(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', killAckBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', killAckBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { outcome } = c.req.valid('json');
@@ -219,12 +200,8 @@ jobLifecycleUserRoutes.post(
   '/:id/cancel',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', cancelBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', cancelBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');

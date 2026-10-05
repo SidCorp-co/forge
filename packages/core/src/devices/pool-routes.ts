@@ -20,7 +20,6 @@ import {
 } from '../db/schema-questions.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { refuseDevice } from './refusals.js';
@@ -93,9 +92,7 @@ const poolQuerySchema = z.object({
 devicePoolRoutes.get(
   '/me/pool',
   requireDevice(),
-  zValidator('query', poolQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', poolQuerySchema),
   async (c) => {
     const { limit, projectId } = c.req.valid('query');
     const deviceId = c.get('device').id;
@@ -107,9 +104,7 @@ devicePoolRoutes.get(
 devicePoolRoutes.get(
   '/me/issues/admissible',
   requireDevice(),
-  zValidator('query', poolQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', poolQuerySchema),
   async (c) => {
     const { projectId } = c.req.valid('query');
     const { items, refused } = await readAdmissibleIssues({
@@ -140,9 +135,7 @@ async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedL
 devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
-  zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', sessionParamsSchema),
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const terminal = await readRunSessionTerminal({ deviceId: c.get('device').id, sessionId });
@@ -154,12 +147,8 @@ devicePoolRoutes.get(
 devicePoolRoutes.get(
   '/me/issue-leases/:issueKey',
   requireDevice(),
-  zValidator('param', leaseParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', leaseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', leaseParamsSchema),
+  zValidator('query', leaseQuerySchema),
   async (c) => {
     const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
     // Two questions, both answered, because they are different ones: `held` is
@@ -179,12 +168,8 @@ devicePoolRoutes.get(
 devicePoolRoutes.delete(
   '/me/issue-leases/:issueKey',
   requireDevice(),
-  zValidator('param', leaseParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', leaseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', leaseParamsSchema),
+  zValidator('query', leaseQuerySchema),
   async (c) => {
     const rawKey = c.req.valid('param').issueKey;
     const key = await leaseKeyOf(rawKey, c.req.valid('query').projectId);
@@ -229,9 +214,7 @@ const claimBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/pool/prepare',
   requireDevice(),
-  zValidator('json', claimBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', claimBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await prepareJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
@@ -243,9 +226,7 @@ devicePoolRoutes.post(
 devicePoolRoutes.post(
   '/me/pool/start',
   requireDevice(),
-  zValidator('json', claimBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', claimBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await startJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
@@ -261,9 +242,7 @@ const releaseBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/pool/release',
   requireDevice(),
-  zValidator('json', releaseBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', releaseBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     if (jobId) {
@@ -283,9 +262,7 @@ const masterCloseBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/master-session/close',
   requireDevice(),
-  zValidator('json', masterCloseBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', masterCloseBodySchema),
   async (c) => {
     const { sessionId, reason } = c.req.valid('json');
     const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
@@ -313,9 +290,7 @@ function askAnswerOf(body: AskBody) {
 devicePoolRoutes.post(
   '/me/questions',
   requireDevice(),
-  zValidator('json', askBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', askBodySchema),
   async (c) => {
     const body = c.req.valid('json');
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
@@ -341,9 +316,7 @@ devicePoolRoutes.post(
 devicePoolRoutes.get(
   '/me/questions/:questionId',
   requireDevice(),
-  zValidator('query', answerQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', answerQuerySchema),
   async (c) => {
     const questionId = c.req.param('questionId');
     const waiter = await devicesPorts().questions.waiterFor({
@@ -370,9 +343,7 @@ const masterLimitSchema = z.object({
 devicePoolRoutes.post(
   '/me/limit',
   requireDevice(),
-  zValidator('json', masterLimitSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', masterLimitSchema),
   async (c) => {
     const body = c.req.valid('json');
     const resetsInSeconds = body.resetsInSeconds ?? null;

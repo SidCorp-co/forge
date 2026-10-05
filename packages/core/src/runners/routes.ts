@@ -88,57 +88,39 @@ export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-runnerRoutes.get(
-  '/',
-  zValidator('query', listQuery, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const q = c.req.valid('query');
-    if (!q.projectId) return c.json({ runners: [] });
-    const access = await loadProjectAccess(q.projectId, userId);
-    requireHeld(access, 'project.read');
-    const rows = await listProjectRunners(q.projectId, {
-      type: q.type as RunnerType | undefined,
-      status: q.status as RunnerStatus | undefined,
-    });
-    return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
-  },
-);
+runnerRoutes.get('/', zValidator('query', listQuery), async (c) => {
+  const userId = c.get('userId');
+  const q = c.req.valid('query');
+  if (!q.projectId) return c.json({ runners: [] });
+  const access = await loadProjectAccess(q.projectId, userId);
+  requireHeld(access, 'project.read');
+  const rows = await listProjectRunners(q.projectId, {
+    type: q.type as RunnerType | undefined,
+    status: q.status as RunnerStatus | undefined,
+  });
+  return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
+});
 
 const activeQuery = z.object({ projectId: z.uuid() });
 
-runnerRoutes.get(
-  '/active',
-  zValidator('query', activeQuery, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { projectId } = c.req.valid('query');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
+runnerRoutes.get('/active', zValidator('query', activeQuery), async (c) => {
+  const userId = c.get('userId');
+  const { projectId } = c.req.valid('query');
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.read');
 
-    return c.json(await activeRunnersOf(projectId));
-  },
-);
+  return c.json(await activeRunnersOf(projectId));
+});
 
-runnerRoutes.get(
-  '/:id',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const row = await runnerRow(id);
-    if (!row) throw notFound();
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
-    return c.json({ runner: publicRunner(rowToRunner(row)) });
-  },
-);
+runnerRoutes.get('/:id', zValidator('param', idParam), async (c) => {
+  const userId = c.get('userId');
+  const { id } = c.req.valid('param');
+  const row = await runnerRow(id);
+  if (!row) throw notFound();
+  const access = await loadProjectAccess(row.projectId, userId);
+  requireHeld(access, 'project.read');
+  return c.json({ runner: publicRunner(rowToRunner(row)) });
+});
 
 // Per-runner activity feed — surfaces what a runner has been doing/erroring on,
 // drawn entirely from data we already persist (no new capture): the change-gated
@@ -153,12 +135,8 @@ const activityQuery = z.object({
 
 runnerRoutes.get(
   '/:id/activity',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', activityQuery, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParam),
+  zValidator('query', activityQuery),
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
@@ -178,50 +156,40 @@ runnerRoutes.get(
   },
 );
 
-runnerRoutes.post(
-  '/',
-  zValidator('json', createBody, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const input = c.req.valid('json');
-    const access = await loadProjectAccess(input.projectId, userId);
-    requireHeld(access, 'project.admin');
+runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
+  const userId = c.get('userId');
+  const input = c.req.valid('json');
+  const access = await loadProjectAccess(input.projectId, userId);
+  requireHeld(access, 'project.admin');
 
-    const adapter = getRunnerAdapter(input.type);
-    if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
+  const adapter = getRunnerAdapter(input.type);
+  if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
 
-    const result = adapter.validateConfig(input.config);
-    if (!result.ok) throw badRequest({ config: result.error });
+  const result = adapter.validateConfig(input.config);
+  if (!result.ok) throw badRequest({ config: result.error });
 
-    const row = await insertRunner({
-      projectId: input.projectId,
-      type: input.type,
-      deviceId: input.deviceId,
-      name: input.name,
-      labels: input.labels ?? [],
-      capabilities: input.capabilities ?? {},
-      config: result.config,
-    });
+  const row = await insertRunner({
+    projectId: input.projectId,
+    type: input.type,
+    deviceId: input.deviceId,
+    name: input.name,
+    labels: input.labels ?? [],
+    capabilities: input.capabilities ?? {},
+    config: result.config,
+  });
 
-    roomManager.publish(projectRoom(input.projectId), {
-      event: 'runner.created',
-      data: { runnerId: row.id, type: row.type },
-    });
+  roomManager.publish(projectRoom(input.projectId), {
+    event: 'runner.created',
+    data: { runnerId: row.id, type: row.type },
+  });
 
-    return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
-  },
-);
+  return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
+});
 
 runnerRoutes.patch(
   '/:id',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', patchBody, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParam),
+  zValidator('json', patchBody),
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
@@ -272,26 +240,20 @@ runnerRoutes.patch(
   },
 );
 
-runnerRoutes.delete(
-  '/:id',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.admin');
-    await deleteRunner(id);
-    roomManager.publish(projectRoom(existing.projectId), {
-      event: 'runner.deleted',
-      data: { runnerId: id },
-    });
-    return c.json({ ok: true });
-  },
-);
+runnerRoutes.delete('/:id', zValidator('param', idParam), async (c) => {
+  const userId = c.get('userId');
+  const { id } = c.req.valid('param');
+  const existing = await runnerRow(id);
+  if (!existing) throw notFound();
+  const access = await loadProjectAccess(existing.projectId, userId);
+  requireHeld(access, 'project.admin');
+  await deleteRunner(id);
+  roomManager.publish(projectRoom(existing.projectId), {
+    event: 'runner.deleted',
+    data: { runnerId: id },
+  });
+  return c.json({ ok: true });
+});
 
 export { projectRunnerRoutes } from './project-routes.js';
 export { runnerLoadRoutes } from './runner-load-routes.js';

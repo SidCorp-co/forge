@@ -11,7 +11,6 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
@@ -37,85 +36,79 @@ const onboardParamSchema = z.object({ id: z.uuid() });
 // no own auth middleware here, or it would run twice.
 export const projectOnboardRoutes = new Hono<{ Variables: AuthVars }>();
 
-projectOnboardRoutes.post(
-  '/:id/onboard',
-  zValidator('param', onboardParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+projectOnboardRoutes.post('/:id/onboard', zValidator('param', onboardParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.admin');
+  const access = await loadProjectAccess(id, userId);
+  requireHeld(access, 'project.admin');
 
-    const project = await projectHead(id);
-    if (!project) throw new HTTPException(404, { message: 'project not found' });
+  const project = await projectHead(id);
+  if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    if (!(await installBuiltinSkill(project.id, ONBOARD_SKILL_NAME))) {
-      throw new HTTPException(503, {
-        message:
-          'forge-onboard has no global template to install: the built-in skills were not seeded from packages/core/skills at boot, so onboarding cannot start',
-        cause: { code: 'ONBOARD_SKILL_MISSING' },
-      });
-    }
+  if (!(await installBuiltinSkill(project.id, ONBOARD_SKILL_NAME))) {
+    throw new HTTPException(503, {
+      message:
+        'forge-onboard has no global template to install: the built-in skills were not seeded from packages/core/skills at boot, so onboarding cannot start',
+      cause: { code: 'ONBOARD_SKILL_MISSING' },
+    });
+  }
 
-    const client = await resolveInteractiveClient(
-      { projectId: project.id, deviceId: null, metadata: null },
-      { scope: 'project' },
-    );
-    if (!client.deviceId) throw noClaudeClient('project');
-    const authority = await authorizeInteractiveTurn({
+  const client = await resolveInteractiveClient(
+    { projectId: project.id, deviceId: null, metadata: null },
+    { scope: 'project' },
+  );
+  if (!client.deviceId) throw noClaudeClient('project');
+  const authority = await authorizeInteractiveTurn({
+    client,
+    projectId: project.id,
+    asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+  });
+
+  // Explicit-only skill sync: push the current forge-onboard manifest to the
+  // target device BEFORE dispatch, so the runner's working dir has the file
+  // on disk when `claude -p` cold-starts (sync never happens implicitly).
+  const sync = await requestSkillSync({
+    projectId: project.id,
+    actorUserId: userId,
+    skillNames: [ONBOARD_SKILL_NAME],
+    deviceId: client.deviceId,
+  });
+  if (sync.deviceIds.length === 0) {
+    throw new HTTPException(503, {
+      message: 'no device-bound runner available to sync forge-onboard to',
+      cause: { code: 'NO_SYNC_TARGET' },
+    });
+  }
+
+  const session = await createChatSessionRow({
+    projectId: project.id,
+    userId,
+    title: 'Build Project Brain',
+    repoPath: await resolveSessionRepoPathForDevice(project.id, client.deviceId),
+    metadata: { source: 'onboard' },
+  });
+
+  try {
+    await dispatchInteractiveTurn({
+      session,
+      project,
       client,
-      projectId: project.id,
-      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+      authority,
+      message: ONBOARD_MESSAGE,
+      skillName: ONBOARD_SKILL_NAME,
+      broadcastEvent: 'agent-session.created',
     });
-
-    // Explicit-only skill sync: push the current forge-onboard manifest to the
-    // target device BEFORE dispatch, so the runner's working dir has the file
-    // on disk when `claude -p` cold-starts (sync never happens implicitly).
-    const sync = await requestSkillSync({
-      projectId: project.id,
-      actorUserId: userId,
-      skillNames: [ONBOARD_SKILL_NAME],
-      deviceId: client.deviceId,
+  } catch (err) {
+    logger.error(
+      { err, sessionId: session.id, projectId: project.id },
+      'projects/onboard: chat-turn dispatch failed',
+    );
+    throw new HTTPException(502, {
+      message: 'failed to start the onboarding conversation',
+      cause: { code: 'DISPATCH_FAILED' },
     });
-    if (sync.deviceIds.length === 0) {
-      throw new HTTPException(503, {
-        message: 'no device-bound runner available to sync forge-onboard to',
-        cause: { code: 'NO_SYNC_TARGET' },
-      });
-    }
+  }
 
-    const session = await createChatSessionRow({
-      projectId: project.id,
-      userId,
-      title: 'Build Project Brain',
-      repoPath: await resolveSessionRepoPathForDevice(project.id, client.deviceId),
-      metadata: { source: 'onboard' },
-    });
-
-    try {
-      await dispatchInteractiveTurn({
-        session,
-        project,
-        client,
-        authority,
-        message: ONBOARD_MESSAGE,
-        skillName: ONBOARD_SKILL_NAME,
-        broadcastEvent: 'agent-session.created',
-      });
-    } catch (err) {
-      logger.error(
-        { err, sessionId: session.id, projectId: project.id },
-        'projects/onboard: chat-turn dispatch failed',
-      );
-      throw new HTTPException(502, {
-        message: 'failed to start the onboarding conversation',
-        cause: { code: 'DISPATCH_FAILED' },
-      });
-    }
-
-    return c.json({ sessionId: session.id }, 201);
-  },
-);
+  return c.json({ sessionId: session.id }, 201);
+});

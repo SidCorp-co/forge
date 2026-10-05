@@ -86,34 +86,24 @@ orgRoutes.get('/', async (c) => {
   return c.json(await listOrgsForUser(userId));
 });
 
-orgRoutes.post(
-  '/',
-  zValidator('json', createOrgSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { slug, name } = c.req.valid('json');
-    const userId = c.get('userId');
-    try {
-      const created = await createTeamOrg(userId, { slug, name });
-      return c.json({ ...created, role: 'owner' as const }, 201);
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw refuse('SLUG_TAKEN', 'this org slug is already taken; pick another', '/slug');
-      }
-      throw err;
+orgRoutes.post('/', zValidator('json', createOrgSchema), async (c) => {
+  const { slug, name } = c.req.valid('json');
+  const userId = c.get('userId');
+  try {
+    const created = await createTeamOrg(userId, { slug, name });
+    return c.json({ ...created, role: 'owner' as const }, 201);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw refuse('SLUG_TAKEN', 'this org slug is already taken; pick another', '/slug');
     }
-  },
-);
+    throw err;
+  }
+});
 
 orgRoutes.patch(
   '/:orgId',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', patchOrgSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', orgParamSchema),
+  zValidator('json', patchOrgSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -129,74 +119,49 @@ orgRoutes.patch(
 
 // Delete a TEAM org: owner-only, refused while any project still lives in it
 // (move or delete projects first) and always refused for personal orgs.
-orgRoutes.delete(
-  '/:orgId',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('param');
-    const userId = c.get('userId');
+orgRoutes.delete('/:orgId', zValidator('param', orgParamSchema), async (c) => {
+  const { orgId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
-    if (await isPersonalOrg(orgId)) {
-      throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
-    }
-    if ((await orgProjectCount(orgId)) > 0) {
-      throw refuse(
-        'ORG_NOT_EMPTY',
-        'the org still has projects; delete or move its projects first',
-      );
-    }
+  await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
+  if (await isPersonalOrg(orgId)) {
+    throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
+  }
+  if ((await orgProjectCount(orgId)) > 0) {
+    throw refuse('ORG_NOT_EMPTY', 'the org still has projects; delete or move its projects first');
+  }
 
-    await deleteOrg(orgId);
-    return c.body(null, 204);
-  },
-);
+  await deleteOrg(orgId);
+  return c.body(null, 204);
+});
 
 // In-org transparency: any org member can SEE which projects the org holds
 // (name+slug only) — access to a project's content still requires an
 // effective role on it.
-orgRoutes.get(
-  '/:orgId/projects',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('param');
-    const userId = c.get('userId');
+orgRoutes.get('/:orgId/projects', zValidator('param', orgParamSchema), async (c) => {
+  const { orgId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
-    return c.json(await listOrgProjects(orgId));
-  },
-);
+  return c.json(await listOrgProjects(orgId));
+});
 
-orgRoutes.get(
-  '/:orgId/members',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('param');
-    const userId = c.get('userId');
+orgRoutes.get('/:orgId/members', zValidator('param', orgParamSchema), async (c) => {
+  const { orgId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
-    return c.json(await listOrgMembers(orgId));
-  },
-);
+  return c.json(await listOrgMembers(orgId));
+});
 
 // Direct-add an EXISTING user by email (v1 — no email-token flow at the org
 // tier; project invitations keep theirs). Granting `owner` requires owner.
 orgRoutes.post(
   '/:orgId/members',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', addMemberSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', orgParamSchema),
+  zValidator('json', addMemberSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email, role } = c.req.valid('json');
@@ -250,28 +215,20 @@ orgRoutes.post(
   },
 );
 
-orgRoutes.get(
-  '/:orgId/invitations',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('param');
-    const userId = c.get('userId');
-    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
+orgRoutes.get('/:orgId/invitations', zValidator('param', orgParamSchema), async (c) => {
+  const { orgId } = c.req.valid('param');
+  const userId = c.get('userId');
+  await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
-    const rows = await listPendingOrgInvitations(orgId);
+  const rows = await listPendingOrgInvitations(orgId);
 
-    const now = Date.now();
-    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
-  },
-);
+  const now = Date.now();
+  return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+});
 
 orgRoutes.delete(
   '/:orgId/invitations',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', orgParamSchema),
   zValidator(
     'query',
     z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
@@ -294,12 +251,8 @@ orgRoutes.delete(
 
 orgRoutes.patch(
   '/:orgId/members/:userId',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', patchMemberSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', memberParamSchema),
+  zValidator('json', patchMemberSchema),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
     const { role, lenses } = c.req.valid('json');
@@ -337,39 +290,33 @@ orgRoutes.patch(
   },
 );
 
-orgRoutes.delete(
-  '/:orgId/members/:userId',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId, userId: targetUserId } = c.req.valid('param');
-    const callerId = c.get('userId');
+orgRoutes.delete('/:orgId/members/:userId', zValidator('param', memberParamSchema), async (c) => {
+  const { orgId, userId: targetUserId } = c.req.valid('param');
+  const callerId = c.get('userId');
 
-    const selfLeave = targetUserId === callerId;
-    const caller = await requireOrgCan(
-      actorFor(callerId),
-      selfLeave ? 'org.read' : 'org.admin',
-      orgResource(orgId),
-    );
+  const selfLeave = targetUserId === callerId;
+  const caller = await requireOrgCan(
+    actorFor(callerId),
+    selfLeave ? 'org.read' : 'org.admin',
+    orgResource(orgId),
+  );
 
-    const targetRole = await orgMemberRole(orgId, targetUserId);
-    if (!targetRole) throw notFound('membership not found');
+  const targetRole = await orgMemberRole(orgId, targetUserId);
+  if (!targetRole) throw notFound('membership not found');
 
-    if (targetRole === 'owner') {
-      if (!selfLeave) requireOrgHeld(orgId, caller.role, 'org.own');
-      if ((await orgOwnerCount(orgId)) <= 1) {
-        throw refuse(
-          'LAST_OWNER',
-          'the org must keep at least one owner; promote another owner first',
-        );
-      }
+  if (targetRole === 'owner') {
+    if (!selfLeave) requireOrgHeld(orgId, caller.role, 'org.own');
+    if ((await orgOwnerCount(orgId)) <= 1) {
+      throw refuse(
+        'LAST_OWNER',
+        'the org must keep at least one owner; promote another owner first',
+      );
     }
+  }
 
-    await dropOrgMember(orgId, targetUserId);
-    return c.body(null, 204);
-  },
-);
+  await dropOrgMember(orgId, targetUserId);
+  return c.body(null, 204);
+});
 
 orgRoutes.route('/', agentAccountRoutes);
 

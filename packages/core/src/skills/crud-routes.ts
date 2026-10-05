@@ -87,106 +87,84 @@ const globalReadOnly = (act: string) =>
 export const skillCrudRoutes = new Hono<{ Variables: AuthVars }>();
 skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
 
-skillCrudRoutes.get(
-  '/',
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, scope } = c.req.valid('query');
-    const userId = c.get('userId');
+skillCrudRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+  const { projectId, scope } = c.req.valid('query');
+  const userId = c.get('userId');
 
-    let rows: Awaited<ReturnType<typeof listSkills>>;
-    if (scope === 'global') {
-      rows = await listSkills({ kind: 'global' });
-    } else if (scope === 'project') {
-      if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
-      const access = await loadProjectAccess(projectId, userId);
-      requireHeld(access, 'project.read');
-      rows = await listSkills({ kind: 'project', projectId });
-    } else if (projectId) {
-      const access = await loadProjectAccess(projectId, userId);
-      requireHeld(access, 'project.read');
-      rows = await listSkills({ kind: 'global-and-project', projectId });
-    } else {
-      rows = await listSkills({ kind: 'global' });
-    }
+  let rows: Awaited<ReturnType<typeof listSkills>>;
+  if (scope === 'global') {
+    rows = await listSkills({ kind: 'global' });
+  } else if (scope === 'project') {
+    if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.read');
+    rows = await listSkills({ kind: 'project', projectId });
+  } else if (projectId) {
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.read');
+    rows = await listSkills({ kind: 'global-and-project', projectId });
+  } else {
+    rows = await listSkills({ kind: 'global' });
+  }
 
-    // Tag platform-managed META skills (forge-skills…) so the Skill Studio UI
-    // can render them as MCP-served live prompts — NOT disk-synced skills (no
-    // sync-status, no stage registration). Computed from the core constant, by
-    // name, so both the global template and any project-adopted copy carry it.
-    const metaNames = new Set<string>(MANAGED_META_SKILLS);
-    return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
-  },
-);
-skillCrudRoutes.get(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+  // Tag platform-managed META skills (forge-skills…) so the Skill Studio UI
+  // can render them as MCP-served live prompts — NOT disk-synced skills (no
+  // sync-status, no stage registration). Computed from the core constant, by
+  // name, so both the global template and any project-adopted copy carry it.
+  const metaNames = new Set<string>(MANAGED_META_SKILLS);
+  return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
+});
+skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const row = await skillById(id);
-    if (!row) throw notFound('skill not found');
+  const row = await skillById(id);
+  if (!row) throw notFound('skill not found');
 
-    if (row.scope === 'project' && row.projectId) {
-      const access = await loadProjectAccess(row.projectId, userId);
-      requireHeld(access, 'project.read');
-    }
+  if (row.scope === 'project' && row.projectId) {
+    const access = await loadProjectAccess(row.projectId, userId);
+    requireHeld(access, 'project.read');
+  }
 
-    return c.json(row);
-  },
-);
+  return c.json(row);
+});
 
-skillCrudRoutes.post(
-  '/',
-  zValidator('json', skillCreateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
+skillCrudRoutes.post('/', zValidator('json', skillCreateSchema), async (c) => {
+  const input = c.req.valid('json');
+  const userId = c.get('userId');
 
-    const isGlobal = input.isGlobal ?? false;
+  const isGlobal = input.isGlobal ?? false;
 
-    // Mirror PUT/DELETE: global skills are managed via the admin route only.
-    // Without this gate any authenticated user could broadcast a skill to
-    // every project by sending isGlobal=true.
-    if (isGlobal) {
-      throw globalReadOnly('created');
-    }
+  // Mirror PUT/DELETE: global skills are managed via the admin route only.
+  // Without this gate any authenticated user could broadcast a skill to
+  // every project by sending isGlobal=true.
+  if (isGlobal) {
+    throw globalReadOnly('created');
+  }
 
-    if (!input.projectId) {
-      throw badRequest({ projectId: 'required when isGlobal=false' });
-    }
+  if (!input.projectId) {
+    throw badRequest({ projectId: 'required when isGlobal=false' });
+  }
 
-    const access = await loadProjectAccess(input.projectId, userId);
-    requireHeld(access, 'project.admin');
+  const access = await loadProjectAccess(input.projectId, userId);
+  requireHeld(access, 'project.admin');
 
-    const inserted = await createProjectSkill({
-      projectId: input.projectId,
-      name: input.name,
-      description: input.description,
-      skillMd: input.skillMd,
-      target: input.target ?? null,
-      files: input.files,
-      localGuide: input.localGuide ?? null,
-    });
-    return c.json(inserted, 201);
-  },
-);
+  const inserted = await createProjectSkill({
+    projectId: input.projectId,
+    name: input.name,
+    description: input.description,
+    skillMd: input.skillMd,
+    target: input.target ?? null,
+    files: input.files,
+    localGuide: input.localGuide ?? null,
+  });
+  return c.json(inserted, 201);
+});
 
 skillCrudRoutes.put(
   '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', skillUpdateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', skillUpdateSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -208,57 +186,45 @@ skillCrudRoutes.put(
   },
 );
 
-skillCrudRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+skillCrudRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const row = await skillScopeById(id);
-    if (!row) throw notFound('skill not found');
+  const row = await skillScopeById(id);
+  if (!row) throw notFound('skill not found');
 
-    if (row.projectId) {
-      const access = await loadProjectAccess(row.projectId, userId);
-      requireHeld(access, 'project.admin');
-    } else {
-      throw globalReadOnly('deleted');
-    }
-
-    await deleteProjectSkill(id);
-    return c.body(null, 204);
-  },
-);
-
-skillCrudRoutes.post(
-  '/bulk-push',
-  zValidator('json', bulkPushSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, deviceId, skillNames } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
+  if (row.projectId) {
+    const access = await loadProjectAccess(row.projectId, userId);
     requireHeld(access, 'project.admin');
+  } else {
+    throw globalReadOnly('deleted');
+  }
 
-    // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
-    // each pulls its effective manifest and reports installed hashes back.
-    // No pipeline_run / job is created — skill sync is not pipeline work.
-    const { deviceIds } = await requestSkillSync({
-      projectId,
-      actorUserId: userId,
-      skillNames: skillNames ?? null,
-      deviceId,
-    });
+  await deleteProjectSkill(id);
+  return c.body(null, 204);
+});
 
-    const results = deviceIds.map((id) => ({
-      target: id,
-      status: 'signalled' as const,
-      deviceId: id,
-    }));
-    return c.json({ results, deviceCount: deviceIds.length });
-  },
-);
+skillCrudRoutes.post('/bulk-push', zValidator('json', bulkPushSchema), async (c) => {
+  const { projectId, deviceId, skillNames } = c.req.valid('json');
+  const userId = c.get('userId');
+
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.admin');
+
+  // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
+  // each pulls its effective manifest and reports installed hashes back.
+  // No pipeline_run / job is created — skill sync is not pipeline work.
+  const { deviceIds } = await requestSkillSync({
+    projectId,
+    actorUserId: userId,
+    skillNames: skillNames ?? null,
+    deviceId,
+  });
+
+  const results = deviceIds.map((id) => ({
+    target: id,
+    status: 'signalled' as const,
+    deviceId: id,
+  }));
+  return c.json({ results, deviceCount: deviceIds.length });
+});

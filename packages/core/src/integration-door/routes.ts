@@ -85,9 +85,7 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
 
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
-  zValidator('json', updateSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('json', updateSchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const id = c.req.param('id');
@@ -191,9 +189,7 @@ const rocketchatRoomsSchema = z
 
 integrationsRoutes.post(
   '/:projectId/integrations/rocketchat/rooms',
-  zValidator('json', rocketchatRoomsSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('json', rocketchatRoomsSchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');

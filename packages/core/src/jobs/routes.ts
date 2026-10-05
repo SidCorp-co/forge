@@ -63,12 +63,8 @@ jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 jobProjectRoutes.post(
   '/:id/jobs',
-  zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', jobCreateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectIdParamSchema),
+  zValidator('json', jobCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const input = c.req.valid('json');
@@ -108,12 +104,8 @@ jobProjectRoutes.post(
 
 jobProjectRoutes.get(
   '/:id/jobs',
-  zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', jobListFiltersSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectIdParamSchema),
+  zValidator('query', jobListFiltersSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const q = c.req.valid('query');
@@ -141,9 +133,7 @@ jobRoutes.get(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -162,12 +152,8 @@ jobRoutes.patch(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', jobPatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', jobPatchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');

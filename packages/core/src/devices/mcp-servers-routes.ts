@@ -3,7 +3,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { resolveSessionMcpServers } from '../jobs/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 
@@ -17,9 +16,7 @@ export const deviceMcpServerRoutes = new Hono<{ Variables: DeviceVars }>();
 deviceMcpServerRoutes.get(
   '/me/mcp-servers',
   requireDevice(),
-  zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', projectQuerySchema),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();

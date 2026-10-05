@@ -1,14 +1,10 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { sessionPlacement } from './read.js';
 import { confirmSessionSend, markSessionSendApplied } from './session-send.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const agentSessionInboxRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -21,12 +17,8 @@ async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') =>
 
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/ack',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', z.object({ outcome: z.enum(['delivered', 'gone']) }), (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', paramSchema),
+  zValidator('json', z.object({ outcome: z.enum(['delivered', 'gone']) })),
   async (c) => {
     const { id, seq } = c.req.valid('param');
     await assertOwnsSession(id, c);
@@ -37,12 +29,8 @@ agentSessionInboxRoutes.post(
 
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/applied',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', z.object({ turn: z.number().int().nonnegative() }), (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', paramSchema),
+  zValidator('json', z.object({ turn: z.number().int().nonnegative() })),
   async (c) => {
     const { id, seq } = c.req.valid('param');
     await assertOwnsSession(id, c);

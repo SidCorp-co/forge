@@ -28,9 +28,6 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 export const agentSessionProjectReadRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionProjectReadRoutes.use('/:id/agent-sessions', requireAuth(), assertEmailVerified());
 agentSessionProjectReadRoutes.use(
@@ -46,12 +43,8 @@ async function assertMember(projectId: string, userId: string): Promise<void> {
 
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', paramSchema),
+  zValidator('query', listQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { issueId, status, limit } = c.req.valid('query');
@@ -77,9 +70,7 @@ agentSessionProjectReadRoutes.get(
 
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions/:sessionId',
-  zValidator('param', sessionParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', sessionParamSchema),
   async (c) => {
     const { id, sessionId } = c.req.valid('param');
     await assertMember(id, c.get('userId'));

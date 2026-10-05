@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -29,17 +28,10 @@ const timeseriesQuerySchema = z.object({
   groupBy: z.literal('step').optional(),
 });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 projectMetricsRoutes.get(
   '/:id/metrics/timeseries',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('query', timeseriesQuerySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', timeseriesQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -67,12 +59,8 @@ const stepDurationsQuerySchema = z.object({
 
 projectMetricsRoutes.get(
   '/:id/metrics/step-durations',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('query', stepDurationsQuerySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', stepDurationsQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));

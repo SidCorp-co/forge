@@ -23,20 +23,13 @@ const bodySchema = z
     path: ['reason'],
   });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 export const skillPinRoutes = new Hono<{ Variables: AuthVars }>();
 skillPinRoutes.use('/:projectId/skills/:skillId/pin', requireAuth(), assertEmailVerified());
 
 skillPinRoutes.put(
   '/:projectId/skills/:skillId/pin',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', bodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', paramSchema),
+  zValidator('json', bodySchema),
   async (c) => {
     const { projectId, skillId } = c.req.valid('param');
     const { pinned, reason } = c.req.valid('json');
