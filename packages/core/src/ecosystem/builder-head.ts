@@ -2,7 +2,7 @@
 
 import { resolveSourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { parseRepository, readDeclaredSource } from '../project-config/index.js';
-import { CheckoutHeadUnreadable, readCheckoutHead } from '../runners/index.js';
+import { readCheckoutHead } from '../runners/index.js';
 import type { BuilderSource } from './link-rules.js';
 import type { BuilderRunWrite } from './link-schema.js';
 import type { Checked } from './refusals.js';
@@ -17,17 +17,18 @@ export interface HeadReading {
   via: 'source-host' | 'runner-checkout';
 }
 
-/** The read could not be made; the message says why and what would make it. */
-class HeadUnreadable extends Error {}
+/** A head, or why none could be read in words that already name what would make it readable. */
+export type HeadRead = { ok: true; value: HeadReading } | { ok: false; why: string };
 
 // The one door a head is read through, held as an object so an integration world can stand a host in for it. A hosted repository is read through its source host binding; with none, or for a local path no host serves, a runner's bound checkout reads it with its own git access (ADR 0009). A binding that exists and cannot serve stays its own refusal: the checkout never papers over it.
 export const projectHead = {
-  async read(projectId: string): Promise<HeadReading> {
+  async read(projectId: string): Promise<HeadRead> {
     const { repository, defaultBranch } = await readDeclaredSource(projectId);
     if (!repository || !defaultBranch) {
-      throw new HeadUnreadable(
-        'the project document declares no git repository and default branch (source.type git, source.git.repository, source.git.defaultBranch); declare them with PUT /api/projects/:id/config',
-      );
+      return {
+        ok: false,
+        why: 'the project document declares no git repository and default branch (source.type git, source.git.repository, source.git.defaultBranch); declare them with PUT /api/projects/:id/config',
+      };
     }
     const ref = `refs/heads/${defaultBranch}`;
     let unbound: string;
@@ -37,19 +38,19 @@ export const projectHead = {
       try {
         const host = await resolveSourceHost(projectId);
         const sha = await host.branchHead(defaultBranch);
-        return { sha, ref, readAt: new Date().toISOString(), via: 'source-host' };
+        return {
+          ok: true,
+          value: { sha, ref, readAt: new Date().toISOString(), via: 'source-host' },
+        };
       } catch (err) {
         if (!(err instanceof SourceHostUnavailable) || err.reason !== 'no_binding') throw err;
         unbound = err.message;
       }
     }
-    try {
-      const head = await readCheckoutHead(projectId, defaultBranch);
-      return { sha: head.sha, ref: head.ref, readAt: head.readAt, via: head.via };
-    } catch (err) {
-      if (!(err instanceof CheckoutHeadUnreadable)) throw err;
-      throw new HeadUnreadable(`${unbound}, and ${err.message}`);
-    }
+    const read = await readCheckoutHead(projectId, defaultBranch);
+    if (!read.ok) return { ok: false, why: `${unbound}, and ${read.detail}` };
+    const { sha, readAt, via } = read.head;
+    return { ok: true, value: { sha, ref: read.head.ref, readAt, via } };
   },
 };
 
@@ -62,20 +63,21 @@ export async function owedTrigger(input: {
   projectId: string;
   kind: BuilderRunWrite['trigger']['kind'];
   source: BuilderSource;
-  read?: (projectId: string) => Promise<HeadReading>;
+  read?: (projectId: string) => Promise<HeadRead>;
 }): Promise<Checked<BuilderRunWrite['trigger']>> {
   const { projectId, kind, source } = input;
   if (source.type === 'storefront') {
     return { ok: true, value: { kind, sha: null, source: 'storefront' } };
   }
-  const read = input.read ?? ((id: string) => projectHead.read(id));
-  let head: HeadReading;
+  const readHead = input.read ?? ((id: string) => projectHead.read(id));
+  let read: HeadRead;
   try {
-    head = await read(projectId);
+    read = await readHead(projectId);
   } catch (err) {
-    const why = err instanceof Error ? err.message : String(err);
-    return unreadable(projectId, kind, why, err instanceof HeadUnreadable);
+    return unreadable(projectId, kind, err instanceof Error ? err.message : String(err), false);
   }
+  if (!read.ok) return unreadable(projectId, kind, read.why, true);
+  const head = read.value;
   if (!COMMIT.test(head.sha)) {
     return unreadable(
       projectId,

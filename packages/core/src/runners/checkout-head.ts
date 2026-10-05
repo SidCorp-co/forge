@@ -13,14 +13,16 @@ const ANSWER_WAIT_MS = 20_000;
 
 type CheckoutHeadReason = 'no_checkout' | 'no_runner_online' | 'unanswered' | 'runner_refused';
 
-export class CheckoutHeadUnreadable extends Error {
-  readonly reason: CheckoutHeadReason;
-  constructor(reason: CheckoutHeadReason, message: string) {
-    super(message);
-    this.name = 'CheckoutHeadUnreadable';
-    this.reason = reason;
-  }
-}
+/** A box's read of the head, or why none could be made, with the two ways out in `detail`. */
+export type CheckoutHeadRead =
+  | { ok: true; head: CheckoutHead }
+  | { ok: false; reason: CheckoutHeadReason; detail: string };
+
+const unread = (reason: CheckoutHeadReason, detail: string): CheckoutHeadRead => ({
+  ok: false,
+  reason,
+  detail,
+});
 
 /** The evidence a box's read is: which commit, on which ref, when, and that a checkout read it. */
 export interface CheckoutHead {
@@ -66,8 +68,7 @@ interface Asked {
   deviceId: string;
   projectId: string;
   ref: string;
-  resolve(head: CheckoutHead): void;
-  reject(err: CheckoutHeadUnreadable): void;
+  settle(read: CheckoutHeadRead): void;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -108,34 +109,34 @@ export async function readCheckoutHead(
   projectId: string,
   branch: string,
   deps: CheckoutHeadDeps = defaultDeps(),
-): Promise<CheckoutHead> {
+): Promise<CheckoutHeadRead> {
   const bound = await deps.boundCheckouts(projectId);
   if (bound.length === 0) {
-    throw new CheckoutHeadUnreadable(
+    return unread(
       'no_checkout',
       `no runner holds a checkout bound to this project, so no box can read ${branch}'s head with its own git access — ${WAYS_OUT}`,
     );
   }
   const box = bound.find((b) => deps.listening(b.deviceId));
   if (!box) {
-    throw new CheckoutHeadUnreadable(
+    return unread(
       'no_runner_online',
       `no box holding a checkout bound to this project is connected now (${bound.map((b) => b.repoPath).join(', ')}), so none can read ${branch}'s head — ${WAYS_OUT}`,
     );
   }
   const requestId = randomUUID();
   const ref = `refs/heads/${branch}`;
-  return new Promise<CheckoutHead>((resolve, reject) => {
+  return new Promise<CheckoutHeadRead>((settle) => {
     const timer = setTimeout(() => {
       asked.delete(requestId);
-      reject(
-        new CheckoutHeadUnreadable(
+      settle(
+        unread(
           'unanswered',
           `the box holding ${box.repoPath} was asked for ${ref} and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read heads: \`forge-runner update\`) — ${WAYS_OUT}`,
         ),
       );
     }, deps.timeoutMs);
-    asked.set(requestId, { deviceId: box.deviceId, projectId, ref, resolve, reject, timer });
+    asked.set(requestId, { deviceId: box.deviceId, projectId, ref, settle, timer });
     const took = deps.send(box.deviceId, {
       event: 'checkout.head.read',
       data: { requestId, projectId, branch },
@@ -143,8 +144,8 @@ export async function readCheckoutHead(
     if (took === 0) {
       clearTimeout(timer);
       asked.delete(requestId);
-      reject(
-        new CheckoutHeadUnreadable(
+      settle(
+        unread(
           'no_runner_online',
           `the box holding ${box.repoPath} disconnected before it could be asked for ${ref} — ${WAYS_OUT}`,
         ),
@@ -165,22 +166,19 @@ export function answerCheckoutHead(
   }
   asked.delete(requestId);
   clearTimeout(entry.timer);
-  const refuse = (why: string): AnswerOutcome => {
-    entry.reject(
-      new CheckoutHeadUnreadable(
+  const refused = (why: string) =>
+    entry.settle(
+      unread(
         'runner_refused',
         `the box holding a bound checkout could not read ${entry.ref}: ${why} — ${WAYS_OUT}`,
       ),
     );
+  const refuse = (why: string): AnswerOutcome => {
+    refused(why);
     return { ok: false, code: 'CHECKOUT_HEAD_MALFORMED', detail: why };
   };
   if (answer.error !== undefined) {
-    entry.reject(
-      new CheckoutHeadUnreadable(
-        'runner_refused',
-        `the box holding a bound checkout could not read ${entry.ref}: ${answer.error} — ${WAYS_OUT}`,
-      ),
-    );
+    refused(answer.error);
     return { ok: true };
   }
   if (!answer.sha || !COMMIT.test(answer.sha)) {
@@ -196,12 +194,15 @@ export function answerCheckoutHead(
   if (!readAt || Number.isNaN(readAt.getTime())) {
     return refuse(`it named no readable readAt (${JSON.stringify(answer.readAt ?? null)})`);
   }
-  entry.resolve({
-    sha: answer.sha,
-    ref: entry.ref,
-    readAt: readAt.toISOString(),
-    via: 'runner-checkout',
-    deviceId,
+  entry.settle({
+    ok: true,
+    head: {
+      sha: answer.sha,
+      ref: entry.ref,
+      readAt: readAt.toISOString(),
+      via: 'runner-checkout',
+      deviceId,
+    },
   });
   return { ok: true };
 }

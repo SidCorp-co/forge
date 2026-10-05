@@ -9,14 +9,13 @@ vi.mock('../project-config/index.js', async () => {
   return { readDeclaredSource: vi.fn(), parseRepository: source.parseRepository };
 });
 vi.mock('../runners/index.js', async () => {
-  const head = await import('../runners/checkout-head.js');
-  return { readCheckoutHead: vi.fn(), CheckoutHeadUnreadable: head.CheckoutHeadUnreadable };
+  return { readCheckoutHead: vi.fn() };
 });
 
 const { resolveSourceHost } = await import('../integrations/source-host/index.js');
 const { SourceHostUnavailable } = await import('../integrations/source-host/errors.js');
 const { readDeclaredSource } = await import('../project-config/index.js');
-const { readCheckoutHead, CheckoutHeadUnreadable } = await import('../runners/index.js');
+const { readCheckoutHead } = await import('../runners/index.js');
 const { owedTrigger } = await import('./builder-head.js');
 
 const SHA = 'b'.repeat(40);
@@ -55,7 +54,7 @@ describe('owedTrigger: the head a joined builder run reads', () => {
     vi.mocked(resolveSourceHost).mockRejectedValue(
       new SourceHostUnavailable('no_binding', 'this project has no active source host binding'),
     );
-    vi.mocked(readCheckoutHead).mockResolvedValue(fromRunner);
+    vi.mocked(readCheckoutHead).mockResolvedValue({ ok: true, head: fromRunner });
     const t = await owedTrigger({ projectId: P, kind: 'joined', source: git });
     expect(t).toEqual({
       ok: true,
@@ -70,7 +69,7 @@ describe('owedTrigger: the head a joined builder run reads', () => {
   it('reads a local-path repository only from the runner checkout, never a host', async () => {
     declare('/srv/git/epodsystem-core.git');
     vi.mocked(resolveSourceHost).mockClear();
-    vi.mocked(readCheckoutHead).mockResolvedValue(fromRunner);
+    vi.mocked(readCheckoutHead).mockResolvedValue({ ok: true, head: fromRunner });
     const t = await owedTrigger({ projectId: P, kind: 'joined', source: git });
     expect(t.ok && t.value.head?.via).toBe('runner-checkout');
     expect(resolveSourceHost).not.toHaveBeenCalled();
@@ -81,12 +80,12 @@ describe('owedTrigger: the head a joined builder run reads', () => {
     vi.mocked(resolveSourceHost).mockRejectedValue(
       new SourceHostUnavailable('no_binding', 'this project has no active source host binding'),
     );
-    vi.mocked(readCheckoutHead).mockRejectedValue(
-      new CheckoutHeadUnreadable(
-        'no_runner_online',
+    vi.mocked(readCheckoutHead).mockResolvedValue({
+      ok: false,
+      reason: 'no_runner_online',
+      detail:
         "no runner holding a bound checkout is online — bind the repository's host on the project's Integrations page, or bring online a box holding a checkout of it (`forge-runner bind`)",
-      ),
-    );
+    });
     const t = await owedTrigger({ projectId: P, kind: 'joined', source: git });
     expect(t.ok).toBe(false);
     const r = !t.ok ? t.refusals[0] : undefined;

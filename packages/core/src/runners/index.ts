@@ -5,7 +5,7 @@ export {
   answerCheckoutHead,
   type CheckoutHead,
   type CheckoutHeadAnswer,
-  CheckoutHeadUnreadable,
+  type CheckoutHeadRead,
   readCheckoutHead,
 } from './checkout-head.js';
 export { AGENT_NAMING_MIN_RUNNER, atLeastVersion, claimCapableSql } from './device-cap.js';
