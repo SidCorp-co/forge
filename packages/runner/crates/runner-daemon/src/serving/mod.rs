@@ -5,7 +5,7 @@
 //! nothing about the daemon. After a self-update the two part: the daemon keeps
 //! the old inode, with no name left on the filesystem, until it restarts
 //! (ISS-1223). The daemon writes this record at start and at every change of
-//! its drain, and the commands read it back — checking that the process holding
+//! its handover, and the commands read it back — checking that the process holding
 //! the recorded pid is still the one that wrote it, since a pid names a process
 //! only until it is reused.
 
@@ -21,11 +21,21 @@ use serde::{Deserialize, Serialize};
 
 pub const FILE: &str = "serving.json";
 
-/// The drain the record carries, where one is under way or has given up.
+/// The handover the record carries, where one is under way or has given up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
 pub enum DrainState {
-    /// Admission is closed while this box waits for its holders.
+    /// A new build is installed and this process waits for its in-process
+    /// work to end before handing over to it. Admission is open.
+    #[serde(rename_all = "camelCase")]
+    Waiting {
+        cause: String,
+        since_ms: i64,
+        bound_secs: u64,
+        outstanding: Vec<String>,
+    },
+    /// The closing window of a handover: admission is refused for the seconds
+    /// it takes the requests in flight to be answered.
     #[serde(rename_all = "camelCase")]
     Draining {
         cause: String,
@@ -33,7 +43,8 @@ pub enum DrainState {
         bound_secs: u64,
         outstanding: Vec<String>,
     },
-    /// The bound passed with work outstanding; admission is open again.
+    /// The bound passed with work outstanding, or the new build could not be
+    /// started; admission is open.
     #[serde(rename_all = "camelCase")]
     Deferred {
         cause: String,

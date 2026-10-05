@@ -97,64 +97,50 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
             if auto {
                 match runner_update::apply(&m).await {
                     Ok(Some(o)) => {
-                        // The new binary is already swapped on disk;
-                        // drain in-flight jobs/chat to idle before
-                        // restarting so we never kill running work.
+                        // The new binary is already swapped on disk; this
+                        // process hands over to it once its own in-process
+                        // work has ended.
                         tracing::warn!(
-                            "[update] applied {} → {} — draining before restart",
+                            "[update] applied {} → {} — handing over to it once this process's own work ends",
                             o.from,
                             o.to
                         );
-                        // From this instant `current_exe()` in this
-                        // process reads `<path> (deleted)`, and the
-                        // restart that would end that waits on an
-                        // idle window a working box never reaches.
-                        // So every bound checkout is repointed at
-                        // the build just installed, now, rather
-                        // than at the next pane preparation.
-                        // Which checkouts those are is asked for
-                        // again rather than carried from boot: an
-                        // assignment made since is one this daemon
-                        // has been preparing panes in, and its
-                        // settings file names the binary this
-                        // update just replaced.
+                        // From this instant `current_exe()` in this process
+                        // reads `<path> (deleted)`, and the handover that ends
+                        // that may wait on a chat turn for as long as it runs.
+                        // So every bound checkout is repointed at the build
+                        // just installed, now, rather than at the next pane
+                        // preparation. Which checkouts those are is asked for
+                        // again rather than carried from boot: an assignment
+                        // made since is one this daemon has been preparing
+                        // panes in, and its settings file names the binary
+                        // this update just replaced.
                         let assigned = runners::list_me(assignments).await.ok();
                         repair_installed_hooks(assigned.as_deref(), bound, "after an update");
                         let cause = format!("update {} → {}", o.from, o.to);
+                        let next = || drain::NextAttempt {
+                            by: "the next update check".into(),
+                            due_in: UPDATE_CHECK_INTERVAL.saturating_sub(checked_at.elapsed()),
+                        };
                         let outcome = drain::drain_to_idle(
                             drain,
                             "update",
                             &cause,
                             inflight,
-                            live_run_sessions,
                             || close_parked_sessions(runner),
-                            || drain::NextAttempt {
-                                by: "the next update check".into(),
-                                due_in: UPDATE_CHECK_INTERVAL.saturating_sub(checked_at.elapsed()),
-                            },
+                            next,
                         )
                         .await;
-                        if let drain::Drained::NotNow(why) = &outcome {
-                            tracing::warn!(
+                        match outcome {
+                            drain::Drained::NotNow(why) => tracing::warn!(
                                 "[update] {} stands on disk and this process keeps serving {} — {why}; the next update check tries again",
                                 o.to,
                                 o.from
-                            );
-                        }
-                        if outcome == drain::Drained::Idle {
-                            tracing::warn!("[update] idle — restarting to apply update");
-                            // Exit 0 → systemd Restart=always relaunches THIS
-                            // unit, which re-execs the freshly-swapped binary.
-                            // Name-agnostic, so it works for multi-instance
-                            // forge-runner-<id> units too — same mechanism as the
-                            // credential-watch path below. The old hardcoded
-                            // `systemctl --user restart forge-runner` only bounced
-                            // the default unit, so any instance under a different
-                            // unit name (forge-runner-aiNNN) downloaded the new
-                            // binary but never re-execed it, re-applying the same
-                            // update every cycle forever while staying on the old
-                            // in-memory build.
-                            std::process::exit(0);
+                            ),
+                            drain::Drained::GaveUp => {}
+                            drain::Drained::Idle => {
+                                hand_over(drain, "update", &cause, next());
+                            }
                         }
                     }
                     Ok(None) => {}
@@ -193,20 +179,20 @@ pub(crate) async fn cred_watch(
             if current != startup_token {
                 if said.is_none() {
                     tracing::warn!(
-                        "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
-                    );
+                                "[cred] device token changed (re-login detected) — handing over to a fresh image of this build once this process's own work ends, which reads the new token"
+                            );
                 }
+                let next = || drain::NextAttempt {
+                    by: "this loop's next handover".into(),
+                    due_in: std::time::Duration::from_secs(drain::DRAIN_REOPEN_SECS),
+                };
                 match drain::drain_to_idle(
                     &drain,
                     "cred",
                     "a new device token",
                     &inflight,
-                    live_run_sessions,
                     || close_parked_sessions(&runner),
-                    || drain::NextAttempt {
-                        by: "this loop's next drain".into(),
-                        due_in: std::time::Duration::from_secs(drain::DRAIN_REOPEN_SECS),
-                    },
+                    next,
                 )
                 .await
                 {
@@ -231,11 +217,8 @@ pub(crate) async fn cred_watch(
                         continue;
                     }
                 }
-                tracing::warn!("[cred] restarting to pick up new credentials");
-                // Exit 0 → systemd Restart=always relaunches THIS unit
-                // (name-agnostic, so it works for multi-instance
-                // forge-runner-<id> units too).
-                std::process::exit(0);
+                hand_over(&drain, "cred", "a new device token", next());
+                said = Some("handover failed".into());
             }
         }
     }

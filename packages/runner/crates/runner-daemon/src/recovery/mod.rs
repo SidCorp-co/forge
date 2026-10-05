@@ -224,7 +224,7 @@ pub async fn reconcile(
         };
         // A subagent runs in the Claude Code process recorded for it, and that
         // process read gone is its end, whatever the master's pane reads. It
-        // goes on the row for the drain, which reads the ledger and not this
+        // goes on the row, where the run's evidence is read, and not in this
         // registry. A pane read gone is not by itself that end: the
         // conversation can run as a background session outside the pane
         // (ISS-1312, run e67c08e0).
@@ -244,8 +244,8 @@ pub async fn reconcile(
             }
         }
         // The same pane read alive again says the read that marked it saw
-        // nothing end, and a mark left standing lets the drain restart over a
-        // live pane's run (ISS-1312). A mark its process's own end wrote stays.
+        // nothing end, and a mark left standing reads a live pane's subagent as
+        // ended (ISS-1312). A mark its process's own end wrote stays.
         if read == MasterPresence::Alive
             && run.host_ended_by.as_deref() == Some(HOST_PANE_GONE)
             && host_read != Some(HostRead::Gone)

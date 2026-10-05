@@ -176,7 +176,7 @@ pub(crate) fn dispatch_gate_reply(
                             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
                         );
                         return ClaimReply::refused(format!(
-                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over, or once the drain gives up and admission reopens"
+                            "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
                         ));
                     }
                     memory.promised.insert(run.to_string(), tool_use.clone());
@@ -231,14 +231,14 @@ pub(crate) fn refused_while_draining(
     }
     let cause = ctl.drain.draining_for()?;
     tracing::warn!(
-        "[control] refusing a hand-off the gate could not decide ({why}): the box is draining for {cause}"
+        "[control] refusing a hand-off the gate could not decide ({why}): the box is handing over for {cause}"
     );
     let known = match declared {
         Some(_) => "and this master has declared no run for it",
         None => "and whether a run was declared for it cannot be read",
     };
     Some(ClaimReply::refused(format!(
-        "this box is draining before a restart ({cause}) and admits no hand-off it cannot account for: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again once the box has turned over, or once the drain gives up and admission reopens"
+        "this box is handing over to a new build ({cause}) and admits no hand-off it cannot account for in the seconds that takes: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again in a moment, and the new build will take it"
     )))
 }
 

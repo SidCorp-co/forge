@@ -14,9 +14,10 @@
 //! gone, because the master is the only party that can resume it. That
 //! process is read by pid and start time (`subagent_host`), never inferred
 //! from the master's tmux pane: Claude Code can run the conversation as a
-//! background session outside it (ISS-1312, run e67c08e0). This reading decides two
-//! things only: what the box says about a run it keeps, and whether a daemon
-//! restart waits for it (ISS-1246).
+//! background session outside it (ISS-1312, run e67c08e0). This reading decides
+//! what the box says about a run it keeps (ISS-1246), and nothing more: no run
+//! holds a daemon's handover to a new build, since a run lives in its master's
+//! pane and the next build adopts it (ISS-1379).
 
 use std::path::Path;
 use std::time::Duration;
@@ -122,8 +123,7 @@ pub fn read(
     }
 }
 
-/// What `run`'s own evidence says, the one reading the drain and recovery both
-/// take. An end of the process its subagent lived in speaks first, unless the
+/// What `run`'s own evidence says, the one reading recovery takes. An end of the process its subagent lived in speaks first, unless the
 /// subagent has been heard from since: a turn-end or a transcript write later
 /// than it, or a start, which clears it on the row. A mark on a row that
 /// records no such process, as rows written before the box recorded one carry,
@@ -165,14 +165,6 @@ pub fn observe(
     read(declared_at, turn_ended_at, written, newest, now)
 }
 
-/// Whether a subagent in this state is not work a daemon restart would stop.
-pub fn is_quiet(evidence: Evidence) -> bool {
-    matches!(
-        evidence,
-        Evidence::Quiet { .. } | Evidence::Unanswered { .. } | Evidence::HostEnded { .. }
-    )
-}
-
 /// What the box says when it first finds a run in this state, or `None` for
 /// the states it says nothing about. The value is written to `kept_notice`,
 /// which recovery's other notices share, so none of them may be one of these
@@ -190,8 +182,8 @@ pub fn notice(evidence: Evidence) -> Option<&'static str> {
     }
 }
 
-/// What the run's evidence says, in the words the drain's and recovery's lines
-/// carry, so a held drain is read from its own line (ISS-1312).
+/// What the run's evidence says, in the words recovery's lines carry, so a kept
+/// run is read from its own line (ISS-1312).
 pub fn held_because(evidence: Evidence, transcript: Option<&str>) -> String {
     let bound = SUBAGENT_QUIET.as_secs() / 60;
     let path = transcript.unwrap_or("no path was recorded");

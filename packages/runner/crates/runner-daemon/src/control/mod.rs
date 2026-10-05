@@ -217,34 +217,84 @@ pub async fn serve(
             "cannot resolve the control socket path",
         ));
     };
-    if path.exists() {
-        let _ = std::fs::remove_file(&path);
+    let listener = match crate::handover::inherited_listener(&path) {
+        crate::handover::Inherited::Taken(held) => {
+            let listener = UnixListener::from_std(held)?;
+            tracing::info!(
+                "[control] listening on {}, carried across the handover from the build before this one",
+                path.display()
+            );
+            listener
+        }
+        crate::handover::Inherited::Refused(why) => {
+            tracing::error!(
+                "[control] {} named a listener this process will not take: {why} — binding a fresh socket at {}",
+                crate::handover::LISTENER_ENV,
+                path.display()
+            );
+            bind_fresh(&path)?
+        }
+        crate::handover::Inherited::None => bind_fresh(&path)?,
+    };
+    {
+        use std::os::fd::AsRawFd;
+        ctl.drain
+            .socket()
+            .publish_listener(i64::from(listener.as_raw_fd()));
     }
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let listener = UnixListener::bind(&path)?;
-    tracing::info!("[control] listening on {}", path.display());
+    let mut accepting = ctl.drain.socket().accepting();
 
     loop {
+        let open = *accepting.borrow_and_update();
+        if !open {
+            // Every accept before this read has its guard, and nothing is
+            // accepted until the next read finds it open: say so, so the
+            // handover's window may count what is in flight.
+            ctl.drain.socket().stand_still();
+        }
         tokio::select! {
-            accepted = listener.accept() => {
+            accepted = listener.accept(), if open => {
                 match accepted {
                     Ok((stream, _)) => {
                         let ctl = ctl.clone();
-                        tokio::spawn(async move { serve_one(ctl, stream).await });
+                        let serving = ctl.drain.socket().serving();
+                        tokio::spawn(async move {
+                            serve_one(ctl, stream).await;
+                            drop(serving);
+                        });
                     }
                     Err(e) => tracing::warn!("[control] accept: {e}"),
                 }
             }
+            _ = accepting.changed() => {}
             _ = cancel.changed() => {
                 if *cancel.borrow() { break; }
             }
         }
     }
+    ctl.drain.socket().withdraw_listener();
     let _ = std::fs::remove_file(&path);
     Ok(())
 }
+
+#[cfg(unix)]
+fn bind_fresh(path: &std::path::Path) -> std::io::Result<UnixListener> {
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let listener = UnixListener::bind(path)?;
+    tracing::info!("[control] listening on {}", path.display());
+    Ok(listener)
+}
+
+/// How long a connection may take to send its one line. A hook writes it at
+/// once; a caller that does not would otherwise hold a handover's closing
+/// window for its whole bound.
+#[cfg(unix)]
+const REQUEST_READ_BOUND: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[cfg(unix)]
 async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
@@ -257,8 +307,16 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         .and_then(|p| u32::try_from(p).ok());
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    if reader.read_line(&mut line).await.is_err() {
-        return;
+    match tokio::time::timeout(REQUEST_READ_BOUND, reader.read_line(&mut line)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(_)) => return,
+        Err(_) => {
+            tracing::warn!(
+                "[control] a connection sent no request within {}s and was closed",
+                REQUEST_READ_BOUND.as_secs()
+            );
+            return;
+        }
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match caller_of(&ctl, req.token()) {
