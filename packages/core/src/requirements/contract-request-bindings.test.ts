@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { nodeSchema } from '../workflows/schema.js';
 import { bindingRefusals, bindingsInDocument, brokenByOf, reaches } from './bindings.js';
 import { contractRequestRefusal } from './contract-request.js';
-import { requestSignoffRefusal } from './rules.js';
+import { requestSignoffRefusal } from './request-signoff.js';
 
 const forbidden = {
   code: 'PERMISSION_FORBIDDEN' as const,

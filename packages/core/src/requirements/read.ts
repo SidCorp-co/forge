@@ -13,7 +13,7 @@ import {
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { issues, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import {
   type CriterionForm,
   type RequirementStatus,
@@ -33,19 +33,14 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
-import { screenBindingsOf } from './bindings.js';
+import { latestBaselineBindingsOf } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
 import { changedTracedOf } from './plan-drift.js';
-import {
-  type LinkedDesign,
-  liveAt,
-  type ReadinessAtHead,
-  requestSignoffRefusal,
-  signoffRefusal,
-} from './rules.js';
+import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
+import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -76,18 +71,6 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
     );
   if (!row) throw notFound(`project ${projectId} holds no requirement ${ref}`);
   return row;
-}
-
-/** The project a contract request came from (E2), or null for a requirement written here. */
-export async function requestedByOf(
-  row: Pick<Row, 'requestedByProjectId'>,
-): Promise<{ id: string; slug: string } | null> {
-  if (!row.requestedByProjectId) return null;
-  const [p] = await db
-    .select({ id: projects.id, slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.id, row.requestedByProjectId));
-  return p ?? null;
 }
 
 /** `row` is the requirement being signed, when there is one: a contract request is signed only here. */
@@ -370,43 +353,9 @@ export async function detailOf(
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
-  const latestBaseline = [...baselines].sort((a, b) => b.revision - a.revision || b.seq - a.seq)[0];
   const [bindings, request] = await Promise.all([
-    screenBindingsOf(
-      db,
-      pins.flatMap((p) =>
-        latestBaseline &&
-        p.revision === latestBaseline.revision &&
-        p.baselineSeq === latestBaseline.seq &&
-        p.workflowId &&
-        p.designRevision !== null
-          ? [
-              {
-                workflowId: p.workflowId,
-                flow: p.flow ?? p.workflowId,
-                designRevision: p.designRevision,
-              },
-            ]
-          : [],
-      ),
-      pins.flatMap((p) =>
-        latestBaseline &&
-        p.revision === latestBaseline.revision &&
-        p.baselineSeq === latestBaseline.seq &&
-        p.providerProjectId &&
-        p.contractSlug &&
-        p.contractVersion
-          ? [
-              {
-                providerProjectId: p.providerProjectId,
-                contractSlug: p.contractSlug,
-                contractVersion: p.contractVersion,
-              },
-            ]
-          : [],
-      ),
-    ),
-    requestedByOf(row),
+    latestBaselineBindingsOf(db, baselines, pins),
+    requestViewOf(row),
   ]);
   const [people, standings, changedTraced] = await Promise.all([
     peopleOf([
@@ -449,24 +398,9 @@ export async function detailOf(
     readiness,
     deferral,
     feedback,
-    request:
-      request && row.requestedContractSlug
-        ? {
-            projectId: request.id,
-            project: request.slug,
-            contract: `${(await providerSlugOf(row.projectId)) ?? row.projectId}/${row.requestedContractSlug}`,
-          }
-        : null,
+    request,
     bindings,
   };
-}
-
-async function providerSlugOf(projectId: string): Promise<string | null> {
-  const [p] = await db
-    .select({ slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.id, projectId));
-  return p?.slug ?? null;
 }
 
 function revisionView(

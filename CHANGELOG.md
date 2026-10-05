@@ -12,7 +12,7 @@
 
 - **Requirements answer for contracts across projects.** Another project can request a contract
   change as a draft only the provider agrees; screens bind contract elements; only issues tracing a
-  changed criterion re-plan; contract upgrades carry deadlines; recorded releases ask the provider gate.
+  changed criterion re-plan; upgrades carry deadlines; recorded releases ask the provider gate.
 
 ## [0.4.0-dev.30] - 2026-10-05
 

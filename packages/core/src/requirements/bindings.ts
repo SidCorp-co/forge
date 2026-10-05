@@ -161,3 +161,51 @@ export async function refuseUnindexedBindings(
   const refusals = bindingRefusals(await screenBindingsOf(tx, designs));
   if (refusals.length) throw new RefusalError(refusals, 'REQUIREMENT_REFUSED');
 }
+
+interface PinRow {
+  revision: number;
+  baselineSeq: number;
+  workflowId: string | null;
+  flow: string | null;
+  designRevision: number | null;
+  providerProjectId: string | null;
+  contractSlug: string | null;
+  contractVersion: string | null;
+}
+
+/** The bindings of the designs the latest baseline pins, read against the contract versions it pins. */
+export function latestBaselineBindingsOf(
+  executor: Tx | typeof db,
+  baselines: readonly { revision: number; seq: number }[],
+  pins: readonly PinRow[],
+): Promise<RequirementScreenBinding[]> {
+  const latest = [...baselines].sort((a, b) => b.revision - a.revision || b.seq - a.seq)[0];
+  const mine = latest
+    ? pins.filter((p) => p.revision === latest.revision && p.baselineSeq === latest.seq)
+    : [];
+  return screenBindingsOf(
+    executor,
+    mine.flatMap((p) =>
+      p.workflowId && p.designRevision !== null
+        ? [
+            {
+              workflowId: p.workflowId,
+              flow: p.flow ?? p.workflowId,
+              designRevision: p.designRevision,
+            },
+          ]
+        : [],
+    ),
+    mine.flatMap((p) =>
+      p.providerProjectId && p.contractSlug && p.contractVersion
+        ? [
+            {
+              providerProjectId: p.providerProjectId,
+              contractSlug: p.contractSlug,
+              contractVersion: p.contractVersion,
+            },
+          ]
+        : [],
+    ),
+  );
+}

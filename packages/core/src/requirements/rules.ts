@@ -29,26 +29,6 @@ export function signoffRefusal(facts: PermissionFacts, act: string): Requirement
   return permissionRefusal(facts, 'requirements.approve', act);
 }
 
-/**
- * A contract request is signed only by this project (E2): a signer refused requirements.approve
- * here who is a member of the requesting project is that project trying to agree its own request,
- * and is refused as such rather than as a stranger.
- */
-export function requestSignoffRefusal(input: {
-  refusal: RequirementRefusal | null;
-  key: string;
-  requestedBy: { id: string; slug: string } | null;
-  signerInRequestingProject: boolean;
-}): RequirementRefusal | null {
-  const { refusal, requestedBy } = input;
-  if (!refusal || !requestedBy || !input.signerInRequestingProject) return refusal;
-  return {
-    code: 'REQUIREMENT_SIGNOFF_FORBIDDEN',
-    path: '',
-    detail: `${input.key} is a contract request from project ${requestedBy.slug}; only a holder of requirements.approve on this project signs it off, and the requesting project never does. ${refusal.detail}`,
-  };
-}
-
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {
   if (reason?.trim()) return null;
   return {
