@@ -14,11 +14,6 @@ export {
 } from './interactive-credential.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
 export { provideAgentSessionsPorts } from './ports.js';
-export {
-  AGENT_SESSION_KIND_LIST,
-  isAgentSessionKind,
-  isPipelineSessionKind,
-} from './session-kinds.js';
 export { publishSessionRecoveryChanged } from './recovery-publish.js';
 export {
   incrementAutoRetryCount,
@@ -35,6 +30,11 @@ export {
   resolveSessionAuthority,
   type SessionAsker,
 } from './session-credential.js';
+export {
+  AGENT_SESSION_KIND_LIST,
+  isAgentSessionKind,
+  isPipelineSessionKind,
+} from './session-kinds.js';
 export { requestSessionSend, resolveSessionSend } from './session-send.js';
 export {
   deriveSessionFinal,

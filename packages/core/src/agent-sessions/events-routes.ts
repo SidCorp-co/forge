@@ -20,11 +20,11 @@ import { terminalAgentSessionStatuses } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { appendChatLines } from './service.js';
 import { assertDeviceOwnsSession, idParamSchema, loadSessionOr404 } from './session-access.js';
 import { maybeDeriveIncrementalFor } from './session-transcript.js';
-import { agentSessionsPorts } from './ports.js';
 
 /** How many lines one POST may carry, matching the runner's own chunking. */
 const MAX_BATCH = 100;

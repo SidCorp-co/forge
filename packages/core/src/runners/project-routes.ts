@@ -47,7 +47,9 @@ projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), asyn
 
   const rows = await listProjectRunnerPools(id);
 
-  return c.json(rows.map((r) => ({ ...r, poolRead: runnersPorts().readRunnerPoolRead(r.poolRead) })));
+  return c.json(
+    rows.map((r) => ({ ...r, poolRead: runnersPorts().readRunnerPoolRead(r.poolRead) })),
+  );
 });
 
 projectRunnerRoutes.post(

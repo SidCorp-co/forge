@@ -1,8 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
 import { toCanonicalMessages } from './canonical-legacy.js';
+import { agentSessionsPorts } from './ports.js';
 import { recordTurnError } from './session-events.js';
 import { deriveChatTurnFinal } from './session-transcript.js';
-import { agentSessionsPorts } from './ports.js';
 
 /** What the handler needs back before it builds its update. */
 interface TranscriptPatch {
@@ -35,7 +35,8 @@ export async function applyTranscriptPatch(args: {
 }): Promise<TranscriptPatch> {
   const { sessionId, isDevice, isTerminal, patch } = args;
 
-  const scrub = <T>(data: T): Promise<T> => agentSessionsPorts().scrubSessionOutput(sessionId, data);
+  const scrub = <T>(data: T): Promise<T> =>
+    agentSessionsPorts().scrubSessionOutput(sessionId, data);
 
   if (patch.turnError !== undefined && isDevice) {
     await recordTurnError(sessionId, await scrub(patch.turnError));
