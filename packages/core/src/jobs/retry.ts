@@ -243,10 +243,10 @@ async function bumpSession(
   }
 }
 
-/** Verify-first: an issue that already advanced or reverted takes no retry. */
+/** Verify-first: an issue resolved under the job takes no retry. */
 async function settleByVerdict(job: JobRow): Promise<RetryOutcome | null> {
   if (!job.issueId) return null;
-  let verdict: 'advanced' | 'reverted' | 'pending';
+  let verdict: 'advanced' | 'pending';
   try {
     verdict = await verifyRecovery(job);
   } catch (err) {
@@ -257,12 +257,11 @@ async function settleByVerdict(job: JobRow): Promise<RetryOutcome | null> {
     return { scheduled: false, reason: 'verify_unavailable' };
   }
   if (verdict === 'pending') return null;
-  const terminal = verdict === 'advanced' ? 'completed_via_recovery' : 'cancelled_stale';
   if (job.agentSessionId) {
-    await markSessionTerminal(job.agentSessionId, terminal);
+    await markSessionTerminal(job.agentSessionId, 'completed_via_recovery');
     await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
   }
-  return { scheduled: false, reason: terminal };
+  return { scheduled: false, reason: 'completed_via_recovery' };
 }
 
 async function insertRetryJob(

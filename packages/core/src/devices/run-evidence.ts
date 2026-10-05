@@ -3,7 +3,8 @@
  *
  * Two blocks, and they are never merged. The first is what the BOX could see —
  * branch, head, base, files touched, why the run ended — reconstructed by
- * `daemon/checkpoint.rs` and carried here verbatim. The second is TESTIMONY:
+ * `daemon/checkpoint.rs` and carried here verbatim but for secrets, which the scrubber
+ * takes out of everything a box reports. The second is TESTIMONY:
  * the `next` the run wrote onto its own lease, read back from the tracker byte
  * for byte, and printed empty when the run died before it wrote one.
  *
@@ -18,6 +19,7 @@
  */
 
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -99,11 +101,12 @@ function testimonyBlock(next: string | null): string {
   return `${head}\n\n${fence}text\n${next}\n${fence}`;
 }
 
-function buildRunEvidenceBody(args: {
+export function buildRunEvidenceBody(args: {
   sessionId: string;
   checkpoint: RunCheckpoint;
   next: string | null;
 }): string {
+  const checkpoint = scrubSecretsDeep(args.checkpoint);
   return [
     '## A run holding this issue ended',
     '',
@@ -112,7 +115,7 @@ function buildRunEvidenceBody(args: {
     'Two separate records, neither derived from the other. Nothing here decides whether the work',
     'continues or restarts.',
     '',
-    reconstructionBlock(args.checkpoint),
+    reconstructionBlock(checkpoint),
     '',
     testimonyBlock(args.next),
   ].join('\n');
@@ -157,8 +160,8 @@ function resumeChoiceMarker(runId: string): string {
   return `resume-choice: ${runId}`;
 }
 
-function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
-  const { choice } = args;
+export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
+  const choice = scrubSecretsDeep(args.choice);
   const said = {
     continue: 'carry this work on from where it stopped',
     restart: 'start this work again rather than carry it on',
@@ -199,12 +202,12 @@ function heldWorktreeMarker(sessionId: string, held: Pick<HeldWorktree, 'head' |
   return `${heldWorktreeFamily(sessionId, held.head)}:${held.kept ? 'refused' : 'not-refused'}`;
 }
 
-function buildHeldWorktreeBody(args: {
+export function buildHeldWorktreeBody(args: {
   sessionId: string;
   held: HeldWorktree;
   box: string;
 }): string {
-  const { held } = args;
+  const held = scrubSecretsDeep(args.held);
   const count = held.commitsUnpushed ?? null;
   const directory = held.kept
     ? [

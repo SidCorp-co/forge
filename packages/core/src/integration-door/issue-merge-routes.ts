@@ -5,7 +5,6 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   CHANGE_REQUEST_MERGE_METHODS,
@@ -150,10 +149,7 @@ issueMergePullRequestRoutes.post(
       });
     } catch (err) {
       if (err instanceof MergeInputError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'BAD_REQUEST' },
-        });
+        throw refuse(err.code, err.message, err.code === 'MERGE_REQUESTER_MISSING' ? '' : '/runId');
       }
       if (err instanceof SourceHostUnavailable) {
         throw refuse('NO_BINDING', err.message);

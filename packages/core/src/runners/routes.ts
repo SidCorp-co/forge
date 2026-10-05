@@ -8,6 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
+import { ownedDeviceForBind } from './project-binding.js';
 import {
   activeRunnersOf,
   listProjectRunners,
@@ -161,6 +162,7 @@ runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
   const input = c.req.valid('json');
   const access = await loadProjectAccess(input.projectId, userId);
   requireHeld(access, 'project.admin');
+  await ownedDeviceForBind(input.deviceId, userId);
 
   const adapter = getRunnerAdapter(input.type);
   if (!adapter) throw badRequest({ type: 'no adapter registered for type' });

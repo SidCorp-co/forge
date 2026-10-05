@@ -220,10 +220,8 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 /** Projects, orgs, integrations, members and skills. */
 function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectRoutes);
-  // No auth of their own: they answer under projectRoutes' gate, mounted just above on the same prefix.
   app.route('/api/projects', projectRunnerRoutes);
   app.route('/api/orgs', orgRoutes);
-  // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);

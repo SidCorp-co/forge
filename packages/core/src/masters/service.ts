@@ -7,6 +7,7 @@ import type {
   MasterSessionResponse,
   MasterVerb,
 } from '@forge/contracts/master-standing';
+import { scrubSecretsDeep } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -136,7 +137,7 @@ export async function closeMasterPass(args: {
                  args.dispatched.map((d) => sql`${d}`),
                  sql`, `,
                )}]::text[]`},
-               skipped = ${JSON.stringify(args.skipped)}::jsonb,
+               skipped = ${JSON.stringify(scrubSecretsDeep(args.skipped))}::jsonb,
                parked = ${sql`ARRAY[${sql.join(
                  args.parked.map((p) => sql`${p}`),
                  sql`, `,

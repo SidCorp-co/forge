@@ -2,10 +2,13 @@
 // (project, device), its provisioning queued on bind.
 
 import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
+import type { RunnerRefusalCode } from '@forge/contracts/runners';
 import { and, eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { residentMasterSql } from '../devices/index.js';
+import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { insertRunnerEvent } from './runner-events.js';
@@ -48,10 +51,11 @@ export async function listProjectRunnerPools(projectId: string) {
 }
 
 /** The device a bind names, or null. */
-export async function deviceForBind(deviceId: string) {
+async function deviceForBind(deviceId: string) {
   const [row] = await db
     .select({
       id: devices.id,
+      ownerId: devices.ownerId,
       name: devices.name,
       status: devices.status,
       lastSeenAt: devices.lastSeenAt,
@@ -60,6 +64,27 @@ export async function deviceForBind(deviceId: string) {
     .where(eq(devices.id, deviceId))
     .limit(1);
   return row ?? null;
+}
+
+const refuseBind = refuser<RunnerRefusalCode>('RUNNER_REFUSED');
+
+/** The device `deviceId` when `userId` owns it; a device is put on a project only by its owner. */
+export async function ownedDeviceForBind(deviceId: string, userId: string) {
+  const device = await deviceForBind(deviceId);
+  if (!device) {
+    throw new HTTPException(404, {
+      message: 'device not found',
+      cause: { code: 'DEVICE_NOT_FOUND' },
+    });
+  }
+  if (device.ownerId !== userId) {
+    throw refuseBind(
+      'DEVICE_BIND_FORBIDDEN',
+      `device ${deviceId} is not yours to bind; only its owner can put it on a project`,
+      '/deviceId',
+    );
+  }
+  return device;
 }
 
 /** Whether runner `runnerId` belongs to the project. */

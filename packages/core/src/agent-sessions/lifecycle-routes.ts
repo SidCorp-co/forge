@@ -18,9 +18,9 @@ agentSessionLifecycleRoutes.post('/abort', zValidator('json', abortBodySchema), 
 
   const updated = await abortSession(input.sessionId, session.status, restActor(c));
 
-  // Aborting a pipeline session just flips it to `idle`; the failure path
-  // (ISS-393) reverts the issue to its stage entry-status or holds the job,
-  // so there is no separate hold flag to pin here.
+  // Aborting a pipeline session just flips it to `idle`; the job failure path
+  // retries, holds the job or closes the issue's open run, so there is no
+  // separate hold flag to pin here.
   const meta = (updated.metadata ?? {}) as {
     type?: string;
     issueId?: string;

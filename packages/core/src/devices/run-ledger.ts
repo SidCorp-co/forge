@@ -8,6 +8,7 @@
  */
 
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, runners } from '../db/schema.js';
@@ -57,14 +58,16 @@ export async function applyRunLedgerSnapshot(args: {
             .where(and(eq(runners.deviceId, args.deviceId), inArray(runners.projectId, claimed)))
         ).map((r) => r.projectId),
   );
-  const entries = args.entries.filter((e) => {
-    if (bound.has(e.projectId)) return true;
-    logger.warn(
-      { deviceId: args.deviceId, runId: e.runId, projectId: e.projectId },
-      'run-ledger: run named a project this device is not bound to — dropped',
-    );
-    return false;
-  });
+  const entries = args.entries
+    .filter((e) => {
+      if (bound.has(e.projectId)) return true;
+      logger.warn(
+        { deviceId: args.deviceId, runId: e.runId, projectId: e.projectId },
+        'run-ledger: run named a project this device is not bound to — dropped',
+      );
+      return false;
+    })
+    .map((e) => ({ ...e, waitingOn: scrubSecretsDeep(e.waitingOn) }));
 
   // A box reporting its parent is corroboration, never the record: the record
   // is `agent_sessions.parent_session_id`, which core writes when it opens the

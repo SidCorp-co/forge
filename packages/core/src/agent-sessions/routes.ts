@@ -319,7 +319,8 @@ agentSessionRoutes.patch(
 
     const patchNow = new Date();
     const updates: AgentSessionPatch = { updatedAt: patchNow };
-    if (patch.title !== undefined) updates.title = patch.title;
+    const { stored } = transcript;
+    if (stored.title !== undefined) updates.title = stored.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
     if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
@@ -327,8 +328,8 @@ agentSessionRoutes.patch(
     }
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.usage !== undefined) updates.usage = patch.usage;
-    if (patch.metadata !== undefined) updates.metadata = patch.metadata;
-    if (patch.diff !== undefined) updates.diff = patch.diff;
+    if (stored.metadata !== undefined) updates.metadata = stored.metadata;
+    if (stored.diff !== undefined) updates.diff = stored.diff;
     if (patchedMessages !== undefined) updates.messages = patchedMessages;
 
     const isWorkerActivity =

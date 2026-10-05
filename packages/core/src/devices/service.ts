@@ -1,4 +1,5 @@
 import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, gt, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, devices, type RunnerProvisionStatus, runners } from '../db/schema.js';
@@ -119,24 +120,25 @@ export async function reportProvisionStatus(input: {
   status: RunnerProvisionStatus;
   detail: string | null;
 }) {
+  const detail = scrubSecretsDeep(input.detail);
   const mine = and(eq(runners.id, input.runnerId), eq(runners.deviceId, input.deviceId));
   const runner = await db.transaction(async (tx) => {
     await transition(tx, RUNNER_PROVISION_MACHINE, {
       to: input.status,
       where: mine,
-      reason: input.detail,
+      reason: detail,
       actor: { type: 'runner', id: input.deviceId },
       source: 'provision-status',
       returning: ['id'],
     });
-    const [row] = await setRunnerProvisionDetail(tx, mine, input.detail, input.status === 'ready');
+    const [row] = await setRunnerProvisionDetail(tx, mine, detail, input.status === 'ready');
     if (row) {
       await emitEvent(tx, 'runner.provisionStatus', {
         projectId: row.projectId,
         runnerId: row.id,
         deviceId: input.deviceId,
         status: input.status,
-        detail: input.detail,
+        detail,
       });
     }
     return row;

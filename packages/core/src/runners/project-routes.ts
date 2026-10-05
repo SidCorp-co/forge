@@ -3,15 +3,15 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readRunnerPoolRead } from '../devices/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, restActor } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from './clear-fault-flags.js';
 import {
   bindDeviceRunner,
-  deviceForBind,
   listProjectRunnerPools,
+  ownedDeviceForBind,
   projectHasRunner,
 } from './project-binding.js';
 import { deleteProjectRunner, patchProjectRunner } from './writes.js';
@@ -32,10 +32,9 @@ const createRunnerBodySchema = z
   })
   .strict();
 
-// NOTE: mounted by the route registry right after `projectRoutes`, whose
-// requireAuth() + assertEmailVerified() gate every request — no own middleware
-// here, or auth (and its email-verified DB lookup) would run twice.
 export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
+
+projectRunnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
 // Project-centric runner list — the device pools serving THIS project, with
 // device identity + live provision status. Powers the project Runners screen
@@ -63,13 +62,7 @@ projectRunnerRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.admin');
 
-    const device = await deviceForBind(deviceId);
-    if (!device) {
-      throw new HTTPException(404, {
-        message: 'device not found',
-        cause: { code: 'DEVICE_NOT_FOUND' },
-      });
-    }
+    const device = await ownedDeviceForBind(deviceId, userId);
 
     const runner = await bindDeviceRunner({
       projectId: id,

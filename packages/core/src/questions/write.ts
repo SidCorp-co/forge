@@ -6,6 +6,7 @@
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
+import { scrubSecretsDeep } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
@@ -219,7 +220,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       agentSessionId: input.agentSessionId,
       blockerKind: input.blockerKind,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],
-      assumed: input.assumed,
+      assumed: scrubSecretsDeep(input.assumed),
       origin,
       maxRounds: input.maxRounds ?? 3,
       claimsHeld: input.cost?.claimsHeld ?? 0,

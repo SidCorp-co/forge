@@ -138,8 +138,8 @@ export function sitesIn(rel, source, vocabularies, unattributed = []) {
     const members = [...hit[1].matchAll(QUOTED)].map((m) => m[1]);
     const before = text.slice(0, hit.index);
     // A tuple written as an object-literal property value is a table row, not a
-    // named question: `transitions` and `JOB_TYPE_EXPECTED_EXIT_STATUS` both hold
-    // rows that coincide with a constant without restating it.
+    // named question: `transitions` holds rows that coincide with a constant
+    // without restating it.
     if (/:\s*$/.test(before)) continue;
     // `ARRAY[...]` is a SQL literal wearing brackets. SQL is out of this
     // checker's scope by the same rule that leaves `IN ('a', 'b')` alone.

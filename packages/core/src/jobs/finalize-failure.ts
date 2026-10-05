@@ -1,21 +1,10 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type jobs, projects } from '../db/schema.js';
-import type { DeviceLite } from '../issues/index.js';
-import {
-  applyStatusTransition,
-  publishPipelineHealthChanged,
-  type TransitionIssueRow,
-} from '../issues/index.js';
+import { issues, type jobs } from '../db/schema.js';
+import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import {
-  classifyFailure,
-  classifyVerdict,
-  closeOpenRunForIssue,
-  emitPipelineWedge,
-  JOB_TYPE_ENTRY_STATUS,
-} from '../pipeline/index.js';
+import { classifyFailure, closeOpenRunForIssue, emitPipelineWedge } from '../pipeline/index.js';
 import {
   attributeFailureToRunner,
   detectRunnerLimit,
@@ -84,40 +73,16 @@ async function reconcileIssueStatusAfterFailure(
   if (!job.issueId) return;
 
   const [row] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-      projectCreatedBy: projects.createdBy,
-    })
+    .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, job.issueId))
     .limit(1);
   if (!row) {
-    logger.warn(
-      { issueId: job.issueId },
-      'finalize-failure: issue not found, skipping status reconcile',
-    );
+    logger.warn({ issueId: job.issueId }, 'finalize-failure: issue not found, skipping reconcile');
     return;
   }
 
-  // activity_log.actorId has no FK; the project creator (audit
-  // `projects.created_by`) is a valid stand-in for a system-initiated
-  // transition (mirrors orchestrator `resolveSkipDevice`). Fall back to the
-  // job creator.
-  const actorId = row.projectCreatedBy ?? job.createdBy;
-  const device: DeviceLite = { id: actorId, ownerId: actorId };
-  const issueRow: TransitionIssueRow = {
-    id: row.id,
-    projectId: row.projectId,
-    status: row.status,
-    reopenCount: row.reopenCount,
-  };
-
-  // Verify-first recovery (issue already advanced or moved to another step's
-  // territory) — the work is effectively done; leave the issue untouched.
+  // Verify-first recovery: the issue was resolved under the job, so the work is done; leave it.
   if (recoveredViaVerify) return;
 
   // A run that closed under the failure takes no successor; whoever closed it owns the issue.
@@ -126,21 +91,6 @@ async function reconcileIssueStatusAfterFailure(
   const hold = retry.scheduled ? null : await holdJobForReason(job, reason);
   if (hold === 'superseded' || hold === RUN_CLOSED) return;
   const heldJobId = hold?.heldId ?? null;
-
-  const entry = JOB_TYPE_ENTRY_STATUS[job.type];
-  if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
-    try {
-      await applyStatusTransition(issueRow, entry, device, {
-        recovery: true,
-        reason: 'job_failed_entry_revert',
-      });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: row.id, to: entry },
-        'finalize-failure: entry-status revert failed',
-      );
-    }
-  }
   if (retry.scheduled) return;
 
   if (heldJobId) {
@@ -212,11 +162,10 @@ export async function finalizeFailedJob(
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
-  const recoveredViaVerify =
-    retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
+  const recoveredViaVerify = retry.reason === 'completed_via_recovery';
 
-  // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
-  // (retry path) or hold the job + reap the run (no-retry path).
+  // A failed job with an issueId is never a no-op: it retries, or the job is held, or its run is
+  // closed failed.
   await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass

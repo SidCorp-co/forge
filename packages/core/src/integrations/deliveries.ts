@@ -122,6 +122,54 @@ export async function applyClaimedInbound<
   }
 }
 
+/**
+ * An inbound delivery that verified and is refused before it is applied, recorded as `refused` with
+ * its code (what the door's traffic read names as the last refusal) and the sentence beside it. A
+ * redelivery of the same provider id finds the first row rather than writing a second.
+ */
+export async function recordRefusedInbound(input: {
+  bindingId: string;
+  eventName: string;
+  payload: unknown;
+  requestId?: string | undefined;
+  code: string;
+  detail: string;
+}): Promise<string> {
+  const requestId = input.requestId ?? null;
+  const [row] = await db
+    .insert(integrationDeliveries)
+    .values({
+      bindingId: input.bindingId,
+      direction: 'inbound',
+      eventName: input.eventName,
+      payload: (input.payload ?? {}) as Record<string, unknown>,
+      requestId,
+      status: 'refused',
+      errorMessage: input.code,
+      response: { detail: input.detail },
+      completedAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [integrationDeliveries.bindingId, integrationDeliveries.requestId],
+      where: isNotNull(integrationDeliveries.requestId),
+    })
+    .returning({ id: integrationDeliveries.id });
+  if (row) return row.id;
+  const [held] = await db
+    .select({ id: integrationDeliveries.id })
+    .from(integrationDeliveries)
+    .where(
+      and(
+        eq(integrationDeliveries.bindingId, input.bindingId),
+        eq(integrationDeliveries.requestId, requestId ?? ''),
+      ),
+    )
+    .limit(1);
+  if (!held)
+    throw new Error(`inbound delivery ${requestId}: refused, and no row could be written or found`);
+  return held.id;
+}
+
 export async function updateDelivery(id: string, patch: UpdateDeliveryInput): Promise<void> {
   const set: Record<string, unknown> = {};
   if (patch.status !== undefined) set.status = patch.status;

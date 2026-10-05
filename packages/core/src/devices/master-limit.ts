@@ -1,3 +1,4 @@
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerLimitReason, runners } from '../db/schema.js';
@@ -44,7 +45,7 @@ export async function recordMasterLimit(
   await stampRunnerLimit(runner.id, runner.projectId, {
     reason: report.reason,
     until,
-    detail: report.detail,
+    detail: scrubSecretsDeep(report.detail),
   });
   return { runnerId: runner.id };
 }
