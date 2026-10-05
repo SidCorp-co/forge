@@ -27,8 +27,8 @@ Common issues and how to clear them.
 
 ## The pairing code expired
 
-Codes are valid for a few minutes. Generate a fresh one and run
-`forge-runner login` again.
+Codes are valid for a few minutes. Run `forge-runner login` again for a
+fresh one and approve it right away.
 
 ## An issue won't move
 

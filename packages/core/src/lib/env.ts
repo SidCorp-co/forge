@@ -32,8 +32,6 @@ const EnvSchema = z.object({
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_REGISTER_WINDOW_MS: z.coerce.number().int().positive().optional(),
-  RATE_LIMIT_DEVICES_PAIR_MAX: z.coerce.number().int().positive().optional(),
-  RATE_LIMIT_DEVICES_PAIR_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICE_LOGIN_INIT_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICE_LOGIN_INIT_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_DEVICE_LOGIN_APPROVE_MAX: z.coerce.number().int().positive().optional(),

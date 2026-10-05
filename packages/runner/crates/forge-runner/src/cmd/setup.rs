@@ -19,9 +19,6 @@ use super::Ctx;
 
 #[derive(ClapArgs)]
 pub struct Args {
-    /// Pairing code from the web UI, instead of the browser-approve flow.
-    #[arg(long)]
-    pub code: Option<String>,
     /// Device name shown in the dashboard (default: hostname).
     #[arg(long)]
     pub name: Option<String>,
@@ -137,7 +134,7 @@ async fn ensure_paired(core_url: &str, args: &Args) -> anyhow::Result<()> {
         .name
         .clone()
         .unwrap_or_else(pairing::default_device_name);
-    super::login::pair_device(core_url, &name, args.code.clone(), args.open).await
+    super::login::pair_device(core_url, &name, args.open).await
 }
 
 /// The device token names this box; a PAT names the human. The provisioned

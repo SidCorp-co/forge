@@ -32,8 +32,6 @@ export async function issueDeviceCredential(args: {
   holderIsAgent?: boolean;
   /** The epoch of whoever authorised the pairing: see `mintPat`. */
   grantEpoch?: number;
-  /** The transaction the pairing that asked for it runs in, so the credential commits with it. */
-  tx?: Tx;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
   const common = {
@@ -50,9 +48,8 @@ export async function issueDeviceCredential(args: {
     await supersedeNamedToken(tx, name, { deviceId: args.deviceId, userId: args.holderUserId });
   };
 
-  const outer = args.tx ?? db;
   if (!args.holderIsAgent) {
-    return outer.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
       await supersede(tx);
       const { plaintext } = await mintPat(
         { ...common, permissions: PAT_GRANT_ALL, projectIds: [], onBehalfOf: args.holderUserId },
@@ -70,7 +67,7 @@ export async function issueDeviceCredential(args: {
       const { plaintext } = await mintPat({ ...common, permissions, ...fence }, tx);
       return plaintext;
     },
-    outer,
+    db,
   );
 }
 

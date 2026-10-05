@@ -1,13 +1,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
+import { runnerProvisionStatuses } from '../db/schema.js';
 import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
-import { RULES } from '../lib/rate-limits.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -18,7 +16,6 @@ import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
-import { redeemPairingCode } from './pair.js';
 import { devicesPorts } from './ports.js';
 import {
   deviceOwnership,
@@ -31,21 +28,6 @@ import { recordHeartbeat, reportProvisionStatus, revokeDevice, updateDevice } fr
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
-
-const platformEnum = z.enum(devicePlatforms);
-
-const pairBodySchema = z
-  .object({
-    code: z.string().min(8).max(64),
-    name: z.string().min(1).max(80),
-    platform: platformEnum,
-    agentVersion: z.string().max(80).optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional(),
-    // Stable machine id (e.g. /etc/machine-id). When present, re-pairing from
-    // the same machine rotates the existing device row instead of duplicating.
-    machineId: z.string().min(1).max(256).optional(),
-  })
-  .strict();
 
 const heartbeatBodySchema = z
   .object({
@@ -60,34 +42,6 @@ const heartbeatBodySchema = z
     pool: z.unknown().optional(),
   })
   .strict();
-// Public — no auth middleware; device exchanges a pairing code for a token.
-export const devicePublicRoutes = new Hono();
-
-devicePublicRoutes.post(
-  '/pair',
-  rateLimit(() => RULES.devicesPair, { name: 'devices:pair' }),
-  zValidator('json', pairBodySchema),
-  async (c) => {
-    const input = c.req.valid('json');
-    const result = await redeemPairingCode({
-      code: input.code,
-      name: input.name,
-      platform: input.platform,
-      ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
-      ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
-      ...(input.machineId !== undefined ? { machineId: input.machineId } : {}),
-    });
-    return c.json(
-      {
-        deviceId: result.device.id,
-        deviceToken: result.plaintext,
-        projectId: result.projectId,
-      },
-      201,
-    );
-  },
-);
-
 async function ownedDevice(id: string, userId: string) {
   const device = await deviceOwnership(id);
   if (!device) throw notFound('device not found');
@@ -209,10 +163,6 @@ deviceOwnerRoutes.get(
     return c.json(await devicesPorts().withDeclaredSource(rows));
   },
 );
-
-// User-auth — project member mints a pairing code the device will redeem.
-export const deviceUserRoutes = new Hono<{ Variables: AuthVars }>();
-deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());
 
 // Device-auth — agent reports in every ~30s.
 export const deviceAuthRoutes = new Hono<{ Variables: DeviceVars }>();

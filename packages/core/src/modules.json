@@ -270,7 +270,7 @@
     "devices": {
       "kind": "kernel",
       "context": "execution",
-      "owns": ["deviceLoginCodes", "deviceRunLedger", "devices", "pairingCodes"],
+      "owns": ["deviceLoginCodes", "deviceRunLedger", "devices"],
       "serves": [
         "issue-delivery#box",
         "issue-delivery#rule-dispatch",

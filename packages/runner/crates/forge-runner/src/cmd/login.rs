@@ -10,10 +10,6 @@ use super::Ctx;
 
 #[derive(ClapArgs)]
 pub struct Args {
-    /// Pairing code minted from the web UI (paste-code flow). When omitted,
-    /// the browser-approve device-login flow runs instead.
-    #[arg(long)]
-    pub code: Option<String>,
     /// Device name shown in the dashboard (default: hostname).
     #[arg(long)]
     pub name: Option<String>,
@@ -60,7 +56,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         .name
         .clone()
         .unwrap_or_else(pairing::default_device_name);
-    pair_device(&core_url, &name, args.code.clone(), args.open).await?;
+    pair_device(&core_url, &name, args.open).await?;
     println!("  next: forge-runner setup");
     Ok(())
 }
@@ -68,33 +64,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 /// Pair this box and persist the device token. Shared with `setup`, which runs
 /// it as its second step rather than making the operator remember the order.
 /// A device already paired is re-paired: the server rotates the token in place.
-pub async fn pair_device(
-    core_url: &str,
-    name: &str,
-    code: Option<String>,
-    open: bool,
-) -> anyhow::Result<()> {
+pub async fn pair_device(core_url: &str, name: &str, open: bool) -> anyhow::Result<()> {
     let core_url = core_url.to_string();
     let mut cfg = Config::load()?;
-
-    // Back-compat: explicit --code keeps the paste-code project-pairing flow.
-    if let Some(code) = code {
-        let resp = pairing::pair(&core_url, &code, name).await?;
-        cred_store::store_device_token(&resp.device_token)?;
-        cfg.core_url = Some(core_url);
-        cfg.device_id = Some(resp.device_id.clone());
-        cfg.device_name = Some(name.to_string());
-        cfg.save()?;
-        println!(
-            "✔ paired device {} (token store: {})",
-            resp.device_id,
-            cred_store::active_backend()
-        );
-        if let Some(pid) = resp.project_id {
-            println!("  project hint: {pid}");
-        }
-        return Ok(());
-    }
 
     // Browser-approve device login (OAuth device-authorization flow).
     let init = pairing::login_init(&core_url, name).await?;

@@ -2619,6 +2619,13 @@
       "when": 1817942400000,
       "tag": "0405_the_write_only_and_unused_schema_and_the_feedback_case_are_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 406,
+      "version": "7",
+      "when": 1818028800000,
+      "tag": "0406_the_paste_code_pairing_table_is_dropped",
+      "breakpoints": true
     }
   ]
 }

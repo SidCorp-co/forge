@@ -84,7 +84,7 @@ takes `--path` for one you already have — installs the service, and ends on
 so an unattended install is the same command:
 
 ```bash
-forge-runner setup --yes --code <CODE> --project <slug> --projects-root ~/forge
+forge-runner setup --yes --project <slug> --projects-root ~/forge
 ```
 
 The device installs the first-party `forge` plugin — the pipeline's driver

@@ -144,8 +144,7 @@ cargo build --release
 them: pairing is `login`'s, the checkout is the server's provisioning path
 (`crates/runner-workspace/src/provision.rs`, the same one a web-UI assignment triggers), the
 service is `service install`'s and the verdict is `doctor`'s. Every question it
-asks has a flag, and with `--yes` or no tty it asks none — `--code`,
-`--project`, `--path`, `--projects-root`, `--service` / `--no-service`. It ends
+asks has a flag, and with `--yes` or no tty it asks none — `--project`, `--path`, `--projects-root`, `--service` / `--no-service`. It ends
 non-zero when doctor fails, so an unattended install fails where the gap is.
 
 The steps by hand, when you want them one at a time:
@@ -173,7 +172,7 @@ export FORGE_RUNNER_MACHINE_ID=$(hostname)-ai006   # unique → distinct device 
 export XDG_CONFIG_HOME=$HOME/.config/forge-runner-ai006  # separate config.toml + credentials.json
 export FORGE_RUNNER_CRED_STORE=file                # deterministic token store across shell/systemd
 export CLAUDE_CONFIG_DIR=$HOME/.claude-ai006       # the account this instance runs as
-forge-runner login --core-url <url> --code <CODE>
+forge-runner login --core-url <url>
 forge-runner bind <slug> --path <dir>
 forge-runner start
 ```

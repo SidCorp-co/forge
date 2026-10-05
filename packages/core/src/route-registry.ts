@@ -37,8 +37,6 @@ import {
   deviceOrgRoutes,
   deviceOwnerRoutes,
   devicePoolRoutes,
-  devicePublicRoutes,
-  deviceUserRoutes,
   installRoutes,
 } from './devices/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
@@ -302,7 +300,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
   app.route('/api/admin', outboxAdminRoutes);
-  app.route('/api/devices', devicePublicRoutes);
   app.route('/api/devices', deviceLoginRoutes);
   app.route('/api/devices', deviceGitCredentialRoutes);
   app.route('/api/devices', deviceAuthRoutes);
@@ -312,7 +309,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceChannelInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
-  app.route('/api/projects', deviceUserRoutes);
 }
 
 /** Pipeline analytics, release batches, schedules, knowledge and the remaining resources. */
