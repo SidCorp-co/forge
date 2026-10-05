@@ -3,11 +3,11 @@
  *
  * This is the half of the old dispatcher that survives: the policy state, the
  * resume decision, the MCP resolve, the preamble, the prior-attempts splice
- * and the prompt snapshot. What died with it was the routing half — picking a
+ * and the model stamp. What died with it was the routing half — picking a
  * box and pushing a frame at it — because a master picks the box now.
  *
  * The ordering is the load-bearing part. Every step below reads something the
- * step before it decided, and the two that WRITE (`persistPromptSnapshot`,
+ * step before it decided, and the two that WRITE (the `model_used` stamp,
  * `ensureAgentSessionForJob`) come last, so a preparation that fails leaves
  * nothing behind for the release to undo.
  */
@@ -26,7 +26,6 @@ import { buildJobSystemPrompt } from './job-system-prompt.js';
 import { jobsPorts } from './ports.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { injectAfterInvocation, injectTurnLevelRules } from './prompt-inject.js';
-import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
 
 /**
@@ -174,19 +173,13 @@ export async function prepareClaimedJob(args: {
     policy: args.policy,
     subject: `prepare refused job ${job.id}`,
   });
-  const { systemPrompt, blocks, deniedTools } = built;
+  const { systemPrompt, deniedTools } = built;
 
   const promptString = await promptStringFor(job, resume, systemPrompt);
   const { model, revision, status, from, profile, qa } = args.policy;
   const issueKey =
     issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
-  await persistPromptSnapshot({
-    jobId: job.id,
-    systemPrompt,
-    userPrompt: promptString ?? '',
-    blocks,
-    model,
-  });
+  await db.update(jobs).set({ modelUsed: model }).where(eq(jobs.id, job.id));
 
   const agentSessionId = await ensureAgentSessionForJob(
     { ...job, runnerId: runner.id, deviceId: args.deviceId },

@@ -1,18 +1,15 @@
 /**
- * Where a feedback item stands for one viewer (workflows `feedback-lifecycle`, `feedback-triage` r3,
- * requirement-to-delivery r2 step `fb-case`): the group the list draws it under and whom it waits
+ * Where a feedback item stands for one viewer (workflows `feedback-lifecycle`, `feedback-triage` r4,
+ * requirement-to-delivery step `fb-case`: the row and its group are the case): the group the list draws it under and whom it waits
  * on, and the phase a reader sees. Pure over what `read.ts` read.
  */
 
-import {
-  FEEDBACK_CASE_OWNER_LABELS,
-  type FeedbackAttentionGroup,
-  type FeedbackCaseView,
-  type FeedbackPhase,
-  type FeedbackRoute,
-  type FeedbackStatus,
-  type FeedbackTriageRoute,
-  type FeedbackWaitingKind,
+import type {
+  FeedbackAttentionGroup,
+  FeedbackPhase,
+  FeedbackRoute,
+  FeedbackStatus,
+  FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
 import type { Standing, WaitingOn } from '@forge/contracts/standing';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
@@ -61,15 +58,6 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
   }
 }
 
-const ROUTE_ACTS: Record<FeedbackTriageRoute, string> = {
-  issue: 'create or link the issue',
-  revision: 'name the revision proposal',
-  new_requirement: 'start the draft requirement',
-  answer: 'write the answer',
-  duplicate: 'name the root',
-  decline: 'decline it',
-};
-
 const wait = (
   kind: FeedbackWaitingKind,
   who: string,
@@ -93,43 +81,24 @@ function groupOf(phase: FeedbackPhase, viewerIsReporter: boolean): FeedbackAtten
   return 'done';
 }
 
-// step fb-case: a triaged item waits on its case's owner by name and due while the route is not
-// written. A written route whose carrier died reads triaged again, and triage is the BA's
-function caseWaiting(c: FeedbackCaseView | null): FeedbackWaitingOn {
-  const ba = FEEDBACK_CASE_OWNER_LABELS.ba;
-  if (!c) return wait('person', ba, 'triage it', 'triaged with no case: the BA triages it');
-  if (c.routedAt !== null) {
-    return wait(
-      'person',
-      ba,
-      `triage it again: what carried its ${c.route} route is gone`,
-      'the carrier of its written route is gone, so it reads triaged again',
-    );
-  }
-  const due = `${c.overdue ? 'overdue since' : 'due'} ${c.dueAt.slice(0, 10)}`;
-  return wait(
-    c.owner === 'master' ? 'agent' : 'person',
-    FEEDBACK_CASE_OWNER_LABELS[c.owner],
-    `${ROUTE_ACTS[c.route]}, ${due}`,
-    'step fb-case: the case owner writes the route by its due',
-    { dueAt: c.dueAt },
-  );
-}
-
 /** Who or what an item waits on, whoever reads it. */
 function waitingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
-  kase: FeedbackCaseView | null,
 ): FeedbackWaitingOn {
   switch (phase) {
     case 'new':
     case 'reopened':
       return wait('person', 'A person', 'triage it', `${phase}: a member triages it`);
     case 'triaged':
-      return caseWaiting(kase);
+      return wait(
+        'person',
+        'A person',
+        'triage it again',
+        "triaged: the route's carrier is gone, so a member routes it anew",
+      );
     case 'planned':
       if (route === 'issue')
         return wait(
@@ -177,11 +146,10 @@ export function feedbackStandingOf(
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
-  kase: FeedbackCaseView | null,
   viewerIsReporter: boolean,
 ): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
   const attentionGroup = groupOf(phase, viewerIsReporter);
-  const w = waitingOf(phase, route, carrier, reporter, kase);
+  const w = waitingOf(phase, route, carrier, reporter);
   return {
     attentionGroup,
     waitingOn: attentionGroup === 'needs_you' ? { ...w, kind: 'you', who: 'You' } : w,
