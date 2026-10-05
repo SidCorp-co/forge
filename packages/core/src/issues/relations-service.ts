@@ -107,7 +107,6 @@ export async function writeIssueRelations(
  * dependents' health once for the whole array.
  */
 export async function flushIssueRelationEffects(
-  writer: IssueDependencyWriter,
   projectId: string,
   pending: readonly PendingIssueRelation[],
 ): Promise<void> {

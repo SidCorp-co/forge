@@ -320,11 +320,7 @@ export async function createIssue(
       )
     : { persisted: [], errors: [] };
 
-  await flushIssueRelationEffects(
-    { actor: writer.actor, createdById: writer.createdById },
-    input.projectId,
-    pendingRelations,
-  );
+  await flushIssueRelationEffects(input.projectId, pendingRelations);
 
   return {
     deduped: false,

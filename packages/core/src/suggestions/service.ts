@@ -59,13 +59,9 @@ export type { SuggestionOutcome } from './write.js';
 
 /** After the accept committed: the effects of the edges it landed. Its issue creates, field writes
  *  and comments wrote their outbox events in the accept's own transaction. */
-async function announceEffect(written: EffectWritten, projectId: string, actor: SuggestionActor) {
+async function announceEffect(written: EffectWritten, projectId: string) {
   if (!written.relations?.length) return;
-  await flushIssueRelationEffects(
-    { actor: { type: 'user', id: actor.userId, agency: actor.agency }, createdById: actor.userId },
-    projectId,
-    written.relations,
-  );
+  await flushIssueRelationEffects(projectId, written.relations);
 }
 
 // Workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
@@ -162,7 +158,7 @@ async function acceptDuplicateOfIssue(
     }
     throw err;
   }
-  await announceEffect({ refusals: null, relations }, projectId, actor);
+  await announceEffect({ refusals: null, relations }, projectId);
   return answer(first.id, {
     effect: { issueId: issue.id, issue: key, duplicateOf: rootKey, status: 'dropped' },
   });
@@ -229,7 +225,7 @@ export async function acceptSuggestion(input: {
   });
   if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
-  await announceEffect(written, projectId, actor);
+  await announceEffect(written, projectId);
   const effect: Effect | undefined = written.effect;
   return answer(first.id, effect ? { effect } : {});
 }
