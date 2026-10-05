@@ -1,3 +1,5 @@
+import { portSlot } from '../lib/port-slot.js';
+
 // What an adapter must know about Forge's own rows, handed in by the process entry at boot, so no
 // adapter imports the module that owns them (ADR 0008: an adapter imports no domain or kernel).
 
@@ -8,17 +10,6 @@ interface ForgeReads {
   issueForHeadRef(projectId: string, headRef: string): Promise<string | null>;
 }
 
-let provided: ForgeReads | null = null;
-
-export function provideForgeReads(reads: ForgeReads): void {
-  provided = reads;
-}
-
-export function forgeReads(): ForgeReads {
-  if (!provided) {
-    throw new Error(
-      'integrations: no Forge reads were provided, so an adapter cannot read a declared repository or link a branch to an issue; the process entry calls provideForgeReads before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<ForgeReads>('integrations', 'provideForgeReads');
+export const provideForgeReads = slot.provide;
+export const forgeReads = slot.get;

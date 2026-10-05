@@ -4,6 +4,7 @@
 
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { Tx } from '../db/client.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { RefusalError } from '../lib/refusal.js';
 
 /** The runner build this deployment publishes. */
@@ -73,17 +74,6 @@ interface DevicesPorts {
   projectHandleUserId(tx: Tx, projectId: string): Promise<string>;
 }
 
-let provided: DevicesPorts | null = null;
-
-export function provideDevicesPorts(ports: DevicesPorts): void {
-  provided = ports;
-}
-
-export function devicesPorts(): DevicesPorts {
-  if (!provided) {
-    throw new Error(
-      'devices: no ports were provided, so a box cannot reach the policy, source, git, question or comment modules it needs; the process entry calls provideDevicesPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<DevicesPorts>('devices', 'provideDevicesPorts');
+export const provideDevicesPorts = slot.provide;
+export const devicesPorts = slot.get;

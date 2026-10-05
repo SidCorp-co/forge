@@ -12,6 +12,7 @@ import type {
   SkillActivityOutcome,
   SkillActivityTrigger,
 } from '../db/schema.js';
+import { portSlot } from '../lib/port-slot.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -121,17 +122,6 @@ interface JobsPorts {
   ): Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
 }
 
-let provided: JobsPorts | null = null;
-
-export function provideJobsPorts(ports: JobsPorts): void {
-  provided = ports;
-}
-
-export function jobsPorts(): JobsPorts {
-  if (!provided) {
-    throw new Error(
-      'jobs: no ports were provided, so a job cannot reach the skills, policy, design or vault modules it needs; the process entry calls provideJobsPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<JobsPorts>('jobs', 'provideJobsPorts');
+export const provideJobsPorts = slot.provide;
+export const jobsPorts = slot.get;

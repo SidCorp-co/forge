@@ -4,6 +4,7 @@
 
 import type { db } from '../db/client.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { BatchRow } from './read.js';
 
 /** A transaction, never the pool: the questionnaire writes and its room message commit together. */
@@ -42,35 +43,13 @@ interface QuestionnairePorts {
   afterSubmit: (batch: BatchRow, submittedBy: string) => Promise<void>;
 }
 
-let provided: QuestionnairePorts | null = null;
+const slot = portSlot<QuestionnairePorts>('questionnaires', 'provideQuestionnairePorts');
+export const provideQuestionnairePorts = slot.provide;
+const { port } = slot;
 
-export function provideQuestionnairePorts(given: QuestionnairePorts): void {
-  provided = given;
-}
-
-function questionnairePorts(): QuestionnairePorts {
-  if (!provided) {
-    throw new Error(
-      'questionnaires: no ports were provided; the process entry calls provideQuestionnairePorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const appendMessagesIn: QuestionnairePorts['appendMessagesIn'] = (tx, args) =>
-  questionnairePorts().appendMessagesIn(tx, args);
-export const handleForProject: QuestionnairePorts['handleForProject'] = (
-  conversationId,
-  projectId,
-  tx,
-) => questionnairePorts().handleForProject(conversationId, projectId, tx);
-export const openOrExtendWindow: QuestionnairePorts['openOrExtendWindow'] = (args, tx) =>
-  questionnairePorts().openOrExtendWindow(args, tx);
-export const announceConversationChange: QuestionnairePorts['announceConversationChange'] = (
-  conversationId,
-  data,
-) => questionnairePorts().announceConversationChange(conversationId, data);
-export const onSubmittedIn: QuestionnairePorts['onSubmittedIn'] = (tx, batch) =>
-  questionnairePorts().onSubmittedIn(tx, batch);
-export const afterSubmit: QuestionnairePorts['afterSubmit'] = (batch, submittedBy) =>
-  questionnairePorts().afterSubmit(batch, submittedBy);
+export const appendMessagesIn = port('appendMessagesIn');
+export const handleForProject = port('handleForProject');
+export const openOrExtendWindow = port('openOrExtendWindow');
+export const announceConversationChange = port('announceConversationChange');
+export const onSubmittedIn = port('onSubmittedIn');
+export const afterSubmit = port('afterSubmit');

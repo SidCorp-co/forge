@@ -1,4 +1,5 @@
 import type { Tx } from '../db/client.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { KernelActor } from '../lifecycle/index.js';
 
 /**
@@ -16,17 +17,6 @@ export interface FeedbackDependents {
   deleteMockups(tx: Tx, feedbackId: string): Promise<string[]>;
 }
 
-let dependents: FeedbackDependents | null = null;
-
-export function provideFeedbackDependents(provided: FeedbackDependents): void {
-  dependents = provided;
-}
-
-export function feedbackDependents(): FeedbackDependents {
-  if (!dependents) {
-    throw new Error(
-      'feedback: no dependents were provided, so a redaction cannot reach its suggestions and mockups; the process entry calls provideFeedbackDependents() before it serves',
-    );
-  }
-  return dependents;
-}
+const slot = portSlot<FeedbackDependents>('feedback', 'provideFeedbackDependents');
+export const provideFeedbackDependents = slot.provide;
+export const feedbackDependents = slot.get;

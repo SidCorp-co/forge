@@ -2,6 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementFeedbackItem } from '@forge/contracts/requirements';
 import type { Tx } from '../db/client.js';
 import type { ReadDoor } from '../feedback/index.js';
+import { portSlot } from '../lib/port-slot.js';
 
 /**
  * What feedback and suggestions answer for a requirement. Both build on requirements, so the
@@ -19,17 +20,6 @@ export interface RequirementDependents {
   revised(tx: Tx, requirementId: string, head: number): Promise<unknown>;
 }
 
-let dependents: RequirementDependents | null = null;
-
-export function provideRequirementDependents(provided: RequirementDependents): void {
-  dependents = provided;
-}
-
-export function requirementDependents(): RequirementDependents {
-  if (!dependents) {
-    throw new Error(
-      'requirements: no dependents were provided, so its feedback and suggestions cannot be reached; the process entry calls provideRequirementDependents() before it serves',
-    );
-  }
-  return dependents;
-}
+const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');
+export const provideRequirementDependents = slot.provide;
+export const requirementDependents = slot.get;

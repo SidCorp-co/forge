@@ -4,6 +4,7 @@
 // root fills them at boot (`provideProjectOrg` is the pattern).
 
 import type { Tx } from '../db/client.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 
 export interface SecretResolveAudit {
@@ -35,17 +36,6 @@ interface ProjectConfigPorts {
   rememberHandedOut(jobId: string, values: readonly string[]): void;
 }
 
-let ports: ProjectConfigPorts | null = null;
-
-export function provideProjectConfigPorts(given: ProjectConfigPorts): void {
-  ports = given;
-}
-
-export function projectConfigPorts(): ProjectConfigPorts {
-  if (!ports) {
-    throw new Error(
-      'project-config: no ports were provided; the process entry calls provideProjectConfigPorts before it serves',
-    );
-  }
-  return ports;
-}
+const slot = portSlot<ProjectConfigPorts>('project-config', 'provideProjectConfigPorts');
+export const provideProjectConfigPorts = slot.provide;
+export const projectConfigPorts = slot.get;

@@ -1,3 +1,5 @@
+import { portSlot } from '../lib/port-slot.js';
+
 // What an upload needs from the contexts below work: the session and conversation attachment
 // stores a ticket may target. The composition root provides them at boot.
 
@@ -19,23 +21,9 @@ interface UploadPorts {
   }) => Promise<unknown>;
 }
 
-let provided: UploadPorts | null = null;
+const slot = portSlot<UploadPorts>('uploads', 'provideUploadPorts');
+export const provideUploadPorts = slot.provide;
+const { port } = slot;
 
-export function provideUploadPorts(given: UploadPorts): void {
-  provided = given;
-}
-
-function uploadPorts(): UploadPorts {
-  if (!provided) {
-    throw new Error(
-      'uploads: no ports were provided; the process entry calls provideUploadPorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const persistConversationAttachment: UploadPorts['persistConversationAttachment'] = (
-  input,
-) => uploadPorts().persistConversationAttachment(input);
-export const persistSessionAttachment: UploadPorts['persistSessionAttachment'] = (input) =>
-  uploadPorts().persistSessionAttachment(input);
+export const persistConversationAttachment = port('persistConversationAttachment');
+export const persistSessionAttachment = port('persistSessionAttachment');

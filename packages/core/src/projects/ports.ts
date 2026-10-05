@@ -4,6 +4,7 @@
 
 import type { db } from '../db/client.js';
 import type { IssuePrefixShapeError } from '../lib/issue-ref.js';
+import { portSlot } from '../lib/port-slot.js';
 
 export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
 
@@ -18,17 +19,6 @@ interface ProjectsPorts {
   notifyInvitee(notice: { userId: string; projectId: string; title: string }): Promise<void>;
 }
 
-let ports: ProjectsPorts | null = null;
-
-export function provideProjectsPorts(given: ProjectsPorts): void {
-  ports = given;
-}
-
-export function projectsPorts(): ProjectsPorts {
-  if (!ports) {
-    throw new Error(
-      'projects: no ports were provided; the process entry calls provideProjectsPorts before it serves',
-    );
-  }
-  return ports;
-}
+const slot = portSlot<ProjectsPorts>('projects', 'provideProjectsPorts');
+export const provideProjectsPorts = slot.provide;
+export const projectsPorts = slot.get;

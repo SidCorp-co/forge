@@ -2,6 +2,7 @@
 // imports only its own context or one before it (ADR 0008). Read only inside a call.
 
 import type { AgentReportFeedbackLink } from '@forge/contracts/agent-reports';
+import { portSlot } from '../lib/port-slot.js';
 
 interface AgentReportsPorts {
   /** The feedback item each report was triaged into, as the feedback domain shows it. */
@@ -11,17 +12,6 @@ interface AgentReportsPorts {
   ): Promise<Map<string, AgentReportFeedbackLink>>;
 }
 
-let provided: AgentReportsPorts | null = null;
-
-export function provideAgentReportsPorts(ports: AgentReportsPorts): void {
-  provided = ports;
-}
-
-export function agentReportsPorts(): AgentReportsPorts {
-  if (!provided) {
-    throw new Error(
-      'agent-reports: no ports were provided, so a report cannot show the feedback it was triaged into; the process entry calls provideAgentReportsPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<AgentReportsPorts>('agent-reports', 'provideAgentReportsPorts');
+export const provideAgentReportsPorts = slot.provide;
+export const agentReportsPorts = slot.get;
