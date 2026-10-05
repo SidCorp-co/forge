@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadVisibleProjectIds } from '../lib/authz.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
@@ -16,6 +16,8 @@ import { listOrgDevices } from './read.js';
 const orgIdParamSchema = z.object({ orgId: z.uuid() });
 
 export const deviceOrgRoutes = new Hono<{ Variables: AuthVars }>();
+
+deviceOrgRoutes.use('*', requireAuth(), assertEmailVerified());
 
 deviceOrgRoutes.get('/:orgId/devices', zValidator('param', orgIdParamSchema), async (c) => {
   const { orgId } = c.req.valid('param');

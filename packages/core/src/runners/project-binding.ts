@@ -3,6 +3,7 @@
 
 import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { residentMasterSql } from '../devices/index.js';
@@ -48,10 +49,11 @@ export async function listProjectRunnerPools(projectId: string) {
 }
 
 /** The device a bind names, or null. */
-export async function deviceForBind(deviceId: string) {
+async function deviceForBind(deviceId: string) {
   const [row] = await db
     .select({
       id: devices.id,
+      ownerId: devices.ownerId,
       name: devices.name,
       status: devices.status,
       lastSeenAt: devices.lastSeenAt,
@@ -60,6 +62,24 @@ export async function deviceForBind(deviceId: string) {
     .where(eq(devices.id, deviceId))
     .limit(1);
   return row ?? null;
+}
+
+/** The device `deviceId` when `userId` owns it; a device is put on a project only by its owner. */
+export async function ownedDeviceForBind(deviceId: string, userId: string) {
+  const device = await deviceForBind(deviceId);
+  if (!device) {
+    throw new HTTPException(404, {
+      message: 'device not found',
+      cause: { code: 'DEVICE_NOT_FOUND' },
+    });
+  }
+  if (device.ownerId !== userId) {
+    throw new HTTPException(403, {
+      message: `device ${deviceId} is not yours to bind; only its owner can put it on a project`,
+      cause: { code: 'DEVICE_NOT_OWNED' },
+    });
+  }
+  return device;
 }
 
 /** Whether runner `runnerId` belongs to the project. */
