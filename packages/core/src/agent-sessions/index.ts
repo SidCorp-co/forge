@@ -41,7 +41,6 @@ export {
   SWEEP_SESSION_COLUMNS,
   transitionSessions,
 } from './session-transition.js';
-export { steerIssue } from './steer-session.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
 export { firstUserMessageText, messageRoleToTurnRole } from './turns-helpers.js';
 export { materializeJobUsage } from './usage-materialize.js';
