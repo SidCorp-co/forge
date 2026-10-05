@@ -1,3 +1,4 @@
+import { scrubLogRecord, scrubLogText } from '@forge/observability';
 import type { Context } from 'hono';
 import { type Logger, pino, stdSerializers } from 'pino';
 import { withoutQueryParams } from './db-errors.js';
@@ -8,28 +9,22 @@ const isProd = process.env.NODE_ENV === 'production';
 const usePrettyTransport = process.env.NODE_ENV === 'development';
 const defaultLevel = isProd ? 'info' : 'debug';
 
-const redactPaths = [
-  'password',
-  'token',
-  'apiKey',
-  'secret',
-  'authorization',
-  'cookie',
-  '*.password',
-  '*.token',
-  '*.apiKey',
-  '*.secret',
-  'req.headers.authorization',
-  'req.headers.cookie',
-  'headers.authorization',
-  'headers.cookie',
-];
-
 export const logger: Logger = pino({
   level: process.env.LOG_LEVEL ?? defaultLevel,
-  redact: { paths: redactPaths, censor: '[Redacted]' },
+  // cm:why the record, its message and an error's text pass the scrubber Sentry uses, so a secret
+  // is filtered by one list whichever way it leaves the process.
+  formatters: { log: (record) => scrubLogRecord(record) },
+  hooks: {
+    logMethod(args, method) {
+      method.apply(
+        this,
+        args.map((a) => (typeof a === 'string' ? scrubLogText(a) : a)) as typeof args,
+      );
+    },
+  },
   serializers: {
-    err: (err: unknown) => withoutQueryParams(stdSerializers.err(err as Error), err),
+    err: (err: unknown) =>
+      scrubLogRecord({ ...withoutQueryParams(stdSerializers.err(err as Error), err) }),
   },
   ...(usePrettyTransport
     ? {
