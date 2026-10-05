@@ -1,3 +1,4 @@
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -124,7 +125,8 @@ interface WriteIssueContextResult {
 export async function writeIssueContext(
   input: WriteIssueContextInput,
 ): Promise<WriteIssueContextResult> {
-  const validated = writeIssueContextInputSchema.parse(input);
+  const parsed = writeIssueContextInputSchema.parse(input);
+  const validated = { ...parsed, payload: scrubSecretsDeep(parsed.payload) };
 
   if (validated.kind === 'handoff') {
     if (!validated.step) {

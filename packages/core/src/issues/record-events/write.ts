@@ -1,6 +1,7 @@
 // The one door every caller-authored record event passes: REST and MCP both write through it, so a
 // record is screened the same way whoever sends it (ISS-56).
 
+import { scrubSecretsDeep } from '@forge/observability';
 import { db, type Tx } from '../../db/client.js';
 import { MessageRefusedError } from '../../messaging/contract.js';
 import { recordRefusals } from '../../messaging/record-screen.js';
@@ -16,7 +17,7 @@ interface ScreenedRecordEventInput extends Omit<WriteRecordEventInput, 'commentI
   readonly projectId: string;
 }
 
-/** Check the draft, screen it as the comment door screens a record, store it if nothing refused. */
+/** Check the draft, screen it as the comment door screens a record, store it scrubbed if nothing refused. */
 export async function writeScreenedRecordEvent(
   input: ScreenedRecordEventInput,
   executor: Tx = db,
@@ -26,5 +27,5 @@ export async function writeScreenedRecordEvent(
   const refusals = await recordRefusals(input.projectId, record, executor);
   if (refusals.length > 0) throw new MessageRefusedError('record-event-write', refusals);
   const { projectId: _project, ...write } = input;
-  return writeRecordEvent(write, executor);
+  return writeRecordEvent({ ...write, fields: scrubSecretsDeep(write.fields) }, executor);
 }

@@ -18,6 +18,7 @@ import {
   RUN_ISSUES_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import {
   insertSessionRow,
@@ -368,12 +369,14 @@ function runSessionCause(args: {
  * Record that a run session ended. Once the flip commits, it hands back what it left `in_progress`,
  * whatever the outcome, and answers those keys.
  */
-export async function closeRunSession(args: {
+export async function closeRunSession(input: {
   deviceId: string;
   sessionId: string;
   outcome: RunSessionOutcome;
   detail?: string;
 }): Promise<ClosedRunSession | null> {
+  const args =
+    input.detail === undefined ? input : { ...input, detail: scrubSecretsDeep(input.detail) };
   const [row] = await db
     .select({ status: agentSessions.status, runId: agentSessions.pipelineRunId })
     .from(agentSessions)

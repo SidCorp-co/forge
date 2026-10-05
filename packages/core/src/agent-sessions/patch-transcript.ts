@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { jobsOfSession, scrubJobOutput } from '../jobs/index.js';
 import { toCanonicalMessages } from './canonical-legacy.js';
 import { recordTurnError } from './session-events.js';
 import { deriveChatTurnFinal } from './session-transcript.js';
@@ -10,11 +11,14 @@ interface TranscriptPatch {
   /** True when this call derived the turn's transcript from the carrier. */
   derived: boolean;
   snapshot: boolean;
+  /** The free-text fields of the PATCH, as they are to be stored. */
+  stored: { title?: string | null; metadata?: unknown; diff?: unknown };
 }
 
 /**
  * The transcript half of one PATCH: record a reported failure, derive the turn
- * where the carrier holds it, and convert a legacy `messages` array.
+ * where the carrier holds it, and convert a legacy `messages` array. A failure and a
+ * transcript are stored through the same secret scrubber as the session event door.
  */
 export async function applyTranscriptPatch(args: {
   sessionId: string;
@@ -24,20 +28,33 @@ export async function applyTranscriptPatch(args: {
     messages?: unknown[] | undefined;
     toolCallCount?: number | undefined;
     turnError?: string | undefined;
+    title?: string | null | undefined;
+    metadata?: unknown;
+    diff?: unknown;
   };
 }): Promise<TranscriptPatch> {
   const { sessionId, isDevice, isTerminal, patch } = args;
 
+  const scrub = async <T>(data: T): Promise<T> =>
+    scrubJobOutput(await jobsOfSession(sessionId), data);
+
   if (patch.turnError !== undefined && isDevice) {
-    await recordTurnError(sessionId, patch.turnError);
+    await recordTurnError(sessionId, await scrub(patch.turnError));
   }
+  const free = { title: patch.title, metadata: patch.metadata, diff: patch.diff };
+  const stored = Object.fromEntries(
+    Object.entries(free).filter(([, v]) => v !== undefined),
+  ) as TranscriptPatch['stored'];
+  const scrubbed = Object.keys(stored).length > 0 ? await scrub(stored) : stored;
 
   const derived =
     isTerminal && isDevice && patch.messages === undefined && patch.toolCallCount === undefined
       ? await deriveChatTurnFinal(sessionId)
       : false;
 
-  if (patch.messages === undefined) return { messages: undefined, derived, snapshot: false };
+  if (patch.messages === undefined) {
+    return { messages: undefined, derived, snapshot: false, stored: scrubbed };
+  }
 
   const canonical = toCanonicalMessages(patch.messages);
   if (!canonical.ok) {
@@ -47,5 +64,5 @@ export async function applyTranscriptPatch(args: {
     });
   }
   const snapshot = isTerminal || !isDevice;
-  return { messages: canonical.messages, derived, snapshot };
+  return { messages: await scrub(canonical.messages), derived, snapshot, stored: scrubbed };
 }
