@@ -2,21 +2,21 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { createReleaseBatch } from './create.js';
+import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { announceMethod } from './method.js';
-import { loadReleaseReadiness } from './readiness.js';
-import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import {
-  abortReleaseBatch,
-  createReleaseBatch,
   findReleaseBatchRun,
   getActiveReleaseBatch,
   loadReleaseBatchContext,
   loadReleaseRoster,
-} from './service.js';
+} from './queries.js';
+import { loadReleaseReadiness } from './readiness.js';
+import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
 
@@ -60,12 +60,8 @@ releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', createBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { issueIds, recutOf } = c.req.valid('json');
@@ -81,9 +77,7 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/active',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -98,9 +92,7 @@ releaseBatchRoutes.get(
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/roster',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -114,9 +106,7 @@ releaseBatchRoutes.get(
 
 releaseBatchRoutes.get(
   '/:projectId/release-readiness',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
@@ -168,9 +158,7 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
@@ -180,12 +168,8 @@ releaseBatchRoutes.get(
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/finish',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', finishBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
+  zValidator('json', finishBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -201,12 +185,8 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/abort',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', abortBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
+  zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const { reason, promotedRoster } = c.req.valid('json');
@@ -230,9 +210,7 @@ const methodBodySchema = z
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
@@ -244,12 +222,8 @@ releaseBatchRoutes.get(
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/method',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', methodBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
+  zValidator('json', methodBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
@@ -264,12 +238,8 @@ releaseBatchRoutes.post(
 // router file `index.ts` mounts — can see that both reach the fence.
 releaseBatchRoutes.post(
   '/:projectId/release-records',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', releaseRecordBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('json', releaseRecordBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -284,9 +254,7 @@ releaseBatchRoutes.post(
 
 releaseBatchRoutes.get(
   '/:projectId/release-records/:runId',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', runParamSchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

@@ -10,7 +10,7 @@
 // claimed rows, it writes nothing, and `service.ts` went back over budget as
 // the ledger, the method gate and the promotion-aware abort landed.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -330,4 +330,20 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       status: r.status,
     })),
   };
+}
+
+/** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
+export async function waitingIssueIds(projectId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        eq(issues.status, RELEASE_GATE_STATUS),
+        isNull(issues.releaseBatchRunId),
+      ),
+    )
+    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
+  return rows.map((r) => r.id);
 }

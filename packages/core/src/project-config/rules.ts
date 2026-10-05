@@ -2,11 +2,11 @@ import { contentLanguageProblem } from '@forge/contracts/content-language';
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
+import type { PolicyDocument } from './policy-schema.js';
 import {
   type BindingRole,
   type DeploymentTrigger,
   GITLESS_PROVIDERS,
-  type PolicyDocument,
   type ProjectDocument,
 } from './schema.js';
 

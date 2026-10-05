@@ -1,5 +1,5 @@
-// Settings → MCP helpers. Adapted from web v1 (`features/mcp`) for web-v2.
-//
+import { CORE_URL } from "@/lib/utils/core-url";
+
 // Two real capabilities, both backed by the live MCP endpoint — there is no
 // backend "MCP config" to save, so nothing is faked here:
 //  1. Per-client config snippet generation. The token is ALWAYS rendered as the
@@ -13,12 +13,12 @@ export type ClientKind = "claude-cli" | "cursor" | "cline" | "zed" | "generic";
 
 export const TOKEN_PLACEHOLDER = "<YOUR_TOKEN_HERE>";
 
-export const CLIENTS: ReadonlyArray<{ kind: ClientKind; label: string }> = [
-  { kind: "claude-cli", label: "Claude CLI" },
-  { kind: "cursor", label: "Cursor" },
-  { kind: "cline", label: "Cline" },
-  { kind: "zed", label: "Zed" },
-  { kind: "generic", label: "Generic" },
+export const CLIENTS: { value: ClientKind; label: string }[] = [
+  { value: "claude-cli", label: "Claude CLI" },
+  { value: "cursor", label: "Cursor" },
+  { value: "cline", label: "Cline" },
+  { value: "zed", label: "Zed" },
+  { value: "generic", label: "Generic" },
 ];
 
 interface SnippetInput {
@@ -27,41 +27,32 @@ interface SnippetInput {
 }
 
 /** A snippet is either pasted into a file the client reads, or run once in a terminal. */
-export type Snippet =
+type Snippet =
   | { howTo: "file"; filePath: string; content: string }
   | { howTo: "command"; content: string };
 
-function mcpServersFragment(projectSlug: string, mcpUrl: string) {
-  return {
-    mcpServers: {
-      forge: {
-        url: mcpUrl,
-        headers: {
-          Authorization: `Bearer ${TOKEN_PLACEHOLDER}`,
-          "X-Forge-Project-Slug": projectSlug,
-        },
-      },
-    },
-  };
+function forgeHeaders(projectSlug: string) {
+  return { Authorization: `Bearer ${TOKEN_PLACEHOLDER}`, "X-Forge-Project-Slug": projectSlug };
 }
 
 function format(obj: unknown): string {
   return `${JSON.stringify(obj, null, 2)}\n`;
 }
 
-/** Resolve the MCP endpoint. `/mcp` is served by core, NOT the web origin, so
- *  we anchor it at the core API origin the same way `apiClient` derives
- *  `CORE_URL` (`NEXT_PUBLIC_API_URL` minus the `/api` suffix). On the
- *  cross-origin forge-beta deploy this yields the API host (e.g.
- *  `https://forge-beta-api.sidcorp.co/mcp`) instead of the 404-ing web host.
- *  When `NEXT_PUBLIC_API_URL` is unset/relative (same-origin `/v2` deploy,
- *  local dev), core shares the browser origin, so fall back to it. */
+/** `/mcp` is served by core, NOT the web origin, so anchor it at the core API
+ *  origin (the cross-origin beta deploy would 404 on the web host). When core
+ *  shares the browser origin (`CORE_URL` empty), fall back to it. */
 export function getMcpUrl(): string {
-  const coreUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api\/?$/, "");
-  if (coreUrl) return `${coreUrl}/mcp`;
+  if (CORE_URL) return `${CORE_URL}/mcp`;
   if (typeof window === "undefined") return "/mcp";
   return `${window.location.origin}/mcp`;
 }
+
+const MCP_JSON_PATH: Record<"cursor" | "cline" | "generic", string> = {
+  cursor: "~/.cursor/mcp.json",
+  cline: "cline_mcp_settings.json",
+  generic: "mcp.json",
+};
 
 export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet {
   switch (kind) {
@@ -73,18 +64,6 @@ export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet 
           ` --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"` +
           ` --header "X-Forge-Project-Slug: ${input.projectSlug}"\n`,
       };
-    case "cursor":
-      return {
-        howTo: "file",
-        filePath: "~/.cursor/mcp.json",
-        content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
-      };
-    case "cline":
-      return {
-        howTo: "file",
-        filePath: "cline_mcp_settings.json",
-        content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
-      };
     case "zed":
       return {
         howTo: "file",
@@ -93,32 +72,30 @@ export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet 
           context_servers: {
             forge: {
               command: { url: input.mcpUrl },
-              headers: {
-                Authorization: `Bearer ${TOKEN_PLACEHOLDER}`,
-                "X-Forge-Project-Slug": input.projectSlug,
-              },
+              headers: forgeHeaders(input.projectSlug),
             },
           },
         }),
       };
-    case "generic":
+    default:
       return {
         howTo: "file",
-        filePath: "mcp.json",
-        content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
+        filePath: MCP_JSON_PATH[kind],
+        content: format({
+          mcpServers: { forge: { url: input.mcpUrl, headers: forgeHeaders(input.projectSlug) } },
+        }),
       };
   }
 }
 
 export class McpTestError extends Error {
-  readonly status: number;
-  readonly code: string | null;
-
-  constructor(status: number, code: string | null, message: string) {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    message: string,
+  ) {
     super(message);
     this.name = "McpTestError";
-    this.status = status;
-    this.code = code;
   }
 }
 
@@ -132,27 +109,18 @@ interface JsonRpcResponse {
   error?: { message?: string; data?: { code?: string } };
 }
 
+const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+
 async function parseError(res: Response): Promise<McpTestError> {
-  let code: string | null = null;
-  let message = res.statusText || `HTTP ${res.status}`;
-  try {
-    const body = (await res.json()) as {
-      code?: string;
-      message?: string;
-      error?: { code?: string; message?: string };
-    };
-    if (body && typeof body === "object") {
-      if (typeof body.code === "string") code = body.code;
-      if (typeof body.message === "string") message = body.message;
-      if (body.error) {
-        if (code === null && typeof body.error.code === "string") code = body.error.code;
-        if (typeof body.error.message === "string") message = body.error.message;
-      }
-    }
-  } catch {
-    // non-JSON error body — keep the statusText fallback
-  }
-  return new McpTestError(res.status, code, message);
+  // A non-JSON error body keeps the statusText fallback.
+  type ErrorBody = { code?: unknown; message?: unknown; error?: { code?: unknown; message?: unknown } };
+  const raw = (await res.json().catch(() => null)) as ErrorBody | null;
+  const body: ErrorBody = raw && typeof raw === "object" ? raw : {};
+  return new McpTestError(
+    res.status,
+    str(body.code) ?? str(body.error?.code) ?? null,
+    str(body.error?.message) ?? str(body.message) ?? (res.statusText || `HTTP ${res.status}`),
+  );
 }
 
 /** Live MCP smoke test: JSON-RPC `tools/list` with the user's PAT. The token is
@@ -178,16 +146,9 @@ export async function testConnection(input: {
   if (!res.ok) throw await parseError(res);
 
   const body = (await res.json()) as JsonRpcResponse;
-  if (body.error) {
-    const code = typeof body.error.data?.code === "string" ? body.error.data.code : null;
-    throw new McpTestError(200, code, body.error.message ?? "MCP error");
-  }
+  if (body.error) throw new McpTestError(200, str(body.error.data?.code) ?? null, body.error.message ?? "MCP error");
 
   const tools = body.result?.tools ?? [];
-  const sampleNames = tools
-    .map((t) => (typeof t?.name === "string" ? t.name : null))
-    .filter((n): n is string => n !== null)
-    .slice(0, 5);
-
+  const sampleNames = tools.flatMap((t) => str(t?.name) ?? []).slice(0, 5);
   return { toolsCount: tools.length, sampleNames };
 }

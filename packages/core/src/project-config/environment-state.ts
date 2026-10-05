@@ -2,10 +2,13 @@ import {
   type DeploymentRecord,
   type DeploymentStatus,
   describeProbeReading,
+  PROBE_TIMEOUT_MS,
   readRuntimeProbe,
   type TargetedDeployAdapter,
 } from '../integrations/deploy/index.js';
 import { isRefusal } from '../lib/refusal.js';
+import { deployAdapterForBinding } from './deploy-adapters/index.js';
+import type { NamedEnvironment } from './release-path.js';
 import {
   type EnvironmentDeclaration,
   type EnvironmentState,
@@ -18,12 +21,7 @@ import {
 type RuntimeProbe = NonNullable<EnvironmentDeclaration['verification']>['runtime'][number];
 type UnknownCause = Extract<EnvironmentState, { state: 'unknown' }>['reason']['cause'];
 
-export interface EnvironmentStateDeps {
-  readonly deployAdapterFor: (bindingId: string) => Promise<TargetedDeployAdapter | null>;
-  /** Absent in production, where the runtime probe makes its own request; a test hands in a fake. */
-  readonly fetch?: typeof fetch;
-  readonly probeTimeoutMs: number;
-}
+const PLATFORM_TIMEOUT_MS = 10_000;
 
 interface EnvironmentStateContext {
   readonly sourceType: ProjectDocument['source']['type'];
@@ -47,13 +45,9 @@ function sameIdentity(identifies: RuntimeProbe['identifies'], recorded: string, 
   return a.length >= b.length ? a.startsWith(b) && b.length >= 7 : b.startsWith(a);
 }
 
-async function runProbe(
-  probe: RuntimeProbe,
-  record: DeploymentRecord,
-  deps: EnvironmentStateDeps,
-): Promise<ProbeOutcomeState> {
+async function runProbe(probe: RuntimeProbe, record: DeploymentRecord): Promise<ProbeOutcomeState> {
   const where = { url: probe.url, identifies: probe.identifies };
-  const seen = await readRuntimeProbe(probe, { timeoutMs: deps.probeTimeoutMs, fetch: deps.fetch });
+  const seen = await readRuntimeProbe(probe, { timeoutMs: PROBE_TIMEOUT_MS });
   if (seen.kind !== 'value') {
     return { ...where, status: 'unreachable', error: clip(describeProbeReading(probe, seen), 500) };
   }
@@ -99,16 +93,16 @@ const unknown = (environment: string, cause: UnknownCause, message: string) =>
 const why = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 async function latestRecord(
+  projectId: string,
   environment: string,
   bindingId: string,
-  deps: EnvironmentStateDeps,
 ): Promise<
   | { ok: true; record: DeploymentRecord; bound: TargetedDeployAdapter }
   | { ok: false; state: EnvironmentState }
 > {
   let bound: TargetedDeployAdapter | null;
   try {
-    bound = await deps.deployAdapterFor(bindingId);
+    bound = await deployAdapterForBinding(projectId, bindingId, PLATFORM_TIMEOUT_MS);
   } catch (err) {
     if (!isRefusal(err)) {
       return { ok: false, state: unknown(environment, 'adapter-error', why(err)) };
@@ -136,12 +130,14 @@ async function latestRecord(
   }
 }
 
-export async function resolveEnvironmentState(
-  environment: string,
-  decl: EnvironmentDeclaration,
-  ctx: EnvironmentStateContext,
-  deps: EnvironmentStateDeps,
+/** What one declared environment runs now, read off its deployment record. */
+export async function readEnvironmentState(
+  projectId: string,
+  document: ProjectDocument,
+  env: NamedEnvironment,
 ): Promise<EnvironmentState> {
+  const { name: environment, declaration: decl } = env;
+  const ctx: EnvironmentStateContext = { sourceType: document.source.type };
   if ('mode' in decl.deployment) {
     return unknown(
       environment,
@@ -149,11 +145,11 @@ export async function resolveEnvironmentState(
       `environment \`${environment}\` is deployed outside Forge, with no binding to read`,
     );
   }
-  const latest = await latestRecord(environment, decl.deployment.binding, deps);
+  const latest = await latestRecord(projectId, environment, decl.deployment.binding);
   if (!latest.ok) return latest.state;
   const { record, bound } = latest;
   const probes = await Promise.all(
-    (decl.verification?.runtime ?? []).map((p) => runProbe(p, record, deps)),
+    (decl.verification?.runtime ?? []).map((p) => runProbe(p, record)),
   );
   return environmentStateSchema.parse({
     environment,

@@ -5,9 +5,9 @@ import { and, sql } from 'drizzle-orm';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
+import { writeRunMetadata } from '../pipeline/index.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';
-import { releaseBatchPorts } from './ports.js';
 
 type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -130,7 +130,7 @@ export async function compareAndSet(
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
   const guard = runOpen ? and(version, RUN_NOT_ABORTED) : version;
-  return releaseBatchPorts().writeRunMetadata(runId, {
+  return writeRunMetadata(runId, {
     merge: { finish: next },
     when: guard,
     touch: false,

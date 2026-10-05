@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { readEnvironmentState } from './environment-state-read.js';
+import { readEnvironmentState } from './environment-state.js';
 import { readProjectDocument } from './service.js';
 
 const projectParam = z.object({ id: z.uuid() });

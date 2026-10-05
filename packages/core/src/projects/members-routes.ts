@@ -12,7 +12,7 @@ import {
   readAuthUser,
   requireAuth,
 } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../middleware/route-errors.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
@@ -89,31 +89,23 @@ export const memberRoutes = new Hono<{ Variables: AuthVars }>();
 
 memberRoutes.use('*', requireAuth(), assertEmailVerified());
 
-memberRoutes.get(
-  '/:projectId/members',
-  zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
+memberRoutes.get('/:projectId/members', zValidator('param', projectParamSchema), async (c) => {
+  const { projectId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.read');
 
-    // `kind` and `displayName` are here because an agent account IS a project
-    // member (ISS-932) and a reader that is only told its synthesized address
-    // cannot name it (ISS-1137) — which is why the issue list's creator filter
-    // offered every agent as a fake person for as long as it did.
-    return c.json(await listProjectMembers(projectId));
-  },
-);
+  // `kind` and `displayName` are here because an agent account IS a project
+  // member (ISS-932) and a reader that is only told its synthesized address
+  // cannot name it (ISS-1137) — which is why the issue list's creator filter
+  // offered every agent as a fake person for as long as it did.
+  return c.json(await listProjectMembers(projectId));
+});
 
 memberRoutes.get(
   '/:projectId/members/invitations',
-  zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', projectParamSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -132,12 +124,8 @@ memberRoutes.get(
 
 memberRoutes.post(
   '/:projectId/members',
-  zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', directAddSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('json', directAddSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { userId: targetUserId, role } = c.req.valid('json');
@@ -177,12 +165,8 @@ memberRoutes.post(
 
 memberRoutes.post(
   '/:projectId/members/invite',
-  zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', inviteSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('json', inviteSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { email, role } = c.req.valid('json') as {
@@ -254,12 +238,8 @@ memberRoutes.post(
 
 memberRoutes.patch(
   '/:projectId/members/:userId',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', patchMemberSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', memberParamSchema),
+  zValidator('json', patchMemberSchema),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
     const { role, grants } = c.req.valid('json');
@@ -285,12 +265,8 @@ memberRoutes.patch(
 
 memberRoutes.delete(
   '/:projectId/members/invitations',
-  zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('query', revokeInvitationQuerySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('query', revokeInvitationQuerySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { email } = c.req.valid('query');
@@ -308,9 +284,7 @@ memberRoutes.delete(
 
 memberRoutes.delete(
   '/:projectId/members/:userId',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', memberParamSchema),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
     const callerId = c.get('userId');

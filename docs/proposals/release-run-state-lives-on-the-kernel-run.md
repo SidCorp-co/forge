@@ -10,9 +10,8 @@ its own state on that row: the columns `release_version` and `release_released_a
 
 Since ISS-204 every one of these writes goes through the row's owner,
 `packages/core/src/pipeline/run-records.ts` (`writeRunMetadata`, `stampReleaseVersion`,
-`stampReleaseShipped`), which `release-batch` reaches through its port
-(`packages/core/src/release-batch/ports.ts:ReleaseBatchPorts`) because the pipeline's sweeper still
-imports `release-batch` at load. That cleared the `table-writer` finding of
+`stampReleaseShipped`), which `release-batch` imports from the pipeline face (the port it went
+through until the release sweep moved into `release-batch` was removed in ISS-218). That cleared the `table-writer` finding of
 `node scripts/check-module-shape.mjs`, and it did not settle the shape: the kernel row still carries
 a domain's facts with no rule of its own, the shape ISS-163 removed from
 `issues.session_context.releaseHold`.

@@ -237,7 +237,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `pins` | Wrong | data, wiring | `requirements/baselines.ts:latestBaselineIn` | **rewrite** (due): Contract pins are never written and bindings never read; build the pin set to the design with req-head and agreed. |
 | `ready` | Wrong | behaviour | `requirements/rules.ts:agreeRefusals` | **keep**: REQ-4 BC-4 lets any person member sign; revise the design from "BA or owner". |
 | `release-gate` | Wrong | behaviour | `release-batch/blockers.ts:rosterBlockers` | **rewrite**: Small: record gate off on the batch. |
-| `release-requested` | Wrong | data | `release-batch/service.ts:createReleaseBatch` | **keep**: Same as drafted; also drop environment, a batch is production only. |
+| `release-requested` | Wrong | data | `release-batch/create.ts:createReleaseBatch` | **keep**: Same as drafted; also drop environment, a batch is production only. |
 | `req-head` | Wrong | data | `requirements/read.ts:detailOf` | **rewrite**: Add the requirement-to-contract link; agreed and pins cannot pin contracts without it (REQ-5). |
 | `rollup` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: The phase is one TypeScript computation since ISS-164 (view dropped); short-as-pass is left to the passing predicate (ISS-165). |
 | `route` | Wrong | wiring | `feedback/triage.ts:triageIn` | **keep**: Its only divergence is that triage and route are one act; settled by the fb-case decision. |

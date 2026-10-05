@@ -1,5 +1,5 @@
 import { parseSecretRef, secretRefOf } from '@forge/contracts/project-config';
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { BindingRole } from '../db/release-axes.js';
 import { integrationBindings, projects, runners } from '../db/schema.js';
@@ -22,13 +22,6 @@ export interface StoredDocument {
   document: unknown;
   updatedBy: string;
   updatedAt: Date;
-}
-
-export interface StoredRevision {
-  revision: number;
-  document: unknown;
-  writtenBy: string;
-  writtenAt: Date;
 }
 
 interface StoredProfile extends StoredDocument {
@@ -66,38 +59,13 @@ interface CasInput {
   userId: string;
 }
 
-interface ConfigStore {
-  readProject(projectId: string): Promise<StoredDocument | null>;
-  listProjectRevisions(projectId: string): Promise<StoredRevision[]>;
-  casProject(input: CasInput): Promise<CasResult>;
-  readPolicy(projectId: string): Promise<StoredDocument | null>;
-  casPolicy(input: CasInput): Promise<CasResult>;
-  listTestingProfiles(projectId: string): Promise<StoredProfile[]>;
-  readTestingProfile(projectId: string, profileId: string): Promise<StoredDocument | null>;
-  casTestingProfile(input: CasInput & { profileId: string }): Promise<CasResult>;
-  deleteTestingProfile(projectId: string, profileId: string): Promise<boolean>;
-  listActiveBindings(projectId: string): Promise<BindingRow[]>;
-  slugTakenBy(projectId: string, slug: string): Promise<string | null>;
-  listSecretNames(projectId: string): Promise<SecretName[]>;
-  secretValues(projectId: string, refs: readonly string[]): Promise<Map<string, Buffer>>;
-  putSecret(input: {
-    projectId: string;
-    scope: string;
-    name: string;
-    valueEnc: Buffer;
-  }): Promise<SecretName>;
-  deviceCheckout(projectId: string, deviceId: string): Promise<DeviceCheckout | null>;
-  /** Each diagram template the project's stored version 2 designs name (`id@version`), with the flows naming it. */
-  workflowTemplatesInUse(projectId: string): Promise<Map<string, string[]>>;
-}
-
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 const lockConfig = (tx: Tx, kind: string, projectId: string, extra = '') =>
   lockXact(tx, 'projectConfig', `${kind}:${projectId}:${extra}`);
 
-export const drizzleConfigStore: ConfigStore = {
-  async workflowTemplatesInUse(projectId) {
+export const drizzleConfigStore = {
+  async workflowTemplatesInUse(projectId: string): Promise<Map<string, string[]>> {
     const rows = (await db.execute(sql`
       SELECT flow, document->'template'->>'id' AS id, document->'template'->>'version' AS version
       FROM project_workflows
@@ -111,7 +79,7 @@ export const drizzleConfigStore: ConfigStore = {
     return out;
   },
 
-  async readProject(projectId) {
+  async readProject(projectId: string): Promise<StoredDocument | null> {
     const [row] = await db
       .select()
       .from(projectConfigDocuments)
@@ -120,21 +88,8 @@ export const drizzleConfigStore: ConfigStore = {
     return row ?? null;
   },
 
-  async listProjectRevisions(projectId) {
-    return db
-      .select({
-        revision: projectConfigRevisions.revision,
-        document: projectConfigRevisions.document,
-        writtenBy: projectConfigRevisions.writtenBy,
-        writtenAt: projectConfigRevisions.writtenAt,
-      })
-      .from(projectConfigRevisions)
-      .where(eq(projectConfigRevisions.projectId, projectId))
-      .orderBy(desc(projectConfigRevisions.revision));
-  },
-
   // cm:why the document is the slug's and the name's one source; `projects.slug` and `projects.name` are its projection, written in the document's transaction so a lookup by slug, a listing by name and the document never disagree
-  async casProject({ projectId, baseRevision, document, userId }) {
+  async casProject({ projectId, baseRevision, document, userId }: CasInput): Promise<CasResult> {
     const { slug, name } = (document as ProjectDocument).project;
     try {
       return await db.transaction(async (tx) => {
@@ -185,7 +140,7 @@ export const drizzleConfigStore: ConfigStore = {
     }
   },
 
-  async readPolicy(projectId) {
+  async readPolicy(projectId: string): Promise<StoredDocument | null> {
     const [row] = await db
       .select()
       .from(projectPolicies)
@@ -194,7 +149,7 @@ export const drizzleConfigStore: ConfigStore = {
     return row ?? null;
   },
 
-  async casPolicy({ projectId, baseRevision, document, userId }) {
+  async casPolicy({ projectId, baseRevision, document, userId }: CasInput): Promise<CasResult> {
     return db.transaction(async (tx) => {
       await lockConfig(tx, 'policy', projectId);
       const [current] = await tx
@@ -222,7 +177,7 @@ export const drizzleConfigStore: ConfigStore = {
     });
   },
 
-  async listTestingProfiles(projectId) {
+  async listTestingProfiles(projectId: string): Promise<StoredProfile[]> {
     return db
       .select()
       .from(projectTestingProfiles)
@@ -230,7 +185,7 @@ export const drizzleConfigStore: ConfigStore = {
       .orderBy(projectTestingProfiles.profileId);
   },
 
-  async readTestingProfile(projectId, profileId) {
+  async readTestingProfile(projectId: string, profileId: string): Promise<StoredDocument | null> {
     const [row] = await db
       .select()
       .from(projectTestingProfiles)
@@ -244,7 +199,13 @@ export const drizzleConfigStore: ConfigStore = {
     return row ?? null;
   },
 
-  async casTestingProfile({ projectId, profileId, baseRevision, document, userId }) {
+  async casTestingProfile({
+    projectId,
+    profileId,
+    baseRevision,
+    document,
+    userId,
+  }: CasInput & { profileId: string }): Promise<CasResult> {
     return db.transaction(async (tx) => {
       await lockConfig(tx, 'testing-profile', projectId, profileId);
       const where = and(
@@ -272,7 +233,7 @@ export const drizzleConfigStore: ConfigStore = {
     });
   },
 
-  async deleteTestingProfile(projectId, profileId) {
+  async deleteTestingProfile(projectId: string, profileId: string): Promise<boolean> {
     const rows = await db
       .delete(projectTestingProfiles)
       .where(
@@ -285,7 +246,7 @@ export const drizzleConfigStore: ConfigStore = {
     return rows.length > 0;
   },
 
-  async listActiveBindings(projectId) {
+  async listActiveBindings(projectId: string): Promise<BindingRow[]> {
     return db
       .select({
         id: integrationBindings.id,
@@ -299,7 +260,7 @@ export const drizzleConfigStore: ConfigStore = {
       );
   },
 
-  async slugTakenBy(projectId, slug) {
+  async slugTakenBy(projectId: string, slug: string): Promise<string | null> {
     const [holder] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -308,7 +269,7 @@ export const drizzleConfigStore: ConfigStore = {
     return holder?.id ?? null;
   },
 
-  async listSecretNames(projectId) {
+  async listSecretNames(projectId: string): Promise<SecretName[]> {
     return db
       .select({
         scope: projectSecrets.scope,
@@ -320,7 +281,7 @@ export const drizzleConfigStore: ConfigStore = {
       .orderBy(projectSecrets.scope, projectSecrets.name);
   },
 
-  async secretValues(projectId, refs) {
+  async secretValues(projectId: string, refs: readonly string[]): Promise<Map<string, Buffer>> {
     const wanted = refs.map(parseSecretRef).filter((r) => r !== null);
     if (wanted.length === 0) return new Map();
     const rows = await db
@@ -342,7 +303,17 @@ export const drizzleConfigStore: ConfigStore = {
     return new Map(rows.map((r) => [secretRefOf(r.scope, r.name), r.valueEnc]));
   },
 
-  async putSecret({ projectId, scope, name, valueEnc }) {
+  async putSecret({
+    projectId,
+    scope,
+    name,
+    valueEnc,
+  }: {
+    projectId: string;
+    scope: string;
+    name: string;
+    valueEnc: Buffer;
+  }): Promise<SecretName> {
     const now = new Date();
     const [row] = await db
       .insert(projectSecrets)
@@ -360,7 +331,7 @@ export const drizzleConfigStore: ConfigStore = {
     return row;
   },
 
-  async deviceCheckout(projectId, deviceId) {
+  async deviceCheckout(projectId: string, deviceId: string): Promise<DeviceCheckout | null> {
     const [row] = await db
       .select({ deviceId: runners.deviceId, repoPath: runners.repoPath, branch: runners.branch })
       .from(runners)

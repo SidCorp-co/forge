@@ -13,10 +13,8 @@
 
 import { useMemo, useState } from "react";
 import {
-  Button,
   Card,
   CardContent,
-  ConfirmDialog,
   EmptyState,
   ErrorState,
   IconButton,
@@ -31,6 +29,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../hooks";
 import type { ProjectLabel } from "../types";
+import { AddByName, ConfirmDelete } from "./labels-tab";
 
 const NO_PARENT = "";
 const INDENT_PER_DEPTH_PX = 20;
@@ -86,6 +85,87 @@ function descendantIds(modules: ProjectLabel[], moduleId: string): Set<string> {
   return out;
 }
 
+type ModulePatch = { name?: string; color?: string; parentId?: string | null; description?: string | null };
+
+function ModuleControls({
+  module: m,
+  modules,
+  saving,
+  expanded,
+  onExpand,
+  onPatch,
+  onDelete,
+}: {
+  module: ProjectLabel;
+  modules: ProjectLabel[];
+  saving: boolean;
+  expanded: boolean;
+  onExpand: () => void;
+  onPatch: (patch: ModulePatch) => void;
+  onDelete: () => void;
+}) {
+  const parentOptions = useMemo<SelectOption[]>(() => {
+    const banned = descendantIds(modules, m.id);
+    return [
+      { value: NO_PARENT, label: "No parent" },
+      ...modules
+        .filter((o) => !banned.has(o.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((o) => ({ value: o.id, label: o.name })),
+    ];
+  }, [modules, m.id]);
+
+  return (
+    <>
+      <input
+        type="color"
+        value={m.color}
+        onChange={(e) => onPatch({ color: e.target.value })}
+        aria-label={`Colour for ${m.name}`}
+        className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-1"
+      />
+      <Select
+        aria-label={`Parent of ${m.name}`}
+        value={m.parentId ?? NO_PARENT}
+        options={parentOptions}
+        disabled={saving}
+        onChange={(v) => onPatch({ parentId: v === NO_PARENT ? null : v })}
+        className="w-44"
+      />
+      <IconButton
+        icon={expanded ? "chevronUpDown" : "chevronDown"}
+        aria-label={expanded ? `Hide description of ${m.name}` : `Describe ${m.name}`}
+        aria-expanded={expanded}
+        onClick={onExpand}
+      />
+      <IconButton icon="trash" aria-label={`Delete module ${m.name}`} onClick={onDelete} disabled={saving} />
+    </>
+  );
+}
+
+function ModuleName({ module: m, onPatch }: { module: ProjectLabel; onPatch: (patch: ModulePatch) => void }) {
+  const [name, setName] = useState(m.name);
+  function commit() {
+    const trimmed = name.trim();
+    if (trimmed === "" || trimmed === m.name) setName(m.name);
+    else onPatch({ name: trimmed });
+  }
+  return (
+    <Input
+      value={name}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setName(m.name);
+      }}
+      aria-label={`Module name for ${m.name}`}
+      maxLength={64}
+      className="min-w-0 basis-full sm:basis-auto sm:flex-1 sm:max-w-56"
+    />
+  );
+}
+
 function ModuleRow({
   node,
   modules,
@@ -99,34 +179,13 @@ function ModuleRow({
   childCount?: number;
   modules: ProjectLabel[];
   canEdit: boolean;
-  onPatch: (patch: { name?: string; color?: string; parentId?: string | null; description?: string | null }) => void;
+  onPatch: (patch: ModulePatch) => void;
   onDelete: () => void;
   saving: boolean;
 }) {
   const { module: m, depth } = node;
-  const [name, setName] = useState(m.name);
   const [description, setDescription] = useState(m.description ?? "");
   const [expanded, setExpanded] = useState(false);
-
-  const parentOptions = useMemo<SelectOption[]>(() => {
-    const banned = descendantIds(modules, m.id);
-    return [
-      { value: NO_PARENT, label: "No parent" },
-      ...modules
-        .filter((o) => !banned.has(o.id))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((o) => ({ value: o.id, label: o.name })),
-    ];
-  }, [modules, m.id]);
-
-  function commitName() {
-    const trimmed = name.trim();
-    if (trimmed === "" || trimmed === m.name) {
-      setName(m.name);
-      return;
-    }
-    onPatch({ name: trimmed });
-  }
 
   function commitDescription() {
     const next = description.trim();
@@ -147,18 +206,7 @@ function ModuleRow({
           style={{ background: m.color }}
         />
         {canEdit ? (
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") setName(m.name);
-            }}
-            aria-label={`Module name for ${m.name}`}
-            maxLength={64}
-            className="min-w-0 basis-full sm:basis-auto sm:flex-1 sm:max-w-56"
-          />
+          <ModuleName module={m} onPatch={onPatch} />
         ) : (
           <span className={cn("min-w-0 basis-full truncate text-fg sm:basis-auto sm:flex-1", depth === 0 && "font-semibold")}>
             {m.name}
@@ -168,35 +216,15 @@ function ModuleRow({
           <span className="flex-none text-12 text-subtle">{childCount ? `${childCount} child modules` : "No child modules"}</span>
         ) : null}
         {canEdit && (
-          <>
-            <input
-              type="color"
-              value={m.color}
-              onChange={(e) => onPatch({ color: e.target.value })}
-              aria-label={`Colour for ${m.name}`}
-              className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-1"
-            />
-            <Select
-              aria-label={`Parent of ${m.name}`}
-              value={m.parentId ?? NO_PARENT}
-              options={parentOptions}
-              disabled={saving}
-              onChange={(v) => onPatch({ parentId: v === NO_PARENT ? null : v })}
-              className="w-44"
-            />
-            <IconButton
-              icon={expanded ? "chevronUpDown" : "chevronDown"}
-              aria-label={expanded ? `Hide description of ${m.name}` : `Describe ${m.name}`}
-              aria-expanded={expanded}
-              onClick={() => setExpanded((v) => !v)}
-            />
-            <IconButton
-              icon="trash"
-              aria-label={`Delete module ${m.name}`}
-              onClick={onDelete}
-              disabled={saving}
-            />
-          </>
+          <ModuleControls
+            module={m}
+            modules={modules}
+            saving={saving}
+            expanded={expanded}
+            onExpand={() => setExpanded((v) => !v)}
+            onPatch={onPatch}
+            onDelete={onDelete}
+          />
         )}
       </div>
 
@@ -227,7 +255,6 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
   const update = useUpdateLabel(projectId);
   const remove = useDeleteLabel(projectId);
 
-  const [newName, setNewName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<ProjectLabel | null>(null);
 
   const modules = useMemo(
@@ -235,12 +262,6 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
     [labelsQ.data],
   );
   const tree = useMemo(() => flattenModules(modules), [modules]);
-
-  function add() {
-    const trimmed = newName.trim();
-    if (trimmed === "") return;
-    create.mutate({ name: trimmed, kind: "module" }, { onSuccess: () => setNewName("") });
-  }
 
   return (
     <Card>
@@ -287,43 +308,18 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
         )}
 
         {canEdit && (
-          <div className="mt-4 flex items-end gap-2">
-            <div className="flex-1">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="New module name"
-                aria-label="New module name"
-                maxLength={64}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") add();
-                }}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              icon="plus"
-              loading={create.isPending}
-              disabled={newName.trim() === ""}
-              onClick={add}
-              className="min-h-11"
-            >
-              Add
-            </Button>
-          </div>
+          <AddByName
+            placeholder="New module name"
+            ariaLabel="New module name"
+            loading={create.isPending}
+            onAdd={(name, done) => create.mutate({ name, kind: "module" }, { onSuccess: done })}
+          />
         )}
-
-        <ConfirmDialog
-          open={pendingDelete !== null}
+        <ConfirmDelete
+          target={pendingDelete}
           title="Delete module"
-          message={`${pendingDelete?.name ?? ""} is removed from the taxonomy. Issues tagged with it keep their other modules. This cannot be undone.`}
-          confirmLabel="Delete"
-          tone="danger"
-          loading={remove.isPending}
-          onConfirm={() => {
-            if (!pendingDelete) return;
-            remove.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
-          }}
+          consequence="is removed from the taxonomy. Issues tagged with it keep their other modules. This cannot be undone."
+          remove={remove}
           onClose={() => setPendingDelete(null)}
         />
       </CardContent>

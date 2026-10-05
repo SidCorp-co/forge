@@ -143,20 +143,14 @@ function DeliveryPreferences() {
         )}
 
         {prefsQ.data && (
-          <div className="flex items-center justify-between gap-3 py-1">
-            <div className="min-w-0">
-              <p className="fg-label text-fg">Mentions</p>
-              <p className="fg-caption text-muted">
-                Notify me when someone @mentions me in a comment.
-              </p>
-            </div>
-            <Toggle
-              checked={prefsQ.data.notifyOnMention}
-              disabled={update.isPending}
-              onChange={(checked) => update.mutate({ notifyOnMention: checked })}
-              aria-label="Notify me when I'm mentioned"
-            />
-          </div>
+          <ToggleRow
+            label="Mentions"
+            helper="Notify me when someone @mentions me in a comment."
+            checked={prefsQ.data.notifyOnMention}
+            disabled={update.isPending}
+            onChange={(checked) => update.mutate({ notifyOnMention: checked })}
+            aria-label="Notify me when I'm mentioned"
+          />
         )}
 
         <div className="my-3 border-t border-line" />
@@ -220,18 +214,14 @@ function DesktopNotificationsToggle() {
         : "Show a desktop notification for high-signal events when this tab is in the background.";
 
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <div className="min-w-0">
-        <p className="fg-label text-fg">Desktop notifications</p>
-        <p className="fg-caption text-muted">{helper}</p>
-      </div>
-      <Toggle
-        checked={checked}
-        disabled={!supported || denied}
-        onChange={onToggle}
-        aria-label="Enable desktop notifications"
-      />
-    </div>
+    <ToggleRow
+      label="Desktop notifications"
+      helper={helper}
+      checked={checked}
+      disabled={!supported || denied}
+      onChange={onToggle}
+      aria-label="Enable desktop notifications"
+    />
   );
 }
 
@@ -261,22 +251,41 @@ function SoundNotificationsToggle() {
     }
   }
 
-  const helper = supported
-    ? "Play a sound when a new high-signal notification arrives."
-    : "Your browser does not support notification sounds.";
+  return (
+    <ToggleRow
+      label="Notification sound"
+      helper={
+        supported
+          ? "Play a sound when a new high-signal notification arrives."
+          : "Your browser does not support notification sounds."
+      }
+      checked={enabled && supported}
+      disabled={!supported}
+      onChange={onToggle}
+      aria-label="Enable notification sound"
+    />
+  );
+}
 
+function ToggleRow({
+  label,
+  helper,
+  ...toggle
+}: {
+  label: string;
+  helper: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (next: boolean) => void;
+  "aria-label": string;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <div className="min-w-0">
-        <p className="fg-label text-fg">Notification sound</p>
+        <p className="fg-label text-fg">{label}</p>
         <p className="fg-caption text-muted">{helper}</p>
       </div>
-      <Toggle
-        checked={enabled && supported}
-        disabled={!supported}
-        onChange={onToggle}
-        aria-label="Enable notification sound"
-      />
+      <Toggle {...toggle} />
     </div>
   );
 }

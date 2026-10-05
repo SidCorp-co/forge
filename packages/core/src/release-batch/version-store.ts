@@ -9,8 +9,8 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { stampReleaseVersion } from '../pipeline/index.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { releaseBatchPorts } from './ports.js';
 import { refuseRelease } from './refuse.js';
 import {
   compareReleaseVersions,
@@ -216,15 +216,6 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   ruleAboveHighest(projectId, next, highest);
   const version = formatReleaseVersion(next);
 
-  if (!(await releaseBatchPorts().stampReleaseVersion(runId, version, tx)))
-    throw versionConflict(projectId, version);
+  if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
   return version;
-}
-
-/**
- * Called by `finishReleaseBatch` once the probes agree the release is live, and by nothing else.
- * Idempotent by the `IS NULL` guard: the moment a release shipped is not a thing a retry may move.
- */
-export async function markReleaseShipped(runId: string, executor: Tx = db): Promise<void> {
-  await releaseBatchPorts().stampReleaseShipped(runId, executor);
 }

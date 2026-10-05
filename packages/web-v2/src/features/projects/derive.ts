@@ -37,8 +37,7 @@ export function mergeProjects(
   health: ProjectHealthRow[] | undefined,
   pinnedIds: ReadonlySet<string>,
 ): ProjectConsoleItem[] {
-  const healthById = new Map<string, ProjectHealthRow>();
-  for (const h of health ?? []) healthById.set(h.id, h);
+  const healthById = new Map((health ?? []).map((h) => [h.id, h]));
 
   return list.map((p) => {
     const h = healthById.get(p.id);
@@ -92,15 +91,13 @@ export function sortProjects(
   items: ProjectConsoleItem[],
   sort: ProjectSort,
 ): ProjectConsoleItem[] {
-  const out = [...items];
-  out.sort((a, b) => {
+  return [...items].sort((a, b) => {
     if (sort === 'name') return a.name.localeCompare(b.name);
     if (sort === 'health') {
-      return (HEALTH_RANK[a.health] - HEALTH_RANK[b.health]) || (recencyKey(b) - recencyKey(a));
+      return HEALTH_RANK[a.health] - HEALTH_RANK[b.health] || recencyKey(b) - recencyKey(a);
     }
-    return recencyKey(b) - recencyKey(a); // 'recent'
+    return recencyKey(b) - recencyKey(a);
   });
-  return out;
 }
 
 /**
@@ -119,7 +116,7 @@ export function filterProjects(
   items: ProjectConsoleItem[],
   query: string,
   attentionOnly: boolean,
-  orgId: string | null = null,
+  orgId: string | null,
 ): ProjectConsoleItem[] {
   const q = query.trim().toLowerCase();
   return items.filter((p) => {

@@ -18,6 +18,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { formatStamp } from "@/lib/utils/format";
 import { useToast } from "@/providers/toast-provider";
 import {
   useAssistantPreferences,
@@ -51,10 +52,7 @@ function describeChange(change: PreferenceChange): string {
 
 export function AssistantPreferencesCard() {
   const prefsQ = useAssistantPreferences();
-  const changesQ = usePreferenceChanges();
   const update = useUpdateAssistantPreferences();
-  const restore = useRestorePreferenceChange();
-  const { toast } = useToast();
 
   const [style, setStyle] = useState<AnswerStyle>("default");
   const [instructions, setInstructions] = useState("");
@@ -69,15 +67,6 @@ export function AssistantPreferencesCard() {
     !!prefsQ.data &&
     (style !== prefsQ.data.answerStyle ||
       instructions !== (prefsQ.data.assistantInstructions ?? ""));
-
-  async function onRestore(change: PreferenceChange) {
-    try {
-      await restore.mutateAsync(change.id);
-      toast({ title: "Restored", description: describeChange(change), tone: "success" });
-    } catch (err) {
-      toast({ title: "Could not restore", description: formatApiError(err), tone: "error" });
-    }
-  }
 
   return (
     <Card>
@@ -129,34 +118,54 @@ export function AssistantPreferencesCard() {
           </div>
         )}
 
-        <CardTitle className="mt-8 mb-2">Changes</CardTitle>
-        {changesQ.isLoading ? (
-          <Skeleton className="h-10 w-full rounded-md" />
-        ) : !changesQ.data || changesQ.data.length === 0 ? (
-          <p className="fg-body-sm text-muted">Nothing has been changed yet.</p>
-        ) : (
-          <ul className="divide-y divide-line" data-testid="preference-changes">
-            {changesQ.data.map((change) => (
-              <li key={change.id} className="flex items-center justify-between gap-3 py-2">
-                <div>
-                  <p className="fg-body-sm">{describeChange(change)}</p>
-                  <p className="fg-caption text-subtle">
-                    {new Date(change.changedAt).toLocaleString()}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  disabled={restore.isPending}
-                  onClick={() => onRestore(change)}
-                  aria-label={`Restore: ${describeChange(change)}`}
-                >
-                  Restore
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ChangeTrail />
       </CardContent>
     </Card>
+  );
+}
+
+/** Every write anybody made to these preferences, each restorable. */
+function ChangeTrail() {
+  const changesQ = usePreferenceChanges();
+  const restore = useRestorePreferenceChange();
+  const { toast } = useToast();
+
+  async function onRestore(change: PreferenceChange) {
+    try {
+      await restore.mutateAsync(change.id);
+      toast({ title: "Restored", description: describeChange(change), tone: "success" });
+    } catch (err) {
+      toast({ title: "Could not restore", description: formatApiError(err), tone: "error" });
+    }
+  }
+
+  return (
+    <>
+      <CardTitle className="mt-8 mb-2">Changes</CardTitle>
+      {changesQ.isLoading ? (
+        <Skeleton className="h-10 w-full rounded-md" />
+      ) : !changesQ.data || changesQ.data.length === 0 ? (
+        <p className="fg-body-sm text-muted">Nothing has been changed yet.</p>
+      ) : (
+        <ul className="divide-y divide-line" data-testid="preference-changes">
+          {changesQ.data.map((change) => (
+            <li key={change.id} className="flex items-center justify-between gap-3 py-2">
+              <div>
+                <p className="fg-body-sm">{describeChange(change)}</p>
+                <p className="fg-caption text-subtle">{formatStamp(change.changedAt)}</p>
+              </div>
+              <Button
+                variant="ghost"
+                disabled={restore.isPending}
+                onClick={() => onRestore(change)}
+                aria-label={`Restore: ${describeChange(change)}`}
+              >
+                Restore
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

@@ -90,16 +90,11 @@ export type ProjectView = 'cards' | 'list';
  * One fully-hydrated console row: the list item joined with its health rollup,
  * a client-derived `health` enum, and the client-only `pinned` flag.
  */
-export interface ProjectConsoleItem {
-  id: string;
-  slug: string;
-  name: string;
-  orgId: string;
-  orgName: string;
-  orgIsPersonal: boolean;
-  role: ProjectListItem['role'];
-  orgRole: ProjectListItem['orgRole'];
-  createdAt: string;
+export interface ProjectConsoleItem
+  extends Pick<
+    ProjectListItem,
+    'id' | 'slug' | 'name' | 'orgId' | 'orgName' | 'orgIsPersonal' | 'role' | 'orgRole' | 'createdAt'
+  > {
   health: HealthKey;
   liveRuns: number;
   openIssues: number;

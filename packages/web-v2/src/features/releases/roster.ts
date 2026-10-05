@@ -36,16 +36,11 @@ export interface ReleaseRoster {
 }
 
 class RosterShapeError extends Error {
-  readonly endpoint: string;
-  readonly at: string;
-
   constructor(endpoint: string, at: string, expected: string, got: unknown) {
     super(
       `${endpoint} answered a release roster this app cannot read: ${at} should be ${expected}, and the response carries ${describe(got)}. The server's roster shape has moved.`,
     );
     this.name = "RosterShapeError";
-    this.endpoint = endpoint;
-    this.at = at;
   }
 }
 
@@ -56,75 +51,14 @@ function describe(got: unknown): string {
   return `a ${typeof got}`;
 }
 
-/** Read a key so that an absent one is `undefined` and never reads as null. */
-function keyAt(o: Record<string, unknown>, key: string): unknown {
-  return key in o ? o[key] : undefined;
-}
+type Obj = Record<string, unknown>;
+type Expected = "a string" | "a string or null" | "a number or null";
 
-function objectAt(raw: unknown, endpoint: string, where: string): Record<string, unknown> {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new RosterShapeError(endpoint, where, "an object", raw);
-  }
-  return raw as Record<string, unknown>;
-}
-
-function stringAt(o: Record<string, unknown>, key: string, endpoint: string, where: string): string {
-  const v = keyAt(o, key);
-  if (typeof v !== "string") throw new RosterShapeError(endpoint, where, "a string", v);
-  return v;
-}
-
-function nullableStringAt(
-  o: Record<string, unknown>,
-  key: string,
-  endpoint: string,
-  where: string,
-): string | null {
-  const v = keyAt(o, key);
-  if (v === null) return null;
-  if (typeof v !== "string") throw new RosterShapeError(endpoint, where, "a string or null", v);
-  return v;
-}
-
-function nullableNumberAt(
-  o: Record<string, unknown>,
-  key: string,
-  endpoint: string,
-  where: string,
-): number | null {
-  const v = keyAt(o, key);
-  if (v === null) return null;
-  if (typeof v !== "number") throw new RosterShapeError(endpoint, where, "a number or null", v);
-  return v;
-}
-
-function stringsAt(
-  o: Record<string, unknown>,
-  key: string,
-  endpoint: string,
-  where: string,
-): string[] {
-  const v = keyAt(o, key);
-  if (!Array.isArray(v)) throw new RosterShapeError(endpoint, where, "an array of strings", v);
-  return v.map((item, i) => {
-    if (typeof item !== "string") {
-      throw new RosterShapeError(endpoint, `${where}[${i}]`, "a string", item);
-    }
-    return item;
-  });
-}
-
-function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEntry {
-  const o = objectAt(raw, endpoint, where);
-  return {
-    id: stringAt(o, "id", endpoint, `${where}.id`),
-    displayId: stringAt(o, "displayId", endpoint, `${where}.displayId`),
-    title: stringAt(o, "title", endpoint, `${where}.title`),
-    mergedAt: nullableStringAt(o, "mergedAt", endpoint, `${where}.mergedAt`),
-    waitingDays: nullableNumberAt(o, "waitingDays", endpoint, `${where}.waitingDays`),
-    claimedByRunId: nullableStringAt(o, "claimedByRunId", endpoint, `${where}.claimedByRunId`),
-  };
-}
+const HOLDS: Record<Expected, (v: unknown) => boolean> = {
+  "a string": (v) => typeof v === "string",
+  "a string or null": (v) => v === null || typeof v === "string",
+  "a number or null": (v) => v === null || typeof v === "number",
+};
 
 /**
  * Check a roster response against the shape above, or refuse it naming the
@@ -132,17 +66,41 @@ function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEn
  * so the next server-side rename breaks here rather than on a screen.
  */
 export function parseReleaseRoster(raw: unknown, endpoint: string): ReleaseRoster {
-  const o = objectAt(raw, endpoint, "the response");
-  const issues = keyAt(o, "issues");
-  if (!Array.isArray(issues)) {
-    throw new RosterShapeError(endpoint, "issues", "an array", issues);
+  const fail = (at: string, expected: string, got: unknown): never => {
+    throw new RosterShapeError(endpoint, at, expected, got);
+  };
+  const object = (v: unknown, at: string): Obj =>
+    typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Obj) : fail(at, "an object", v);
+  // `key in o`, so an absent key reads as `undefined` and never as null.
+  const valueAt = (o: Obj, key: string) => (key in o ? o[key] : undefined);
+  const array = (v: unknown, at: string, expected: string): unknown[] =>
+    Array.isArray(v) ? v : fail(at, expected, v);
+  function field<T>(o: Obj, key: string, expected: Expected, at = key): T {
+    const v = valueAt(o, key);
+    return (HOLDS[expected](v) ? v : fail(at, expected, v)) as T;
   }
+
+  const o = object(raw, "the response");
+  const issues = array(valueAt(o, "issues"), "issues", "an array");
   return {
-    gateStatus: nullableStringAt(o, "gateStatus", endpoint, "gateStatus"),
-    channels: stringsAt(o, "channels", endpoint, "channels"),
-    releaseRunnerLabel: nullableStringAt(o, "releaseRunnerLabel", endpoint, "releaseRunnerLabel"),
-    baseBranch: nullableStringAt(o, "baseBranch", endpoint, "baseBranch"),
-    nextCutAt: nullableStringAt(o, "nextCutAt", endpoint, "nextCutAt"),
-    issues: issues.map((entry, i) => entryAt(entry, endpoint, `issues[${i}]`)),
+    gateStatus: field(o, "gateStatus", "a string or null"),
+    channels: array(valueAt(o, "channels"), "channels", "an array of strings").map((item, i) =>
+      typeof item === "string" ? item : fail(`channels[${i}]`, "a string", item),
+    ),
+    releaseRunnerLabel: field(o, "releaseRunnerLabel", "a string or null"),
+    baseBranch: field(o, "baseBranch", "a string or null"),
+    nextCutAt: field(o, "nextCutAt", "a string or null"),
+    issues: issues.map((entry, i) => {
+      const at = `issues[${i}]`;
+      const e = object(entry, at);
+      return {
+        id: field(e, "id", "a string", `${at}.id`),
+        displayId: field(e, "displayId", "a string", `${at}.displayId`),
+        title: field(e, "title", "a string", `${at}.title`),
+        mergedAt: field(e, "mergedAt", "a string or null", `${at}.mergedAt`),
+        waitingDays: field(e, "waitingDays", "a number or null", `${at}.waitingDays`),
+        claimedByRunId: field(e, "claimedByRunId", "a string or null", `${at}.claimedByRunId`),
+      };
+    }),
   };
 }

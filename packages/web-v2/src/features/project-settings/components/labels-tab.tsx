@@ -8,7 +8,7 @@
 // a module's parent and description have no control on this screen, so editing
 // one here could only ever be a partial edit.
 
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -33,7 +33,6 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
   const create = useCreateLabel(projectId);
   const remove = useDeleteLabel(projectId);
 
-  const [name, setName] = useState("");
   const [color, setColor] = useState(DEFAULT_COLOR);
   const [pendingDelete, setPendingDelete] = useState<ProjectLabel | null>(null);
 
@@ -41,15 +40,6 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
     () => (labelsQ.data ?? []).filter((l) => l.kind !== "module"),
     [labelsQ.data],
   );
-
-  function add() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    create.mutate(
-      { name: trimmed, color, kind: "label" },
-      { onSuccess: () => { setName(""); setColor(DEFAULT_COLOR); } },
-    );
-  }
 
   return (
     <Card>
@@ -68,45 +58,32 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
         ) : (
           <ul className="space-y-1.5">
             {plainLabels.map((label) => (
-              <li
+              <LabelRow
                 key={label.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="h-3 w-3 shrink-0 rounded-full border border-line"
-                    style={{ background: label.color }}
-                  />
-                  <span className="truncate text-fg">{label.name}</span>
-                  <Badge tone="neutral">{label.color}</Badge>
-                </span>
-                {canEdit && (
-                  <IconButton
-                    icon="trash"
-                    aria-label={`Delete label ${label.name}`}
-                    onClick={() => setPendingDelete(label)}
-                    disabled={remove.isPending}
-                  />
-                )}
-              </li>
+                label={label}
+                onDelete={canEdit ? () => setPendingDelete(label) : undefined}
+                deleting={remove.isPending}
+              />
             ))}
           </ul>
         )}
 
         {canEdit && (
-          <div className="mt-4 flex items-end gap-2">
-            <div className="flex-1">
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="New label name"
-                maxLength={64}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") add();
-                }}
-              />
-            </div>
+          <AddByName
+            placeholder="New label name"
+            loading={create.isPending}
+            onAdd={(name, done) =>
+              create.mutate(
+                { name, color, kind: "label" },
+                {
+                  onSuccess: () => {
+                    done();
+                    setColor(DEFAULT_COLOR);
+                  },
+                },
+              )
+            }
+          >
             <input
               type="color"
               value={color}
@@ -114,33 +91,108 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
               aria-label="Label color"
               className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-1"
             />
-            <Button
-              variant="secondary"
-              icon="plus"
-              loading={create.isPending}
-              disabled={name.trim() === ""}
-              onClick={add}
-              className="min-h-11"
-            >
-              Add
-            </Button>
-          </div>
+          </AddByName>
         )}
-
-        <ConfirmDialog
-          open={pendingDelete !== null}
+        <ConfirmDelete
+          target={pendingDelete}
           title="Delete label"
-          message={`${pendingDelete?.name ?? ""} is removed from every issue carrying it. This cannot be undone.`}
-          confirmLabel="Delete"
-          tone="danger"
-          loading={remove.isPending}
-          onConfirm={() => {
-            if (!pendingDelete) return;
-            remove.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
-          }}
+          consequence="is removed from every issue carrying it. This cannot be undone."
+          remove={remove}
           onClose={() => setPendingDelete(null)}
         />
       </CardContent>
     </Card>
+  );
+}
+
+function LabelRow({ label, onDelete, deleting }: { label: ProjectLabel; onDelete?: () => void; deleting: boolean }) {
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2">
+      <span className="flex min-w-0 items-center gap-2">
+        <span aria-hidden className="h-3 w-3 shrink-0 rounded-full border border-line" style={{ background: label.color }} />
+        <span className="truncate text-fg">{label.name}</span>
+        <Badge tone="neutral">{label.color}</Badge>
+      </span>
+      {onDelete && (
+        <IconButton icon="trash" aria-label={`Delete label ${label.name}`} onClick={onDelete} disabled={deleting} />
+      )}
+    </li>
+  );
+}
+
+/** The add row Labels and Modules share: a name, Enter or the button adds it; `done` clears it. */
+export function AddByName({
+  placeholder,
+  ariaLabel,
+  onAdd,
+  loading,
+  children,
+}: {
+  placeholder: string;
+  ariaLabel?: string;
+  onAdd: (name: string, done: () => void) => void;
+  loading: boolean;
+  children?: ReactNode;
+}) {
+  const [value, setValue] = useState("");
+  const add = () => {
+    if (value.trim()) onAdd(value.trim(), () => setValue(""));
+  };
+  return (
+    <div className="mt-4 flex items-end gap-2">
+      <div className="flex-1">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          maxLength={64}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+        />
+      </div>
+      {children}
+      <Button
+        variant="secondary"
+        icon="plus"
+        loading={loading}
+        disabled={value.trim() === ""}
+        onClick={add}
+        className="min-h-11"
+      >
+        Add
+      </Button>
+    </div>
+  );
+}
+
+export function ConfirmDelete({
+  target,
+  title,
+  consequence,
+  remove,
+  onClose,
+}: {
+  target: ProjectLabel | null;
+  title: string;
+  /** Read after the target's name. */
+  consequence: string;
+  remove: ReturnType<typeof useDeleteLabel>;
+  onClose: () => void;
+}) {
+  return (
+    <ConfirmDialog
+      open={target !== null}
+      title={title}
+      message={`${target?.name ?? ""} ${consequence}`}
+      confirmLabel="Delete"
+      tone="danger"
+      loading={remove.isPending}
+      onConfirm={() => {
+        if (target) remove.mutate(target.id, { onSettled: onClose });
+      }}
+      onClose={onClose}
+    />
   );
 }

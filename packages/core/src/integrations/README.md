@@ -37,7 +37,7 @@ protocol and nothing else:
 | Port | Directory | Vendors | Bound to | Called from |
 |---|---|---|---|---|
 | source hosting | `source-host/` over `github/`, `gitlab/`; the change request projection (`repo_pull_requests`) is the port's | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `execution-ports.ts`, `integration-door/issue-merge-routes.ts`, `integration-door/source-tool.ts`, `integration-door/status-service.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts`, `work-ports.ts` |
-| deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `deploy/coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
+| deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `deploy/coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
 | error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `error-intake/sightings.ts`, `integration-door/sentry-tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |

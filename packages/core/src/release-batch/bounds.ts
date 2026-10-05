@@ -1,4 +1,4 @@
-import type { ReleaseAttemptRow } from './ledger.js';
+import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 
 /** Defaults, and there is no per-project override — see the plan's trade note. */
 const BOUND_DEFAULTS = {

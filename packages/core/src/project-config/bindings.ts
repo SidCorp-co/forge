@@ -1,13 +1,13 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { BindingRole as RowRole } from '../db/release-axes.js';
 import { bindEffects } from './bind-effects.js';
-import { type BindingStore, drizzleBindingStore, type StoredBinding } from './binding-store.js';
+import { drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
 import { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 import { type BindingDocument, bindingDocumentSchema } from './schema.js';
 import { readProjectConfig } from './service.js';
 
-const store: BindingStore = drizzleBindingStore;
+const store = drizzleBindingStore;
 
 type HeldBinding = { revision: number; document: BindingDocument };
 
@@ -135,48 +135,42 @@ type BindingWriteOutcome =
   | { ok: true; held: HeldBinding; created: boolean; effects: Record<string, unknown> }
   | { ok: false; refusals: ApiRefusal[] };
 
-export async function writeBinding(input: {
-  projectId: string;
-  bindingId: string;
-  userId: string;
-  baseRevision: number | null;
-  raw: unknown;
-}): Promise<BindingWriteOutcome> {
-  const { projectId, bindingId, userId, baseRevision, raw } = input;
-  const current = await store.readBinding(bindingId);
+/** Why the stored row cannot take this write at all: another project's, unrepresentable, or stale. */
+function heldRefusal(
+  current: Awaited<ReturnType<typeof store.readBinding>>,
+  projectId: string,
+  bindingId: string,
+  baseRevision: number | null,
+): ApiRefusal | null {
   if (current && current.projectId !== projectId) {
     return {
-      ok: false,
-      refusals: [
-        {
-          code: 'BINDING_ID_MISMATCH',
-          path: '/id',
-          detail: `binding ${bindingId} is another project's; choose a new id for this project's binding.`,
-        },
-      ],
+      code: 'BINDING_ID_MISMATCH',
+      path: '/id',
+      detail: `binding ${bindingId} is another project's; choose a new id for this project's binding.`,
     };
   }
-  const held = current ? decodeTarget(current) : null;
-  if (held && !held.ok && held.wouldDrop) {
+  const decoded = current ? decodeTarget(current) : null;
+  if (decoded && !decoded.ok && decoded.wouldDrop) {
     return {
-      ok: false,
-      refusals: [
-        {
-          code: 'BINDING_NOT_REPRESENTABLE',
-          path: '',
-          detail: `binding ${bindingId} has no binding-document form, so a document cannot replace it without losing what it holds: ${held.reason}.`,
-        },
-      ],
+      code: 'BINDING_NOT_REPRESENTABLE',
+      path: '',
+      detail: `binding ${bindingId} has no binding-document form, so a document cannot replace it without losing what it holds: ${decoded.reason}.`,
     };
   }
   const storedRevision = current?.revision ?? null;
-  if (storedRevision !== baseRevision) {
-    return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
-  }
-  const parsed = parseVersionedDocument(bindingDocumentSchema, raw, 'binding');
-  if (!parsed.ok) return parsed;
-  const doc = parsed.value;
+  return storedRevision === baseRevision ? null : staleBase(baseRevision, storedRevision);
+}
 
+/** Every reason this document cannot be written as it stands, the cheap checks first. */
+async function documentRefusals(args: {
+  projectId: string;
+  userId: string;
+  bindingId: string;
+  doc: BindingDocument;
+  current: Awaited<ReturnType<typeof store.readBinding>>;
+  encoded: ReturnType<typeof encodeTarget>;
+}): Promise<ApiRefusal[]> {
+  const { projectId, userId, bindingId, doc, current, encoded } = args;
   const refusals: ApiRefusal[] = [];
   if (doc.id !== bindingId) {
     refusals.push({
@@ -185,7 +179,6 @@ export async function writeBinding(input: {
       detail: `id "${doc.id}" is not the binding this URL writes (${bindingId}).`,
     });
   }
-  const encoded = encodeTarget(doc.target);
   const agentAccess = doc.agentAccess ?? 'none';
   const active = doc.active ?? true;
   refusals.push(
@@ -210,6 +203,53 @@ export async function writeBinding(input: {
     }
     if (!active) refusals.push(inUse(ref.path, '/active'));
   }
+  return refusals;
+}
+
+/** The refusal for a write the compare-and-set did not take. */
+function casRefusal(
+  result: Extract<Awaited<ReturnType<typeof store.casBinding>>, { ok: false }>,
+  ctx: {
+    baseRevision: number | null;
+    bindingId: string;
+    doc: BindingDocument;
+    encoded: ReturnType<typeof encodeTarget>;
+  },
+): ApiRefusal {
+  if (result.reason === 'stale') return staleBase(ctx.baseRevision, result.storedRevision);
+  if (result.reason === 'foreign') {
+    return {
+      code: 'BINDING_ID_MISMATCH',
+      path: '/id',
+      detail: `binding ${ctx.bindingId} is another project's.`,
+    };
+  }
+  return {
+    code: 'BINDING_IN_USE',
+    path: '/role',
+    detail: `this project already has a ${ctx.doc.target.provider} service binding labelled "${ctx.encoded.label}", switched on or off; a service binding is one per provider and label, so write that binding's document, or give this one its own \`target.label\`.`,
+  };
+}
+
+export async function writeBinding(input: {
+  projectId: string;
+  bindingId: string;
+  userId: string;
+  baseRevision: number | null;
+  raw: unknown;
+}): Promise<BindingWriteOutcome> {
+  const { projectId, bindingId, userId, baseRevision, raw } = input;
+  const current = await store.readBinding(bindingId);
+  const held = heldRefusal(current, projectId, bindingId, baseRevision);
+  if (held) return { ok: false, refusals: [held] };
+  const parsed = parseVersionedDocument(bindingDocumentSchema, raw, 'binding');
+  if (!parsed.ok) return parsed;
+  const doc = parsed.value;
+
+  const encoded = encodeTarget(doc.target);
+  const agentAccess = doc.agentAccess ?? 'none';
+  const active = doc.active ?? true;
+  const refusals = await documentRefusals({ projectId, userId, bindingId, doc, current, encoded });
   if (refusals.length > 0) return { ok: false, refusals };
   const unverified = await bindEffects.targetRefusals({
     projectId,
@@ -236,25 +276,7 @@ export async function writeBinding(input: {
     integrationSecret: () => bindEffects.inboundSecret(doc.connection),
   });
   if (!result.ok) {
-    if (result.reason === 'stale') {
-      return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
-    }
-    return {
-      ok: false,
-      refusals: [
-        result.reason === 'foreign'
-          ? {
-              code: 'BINDING_ID_MISMATCH',
-              path: '/id',
-              detail: `binding ${bindingId} is another project's.`,
-            }
-          : {
-              code: 'BINDING_IN_USE',
-              path: '/role',
-              detail: `this project already has a ${doc.target.provider} service binding labelled "${encoded.label}", switched on or off; a service binding is one per provider and label, so write that binding's document, or give this one its own \`target.label\`.`,
-            },
-      ],
-    };
+    return { ok: false, refusals: [casRefusal(result, { baseRevision, bindingId, doc, encoded })] };
   }
   const effects = result.changed
     ? await bindEffects.afterWrite({

@@ -1,18 +1,5 @@
 "use client";
 
-import {
-  Button,
-  Card,
-  CardContent,
-  Field,
-  Input,
-  SectionTitle,
-  Select,
-  type SelectOption,
-} from "@/design";
-import { useOrgs } from "@/features/orgs/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import type { ProjectDetail } from "@/features/projects/types";
 // Project settings → Advanced. Move-to-org + soft archive / unarchive
 // (ISS-353). Owner-only (the buttons are disabled for non-owners and the
 // server returns 403). Archiving requires type-to-confirm of the project name;
@@ -22,119 +9,90 @@ import type { ProjectDetail } from "@/features/projects/types";
 // (core enforces) — we offer only orgs where the caller is owner/admin and
 // confirm before the PATCH since the destination org's admins gain control.
 import { useState } from "react";
-import {
-  useArchiveProject,
-  useUnarchiveProject,
-  useUpdateProject,
-} from "../hooks";
+import { Button, Card, CardContent, Field, Input, SectionTitle, Select } from "@/design";
+import { useOrgs } from "@/features/orgs/hooks";
+import type { ProjectDetail } from "@/features/projects/types";
+import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
 
-export function AdvancedTab({
-  project,
-  canEdit,
-}: {
-  project: ProjectDetail;
-  canEdit: boolean;
-}) {
-  const archive = useArchiveProject(project.id);
-  const unarchive = useUnarchiveProject(project.id);
-
-  const [confirming, setConfirming] = useState(false);
-  const [typed, setTyped] = useState("");
-
-  const isArchived = Boolean(project.archivedAt);
-  const nameMatches = typed.trim() === project.name && project.name.length > 0;
-
+export function AdvancedTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   return (
     <div className="space-y-6">
       {canEdit && <MoveToOrgCard project={project} />}
-
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
-          {isArchived ? (
-            <>
-              <p className="fg-caption mb-4 text-muted">
-                This project is <strong>archived</strong>. It is hidden from the
-                default project list and no new pipeline jobs are dispatched.
-                All issues, comments, runs, and sessions are retained. Unarchive
-                to make it active again.
-              </p>
-              {canEdit && (
-                <Button
-                  variant="primary"
-                  loading={unarchive.isPending}
-                  onClick={() => unarchive.mutate()}
-                  className="min-h-11"
-                >
-                  Unarchive project
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="fg-caption mb-4 text-muted">
-                Archiving hides this project from the default list and pauses
-                auto-pipeline dispatch. Nothing is deleted — issues, comments,
-                runs, and sessions are kept and you can unarchive at any time.
-              </p>
-              {canEdit &&
-                (confirming ? (
-                  <div className="space-y-4">
-                    <Field
-                      label="Confirm archive"
-                      hint={`Type the project name "${project.name}" to confirm.`}
-                    >
-                      <Input
-                        value={typed}
-                        onChange={(e) => setTyped(e.target.value)}
-                        placeholder={project.name}
-                        autoComplete="off"
-                        aria-label="Type the project name to confirm archive"
-                      />
-                    </Field>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="danger"
-                        loading={archive.isPending}
-                        disabled={!nameMatches}
-                        onClick={() =>
-                          archive.mutate(undefined, {
-                            onSuccess: () => {
-                              setConfirming(false);
-                              setTyped("");
-                            },
-                          })
-                        }
-                        className="min-h-11"
-                      >
-                        Confirm archive
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setConfirming(false);
-                          setTyped("");
-                        }}
-                        className="min-h-11"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    variant="danger"
-                    onClick={() => setConfirming(true)}
-                    className="min-h-11"
-                  >
-                    Archive project
-                  </Button>
-                ))}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <ArchiveCard project={project} canEdit={canEdit} />
     </div>
+  );
+}
+
+function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+  const archive = useArchiveProject(project.id);
+  const unarchive = useUnarchiveProject(project.id);
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState("");
+  const nameMatches = typed.trim() === project.name && project.name.length > 0;
+  const stopConfirming = () => {
+    setConfirming(false);
+    setTyped("");
+  };
+
+  return (
+    <Card>
+      <CardContent>
+        <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
+        {project.archivedAt ? (
+          <>
+            <p className="fg-caption mb-4 text-muted">
+              This project is <strong>archived</strong>. It is hidden from the default project list and no
+              new pipeline jobs are dispatched. All issues, comments, runs, and sessions are retained.
+              Unarchive to make it active again.
+            </p>
+            {canEdit && (
+              <Button variant="primary" loading={unarchive.isPending} onClick={() => unarchive.mutate()} className="min-h-11">
+                Unarchive project
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="fg-caption mb-4 text-muted">
+              Archiving hides this project from the default list and pauses auto-pipeline dispatch. Nothing
+              is deleted — issues, comments, runs, and sessions are kept and you can unarchive at any time.
+            </p>
+            {canEdit &&
+              (confirming ? (
+                <div className="space-y-4">
+                  <Field label="Confirm archive" hint={`Type the project name "${project.name}" to confirm.`}>
+                    <Input
+                      value={typed}
+                      onChange={(e) => setTyped(e.target.value)}
+                      placeholder={project.name}
+                      autoComplete="off"
+                      aria-label="Type the project name to confirm archive"
+                    />
+                  </Field>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="danger"
+                      loading={archive.isPending}
+                      disabled={!nameMatches}
+                      onClick={() => archive.mutate(undefined, { onSuccess: stopConfirming })}
+                      className="min-h-11"
+                    >
+                      Confirm archive
+                    </Button>
+                    <Button variant="secondary" onClick={stopConfirming} className="min-h-11">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="danger" onClick={() => setConfirming(true)} className="min-h-11">
+                  Archive project
+                </Button>
+              ))}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -142,20 +100,11 @@ export function AdvancedTab({
  *  destination; core also requires admin on the current org). */
 function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   const orgsQ = useOrgs();
-  const projectsQ = useProjectsIncludingArchived();
   const update = useUpdateProject(project.id);
   const [targetOrgId, setTargetOrgId] = useState("");
-
-  const currentOrgId =
-    (projectsQ.data ?? []).find((p) => p.id === project.id)?.orgId ?? null;
-
   const targets = (orgsQ.data ?? []).filter(
-    (o) => (o.role === "owner" || o.role === "admin") && o.id !== currentOrgId,
+    (o) => (o.role === "owner" || o.role === "admin") && o.id !== project.orgId,
   );
-  const options: SelectOption[] = targets.map((o) => ({
-    value: o.id,
-    label: o.name,
-  }));
 
   if (targets.length === 0) return null;
 
@@ -167,10 +116,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
         `Owners and admins of "${target.name}" will gain full admin control of this project.`,
     );
     if (!ok) return;
-    update.mutate(
-      { orgId: target.id },
-      { onSuccess: () => setTargetOrgId("") },
-    );
+    update.mutate({ orgId: target.id }, { onSuccess: () => setTargetOrgId("") });
   }
 
   return (
@@ -186,7 +132,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
           <div className="flex-1 sm:max-w-80">
             <Field label="Destination organization">
               <Select
-                options={options}
+                options={targets.map((o) => ({ value: o.id, label: o.name }))}
                 value={targetOrgId}
                 onChange={(v) => setTargetOrgId(v)}
                 placeholder="Select an organization…"

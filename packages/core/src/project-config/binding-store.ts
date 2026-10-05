@@ -48,17 +48,6 @@ type BindingCasResult =
   | { ok: false; reason: 'foreign' }
   | { ok: false; reason: 'service-clash' };
 
-export interface BindingStore {
-  readBinding(id: string): Promise<StoredBinding | null>;
-  listProjectBindings(projectId: string): Promise<StoredBinding[]>;
-  readConnection(id: string): Promise<ConnectionFacts | null>;
-  projectOrgId(projectId: string): Promise<string | null>;
-  isOrgAdmin(orgId: string, userId: string): Promise<boolean>;
-  casBinding(
-    input: BindingWrite & { baseRevision: number | null; integrationSecret: () => Promise<string> },
-  ): Promise<BindingCasResult>;
-}
-
 const bindingColumns = {
   id: integrationBindings.id,
   projectId: integrationBindings.projectId,
@@ -73,8 +62,8 @@ const bindingColumns = {
   revision: integrationBindings.revision,
 };
 
-export const drizzleBindingStore: BindingStore = {
-  async readBinding(id) {
+export const drizzleBindingStore = {
+  async readBinding(id: string): Promise<StoredBinding | null> {
     const [row] = await db
       .select(bindingColumns)
       .from(integrationBindings)
@@ -83,7 +72,7 @@ export const drizzleBindingStore: BindingStore = {
     return row ?? null;
   },
 
-  async listProjectBindings(projectId) {
+  async listProjectBindings(projectId: string): Promise<StoredBinding[]> {
     return db
       .select(bindingColumns)
       .from(integrationBindings)
@@ -91,7 +80,7 @@ export const drizzleBindingStore: BindingStore = {
       .orderBy(integrationBindings.createdAt);
   },
 
-  async readConnection(id) {
+  async readConnection(id: string): Promise<ConnectionFacts | null> {
     const [row] = await db
       .select({
         id: integrationConnections.id,
@@ -108,11 +97,18 @@ export const drizzleBindingStore: BindingStore = {
 
   projectOrgId: projectOrgOf,
 
-  async isOrgAdmin(orgId, userId) {
+  async isOrgAdmin(orgId: string, userId: string): Promise<boolean> {
     return holdsOrg(await loadOrgRole(orgId, userId), 'org.admin');
   },
 
-  async casBinding({ baseRevision, integrationSecret, ...write }) {
+  async casBinding({
+    baseRevision,
+    integrationSecret,
+    ...write
+  }: BindingWrite & {
+    baseRevision: number | null;
+    integrationSecret: () => Promise<string>;
+  }): Promise<BindingCasResult> {
     try {
       return await db.transaction(async (tx) => {
         await lockXact(tx, 'projectConfigBinding', write.id);

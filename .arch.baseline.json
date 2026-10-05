@@ -1,6 +1,4 @@
 {
   "version": 1,
-  "frozen": {
-    "no-coordinator-blob|packages/core/src/release-batch/release-sweep.ts": 7
-  }
+  "frozen": {}
 }

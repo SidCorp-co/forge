@@ -1,4 +1,3 @@
-import type { BranchRefs, LiveDivergence } from '../integrations/source-host/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { crossesByCherryPick, promotedBranch, readReleasePath } from '../project-config/index.js';
@@ -9,17 +8,6 @@ import { readProjectDivergence } from './live-source.js';
 const LIVE_READING_HOLD_MS = 5 * 60_000;
 /** How long a read with nothing held waits for the first reading before answering `pending`. */
 const LIVE_READING_FIRST_WAIT_MS = 3_000;
-
-export interface LiveReadingDeps {
-  /** The commits on base that live lacks, from whichever source the project holds. */
-  divergenceFor: (projectId: string, refs: BranchRefs) => Promise<LiveDivergence>;
-  now: () => Date;
-}
-
-const defaultDeps: LiveReadingDeps = {
-  divergenceFor: (projectId, refs) => readProjectDivergence(projectId, refs),
-  now: () => new Date(),
-};
 
 /** What the project document says a landed change crosses to reach production. */
 interface ProjectReleaseRow {
@@ -55,9 +43,8 @@ function forgetLiveReading(projectId: string): void {
 /** Take one reading now. Never throws: a failure is a `refused` reading carrying its reason. */
 async function takeLiveReading(
   row: ProjectReleaseRow & { deploysFrom: string },
-  deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading> {
-  const startedAt = deps.now();
+  const startedAt = new Date();
   const refused = (reason: string): LiveReading => ({
     baseBranch: row.baseBranch,
     deploysFrom: row.deploysFrom,
@@ -77,7 +64,10 @@ async function takeLiveReading(
     );
   }
   try {
-    const d = await deps.divergenceFor(row.id, { baseRef: baseBranch, liveRef: row.deploysFrom });
+    const d = await readProjectDivergence(row.id, {
+      baseRef: baseBranch,
+      liveRef: row.deploysFrom,
+    });
     if (!d.ok) return refused(d.reason);
     const { baseSha, liveSha, aheadBy, commits, complete } = d;
     return {
@@ -98,16 +88,13 @@ async function takeLiveReading(
 }
 
 /** One comparison in flight per project: a stale or differently keyed one is waited out, not raced. */
-function start(
-  row: ProjectReleaseRow & { deploysFrom: string },
-  deps: LiveReadingDeps,
-): Promise<LiveReading> {
+function start(row: ProjectReleaseRow & { deploysFrom: string }): Promise<LiveReading> {
   const key = keyOf(row);
   const running = inFlight.get(row.id);
   if (running && running.key === key && !running.stale) return running.reading;
   const before = running ? running.reading.then(() => undefined) : Promise.resolve();
   const reading = before
-    .then(() => takeLiveReading(row, deps))
+    .then(() => takeLiveReading(row))
     .then((r) => {
       const entry = inFlight.get(row.id);
       if (entry?.reading === reading) {
@@ -116,7 +103,7 @@ function start(
           held.set(row.id, {
             key,
             reading: r,
-            expiresAt: deps.now().getTime() + LIVE_READING_HOLD_MS,
+            expiresAt: Date.now() + LIVE_READING_HOLD_MS,
           });
         }
       }
@@ -142,10 +129,7 @@ function waitAtMost(reading: Promise<LiveReading>, fallback: LiveReading): Promi
  * A held reading is answered as it is; an expired one is answered only if the new one does not
  * arrive within the wait, still carrying the time it was taken.
  */
-export async function liveReadingForRow(
-  row: ProjectReleaseRow,
-  deps: LiveReadingDeps = defaultDeps,
-): Promise<LiveReading | null> {
+export async function liveReadingForRow(row: ProjectReleaseRow): Promise<LiveReading | null> {
   const deploysFrom = row.deploysFrom;
   if (!deploysFrom) {
     forgetLiveReading(row.id);
@@ -155,14 +139,14 @@ export async function liveReadingForRow(
   const key = keyOf(promote);
   const h = held.get(row.id);
   const current = h && h.key === key ? h : null;
-  if (current && current.expiresAt > deps.now().getTime()) return current.reading;
+  if (current && current.expiresAt > Date.now()) return current.reading;
   const fallback: LiveReading = current?.reading ?? {
     baseBranch: row.baseBranch,
     deploysFrom,
     kind: 'pending',
     reason: `the first comparison of ${row.baseBranch ?? 'the default branch'} against ${deploysFrom} is still being taken; read again in a moment`,
   };
-  return waitAtMost(start(promote, deps), fallback);
+  return waitAtMost(start(promote), fallback);
 }
 
 /** A project's release row, or `null` where its project document cannot say one. */

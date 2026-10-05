@@ -6,7 +6,6 @@ import { useMemo, useState } from "react";
 import {
   FieldLabel,
   GroupedList,
-  Icon,
   type ListGroup,
   type ListRowView,
   StatusBadge,
@@ -18,7 +17,7 @@ import {
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
-import { GateLine } from "./release-bits";
+import { DisclosureToggle, GateLine } from "./release-bits";
 import { ReleaseTrain } from "./release-train";
 
 export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
@@ -179,16 +178,14 @@ function NoteLine({ e }: { e: ReleaseNoteEntry }) {
         {e.technical ? (
           <>
             {" "}
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-12 font-medium text-link"
-              aria-expanded={open}
-              onClick={() => setOpen((o) => !o)}
-              data-testid="release-note-technical-toggle"
+            <DisclosureToggle
+              open={open}
+              onToggle={() => setOpen((o) => !o)}
+              className="text-12"
+              testId="release-note-technical-toggle"
             >
-              <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
               Technical note
-            </button>
+            </DisclosureToggle>
             {open ? (
               <span className="mt-1 block text-12-5 text-muted" data-testid="release-note-technical">
                 {e.technical}

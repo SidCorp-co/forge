@@ -95,38 +95,17 @@ function RefusalList({ refusals }: { refusals: readonly Refusal[] }) {
 	);
 }
 
-export function DocumentEditor({
-	title,
-	description,
-	read,
-	template,
-	canEdit,
-	write,
-	onReload,
-	actions,
-}: {
-	title: string;
-	description?: ReactNode;
-	read: V1Read;
-	template: V1Document;
-	canEdit: boolean;
-	write: UseMutationResult<V1Written, Error, V1Write>;
-	onReload: () => unknown;
-	actions?: ReactNode;
-}) {
+type Write = UseMutationResult<V1Written, Error, V1Write>;
+
+/** The draft held against the revision it was read at, and the edits, save and reseeds over it. */
+function useHeldDocument(read: V1Read, template: V1Document, write: Write, onReload: () => unknown) {
 	const [held, setHeld] = useState<Held>(() => seed(read, template));
-	const [mode, setMode] = useState("fields");
 	const [text, setText] = useState<string | null>(null);
 	const [invalid, setInvalid] = useState<string | null>(null);
 
 	const dirty = !sameDocument(held.draft, held.read ?? template);
 	const behind = (read.revision ?? 0) > (held.revision ?? 0);
 	if (behind && !dirty) setHeld(seed(read, template));
-	const moved = behind && dirty;
-
-	const refusals = write.isError ? documentRefusals(write.error) : [];
-	const stale = refusals.filter((r) => r.code === STALE_BASE);
-	const placed = placeRefusals(held.draft, refusals);
 
 	function edit(draft: V1Document) {
 		if (write.isError) write.reset();
@@ -170,11 +149,55 @@ export function DocumentEditor({
 		setHeld(next);
 	};
 
+	return { held, text, invalid, dirty, moved: behind && dirty, edit, editText, save, reseed };
+}
+
+function RefusedNotice({ write, mode }: { write: Write; mode: string }) {
+	const refusals = documentRefusals(write.error);
+	const stale = refusals.filter((r) => r.code === STALE_BASE);
+	return (
+		<Banner tone="danger" onDismiss={() => write.reset()}>
+			<div className="space-y-1">
+				<p>Refused, nothing written.</p>
+				{stale.length > 0 && <RefusalList refusals={stale} />}
+				{refusals.length === 0 && <p>{formatApiError(write.error)}</p>}
+				{mode === "json" && refusals.length > stale.length && (
+					<RefusalList refusals={refusals.filter((r) => r.code !== STALE_BASE)} />
+				)}
+				{mode === "fields" && refusals.length > stale.length && <p>Each other refusal is shown at the field it names.</p>}
+			</div>
+		</Banner>
+	);
+}
+
+export function DocumentEditor({
+	title,
+	description,
+	read,
+	template,
+	canEdit,
+	write,
+	onReload,
+	actions,
+}: {
+	title: string;
+	description?: ReactNode;
+	read: V1Read;
+	template: V1Document;
+	canEdit: boolean;
+	write: Write;
+	onReload: () => unknown;
+	actions?: ReactNode;
+}) {
+	const [mode, setMode] = useState("fields");
+	const { held, text, invalid, dirty, moved, edit, editText, save, reseed } = useHeldDocument(read, template, write, onReload);
+	const placed = placeRefusals(held.draft, write.isError ? documentRefusals(write.error) : []);
+
 	return (
 		<section aria-label={title} className="mt-6 border-t border-line pt-5">
 			<div className="flex flex-wrap items-center gap-2">
 				<CardTitle className="fg-label text-fg">{title}</CardTitle>
-				{read.declared ? <MonoTag>revision {read.revision}</MonoTag> : <MonoTag>not declared</MonoTag>}
+				<MonoTag>{read.declared ? `revision ${read.revision}` : "not declared"}</MonoTag>
 				{actions}
 			</div>
 			{description && <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div>}
@@ -195,21 +218,7 @@ export function DocumentEditor({
 					onReload={() => reseed(seed(read, template))}
 				/>
 			)}
-			{write.isError && (
-				<Banner tone="danger" onDismiss={() => write.reset()}>
-					<div className="space-y-1">
-						<p>Refused, nothing written.</p>
-						{stale.length > 0 && <RefusalList refusals={stale} />}
-						{refusals.length === 0 && <p>{formatApiError(write.error)}</p>}
-						{mode === "json" && refusals.length > stale.length && (
-							<RefusalList refusals={refusals.filter((r) => r.code !== STALE_BASE)} />
-						)}
-						{mode === "fields" && refusals.length > stale.length && (
-							<p>Each other refusal is shown at the field it names.</p>
-						)}
-					</div>
-				</Banner>
-			)}
+			{write.isError && <RefusedNotice write={write} mode={mode} />}
 			<div className="mt-3">
 				<Tabs tabs={MODES} value={mode} onChange={setMode} />
 			</div>

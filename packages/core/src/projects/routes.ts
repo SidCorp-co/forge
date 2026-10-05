@@ -8,7 +8,7 @@ import {
   orgDerivedProjectRole,
 } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
@@ -35,44 +35,36 @@ export const projectRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectRoutes.use('*', requireAuth(), assertEmailVerified());
 
-projectRoutes.post(
-  '/',
-  zValidator('json', createProjectBodySchema, (result) => {
-    if (!result.success) {
-      throw badRequest(result.error);
-    }
-  }),
-  async (c) => {
-    assertUnfenced('creating a project');
-    const { slug, name, orgId: requestedOrgId } = c.req.valid('json');
-    const userId = c.get('userId');
+projectRoutes.post('/', zValidator('json', createProjectBodySchema), async (c) => {
+  assertUnfenced('creating a project');
+  const { slug, name, orgId: requestedOrgId } = c.req.valid('json');
+  const userId = c.get('userId');
 
-    // Resolve the target org: explicit orgId (caller must be an org member of
-    // any role) or the caller's personal org.
-    let orgId: string;
-    if (requestedOrgId) {
-      await requireOrgCan(actorFor(userId), 'org.read', orgResource(requestedOrgId));
-      orgId = requestedOrgId;
-    } else {
-      const personal = await findPersonalOrgId(userId);
-      if (!personal) {
-        throw new HTTPException(500, {
-          message: 'personal org missing — run migrations',
-          cause: { code: 'PERSONAL_ORG_MISSING' },
-        });
-      }
-      orgId = personal;
+  // Resolve the target org: explicit orgId (caller must be an org member of
+  // any role) or the caller's personal org.
+  let orgId: string;
+  if (requestedOrgId) {
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(requestedOrgId));
+    orgId = requestedOrgId;
+  } else {
+    const personal = await findPersonalOrgId(userId);
+    if (!personal) {
+      throw new HTTPException(500, {
+        message: 'personal org missing — run migrations',
+        cause: { code: 'PERSONAL_ORG_MISSING' },
+      });
     }
+    orgId = personal;
+  }
 
-    const created = await createProject({
-      slug,
-      name,
-      orgId,
-      createdBy: userId,
-    });
-    return c.json(created, 201);
-  },
-);
+  const created = await createProject({
+    slug,
+    name,
+    orgId,
+    createdBy: userId,
+  });
+  return c.json(created, 201);
+});
 
 const listQuery = zValidator('query', z.object({ archived: z.string().optional() }), (result) => {
   if (!result.success) {
@@ -103,42 +95,31 @@ projectRoutes.get('/', listQuery, async (c) => {
   );
 });
 
-projectRoutes.get(
-  '/:id',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+projectRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.read');
+  const access = await loadProjectAccess(id, userId);
+  requireHeld(access, 'project.read');
 
-    const detail = await projectDetail(id);
-    if (!detail) throw notFound();
+  const detail = await projectDetail(id);
+  if (!detail) throw notFound();
 
-    return c.json({
-      ...detail.project,
-      baseBranch: (await readDeclaredSource(id)).defaultBranch,
-      role: access.role,
-      orgRole: access.orgRole,
-      members: detail.members,
-      labels: detail.labels,
-      devicePool: detail.devicePool,
-    });
-  },
-);
+  return c.json({
+    ...detail.project,
+    baseBranch: (await readDeclaredSource(id)).defaultBranch,
+    role: access.role,
+    orgRole: access.orgRole,
+    members: detail.members,
+    labels: detail.labels,
+    devicePool: detail.devicePool,
+  });
+});
 
 projectRoutes.patch(
   '/:id',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', updateProjectPatchSchema, (result) => {
-    if (result.success) return;
-    throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', updateProjectPatchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -168,22 +149,16 @@ projectRoutes.patch(
   },
 );
 
-projectRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+projectRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+  const access = await loadProjectAccess(id, userId);
+  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    await deleteProject(id);
-    return c.body(null, 204);
-  },
-);
+  await deleteProject(id);
+  return c.body(null, 204);
+});
 
 // ─── Soft archive / unarchive (ISS-353) ──────────────────────────────────────
 //
@@ -194,50 +169,34 @@ projectRoutes.delete(
 // dispatching new auto-pipeline jobs (see orchestrator.loadProjectPolicy);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
-projectRoutes.post(
-  '/:id/archive',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+projectRoutes.post('/:id/archive', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+  const access = await loadProjectAccess(id, userId);
+  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    const updated = await archiveProject(id);
-    if (!updated) throw notFound();
-    return c.json(updated);
-  },
-);
+  const updated = await archiveProject(id);
+  if (!updated) throw notFound();
+  return c.json(updated);
+});
 
-projectRoutes.post(
-  '/:id/unarchive',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+projectRoutes.post('/:id/unarchive', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+  const access = await loadProjectAccess(id, userId);
+  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    const updated = await unarchiveProject(id);
-    if (!updated) throw notFound();
-    return c.json(updated);
-  },
-);
+  const updated = await unarchiveProject(id);
+  if (!updated) throw notFound();
+  return c.json(updated);
+});
 
 projectRoutes.patch(
   '/:id/plugins',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema }), (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema })),
   async (c) => {
     const { id } = c.req.valid('param');
     const { plugins } = c.req.valid('json');

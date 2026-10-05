@@ -1,10 +1,11 @@
 "use client";
 
 import { RELEASE_STATE_LABELS } from "@forge/contracts/releases";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
+import { cn } from "@/lib/utils/cn";
 import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
 
 const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
@@ -19,6 +20,33 @@ const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 const NAMED_IN_SENTENCE = 5;
+
+export function DisclosureToggle({
+  open,
+  onToggle,
+  className,
+  testId,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  className: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn("inline-flex items-center gap-1 font-medium text-link", className)}
+      aria-expanded={open}
+      onClick={onToggle}
+      data-testid={testId}
+    >
+      <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
+      {children}
+    </button>
+  );
+}
 
 export function GateLine({ gate }: { gate: ReleaseGateView }) {
   const [open, setOpen] = useState(false);
@@ -35,16 +63,9 @@ export function GateLine({ gate }: { gate: ReleaseGateView }) {
         {more ? (
           <>
             {" "}
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-12-5 font-medium text-link"
-              aria-expanded={open}
-              onClick={() => setOpen((o) => !o)}
-              data-testid="gate-issues-toggle"
-            >
-              <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
+            <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="gate-issues-toggle">
               {open ? "Hide the issues" : `All ${gate.issues.length} issues`}
-            </button>
+            </DisclosureToggle>
             {open ? (
               <span className="mt-1 block font-mono text-12 text-muted" data-testid="gate-issues">
                 {gate.issues.join(", ")}

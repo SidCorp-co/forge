@@ -14,17 +14,16 @@ import { McpTab } from "./mcp-tab";
 import { NotificationsTab } from "./notifications-tab";
 import { TokensTab } from "./tokens-tab";
 
-const TAB_VALUES = ["account", "orgs", "agents", "tokens", "mcp", "notifications"] as const;
-type SettingsTab = (typeof TAB_VALUES)[number];
-
-const TABS: TabItem[] = [
+const TABS = [
   { value: "account", label: "Account" },
   { value: "orgs", label: "Organizations" },
   { value: "agents", label: "Agents" },
   { value: "tokens", label: "API Tokens" },
   { value: "mcp", label: "MCP" },
   { value: "notifications", label: "Notifications" },
-];
+] as const satisfies TabItem[];
+type SettingsTab = (typeof TABS)[number]["value"];
+const TAB_VALUES = TABS.map((t) => t.value);
 
 export function SettingsScreen() {
   const [tab, setTab] = useTabParam<SettingsTab>(TAB_VALUES, "account");
@@ -32,7 +31,7 @@ export function SettingsScreen() {
   return (
     <div className="flex min-h-full flex-col">
       <ScreenTabs
-        tabs={TABS}
+        tabs={[...TABS]}
         value={tab}
         onChange={(v) => setTab(v as SettingsTab)}
         header={<PageTitle>Settings</PageTitle>}

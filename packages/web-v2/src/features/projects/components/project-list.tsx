@@ -1,14 +1,13 @@
 'use client';
 
-// List view — kit Table primitives. Rows navigate into the project; the pin
-// star is an inline button that doesn't trigger navigation.
 import { useRouter } from 'next/navigation';
-import { HealthDot, Icon, ProjectMark, Stat, TBody, TD, TH, THead, TR, Table } from '@/design';
+import { HealthDot, ProjectMark, Stat, TBody, TD, TH, THead, TR, Table } from '@/design';
 import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
 import { MemberStack } from './member-stack';
+import { PinStar } from './project-card';
 
 interface ProjectListProps {
   items: ProjectConsoleItem[];
@@ -47,23 +46,7 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
               <TD>
                 <span className="flex items-center gap-1.5">
                   <span className="truncate font-mono text-13-5 font-semibold text-fg">{p.name}</span>
-                  <button
-                    type="button"
-                    aria-label={p.pinned ? 'Unpin project' : 'Pin project'}
-                    aria-pressed={p.pinned}
-                    className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTogglePin(p.id);
-                    }}
-                  >
-                    <Icon
-                      name="star"
-                      size={12}
-                      className={p.pinned ? 'text-amber' : ''}
-                      style={p.pinned ? { fill: 'currentColor' } : undefined}
-                    />
-                  </button>
+                  <PinStar pinned={p.pinned} size={12} onToggle={() => onTogglePin(p.id)} />
                 </span>
               </TD>
               <TD>
