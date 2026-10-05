@@ -131,7 +131,7 @@ pub fn install(repo: &Path) -> Outcome {
     match git_exclude::ensure_ignored_as(repo, RELATIVE, ".claude/skills/forge-master/") {
         Ok(_) => {}
         Err(Refused::Tracked) => return Outcome::Tracked,
-        Err(Refused::StillNotIgnored { exclude }) => return Outcome::NotIgnored { exclude },
+        Err(Refused::StillNotIgnored { exclude, .. }) => return Outcome::NotIgnored { exclude },
         Err(refused @ (Refused::Exclude { .. } | Refused::Git(_))) => {
             return failed(refused.to_string())
         }

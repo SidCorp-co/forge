@@ -8,6 +8,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
+  rewritten to `agent-reports:*`, every notification carries a severity, and seven unset env
+  knobs plus dead metric and speaker reads are deleted.
+
+- **A project reached only through a runner's git access can join an ecosystem.** Without a host
+  binding, a bound checkout answers the head. Documents and bind take SSH remotes and local paths;
+  provisioning never rewrites tracked files.
+
 ## [0.4.0-dev.33] - 2026-10-05
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
@@ -18,9 +28,6 @@ Dead routes and unread data removed; unknown API filters are refused, not ignore
 - **Unknown query keys are refused; audit 4's dead paths go.** Bulk triage by signal has a
   REST route, contract-change filings wake masters, onboarding drafts read "Plan from code",
   and the retrieval log, plan-baseline column and build unlink are gone.
-- **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
-  rewritten to `agent-reports:*`, every notification carries a severity, and seven unset env
-  knobs plus dead metric and speaker reads are deleted.
 
 ## [0.4.0-dev.32] - 2026-10-05
 

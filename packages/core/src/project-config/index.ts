@@ -48,8 +48,12 @@ export {
   readProjectDocument,
 } from './service.js';
 export {
+  hostOf,
+  parseRepository,
+  type RepositoryRef,
   readDeclaredSource,
   remoteOf,
+  repositoryIdentity,
   repositoryOf,
   webUrlOf,
   withDeclaredSource,

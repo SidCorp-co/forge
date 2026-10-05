@@ -14,6 +14,10 @@ interface RunnersPorts {
   ): SQL<{ sessionId: string; name: string; lastHeartbeatAt: string | null } | null>;
   /** A runner's stored pool read as every surface shows it; null when none is readable. */
   readRunnerPoolRead(stored: unknown): object | null;
+  /** Whether any socket reads this box's room right now. */
+  boxIsListening(deviceId: string): boolean;
+  /** Hand a frame to the box's open sockets now, answering how many took it. */
+  sendToBoxNow(deviceId: string, envelope: { event: string; data: unknown }): number;
 }
 
 const slot = portSlot<RunnersPorts>('runners', 'provideRunnersPorts');

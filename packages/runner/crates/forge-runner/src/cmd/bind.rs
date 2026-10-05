@@ -90,23 +90,94 @@ fn origin_url(path: &std::path::Path) -> Option<String> {
     (out.status.success() && !url.is_empty()).then_some(url)
 }
 
-/// The host of a git remote in any of its forms — `https://host/…`, `ssh://user@host:port/…`,
-/// `user@host:path` — lower-cased and without a port.
-fn remote_host(url: &str) -> Option<String> {
-    let url = url.trim();
-    let authority = match url.split_once("://") {
-        Some((_, rest)) => rest.split('/').next()?,
-        None => url.split_once(':')?.0,
+/// Where a repository lives, as the project document or a git remote names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Place {
+    /// On a host: its lower-cased name, and the `owner/repo` path lower-cased without `.git`.
+    Hosted { host: String, path: String },
+    /// A repository on this box's disk.
+    Local(std::path::PathBuf),
+}
+
+impl std::fmt::Display for Place {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Place::Hosted { host, path } => write!(f, "{host}/{path}"),
+            Place::Local(p) => write!(f, "{}", p.display()),
+        }
+    }
+}
+
+fn repo_path_of(path: &str) -> String {
+    let p = path.trim().trim_matches('/');
+    let p = p.strip_suffix(".git").unwrap_or(p);
+    p.to_ascii_lowercase()
+}
+
+fn hosted(host: &str, path: &str) -> Option<Place> {
+    let host = host
+        .rsplit('@')
+        .next()?
+        .split(':')
+        .next()?
+        .to_ascii_lowercase();
+    let path = repo_path_of(path);
+    (!host.is_empty() && !path.is_empty()).then_some(Place::Hosted { host, path })
+}
+
+fn local(path: &std::path::Path, base: &std::path::Path) -> Place {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
     };
-    let host = authority.rsplit('@').next()?;
-    let host = host.split(':').next()?;
-    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+    Place::Local(joined.canonicalize().unwrap_or(joined))
+}
+
+/// The document's `source.git.repository`: `host.tld/owner/repo`, `user@host:owner/repo`, or an
+/// absolute local path.
+fn declared_place(repository: &str) -> Option<Place> {
+    let r = repository.trim();
+    if r.starts_with('/') {
+        return Some(local(std::path::Path::new(r), std::path::Path::new("/")));
+    }
+    if let Some((authority, path)) = r.split_once(':') {
+        if authority.contains('@') && !authority.contains('/') {
+            return hosted(authority, path);
+        }
+    }
+    let (host, path) = r.split_once('/')?;
+    hosted(host, path)
+}
+
+/// A git remote in any of its forms — `https://host/…`, `ssh://user@host:port/…`,
+/// `user@host:path`, `file:///path`, or a path (relative ones resolved from the checkout, as git
+/// resolves them).
+fn remote_place(url: &str, checkout: &std::path::Path) -> Option<Place> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+    if let Some(path) = url.strip_prefix("file://") {
+        return Some(local(std::path::Path::new(path), checkout));
+    }
+    if let Some((_, rest)) = url.split_once("://") {
+        let (authority, path) = rest.split_once('/')?;
+        return hosted(authority, path);
+    }
+    if let Some((authority, path)) = url.split_once(':') {
+        if !authority.contains('/') && authority.len() > 1 {
+            return hosted(authority, path);
+        }
+    }
+    Some(local(std::path::Path::new(url), checkout))
 }
 
 // cm:why `--clone` gets its helper from the provision; a checkout bound by `--path` gets the same
-// one here, for the host the project document declares — and only once its origin is that host
-/// The host to point this checkout's credential helper at, `None` where core mints no credential
-/// for the project, or a refusal naming both hosts when the checkout's origin is another host's.
+// one here, for the host the project document declares — and only once its origin is that repository
+/// The host to point this checkout's credential helper at, `None` where none is wanted (core
+/// mints no credential, or origin is reached over SSH or the disk with this box's own access), or
+/// a refusal naming both when the checkout's origin is not the declared repository.
 fn checkout_credential_host(
     slug: &str,
     path: &std::path::Path,
@@ -119,32 +190,43 @@ fn checkout_credential_host(
         );
         return Ok(None);
     };
-    let declared = repository
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match origin {
-        Some(url) => {
-            let found = remote_host(url);
-            if found.as_deref() != Some(declared.as_str()) {
-                anyhow::bail!(
-                    "BIND_SOURCE_HOST_MISMATCH: {} has origin {url} (host {}), and project {slug} declares its source at {repository} (host {declared}) — bind a checkout of {repository}, or fix `origin` with `git -C {} remote set-url origin https://{repository}.git`",
-                    path.display(),
-                    found.as_deref().unwrap_or("unreadable"),
-                    path.display()
-                );
-            }
-            if !url.trim_start().starts_with("https://") && assignment.host_credential {
-                eprintln!(
-                    "note: origin {url} is not HTTPS, so git will not ask the credential helper for it until origin is https://{repository}.git"
-                );
-            }
-        }
-        None => eprintln!(
-            "warning: {} has no `origin` remote, so its host could not be checked against {repository}",
+    let Some(declared) = declared_place(repository) else {
+        anyhow::bail!(
+            "BIND_SOURCE_UNREADABLE: project {slug} declares its source as {repository:?}, which is none of `host.tld/owner/repo`, `git@host:owner/repo` or an absolute path — change `source.git.repository` with PUT /api/projects/:id/config"
+        );
+    };
+    let Some(url) = origin else {
+        anyhow::bail!(
+            "BIND_ORIGIN_UNREADABLE: {} has no `origin` remote git can read, so whether it is a checkout of {repository} cannot be checked — bind a checkout cloned from {repository}, or change `source.git.repository` with PUT /api/projects/:id/config",
             path.display()
-        ),
+        );
+    };
+    let found = remote_place(url, path);
+    let same = match (&declared, &found) {
+        (Place::Hosted { host: h1, path: p1 }, Some(Place::Hosted { host: h2, path: p2 })) => {
+            h1 == h2 && p1 == p2
+        }
+        (Place::Local(a), Some(Place::Local(b))) => a == b,
+        _ => false,
+    };
+    if !same {
+        anyhow::bail!(
+            "BIND_SOURCE_HOST_MISMATCH: {} has origin {url} ({}), and project {slug} declares its source at {repository} ({declared}) — bind a checkout whose origin is {repository}, or change `source.git.repository` with PUT /api/projects/:id/config",
+            path.display(),
+            found.map_or_else(|| "unreadable".to_string(), |p| p.to_string()),
+        );
+    }
+    let Place::Hosted { host, .. } = declared else {
+        eprintln!(
+            "note: {repository} is a repository on this box's disk, so git reaches it with this box's own access and no credential helper is installed"
+        );
+        return Ok(None);
+    };
+    if !url.trim_start().starts_with("https://") {
+        eprintln!(
+            "note: origin {url} is not HTTPS, so git reaches it with this box's own access (its SSH key) and no Forge credential helper is installed"
+        );
+        return Ok(None);
     }
     if !assignment.host_credential {
         eprintln!(
@@ -152,7 +234,7 @@ fn checkout_credential_host(
         );
         return Ok(None);
     }
-    Ok(Some(declared))
+    Ok(Some(host))
 }
 
 /// The master skill is written at bind, so a bound project carries it whether
@@ -279,4 +361,121 @@ pub async fn provision_checkout(
         );
     }
     Ok(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assignment(repository: &str, host_credential: bool) -> MeRunner {
+        MeRunner {
+            project_id: "p".into(),
+            runner_id: "r".into(),
+            slug: "epod".into(),
+            base_branch: None,
+            repo_path: None,
+            branch: None,
+            status: "online".into(),
+            master_policy: None,
+            repository: Some(repository.into()),
+            host_credential,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    fn scratch() -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("forge-bind-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(d.join("remotes/epodsystem-core.git")).unwrap();
+        std::fs::create_dir_all(d.join("epodsystem-core")).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_local_bare_origin_matching_a_local_path_document_binds() {
+        let d = scratch();
+        let bare = d.join("remotes/epodsystem-core.git");
+        let doc = bare.to_string_lossy().into_owned();
+        let checkout = d.join("epodsystem-core");
+        let a = assignment(&doc, false);
+        assert!(checkout_credential_host("epod", &checkout, &a, Some(&doc)).is_ok());
+        let file_url = format!("file://{doc}");
+        assert!(checkout_credential_host("epod", &checkout, &a, Some(&file_url)).is_ok());
+        // a relative origin is resolved from the checkout, as git resolves it
+        assert!(checkout_credential_host(
+            "epod",
+            &checkout,
+            &a,
+            Some("../remotes/epodsystem-core.git")
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn an_ssh_origin_matching_an_ssh_or_hosted_document_binds() {
+        let checkout = std::env::temp_dir();
+        let origin = "git@gitlab.com:sidcorp-internal/webauto.git";
+        for doc in [
+            "git@gitlab.com:sidcorp-internal/webauto",
+            "gitlab.com/sidcorp-internal/webauto",
+        ] {
+            let got =
+                checkout_credential_host("epod", &checkout, &assignment(doc, true), Some(origin));
+            assert!(got.is_ok(), "{doc}: {got:?}");
+        }
+        let ssh_url = "ssh://git@gitlab.com:22/sidcorp-internal/webauto.git";
+        assert!(checkout_credential_host(
+            "epod",
+            &checkout,
+            &assignment("gitlab.com/sidcorp-internal/webauto", false),
+            Some(ssh_url)
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_mismatch_is_refused_by_name_and_never_says_to_repoint_origin() {
+        let d = scratch();
+        let checkout = d.join("epodsystem-core");
+        let local = d
+            .join("remotes/epodsystem-core.git")
+            .to_string_lossy()
+            .into_owned();
+        for (doc, origin) in [
+            ("gitlab.com/sidcorp-internal/webauto", local.as_str()),
+            (
+                local.as_str(),
+                "git@gitlab.com:sidcorp-internal/webauto.git",
+            ),
+            (
+                "gitlab.com/sidcorp-internal/webauto",
+                "https://gitlab.com/someone/else.git",
+            ),
+        ] {
+            let said =
+                checkout_credential_host("epod", &checkout, &assignment(doc, true), Some(origin))
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| panic!("{doc} vs {origin} binds"));
+            assert!(said.contains("BIND_SOURCE_HOST_MISMATCH"), "{said}");
+            assert!(said.contains(doc) && said.contains(origin), "{said}");
+            assert!(!said.contains("set-url"), "{said}");
+        }
+    }
+
+    #[test]
+    fn a_checkout_with_no_readable_origin_is_refused_by_name() {
+        let checkout = std::env::temp_dir();
+        let said = checkout_credential_host(
+            "epod",
+            &checkout,
+            &assignment("gitlab.com/sidcorp-internal/webauto", true),
+            None,
+        )
+        .err()
+        .map(|e| e.to_string())
+        .expect("refused");
+        assert!(said.contains("BIND_ORIGIN_UNREADABLE"), "{said}");
+        assert!(!said.contains("set-url"), "{said}");
+    }
 }

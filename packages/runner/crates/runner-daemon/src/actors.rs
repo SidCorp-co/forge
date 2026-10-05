@@ -549,23 +549,8 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
             }
         }
-        "skill.sync" => {
-            let (client, cfg) = (client.clone(), cfg.clone());
-            tokio::spawn(async move {
-                if let Err(e) = dispatch::handle_skill_sync(&client, &cfg, frame.data).await {
-                    tracing::warn!("[skill.sync] {e}");
-                }
-            });
-        }
-        "provision.request" => {
-            // Wake → run the pending-provision sweep (server returns
-            // only `queued` rows, so this provisions the requested one).
-            let (client, cfg) = (client.clone(), cfg.clone());
-            tokio::spawn(async move {
-                if let Err(e) = runner_workspace::provision::handle_request(&client, &cfg).await {
-                    tracing::warn!("[provision] {e}");
-                }
-            });
+        "skill.sync" | "checkout.head.read" | "provision.request" => {
+            on_workspace_frame(frame, client, cfg);
         }
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
@@ -591,6 +576,35 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
             frame.data
         ),
         other => tracing::debug!("[ws] ignored event {other}"),
+    }
+}
+
+/// The frames that read or set up a project's checkout on this box.
+fn on_workspace_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>) {
+    match frame.event.as_str() {
+        "skill.sync" => {
+            let (client, cfg) = (client.clone(), cfg.clone());
+            tokio::spawn(async move {
+                if let Err(e) = dispatch::handle_skill_sync(&client, &cfg, frame.data).await {
+                    tracing::warn!("[skill.sync] {e}");
+                }
+            });
+        }
+        "checkout.head.read" => {
+            let client = client.clone();
+            tokio::spawn(async move { crate::head_read::handle(&client, frame.data).await });
+        }
+        "provision.request" => {
+            // Wake → run the pending-provision sweep (server returns
+            // only `queued` rows, so this provisions the requested one).
+            let (client, cfg) = (client.clone(), cfg.clone());
+            tokio::spawn(async move {
+                if let Err(e) = runner_workspace::provision::handle_request(&client, &cfg).await {
+                    tracing::warn!("[provision] {e}");
+                }
+            });
+        }
+        _ => {}
     }
 }
 

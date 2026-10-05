@@ -1,3 +1,4 @@
+import { hostOf, parseRepository } from '@forge/contracts/git-repository';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
@@ -16,11 +17,9 @@ import type { SourceHost, SourceHostFactory } from './types.js';
 /** `kernel` reads and merges for Forge itself; `agent` is an agent's verb and needs the grant. */
 type SourceHostPurpose = 'kernel' | 'agent';
 
-/** The host name `source.git.repository` is served from, or null where none is declared. */
+/** The host name `source.git.repository` is served from, or null where none is declared or it is a local path. */
 export function hostOfRepository(repository: string | null): string | null {
-  if (!repository) return null;
-  const slash = repository.indexOf('/');
-  return slash > 0 ? repository.slice(0, slash).toLowerCase() : null;
+  return repository ? hostOf(repository) : null;
 }
 
 function factoryOf(provider: string): SourceHostFactory | undefined {
@@ -64,6 +63,14 @@ export async function resolveSourceHost(
   projectId: string,
   purpose: SourceHostPurpose = 'kernel',
 ): Promise<SourceHost> {
+  const declared = await forgeReads().declaredRepository(projectId);
+  if (declared && parseRepository(declared).kind === 'local') {
+    throw new SourceHostUnavailable(
+      'local_repository',
+      `the project document declares its repository as the local path ${declared}, which no source host serves: Forge cannot read its commits or files, merge into it, or take its webhooks through a host. Only its default-branch head is read, from a runner's bound checkout; declare the hosted repository (host.tld/owner/repo or git@host.tld:owner/repo) to read the rest`,
+      null,
+    );
+  }
   const all = (await listBindingsForProject(projectId))
     .filter((pair) => factoryOf(pair.binding.provider) !== undefined)
     .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
@@ -76,7 +83,7 @@ export async function resolveSourceHost(
     );
   }
 
-  const declaredHost = hostOfRepository(await forgeReads().declaredRepository(projectId));
+  const declaredHost = hostOfRepository(declared);
   const onHost = declaredHost
     ? considered.filter(
         (p) => factoryOf(p.binding.provider)?.hostOf(effectiveConfig(p)) === declaredHost,

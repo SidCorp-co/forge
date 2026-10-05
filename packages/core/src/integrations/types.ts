@@ -353,7 +353,11 @@ export interface IntegrationUsage {
 
 /** A binding target the provider refused, at a path inside `target`. */
 export interface BindingTargetRefusal {
-  code: 'COOLIFY_APPLICATION_UNKNOWN' | 'COOLIFY_UNREACHABLE' | 'SOURCE_HOST_MISMATCH';
+  code:
+    | 'COOLIFY_APPLICATION_UNKNOWN'
+    | 'COOLIFY_UNREACHABLE'
+    | 'SOURCE_HOST_MISMATCH'
+    | 'SOURCE_REPOSITORY_LOCAL';
   path: string;
   detail: string;
 }

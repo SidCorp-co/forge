@@ -164,7 +164,9 @@ function repositoryCard(
     detail: repository
       ? host
         ? repository
-        : `${repository} — no source host binding reaches ${hostOfRepository(repository)}`
+        : hostOfRepository(repository)
+          ? `${repository} — no source host binding reaches ${hostOfRepository(repository)}`
+          : `${repository} — a local path no host serves; its head is read from a runner's bound checkout`
       : 'the project document declares no repository',
     lastSyncAt: null,
     configured: repository !== null,

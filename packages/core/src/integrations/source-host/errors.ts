@@ -8,6 +8,7 @@ type SourceHostRefusalReason =
   | 'binding_disabled'
   | 'not_granted'
   | 'host_mismatch'
+  | 'local_repository'
   | 'no_repository'
   | 'no_installation'
   | 'no_connection'

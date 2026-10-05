@@ -145,6 +145,14 @@ const triggerSchema = z
     kind: z.enum(BUILDER_TRIGGERS),
     sha: sha().nullable(),
     source: z.literal('storefront').optional(),
+    // Evidence of the read, not a fact to trust later: the ref, when it was read and through what (`builder-head.ts:projectHead`), as a deployment record carries its readAt
+    head: z
+      .strictObject({
+        ref: z.string().min(1).max(300),
+        readAt: z.iso.datetime(),
+        via: z.enum(['source-host', 'runner-checkout']),
+      })
+      .optional(),
   })
   .refine((t) => (t.sha === null) === (t.source === 'storefront'), {
     message:

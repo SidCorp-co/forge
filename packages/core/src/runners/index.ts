@@ -1,6 +1,13 @@
 export { clearRunnerLimit, stampRunnerLimit } from './apply-runner-limit.js';
 export { attributeFailureToRunner } from './attribute-failure.js';
 export { bootstrapRunnerAdapters } from './bootstrap.js';
+export {
+  answerCheckoutHead,
+  type CheckoutHead,
+  type CheckoutHeadAnswer,
+  type CheckoutHeadRead,
+  readCheckoutHead,
+} from './checkout-head.js';
 export { AGENT_NAMING_MIN_RUNNER, atLeastVersion, claimCapableSql } from './device-cap.js';
 export { reapGhostRunners } from './ghost-reaper.js';
 export { mirrorHeartbeatToRunners } from './heartbeat-mirror.js';

@@ -167,7 +167,13 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
   });
 
-  provideRunnersPorts({ countInFlightByRunner, residentMasterSql, readRunnerPoolRead });
+  provideRunnersPorts({
+    countInFlightByRunner,
+    residentMasterSql,
+    readRunnerPoolRead,
+    boxIsListening,
+    sendToBoxNow,
+  });
 
   provideSchedulesPorts({
     emitNotification,

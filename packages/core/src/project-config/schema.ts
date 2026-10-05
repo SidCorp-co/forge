@@ -26,6 +26,15 @@ const PROJECT_DESCRIPTION_MAX = 280;
 export const uuid = () => z.string().regex(UUID);
 export const slug = () => z.string().regex(SLUG);
 const gitRef = () => z.string().min(1).max(200).regex(GIT_REF);
+
+/** `host.tld/owner/repo`, `user@host.tld:owner/repo[.git]`, or an absolute path with no whitespace and no `.`/`..` segment. */
+export const GIT_REPOSITORY =
+  /^(?:[a-z0-9.-]+\.[a-z]{2,}\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+|[A-Za-z0-9_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+|(?:\/(?!\.\.?(?:\/|$))[^/\s]+)+\/?)$/;
+export const gitRepository = () =>
+  z.string().max(500).regex(GIT_REPOSITORY, {
+    message:
+      'source.git.repository names a repository one of three ways: host.tld/owner/repo (a hosted repository), git@host.tld:owner/repo (an SSH remote), or an absolute local path such as /srv/git/repo.git (no whitespace, no `.` or `..` segment); a URL with a scheme (https://, file://) is not one of them',
+  });
 const httpsUrl = () =>
   z
     .string()
@@ -63,7 +72,7 @@ export function sized<T extends z.ZodType<Record<string, unknown>>>(
 const gitSourceSchema = z.strictObject({
   type: z.literal('git'),
   git: z.strictObject({
-    repository: z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+    repository: gitRepository(),
     defaultBranch: gitRef(),
     branches: unique(z.array(gitRef()).min(1).max(10)),
   }),
