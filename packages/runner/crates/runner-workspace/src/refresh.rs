@@ -69,6 +69,59 @@ async fn foreign_dirty_paths(repo: &Path) -> Vec<String> {
         .collect()
 }
 
+/// What the working tree holds at one Forge-owned path.
+enum Change {
+    Clean,
+    /// Only what an older runner wrote there: reverting it loses nothing of anyone's.
+    Forges,
+    /// Somebody's own change, or one this cannot tell from it; why, for the log.
+    Kept(String),
+}
+
+/// Whether the change at `path` is wholly one Forge used to make. Anything
+/// else is left in place, and the fast-forward refuses over it as git would.
+async fn forge_own_change(repo: &Path, path: &str) -> Change {
+    let dirty = git_line(
+        repo,
+        &["status", "--porcelain", "--untracked-files=no", "--", path],
+    )
+    .await;
+    if dirty.is_none() {
+        return Change::Clean;
+    }
+    let Some(head) = git(repo, &["show", &format!("HEAD:{path}")])
+        .await
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    else {
+        return Change::Kept("HEAD holds no copy of it to compare against".into());
+    };
+    let Ok(work) = std::fs::read_to_string(repo.join(path)) else {
+        return Change::Kept("the working copy is missing or unreadable".into());
+    };
+    let forges = match path {
+        "CLAUDE.md" => crate::orientation::without_import_block(&work) == Some(head.as_str()),
+        ".forge/orientation.md" => crate::orientation::is_generated(&work) && work != head,
+        ".gitignore" => work.strip_prefix(head.as_str()).is_some_and(|added| {
+            added.lines().any(|l| l.trim() == ".worktrees")
+                && added
+                    .lines()
+                    .all(|l| l.trim().is_empty() || l.trim() == ".worktrees")
+        }),
+        _ => false,
+    };
+    if forges {
+        Change::Forges
+    } else {
+        Change::Kept(match path {
+            "CLAUDE.md" => "it differs from HEAD by more than the forge:orientation block an older runner prepended".into(),
+            ".forge/orientation.md" => "the working copy is not an orientation Forge generated".into(),
+            ".gitignore" => "it adds lines other than the `.worktrees` an older runner appended".into(),
+            other => format!("{other} is not a path whose Forge change this can recognise"),
+        })
+    }
+}
+
 /// Fetch `origin` and fast-forward `base_branch` (or the currently checked-out
 /// branch when no base is known), then report the resulting git identity.
 ///
@@ -151,7 +204,16 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
         return state;
     }
     for path in FORGE_OWNED_PATHS {
-        let _ = git(repo_path, &["checkout", "--", path]).await;
+        match forge_own_change(repo_path, path).await {
+            Change::Clean => {}
+            Change::Forges => {
+                let _ = git(repo_path, &["checkout", "--", path]).await;
+            }
+            Change::Kept(why) => tracing::warn!(
+                "[refresh] {}: kept {path} as it stands, not reverted: {why}",
+                repo_path.display()
+            ),
+        }
     }
 
     match git(
@@ -189,5 +251,143 @@ pub fn describe(state: &WorkspaceGit) -> String {
             short(head),
             short(base_sha)
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    const OLD_BLOCK: &str = "<!-- forge:orientation -->\n<!-- Forge-managed pointer (fixed). Project orientation lives in .forge/orientation.md. -->\n@.forge/orientation.md\n<!-- /forge:orientation -->\n";
+
+    fn run(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.email=t@example.invalid", "-c", "user.name=t"])
+            .args(args)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// A checkout of a local bare origin on `dev`, where origin is one unrelated commit ahead.
+    fn checkout_with(files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("forge-refresh-{}", uuid::Uuid::new_v4()));
+        let seed = root.join("seed");
+        std::fs::create_dir_all(&seed).unwrap();
+        run(&seed, &["init", "-q", "-b", "dev"]);
+        for (path, body) in files {
+            let at = seed.join(path);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(at, body).unwrap();
+            run(&seed, &["add", "--", path]);
+        }
+        run(&seed, &["commit", "-q", "-m", "one"]);
+        let bare = root.join("origin.git");
+        run(
+            &root,
+            &[
+                "clone",
+                "-q",
+                "--bare",
+                seed.to_str().unwrap(),
+                bare.to_str().unwrap(),
+            ],
+        );
+        let checkout = root.join("checkout");
+        run(
+            &root,
+            &[
+                "clone",
+                "-q",
+                bare.to_str().unwrap(),
+                checkout.to_str().unwrap(),
+            ],
+        );
+        std::fs::write(seed.join("upstream.txt"), "ahead").unwrap();
+        run(&seed, &["add", "upstream.txt"]);
+        run(&seed, &["commit", "-q", "-m", "two"]);
+        run(&seed, &["push", "-q", bare.to_str().unwrap(), "dev"]);
+        checkout
+    }
+
+    fn read(repo: &Path, path: &str) -> String {
+        std::fs::read_to_string(repo.join(path)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_older_runners_import_block_alone_is_reverted() {
+        let claude = "# Catalog API\n";
+        let repo = checkout_with(&[("CLAUDE.md", claude)]);
+        std::fs::write(repo.join("CLAUDE.md"), format!("{OLD_BLOCK}\n{claude}")).unwrap();
+        let state = refresh(&repo, Some("dev")).await;
+        assert!(state.refreshed, "{state:?}");
+        assert_eq!(read(&repo, "CLAUDE.md"), claude);
+    }
+
+    #[tokio::test]
+    async fn a_persons_edit_to_claude_md_is_kept_byte_identical() {
+        let claude = "# Catalog API\n";
+        for edited in [
+            format!("{claude}\nA rule a person wrote.\n"),
+            format!("{OLD_BLOCK}\n{claude}\nA rule a person wrote.\n"),
+            format!("@.forge/orientation.md\n{claude}"),
+        ] {
+            let repo = checkout_with(&[("CLAUDE.md", claude)]);
+            std::fs::write(repo.join("CLAUDE.md"), &edited).unwrap();
+            let _ = refresh(&repo, Some("dev")).await;
+            assert_eq!(read(&repo, "CLAUDE.md"), edited);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_generated_orientation_over_a_committed_one_is_reverted_and_an_edited_one_kept() {
+        let committed = crate::orientation::orientation_body("prod", "epodsystem-core");
+        let repo = checkout_with(&[(".forge/orientation.md", &committed)]);
+        std::fs::write(
+            repo.join(".forge/orientation.md"),
+            crate::orientation::orientation_body("dev", "epod"),
+        )
+        .unwrap();
+        assert!(refresh(&repo, Some("dev")).await.refreshed);
+        assert_eq!(read(&repo, ".forge/orientation.md"), committed);
+
+        let repo = checkout_with(&[(".forge/orientation.md", "# Our own notes\n")]);
+        std::fs::write(
+            repo.join(".forge/orientation.md"),
+            "# Our own notes, edited\n",
+        )
+        .unwrap();
+        let _ = refresh(&repo, Some("dev")).await;
+        assert_eq!(
+            read(&repo, ".forge/orientation.md"),
+            "# Our own notes, edited\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn only_the_worktrees_line_forge_added_to_gitignore_is_reverted() {
+        let ignore = "node_modules\n";
+        let repo = checkout_with(&[(".gitignore", ignore)]);
+        std::fs::write(repo.join(".gitignore"), format!("{ignore}.worktrees\n")).unwrap();
+        assert!(refresh(&repo, Some("dev")).await.refreshed);
+        assert_eq!(read(&repo, ".gitignore"), ignore);
+
+        let repo = checkout_with(&[(".gitignore", ignore)]);
+        let edited = format!("{ignore}.worktrees\ndist\n");
+        std::fs::write(repo.join(".gitignore"), &edited).unwrap();
+        let _ = refresh(&repo, Some("dev")).await;
+        assert_eq!(read(&repo, ".gitignore"), edited);
     }
 }
