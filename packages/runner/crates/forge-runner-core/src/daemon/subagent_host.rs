@@ -177,10 +177,6 @@ pub fn read_at(root: &Path, pid: u32, start: &str) -> HostRead {
     }
 }
 
-fn cmdline(root: &Path, pid: u32) -> Vec<String> {
-    read_cmdline(root, pid).unwrap_or_default()
-}
-
 fn read_cmdline(root: &Path, pid: u32) -> std::io::Result<Vec<String>> {
     std::fs::read(root.join(pid.to_string()).join("cmdline")).map(|raw| {
         raw.split(|b| *b == 0)
@@ -198,17 +194,36 @@ fn file_name(path: &str) -> &str {
 /// Whether `pid` is a Claude Code process: its executable is Claude Code's
 /// native build or is named `claude`, or it runs Claude Code's npm package.
 pub(crate) fn is_claude(root: &Path, pid: u32) -> bool {
+    claude_at(root, pid).unwrap_or(false)
+}
+
+/// [`is_claude`], saying where it could not tell. The executable link is the
+/// kernel's to withhold for another user's process and is no evidence either
+/// way; the arguments are readable for every process, so a failure to read
+/// them, other than the process having gone, leaves the answer unknown.
+pub(crate) fn claude_at(root: &Path, pid: u32) -> Result<bool, String> {
     let dir = root.join(pid.to_string());
     if let Ok(exe) = std::fs::read_link(dir.join("exe")) {
         let exe = exe.to_string_lossy();
         if exe.contains("/claude/versions/") || file_name(&exe) == "claude" {
-            return true;
+            return Ok(true);
         }
     }
-    let args = cmdline(root, pid);
-    args.first()
+    let args = match read_cmdline(root, pid) {
+        Ok(args) => args,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound || e.raw_os_error() == Some(3) => {
+            return Ok(false)
+        }
+        Err(e) => {
+            return Err(format!(
+                "the arguments of pid {pid} could not be read ({e})"
+            ))
+        }
+    };
+    Ok(args
+        .first()
         .is_some_and(|a| file_name(a) == "claude" || a.contains("/claude/versions/"))
-        || args.iter().any(|a| a.contains("@anthropic-ai/claude-code"))
+        || args.iter().any(|a| a.contains("@anthropic-ai/claude-code")))
 }
 
 /// How far up from a hook's process the walk goes before it gives up: a hook

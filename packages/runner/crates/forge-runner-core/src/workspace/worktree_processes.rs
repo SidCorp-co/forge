@@ -734,8 +734,10 @@ fn agent_above(proc_root: &Path, pid: u32, ours: &BTreeSet<u32>) -> Above {
         if ours.contains(&at) {
             return Above::Nobody;
         }
-        if crate::daemon::subagent_host::is_claude(proc_root, at) {
-            return Above::Agent(at);
+        match crate::daemon::subagent_host::claude_at(proc_root, at) {
+            Ok(true) => return Above::Agent(at),
+            Ok(false) => {}
+            Err(why) => return Above::Unreadable(why),
         }
         let dir = proc_root.join(at.to_string());
         let status = match std::fs::read_to_string(dir.join("status")) {
@@ -1735,6 +1737,29 @@ mod tests {
             "{outcome:?}"
         );
         assert_eq!(sent, vec![821]);
+    }
+
+    /// ISS-1378 criterion 11, review F2: an ancestor whose parent can be read
+    /// and whose arguments cannot is one nobody can say is not an agent.
+    #[test]
+    fn an_ancestor_whose_arguments_cannot_be_read_refuses_the_removal_unsignalled() {
+        let scratch = Scratch::new("wtproc-noargs");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 841, &wt.to_string_lossy(), "node jest");
+        plant_parent(&proc, 841, 840);
+        plant_parent(&proc, 840, 1);
+        // A directory where the arguments belong: a read that should have
+        // been possible and was not.
+        std::fs::create_dir_all(proc.join("840/cmdline")).unwrap();
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        let Ending::Unreadable(why) = &outcome else {
+            panic!("an ancestor nobody could identify is not read as nobody's: {outcome:?}");
+        };
+        assert!(why.contains("pid 840"), "{why}");
+        assert!(sent.is_empty(), "{sent:?}");
     }
 
     /// ISS-1378 criterion 11.

@@ -230,6 +230,12 @@ impl Drain {
     /// The drain of this process, which writes the serving record into
     /// `record_dir` now and at every change after.
     pub fn new(record_dir: Option<PathBuf>) -> Self {
+        // A refusal outlives a restart of the same box: it is settled by the
+        // next update check, not by the daemon starting again.
+        let refused = record_dir
+            .as_deref()
+            .and_then(|dir| serving::read(dir).ok().flatten())
+            .and_then(|r| r.update_refused);
         let drain = Self {
             inner: Mutex::new(Inner {
                 attempt: None,
@@ -242,7 +248,7 @@ impl Drain {
             record_dir,
             identity: Record::this_process(now_ms()),
             socket: Socket::new(),
-            refused: Mutex::new(None),
+            refused: Mutex::new(refused),
         };
         drain.publish(None);
         drain
@@ -985,7 +991,17 @@ mod tests {
         let refused = read.update_refused.expect("on the record");
         assert_eq!(refused.version, "0.17.91");
         assert_eq!(refused.why, "the pre-flight refused it");
-        drain.update_settled();
+        let restarted = Drain::new(Some(dir.path().to_path_buf()));
+        assert_eq!(
+            serving::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .update_refused
+                .map(|u| u.version),
+            Some("0.17.91".to_string()),
+            "review F1: a restart before a later check does not take the refusal off the record"
+        );
+        restarted.update_settled();
         assert_eq!(
             serving::read(dir.path()).unwrap().unwrap().update_refused,
             None
