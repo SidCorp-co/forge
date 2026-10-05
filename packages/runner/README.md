@@ -191,33 +191,94 @@ every client (WebSocket + HTTP) — no manual `systemctl restart` needed.
 
 The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h.
 When a newer release is published it downloads the matching binary, verifies its
-sha256, swaps the executable, and restarts the systemd service.
+sha256, runs the download's `--version` and requires the version and commit the
+release names, swaps the executable, and hands over to it in place.
 
-Auto-update is **ON by default**. The restart **drains to idle first**, so an
-update never kills running work:
+Auto-update is **ON by default**. Once the new binary stands on disk the daemon
+**hands over** to it: the same process replaces its own image with the installed
+build (`exec`), keeping its pid, its service unit and the control socket, so no
+run, pane or job is stopped and no second daemon ever serves the box (ISS-1379).
+A re-login (a new device token) hands over the same way, to a fresh image of the
+same build.
 
-- **Admission closes for the drain.** From the moment it begins the daemon
-  declares no new run, takes no pool job, and places or nudges no master, for
-  every project it serves — a drain that went on admitting work waited on a
-  queue it kept refilling (ISS-1223). Chat turns and messages into a master pane
-  are still taken, and counted as holders, because they have no way to tell the
-  person waiting that they were refused.
+```
+update applied ─▶ wait, admission OPEN ──────────────▶ closing window ─────▶ exec the build on disk
+                  · in-process chat turns              · admission refused     · same pid, same unit
+                  · parked chat sessions are             by name, ≤ 10s        · control listener carried
+                    checkpointed and closed            · requests in flight      (FORGE_RUNNER_CONTROL_FD)
+                  · runs in the ledger hold nothing      are answered first    · connections waiting in its
+                  │                                                              backlog are answered by
+                  └─ 2h and still held ─▶ deferred: never closed, nothing          the new build
+                                          stopped; next update check / re-login
+download refused ─▶ nothing installed: the file the kernel will not run, the one that exits before
+                    saying what it is, the one naming another version or commit, are refused before
+                    the rename, and the path keeps the build every hook and command runs
+exec refused (unix) ─▶ the kept build goes back on the path, admission reopens, the old build goes on
+                       serving, the log names the path tried (it is never run under /bin/sh)
+not unix            ─▶ exit 0 for the service manager to start the new build, as before
+```
+
+- **Nothing reaches the path that has not run.** The download is written beside
+  the binary and its `--version` run (10s bound) before it is renamed over it:
+  every hook, every master's `forge-runner run declare` and every command a
+  person types runs that path, so a file that cannot run would stop the box
+  declaring anything until somebody reinstalled by hand. A refused download
+  installs nothing and the next check refuses it again.
+- **The served build is kept.** The daemon's first install links the build it
+  serves to `<binary>.served`, and a handover whose exec does not happen puts
+  it back on the path. The file outlives a handover that works, and the next
+  update replaces it. `forge-runner update` from a shell keeps none: it restarts
+  the unit rather than handing over.
+- **The new image serves the masters at once.** Just before the exec the daemon
+  writes the master panes it serves to `masters-handed.json` in its config
+  directory; the image that starts takes it only under its own pid and boot and
+  within two minutes, and removes it either way, so a master's declaration is
+  answered from the first second rather than from its first sweep.
+- **What it waits on is this process's own work**: chat turns running inside
+  the daemon, and parked chat sessions, which are checkpointed and closed
+  (bounded by their 120s checkpoint budget). Runs in the ledger, bound or not,
+  are not holders: they live in their panes, which the new image adopts, and
+  their masters bind, answer for and close them across the handover.
+- **Admission stays open while it waits.** Runs are declared, pool jobs taken,
+  masters placed and nudged. It is refused only inside the closing window — at
+  most 10s per attempt — with a reason that says the box is handing over and
+  that nothing was recorded.
 - **It speaks while it waits**: a line at the start and every 10 minutes naming
-  each run, by id and issue key, and each interactive turn still holding it.
-- **It is bounded at 2h.** Past that it does not restart: it names what still holds
-  it, reopens admission, and no drain may close it again for another 2h. The
-  next attempt is the next update check.
-- **What that costs when the work never ends.** Each attempt closes admission
-  for the full 2h again. A box holding a run that outlives it stays closed to
-  new runs, pool jobs and masters for 2h of every 6h under a pending update, or
-  2h of every 4h under a pending re-login. Before this, a drain closed nothing
-  and cost no admission time, but it also never turned the box over. The give-up
-  line states the cycle. The cost ends when that work ends, or when an operator
-  restarts the service by hand.
+  what it waits on. `forge-runner status` says a waiting handover keeps
+  admission open.
+- **It is bounded at 2h.** In-process work that outlasts that defers the
+  handover — admission was never closed, and the give-up line says so — and no
+  handover is attempted again for 2h. The next attempt is the next update check,
+  or the next re-login.
+- **Masters an update leaves behind are outdated.** A pane loads its hooks,
+  skill and plugins once, so the panes the new image adopts still run what they
+  were placed under. The daemon records the runner build and the installed
+  Claude Code plugin set at every placement; a pane placed under another build,
+  another plugin set, or before the build was recorded is outdated. An outdated
+  pane is not nudged, and the journal says so once per pane and reason. It is
+  ended and placed again — in the same sweep, resuming its conversation — only
+  when it holds no open run under the session this box serves it as (written
+  onto its ledger row with the carry; a pane whose row names another, or whose
+  carry left a run it could not read, is left running until that clears), its
+  turn is affirmatively over (its hooks say so,
+  or, unheard since the handover, its transcript's newest entry is a turn's
+  end), its project has admissible work, and the conversation its row records
+  has a transcript to resume (a successor without one starts cold). Otherwise
+  it is left running and the journal names every reason that holds and
+  `forge-runner master kill <slug>`, which replaces it now. The pane placed in
+  its stead takes its brief as this sweep's nudge, and is nudged from the next.
+- **A declaration nothing binds is ended at 60 minutes.** A run declared and
+  never bound to a subagent or a process holds its issues' leases and its
+  master's one unbound slot; after an hour (every bound run measured on the
+  fleet bound within 51 minutes) the box ends it naming its age, and the close
+  loop returns its session and leases as it would after its master's close.
 
-Until the restart, the daemon serves the build it started on while the newer
+The first update INTO this behaviour is still taken by the build being replaced,
+which drains the way that build does.
+
+Until the handover, the daemon serves the build it started on while the newer
 file stands on disk. `forge-runner status` prints both — `binary` for the file,
-`daemon` for what the running daemon recorded it serves, with its drain — and
+`daemon` for what the running daemon recorded it serves, with its handover — and
 `forge-runner --version` adds a line on stderr when the two differ, leaving its
 stdout unchanged.
 
@@ -234,7 +295,7 @@ way. It never reads a build off a process that wrote no record, because nothing
 can (ISS-1223).
 
 `forge-runner update --restart` asks the daemon, not the file. The file on disk
-being the latest is exactly the state a deferred drain leaves — updated, not yet
+being the latest is exactly the state a deferred handover leaves — updated, not yet
 turned over — so `--restart` there restarts the daemon when it is serving an
 older build, says there is nothing to restart when it already serves this one,
 and says which case holds when it cannot tell. It asks the same question after
@@ -246,10 +307,10 @@ that this is not a claim about whose daemon it is, and that a daemon started
 some other way still runs the old build. Two things it will not do, on either
 branch:
 
-- **It never cuts into a drain that is under way.** A draining daemon is
-  restarting itself and waiting for the work it holds, so a restart there would
-  stop exactly that work. It names the cause and every holder instead, and
-  leaves the box to turn itself over. A drain that gave up is the opposite case
+- **It never cuts into a handover that is under way.** A daemon handing over
+  replaces itself once its in-process work ends, so a restart there would cut
+  exactly that work. It names the cause and what it waits on instead, and leaves
+  the box to turn itself over. A handover that was deferred is the opposite case
   and is restarted.
 - **It restarts only the unit whose main process is that daemon.** The pid comes
   from one configuration's record, and on a box running a second daemon the
