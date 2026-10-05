@@ -1,10 +1,7 @@
 "use client";
 
-// web-v2 shared Sessions index — used at BOTH the workspace tier
-// (`/sessions`, cross-project, no `scope.projectId`) and the project tier
-// (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
-// session detail (`/projects/:slug/agents/:id`) and back to their issue
-// (ISS-331); the project slug is resolved per row from the projects list.
+// A project's Sessions index under the Agents shell (ISS-291). Rows link to the
+// session detail (`/projects/:slug/agents/:id`) and back to their issue (ISS-331).
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +17,7 @@ import {
   Menu,
   MonoTag,
   PageContainer,
+  Pagination,
   PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
@@ -35,14 +33,13 @@ import {
   type SegmentOption,
   useElapsed,
 } from "@/design";
-import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
-import { useDevices } from "@/features/runners/hooks";
+import { useProject } from "@/features/projects/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { SESSIONS_PAGE_SIZE } from "../api";
 import { FleetStrip } from "./fleet-strip";
-import { SessionReplyPanel } from "./session-reply-panel";
 import {
   useAbortSession,
   useCancelSession,
@@ -74,12 +71,6 @@ import {
 } from "../types";
 import { orderByOwner, OWNER_INDENT_PX } from "./session-tree";
 
-interface SessionsScreenProps {
-  /** Project-tier scope. Omit for the cross-project workspace tier.
-   *  `issueId` (when set) filters the list to one issue's sessions — used by
-   *  the issue-detail "Open sessions" deep-link (`?issue=<uuid>`). */
-  scope?: { projectId?: string; issueId?: string };
-}
 
 /** `m ss` / `s` countdown for the reap-window label. */
 function formatCountdown(ms: number): string {
@@ -136,50 +127,27 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
   }
 }
 
-function RoomSub({ projectId }: { projectId: string }) {
-  useRoom(projectRoom(projectId));
-  return null;
-}
-
-export function SessionsScreen({ scope }: SessionsScreenProps) {
-  const projectId = scope?.projectId;
-  const issueFilter = scope?.issueId;
-  const sessionsQ = useSessions({ projectId });
-  const projectsQ = useProjects();
-  // ISS-477 — at the workspace tier scope rows to the active org's projects. The
-  // project tier (scope.projectId set) already targets one project, so leave it.
-  const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
+export function SessionsScreen({ projectId }: { projectId: string }) {
+  // Counts and tabs are computed over one page of the newest sessions; the pager and its caption
+  // say which page, so a tab never claims to cover sessions it was not given.
+  const [page, setPage] = useState(1);
+  const sessionsQ = useSessions({ projectId, page });
+  const total = sessionsQ.data?.totalCount ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / SESSIONS_PAGE_SIZE));
   const [filter, setFilter] = useState<SessionFilter>("all");
   // ISS-465 — kind dimension (Runs vs Chats); presentation-only.
   const [kind, setKind] = useState<KindFilter>("all");
-  // ISS-664 — workspace-tier inline reply panel. Project tier keeps the
-  // existing full route navigation (no pain point there), so this only ever
-  // gets set when `projectId` is unset.
-  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
 
-  const slugById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of projectsQ.data ?? []) m.set(p.id, p.slug);
-    return m;
-  }, [projectsQ.data]);
-  const slugFor = (row: SessionRow) => slugById.get(row.projectId);
-
-  // Resolve a device id → friendly name so each row can show WHERE it ran.
-  // Project tier: the project's devicePool (project-scoped). Workspace tier:
-  // fall back to the caller's owner-scoped device list. Unknown ids render as
-  // a short MonoTag (different owner's device).
+  // A device id resolves to its name through the project's pool; an unknown id renders as a short MonoTag.
   const projectDetailQ = useProject(projectId);
-  const devicesQ = useDevices();
-  const deviceNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const d of projectDetailQ.data?.devicePool ?? []) m.set(d.id, d.name);
-    for (const d of devicesQ.data ?? []) if (!m.has(d.id)) m.set(d.id, d.name);
-    return m;
-  }, [projectDetailQ.data, devicesQ.data]);
+  const slug = projectDetailQ.data?.slug;
+  const deviceNameById = useMemo(
+    () => new Map((projectDetailQ.data?.devicePool ?? []).map((d) => [d.id, d.name] as const)),
+    [projectDetailQ.data],
+  );
 
-  // Live updates: project tier subscribes to its room; workspace tier fans out
-  // across every visible project. The event-router invalidates ['agent-sessions'].
-  useRoom(projectId ? projectRoom(projectId) : null);
+  // The event-router invalidates ['agent-sessions'] on this room's events.
+  useRoom(projectRoom(projectId));
 
   const cancel = useCancelSession();
   const retry = useRetrySession();
@@ -187,20 +155,9 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const abort = useAbortSession();
   const sweep = useSweepZombies();
 
-  // ISS-465 — kind counts come from this issue- and org-scoped set, before the
-  // kind filter, so switching tabs shows the true population in each.
-  const kindRows = useMemo(() => {
-    const all = sessionsQ.data?.items ?? [];
-    const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
-    // ISS-477 — workspace tier: keep only sessions whose project is in the active org.
-    return projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
-  }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
+  // ISS-465 — kind counts come from the page before the kind filter.
+  const kindRows = useMemo(() => sessionsQ.data?.items ?? [], [sessionsQ.data]);
   const rows = useMemo(() => kindRows.filter((r) => matchesKind(kind, r)), [kindRows, kind]);
-
-  // ISS-664 — resolve the open panel's row (and its slug) from the currently
-  // loaded rows so the panel can render without a second fetch.
-  const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
-  const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
   const now = Date.now();
   const displays = useMemo(
@@ -284,9 +241,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
   return (
     <PageContainer className="min-h-dvh">
-      {/* Workspace tier: subscribe to every active-org project room for live updates. */}
-      {!projectId && orgProjects.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
-
       {/* Compact header (ISS-391): title + the four headline metrics collapsed
           into a single inline summary strip (was a 4-card grid that ate a tall
           band of mostly 0/— on quiet projects), with Sweep on the same row. */}
@@ -307,37 +261,34 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             />
           </div>
         </div>
-        {projectId ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="trash"
-            loading={sweep.isPending}
-            onClick={() => sweep.mutate(projectId)}
-          >
-            Sweep zombies
-          </Button>
-        ) : (
-          <Tooltip label="Available on a project's sessions page (owner/admin).">
-            <Button variant="secondary" size="sm" icon="trash" disabled>
-              Sweep zombies
-            </Button>
-          </Tooltip>
-        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="trash"
+          loading={sweep.isPending}
+          onClick={() => sweep.mutate(projectId)}
+        >
+          Sweep zombies
+        </Button>
       </header>
 
-      {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner
-          banner. Project tier only (needs a project-scoped device pool +
-          queue-stats); the workspace tier keeps the aggregate summary alone. */}
-      {projectId && (
-        <div className="mb-4">
-          <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} />
-        </div>
-      )}
+      {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner banner. */}
+      <div className="mb-4">
+        <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} />
+      </div>
 
-      <div className="mb-4 flex flex-wrap gap-3 overflow-x-auto">
+      <div className="mb-4 flex flex-wrap items-center gap-3 overflow-x-auto">
         <SegmentedControl options={kindOptions} value={kind} onChange={setKind} />
         <SegmentedControl options={filterOptions} value={filter} onChange={setFilter} />
+        {total > 0 && (
+          <div className="ml-auto flex items-center gap-2 whitespace-nowrap">
+            <span className="fg-caption text-subtle">
+              Counts cover sessions {(page - 1) * SESSIONS_PAGE_SIZE + 1}–
+              {Math.min(page * SESSIONS_PAGE_SIZE, total)} of {total}, newest first
+            </span>
+            {pageCount > 1 && <Pagination page={page} pageCount={pageCount} onChange={setPage} />}
+          </div>
+        )}
       </div>
 
       {sessionsQ.isLoading && (
@@ -359,11 +310,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       {!sessionsQ.isLoading && !sessionsQ.isError && rows.length === 0 && (
         <EmptyState
           title="No sessions yet"
-          message={
-            projectId
-              ? "Agent sessions for this project will appear here as the pipeline runs."
-              : "Agent sessions across your projects will appear here."
-          }
+          message="Agent sessions for this project will appear here as the pipeline runs."
         />
       )}
 
@@ -407,12 +354,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                     row={row}
                     depth={depth}
                     hasChildren={hasChildren}
-                    slug={slugFor(row)}
+                    slug={slug}
                     deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                     now={now}
                     actions={actions}
-                    projectId={projectId}
-                    onInlineOpen={setOpenSessionId}
                   />
                 ))}
               </TBody>
@@ -426,27 +371,14 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 key={row.id}
                 row={row}
                 depth={depth}
-                slug={slugFor(row)}
+                slug={slug}
                 deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                 now={now}
                 actions={actions}
-                projectId={projectId}
-                onInlineOpen={setOpenSessionId}
               />
             ))}
           </div>
         </>
-      )}
-
-      {/* ISS-664 — workspace tier only: inline reply panel. Keeps the list
-          mounted+visible behind the drawer (AC4). Project tier never sets
-          `openSessionId` (its rows navigate instead), so this stays inert there. */}
-      {!projectId && (
-        <SessionReplyPanel
-          sessionId={openSessionId}
-          slug={openRow ? slugFor(openRow) : undefined}
-          onClose={() => setOpenSessionId(null)}
-        />
       )}
     </PageContainer>
   );
@@ -460,16 +392,10 @@ interface RowProps {
   actions: RowActions;
   /** How far under its owner this row sits, in the list as filtered. */
   depth: number;
-  /** Set at the project tier only — when present, rows navigate as before. */
-  projectId?: string;
-  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
-   *  navigating away from the cross-project list. */
-  onInlineOpen: (id: string) => void;
 }
 
-/** A row's display state, its duration and how it opens: project tier keeps
- *  the route navigation, workspace tier opens the inline reply panel (ISS-664). */
-function useRowView({ row, slug, now, projectId, onInlineOpen }: RowProps) {
+/** A row's display state, its duration and the route it opens. */
+function useRowView({ row, slug, now }: RowProps) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(row, now);
   const live = display === "running" || display === "stalled";
@@ -481,11 +407,7 @@ function useRowView({ row, slug, now, projectId, onInlineOpen }: RowProps) {
       ? elapsed
       : formatDuration(new Date(row.updatedAt).getTime() - startMs);
   const stage = sessionStep(row.metadata) ?? undefined;
-  const open = projectId
-    ? slug
-      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
-      : undefined
-    : () => onInlineOpen(row.id);
+  const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return { display, duration, stage, open };
 }
 

@@ -5,10 +5,8 @@ import {
   type AgentSessionStatus,
   agentSessions,
   agentSessionTurns,
-  devices,
   issues,
   projects,
-  runners,
   usageRecords,
 } from '../db/schema.js';
 import { extractTurnPreview } from './chat-preview.js';
@@ -315,24 +313,4 @@ export async function listAgentSessionsPage(f: AgentSessionListFilter) {
     lastMessagePreview: previewById.get(r.id) ?? null,
   }));
   return { items, total: totalRow?.n ?? 0 };
-}
-
-/** A device's liveness and owner, or null when it does not exist. */
-export async function deviceLiveness(deviceId: string) {
-  const [row] = await db
-    .select({ status: devices.status, ownerId: devices.ownerId })
-    .from(devices)
-    .where(eq(devices.id, deviceId))
-    .limit(1);
-  return row ?? null;
-}
-
-/** Whether a device serves as a runner for any of these projects. */
-export async function deviceServesAnyOf(deviceId: string, projectIds: string[]): Promise<boolean> {
-  const [served] = await db
-    .select({ id: runners.id })
-    .from(runners)
-    .where(and(eq(runners.deviceId, deviceId), inArray(runners.projectId, projectIds)))
-    .limit(1);
-  return served !== undefined;
 }

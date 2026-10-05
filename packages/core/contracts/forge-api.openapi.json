@@ -1189,116 +1189,6 @@
         ]
       }
     },
-    "/api/agent-sessions/desktop/status": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "deviceId",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "projectSlug",
-            "required": false,
-            "schema": {
-              "maxLength": 120,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireUserOrDevice",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "query"
-        ]
-      },
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "note": {
-                    "anyOf": [
-                      {
-                        "maxLength": 2000,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "sessionId": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
-                  },
-                  "status": {
-                    "enum": [
-                      "idle",
-                      "queued",
-                      "running",
-                      "completed",
-                      "failed",
-                      "completed_via_recovery",
-                      "cancelled_stale",
-                      "cancelled"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "sessionId",
-                  "status"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireUserOrDevice",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json"
-        ]
-      }
-    },
     "/api/agent-sessions/queue-stats": {
       "get": {
         "parameters": [
@@ -1392,10 +1282,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "origin": {
-                    "maxLength": 40,
-                    "type": "string"
                   },
                   "pageContext": {
                     "additionalProperties": false,
@@ -1507,10 +1393,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "origin": {
-                    "maxLength": 40,
-                    "type": "string"
                   },
                   "pageContext": {
                     "additionalProperties": false,
@@ -2568,64 +2450,6 @@
                 },
                 "required": [
                   "telemetry"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireUserOrDevice",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/agent-sessions/{id}/relay": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "data": {},
-                  "event": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "event",
-                  "data"
                 ],
                 "type": "object"
               }
@@ -12474,6 +12298,58 @@
         },
         "x-forge-auth": [
           "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/jobs/{id}/resume": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
         ],
         "x-forge-validated": [
           "json",
@@ -33302,20 +33178,6 @@
                     ],
                     "type": "string"
                   },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "name": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -33497,20 +33359,6 @@
                       "sentry_pull"
                     ],
                     "type": "string"
-                  },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
                   },
                   "name": {
                     "maxLength": 200,

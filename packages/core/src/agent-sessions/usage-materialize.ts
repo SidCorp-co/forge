@@ -1,6 +1,5 @@
-import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobEvents, usageRecords } from '../db/schema.js';
+import { usageRecords } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { extractUsageFromEvents } from './usage-from-job-events.js';
 
@@ -11,16 +10,14 @@ interface MaterializeJobInput {
   projectId: string;
 }
 
-export async function materializeJobUsage(job: MaterializeJobInput): Promise<void> {
+/** Record a finished job's usage from the job events its owner, jobs, read and hands in. */
+export async function materializeJobUsage(
+  job: MaterializeJobInput,
+  events: Parameters<typeof extractUsageFromEvents>[0],
+): Promise<void> {
   try {
     // sessionId is the linkage cost-summary / the issues withCost rollup join on.
     if (!job.agentSessionId) return;
-
-    const events = await db
-      .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts })
-      .from(jobEvents)
-      .where(eq(jobEvents.jobId, job.id))
-      .orderBy(asc(jobEvents.seq));
 
     const extracted = extractUsageFromEvents(events);
     if (!extracted) return; // no result line — nothing reliable to record

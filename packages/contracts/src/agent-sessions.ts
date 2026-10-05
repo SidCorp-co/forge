@@ -21,6 +21,9 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"NO_LIVE_SESSION",
 	"SESSION_PARKED",
 	"NO_DEVICE",
+	"SEND_SEQ_UNKNOWN",
+	"SEND_ALREADY_SETTLED",
+	"ATTACHMENT_NOT_IN_SESSION",
 ] as const;
 
 export type AgentSessionRefusalCode = (typeof AGENT_SESSION_REFUSAL_CODES)[number];
@@ -28,6 +31,9 @@ export const AGENT_SESSION_REFUSAL_STATUSES = {
 	SESSION_STALE: 409,
 	TURN_STALE: 409,
 	SEQ_TAKEN_BY_CORE: 409,
+	SESSION_CANCELLED: 409,
+	SEND_SEQ_UNKNOWN: 404,
+	SEND_ALREADY_SETTLED: 409,
 } as const satisfies RefusalStatuses<AgentSessionRefusalCode>;
 
 /** Who asked, as a session's metadata carries it so a failover can mint again. */

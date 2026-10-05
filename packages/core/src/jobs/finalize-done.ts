@@ -1,12 +1,13 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
-import { and, eq, gte } from 'drizzle-orm';
+import { and, asc, eq, gte } from 'drizzle-orm';
 import { deriveSessionFinal, materializeJobUsage } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { issueStepContexts, jobs } from '../db/schema.js';
+import { issueStepContexts, jobEvents, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
+import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -29,8 +30,46 @@ export async function hasTerminalHandoffForAttempt(job: JobRow): Promise<boolean
 }
 
 /**
- * CAS-flip a job to `done` and run the shared completion side-effects (mirror
- * of the `/complete` done branch in `lifecycle-routes.ts`). The CAS is keyed on
+ * ISS-283 — final authoritative derive of the agent_sessions transcript from
+ * the streamed job_events (a CLI runner never PATCHes the session row), and
+ * ISS-439 — the usage_records row, from the job events read here and handed to
+ * agent-sessions. Fire-and-forget so neither can block or hang the finish.
+ */
+export function settleTranscriptAndUsage(row: JobRow): void {
+  if (!row.agentSessionId) return;
+  void deriveSessionFinal(row.id, row.agentSessionId);
+  void db
+    .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts })
+    .from(jobEvents)
+    .where(eq(jobEvents.jobId, row.id))
+    .orderBy(asc(jobEvents.seq))
+    .then((events) => materializeJobUsage(row, events))
+    .catch((err) => logger.warn({ err, jobId: row.id }, 'usage: job events read failed'));
+}
+
+/** A job that ended done or cancelled: session mirror, broadcast, runner health, issue health. */
+export async function publishFinished(
+  row: JobRow,
+  status: 'done' | 'cancelled',
+  exitCode: number | null,
+  opts: { clearRunnerHealth: boolean } = { clearRunnerHealth: status === 'done' },
+): Promise<void> {
+  await syncAgentSessionLifecycle(row, status);
+  roomManager.publish(projectRoom(row.projectId), {
+    event: status === 'done' ? 'job.completed' : 'job.cancelled',
+    data: { jobId: row.id, status, exitCode },
+  });
+  if (opts.clearRunnerHealth) {
+    void clearRunnerLimit(row.runnerId, row.projectId);
+    void clearRunnerQuarantine(row.runnerId, row.projectId);
+  }
+  // ISS-164 — activeSession clears, queued siblings may now classify differently.
+  if (row.issueId) await publishPipelineHealthChanged(row.projectId, [row.issueId]);
+}
+
+/**
+ * CAS-flip a job to `done` and run the shared completion side-effects (the
+ * same ones `runner-finish.ts` runs for `/complete`). The CAS is keyed on
  * the status the caller observed, so a concurrent terminal write wins instead
  * of double-finalizing.
  */
@@ -52,17 +91,8 @@ export async function finalizeJobDone(job: JobRow, reason: string): Promise<bool
     'finalize-done: job marked done from agent handoff signal (runner reported failure but the step completed)',
   );
 
-  // Best-effort transcript derive (CLI runner never PATCHes the session row).
-  if (updated.agentSessionId) void deriveSessionFinal(updated.id, updated.agentSessionId);
-  // ISS-439 — materialize the usage_records row from the same stored job_events.
-  void materializeJobUsage(updated);
-  await syncAgentSessionLifecycle(updated, 'done');
-
-  roomManager.publish(projectRoom(updated.projectId), {
-    event: 'job.completed',
-    data: { jobId: updated.id, status: 'done', exitCode: 0 },
-  });
-
-  if (updated.issueId) await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
+  settleTranscriptAndUsage(updated);
+  // the runner reported a failure, so its limit or quarantine stamp stands
+  await publishFinished(updated, 'done', 0, { clearRunnerHealth: false });
   return true;
 }

@@ -15,6 +15,4 @@ export const schedulesApi = {
     apiClient<{ fireId: string; sessionId: string | null; message: string }>(`/schedules/${id}/run`, { method: "POST" }),
 
 
-  /** `DELETE /api/schedules/:id` — 204 No Content. */
-  remove: (id: string) => apiClient<void>(`/schedules/${id}`, { method: "DELETE" }),
 };

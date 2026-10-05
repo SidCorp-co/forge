@@ -139,7 +139,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
     inserted = await dispatchInteractiveTurn({
       session,
       project,
-      client: { deviceId: authorised.authority.deviceId, isLocal: false, migrated: false },
+      client: { deviceId: authorised.authority.deviceId, migrated: false },
       authority: authorised.authority,
       message: schedule.prompt,
       broadcastEvent: 'agent-session.created',

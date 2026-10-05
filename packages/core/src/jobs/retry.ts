@@ -391,9 +391,8 @@ export async function scheduleAutoRetryWithVerify(
   else await resolvePipelineWedge(capacityEntityId);
   const next = outcome.state;
 
-  const immediateFailover =
-    isFailoverAction && next.target !== null && next.target !== job.deviceId;
-  const cooldownMs = immediateFailover ? 0 : RETRY_COOLDOWN_MS;
+  // A failover retries at once for whichever box claims it; nothing pins it to `next.target`.
+  const cooldownMs = isFailoverAction ? 0 : RETRY_COOLDOWN_MS;
   const newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
   await bumpSession(job, 'autoRetries', incrementAutoRetryCount);
 

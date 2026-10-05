@@ -25,6 +25,7 @@ import {
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { agentSessionsPorts } from './ports.js';
+import { refuseSession } from './refusals.js';
 
 type SessionInboxRow = typeof sessionInbox.$inferSelect;
 
@@ -191,10 +192,18 @@ export async function confirmSessionSend(
   seq: number,
   outcome: Exclude<SessionSendOutcome, 'unknown'>,
 ): Promise<void> {
-  await db
+  const settled = await db
     .update(sessionInbox)
     .set({ sendConfirmedAt: new Date(), sendOutcome: outcome })
-    .where(and(eq(sessionInbox.agentSessionId, agentSessionId), eq(sessionInbox.seq, seq)));
+    .where(
+      and(
+        eq(sessionInbox.agentSessionId, agentSessionId),
+        eq(sessionInbox.seq, seq),
+        sql`(${sessionInbox.sendOutcome} IS NULL OR ${sessionInbox.sendOutcome} = ${outcome})`,
+      ),
+    )
+    .returning({ seq: sessionInbox.seq });
+  if (!settled.length) await refuseUnsettled(agentSessionId, seq, 'its send outcome');
 }
 
 /**
@@ -206,10 +215,37 @@ export async function markSessionSendApplied(
   seq: number,
   turn: number,
 ): Promise<void> {
-  await db
+  const applied = await db
     .update(sessionInbox)
-    .set({ appliedAt: new Date(), appliedTurn: turn })
-    .where(and(eq(sessionInbox.agentSessionId, agentSessionId), eq(sessionInbox.seq, seq)));
+    .set({ appliedAt: sql`COALESCE(${sessionInbox.appliedAt}, now())`, appliedTurn: turn })
+    .where(
+      and(
+        eq(sessionInbox.agentSessionId, agentSessionId),
+        eq(sessionInbox.seq, seq),
+        sql`(${sessionInbox.appliedTurn} IS NULL OR ${sessionInbox.appliedTurn} = ${turn})`,
+      ),
+    )
+    .returning({ seq: sessionInbox.seq });
+  if (!applied.length) await refuseUnsettled(agentSessionId, seq, 'the turn that applied it');
+}
+
+/** No row matched: the seq was never allocated (or was pruned), or it already holds another answer. */
+async function refuseUnsettled(agentSessionId: string, seq: number, what: string): Promise<never> {
+  const [row] = await db
+    .select({ seq: sessionInbox.seq })
+    .from(sessionInbox)
+    .where(and(eq(sessionInbox.agentSessionId, agentSessionId), eq(sessionInbox.seq, seq)))
+    .limit(1);
+  if (!row) {
+    throw refuseSession(
+      'SEND_SEQ_UNKNOWN',
+      `session ${agentSessionId} has no inbox seq ${seq}: core never allocated it, or retention removed it`,
+    );
+  }
+  throw refuseSession(
+    'SEND_ALREADY_SETTLED',
+    `session ${agentSessionId} inbox seq ${seq} already records ${what} with a different value; it is not overwritten`,
+  );
 }
 
 interface SendResolution {

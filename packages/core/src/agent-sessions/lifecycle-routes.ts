@@ -1,35 +1,23 @@
 import { Hono } from 'hono';
-import { z } from 'zod';
-import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
-  findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds } from '../permissions/index.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
-import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
-import { deviceLiveness, deviceServesAnyOf, loadProjectBySlug } from './read.js';
+import { abortBodySchema, setRunnerBodySchema } from './lifecycle-schemas.js';
 import { refuseSession } from './refusals.js';
-import {
-  abortSession,
-  cancelSession,
-  rebindSessionRunner,
-  setDesktopSessionStatus,
-} from './service.js';
+import { abortSession, cancelSession, rebindSessionRunner } from './service.js';
 import {
   ensureSessionOwnerOrAdmin,
-  ensureSessionRole,
   idParamSchema,
   loadSessionOr404,
   notFound,
 } from './session-access.js';
-import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
 
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -147,111 +135,5 @@ agentSessionLifecycleRoutes.post(
 
     broadcastSession(updated, 'agent-session.updated');
     return c.json(updated);
-  },
-);
-
-agentSessionLifecycleRoutes.post(
-  '/desktop/status',
-  zValidator('json', desktopStatusSchema),
-  async (c) => {
-    const { sessionId, status, note } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const { session: existing } = await ensureSessionRole(sessionId, userId, 'project.write');
-
-    const statusSet: AgentSessionPatch = { status, updatedAt: new Date() };
-
-    const classification =
-      status === 'failed'
-        ? await finalizeScheduleSessionFailure({
-            sessionId,
-            messages: existing.messages,
-            note,
-            baseMetadata: (existing.metadata as Record<string, unknown> | null) ?? {},
-            set: statusSet,
-          })
-        : null;
-
-    const { status: _to, ...columns } = statusSet;
-    const updated = await setDesktopSessionStatus(
-      sessionId,
-      { expect: existing.status, to: status },
-      columns,
-      restActor(c),
-    );
-
-    // ISS-101 — close one-shot runs on terminal status writes. No-op on
-    // kind='issue' (closed by issue state-machine); fires for pm/interactive.
-    if (status === 'completed' || status === 'failed') {
-      await closeRunIfOneShot(updated.pipelineRunId, status === 'failed' ? 'failed' : 'completed');
-    }
-
-    if (classification) {
-      await classification.recoverAfterWrite(existing.metadata);
-    }
-
-    broadcastSession(updated, 'agent-session.status', { note: note ?? null });
-    return c.json(updated);
-  },
-);
-
-// Web → core probe: "is any desktop device for this project currently online?"
-// The agent page polls this on mount + on WS reconnect to decide whether to
-// show the "Desktop offline" pill. Returns the Strapi-era envelope shape
-// `{ data: { connected } }` for FE-compat. Inputs: `?deviceId` for an
-// explicit check, or `?projectSlug` to scan the project's pool + default.
-const desktopStatusQuerySchema = z
-  .object({
-    deviceId: z.uuid().optional(),
-    projectSlug: z.string().min(1).max(120).optional(),
-  })
-  .refine((o) => o.deviceId || o.projectSlug, {
-    message: 'deviceId or projectSlug is required',
-  });
-
-agentSessionLifecycleRoutes.get(
-  '/desktop/status',
-  zValidator('query', desktopStatusQuerySchema),
-  async (c) => {
-    const { deviceId, projectSlug } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    // Non-revealing default: any caller without ownership/membership of the
-    // queried target gets `connected:false` and cannot tell a real offline
-    // device/slug from one that exists in another tenant (ISS-492).
-    const notConnected = () => c.json({ data: { connected: false } });
-
-    if (deviceId) {
-      const row = await deviceLiveness(deviceId);
-      if (!row) return notConnected();
-
-      // Reveal the real liveness bit only to the device owner, or to a caller
-      // who shares a project this device serves as a runner.
-      let allowed = row.ownerId === userId;
-      if (!allowed) {
-        const visible = await loadVisibleProjectIds(userId);
-        if (visible.length > 0) {
-          allowed = await deviceServesAnyOf(deviceId, visible);
-        }
-      }
-      if (!allowed) return notConnected();
-
-      return c.json({ data: { connected: row.status === 'online' } });
-    }
-
-    if (!projectSlug) {
-      return notConnected();
-    }
-
-    const project = await loadProjectBySlug(projectSlug);
-    if (!project) return notConnected();
-
-    // Gate membership before confirming the slug has a live device — otherwise
-    // the response is a slug-existence + liveness oracle for other tenants.
-    const access = await loadProjectAccess(project.id, userId).catch(() => null);
-    if (!access || !holds(access, 'project.read')) return notConnected();
-
-    const available = await findAvailableDeviceForProject(project.id);
-    return c.json({ data: { connected: available !== null } });
   },
 );

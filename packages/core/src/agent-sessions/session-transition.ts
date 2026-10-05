@@ -4,7 +4,8 @@ import {
   SESSION_MACHINE,
   TERMINAL_AGENT_SESSION_STATUSES,
 } from '@forge/contracts/session-machine';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import type { MachineRow } from '../lifecycle/index.js';
@@ -63,7 +64,7 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
   });
   let returned: string[] = [];
   if (ending && result.rows.length > 0) {
-    returned = await handBackRunIssues(result.rows, args);
+    returned = await handBackRunIssues(exec, result.rows, args);
     await fireSessionBridges(exec, result.rows, args.returning === undefined);
     await descendFrom(
       result.rows.map((r) => r.id),
@@ -76,10 +77,12 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
 /**
  * The kernel's hand-back (workflow `issue-lifecycle` rev 8): a run that ended, whatever its outcome,
  * returns each issue it still has at `in_progress`, held by nothing else, to the status it took it
- * from, along the issue machine's recovery edges. A failure is logged and never thrown: the session
- * has ended either way. Answers the keys of the issues handed back.
+ * from, along the issue machine's recovery edges. A failure never undoes the end: the session is
+ * marked as owing its hand-back, and `retryOwedHandBacks` repeats it until it lands. Answers the
+ * keys of the issues handed back.
  */
 async function handBackRunIssues(
+  exec: KernelExecutor,
   rows: ReadonlyArray<{ id: string }>,
   args: { to: string; source: string; reason?: string | null | undefined },
 ): Promise<string[]> {
@@ -100,11 +103,58 @@ async function handBackRunIssues(
     } catch (err) {
       logger.error(
         { err, runId, source: args.source },
-        'session-transition: an ended run session could not hand its issues back; they stay at in_progress until the next end of a session over them',
+        'session-transition: an ended run session could not hand its issues back; the retry sweep repeats it',
       );
+      await exec
+        .update(agentSessions)
+        .set({
+          metadata: sql`COALESCE(${agentSessions.metadata}, '{}'::jsonb) || jsonb_build_object(${HAND_BACK_OWED}::text, true)`,
+        })
+        .where(
+          and(eq(agentSessions.pipelineRunId, runId), eq(agentSessions.kind, RUN_SESSION_KIND)),
+        );
     }
   }
   return returned;
+}
+
+const HAND_BACK_OWED = 'handBackOwed';
+
+/** Repeats every hand-back an ended run session still owes; a run's mark clears once its return lands. */
+export async function retryOwedHandBacks(): Promise<{ owed: number; returned: number }> {
+  const owed = await db
+    .selectDistinct({ runId: agentSessions.pipelineRunId })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.kind, RUN_SESSION_KIND),
+        inArray(agentSessions.status, [...ENDED]),
+        sql`${agentSessions.metadata} ->> ${HAND_BACK_OWED} = 'true'`,
+      ),
+    )
+    .limit(50);
+  const { returnIssuesForRun } = await import('../devices/index.js');
+  let returned = 0;
+  for (const { runId } of owed) {
+    if (!runId) continue;
+    try {
+      returned += (
+        await returnIssuesForRun(runId, { reason: 'its ended run session owed this hand-back' })
+      ).length;
+      await db
+        .update(agentSessions)
+        .set({ metadata: sql`${agentSessions.metadata} - ${HAND_BACK_OWED}` })
+        .where(
+          and(eq(agentSessions.pipelineRunId, runId), eq(agentSessions.kind, RUN_SESSION_KIND)),
+        );
+    } catch (err) {
+      logger.error(
+        { err, runId },
+        'session-transition: an owed hand-back failed again; it stays owed',
+      );
+    }
+  }
+  return { owed: owed.length, returned };
 }
 
 /** A flip the descent itself wrote is skipped: the walk owns its depth bound. */

@@ -34,12 +34,11 @@ import { useRouter } from "next/navigation";
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
 import { useEffect, useMemo, useState } from "react";
+import { useCancelSession, useRerunSession } from "@/features/sessions/hooks";
 import {
-  useCancelSession,
   useEditTurn,
   useForkSession,
   useRegenerateTurn,
-  useRerunSession,
   useSendMessage,
   useSession,
   useSessionTurns,
@@ -59,23 +58,9 @@ interface SessionScreenProps {
   sessionId: string;
   /** Back-link target (project sessions index). */
   projectSlug?: string;
-  /** Rendered inside a workspace-tier SlideOver panel (ISS-664) rather than as
-   *  a full route page: fills the drawer height instead of the viewport, and
-   *  defaults the desktop context rail to collapsed (the drawer is narrower
-   *  than a full page). Pass `onClose` alongside this to give the header back
-   *  button somewhere to go. */
-  embedded?: boolean;
-  /** Closes the panel. When set, the header back button calls this instead of
-   *  navigating — used by the embedded workspace-tier reply panel. */
-  onClose?: () => void;
 }
 
-export function SessionScreen({
-  sessionId,
-  projectSlug,
-  embedded = false,
-  onClose,
-}: SessionScreenProps) {
+export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
@@ -83,17 +68,8 @@ export function SessionScreen({
   const turnsQ = useSessionTurns(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
-  const [persistedRailCollapsed, setPersistedRailCollapsed] = usePersistedState(
-    "web-v2:context-rail",
-    false,
-  );
-  // Embedded (workspace-tier panel): default the rail to collapsed — the
-  // drawer is narrower than a full page — but keep it toggleable per-open
-  // without touching the full-page project preference (ISS-664 plan Q2).
-  const [embeddedRailCollapsed, setEmbeddedRailCollapsed] = useState(true);
-  const railCollapsed = embedded ? embeddedRailCollapsed : persistedRailCollapsed;
-  const setRailCollapsed = embedded ? setEmbeddedRailCollapsed : setPersistedRailCollapsed;
-  const goBack = onClose ?? (projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined);
+  const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
+  const goBack = projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined;
 
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
@@ -104,13 +80,9 @@ export function SessionScreen({
     !!session && canWriteProject(projectsQ.data?.find((p) => p.id === session.projectId)?.role);
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
-  // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from
-  // the workspace reply panel should not rewrite the owner's last-visited /
-  // ⌘K recents state.
   const loadedId = session?.id;
   const sessionTitle = session?.title;
   useEffect(() => {
-    if (embedded) return;
     if (!loadedId || !projectSlug) return;
     pushRecent({
       kind: "session",
@@ -119,7 +91,7 @@ export function SessionScreen({
       href: `/projects/${projectSlug}/agents/${loadedId}`,
       icon: "agent",
     });
-  }, [embedded, loadedId, sessionTitle, projectSlug, pushRecent]);
+  }, [loadedId, sessionTitle, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;
@@ -153,8 +125,8 @@ export function SessionScreen({
   const regenerate = useRegenerateTurn(sessionId);
   const fork = useForkSession(sessionId);
   const editTurn = useEditTurn(sessionId);
-  const cancel = useCancelSession(sessionId);
-  const rerun = useRerunSession(sessionId);
+  const cancel = useCancelSession();
+  const rerun = useRerunSession();
 
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
@@ -177,9 +149,7 @@ export function SessionScreen({
     ...(items.length ? { tail: items[items.length - 1] } : {}),
   });
 
-  // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
-  // mobile SlideOver reply panel both render this screen (embedded mode), so
-  // one hook wiring covers both surfaces.
+  // Auto-scroll the thread to the newest message (ISS-728).
   const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: sessionId,
     ready: turnsQ.isSuccess,
@@ -200,7 +170,7 @@ export function SessionScreen({
 
   if (sessionQ.isLoading) {
     return (
-      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+      <div className={`flex flex-col min-h-dvh`}>
         <div className="grid flex-1 place-items-center">
           <ProjectLoader label="loading session…" />
         </div>
@@ -210,7 +180,7 @@ export function SessionScreen({
 
   if (sessionQ.isError || !session) {
     return (
-      <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+      <div className={`flex flex-col min-h-dvh`}>
         <div className="grid flex-1 place-items-center">
           <ErrorState
             title="Couldn't load session"
@@ -260,7 +230,7 @@ export function SessionScreen({
   );
 
   return (
-    <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
+    <div className={`flex flex-col min-h-dvh`}>
       <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {goBack && (
@@ -300,7 +270,7 @@ export function SessionScreen({
                 icon="stop"
                 className="min-h-11"
                 loading={cancel.isPending}
-                onClick={() => cancel.mutate()}
+                onClick={() => cancel.mutate(sessionId)}
               >
                 Stop
               </Button>
@@ -312,7 +282,7 @@ export function SessionScreen({
                 className="min-h-11"
                 loading={rerun.isPending}
                 onClick={() =>
-                  rerun.mutate(undefined, {
+                  rerun.mutate(sessionId, {
                     onSuccess: (r) => projectSlug && goToSession(r.id),
                   })
                 }
@@ -372,6 +342,12 @@ export function SessionScreen({
             <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
+              ) : items.length === 0 && turnsQ.isError ? (
+                <ErrorState
+                  title="Couldn't load this session's turns"
+                  message={formatApiError(turnsQ.error)}
+                  onRetry={() => turnsQ.refetch()}
+                />
               ) : items.length === 0 ? (
                 live ? null : (
                   <EmptyState title="No messages yet" message="This session has no turns." />

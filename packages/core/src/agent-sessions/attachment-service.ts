@@ -13,6 +13,7 @@ import {
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 import { agentSessionsPorts } from './ports.js';
+import { refuseSession } from './refusals.js';
 
 export { safeName };
 
@@ -122,7 +123,7 @@ export interface SessionAttachmentRef {
 /**
  * Hydrate attachment refs for a set of ids that belong to one session. Used by
  * `dispatchChatTurn` to stamp `userMessage.attachments` (re-render) and build
- * the WS frame's `attachments[]`. Ids not belonging to the session are dropped.
+ * the WS frame's `attachments[]`. An id that is not this session's is refused by name.
  */
 export async function listSessionAttachmentsByIds(
   sessionId: string,
@@ -140,16 +141,22 @@ export async function listSessionAttachmentsByIds(
     .from(sessionAttachments)
     .where(inArray(sessionAttachments.id, ids));
 
-  const wanted = new Set(ids);
-  return rows
-    .filter((r) => r.sessionId === sessionId && wanted.has(r.id))
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      mime: r.mime,
-      size: r.size,
-      url: attachmentUrl(r.sessionId, r.id),
-    }));
+  const owned = rows.filter((r) => r.sessionId === sessionId);
+  const missing = ids.filter((id) => !owned.some((r) => r.id === id));
+  if (missing.length) {
+    throw refuseSession(
+      'ATTACHMENT_NOT_IN_SESSION',
+      `attachment(s) ${missing.join(', ')} are not uploads of session ${sessionId}; upload them to this session first`,
+      'attachmentIds',
+    );
+  }
+  return owned.map((r) => ({
+    id: r.id,
+    name: r.name,
+    mime: r.mime,
+    size: r.size,
+    url: attachmentUrl(r.sessionId, r.id),
+  }));
 }
 
 interface SessionAttachmentForFetch {

@@ -118,18 +118,3 @@ export function useForkSession(id: string) {
   });
 }
 
-export function useCancelSession(id: string) {
-  const invalidate = useInvalidateSession(id);
-  const onError = useToastError();
-  return useMutation({
-    mutationFn: () => sessionApi.cancel(id),
-    onSuccess: invalidate,
-    onError,
-  });
-}
-
-export function useRerunSession(id: string) {
-  const onError = useToastError();
-  return useMutation({ mutationFn: () => sessionApi.rerun(id), onError });
-}
-

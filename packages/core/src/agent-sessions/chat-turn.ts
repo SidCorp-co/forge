@@ -20,8 +20,9 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
+import { logger } from '../lib/logger.js';
 import type { RefusalError } from '../lib/refusal.js';
-import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
+import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { openOneShotRun } from '../pipeline/index.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
@@ -77,17 +78,15 @@ export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
   refuseSession(
     'NO_CLAUDE_CLIENT',
     scope === 'project'
-      ? 'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.'
+      ? 'No online Claude client for this project. Bring a chat-capable runner online, then try again.'
       : scope === 'picked'
         ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
-        : 'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
+        : 'No online Claude client for this session. Bring its runner online, then try again.',
   );
 
 export interface ChatClient {
-  /** Resolved runner device for a REMOTE turn; null when local, or none online. */
+  /** The runner device the turn goes to; null when none is online. */
   deviceId: string | null;
-  /** Desktop runs Claude locally — no device pick, no `agent:start` dispatch. */
-  isLocal: boolean;
   /**
    * True when we had to pick a device OTHER than the session's existing pin
    * (the pin went offline/disabled). The Claude on-disk session (`--resume`
@@ -101,12 +100,10 @@ export interface ChatClient {
 
 export async function resolveChatDevice(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
-  origin?: string | null,
   overrideDeviceId?: string | null,
   /** Only a box whose heartbeat declared this capability `true` is picked. */
   requireCapability?: string,
 ): Promise<ChatClient> {
-  if (origin === 'desktop') return { deviceId: null, isLocal: true, migrated: false };
   const need = requireCapability ? { requireCapability } : {};
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
@@ -115,12 +112,12 @@ export async function resolveChatDevice(
       allowLimited: true,
       ...need,
     });
-    if (!picked) return { deviceId: null, isLocal: false, migrated: false };
-    return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
+    if (!picked) return { deviceId: null, migrated: false };
+    return { deviceId: picked, migrated: !!pinned && picked !== pinned };
   }
   if (pinned) {
     const capable = await findChatCapableDeviceForProject(session.projectId, pinned, need);
-    if (capable) return { deviceId: capable, isLocal: false, migrated: false };
+    if (capable) return { deviceId: capable, migrated: false };
     const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
       allowLimited: true,
       ...need,
@@ -141,14 +138,14 @@ export async function resolveChatDevice(
       // A turned-off device is ignored even when online + pinned — fall through to
       // pick another available device (or report no client).
       if (dev?.status === 'online' && !dev.disabledAt && declares)
-        return { deviceId: pinned, isLocal: false, migrated: false };
+        return { deviceId: pinned, migrated: false };
     }
   }
   const deviceId = await findAvailableDeviceForProject(session.projectId, need);
   // Migration = we had a pin but could not honour it and landed on another live
   // device. A pinless session is a true cold start, not a migration.
   const migrated = !!pinned && !!deviceId && deviceId !== pinned;
-  return { deviceId, isLocal: false, migrated };
+  return { deviceId, migrated };
 }
 
 /**
@@ -251,7 +248,6 @@ export interface DispatchChatTurnArgs {
   client: ChatClient;
   /** Raw user text / prompt (NOT pre-decorated — this fn prepends [Context: …]). */
   message: string;
-  origin?: string | null;
   pageContext?: PageContext | null;
   /** /send may carry the client's claudeSessionId; falls back to the row's. */
   claudeSessionId?: string | null;
@@ -305,24 +301,30 @@ async function coldStartPrompt(
   let prompt = decoratedMessage;
   if (!args.preBuilt) {
     const languageSection = language ? `${contentLanguageBlock(language, 'chat')}\n\n---\n\n` : '';
-    prompt = languageSection + decoratedMessage;
+    const history = buildRehydrationBlock(prevMessages);
+    let preamble = '';
     try {
-      const preamble = await agentSessionsPorts().buildChatPreamble(
+      preamble = await agentSessionsPorts().buildChatPreamble(
         args.project.id,
         args.session.userId,
         args.forceLenses ?? readLensOverride(args.session.metadata),
       );
-      prompt = preamble + languageSection + buildRehydrationBlock(prevMessages) + decoratedMessage;
-    } catch {
-      // non-fatal — proceed with the raw prompt and its language block
+    } catch (err) {
+      // the turn still runs, carrying its history and language, without the project preamble
+      logger.error(
+        { err, sessionId: args.session.id, projectId: args.project.id },
+        'chat-turn: the project preamble could not be built; the cold start goes without it',
+      );
     }
+    prompt = preamble + languageSection + history + decoratedMessage;
   }
   return args.skillName ? `/${args.skillName}\n${prompt}` : prompt;
 }
 
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client } = args;
-  const { deviceId, isLocal } = client;
+  const { deviceId } = client;
+  if (!deviceId) throw noClaudeClient('session');
   const migrated = !!client.migrated;
   const broadcastEvent = args.broadcastEvent ?? 'agent-session.updated';
 
@@ -339,9 +341,10 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   let repoPath = session.repoPath ?? null;
   if (!repoPath || deviceChanged)
     repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId);
-  if (!isLocal && !repoPath) throw checkoutUnbound(project.id, deviceId);
+  if (!repoPath) throw checkoutUnbound(project.id, deviceId);
+  // a turn no socket of the box would receive is refused before anything is written
+  if (roomManager.roomSize(deviceRoom(deviceId)) === 0) throw noClaudeClient('session');
 
-  // ISS-499 — ids not belonging to this session drop here, before the turn persists them.
   const attachments: SessionAttachmentRef[] = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
     : [];
@@ -360,11 +363,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // Resolved before the transaction so the ISS-733 `pendingSkillName` marker persists in it.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
-  if (args.credential && isLocal) {
-    throw new Error(
-      `dispatchChatTurn: session ${session.id} was handed a turn credential on a local turn, which no runner receives, so it would be dropped`,
-    );
-  }
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
@@ -374,7 +372,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // cm:why a cold start is where core writes the prompt, so it is where the session is told its
   // project's content language and records it; a resumed or pre-built turn keeps what it was told
   const language =
-    !resumable && !isLocal && !args.preBuilt
+    !resumable && !args.preBuilt
       ? await agentSessionsPorts().readContentLanguage(project.id)
       : null;
 
@@ -395,7 +393,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (language) {
     nextMeta[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
   }
-  if (!resumable && !isLocal && args.skillName) {
+  if (!resumable && args.skillName) {
     nextMeta.pendingSkillName = args.skillName;
     nextMeta.pendingSkillBaselineCount = messages.length;
   }
@@ -443,47 +441,48 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
   }
 
-  if (isLocal) {
-    roomManager.publish(projectRoom(project.id), {
-      event: 'agent:user-message',
-      data: {
-        sessionId: updated.id,
-        content: decoratedMessage,
-        ...(attachments.length ? { attachments } : {}),
-      },
-    });
-  } else {
-    const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
-      project.id,
-    );
-    const common = {
-      sessionId: updated.id,
-      eventSeqBase,
-      repoPath,
-      projectSlug: project.slug,
-      mcpServersOverride,
-      ...(model ? { model } : {}),
-      ...(attachments.length ? { attachments } : {}),
-      ...(args.credential ? { forgeToken: args.credential } : {}),
-    };
-    roomManager.publish(
-      deviceRoom(deviceId as string),
-      resumable
-        ? // `--resume` keeps the original system prompt and history
-          {
-            event: 'agent:send',
-            data: { ...common, message: decoratedMessage, claudeSessionId },
-          }
-        : {
-            event: 'agent:start',
-            data: {
-              ...common,
-              prompt: await coldStartPrompt(args, decoratedMessage, language, prevMessages),
-              preBuilt: args.preBuilt ?? false,
-              systemPrompt: agentSessionsPorts().toolReference(),
-            },
+  const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
+    project.id,
+  );
+  const common = {
+    sessionId: updated.id,
+    eventSeqBase,
+    repoPath,
+    projectSlug: project.slug,
+    mcpServersOverride,
+    ...(model ? { model } : {}),
+    ...(attachments.length ? { attachments } : {}),
+    ...(args.credential ? { forgeToken: args.credential } : {}),
+  };
+  const delivered = roomManager.publish(
+    deviceRoom(deviceId),
+    resumable
+      ? // `--resume` keeps the original system prompt and history
+        {
+          event: 'agent:send',
+          data: { ...common, message: decoratedMessage, claudeSessionId },
+        }
+      : {
+          event: 'agent:start',
+          data: {
+            ...common,
+            prompt: await coldStartPrompt(args, decoratedMessage, language, prevMessages),
+            preBuilt: args.preBuilt ?? false,
+            systemPrompt: agentSessionsPorts().toolReference(),
           },
-    );
+        },
+  );
+  if (delivered === 0) {
+    // the box's socket dropped between the check and the frame: the turn is failed, never left running
+    await transitionSessions(db, {
+      to: 'failed',
+      set: { failureReason: 'no_client_ack', updatedAt: new Date() },
+      where: eq(agentSessions.id, updated.id),
+      reason: 'no_client_ack',
+      actor: { type: 'system' },
+      source: 'chat-turn',
+    });
+    throw noClaudeClient('session');
   }
   broadcastSession(updated, broadcastEvent);
   return updated;

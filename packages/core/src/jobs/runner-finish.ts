@@ -4,13 +4,9 @@
  * that follows it, in the order the finish has always run them.
  */
 
-import { deriveSessionFinal, materializeJobUsage } from '../agent-sessions/index.js';
 import type { jobs } from '../db/schema.js';
-import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
-import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
-import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { publishFinished, settleTranscriptAndUsage } from './finalize-done.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import type { JobGateRow } from './job-queries.js';
@@ -19,36 +15,6 @@ import { refuseJob } from './refusals.js';
 import { finishJobFromRunner, reclaimReapedJob } from './service.js';
 
 type JobRow = typeof jobs.$inferSelect;
-
-/**
- * ISS-283 — final authoritative derive of the agent_sessions transcript from
- * the streamed job_events (a CLI runner never PATCHes the session row), and
- * ISS-439 — the usage_records row. Fire-and-forget so neither can block or
- * hang the finish; neither writes status, so neither fights the lifecycle sync.
- */
-function settleTranscriptAndUsage(row: JobRow): void {
-  if (row.agentSessionId) void deriveSessionFinal(row.id, row.agentSessionId);
-  void materializeJobUsage(row);
-}
-
-/** A job that ended done or cancelled: session mirror, broadcast, runner health, issue health. */
-async function publishFinished(
-  row: JobRow,
-  status: 'done' | 'cancelled',
-  exitCode: number | null,
-): Promise<void> {
-  await syncAgentSessionLifecycle(row, status);
-  roomManager.publish(projectRoom(row.projectId), {
-    event: status === 'done' ? 'job.completed' : 'job.cancelled',
-    data: { jobId: row.id, status, exitCode },
-  });
-  if (status === 'done') {
-    void clearRunnerLimit(row.runnerId, row.projectId);
-    void clearRunnerQuarantine(row.runnerId, row.projectId);
-  }
-  // ISS-164 — activeSession clears, queued siblings may now classify differently.
-  if (row.issueId) await publishPipelineHealthChanged(row.projectId, [row.issueId]);
-}
 
 /**
  * ISS-378 — idempotent late completion. A runner that finished real work but

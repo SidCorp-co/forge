@@ -37,27 +37,29 @@ const HOLD_WEDGE_CONTENT: Partial<
     title: 'Step held: every runner is rate-limited',
     summary:
       'Every online, capable runner is rate-limited or over its spend cap, so the step is held. The issue itself is untouched.',
-    nextStep: 'Wait for a runner to recover or add capacity — the held step resumes itself.',
+    nextStep:
+      'This step already spent its one automatic release. Once a runner recovers, resume the held job (POST /api/jobs/:id/resume).',
   },
   non_retryable_terminal: {
     title: 'Step held: non-retryable failure',
     summary:
       'The step failed in a way the pipeline will not retry, so it is held rather than parked. Nothing is being asked of the issue.',
     nextStep:
-      'Fix the underlying cause, then move the issue on — this hold does not clear on its own.',
+      'Fix the underlying cause, then resume the held job (POST /api/jobs/:id/resume) — this hold does not clear on its own.',
   },
   retry_rounds_exhausted: {
     title: 'Step held: retry budget exhausted',
     summary:
       'The step failed across every retry round. It is held, not parked: the issue stays at its stage.',
     nextStep:
-      'Fix the underlying cause, then move the issue on — this hold does not clear on its own.',
+      'Fix the underlying cause, then resume the held job (POST /api/jobs/:id/resume) — this hold does not clear on its own.',
   },
   verify_unavailable: {
     title: 'Step held: recovery check unavailable',
     summary:
       'The pipeline could not verify whether the work already completed, so it held the step rather than risk a wrong retry.',
-    nextStep: 'No action needed — the hold re-checks within 10 minutes.',
+    nextStep:
+      'This step already spent its one automatic release. Resume the held job (POST /api/jobs/:id/resume) once the check can run.',
   },
 };
 
@@ -119,7 +121,9 @@ async function reconcileIssueStatusAfterFailure(
   if (recoveredViaVerify) return;
 
   const reason = retry.reason ?? 'unknown';
-  const heldJobId = retry.scheduled ? null : await holdJobForReason(job, reason);
+  const hold = retry.scheduled ? null : await holdJobForReason(job, reason);
+  if (hold === 'superseded') return;
+  const heldJobId = hold?.heldId ?? null;
 
   const entry = JOB_TYPE_ENTRY_STATUS[job.type];
   if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
@@ -150,7 +154,8 @@ async function reconcileIssueStatusAfterFailure(
       entity: 'job',
       entityId: heldJobId,
       reason,
-      action: 'No action needed unless this hold outlives the condition that caused it.',
+      action:
+        'This hold does not release itself: resume the held job (POST /api/jobs/:id/resume) or cancel it.',
       ...(content
         ? { title: content.title, summary: content.summary, nextStep: content.nextStep }
         : {}),

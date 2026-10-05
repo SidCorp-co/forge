@@ -9,17 +9,11 @@ import {
   RUN_STUCK_AFTER_MS,
   SESSION_SILENCE_REAP_MS,
 } from "@forge/contracts/run-standing";
+import type { AgentSessionStatus } from "@forge/contracts/session-machine";
 import type { StatusKey } from "@/design/status";
 
-export type AgentSessionStatus =
-  | "idle"
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "completed_via_recovery"
-  | "cancelled_stale"
-  | "cancelled";
+export type { AgentSessionStatus };
+
 
 /** Synthetic UI-only state derived from heartbeat freshness. The backend only
  *  persists `running`; the `stalled` distinction is presentational. */
@@ -43,9 +37,7 @@ export type SessionFailureReason = FailureCause | LegacyFailureReason;
 export type LegacyFailureReason =
   | "issue_busy"
   | "runner_full"
-  | "no_worker_online"
-  | "ws-publish-failed"
-  | "job_failed";
+  | "no_worker_online";
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
 export interface SessionUsage {
@@ -200,7 +192,6 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   duplex_channel_failed: "Session channel failed",
   session_lost: "Session lost",
   ws_publish_failed: "Delivery failed",
-  "ws-publish-failed": "Delivery failed",
   forge_budget_exhausted: "Project budget spent",
   runner_unsupported_type: "Runner can't run this step",
   resume_failed: "Resume failed",
@@ -221,7 +212,6 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   no_client_ack: "No acknowledgement",
   skill_not_synced: "Skill not ready yet",
   user_cancelled: "Cancelled",
-  job_failed: "Unclassified",
   migration_zombie_cleanup: "Swept (migration)",
   issue_busy: "Issue busy",
   runner_full: "Runner at capacity",
@@ -251,7 +241,6 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   duplex_channel_failed: "The session channel dropped — a fresh session is the next step.",
   session_lost: "The session died without reporting — Retry to re-dispatch.",
   ws_publish_failed: "The reply couldn't be delivered — start a new chat to retry.",
-  "ws-publish-failed": "The reply couldn't be delivered — start a new chat to retry.",
   forge_budget_exhausted: "This project spent its monthly budget — raise it or wait for the cycle.",
   runner_unsupported_type: "This runner can't run this step — assign a runner that can.",
   resume_failed: "Resuming the previous session failed — Rerun to start fresh.",
@@ -268,7 +257,6 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
   no_client_ack: "The runner never acknowledged the dispatch — Retry to re-send.",
   user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
-  job_failed: "The cause wasn't recorded — open the run timeline to see why.",
   issue_busy: "Another session holds this issue — it will retry once that frees.",
   runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
   skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",

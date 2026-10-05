@@ -11,9 +11,12 @@ import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
+import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 
@@ -54,7 +57,6 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
       reason: POOL_JOB_NO_PROMPT,
       actor: { type: 'system' },
       source: 'claim',
-      returning: ['id', 'type', 'payload'],
     })
   ).rows;
   if (!settled) return false;
@@ -62,5 +64,12 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
     { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },
     'pool: a job with no prompt was refused at the claim and settled failed',
   );
+  // the publish finalizeFailedJob ends with, without its retry or hold: there is nothing to retry
+  await syncAgentSessionLifecycle(settled, 'failed');
+  roomManager.publish(projectRoom(settled.projectId), {
+    event: 'job.failed',
+    data: { jobId: settled.id, status: 'failed', exitCode: settled.exitCode, error: settled.error },
+  });
+  if (settled.issueId) await publishPipelineHealthChanged(settled.projectId, [settled.issueId]);
   return true;
 }
