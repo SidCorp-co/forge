@@ -1,11 +1,9 @@
 import type { PatRefusalCode } from '@forge/contracts/pat';
-import { eq } from 'drizzle-orm';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
-import { type personalAccessTokens, users } from '../db/schema.js';
+import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
@@ -13,7 +11,14 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { countActivePatsForUser, hasLivePatNamed, listPatsOf, mintPat, revokePat } from './pat.js';
+import {
+  countActivePatsForUser,
+  hasLivePatNamed,
+  lastFreshAuthAt,
+  listPatsOf,
+  mintPat,
+  revokePat,
+} from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
@@ -236,16 +241,8 @@ function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars 
         cause: { code: 'FRESH_AUTH_REQUIRED' },
       });
 
-    const [row] = await db
-      .select({ lastFreshAuthAt: users.lastFreshAuthAt })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (!row?.lastFreshAuthAt) throw stale();
-
-    const ageMs = Date.now() - row.lastFreshAuthAt.getTime();
-    if (ageMs > minutes * 60_000) throw stale();
+    const at = await lastFreshAuthAt(userId);
+    if (!at || Date.now() - at.getTime() > minutes * 60_000) throw stale();
 
     await next();
   });

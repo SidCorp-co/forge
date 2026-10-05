@@ -306,3 +306,13 @@ export async function hasLivePatNamed(userId: string, name: string): Promise<boo
     .limit(1);
   return existing !== undefined;
 }
+
+/** When the user last proved who they are; null when they never have. */
+export async function lastFreshAuthAt(userId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: users.lastFreshAuthAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.at ?? null;
+}
