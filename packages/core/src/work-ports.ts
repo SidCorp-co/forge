@@ -44,6 +44,7 @@ import {
   doorOf,
   landingDriftRefusal,
   landingWorld,
+  settlingContractVersion,
   tokenIdOf,
 } from './ecosystem/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
@@ -193,6 +194,7 @@ export function provideWorkPorts(): void {
     isDispatchGateError: (err): err is WorkflowDesignNotApprovedError =>
       err instanceof WorkflowDesignNotApprovedError,
     buildsWorkflowOf,
+    settlingContractVersion,
     proposesWorkflowOf,
     requirementOfIssue,
     plannedRevisionFor,

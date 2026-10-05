@@ -439,6 +439,7 @@
         "activityLog",
         "criterionVerdicts",
         "issueAttachments",
+        "issueContractWaits",
         "issueCriteria",
         "issueDependencies",
         "issueLabels",

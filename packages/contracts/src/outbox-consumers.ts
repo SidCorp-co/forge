@@ -44,7 +44,7 @@ export const OUTBOX_CONSUMERS = {
 	"channel.gateAsked": ["notify-ecosystem"],
 	"channel.gateDecided": ["notify-ecosystem"],
 	"channel.threadHeld": ["notify-ecosystem", "master-wake"],
-	"contract.versionApproved": ["notify-ecosystem"],
+	"contract.versionApproved": ["notify-ecosystem", "master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];

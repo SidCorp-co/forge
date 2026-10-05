@@ -143,6 +143,8 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
  *  `waiting_gate`): the issue's other work ends, or a fresh, new-enough box comes online. */
 const DISPATCH_GATES: Record<string, string> = {
   issue_busy: 'another session or job is live on this issue: dispatch takes this one once it ends',
+  contract_wait_unsettled:
+    'CONTRACT_WAIT_UNSETTLED: the issue waits on a contract version no approved version reaches yet: the approval releases it',
   runner_stale: 'no box serving this project has beaten recently: dispatch takes it once one does',
   runner_too_old:
     'no box serving this project runs a build that can take it: dispatch takes it once one is updated',

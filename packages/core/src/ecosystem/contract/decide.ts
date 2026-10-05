@@ -1,6 +1,7 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../../db/client.js';
 import { embedFeedbackLater } from '../../feedback/index.js';
+import { settleContractWaitsIn } from '../../issues/index.js';
 import { permissionFactsOf } from '../../permissions/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
@@ -8,6 +9,7 @@ import type { EcosystemRefusal } from '../refusals.js';
 import { lockKeys, projectsWhere } from '../store.js';
 import { type Approved, announceApprovedIn, fileBreakingIn } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
+import { compareVersions } from './naming.js';
 import { approvalView, decideVersion, type StoredVersion, versionsOf } from './store.js';
 
 interface DecideInput {
@@ -59,6 +61,14 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
     );
     if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
     if (decision !== 'approve' || !iface) return { ok: true, version: decided, filed: [] };
+    // the approval releases every wait it reaches in its own transaction; the event it emits wakes them
+    const versioning = iface.document.commitments.versioning;
+    await settleContractWaitsIn(tx, {
+      providerProjectId: projectId,
+      contractSlug: contract,
+      version,
+      reaches: (min) => compareVersions(versioning, version, min) >= 0,
+    });
     const approved: Approved = {
       provider: { id: project.id, slug: project.slug },
       version: decided,

@@ -45,6 +45,7 @@ import {
   channelProjectRoutes,
   contractRoutes,
   contractStandingRoutes,
+  contractWaitRoutes,
   deviceChannelInboxRoutes,
   ecosystemProjectRoutes,
   ecosystemRoutes,
@@ -212,6 +213,7 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', contractRoutes);
   app.route('/api/projects', linkProjectRoutes);
   app.route('/api/projects', contractStandingRoutes);
+  app.route('/api/issues', contractWaitRoutes);
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
   app.route('/api/memberships', membershipRoutes);

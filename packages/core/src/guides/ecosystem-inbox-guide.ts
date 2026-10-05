@@ -144,6 +144,18 @@ publishes and the versions of its contracts, and a person is not handed that wor
    \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
+   An issue that needs a contract version waits on the version, never on the provider's issue:
+   \`POST /api/issues/:id/contract-waits { contract, minVersion, reason? }\` names a contract this
+   project publishes (written first, inside it) or consumes. Until an approved version at or above it
+   exists the issue is left out of the admissible read, and a run session, a pool job or a move to
+   \`in_progress\` over it is refused \`CONTRACT_WAIT_UNSETTLED\`; the approval settles the wait in its
+   own transaction and wakes the issue's master. A contract-change feedback's upgrade issue is filed
+   waiting on the version that broke. Refused by name: \`CONTRACT_WAIT_CONTRACT_UNKNOWN\`,
+   \`CONTRACT_WAIT_VERSION_NOT_IN_SCHEME\`, \`CONTRACT_WAIT_DUPLICATE\`, \`CONTRACT_WAIT_ISSUE_FINISHED\`;
+   \`POST …/contract-waits/:waitId/retract { reason }\` ends one (\`CONTRACT_WAIT_RETRACTED\` twice).
+   A production release of an issue waiting on another project's contract is refused
+   \`CONTRACT_PROVIDER_NOT_LIVE\` until the provider's production serves the version, unless every
+   ecosystem it is shared through sets \`releases.providerLive: "off"\`.
 
 Writing either takes \`contracts.write\` on this project (member or above); without it the write is
 \`PERMISSION_FORBIDDEN\`.

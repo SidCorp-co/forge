@@ -6,6 +6,10 @@ import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal, RefusalError } from '../lib/refusal.js';
+import {
+  assertContractWaitsSettledForIssue,
+  assertContractWaitsSettledForSeqs,
+} from './contract-waits.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from './dependency-effects.js';
 import {
   type DesignHold,
@@ -241,7 +245,7 @@ export async function refuseBlockedTake(
 
 // cm:guard a door that hands out work and does not already ask the dispatch gates asks everything the
 // admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design gate
-// (workflows/build-gate.ts), each refused by its own name
+// (workflows/build-gate.ts), then an unsettled contract wait (contract-waits.ts), each refused by its own name
 export async function refuseHeldTake(
   executor: Pick<Tx, 'execute' | 'select'>,
   issueId: string,
@@ -252,6 +256,7 @@ export async function refuseHeldTake(
   const held = await blockedOf(executor, issue);
   if (held) throw issueBlocked([held], door);
   await assertDesignApprovedForIssue(issue.projectId, issue.id, executor);
+  await assertContractWaitsSettledForIssue(issue.projectId, issue.id, executor);
 }
 
 async function refuseBlockedTakeForSeqs(
@@ -295,6 +300,7 @@ export async function refuseHeldTakeForSeqs(
 ): Promise<void> {
   await refuseBlockedTakeForSeqs(db, projectId, seqs, 'a run session over these issues');
   await assertDesignsApprovedForSeqs(projectId, seqs);
+  await assertContractWaitsSettledForSeqs(projectId, seqs);
 }
 
 /** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */
@@ -302,7 +308,8 @@ export function heldTakeRefusal(err: unknown): RefusalError | null {
   if (
     isRefusal(err, 'ISSUE_BLOCKED') ||
     isRefusal(err, 'ISSUE_NOT_FOUND') ||
-    isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')
+    isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED') ||
+    isRefusal(err, 'CONTRACT_WAIT_UNSETTLED')
   ) {
     return err;
   }

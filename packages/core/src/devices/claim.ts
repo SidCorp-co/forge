@@ -22,6 +22,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import {
   activeIssuePrefix,
+  assertContractWaitsSettledForIssue,
   assertDesignApprovedForIssue,
   type DispatchGateCode,
   heldTakeRefusal,
@@ -237,14 +238,15 @@ async function policyStateFor(job: JobRow): Promise<DispatchState> {
 
 /**
  * A job for an unstarted issue a live blocks edge holds, one that builds a workflow whose design is
- * not approved, or one that waits on a contract version not yet published, is refused by the policy-refusal shape the box already reads, and stays
- * queued until the design is approved or the version is.
+ * not approved, or one that waits on a contract version no approved version settles, is refused by the policy-refusal shape the box already
+ * reads, and stays queued until the design is approved or the version is.
  */
 async function designGateFor(job: JobRow): Promise<void> {
   if (!job.issueId) return;
   try {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
     await assertDesignApprovedForIssue(job.projectId, job.issueId);
+    await assertContractWaitsSettledForIssue(job.projectId, job.issueId);
   } catch (err) {
     const refused = heldTakeRefusal(err);
     if (!refused) throw err;

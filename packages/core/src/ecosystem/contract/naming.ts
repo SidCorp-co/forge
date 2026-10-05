@@ -5,14 +5,14 @@ export type Versioning = 'dated' | 'semver';
 const SEMVER = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
 const DATED = /^(\d{4}-\d{2}-\d{2})(?:\.([1-9]\d{0,5}))?$/;
 
-const SCHEME_SHAPE: Record<Versioning, string> = {
+export const SCHEME_SHAPE: Record<Versioning, string> = {
   semver: 'MAJOR.MINOR.PATCH, e.g. 2.0.0',
   dated: 'YYYY-MM-DD or YYYY-MM-DD.n, e.g. 2026-10-01.2',
 };
 
 type Parsed = [number, number, number];
 
-function parseVersion(versioning: Versioning, v: string): Parsed | null {
+export function parseVersion(versioning: Versioning, v: string): Parsed | null {
   if (versioning === 'semver') {
     const m = SEMVER.exec(v);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;

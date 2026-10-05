@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
+import { issuesSettledBy } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
@@ -194,6 +195,26 @@ export function registerMasterWakeSubscribers(): void {
     name: 'master-wake',
     handle: async (p) => {
       await wakeMastersForAnswer({ projectId: p.projectId, questionId: p.questionId });
+    },
+  });
+
+  // The approval settled these waits in its own transaction; each issue it released is woken by name.
+  consume('contract.versionApproved', {
+    name: 'master-wake',
+    handle: async (p) => {
+      const released = await issuesSettledBy({
+        providerProjectId: p.projectId,
+        contractSlug: p.contractSlug,
+        version: p.version,
+      });
+      for (const r of released) {
+        if (r.held || !isMasterWakeStatus(r.status as IssueStatus)) continue;
+        await wakeMastersForProject({
+          projectId: r.projectId,
+          issueId: r.issueId,
+          status: r.status as IssueStatus,
+        });
+      }
     },
   });
 

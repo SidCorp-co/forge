@@ -221,7 +221,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `accept` | Upcoming | — | — | **rewrite**: Nothing writes accepted_at; build it. |
 | `accept-result` | Upcoming | — | — | **rewrite**: Build it. |
 | `acceptance` | Upcoming | — | — | **rewrite**: Build it. |
-| `contract-first` | Upcoming | — | — | **rewrite**: Build it, with obs-contract-wait removed. |
+| `contract-first` | Built | — | `issues/contract-waits.ts:assertContractWaitsSettledForIssue` | **kept** (owner, 2026-10-05, option A): a consumer issue waits on its own project's contract >= version until an approved version is recorded. |
 | `delivery` | Upcoming | — | — | **rewrite**: Build the case. |
 | `expect-breakdown` | Upcoming | — | — | **rewrite**: Build it. |
 | `agreed` | Wrong | behaviour | `requirements/service.ts:agreeRequirement` | **rewrite**: Pin contract versions in the agree transaction, with pins. |
@@ -262,7 +262,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `obs-build-gate` | `workflows/build-gate.ts:assertDesignApprovedForIssue` | An issue linked as a build is held from claim until its design is approved (WORKFLOW_DESIGN_NOT_APPROVED). | **keep**: REQ-1 BC-6; draw it on delivery to build. |
 | `obs-link-build` | `suggestions/breakdown.ts:breakdownEffect` | Each breakdown issue is linked as a build of one pinned design (SUGGESTION_BUILD_UNNAMED, SUGGESTION_BUILD_UNPINNED); issues are filed at draft. | **keep**: Traceability step markers need; draw it, and decide whether draft issues wait on a promote. |
 | `obs-context-budget` | `workflows/run-context.ts:ARTIFACT_CONTEXT_CAP_CHARS` | 24k design and 12k requirement budgets with named trims (ARTIFACT_CONTEXT_OVER_BUDGET); egress checks the blocks. | **keep**: REQ-1 BC-5. |
-| `obs-contract-wait` | `ecosystem/waits/gate.ts:assertWaitsSettledForIssue` (deleted by ISS-214) | An issue waiting on a contract version is held from claim until the provider approves it (CONTRACT_WAIT_UNSETTLED). | **rewrite**: Contradicts the design, which builds both sides in parallel against the generated mock; rebuild with contract-first. |
+| `obs-contract-wait` | `issues/contract-waits.ts:assertContractWaitsSettledForIssue` | An issue waiting on a contract version is held from dispatch until an approved version reaches it (CONTRACT_WAIT_UNSETTLED), and a production release until the provider serves it (CONTRACT_PROVIDER_NOT_LIVE). | **kept** (owner, 2026-10-05, option A): issue-delivery `case-run`, feedback-triage `upgrade` and requirement-to-delivery `release-gate` name it; rebuilt on that design. |
 | `obs-named-contracts` | `ecosystem/contract/named-context.ts:loadNamedContracts` (deleted by ISS-150) | A job gets the contract versions its issue text names, and a link-pin diff (ecosystem/contract/run-context-service.ts:loadContractContext). | **delete**: A second pin path beside the baseline; removed when build loads contract pins. |
 | `obs-release-hold` | `release-batch/hold.ts:criteriaHold` | RELEASE_CRITERIA_UNEARNED re-checks verdicts against the serving runtime. | **keep**: Guards released; draw it on release-gate. |
 | `obs-contract-approve` | `ecosystem/contract/decide.ts:decideContractVersion` | A recorded version is proposed until approved or returned; breaking needs a person. | **keep**: REQ-5 BC-5 to BC-10; the publish node owes the approval. |

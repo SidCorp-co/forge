@@ -10,6 +10,7 @@ import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { contractWaitHoldOf } from './contract-waits.js';
 import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
@@ -41,6 +42,7 @@ export async function issueDetailOf(issue: IssueRow) {
     pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
     liveReach: await liveReachForIssue(issue),
     buildsWorkflow: await buildsWorkflowOf(issue.id),
+    contractWait: await contractWaitHoldOf(issue.projectId, issue.id),
     proposesWorkflow: await proposesWorkflowOf(issue.id),
     requirement: await requirementOfIssue(issue.id),
     labels: await listIssueLabels(issue.id),

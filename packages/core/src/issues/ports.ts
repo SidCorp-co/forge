@@ -58,7 +58,7 @@ export interface RunnerAvailability {
   total: number;
 }
 
-export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED';
+export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED' | 'CONTRACT_WAIT_UNSETTLED';
 
 interface DispatchGateError extends Error {
   readonly code: DispatchGateCode;
@@ -158,6 +158,13 @@ interface IssuePorts {
   ) => Promise<void>;
   isDispatchGateError: (err: unknown) => err is DispatchGateError;
   buildsWorkflowOf: (issueId: string) => Promise<unknown>;
+  /** The newest approved version of the provider's contract at or above `minVersion` in its own scheme; null while none is. */
+  settlingContractVersion: (
+    executor: Tx,
+    providerProjectId: string,
+    contractSlug: string,
+    minVersion: string,
+  ) => Promise<string | null>;
   proposesWorkflowOf: (issueId: string) => Promise<object | null>;
   requirementOfIssue: (issueId: string) => Promise<object | null>;
   plannedRevisionFor: (
@@ -258,6 +265,7 @@ export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs')
 export const assertDesignApprovedForIssue = port('assertDesignApprovedForIssue');
 export const isDispatchGateError = port('isDispatchGateError');
 export const buildsWorkflowOf = port('buildsWorkflowOf');
+export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowOf = port('proposesWorkflowOf');
 export const requirementOfIssue = port('requirementOfIssue');
 export const plannedRevisionFor = port('plannedRevisionFor');

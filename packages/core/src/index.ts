@@ -18,7 +18,12 @@ import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
+import {
+  contractHolding,
+  contractProviderShortfalls,
+  contractVersionReads,
+  interfaceContractsOf,
+} from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import {
   embedFeedback,
@@ -88,7 +93,11 @@ import {
   provideProjectsPorts,
 } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
+import {
+  provideReleaseBatchPorts,
+  registerDeployWorker,
+  registerReleaseBatchFinish,
+} from './release-batch/index.js';
 import {
   embedRequirementHead,
   provideInterfaceContracts,
@@ -161,6 +170,7 @@ provideForgeReads({
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
+provideReleaseBatchPorts({ contractProviderShortfalls });
 provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,

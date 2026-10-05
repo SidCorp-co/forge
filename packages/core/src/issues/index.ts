@@ -26,6 +26,20 @@ export {
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
 export { citedIssues } from './cited-issues.js';
+export {
+  assertContractWaitsSettledForIssue,
+  type ContractWaitRow,
+  contractWaitById,
+  contractWaitsOfIssues,
+  contractWaitUnsettled,
+  contractWaitUnsettledSql,
+  insertContractWaitIn,
+  issuesSettledBy,
+  liveWaitOn,
+  retractContractWaitIn,
+  type SettledWait,
+  settleContractWaitsIn,
+} from './contract-waits.js';
 export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
