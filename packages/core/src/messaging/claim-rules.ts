@@ -10,10 +10,30 @@
 
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
+import type { MessageFacts } from './facts.js';
 import { extractIssueClaims, turnCreatedIssue } from './issue-tokens.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
-/** Every issue this message names has to be an issue this project holds. */
+/** Every issue key a message names, read against the project's own rows. */
+function missingKeys(text: string, f: MessageFacts): RuleBreak[] {
+  return extractIssueClaims(text, f.prefixes)
+    .issSeqs.filter((seq) => !f.knownIssueSeqs.has(seq))
+    .map((seq) => {
+      const ref = formatIssueRef(f.prefix, seq);
+      return { quote: ref, why: `${ref} does not exist in this project` };
+    });
+}
+
+/** Every issue key a message names is an issue this project holds. */
+export const ISSUE_KEYS_EXIST: MessageRule = {
+  id: 'issue-keys-exist',
+  shape: 'name only issue keys this project holds',
+  example: 'The change you asked about is done.',
+  needs: ['prefixes', 'issue-rows'],
+  check: (text, f) => (f.issueLookupFailed ? [] : missingKeys(text, f)),
+};
+
+/** Every issue this message names — key or link — has to be an issue this project holds. */
 export const ISSUE_REFERENCES_EXIST: MessageRule = {
   id: 'issue-references-exist',
   shape: 'name only issues this project holds, exactly as a tool returned them',
@@ -31,14 +51,7 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
         breaks.push({ quote: id, why: `issue link id "${id}" does not exist in this project` });
       }
     }
-    for (const seq of claims.issSeqs) {
-      if (!f.knownIssueSeqs.has(seq)) {
-        breaks.push({
-          quote: formatIssueRef(f.prefix, seq),
-          why: `${formatIssueRef(f.prefix, seq)} does not exist in this project`,
-        });
-      }
-    }
+    breaks.push(...missingKeys(text, f));
     if (
       claims.claimsCreation &&
       !turnCreatedIssue(f.toolCalls) &&

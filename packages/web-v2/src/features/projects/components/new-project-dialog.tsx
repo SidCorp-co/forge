@@ -11,7 +11,8 @@ import { formatApiError } from '@/lib/api/error';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
-import { useCreateProject, useOnboardProject } from '../hooks';
+import { refusalLine, useOpenOnboarding } from '@/features/onboarding/components/onboarding-hint';
+import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
 export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -37,7 +38,7 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
       width={460}
     >
       {created ? (
-        <SetupPipeline created={created} onFinish={finish} onClose={onClose} />
+        <SetupPipeline created={created} onFinish={finish} />
       ) : (
         <CreateProjectForm open={open} onCreated={setCreated} onClose={onClose} />
       )}
@@ -164,35 +165,13 @@ function CreateProjectForm({
   );
 }
 
-function SetupPipeline({
-  created,
-  onFinish,
-  onClose,
-}: {
-  created: CreatedProject;
-  onFinish: () => void;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const { toast } = useToast();
-  const onboard = useOnboardProject(created.id);
-  const [onboardError, setOnboardError] = useState<string | null>(null);
+function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinish: () => void }) {
+  const onboarding = useOpenOnboarding(created.id);
+  const onboardError = refusalLine(onboarding.error);
 
-  /**
-   * ISS-733 — "Build Project Brain": open a fresh chat session that runs
-   * `forge-onboard` as turn 1, then jump straight to it (same detail route a
-   * chat notification/history entry would open — no new UI surface).
-   */
-  async function onBuildBrain() {
-    setOnboardError(null);
-    try {
-      const result = await onboard.mutateAsync();
-      toast({ title: 'Onboarding chat started', tone: 'success' });
-      onClose();
-      router.push(`/projects/${created.slug}/agents/${result.sessionId}`);
-    } catch (err) {
-      setOnboardError(formatApiError(err));
-    }
+  /** The designed onboarding: start it, open its thread in the chat panel, land on the project. */
+  async function onStartOnboarding() {
+    if (await onboarding.open('start')) onFinish();
   }
 
   return (
@@ -218,19 +197,19 @@ function SetupPipeline({
         </ol>
       </div>
       <div className="border-t border-line-subtle pt-4">
-        <span className="fg-label">Build the Project Brain</span>
+        <span className="fg-label">Onboard the project</span>
         {onboardError && (
           <div className="mt-2">
             <Banner tone="danger">{onboardError}</Banner>
           </div>
         )}
         <div className="mt-2">
-          <Button variant="secondary" loading={onboard.isPending} onClick={onBuildBrain} className="min-h-11">
-            Build Project Brain
+          <Button variant="secondary" loading={onboarding.pending} onClick={onStartOnboarding} className="min-h-11">
+            Start onboarding
           </Button>
           <p className="fg-body-sm mt-1.5 text-subtle">
-            Opens a chat that surveys the repo and asks you a few questions to seed knowledge, memory, and
-            pipeline config. Needs a runner bound to this project — connect one above first if this fails.
+            Analyses the repository on a runner bound to this project, then asks you a few rounds of questions in
+            the onboarding thread. Connect a runner above first.
           </p>
         </div>
       </div>

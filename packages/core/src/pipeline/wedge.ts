@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { createNotification, resolveNotifications } from './ports.js';
+import { emitNotification, resolveNotifications } from './ports.js';
 
 function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -94,7 +94,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
           `WHAT: ${ev.action}`,
         ].join('\n');
 
-    await createNotification({
+    await emitNotification({
       userId: project.createdBy,
       projectId: ev.projectId,
       type: 'pipeline_wedge',

@@ -25,10 +25,6 @@ export interface MessageFacts {
   readonly toolCalls: readonly {
     name: string;
     arguments: string;
-    /** Every issue-shaped reference the whole result named (ISS-1057). */
-    resultIssueRefs?: readonly string[];
-    /** MCP's own flag on the result; an errored call verifies nothing. */
-    isError?: boolean;
   }[];
   readonly progress: ProgressFacts | null;
   readonly issueLookupFailed: boolean;

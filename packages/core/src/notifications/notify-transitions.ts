@@ -5,7 +5,7 @@ import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { issues, notifications } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
@@ -42,20 +42,6 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
  */
 function transitionDedupeKey(eventId: string): string {
   return `transition:${eventId}`;
-}
-
-async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
-  try {
-    const [existing] = await db
-      .select({ id: notifications.id })
-      .from(notifications)
-      .where(eq(notifications.dedupeKey, dedupeKey))
-      .limit(1);
-    return Boolean(existing);
-  } catch (err) {
-    logger.error({ err, dedupeKey }, 'notify-transitions: transition dedupe lookup failed');
-    return false;
-  }
 }
 
 /** Per-status one-line body explaining why the recipient is being pinged. */
@@ -109,9 +95,6 @@ async function notifyTransition(
 
   if (!NOTIFY_ON_STATUS.has(p.to)) return;
 
-  const dedupeKey = transitionDedupeKey(eventId);
-  if (await alreadyNotifiedTransition(dedupeKey)) return;
-
   try {
     const [row] = await db
       .select({
@@ -144,7 +127,7 @@ async function notifyTransition(
       issueId: p.id,
       severity: severityForStatus(p.to),
       resolutionKey: null,
-      dedupeKey,
+      dedupeKey: transitionDedupeKey(eventId),
     });
   } catch (err) {
     logger.error({ err, issueId: p.id, to: p.to }, 'notify-transitions: emitNotification failed');

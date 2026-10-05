@@ -174,7 +174,7 @@ async function divertToEscalation(
   if (!escalateCall) return null;
   setPhase('escalate');
   if (args.beforeDivert && !(await args.beforeDivert()))
-    return { send: false, reason: 'superseded-before-escalation' };
+    return { send: false, reason: 'superseded-before-escalation', ended: 'superseded' };
   const started = await startEscalation({
     projectId: route.projectId,
     project: { id: route.projectId, slug: route.projectSlug },
@@ -197,7 +197,7 @@ async function divertToEscalation(
           ? agentRefusalText(started)
           : null;
   return text === null
-    ? { send: false, reason: 'escalation-dispatch-failed' }
+    ? { send: false, reason: 'escalation-dispatch-failed', ended: 'not-dispatched' }
     : { send: true, message: codeAuthored(text), screenReplaced: true };
 }
 

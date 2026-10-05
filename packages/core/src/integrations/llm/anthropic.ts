@@ -10,12 +10,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText } from 'ai';
 import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
 import { bridgeStream, MAX_RETRIES, toModelMessages, toToolSet } from './ai-sdk.js';
-import type {
-  ChatProvider,
-  ChatResponseFormat,
-  ChatStreamEvent,
-  ChatStreamRequest,
-} from './types.js';
+import type { ChatProvider, ChatStreamEvent, ChatStreamRequest } from './types.js';
 
 interface AnthropicConfig {
   baseUrl: string;
@@ -30,12 +25,6 @@ const DEFAULT_MAX_TOKENS = 8192;
 
 const PROVIDER = 'anthropic';
 const CACHE = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
-
-function jsonInstruction(format: ChatResponseFormat): string {
-  return format.type === 'json_schema'
-    ? `Respond with a single JSON document and nothing else, valid against this JSON Schema:\n${JSON.stringify(format.json_schema.schema)}`
-    : 'Respond with a single JSON object and nothing else.';
-}
 
 export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
   const sdk = createAnthropic({
@@ -52,10 +41,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
       let toolChoice = offered ? req.toolChoice : undefined;
       const messages = toModelMessages(req.messages, {
         userFirst: true,
-        hoistSystem: {
-          providerOptions: CACHE,
-          extra: req.responseFormat ? [jsonInstruction(req.responseFormat)] : [],
-        },
+        hoistSystem: { providerOptions: CACHE },
       });
       return bridgeStream({
         label: PROVIDER,

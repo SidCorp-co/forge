@@ -26,15 +26,6 @@ const MAX_TOOL_ITERATIONS = 16;
 
 /** What a tool call record keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
-/** Not preceded by `<word>-`, so the tail of a channel number (UQ-CR-3) is not an issue CR-3. */
-const RESULT_ISSUE_REF_RE = /(?<![A-Za-z0-9]-)\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
-
-/** Every issue-shaped reference a tool result named, de-duplicated. */
-function issueRefsIn(text: string): string[] {
-  const seen = new Set<string>();
-  for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) seen.add((m[0] as string).toUpperCase());
-  return [...seen];
-}
 
 export interface TurnCoreArgs {
   provider: ChatProvider;
@@ -80,7 +71,6 @@ export interface ToolCallRecord {
   durationMs: number;
   /** First {@link RESULT_PREVIEW_CHARS} of the text the model read. */
   resultPreview: string;
-  resultIssueRefs: string[];
   /** The user the call ran as, from the toolset that owns it; null for a tool that acts as nobody. */
   ranAs: string | null;
   /** The code a refused call's result named, null where it landed or named none. */
@@ -158,7 +148,6 @@ async function executeToolRound(
             isError: result.isError === true,
             durationMs: Date.now() - startedAt,
             resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
-            resultIssueRefs: issueRefsIn(text),
             ranAs: toolset.ranAs(call.name),
             refusalCode: result.isError === true ? refusalCodeOf(text) : null,
           },

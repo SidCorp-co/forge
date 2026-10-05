@@ -54,7 +54,7 @@ export function registerNotifyMentionsSubscriber(): void {
         } catch (err) {
           logger.error(
             { err, userId, commentId: p.commentId },
-            'notify-mentions: createNotification failed',
+            'notify-mentions: emitNotification failed',
           );
         }
       }

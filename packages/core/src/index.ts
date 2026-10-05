@@ -17,7 +17,11 @@ import { runOnceBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { interfaceContractsOf, provideEcosystemSignals } from './ecosystem/index.js';
+import {
+  contractHolding,
+  interfaceContractsOf,
+  provideEcosystemSignals,
+} from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import {
   embedFeedback,
@@ -34,6 +38,7 @@ import {
   activeIssuePrefix,
   allRelationDigests,
   archivedIssueIdsSql,
+  citedIssues,
   claimIssuePrefix,
   closeBacklogStreams,
   heldIssuePrefixes,
@@ -61,7 +66,7 @@ import {
   registerMemoryReconcileWorker,
   runMemorySearch,
 } from './memory/index.js';
-import { provideIssueFactReads } from './messaging/gather.js';
+import { provideMessageReads } from './messaging/reads.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
@@ -79,6 +84,7 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
+import { readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import {
   provideProjectConfigPorts,
@@ -106,6 +112,7 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
+import { workflowDesign } from './workflows/index.js';
 import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
@@ -147,7 +154,14 @@ provideChatTools(CHAT_READ_MODEL_TOOLS);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
 );
-provideIssueFactReads({ activeIssuePrefix, heldIssuePrefixes });
+provideMessageReads({
+  activeIssuePrefix,
+  heldIssuePrefixes,
+  citedIssues,
+  workflowDesign,
+  contractHolding,
+  readsTechnical,
+});
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

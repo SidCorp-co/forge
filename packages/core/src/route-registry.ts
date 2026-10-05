@@ -150,7 +150,6 @@ import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import {
   deviceSkillRoutes,
-  projectOnboardRoutes,
   skillCrudRoutes,
   skillPinRoutes,
   skillStudioRoutes,
@@ -246,7 +245,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', projectRoutes);
   // No auth of their own: they answer under projectRoutes' gate, mounted just above on the same prefix.
   app.route('/api/projects', projectRunnerRoutes);
-  app.route('/api/projects', projectOnboardRoutes);
   app.route('/api/orgs', orgRoutes);
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);

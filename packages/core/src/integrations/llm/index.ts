@@ -20,7 +20,6 @@ export type {
   ChatContentPart,
   ChatMessage,
   ChatProvider,
-  ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamUsage,
   ChatTool,

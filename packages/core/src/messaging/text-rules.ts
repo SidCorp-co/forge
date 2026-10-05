@@ -7,11 +7,8 @@
 // every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.
 
 import { scrubLogText } from '@forge/observability';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
-import type { MessageFacts } from './facts.js';
-import { issueTokenRe } from './issue-tokens.js';
-import { extractStatusAssertions } from './status-assertions.js';
+import { UUID_RE } from './issue-tokens.js';
 
 const OPTION_LINE_RE = /^\s*\d+(-\d+)?\s*[.)]/;
 const one = (why: string, quote: string | null = null): RuleBreak[] => [{ why, quote }];
@@ -166,58 +163,6 @@ export const NO_DEVELOPER_DETAIL: MessageRule = {
   },
 };
 
-/**
- * The names of the tools whose results are the TRACKER speaking.
- */
-const TRACKER_TOOLS = new Set(['forge', 'forge_issues']);
-
-/**
- * Every issue reference this turn's own tracker calls RETURNED.
- */
-function refsTheTrackerReturned(facts: MessageFacts): Set<string> {
-  const returned = new Set<string>();
-  for (const call of facts.toolCalls) {
-    if (call.isError === true) continue;
-    if (!TRACKER_TOOLS.has(call.name)) continue;
-    const args = call.arguments ?? '';
-    for (const ref of call.resultIssueRefs ?? []) {
-      if (!args.toUpperCase().includes(ref)) returned.add(ref);
-    }
-  }
-  return returned;
-}
-
-/**
- * An issue cited to a reader that this turn did not actually verify.
- */
-export const ONLY_VERIFIED_CITATIONS: MessageRule = {
-  id: 'only-verified-citations',
-  shape: 'cite no issue id to a stakeholder unless this turn looked it up',
-  example: 'The change you asked about is done.',
-  needs: ['prefixes', 'issue-rows'],
-  check: (text, f) => {
-    if (f.issueLookupFailed) return none;
-    const returned = refsTheTrackerReturned(f);
-    const asserted = new Set(extractStatusAssertions(text, f.prefixes).map((a) => a.seq));
-    const breaks: RuleBreak[] = [];
-    for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
-      const seq = Number(m[2]);
-      if (f.knownIssueSeqs.has(seq)) continue;
-      if (returned.has((m[0] as string).toUpperCase()) && !asserted.has(seq)) continue;
-      const ref = formatIssueRef(f.prefix, seq);
-      breaks.push({
-        quote: m[0],
-        why: asserted.has(seq)
-          ? `reply states what "${ref}" is, and this turn only saw that id inside another issue's text — say what you read it in, or look it up, rather than reporting its status — ${REPHRASE}`
-          : `reply cites "${ref}" which was not verified this turn — ${REPHRASE}`,
-      });
-    }
-    return breaks;
-  },
-};
-
-// // i18n-allow: refers to the Vietnamese phrase words above
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
 const ISSUE_NAV_RE =
   /(?<![^\s([<"'`*_])(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;

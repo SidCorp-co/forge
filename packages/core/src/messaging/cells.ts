@@ -1,5 +1,5 @@
 /**
- * The five situations, and the rules each is read against.
+ * The situations, and the rules each is read against.
  *
  * A cell holds its rules and NOTHING else. How many times a message may be
  * repaired, and what happens when it cannot be, belong to the door — see
@@ -7,7 +7,7 @@
  */
 
 import { NO_ROLE, ROLE_HOLDER, ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
-import { ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
+import { ISSUE_KEYS_EXIST, ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
 import { type Audience, type CellId, type CellSpec, cellId, type Intent } from './contract.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 import {
@@ -21,17 +21,11 @@ import {
   NO_ROOM_BROADCAST_ASK,
   NO_ROOM_BROADCAST_CARRIED,
   NON_EMPTY,
-  ONLY_VERIFIED_CITATIONS,
   SINGLE_LINE,
 } from './text-rules.js';
 
-function cell(
-  audience: Audience,
-  intent: Intent,
-  rules: CellSpec['rules'],
-  reserved = false,
-): CellSpec {
-  return { id: cellId(audience, intent), audience, intent, rules, reserved };
+function cell(audience: Audience, intent: Intent, rules: CellSpec['rules']): CellSpec {
+  return { id: cellId(audience, intent), audience, intent, rules };
 }
 
 const SHIPPED: readonly CellSpec[] = [
@@ -52,26 +46,13 @@ const SHIPPED: readonly CellSpec[] = [
     NO_REDACTED_SECRET,
   ]),
 
-  cell(
-    NO_ROLE,
-    'ask',
-    [
-      NON_EMPTY,
-      NO_ROOM_BROADCAST_ASK,
-      NO_DEVELOPER_DETAIL,
-      ONLY_VERIFIED_CITATIONS,
-      NO_REDACTED_SECRET,
-    ],
-    true,
-  ),
-
   /**
    * The assistant's reply to somebody holding a role, in a Forge UI room.
    */
   cell(ROLE_HOLDER, 'chat', [
     NON_EMPTY,
     STATUS_MATCHES_THE_ROW,
-    ONLY_VERIFIED_CITATIONS,
+    ISSUE_KEYS_EXIST,
     ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
@@ -92,7 +73,6 @@ const SHIPPED: readonly CellSpec[] = [
   cell(NO_ROLE, 'report', [
     ISSUE_REFERENCES_EXIST,
     NO_DEVELOPER_DETAIL,
-    ONLY_VERIFIED_CITATIONS,
     ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,

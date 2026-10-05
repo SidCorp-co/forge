@@ -112,7 +112,7 @@ async function divertToAgent(
   if (args.window.mode !== 'agent') return null;
   setPhase('agent-turn');
   if (!(await args.window.reserve()))
-    return { send: false, reason: 'superseded-before-agent-turn' };
+    return { send: false, reason: 'superseded-before-agent-turn', ended: 'superseded' };
   const { startConversationAgentTurn } = await import('../conversations/index.js');
   const started = await startConversationAgentTurn({
     venue: args.window.venue,
@@ -142,7 +142,8 @@ async function divertToAgent(
           : started.reason === 'attachment-unreadable'
             ? `I could not send ${started.file ?? 'the file you attached'} to the box that answers in Agent mode, so I have not answered rather than answering without it. Attach it again, or ask in Assistant mode, where I read it here.`
             : null;
-  if (text === null) return { send: false, reason: 'agent-turn-dispatch-failed' };
+  if (text === null)
+    return { send: false, reason: 'agent-turn-dispatch-failed', ended: 'not-dispatched' };
   return { send: true, message: codeAuthored(text), screenReplaced: false };
 }
 

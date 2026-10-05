@@ -28,6 +28,14 @@ export function useStartOnboarding(projectId: string) {
   });
 }
 
+export function useJoinOnboarding(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => onboardingApi.join(projectId),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["conversations", "list"] }),
+  });
+}
+
 export function useReanalyze(projectId: string, conversationId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

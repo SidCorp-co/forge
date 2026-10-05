@@ -79,7 +79,7 @@ async function surfaceOnce(args: {
     groupKey: args.groupKey,
     groupTitle: args.groupTitle,
   });
-  return sent?.delivered ?? 0;
+  return sent.delivered;
 }
 
 interface SweptRow {

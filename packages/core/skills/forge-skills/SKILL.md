@@ -70,7 +70,7 @@ dispatched by a status.
 | Skill | Delivered as | Owns |
 |---|---|---|
 | issue-flow | plugin (the project's `plugins`) | the whole walk from `open` to `closed` |
-| forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
+| forge-product-map | project copy, `installOnly` | seed the product map |
 | forge-skills | this one | author and ship project skills |
 
 ## 7. Non-standard project patterns

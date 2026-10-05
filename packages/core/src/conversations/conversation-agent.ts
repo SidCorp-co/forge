@@ -4,6 +4,7 @@
  * a second copy per transport is the two-live-paths defect the conversation store was extracted to end.
  */
 
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import { eq } from 'drizzle-orm';
 import {
   createChatSessionRow,
@@ -19,6 +20,7 @@ import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 import { carryImagesToSession } from './conversation-agent-images.js';
 import {
@@ -33,6 +35,31 @@ type SessionRow = typeof agentSessions.$inferSelect;
 type Authorised = Extract<Awaited<ReturnType<typeof resolveSessionAuthority>>, { ok: true }>;
 
 export const TITLE_MAX = 80;
+
+/** Why a turn never reached its box, as its session's failure reason records it. */
+type NotDispatched = Extract<
+  FailureCause,
+  'checkout_unbound' | 'credential_mint_failed' | 'attachment_unreadable' | 'dispatch_failed'
+>;
+
+const NOT_DISPATCHED = Symbol('notDispatched');
+
+/** An invariant break that carries the cause its session is failed with. */
+function notDispatched(failureCause: NotDispatched, cause: unknown): Error {
+  return Object.assign(
+    new Error(`conversation-agent: the turn was not handed to its box (${failureCause})`, {
+      cause,
+    }),
+    { [NOT_DISPATCHED]: failureCause },
+  );
+}
+
+/** The real cause of a dispatch that threw: the binding, the credential, or the hand-over itself. */
+export function notDispatchedCause(err: unknown): NotDispatched {
+  const carried = (err as { [NOT_DISPATCHED]?: NotDispatched } | null)?.[NOT_DISPATCHED];
+  if (carried) return carried;
+  return isRefusal(err, 'CHECKOUT_UNBOUND') ? 'checkout_unbound' : 'dispatch_failed';
+}
 
 /** The session row a runner-hosted conversation turn runs in, carrying its marker. */
 export function createAgentSession(input: {
@@ -59,6 +86,15 @@ export function createAgentSession(input: {
   });
 }
 
+/** The asker's credential for this session; a mint that throws is the turn's cause of failure. */
+export function mintTurnCredential(
+  input: Parameters<typeof mintSessionCredential>[0],
+): ReturnType<typeof mintSessionCredential> {
+  return mintSessionCredential(input).catch((err: unknown) => {
+    throw notDispatched('credential_mint_failed', err);
+  });
+}
+
 /** Mint the asker's credential for this session and hand the turn to the box; the ack is then due. */
 export async function dispatchAgentTurn(input: {
   session: SessionRow;
@@ -70,7 +106,7 @@ export async function dispatchAgentTurn(input: {
   attachmentIds?: string[];
   forceLenses?: readonly MemberLens[];
 }): Promise<SessionRow> {
-  const credential = await mintSessionCredential({
+  const credential = await mintTurnCredential({
     sessionId: input.session.id,
     deviceId: input.deviceId,
     value: input.authorised.value,
@@ -109,6 +145,7 @@ function markerOf(
     claimedAt: null,
     deliveredAt: null,
     failure: null,
+    images: [...(args.images ?? [])],
   };
 }
 
@@ -154,7 +191,15 @@ export async function startConversationAgentTurn(
     ? await carryImagesToSession(args.conversationId, session.id, args.images)
     : { ok: true as const, ids: [] };
   if (!carried.ok) {
-    await markSessionFailed(session, 'conversation-agent');
+    // cm:why the room is told by the caller, naming the file; the stamped marker keeps the bridge
+    // from posting a second, different reply under the same delivery key
+    const at = new Date().toISOString();
+    await markSessionFailed(session, 'conversation-agent', 'attachment_unreadable', {
+      ...marker,
+      claimedAt: at,
+      deliveredAt: at,
+      failure: `the file ${carried.file} could not be carried to the session`,
+    });
     return { started: false, reason: 'attachment-unreadable', file: carried.file };
   }
 
@@ -180,7 +225,7 @@ export async function startConversationAgentTurn(
       { err, sessionId: session.id, conversationId: args.conversationId },
       'conversation-agent: chat-turn dispatch failed',
     );
-    await markSessionFailed(session, 'conversation-agent');
+    await markSessionFailed(session, 'conversation-agent', notDispatchedCause(err));
     return { started: false, reason: 'dispatch-failed' };
   }
   return { started: true, sessionId: session.id };
@@ -212,9 +257,11 @@ function buildConversationAgentPrompt(args: {
   return lines.join('\n\n');
 }
 
+/** Fail a session whose turn never reached its box, under the cause that stopped it. */
 export async function markSessionFailed(
   session: SessionRow,
   source: string,
+  cause: NotDispatched,
   marker?: ConversationAgentMeta,
 ): Promise<void> {
   try {
@@ -222,13 +269,13 @@ export async function markSessionFailed(
     await transitionSessions(db, {
       to: 'failed',
       set: {
-        failureReason: 'ws_publish_failed',
+        failureReason: cause,
         ...(marker
           ? { metadata: { ...priorMeta, [CONVERSATION_AGENT_MARKER]: marker } as never }
           : {}),
       },
       where: eq(agentSessions.id, session.id),
-      reason: 'ws-publish-failed',
+      reason: cause,
       actor: { type: 'system' },
       source,
     });

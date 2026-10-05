@@ -72,7 +72,7 @@ function toolInput(argumentsJson: string): Record<string, unknown> {
 
 interface MessageOptions {
   /** Every system message joined into one leading system message carrying these options; otherwise each stays where it was. */
-  hoistSystem?: { providerOptions?: ProviderOptions; extra?: string[] } | undefined;
+  hoistSystem?: { providerOptions?: ProviderOptions } | undefined;
   /** Drop assistant turns that come before the first user turn. */
   userFirst?: boolean | undefined;
 }
@@ -125,20 +125,14 @@ export function toModelMessages(
       });
     }
   }
-  const leading = [...system, ...(opts.hoistSystem?.extra ?? [])];
-  if (opts.hoistSystem && leading.length > 0) {
-    const blocks: ModelMessage[] = [];
-    if (system.length > 0) {
-      blocks.push({
-        role: 'system',
-        content: system.join('\n\n'),
-        ...(opts.hoistSystem.providerOptions
-          ? { providerOptions: opts.hoistSystem.providerOptions }
-          : {}),
-      });
-    }
-    for (const text of opts.hoistSystem.extra ?? []) blocks.push({ role: 'system', content: text });
-    out.unshift(...blocks);
+  if (opts.hoistSystem && system.length > 0) {
+    out.unshift({
+      role: 'system',
+      content: system.join('\n\n'),
+      ...(opts.hoistSystem.providerOptions
+        ? { providerOptions: opts.hoistSystem.providerOptions }
+        : {}),
+    });
   }
   return out;
 }

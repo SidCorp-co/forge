@@ -45,15 +45,15 @@ export interface NotificationSubject {
 }
 
 const NOTIFICATION_KINDS = ["signal", "condition", "task"] as const;
-type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 const NOTIFICATION_TIERS = ["page", "ticket", "log"] as const;
-type NotificationTier = (typeof NOTIFICATION_TIERS)[number];
+export type NotificationTier = (typeof NOTIFICATION_TIERS)[number];
 
 export type NotificationSeverity = "info" | "success" | "warning" | "error";
 type NotificationChannel = "bell" | "toast" | "browser";
 
-interface NotificationTypeContract {
+export interface NotificationTypeContract {
 	/** Default severity; an emitter MAY override per-event (e.g.
 	 *  `issue_status_changed` derives severity from the `to` status). */
 	severity: NotificationSeverity;
@@ -65,6 +65,7 @@ interface NotificationTypeContract {
 	kind: NotificationKind;
 	/** ISS-1063 — urgency, not routing. `channels` still decides which surfaces it reaches. */
 	tier: NotificationTier;
+	/** Prometheus's `for`, counted in evaluations of a PERIODIC detector. */
 	pendingEvaluations?: number;
 }
 
@@ -157,6 +158,13 @@ const NOTIFICATION_CONTRACT: Record<
 		tier: "log",
 	},
 };
+
+/** A type's kind, tier, default severity and channels: the one declaration core and web both read. */
+export function notificationContractOf(
+	type: NotificationType,
+): NotificationTypeContract {
+	return NOTIFICATION_CONTRACT[type];
+}
 
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */
 export function channelsFor(type: string): NotificationChannel[] {

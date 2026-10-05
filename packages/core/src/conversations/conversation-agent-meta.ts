@@ -92,6 +92,16 @@ export interface ConversationAgentMeta {
   /** Which failure the venue was told about, stamped by the bridge; null while none. */
   failure: string | null;
   failover?: { attempt: number; triedDeviceIds: string[] } | undefined;
+  /** The pictures the turn carried, so a failover copies them onto its retry session too. */
+  images: ConversationImage[];
+}
+
+function imagesOf(raw: unknown): ConversationImage[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (i): i is ConversationImage =>
+      !!i && typeof i.name === 'string' && typeof i.mime === 'string' && typeof i.ref === 'string',
+  );
 }
 
 export function readConversationAgentMeta(metadata: unknown): ConversationAgentMeta | null {
@@ -137,5 +147,6 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
     deliveredAt: typeof m.deliveredAt === 'string' ? m.deliveredAt : null,
     failure: typeof m.failure === 'string' ? m.failure : null,
     ...(m.failover ? { failover: m.failover as ConversationAgentMeta['failover'] } : {}),
+    images: imagesOf(m.images),
   };
 }

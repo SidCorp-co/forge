@@ -21,6 +21,7 @@ import {
   type TurnCredential,
 } from '../credentials/turn-credential.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { reportFailure } from '../lib/sentry.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
@@ -88,7 +89,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const reply = await composeWithin(req, conversation.id);
   if ('kind' in reply) return reply;
   if (!reply.send) {
-    return { kind: reply.declined ? 'declined' : 'diverted', reason: reply.reason };
+    return { kind: reply.ended ?? 'diverted', reason: reply.reason };
   }
   return deliverReply(req, transport, conversation.id, reply);
 }
@@ -135,11 +136,13 @@ async function composeWithin(
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
     if (req.sendMode === 'tool' || req.fallbacks === 'silence') return silence(ctx, 'turn-failed');
-    return {
-      send: true,
-      message: codeAuthored(errorFallbackReply(req.handleName)),
-      screenReplaced: true,
-    };
+    const unconfigured = isRefusal(err)
+      ? err.refusals.find((r) => r.code === 'ASSISTANT_MODEL_NOT_CONFIGURED')
+      : undefined;
+    const text = unconfigured
+      ? `${unconfigured.code}: ${unconfigured.detail}`
+      : errorFallbackReply(req.handleName);
+    return { send: true, message: codeAuthored(text), screenReplaced: true };
   } finally {
     clearTimeout(timer);
     req.externalStop?.removeEventListener('abort', onExternalStop);

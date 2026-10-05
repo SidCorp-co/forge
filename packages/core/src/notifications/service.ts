@@ -1,8 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type NotificationType, notificationDeliveries } from '../db/schema.js';
+import { notificationDeliveries } from '../db/schema.js';
 import { emitEvent } from '../outbox/index.js';
-import { recordAndDeliver } from './deliver.js';
 import { liveConditionOf, ownsDelivery } from './read.js';
 
 /** Every unread delivery of the caller, marked read; answers how many. */
@@ -47,25 +46,4 @@ export async function deleteDelivery(
   if (live) return { ok: false, code: 'CONDITION_STILL_TRUE', live };
   await db.delete(notificationDeliveries).where(eq(notificationDeliveries.id, deliveryId));
   return { ok: true };
-}
-
-export async function createNotification(input: {
-  userId?: string;
-  recipients?: string[];
-  projectId?: string | null;
-  type: NotificationType;
-  title: string;
-  body?: string | null;
-  issueId?: string | null;
-  secondaryIssueId?: string | null;
-  agentSessionId?: string | null;
-  scheduleRunId?: string | null;
-  severity?: string | null;
-  resolutionKey?: string | null;
-  dedupeKey?: string | null;
-  groupKey?: string | null;
-  groupTitle?: string | null;
-}): Promise<{ id: string; delivered: number }> {
-  const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
-  return recordAndDeliver({ ...input, recipients });
 }

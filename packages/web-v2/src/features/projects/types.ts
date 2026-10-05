@@ -76,10 +76,6 @@ export interface CreatedProject {
   createdAt: string;
 }
 
-export interface OnboardResult {
-  sessionId: string;
-}
-
 /** Sort options for the projects console toolbar. */
 export type ProjectSort = 'recent' | 'name' | 'health';
 

@@ -2,7 +2,6 @@ import { apiClient } from '@/lib/api/client';
 import type {
   CreatedProject,
   CreateProjectInput,
-  OnboardResult,
   ProjectDetail,
   ProjectHealthRow,
   ProjectListItem,
@@ -23,7 +22,4 @@ export const projectApi = {
 
   /** `GET /api/projects/:id` — full project detail (members/labels/devices). */
   getById: (id: string) => apiClient<ProjectDetail>(`/projects/${id}`),
-
-  onboard: (id: string) =>
-    apiClient<OnboardResult>(`/projects/${id}/onboard`, { method: 'POST' }),
 };

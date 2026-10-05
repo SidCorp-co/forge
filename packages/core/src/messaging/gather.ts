@@ -6,14 +6,13 @@
  * makes no query at all.
  */
 
-import { and, eq, inArray, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { cellFor } from './cells.js';
 import type { Audience, FactKind, Intent } from './contract.js';
 import { type IssueRow, type MessageFacts, NO_FACTS, type ProgressFacts } from './facts.js';
 import { extractIssueClaims } from './issue-tokens.js';
+import { messageReads } from './reads.js';
 
 interface GatherInput {
   readonly projectId: string;
@@ -27,28 +26,6 @@ interface GatherInput {
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
   readonly executor?: Tx;
-}
-
-/** The issue reads a screen needs, from the work kernel that owns them. */
-interface IssueFactReads {
-  activeIssuePrefix(projectId: string, tx: Tx): Promise<string | null>;
-  heldIssuePrefixes(projectId: string, tx: Tx): Promise<readonly string[]>;
-}
-
-let issueFactReads: IssueFactReads | null = null;
-
-/** The process entry provides the issue reads at boot, so the screen never imports the kernel above it. */
-export function provideIssueFactReads(reads: IssueFactReads): void {
-  issueFactReads = reads;
-}
-
-function reads(): IssueFactReads {
-  if (!issueFactReads) {
-    throw new Error(
-      'message screen: no issue reads were provided, so a claim cannot be checked against the tracker; the process entry calls provideIssueFactReads before it serves',
-    );
-  }
-  return issueFactReads;
 }
 
 const ANY_REFERENCE_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/;
@@ -84,19 +61,7 @@ async function issueRowsFor(
   const empty = { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
   if (c.ids.length === 0 && c.seqs.length === 0) return empty;
   try {
-    const conds = [
-      ...(c.ids.length > 0 ? [inArray(issues.id, c.ids)] : []),
-      ...(c.seqs.length > 0 ? [inArray(issues.issSeq, c.seqs)] : []),
-    ];
-    const found = await tx
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        status: issues.status,
-        mergedAt: issues.mergedAt,
-      })
-      .from(issues)
-      .where(and(eq(issues.projectId, projectId), or(...conds)));
+    const found = await messageReads().citedIssues(projectId, c, tx);
     const rows = new Map<number, IssueRow>();
     for (const r of found) {
       rows.set(r.issSeq, { seq: r.issSeq, merged: r.mergedAt !== null, status: r.status });
@@ -115,8 +80,8 @@ async function activePrefixes(
   tx: Tx,
 ): Promise<[string | null, readonly string[]]> {
   const [active, held] = await Promise.all([
-    reads().activeIssuePrefix(projectId, tx),
-    reads().heldIssuePrefixes(projectId, tx),
+    messageReads().activeIssuePrefix(projectId, tx),
+    messageReads().heldIssuePrefixes(projectId, tx),
   ]);
   const prefix = active ?? LEGACY_ISSUE_PREFIX;
   return [prefix, [...new Set([prefix, ...held])]];

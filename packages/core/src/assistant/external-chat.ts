@@ -99,7 +99,6 @@ export interface ExternalChatTurnResult {
   toolCalls: Array<{
     name: string;
     arguments: string;
-    resultIssueRefs?: readonly string[];
     isError?: boolean;
     refusalCode?: string | null;
   }>;

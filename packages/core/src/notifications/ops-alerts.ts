@@ -1,5 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { INITIAL_STATE, kindOf, tierOf } from './kinds.js';
+
+const KIND = kindOf('ops_alert');
+const TIER = tierOf('ops_alert');
 
 /**
  * Raise an ops alert, or re-word the one already firing under its key: `escalated` when its
@@ -15,7 +19,7 @@ export async function claimOpsAlert(input: {
 
   const claimed = await db.execute<{ id: string }>(sql`
     INSERT INTO notifications (project_id, type, kind, tier, state, title, body, severity, resolution_key, pending_since, last_seen_at, created_at)
-    VALUES (NULL, 'ops_alert', 'condition', 'ticket', 'firing', ${title}, ${body}, ${severity}, ${resolutionKey}, now(), now(), now())
+    VALUES (NULL, 'ops_alert', ${KIND}, ${TIER}, ${INITIAL_STATE[KIND]}, ${title}, ${body}, ${severity}, ${resolutionKey}, now(), now(), now())
     ON CONFLICT (resolution_key) WHERE resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert' DO NOTHING
     RETURNING id
   `);

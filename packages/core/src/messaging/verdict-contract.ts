@@ -6,12 +6,10 @@
  * read as earned on nothing, so the write door asks while the writer is there (ISS-60).
  */
 
-import { and, desc, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { projects } from '../db/schema.js';
-import { contractVersions } from '../db/schema-ecosystem.js';
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
+import { type ContractHolding, messageReads } from './reads.js';
 import {
   CONTRACT_FIELD,
   type ContractIdentity,
@@ -20,8 +18,6 @@ import {
   namedIdentityRefusals,
   parseContractIdentity,
 } from './verdict-identity.js';
-
-("a `contract:` identity names a contract of this issue's own project, as `<project slug>/<contract slug>@<version>`, and a version core recorded for it");
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -32,49 +28,14 @@ const EXAMPLE = [
   '```',
 ].join('\n');
 
-/** How many recorded versions a refusal lists when the one named is not among them. */
-const VERSIONS_LISTED = 10;
-
-/** What the issue's project holds for a named contract: its slug, and the versions it recorded. */
-interface ContractHolding {
-  readonly projectSlug: string;
-  /** Newest first, at most `VERSIONS_LISTED` beyond the one named. */
-  readonly versions: readonly string[];
-  readonly named: boolean;
-}
-
 export type ContractLookup = (
   projectId: string,
   named: ContractIdentity,
 ) => Promise<ContractHolding>;
 
-export function dbContractLookup(executor?: Tx): ContractLookup {
-  const handle = executor ?? db;
-  return async (projectId, named) => {
-    const [project] = await handle
-      .select({ slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const projectSlug = project?.slug ?? '';
-    if (projectSlug !== named.project) return { projectSlug, versions: [], named: false };
-    const rows = await handle
-      .select({ version: contractVersions.version })
-      .from(contractVersions)
-      .where(
-        and(
-          eq(contractVersions.providerProjectId, projectId),
-          eq(contractVersions.contractSlug, named.contract),
-        ),
-      )
-      .orderBy(desc(contractVersions.recordedAt));
-    const versions = rows.map((r) => r.version);
-    return {
-      projectSlug,
-      versions: versions.slice(0, VERSIONS_LISTED),
-      named: versions.includes(named.version),
-    };
-  };
+/** The provided contract read, through the caller's handle. */
+export function contractLookup(executor?: Tx): ContractLookup {
+  return (projectId, named) => messageReads().contractHolding(projectId, named, executor ?? db);
 }
 
 const CONTRACT_RULE: NamedIdentityRule<ContractIdentity, ContractHolding> = {

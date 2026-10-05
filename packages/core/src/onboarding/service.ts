@@ -7,11 +7,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
-import { addPerson, openConversationIn, settleShape } from '../conversations/index.js';
+import { eq } from 'drizzle-orm';
+import {
+  addPerson,
+  deleteConversation,
+  openConversationIn,
+  settleShape,
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { conversationParticipants } from '../db/schema-conversations.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
@@ -34,6 +38,12 @@ import {
 import { enqueueJob } from './job.js';
 import { liveJobOf, onboardingOf, onboardingView } from './read.js';
 import { notStarted, personActRefusal, reanalyzeRefusal, startRefusal } from './rules.js';
+
+async function committedRow(projectId: string) {
+  const row = await onboardingOf(db, projectId);
+  if (!row) throw new Error(`onboarding: project ${projectId} lost its onboarding after a write`);
+  return row;
+}
 
 async function nameOf(userId: string) {
   return (await peopleOf([userId])).get(userId)?.name ?? 'Someone';
@@ -86,8 +96,14 @@ export async function startOnboarding(input: {
     return null;
   });
   if (refused) return { ok: false, refusals: refused };
-  const row = await onboardingOf(db, projectId);
-  if (row) await enqueueJob(row, 'analyse', actor.userId);
+  try {
+    await enqueueJob(await committedRow(projectId), 'analyse', actor.userId);
+  } catch (err) {
+    // An onboarding with no analysis job behind it would refuse every later start; the room goes,
+    // and its onboarding row with it (cascade), so the start can be asked again.
+    await deleteConversation(conversationId);
+    throw err;
+  }
   await announce(conversationId, null, 'system');
   return settled(projectId, { created: true });
 }
@@ -133,9 +149,19 @@ export async function reanalyzeOnboarding(input: {
     return null;
   });
   if (refused) return { ok: false, refusals: refused };
-  const row = await onboardingOf(db, projectId);
-  if (row) await enqueueJob(row, 'analyse', actor.userId, { reason: input.reason ?? null });
-  await announce(conversationId, null, 'system');
+  try {
+    await enqueueJob(await committedRow(projectId), 'analyse', actor.userId, {
+      reason: input.reason ?? null,
+    });
+  } catch (err) {
+    // No job runs: the thread says so, and a re-analysis can be asked again (no live job refuses it).
+    await db.transaction((tx) =>
+      systemLine(tx, conversationId, 'the re-analysis job could not be queued · ask again'),
+    );
+    throw err;
+  } finally {
+    await announce(conversationId, null, 'system');
+  }
   return settled(projectId);
 }
 
@@ -144,20 +170,9 @@ export async function joinOnboarding(input: { projectId: string; actor: Onboardi
   await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(input.projectId));
   const row = await onboardingOf(db, input.projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
+  // addPerson inserts nothing for a person already present (the live-participant unique index).
   await db.transaction(async (tx) => {
     const handle = tx as unknown as typeof db;
-    const [present] = await tx
-      .select({ id: conversationParticipants.id })
-      .from(conversationParticipants)
-      .where(
-        and(
-          eq(conversationParticipants.conversationId, row.conversationId),
-          eq(conversationParticipants.userId, input.actor.userId),
-          sql`${conversationParticipants.removedAt} IS NULL`,
-        ),
-      )
-      .limit(1);
-    if (present) return;
     await addPerson({
       conversationId: row.conversationId,
       userId: input.actor.userId,
