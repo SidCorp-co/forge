@@ -12,12 +12,8 @@ import {
   type SentryTarget,
 } from '../integrations/sentry/index.js';
 import { logger } from '../lib/logger.js';
-import {
-  intakeSentryIssue,
-  projectCreatedById,
-  readSentryThresholds,
-  type SentryIntakeContext,
-} from './service.js';
+import { projectCreatorOf } from '../projects/index.js';
+import { intakeSentryIssue, readSentryThresholds, type SentryIntakeContext } from './service.js';
 
 export interface SentryPullOutcome {
   status: 'success' | 'skipped' | 'failed';
@@ -98,7 +94,7 @@ export async function runSentryPull(args: {
     };
   }
 
-  const createdById = await projectCreatedById(args.projectId);
+  const createdById = await projectCreatorOf(args.projectId);
   if (!createdById) {
     return {
       status: 'failed',

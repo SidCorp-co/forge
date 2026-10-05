@@ -1,8 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications, projects } from '../db/schema.js';
+import { notifications } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { emitNotification, resolveNotifications } from './ports.js';
+import { emitNotification, projectCreatorOf, resolveNotifications } from './ports.js';
 
 function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -80,12 +80,8 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
     .limit(1);
   if (existing) return;
 
-  const [project] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, ev.projectId))
-    .limit(1);
-  if (!project) throw new Error(`wedge: project ${ev.projectId} not found for ${ev.entityId}`);
+  const creator = await projectCreatorOf(ev.projectId);
+  if (!creator) throw new Error(`wedge: project ${ev.projectId} not found for ${ev.entityId}`);
 
   const title = ev.title ?? `Pipeline wedge: ${ev.hop} hop miss on ${ev.entity}`;
   const body = ev.summary
@@ -97,7 +93,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
       ].join('\n');
 
   await emitNotification({
-    userId: project.createdBy,
+    userId: creator,
     projectId: ev.projectId,
     type: 'pipeline_wedge',
     title,

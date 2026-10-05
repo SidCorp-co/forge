@@ -1,10 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications, projects } from '../db/schema.js';
+import { notifications } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
-import { emitNotification, retryRescuesSince } from './ports.js';
+import { emitNotification, projectCreatorOf, retryRescuesSince } from './ports.js';
 
 const RETRY_RESCUE_ALERT_THRESHOLD = 5;
 const RETRY_RESCUE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -65,17 +65,13 @@ export async function detectRetryRescueThresholds(
         .limit(1);
       if (existing?.resolvedAt) continue;
 
-      const [project] = await db
-        .select({ createdBy: projects.createdBy })
-        .from(projects)
-        .where(eq(projects.id, row.project_id))
-        .limit(1);
-      if (!project) continue;
+      const creator = await projectCreatorOf(row.project_id);
+      if (!creator) continue;
 
       const rescues = Number(row.rescues);
       try {
         const sent = await emitNotification({
-          userId: project.createdBy,
+          userId: creator,
           projectId: row.project_id,
           type: 'retry_rescue_threshold',
           title: `Retries rescued ${rescues} failures`,

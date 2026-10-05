@@ -147,6 +147,7 @@ export function provideWorkPorts(): void {
     emitNotification,
     resolveNotifications,
     projectAdminUserIds,
+    projectCreatorOf,
     projectAdminUserIdsFor,
     existingProjectHandle,
     resolveProjectHandle,
