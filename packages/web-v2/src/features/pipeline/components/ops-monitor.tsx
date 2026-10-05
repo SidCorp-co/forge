@@ -154,6 +154,11 @@ export function OpsMonitor() {
             throughput={throughput}
             durations={durations}
             loading={throughputQ.isLoading || durationsQ.isLoading}
+            isError={throughputQ.isError || durationsQ.isError}
+            onRetry={() => {
+              if (throughputQ.isError) throughputQ.refetch();
+              if (durationsQ.isError) durationsQ.refetch();
+            }}
           />
         )}
         {tab === "health" && <HealthTab health={health} />}
@@ -267,10 +272,14 @@ function ProgressTab({
   throughput,
   durations,
   loading,
+  isError,
+  onRetry,
 }: {
   throughput: ThroughputRow[] | undefined;
   durations: StepDurationRow[] | undefined;
   loading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }) {
   const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
   const aggs = useMemo(() => aggregateByStep(durations), [durations]);
@@ -283,6 +292,7 @@ function ProgressTab({
       </div>
     );
   }
+  if (isError) return <ErrorState message="Failed to load progress." onRetry={onRetry} />;
 
   return (
     <div className="flex flex-col gap-5">
@@ -397,10 +407,10 @@ function RunsTab({
     <>
       {/* Mobile: stacked cards */}
       <div className="flex flex-col gap-2.5 sm:hidden">
-        {rows.map((r, i) => (
+        {rows.map((r) => (
           <button
             type="button"
-            key={`${r.runId}-${r.step}-${i}`}
+            key={`${r.runId}-${r.step}-${r.startedAt}`}
             onClick={() => onOpen(r.runId)}
             className="flex flex-col gap-1.5 rounded-md border border-line bg-surface p-3 text-left hover:bg-hover"
           >
@@ -430,9 +440,9 @@ function RunsTab({
             </TR>
           </THead>
           <TBody>
-            {rows.map((r, i) => (
+            {rows.map((r) => (
               <TR
-                key={`${r.runId}-${r.step}-${i}`}
+                key={`${r.runId}-${r.step}-${r.startedAt}`}
                 className="cursor-pointer"
                 onClick={() => onOpen(r.runId)}
               >

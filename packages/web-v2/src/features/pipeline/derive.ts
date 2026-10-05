@@ -152,14 +152,6 @@ export function groupIssuesByColumn(issues: PipelineIssueRow[] | undefined): Boa
   }));
 }
 
-/** Median of a numeric list (`null` for an empty list). Used by the Issues
- *  Insights view's per-stage / where-time-goes aggregates. */
-export function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 /** Everything a kanban card's status chip needs, from the three signals that
  *  can claim it: a queued step, the issue's live run, and the issue's own
  *  lifecycle status. */

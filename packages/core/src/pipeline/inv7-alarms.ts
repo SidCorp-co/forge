@@ -291,22 +291,20 @@ interface RejectionStreakRow extends Record<string, unknown> {
 export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
   const rows = await db.execute<RejectionStreakRow>(sql`
     WITH verdicts AS (
-      -- This CTE used to materialise every verdict phase_journal has ever held before anything
-      -- narrowed it, so an alarm about loops happening RIGHT NOW cost the whole history of every
-      -- run that ever finished. The outer pr.status = 'running' is kept as well: it is what the
-      -- guard above is written about, and a reader deleting it there because "the CTE does it now"
-      -- would be deleting the documented one.
-      SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
-      FROM phase_journal pj
-      WHERE pj.source = 'runner'
-        AND pj.artifact ->> 'kind' = 'verdict'
+      -- The reviewer's own handoffs (issue_step_contexts, step 'review'), one row per attempt, for
+      -- runs still going: an alarm about loops happening now reads no finished run's history.
+      SELECT isc.pipeline_run_id AS run_id, isc.issue_id, isc.updated_at AS at, isc.verdict
+      FROM issue_step_contexts isc
+      WHERE isc.kind = 'handoff'
+        AND isc.step = 'review'
+        AND isc.verdict IS NOT NULL
         AND EXISTS (
           SELECT 1 FROM pipeline_runs prr
-          WHERE prr.id = pj.run_id AND prr.status = 'running'
+          WHERE prr.id = isc.pipeline_run_id AND prr.status = 'running'
         )
     ),
     last_approve AS (
-      SELECT run_id, max(started_at) AS at FROM verdicts WHERE decision = 'approve' GROUP BY run_id
+      SELECT run_id, max(at) AS at FROM verdicts WHERE verdict <> 'needs_fix' GROUP BY run_id
     )
     SELECT v.run_id,
            i.project_id,
@@ -318,12 +316,10 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
            ${NO_PROGRESS_ROUNDS}::int AS threshold
     FROM verdicts v
     LEFT JOIN last_approve la ON la.run_id = v.run_id
-    JOIN pipeline_runs pr ON pr.id = v.run_id
     JOIN issues i ON i.id = v.issue_id
     JOIN projects p ON p.id = i.project_id
-    WHERE v.decision = 'request_changes'
-      AND (la.at IS NULL OR v.started_at > la.at)
-      AND pr.status = 'running'
+    WHERE v.verdict = 'needs_fix'
+      AND (la.at IS NULL OR v.at > la.at)
       AND i.status NOT IN ('closed', 'awaiting_release', 'draft')
     GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id, p.issue_prefix
     HAVING count(*) >= ${NO_PROGRESS_ROUNDS}
@@ -341,7 +337,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       title: `${label} has been sent back by review ${row.streak} times in a row`,
       summary: `"${row.title ?? label}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as CONSECUTIVE review rejections — ${row.streak} rounds since the last approval, from the reviewer's own verdicts rather than anything the driver reported about itself. Rounds that each fix a different blocker are normal work, and an approval resets this to zero; ${row.streak} in a row without one is the stop signal the number exists for.`,
       nextStep:
-        "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at `needs_info` (`waitingKind: needs_decision`) with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",
+        "Read the findings on the last few `needs_fix` review handoffs. If they keep naming the same defect, park the issue at `needs_info` (`waitingKind: needs_decision`) with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",
       action: 'Read the last rejections and decide; nothing is blocked.',
     });
   }

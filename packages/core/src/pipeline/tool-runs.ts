@@ -1,7 +1,7 @@
 /**
- * ISS-102 / ISS-145 — the pipeline-run actions. The five action functions
- * (list/get/pause/resume/cancel) carry the logic — auth check, db read, control
- * call — and `forge_project_pipeline_runs` dispatches into all five.
+ * The pipeline-run actions `forge_project_pipeline_runs` dispatches into. List
+ * and get read through the REST door's readers; pause, resume and cancel call
+ * the same controls the REST routes do.
  */
 
 import { z } from 'zod';
@@ -11,10 +11,11 @@ import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { principalUserId } from '../lib/tool.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from './runs.js';
+import { listProjectPipelineRuns } from './read.js';
+import { refusePipeline } from './refuse.js';
+import { readPipelineRun } from './runs.js';
 import { cancelPipelineRun, pausePipelineRun, resumePipelineRun } from './runs-control.js';
-import { laneOf } from './runs-lane.js';
-import { loadRunLivenessByRunIds, residentMasterOn } from './runs-liveness.js';
+import { loadPipelineRunSummary } from './runs-rollup.js';
 
 const pipelineRunsListInputSchema = z
   .object({
@@ -31,13 +32,17 @@ const pipelineRunsCancelInputSchema = z
   .object({ runId: z.uuid(), parkIssue: z.boolean().optional() })
   .strict();
 
+const runNotFound = (runId: string) =>
+  refusePipeline('PIPELINE_RUN_NOT_FOUND', `pipeline run ${runId} was not found`, '/runId');
+
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
-  if (!row) throw new Error('NOT_FOUND: pipeline run not found');
+  if (!row) throw runNotFound(runId);
   await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
   return row;
 }
 
+/** The REST list's own reader, so the two doors cannot disagree about a run. */
 export async function pipelineRunsListHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
@@ -45,42 +50,33 @@ export async function pipelineRunsListHandler(
   await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
 
   const runsLimit = input.limit ?? 50;
-  const rows = await listPipelineRuns({
-    projectId: input.projectId,
-    issueId: input.issueId,
+  const { items, total } = await listProjectPipelineRuns(input.projectId, {
     status: input.status,
+    issueId: input.issueId,
     limit: overfetch(runsLimit),
-  });
-  // ISS-1335 — the lane and the live master come from the REST list's own derivation, so the
-  // two surfaces cannot disagree about what a run is; the metadata that decides it is not returned.
-  const liveness = await loadRunLivenessByRunIds(rows.map((r) => r.id));
-  const items = rows.map(({ metadata, ...row }) => {
-    const lane = laneOf({ issueId: row.issueId, metadata });
-    const live = liveness.get(row.id);
-    return {
-      ...row,
-      liveJobs: live?.liveJobs ?? 0,
-      lane,
-      residentMaster: residentMasterOn(lane, live),
-    };
+    offset: 0,
   });
 
-  return buildListEnvelope({
-    key: 'runs',
-    items,
-    limit: runsLimit,
-    hint: 'narrow with status/issueId filters',
-  });
+  return {
+    ...buildListEnvelope({
+      key: 'runs',
+      items,
+      limit: runsLimit,
+      hint: 'narrow with status/issueId filters',
+    }),
+    total,
+  };
 }
 
+/** The REST run summary (`GET /pipeline-runs/:id`). */
 export async function pipelineRunsGetHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  const run = await loadRunForPrincipal(principal, input.runId);
-
-  const jobCounts = await countRunJobsByStatus(input.runId);
-  return { run, jobCounts };
+  await loadRunForPrincipal(principal, input.runId);
+  const summary = await loadPipelineRunSummary(input.runId);
+  if (!summary) throw runNotFound(input.runId);
+  return summary;
 }
 
 export async function pipelineRunsPauseHandler(

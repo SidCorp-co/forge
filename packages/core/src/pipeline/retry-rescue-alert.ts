@@ -82,7 +82,7 @@ export async function detectRetryRescueThresholds(
           body: `“${row.failure_reason}” crossed the rescue threshold in this 24-hour window. The jobs eventually succeeded, but the repeated failure still needs attention.`,
           resolutionKey,
         });
-        notified += sent?.delivered ?? 0;
+        notified += sent.delivered;
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
       }

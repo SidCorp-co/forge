@@ -1,23 +1,21 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { findCommentAttachmentByName } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
-import { findIssueAttachmentByName } from '../issues/index.js';
 import {
   allowedSetForTarget,
   NAME_MAX_BYTES,
   nameExceedsByteBudget,
   safeName,
 } from '../lib/attachment-mime.js';
-import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
-type UploadTargetType = 'issue' | 'comment' | 'session' | 'conversation';
+/** A conversation is the one target a ticket is minted for (`assistant/conversation-attachment-routes.ts`). */
+type UploadTargetType = 'conversation';
 
 const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
@@ -45,21 +43,6 @@ interface CreateUploadTicketInput {
 }
 
 /**
- * The document already holding this name on the target, or null. Sessions and
- * conversations are absent by design: nothing cites either's attachment by
- * name, and two `Screenshot.png` in one room is ordinary, not a mistake.
- */
-async function takenNameOn(
-  targetType: UploadTargetType,
-  targetId: string,
-  name: string,
-): Promise<ExistingAttachmentRef | null> {
-  if (targetType === 'issue') return findIssueAttachmentByName(targetId, safeName(name));
-  if (targetType === 'comment') return findCommentAttachmentByName(targetId, safeName(name));
-  return null;
-}
-
-/**
  * Mint a single-use capability ticket.
  *
  * The declared mime is checked against the target's set up front, so a caller
@@ -83,18 +66,6 @@ export async function createUploadTicket(
     throw refuse(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and mint again`,
-      '/name',
-    );
-  }
-  const taken = await takenNameOn(input.targetType, input.targetId, input.name);
-  if (taken) {
-    throw refuse(
-      'ATTACHMENT_NAME_TAKEN',
-      `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — ${
-        input.targetType === 'issue'
-          ? 'cite it, delete it, or mint under a different name'
-          : 'cite it, or mint under a different name'
-      }`,
       '/name',
     );
   }

@@ -1,6 +1,6 @@
-// cm:why the automation read model's three reads (ISS-114): the standing of a project's schedules,
-// fires and reports, one fire with what it produced, and one schedule with its fires; REST, MCP and
-// needs-you all call these, with the viewer `automationViewerOf` builds
+// The automation read model's four reads (ISS-114): the standing of a project's schedules, fires
+// and reports, one fire with what it produced, one schedule with its fires, and one report; the
+// REST routes and needs-you call these, with the viewer `automationViewerOf` builds
 
 import {
   AUTOMATION_TRIAGED_REPORTS,
@@ -101,7 +101,9 @@ async function reportsOf(
   viewer: AutomationViewer,
 ) {
   const views = await reportRows({ ...scope, triaged: AUTOMATION_TRIAGED_REPORTS });
-  return (await reportFacts(views)).map((r) => reportStandingOf(r, viewer)).sort(reportOrder);
+  return (await reportFacts(scope.projectId, views))
+    .map((r) => reportStandingOf(r, viewer))
+    .sort(reportOrder);
 }
 
 export async function readAutomationStanding(
@@ -173,7 +175,7 @@ export async function readFireDetail(
   return {
     fire: { ...fire.standing, output: row.output },
     schedule: publicStanding(standing),
-    produced: await producedItems(row, proposals),
+    produced: await producedItems(projectId, row, proposals),
   };
 }
 
@@ -182,6 +184,6 @@ export async function readReportDetail(
   reportId: string,
   viewer: AutomationViewer,
 ): Promise<ReportDetailResponse | null> {
-  const [facts] = await reportFacts(await reportRow(projectId, reportId));
+  const [facts] = await reportFacts(projectId, await reportRow(projectId, reportId));
   return facts ? { report: reportStandingOf(facts, viewer) } : null;
 }

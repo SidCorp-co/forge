@@ -2,50 +2,6 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { windowCutoff } from './timeseries.js';
 
-type StepDurationAggRow = {
-  project_id: string;
-  project_slug: string | null;
-  step: string;
-  p50_s: number | string | null;
-  p95_s: number | string | null;
-  avg_s: number | string | null;
-  total_cost: number | string | null;
-  n: number | string | null;
-};
-
-type ProjectStepDurationRow = Omit<StepDurationAggRow, 'project_id' | 'project_slug'> & {
-  breakdown_key?: string | null;
-};
-
-export async function stepDurationsForProject(
-  projectId: string,
-  days: number,
-  step?: string,
-  breakdown?: 'device' | 'model',
-): Promise<ProjectStepDurationRow[]> {
-  const stepFilter = step ? sql`AND step = ${step}` : sql``;
-  const breakdownCol =
-    breakdown === 'device' ? sql`device_id` : breakdown === 'model' ? sql`model_used` : null;
-  const breakdownSelect = breakdownCol ? sql`${breakdownCol} AS breakdown_key,` : sql``;
-  const breakdownGroup = breakdownCol ? sql`, ${breakdownCol}` : sql``;
-  const result = await db.execute(sql`
-    SELECT step,
-           ${breakdownSelect}
-           percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS p50_s,
-           percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s,
-           avg(duration_seconds)::float AS avg_s,
-           sum(cost_usd)::float AS total_cost,
-           count(duration_seconds)::int AS n
-    FROM pipeline_run_step_durations
-    WHERE project_id = ${projectId}
-      AND started_at >= now() - (${days}::int * interval '1 day')
-      ${stepFilter}
-    GROUP BY step${breakdownGroup}
-    ORDER BY step
-  `);
-  return result as unknown as ProjectStepDurationRow[];
-}
-
 /**
  * The bounded rescue set: `retry_rescues_since`, called safely.
  */

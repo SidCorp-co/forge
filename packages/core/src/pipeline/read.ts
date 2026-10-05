@@ -49,6 +49,47 @@ export async function readStepDurations(
   }));
 }
 
+type StepDurationStatRow = {
+  step: string;
+  p50_s: number | string | null;
+  p95_s: number | string | null;
+  avg_s: number | string | null;
+  total_cost: number | string | null;
+  n: number | string | null;
+};
+
+type ProjectStepDurationRow = StepDurationStatRow & { breakdown_key?: string | null };
+
+/** A project's per-step p50/p95/average and cost over the last `days`, optionally per device or model. */
+export async function stepDurationsForProject(
+  projectId: string,
+  days: number,
+  step?: string,
+  breakdown?: 'device' | 'model',
+): Promise<ProjectStepDurationRow[]> {
+  const stepFilter = step ? sql`AND step = ${step}` : sql``;
+  const breakdownCol =
+    breakdown === 'device' ? sql`device_id` : breakdown === 'model' ? sql`model_used` : null;
+  const breakdownSelect = breakdownCol ? sql`${breakdownCol} AS breakdown_key,` : sql``;
+  const breakdownGroup = breakdownCol ? sql`, ${breakdownCol}` : sql``;
+  const result = await db.execute(sql`
+    SELECT step,
+           ${breakdownSelect}
+           percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS p50_s,
+           percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s,
+           avg(duration_seconds)::float AS avg_s,
+           sum(cost_usd)::float AS total_cost,
+           count(duration_seconds)::int AS n
+    FROM pipeline_run_step_durations
+    WHERE project_id = ${projectId}
+      AND started_at >= now() - (${days}::int * interval '1 day')
+      ${stepFilter}
+    GROUP BY step${breakdownGroup}
+    ORDER BY step
+  `);
+  return result as unknown as ProjectStepDurationRow[];
+}
+
 /** A project's cost over the last `days`: the total, a per-step rollup and the top 10 issues. */
 export async function readCostSummary(projectId: string, days: number) {
   const totalRows = await db.execute(sql`

@@ -11,13 +11,14 @@ import {
   agentSessionEventsRetention,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
-  persistSessionAttachment,
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   steerIssue,
   transitionSessions,
   usageSessionMatch,
+  usageTotalsByRun,
+  usageTotalsForRun,
   usageTotalsSelection,
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
@@ -68,19 +69,13 @@ import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/inde
 import { deleteMemory, retrievalAnalyticsRetention, runMemorySearch } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
 import {
-  createNotification,
   emitNotification,
   projectAdminUserIds,
   projectAdminUserIdsFor,
   resolveNotifications,
 } from './notifications/index.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
-import {
-  closeOpenRunForIssue,
-  getIssueContexts,
-  providePipelinePorts,
-  setCurrentStepForOpenIssueRun,
-} from './pipeline/index.js';
+import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
 import {
   policyRefusal,
   readEffectivePolicy,
@@ -139,7 +134,8 @@ export function provideWorkPorts(): void {
     gateReasonsForQueuedJobsIn,
     readRunGate,
     admittedRunner: ADMITTED_RUNNER,
-    usageSessionMatch,
+    usageTotalsByRun,
+    usageTotalsForRun,
     deriveSessionFinal,
     stampFinalizeAttempt,
     retentionStatements: {
@@ -149,7 +145,6 @@ export function provideWorkPorts(): void {
       retrieval_analytics: retrievalAnalyticsRetention,
     },
     emitNotification,
-    createNotification,
     resolveNotifications,
     projectAdminUserIds,
     projectAdminUserIdsFor,
@@ -213,7 +208,6 @@ export function provideWorkPorts(): void {
     readStorefrontDraft,
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
-    setCurrentStepForOpenIssueRun,
     closeOpenRunForIssue,
   });
 
@@ -258,5 +252,5 @@ export function provideWorkPorts(): void {
     wakeMastersForAnswer,
   });
 
-  provideUploadPorts({ persistConversationAttachment, persistSessionAttachment });
+  provideUploadPorts({ persistConversationAttachment });
 }

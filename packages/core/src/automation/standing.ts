@@ -1,4 +1,4 @@
-// cm:why where a schedule, a fire and an agent report stand and whom each waits on, derived from what
+// Where a schedule, a fire and an agent report stand and whom each waits on, derived from what
 // `automation/facts.ts` read and nothing else (design automation rev 1, steps streak, settle,
 // needs_you and wait_triage; ISS-114): pure, so every rule is a unit test, and no screen derives one
 

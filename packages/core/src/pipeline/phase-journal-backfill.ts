@@ -9,14 +9,21 @@ interface BackfillResult {
 }
 
 /**
- * Runs whose every job has finished and which have no journal rows yet, oldest
- * first.
+ * Runs whose every job has finished, at least one of which ever started, and
+ * which have no journal rows yet, oldest first. A run whose jobs were all
+ * cancelled while queued yields no row, so it is never claimed: claiming it
+ * would hold a slot of every batch for ever.
  */
 async function claimableRunIds(batchRuns: number): Promise<string[]> {
   const rows = await db.execute<{ id: string }>(sql`
     SELECT pr.id
     FROM pipeline_runs pr
-    WHERE EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = pr.id)
+    WHERE EXISTS (
+        SELECT 1 FROM jobs j
+        LEFT JOIN agent_sessions s ON s.id = j.agent_session_id
+        WHERE j.pipeline_run_id = pr.id
+          AND COALESCE(s.started_at, j.dispatched_at) IS NOT NULL
+      )
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
         WHERE j.pipeline_run_id = pr.id

@@ -18,11 +18,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
-import {
-  closeOpenRunForIssue,
-  setCurrentStepForOpenIssueRun,
-  settleOpenQuestions,
-} from './ports.js';
+import { closeOpenRunForIssue, settleOpenQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
 import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
@@ -204,7 +200,6 @@ export async function transitionIssueStatus(
 
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
-  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
   if (ISSUE_TERMINAL_STATUSES.includes(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');

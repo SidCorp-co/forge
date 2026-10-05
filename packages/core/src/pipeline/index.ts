@@ -49,15 +49,12 @@ export {
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
 export { type OneShotRunReapResult, reapOrphanedOneShotRuns } from './one-shot-reap.js';
-export {
-  reEnqueueForIssue,
-  registerPipelineOrchestrator,
-  triggerPipelineStepManual,
-} from './orchestrator.js';
+export { retryIssueDispatch, triggerPipelineStepManual } from './orchestrator.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { providePipelinePorts } from './ports.js';
+export { stepDurationsForProject } from './read.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { classifyVerdict, JOB_TYPE_ENTRY_STATUS, verifyRecovery } from './recovery-verifier.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
@@ -65,9 +62,13 @@ export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 export type { PauseResumer } from './run-pause.js';
-export { describePause, type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 export {
-  type RunMetadataWrite,
+  describePause,
+  type OrphanedPauseResult,
+  registerRunStatusBroadcast,
+  resumeOrphanedPauses,
+} from './run-pause.js';
+export {
   stampReleaseShipped,
   stampReleaseVersion,
   writeRunMetadata,
@@ -84,7 +85,6 @@ export {
   RELEASE_DEPLOY_DONE_STEP,
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   setCurrentStep,
-  setCurrentStepForOpenIssueRun,
 } from './runs.js';
 export {
   type ConcludedRunReapResult,
@@ -99,13 +99,11 @@ export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,
 } from './stale-release-claims.js';
-export type { StepHandoffPayload } from './step-handoff-schema.js';
 export {
   detectOwedCloses,
   detectStrandedIssues,
   type StrandedIssuesResult,
 } from './stranded-issues.js';
-export { registerActivitySubscribers } from './subscribers.js';
 export { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 export {
   alarmNeverClaimedDispatches,

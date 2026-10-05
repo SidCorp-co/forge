@@ -5,10 +5,13 @@ import {
   type IssueStepContextKind,
   issueStepContextKinds,
   issueStepContexts,
+  issues,
+  pipelineRuns,
   type StepVerdict,
 } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
 import { refreshModuleKnowledgeForIssue } from './ports.js';
+import { refusePipeline } from './refuse.js';
 import { type StepHandoffPayload, stepHandoffSchema } from './step-handoff-schema.js';
 
 /**
@@ -38,9 +41,47 @@ function isPassingTestHandoff(payload: StepHandoffPayload): boolean {
  * cross_step_decision) plug in here by extending the dispatcher in
  * `writeIssueContext` — the table schema does not change.
  *
- * Does NOT check authorization — callers (REST routes, MCP tool factories)
- * MUST verify project membership before invoking.
+ * The caller authorizes the project; every writer here then proves the issue,
+ * and the run it names, belong to that project, so a grant on one project
+ * never reaches another project's evidence.
  */
+
+/** The issue answers inside the project or not at all: a foreign issue reads as an unknown one. */
+async function assertIssueInProject(projectId: string, issueId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
+    .limit(1);
+  if (!row) {
+    throw refusePipeline(
+      'ISSUE_NOT_IN_PROJECT',
+      `issue ${issueId} was not found in project ${projectId}`,
+      '/issueId',
+    );
+  }
+}
+
+async function assertRunOfIssue(projectId: string, issueId: string, runId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.id, runId),
+        eq(pipelineRuns.projectId, projectId),
+        eq(pipelineRuns.issueId, issueId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw refusePipeline(
+      'PIPELINE_RUN_NOT_FOUND',
+      `pipeline run ${runId} was not found for issue ${issueId} in project ${projectId}`,
+      '/pipelineRunId',
+    );
+  }
+}
 
 const scopeSchema = z.object({
   projectId: z.uuid(),
@@ -87,13 +128,17 @@ export async function writeIssueContext(
 
   if (validated.kind === 'handoff') {
     if (!validated.step) {
-      throw new Error('writeIssueContext: kind=handoff requires `step`');
+      throw refusePipeline('ARGUMENT_REQUIRED', 'a handoff names its `step`', '/step');
     }
     if (validated.payload.step !== validated.step) {
-      throw new Error(
-        `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${validated.step})`,
+      throw refusePipeline(
+        'HANDOFF_STEP_MISMATCH',
+        `payload.step is \`${validated.payload.step}\` but the handoff is written for step \`${validated.step}\`; they name the same step`,
+        '/payload/step',
       );
     }
+    await assertIssueInProject(validated.projectId, validated.issueId);
+    await assertRunOfIssue(validated.projectId, validated.issueId, validated.pipelineRunId);
     const verdict = extractVerdict(validated.payload);
     const [row] = await db
       .insert(issueStepContexts)
@@ -111,6 +156,7 @@ export async function writeIssueContext(
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {
+          projectId: sql`excluded.project_id`,
           pipelineRunId: sql`excluded.pipeline_run_id`,
           payload: sql`excluded.payload`,
           verdict: sql`excluded.verdict`,
@@ -173,6 +219,7 @@ interface IssueContextRow {
 
 export async function getIssueContexts(input: GetIssueContextsInput): Promise<IssueContextRow[]> {
   const validated = getIssueContextsInputSchema.parse(input);
+  await assertIssueInProject(validated.projectId, validated.issueId);
   const conds = [
     eq(issueStepContexts.projectId, validated.projectId),
     eq(issueStepContexts.issueId, validated.issueId),
@@ -216,6 +263,7 @@ type DeleteIssueContextInput = z.infer<typeof deleteIssueContextInputSchema>;
  */
 export async function deleteIssueContext(input: DeleteIssueContextInput): Promise<number> {
   const validated = deleteIssueContextInputSchema.parse(input);
+  await assertIssueInProject(validated.projectId, validated.issueId);
   const result = await db
     .delete(issueStepContexts)
     .where(

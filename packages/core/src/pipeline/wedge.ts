@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { createNotification, resolveNotifications } from './ports.js';
+import { emitNotification, resolveNotifications } from './ports.js';
 
 function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -32,6 +32,11 @@ export function pausedRunWedgeEntityId(runId: string): string {
   return `paused:${runId}`;
 }
 
+/** Entity id for a run whose rescues ran out and whose hand-off to a person was refused. */
+export function rescueCapWedgeEntityId(runId: string): string {
+  return `rescue-cap:${runId}`;
+}
+
 export async function resolvePipelineWedge(entityId: string): Promise<number> {
   return resolveNotifications(wedgeResolutionKey(entityId));
 }
@@ -58,66 +63,60 @@ interface PipelineWedgeEvent {
   secondaryIssueId?: string | null;
 }
 
+/** Raise one open wedge per entity. A failed write throws, so no caller counts an alarm it never raised. */
 export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
-  try {
-    const resolutionKey = wedgeResolutionKey(ev.entityId);
+  const resolutionKey = wedgeResolutionKey(ev.entityId);
 
-    const [existing] = await db
-      .select({ id: notifications.id })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.type, 'pipeline_wedge'),
-          eq(notifications.resolutionKey, resolutionKey),
-          isNull(notifications.resolvedAt),
-        ),
-      )
-      .limit(1);
-    if (existing) return;
+  const [existing] = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.type, 'pipeline_wedge'),
+        eq(notifications.resolutionKey, resolutionKey),
+        isNull(notifications.resolvedAt),
+      ),
+    )
+    .limit(1);
+  if (existing) return;
 
-    const [project] = await db
-      .select({ createdBy: projects.createdBy })
-      .from(projects)
-      .where(eq(projects.id, ev.projectId))
-      .limit(1);
-    if (!project) {
-      logger.warn({ projectId: ev.projectId }, 'wedge: project not found, dropping event');
-      return;
-    }
+  const [project] = await db
+    .select({ createdBy: projects.createdBy })
+    .from(projects)
+    .where(eq(projects.id, ev.projectId))
+    .limit(1);
+  if (!project) throw new Error(`wedge: project ${ev.projectId} not found for ${ev.entityId}`);
 
-    const title = ev.title ?? `Pipeline wedge: ${ev.hop} hop miss on ${ev.entity}`;
-    const body = ev.summary
-      ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
-      : [
-          `WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`,
-          `WHY: ${ev.reason}`,
-          `WHAT: ${ev.action}`,
-        ].join('\n');
+  const title = ev.title ?? `Pipeline wedge: ${ev.hop} hop miss on ${ev.entity}`;
+  const body = ev.summary
+    ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
+    : [
+        `WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`,
+        `WHY: ${ev.reason}`,
+        `WHAT: ${ev.action}`,
+      ].join('\n');
 
-    await createNotification({
-      userId: project.createdBy,
+  await emitNotification({
+    userId: project.createdBy,
+    projectId: ev.projectId,
+    type: 'pipeline_wedge',
+    title,
+    body,
+    issueId: ev.issueId ?? null,
+    secondaryIssueId: ev.secondaryIssueId ?? null,
+    resolutionKey,
+    agentSessionId: ev.entity === 'session' ? ev.entityId : null,
+  });
+
+  logger.warn(
+    {
       projectId: ev.projectId,
-      type: 'pipeline_wedge',
-      title,
-      body,
       issueId: ev.issueId ?? null,
-      secondaryIssueId: ev.secondaryIssueId ?? null,
-      resolutionKey,
-      agentSessionId: ev.entity === 'session' ? ev.entityId : null,
-    });
-
-    logger.warn(
-      {
-        projectId: ev.projectId,
-        issueId: ev.issueId ?? null,
-        hop: ev.hop,
-        entity: ev.entity,
-        entityId: ev.entityId,
-        reason: ev.reason,
-      },
-      'pipeline_wedge',
-    );
-  } catch (err) {
-    logger.error({ err, entityId: ev.entityId, hop: ev.hop }, 'wedge: emit failed (dropped)');
-  }
+      hop: ev.hop,
+      entity: ev.entity,
+      entityId: ev.entityId,
+      reason: ev.reason,
+    },
+    'pipeline_wedge',
+  );
 }

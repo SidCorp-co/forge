@@ -91,7 +91,7 @@ const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: st
 
 /** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
  *  `jobTypeToStage`; triage/clarify/review/release, and any job type outside the seven staged
- *  names (`drive`, `pm`, `custom`) for which `jobTypeToStage` answers `null`, go to `other`. */
+ *  names (`drive`, `custom`) for which `jobTypeToStage` answers `null`, go to `other`. */
 function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
   if (stage === "test") return "test";
   if (stage === "code") return "code";
@@ -132,8 +132,8 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
 
-/** The step core stamps on an issue's open run is the status it moved to (`apply-transition.ts`). */
-const AWAITING_RELEASE_STEP = "awaiting_release";
+/** A run whose issue waits at the manual release gate. */
+const isAwaitingRelease = (r: PipelineRunListItem) => r.issueStatus === "awaiting_release";
 
 /** Currently-live runs (running or paused), most recent first (the list arrives
  *  ordered by `startedAt` desc). Includes runs parked at the manual release
@@ -151,12 +151,12 @@ export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRun
  *  everything else, which is the set nobody could see before. */
 export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
-    (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
+    (r) => (r.liveJobs ?? 0) === 0 && !isAwaitingRelease(r),
   );
 }
 
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return liveRuns(runs).filter((r) => r.currentStep === AWAITING_RELEASE_STEP);
+  return liveRuns(runs).filter(isAwaitingRelease);
 }
 
 export function inFlightSpend(runs: PipelineRunListItem[] | undefined): number {

@@ -1,12 +1,7 @@
 export { accountActor } from './account-actor.js';
-export {
-  type Actor,
-  type RecordActivityInput,
-  recordActivityTx,
-  resolveActor,
-  safeRecordActivity,
-} from './activity.js';
+export { type Actor, resolveActor, safeRecordActivity } from './activity.js';
 export { insertActivityRow } from './activity-log.js';
+export { registerActivitySubscribers } from './activity-subscribers.js';
 export {
   actorAgency,
   type DeviceLite,

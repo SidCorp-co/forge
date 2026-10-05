@@ -13,6 +13,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/index.js';
+import { actorFor, visibleFilter } from '../permissions/index.js';
 
 const PER_BUCKET = 5;
 
@@ -40,10 +41,25 @@ export interface AttentionFailedJobRow {
   projectName: string;
 }
 
+/**
+ * The user's latest mentions on issues they can still read, one row per mention. A mention is
+ * hidden once a mention notification on its issue, delivered to the user at or after it, is read.
+ */
 export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
+  const deliveredToUser = sql`
+      FROM ${notifications} n
+      JOIN ${notificationDeliveryMembers} dm ON dm.notification_id = n.id
+      JOIN ${notificationDeliveries} dd ON dd.id = dm.delivery_id
+     WHERE n.type = 'mention'
+       AND n.issue_id = ${comments.issueId}
+       AND dd.user_id = ${commentMentions.userId}`;
   return db
     .select({
-      notificationTitle: notifications.title,
+      notificationTitle: sql<string | null>`(
+        SELECT n.title ${deliveredToUser}
+         ORDER BY n.created_at DESC
+         LIMIT 1
+      )`,
       mentionedAt: commentMentions.createdAt,
       issueDocId: issues.id,
       issSeq: issues.issSeq,
@@ -55,32 +71,20 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
     .innerJoin(comments, eq(comments.id, commentMentions.commentId))
     .innerJoin(issues, and(eq(issues.id, comments.issueId), ...issueArchiveSide(false)))
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .leftJoin(
-      notifications,
+    .where(
       and(
-        eq(notifications.type, 'mention'),
-        eq(notifications.issueId, comments.issueId),
-        sql`EXISTS (
-            SELECT 1
-              FROM ${notificationDeliveryMembers} dm
-              JOIN ${notificationDeliveries} dd ON dd.id = dm.delivery_id
-             WHERE dm.notification_id = ${notifications.id}
-               AND dd.user_id = ${commentMentions.userId}
-          )`,
+        eq(commentMentions.userId, userId),
+        visibleFilter(actorFor(userId), 'project.read', {
+          type: 'issue',
+          projectId: issues.projectId,
+        }),
+        sql`NOT EXISTS (
+          SELECT 1 ${deliveredToUser}
+             AND dd.read_at IS NOT NULL
+             AND n.created_at >= ${commentMentions.createdAt}
+        )`,
       ),
     )
-    .leftJoin(
-      notificationDeliveryMembers,
-      eq(notificationDeliveryMembers.notificationId, notifications.id),
-    )
-    .leftJoin(
-      notificationDeliveries,
-      and(
-        eq(notificationDeliveries.id, notificationDeliveryMembers.deliveryId),
-        eq(notificationDeliveries.userId, commentMentions.userId),
-      ),
-    )
-    .where(and(eq(commentMentions.userId, userId), sql`${notificationDeliveries.readAt} IS NULL`))
     .orderBy(desc(commentMentions.createdAt))
     .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>;
 }
@@ -104,6 +108,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     .where(
       and(
         eq(jobs.createdBy, userId),
+        visibleFilter(actorFor(userId), 'project.read', { type: 'job', projectId: jobs.projectId }),
         eq(jobs.status, 'failed'),
         sql`${jobs.createdAt} >= now() - interval '7 days'`,
         notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),

@@ -31,6 +31,17 @@ export interface ProjectPolicy {
   intake: { mode: 'auto' | 'manual' };
 }
 
+/** A run's usage totals, as agent-sessions reads them from its sessions' usage records. */
+interface RunUsageTotals {
+  estimatedCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  requests: number;
+  sampleCount: number;
+}
+
 interface NotificationInput {
   userId?: string;
   recipients?: string[];
@@ -104,15 +115,13 @@ interface PipelinePorts {
   ) => Promise<ReadonlyMap<string, string>>;
   readRunGate: (metadata: unknown, runId: string) => RunGateReading | null;
   admittedRunner: SQL;
-  usageSessionMatch: (target: SQL) => SQL;
+  usageTotalsByRun: (runIds: readonly string[]) => Promise<Map<string, RunUsageTotals>>;
+  usageTotalsForRun: (runId: string) => Promise<RunUsageTotals>;
   deriveSessionFinal: (jobId: string, agentSessionId: string) => Promise<void>;
   stampFinalizeAttempt: (agentSessionId: string, at: Date) => Promise<void>;
   retentionStatements: RetentionStatements;
 
-  emitNotification: (input: NotificationInput) => Promise<{ id: string; delivered: number } | null>;
-  createNotification: (
-    input: NotificationInput,
-  ) => Promise<{ id: string; delivered: number } | null>;
+  emitNotification: (input: NotificationInput) => Promise<{ id: string; delivered: number }>;
   resolveNotifications: (resolutionKey: string, outcome?: string) => Promise<number>;
   projectAdminUserIds: (projectId: string) => Promise<string[]>;
   projectAdminUserIdsFor: (projectIds: readonly string[]) => Promise<Map<string, string[]>>;
@@ -164,13 +173,13 @@ export const requestJobKill = port('requestJobKill');
 export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');
 export const readRunGate = port('readRunGate');
 export const admittedRunner = (): SQL => pipelinePorts().admittedRunner;
-export const usageSessionMatch = port('usageSessionMatch');
+export const usageTotalsByRun = port('usageTotalsByRun');
+export const usageTotalsForRun = port('usageTotalsForRun');
 export const deriveSessionFinal = port('deriveSessionFinal');
 export const stampFinalizeAttempt = port('stampFinalizeAttempt');
 export const retentionStatements = (): RetentionStatements => pipelinePorts().retentionStatements;
 
 export const emitNotification = port('emitNotification');
-export const createNotification = port('createNotification');
 export const resolveNotifications = port('resolveNotifications');
 export const projectAdminUserIds = port('projectAdminUserIds');
 export const projectAdminUserIdsFor = port('projectAdminUserIdsFor');

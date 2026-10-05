@@ -1,6 +1,6 @@
 import { issueUpdatedPayload } from '@forge/contracts/field-changes';
-import { type RecordActivityInput, recordActivityTx } from '../issues/index.js';
 import { consume, type Delivery } from '../outbox/index.js';
+import { type RecordActivityInput, recordActivityTx } from './activity.js';
 
 const MAX_BODY_SNIPPET = 240;
 const snippet = (s: string): string => s.slice(0, MAX_BODY_SNIPPET);
@@ -22,8 +22,8 @@ const NAME = 'activity-feed';
 
 /**
  * The issue activity feed, a consumer of the outbox: each row is written once per event, at the
- * time the act committed. Label add and remove are written inside the PATCH transaction instead
- * (`issues/routes.ts`), because they roll back with the label delta.
+ * time the act committed. Label add and remove are written inside the update transaction instead
+ * (`update-service.ts`), because they roll back with the label delta.
  */
 export function registerActivitySubscribers(): void {
   consume('issue.created', {
@@ -37,9 +37,6 @@ export function registerActivitySubscribers(): void {
       }),
   });
 
-  // cm:guard an `issue.updated` row records the changes a write made (`@forge/contracts`
-  // `issueUpdatedPayload`), never a snapshot of the fields it touched, and a write that moved
-  // nothing records nothing
   consume('issue.updated', {
     name: NAME,
     handle: (p, d) => {

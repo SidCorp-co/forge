@@ -202,16 +202,16 @@ export async function reportViewsIn(scope: {
           .from(scheduleRuns)
           .where(eq(scheduleRuns.scheduleId, scope.scheduleId)),
       )
-    : inProject;
+    : undefined;
   const base = () =>
     db
       .select(reportColumns)
       .from(agentReports)
       .leftJoin(projects, eq(projects.id, agentReports.projectId));
   const [fresh, triaged] = await Promise.all([
-    base().where(and(fromSchedule, eq(agentReports.triage, 'new'))),
+    base().where(and(inProject, fromSchedule, eq(agentReports.triage, 'new'))),
     base()
-      .where(and(fromSchedule, ne(agentReports.triage, 'new')))
+      .where(and(inProject, fromSchedule, ne(agentReports.triage, 'new')))
       .orderBy(desc(agentReports.createdAt), desc(agentReports.id))
       .limit(scope.triaged),
   ]);

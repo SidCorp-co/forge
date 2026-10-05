@@ -110,9 +110,8 @@ agentSessionRoutes.route('/', agentSessionInteractiveRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
 
-// Idempotency on /retry comes from orchestrator.reEnqueueForIssue + the
-// unique-active-job index — re-firing while a job is queued/running is a
-// no-op.
+// A retry offers the issue to the project's masters again; while a job is still
+// active for it, or no box serves the project, it is refused by name.
 agentSessionRoutes.post('/:id/retry', zValidator('param', idParamSchema), async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
@@ -142,16 +141,14 @@ agentSessionRoutes.post('/:id/retry', zValidator('param', idParamSchema), async 
   }
 
   // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
-  const { reEnqueueForIssue } = await import('../pipeline/index.js');
-  await reEnqueueForIssue({
+  const { retryIssueDispatch } = await import('../pipeline/index.js');
+  const offered = await retryIssueDispatch({
     projectId: issue.projectId,
     issueId: issue.id,
     status: issue.status,
-    actor: restActor(c),
-    reason: { manualRetry: { sessionId: id, prevFailureReason: session.failureReason } },
   });
 
-  return c.json({ ok: true, issueId: issue.id });
+  return c.json({ ok: true, issueId: issue.id, ...offered });
 });
 
 agentSessionRoutes.get('/:id/cost', zValidator('param', idParamSchema), async (c) => {

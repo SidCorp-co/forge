@@ -1,4 +1,4 @@
-// cm:why the rows the automation read model derives from (ISS-114): schedules, their fires and what
+// The rows the automation read model derives from (ISS-114): schedules, their fires and what
 // each fire produced counted by join (reports and issues by schedule_run_id, notifications by the
 // fire id, proposals through the fire's session), and agent reports with the fire that filed them
 
@@ -78,9 +78,9 @@ const fireColumns = {
   disposition: scheduleRuns.disposition,
   pipelineRunId: scheduleRuns.pipelineRunId,
   output: scheduleRuns.output,
-  reports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id})`,
-  newReports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id} AND ar.triage = 'new')`,
-  issues: sql<number>`(SELECT count(*)::int FROM issues i WHERE i.schedule_run_id = ${scheduleRuns.id})`,
+  reports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id} AND ar.project_id = ${scheduleRuns.projectId})`,
+  newReports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id} AND ar.project_id = ${scheduleRuns.projectId} AND ar.triage = 'new')`,
+  issues: sql<number>`(SELECT count(*)::int FROM issues i WHERE i.schedule_run_id = ${scheduleRuns.id} AND i.project_id = ${scheduleRuns.projectId})`,
   notifications: sql<number>`(SELECT count(*)::int FROM notifications n WHERE n.schedule_run_id = ${scheduleRuns.id})`,
 };
 
@@ -164,6 +164,7 @@ export async function reportCounts(projectId: string): Promise<Record<AgentRepor
 }
 
 async function issueKeys(
+  projectId: string,
   ids: readonly string[],
 ): Promise<Map<string, { id: string; key: string; title: string; status: string }>> {
   if (ids.length === 0) return new Map();
@@ -176,7 +177,7 @@ async function issueKeys(
       status: issues.status,
     })
     .from(issues)
-    .where(inArray(issues.id, [...ids]));
+    .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...ids])));
   const prefixes = new Map<string, string | null>();
   for (const projectId of new Set(rows.map((r) => r.projectId))) {
     prefixes.set(projectId, await activeIssuePrefix(projectId));
@@ -194,8 +195,14 @@ async function issueKeys(
   );
 }
 
-/** Each report with the fire that filed it, that fire's schedule owner, and the issue it went to. */
-export async function reportFacts(views: readonly AgentReportView[]): Promise<ReportFacts[]> {
+/**
+ * Each report with the fire that filed it, that fire's schedule owner, and the issue it went to,
+ * read inside the one project the caller is reading.
+ */
+export async function reportFacts(
+  projectId: string,
+  views: readonly AgentReportView[],
+): Promise<ReportFacts[]> {
   const fireIds = [...new Set(views.flatMap((v) => (v.scheduleRunId ? [v.scheduleRunId] : [])))];
   const fires =
     fireIds.length === 0
@@ -223,6 +230,7 @@ export async function reportFacts(views: readonly AgentReportView[]): Promise<Re
     ]),
   );
   const filed = await issueKeys(
+    projectId,
     views.flatMap((v) => (v.triage === 'filed' && v.linkedIssueId ? [v.linkedIssueId] : [])),
   );
   return views.map((view) => ({
@@ -232,8 +240,9 @@ export async function reportFacts(views: readonly AgentReportView[]): Promise<Re
   }));
 }
 
-/** What one fire produced, item by item, each joined to the fire as its count is. */
+/** What one fire produced inside the project read, item by item, each joined to the fire as its count is. */
 export async function producedItems(
+  projectId: string,
   fire: FireRow,
   proposals: FireProducedItems['proposals'],
 ): Promise<FireProducedItems> {
@@ -247,12 +256,12 @@ export async function producedItems(
         triage: agentReports.triage,
       })
       .from(agentReports)
-      .where(eq(agentReports.scheduleRunId, fire.id))
+      .where(and(eq(agentReports.scheduleRunId, fire.id), eq(agentReports.projectId, projectId)))
       .orderBy(asc(agentReports.createdAt)),
     db
       .select({ id: issues.id })
       .from(issues)
-      .where(eq(issues.scheduleRunId, fire.id))
+      .where(and(eq(issues.scheduleRunId, fire.id), eq(issues.projectId, projectId)))
       .orderBy(asc(issues.createdAt)),
     db
       .select({
@@ -271,7 +280,10 @@ export async function producedItems(
           .where(eq(pipelineRuns.id, fire.pipelineRunId))
       : Promise.resolve([]),
   ]);
-  const keys = await issueKeys(issueRows.map((i) => i.id));
+  const keys = await issueKeys(
+    projectId,
+    issueRows.map((i) => i.id),
+  );
   return {
     reports,
     proposals,

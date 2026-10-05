@@ -6,7 +6,7 @@ import { and, eq, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 
-export type RunMetadataWrite = (
+type RunMetadataWrite = (
   | {
       /** The new `metadata`, as an expression that may read the row's current `metadata`. */
       value: SQL;

@@ -1,16 +1,13 @@
 import { RUN_MACHINE } from '@forge/contracts/run-machine';
 /**
- * ISS-101 — pipeline_runs lifecycle helpers.
- *
- * All writes to `pipeline_runs` go through these four functions. The
- * orchestrator/PM/interactive paths use them to open the right run for each
- * new job/session; the issue state-machine uses them to advance and close
- * the run on terminal transitions.
+ * pipeline_runs lifecycle helpers: opening the run a job or session works
+ * under, advancing its current step and closing it when its issue ends.
+ * Pause, resume and cancel live in `run-pause.ts` and `runs-control.ts`.
  */
 
-import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
@@ -191,25 +188,6 @@ export async function closeRun(
 }
 
 /**
- * Stamp `current_step` on the issue's open run, if one exists. No-op when the
- * issue has no open run (e.g. a status change before the first job has been
- * queued for this issue). Used by the issue state-machine to keep the run
- * timeline in sync with the issue's `status`.
- */
-export async function setCurrentStepForOpenIssueRun(issueId: string, step: string): Promise<void> {
-  await db
-    .update(pipelineRuns)
-    .set({ currentStep: step, updatedAt: new Date() })
-    .where(
-      and(
-        eq(pipelineRuns.kind, 'issue'),
-        eq(pipelineRuns.issueId, issueId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
-    );
-}
-
-/**
  * Close a one-shot (interactive | system) run that's reached terminal state.
  * No-ops on `kind='issue'` runs — those are closed by the issue
  * state-machine via `closeOpenRunForIssue`, never per-session/per-job, so
@@ -336,49 +314,4 @@ export async function closeOpenRunForIssue(
 export async function readPipelineRun(runId: string) {
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   return row ?? null;
-}
-
-type PipelineRunQuery = {
-  projectId: string;
-  issueId?: string | undefined;
-  status?: PipelineRunStatus | undefined;
-  limit: number;
-};
-
-export async function listPipelineRuns(q: PipelineRunQuery) {
-  const conds: SQL[] = [eq(pipelineRuns.projectId, q.projectId)];
-  if (q.issueId) conds.push(eq(pipelineRuns.issueId, q.issueId));
-  if (q.status) conds.push(eq(pipelineRuns.status, q.status));
-
-  return db
-    .select({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      issueId: pipelineRuns.issueId,
-      kind: pipelineRuns.kind,
-      status: pipelineRuns.status,
-      currentStep: pipelineRuns.currentStep,
-      startedAt: pipelineRuns.startedAt,
-      finishedAt: pipelineRuns.finishedAt,
-      createdAt: pipelineRuns.createdAt,
-      updatedAt: pipelineRuns.updatedAt,
-      metadata: pipelineRuns.metadata,
-    })
-    .from(pipelineRuns)
-    .where(and(...conds))
-    .orderBy(desc(pipelineRuns.startedAt))
-    .limit(q.limit);
-}
-
-/** How many jobs a run holds, by status. */
-export async function countRunJobsByStatus(runId: string): Promise<Record<string, number>> {
-  const rows = await db
-    .select({ status: jobs.status, count: sql<number>`count(*)::int` })
-    .from(jobs)
-    .where(eq(jobs.pipelineRunId, runId))
-    .groupBy(jobs.status);
-
-  const out: Record<string, number> = {};
-  for (const r of rows) out[r.status] = Number(r.count);
-  return out;
 }
