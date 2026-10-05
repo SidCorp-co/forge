@@ -31,18 +31,16 @@ const notDead = (deliveryId: string, state: string): ReplayOutcome => ({
 /**
  * Sends one dead delivery back to its consumer with a fresh attempt count, and drops its dead-letter
  * copy, in one transaction. Until then it holds back its issue's later deliveries to that consumer.
- * `projectId` null is the platform admin door, which reaches project-less events too.
+ * The platform admin door's replay, the one route to a project-less event's delivery.
  */
-async function replay(deliveryId: string, projectId: string | null): Promise<ReplayOutcome> {
+export function replayAnyDelivery(deliveryId: string): Promise<ReplayOutcome> {
   const consumer = consumerOfDeliveryId(deliveryId);
   if (!consumer) throw notFound('outbox delivery not found');
   const queue = queueOf(consumer);
   return db.transaction(async (tx) => {
     const executor = fromDrizzle(tx, sql);
     const [job] = await boss.findJobs<DeliveryJob>(queue, { id: deliveryId, db: executor });
-    if (!job || (projectId !== null && job.data.projectId !== projectId)) {
-      throw notFound('outbox delivery not found');
-    }
+    if (!job) throw notFound('outbox delivery not found');
     if (job.state !== 'failed') return notDead(deliveryId, job.state);
     const retried = await boss.retry(queue, deliveryId, { db: executor });
     if (affectedBy(retried) !== 1) return notDead(deliveryId, 'no longer dead');
@@ -69,10 +67,6 @@ async function replay(deliveryId: string, projectId: string | null): Promise<Rep
       delivery: { id: deliveryId, status: 'pending' as const, consumer, eventId: job.data.eventId },
     };
   });
-}
-/** The platform admin door's replay, the one route to a project-less event's delivery. */
-export function replayAnyDelivery(deliveryId: string): Promise<ReplayOutcome> {
-  return replay(deliveryId, null);
 }
 
 const PRUNE_BATCH = 5_000;

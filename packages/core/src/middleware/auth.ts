@@ -59,7 +59,7 @@ type RestActorVars = {
 /**
  * The agency the door established for this request.
  *
- * Every branch of every gate in this file and in `require-any-auth.ts` sets it,
+ * Every branch of every gate in this file sets it,
  * so an absent value is a route reached through no gate at all rather than a
  * caller whose kind could not be worked out — and it is refused by name rather
  * than guessed, because a guess here is what wrote every person's issue as an

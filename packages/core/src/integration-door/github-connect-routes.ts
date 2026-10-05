@@ -34,13 +34,18 @@ import {
   notFound,
   resolveApiBaseUrl,
 } from '../integrations/index.js';
-import { loadOrgRole } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  projectResource,
+  requireCan,
+  requireOrgCan,
+} from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -130,7 +135,7 @@ async function ownerOrgForProjectApp(args: {
   if (!args.projectOrgId) return undefined;
   // A GitHub App created here is owned by the project's org and reachable by every admin of the
   // project, so creating one takes org.admin there.
-  requireOrgHeld(args.projectOrgId, await loadOrgRole(args.projectOrgId, args.userId), 'org.admin');
+  await requireOrgCan(actorFor(args.userId), 'org.admin', orgResource(args.projectOrgId));
   return args.projectOrgId;
 }
 

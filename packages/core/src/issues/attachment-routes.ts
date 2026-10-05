@@ -4,8 +4,7 @@ import { z } from 'zod';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
-import { restActor } from '../middleware/auth.js';
-import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
+import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
@@ -28,16 +27,16 @@ const attachmentIdParamSchema = z.object({ id: z.uuid() });
  * Standalone router for issue attachment endpoints.
  *
  * Mounted at `/api/issues` in `index.ts` SEPARATELY from `issueRoutes` so it
- * can use `requireAnyAuth()` (accepts user JWT, PAT, or device token) while
- * `issueRoutes` retains the stricter `requireAuth + assertEmailVerified`
+ * can use `requireAuth()` alone (user JWT, PAT, or device token) while
+ * `issueRoutes` adds `assertEmailVerified`
  * for browser-only endpoints.
  *
  * Hono routes the request to whichever router has a matching handler for
  * the path; `/:id/attachments` only exists here, so PAT/device callers
  * (MCP runners, automation scripts) reach this router directly.
  */
-export const issueAttachmentRoutes = new Hono<{ Variables: AnyAuthVars }>();
-issueAttachmentRoutes.use('/:id/attachments', requireAnyAuth());
+export const issueAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
+issueAttachmentRoutes.use('/:id/attachments', requireAuth());
 
 issueAttachmentRoutes.post(
   '/:id/attachments',
@@ -104,8 +103,8 @@ issueAttachmentRoutes.get(
  * Same combined-auth as the upload router so automation scripts can pull
  * down attachments they've uploaded (handy for diagnostics).
  */
-export const attachmentRoutes = new Hono<{ Variables: AnyAuthVars }>();
-attachmentRoutes.use('*', requireAnyAuth());
+export const attachmentRoutes = new Hono<{ Variables: AuthVars }>();
+attachmentRoutes.use('*', requireAuth());
 
 attachmentRoutes.get(
   '/:id/download',

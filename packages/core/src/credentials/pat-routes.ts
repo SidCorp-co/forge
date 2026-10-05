@@ -32,7 +32,7 @@ import {
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
-const SCOPES = ['read', 'write', 'admin'] as const;
+const SCOPES = ['read', 'write'] as const;
 
 const createBodySchema = z
   .object({

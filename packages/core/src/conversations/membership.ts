@@ -16,7 +16,7 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { holds } from '../permissions/index.js';
+import { actorFor, can, holds, projectResource } from '../permissions/index.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { existingProjectHandle } from './handles.js';
 import { conversationTransport } from './ports.js';
@@ -194,8 +194,7 @@ export async function assertPersonReachesScope(
   tx: Executor = defaultDb,
 ): Promise<void> {
   for (const projectId of scope) {
-    const access = await effectiveProjectRole(userId, projectId);
-    if (access?.role) continue;
+    if (await can(actorFor(userId), 'project.read', projectResource(projectId))) continue;
     const [named] = await projectsNamed([projectId], tx);
     throw badRequest(
       `that person holds no role on ${named ? `project ${named.name}` : `project ${projectId}`}, and a room is read only by somebody holding one on every project in it — give them a role there first`,
@@ -237,7 +236,9 @@ export async function addablePeople(
     if (already.has(person.userId)) continue;
     let reaches = true;
     for (const projectId of scope) {
-      if (!(await effectiveProjectRole(person.userId, projectId))?.role) reaches = false;
+      if (!(await can(actorFor(person.userId), 'project.read', projectResource(projectId)))) {
+        reaches = false;
+      }
     }
     if (reaches) out.push(person);
   }

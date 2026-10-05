@@ -3,9 +3,9 @@ import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { loadOrgRole, projectOrgOf } from '../lib/authz.js';
+import { projectOrgOf } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { holdsOrg } from '../permissions/index.js';
+import { actorFor, can, orgResource } from '../permissions/index.js';
 
 export interface StoredBinding {
   id: string;
@@ -98,7 +98,7 @@ export const drizzleBindingStore = {
   projectOrgId: projectOrgOf,
 
   async isOrgAdmin(orgId: string, userId: string): Promise<boolean> {
-    return holdsOrg(await loadOrgRole(orgId, userId), 'org.admin');
+    return can(actorFor(userId), 'org.admin', orgResource(orgId));
   },
 
   async casBinding({

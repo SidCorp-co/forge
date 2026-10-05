@@ -4,15 +4,16 @@ import { and, eq } from 'drizzle-orm';
 import { parse as parseCookies } from 'hono/utils/cookie';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { AUTH_COOKIE_NAME } from '../credentials/cookie.js';
-import { verifyDeviceCredential } from '../credentials/device-credential.js';
+import { verifyDeviceToken } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
+import { type PatScope, runWithPatScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { handleRunnerSessions } from '../devices/index.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { GLOBAL_ROOM, roomManager } from '../lib/rooms.js';
 import { markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
+import { actorFor, can, projectResource } from '../permissions/index.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
@@ -21,7 +22,7 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
 
 type Principal =
   | { type: 'user'; userId: string }
-  | { type: 'device'; deviceId: string; ownerId: string };
+  | { type: 'device'; deviceId: string; ownerId: string; scope: PatScope };
 
 interface AliveSocket extends WebSocket {
   isAlive: boolean;
@@ -77,8 +78,15 @@ interface AuthResult {
 async function resolveBearer(token: string): Promise<Principal | null> {
   const user = await tryUserToken(token);
   if (user) return user;
-  const device = await verifyDeviceCredential(token);
-  if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
+  const box = await verifyDeviceToken(token);
+  if (box) {
+    return {
+      type: 'device',
+      deviceId: box.device.id,
+      ownerId: box.device.ownerId,
+      scope: box.scope,
+    };
+  }
   return null;
 }
 
@@ -115,6 +123,13 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
 
 const userOf = (p: Principal) => (p.type === 'user' ? p.userId : p.ownerId);
 
+/** project.read on the project, asked as the principal: a box answers within its token's fence,
+ *  never with its owner's whole reach (a person-held box is fenced to no project). */
+async function readsProject(principal: Principal, projectId: string): Promise<boolean> {
+  const ask = () => can(actorFor(userOf(principal)), 'project.read', projectResource(projectId));
+  return principal.type === 'device' ? runWithPatScope(principal.scope, ask) : ask();
+}
+
 async function canSubscribe(principal: Principal, room: string): Promise<boolean> {
   // Global broadcast room — server-emitted cross-tenant events (e.g. builtin
   // skill seeding). Any authenticated principal may join; the upgrade
@@ -122,10 +137,8 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
   if (room === GLOBAL_ROOM) return true;
   if (room.startsWith('project:')) {
     const projectId = room.slice('project:'.length);
-    const userId = userOf(principal);
-    const access = await effectiveProjectRole(userId, projectId);
-    if (access?.role) return true;
-    return await isPlatformAdmin(userId);
+    if (await readsProject(principal, projectId)) return true;
+    return principal.type === 'user' && (await isPlatformAdmin(principal.userId));
   }
   if (room.startsWith('device:')) {
     const deviceId = room.slice('device:'.length);
@@ -151,9 +164,7 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     if (principal.type === 'device') {
       return row.deviceId === principal.deviceId;
     }
-    // user — must have an effective role on the runner's project.
-    const access = await effectiveProjectRole(principal.userId, row.projectId);
-    return !!access?.role;
+    return readsProject(principal, row.projectId);
   }
   return false;
 }
