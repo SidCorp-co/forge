@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import { issues, type jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { emitEvent } from '../outbox/index.js';
 import { classifyFailure, closeOpenRunForIssue, emitPipelineWedge } from '../pipeline/index.js';
 import {
   attributeFailureToRunner,

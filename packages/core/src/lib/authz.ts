@@ -153,11 +153,12 @@ export async function loadOrgRole(
  */
 export function visibleProjectsWhere(
   projectId: SQLWrapper,
-  fence: readonly string[] | null = fencedProjectIds(),
+  passedFence?: readonly string[] | null,
 ): SQL[] {
   const conditions: SQL[] = [
     sql`(${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin'))`,
   ];
+  const fence = passedFence === undefined ? fencedProjectIds() : passedFence;
   if (fence) conditions.push(fence.length > 0 ? inArray(projectId, [...fence]) : sql`false`);
   return conditions;
 }

@@ -2,7 +2,6 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { emitEvent } from '../outbox/index.js';
 import { pushJobChanged } from './job-push.js';
 
 type JobRow = typeof jobs.$inferSelect;

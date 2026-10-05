@@ -4,7 +4,6 @@ import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
 import { readHoldState, requeueHeldJob } from './hold.js';
 import { insertInterventionEvent } from './intervention-event.js';
 import { pushJobChanged } from './job-push.js';

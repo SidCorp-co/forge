@@ -15,7 +15,6 @@ import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { emitEvent } from '../outbox/index.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { pushJobChanged } from './job-push.js';
