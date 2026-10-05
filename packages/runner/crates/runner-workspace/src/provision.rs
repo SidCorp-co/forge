@@ -175,6 +175,21 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
     finish_workspace(client, cfg, p, &repo_path).await;
 }
 
+/// Write the checkout's orientation, answering what its provision result records.
+fn orient(repo_path: &Path, p: &Provision) -> Option<String> {
+    match orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
+        Ok(None) => None,
+        Ok(Some(note)) => {
+            tracing::info!("[provision] {}: orientation: {note}", p.slug);
+            Some(format!("orientation: {note}"))
+        }
+        Err(e) => {
+            tracing::warn!("[provision] {}: orientation: {e}", p.slug);
+            Some(format!("orientation: {e}"))
+        }
+    }
+}
+
 /// Steps 4-6: skills, persistent MCP config, orientation, then `ready`. Shared
 /// by the cloned and the repo-less paths — the workspace contents an agent needs
 /// do not depend on whether git is involved.
@@ -231,9 +246,8 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
             });
         }
     }
-    if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
-        tracing::warn!("[provision] {}: orientation: {e}", p.slug);
-        let said = format!("orientation: {e}");
+    let oriented = orient(repo_path, p);
+    if let Some(said) = oriented {
         ready_detail = Some(match ready_detail {
             Some(d) => format!("{d}; {said}"),
             None => said,

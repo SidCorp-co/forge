@@ -6,20 +6,26 @@
 //! per-checkout and never something the repository's own history should carry:
 //! the same repository can be worked from two Forge instances, and a run that
 //! commits with `git add -A` would otherwise ship the other instance's ids.
-//! So a file is written only where git ignores it — an untracked path plus a
-//! line in the checkout's `info/exclude` — and a tracked file is never changed:
+//! So nothing it writes can ship by accident, and a committed file other than
+//! Forge's own is never changed:
 //!
-//!   - `.forge/orientation.md` — the orientation itself. Untracked: written and
-//!     excluded. Tracked with exactly these bytes: left alone. Tracked with any
-//!     other bytes (a repository committing another instance's orientation):
-//!     refused by name, and the committed copy is what the checkout keeps.
+//!   - `.forge/orientation.md` — the orientation itself, Forge-owned. Untracked:
+//!     written, with a line in the checkout's `info/exclude`. Tracked with
+//!     exactly these bytes: left alone. Tracked with any other bytes (forge-core
+//!     commits the prod instance's, and dev Forge provisions the same repo):
+//!     marked `skip-worktree` in this checkout's index and then written, so the
+//!     agent reads the instance that dispatched it while `git status` and
+//!     `git add -A` see nothing. `git ls-files -v` shows the mark as `S`;
+//!     `git update-index --no-skip-worktree .forge/orientation.md` lifts it
+//!     for a person who means to commit an edit. A refresh keeps the mark.
 //!
 //!   - the `@.forge/orientation.md` import — nothing is added where `CLAUDE.md`
-//!     or `CLAUDE.local.md` already reaches orientation (a second import would
-//!     expand the whole of it into every prompt twice). Otherwise it goes to
+//!     or `CLAUDE.local.md` already reaches orientation (forge-core's committed
+//!     `CLAUDE.md` does, so it takes the one path). Otherwise it goes to
 //!     `CLAUDE.local.md`, which Claude Code reads beside `CLAUDE.md` and which
 //!     is per-checkout by name, so a committed `CLAUDE.md` is never edited. A
-//!     tracked `CLAUDE.local.md` that lacks the import is refused by name.
+//!     tracked `CLAUDE.local.md` that lacks the import is refused by name: it is
+//!     not Forge's file.
 
 use std::path::Path;
 
@@ -70,6 +76,8 @@ pub enum Refused {
     },
     /// The file could not be made one git ignores.
     NotIgnored { path: &'static str, detail: String },
+    /// A tracked Forge-owned file could not be marked skip-worktree, so it was not written.
+    NotHidden { path: &'static str, detail: String },
     /// Reading or writing the file failed.
     Io { path: &'static str, error: String },
 }
@@ -79,7 +87,11 @@ impl std::fmt::Display for Refused {
         match self {
             Refused::WouldRewriteTracked { path, why } => write!(
                 f,
-                "PROVISION_WOULD_REWRITE_TRACKED: {path} is committed in this repository and {why}. Forge writes its per-instance files only where git ignores them, so {path} was left as committed — remove it from the index (`git rm --cached {path}`) for this checkout to carry this Forge instance's orientation, or leave it as committed"
+                "PROVISION_WOULD_REWRITE_TRACKED: {path} is committed in this repository and {why}. It is not a file Forge owns, so it was left as committed — add the import to it yourself, or remove it from the index (`git rm --cached {path}`)"
+            ),
+            Refused::NotHidden { path, detail } => write!(
+                f,
+                "PROVISION_ORIENTATION_NOT_HIDDEN: {path} is committed with another instance's content and was not written, because `git update-index --skip-worktree {path}` failed: {detail}"
             ),
             Refused::NotIgnored { path, detail } => write!(
                 f,
@@ -179,6 +191,60 @@ fn ignore(repo: &Path, path: &'static str) -> Result<(), Refused> {
     }
 }
 
+fn git_ok(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Whether this checkout's index marks `path` skip-worktree (`S` in `git ls-files -v`).
+pub fn skip_worktree(repo: &Path, path: &str) -> bool {
+    git_ok(repo, &["ls-files", "-v", "--", path]).is_ok_and(|l| l.starts_with("S "))
+}
+
+/// Set (`true`) or lift (`false`) the skip-worktree mark on a tracked `path`.
+pub fn mark_skip_worktree(repo: &Path, path: &str, on: bool) -> Result<(), String> {
+    let flag = if on {
+        "--skip-worktree"
+    } else {
+        "--no-skip-worktree"
+    };
+    git_ok(repo, &["update-index", flag, "--", path]).map(|_| ())
+}
+
+/// Put `body` at the orientation path where nothing can commit it: under
+/// skip-worktree where the repository tracks the path, behind an exclude line
+/// where it does not. Answers whether the mark had to be set.
+pub fn hold_orientation(repo: &Path, body: &str) -> Result<bool, Refused> {
+    if tracked(repo, ORIENTATION) {
+        let marked = skip_worktree(repo, ORIENTATION);
+        if !marked {
+            mark_skip_worktree(repo, ORIENTATION, true).map_err(|detail| Refused::NotHidden {
+                path: ORIENTATION,
+                detail,
+            })?;
+        }
+        write(repo, ORIENTATION, body)?;
+        Ok(!marked)
+    } else {
+        ignore(repo, ORIENTATION)?;
+        write(repo, ORIENTATION, body)?;
+        Ok(false)
+    }
+}
+
 fn write(repo: &Path, path: &'static str, body: &str) -> Result<(), Refused> {
     let at = repo.join(path);
     let io = |e: std::io::Error| Refused::Io {
@@ -191,22 +257,32 @@ fn write(repo: &Path, path: &'static str, body: &str) -> Result<(), Refused> {
     std::fs::write(at, body).map_err(io)
 }
 
-/// Write the orientation and its import where git ignores them, never changing
-/// a tracked file. The caller reports a refusal on the provision and goes on:
+/// Write the orientation and its import where nothing can commit them, never
+/// changing a tracked file Forge does not own. `Ok(Some(note))` says what the
+/// provision result should record (a committed orientation hidden under
+/// skip-worktree). The caller reports a refusal on the provision and goes on:
 /// the checkout works without orientation, and says why it has none.
-pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Result<(), Refused> {
+pub fn write_orientation(
+    repo_path: &Path,
+    project_id: &str,
+    slug: &str,
+) -> Result<Option<String>, Refused> {
     let body = orientation_body(project_id, slug);
     let held = std::fs::read_to_string(repo_path.join(ORIENTATION)).ok();
+    let mut note = None;
     if tracked(repo_path, ORIENTATION) {
-        if held.as_deref() != Some(body.as_str()) {
-            return Err(Refused::WouldRewriteTracked {
-                path: ORIENTATION,
-                why: "its content is not what this Forge instance writes (it names another project or another generator version)",
-            });
+        let committed = git_ok(repo_path, &["show", &format!(":{ORIENTATION}")]).ok();
+        if committed.as_deref() == Some(body.as_str()) {
+            if held.as_deref() != Some(body.as_str()) {
+                write(repo_path, ORIENTATION, &body)?;
+            }
+        } else if hold_orientation(repo_path, &body)? {
+            note = Some(format!(
+                "{ORIENTATION} is committed with another instance's orientation; this checkout holds project {slug}'s under skip-worktree, so git status and git add -A do not see it (`git ls-files -v` shows S; `git update-index --no-skip-worktree {ORIENTATION}` before committing an edit to it)"
+            ));
         }
     } else if held.as_deref() != Some(body.as_str()) {
-        ignore(repo_path, ORIENTATION)?;
-        write(repo_path, ORIENTATION, &body)?;
+        hold_orientation(repo_path, &body)?;
     } else {
         ignore(repo_path, ORIENTATION)?;
     }
@@ -217,7 +293,7 @@ pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Resu
             .unwrap_or(false)
     };
     if reaches("CLAUDE.md") || reaches(LOCAL_IMPORT) {
-        return Ok(());
+        return Ok(note);
     }
     if tracked(repo_path, LOCAL_IMPORT) {
         return Err(Refused::WouldRewriteTracked {
@@ -233,7 +309,8 @@ pub fn write_orientation(repo_path: &Path, project_id: &str, slug: &str) -> Resu
     } else {
         format!("{block}\n{existing}")
     };
-    write(repo_path, LOCAL_IMPORT, &next)
+    write(repo_path, LOCAL_IMPORT, &next)?;
+    Ok(note)
 }
 
 #[cfg(test)]
@@ -302,21 +379,54 @@ mod tests {
         assert_eq!(without_import_block("# A\n"), None);
     }
 
+    fn staged_by_add_all(repo: &Path) -> String {
+        git(repo, &["add", "-A"]);
+        git(repo, &["diff", "--cached", "--name-only"])
+    }
+
     #[test]
-    fn epod_a_committed_orientation_of_another_instance_is_refused_and_left_as_committed() {
-        let prod = orientation_body("68567cd4-0000-4000-8000-000000000000", "epodsystem-core");
-        let repo = repo_with("epod", &[(".forge/orientation.md", &prod)]);
-        let said = write_orientation(&repo, "73371520-e588-4540-a9b6-5b992344791d", "epod")
-            .err()
-            .map(|e| e.to_string())
-            .expect("a tracked orientation this instance would change is refused");
-        assert!(said.contains("PROVISION_WOULD_REWRITE_TRACKED"), "{said}");
-        assert!(said.contains(".forge/orientation.md"), "{said}");
+    fn forge_core_a_committed_orientation_of_another_instance_is_held_under_skip_worktree() {
+        let prod = orientation_body("da368b0a-8e21-4763-9d90-8f7b9d0c7115", "forge-dev");
+        let claude = format!("{FORGE_IMPORT}\n\n# Forge\n");
+        let repo = repo_with(
+            "forge-core",
+            &[(".forge/orientation.md", &prod), ("CLAUDE.md", &claude)],
+        );
+        let ours = orientation_body("d1bb4907-74d9-4228-85ff-76121523af7d", "forge");
+        let said = write_orientation(&repo, "d1bb4907-74d9-4228-85ff-76121523af7d", "forge");
+        assert!(said.is_ok(), "{said:?}");
         assert_eq!(
             std::fs::read_to_string(repo.join(".forge/orientation.md")).unwrap(),
-            prod
+            ours
         );
+        assert!(git(&repo, &["ls-files", "-v", ".forge/orientation.md"]).starts_with("S "));
         assert_eq!(porcelain(&repo), "");
+        assert_eq!(staged_by_add_all(&repo), "");
+        assert_eq!(git(&repo, &["show", "HEAD:.forge/orientation.md"]), prod);
+        // one path: the committed CLAUDE.md already imports it, so nothing else is written
+        assert_eq!(
+            std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap(),
+            claude
+        );
+        assert!(!repo.join("CLAUDE.local.md").exists());
+        // a second provision keeps the mark and the bytes
+        assert!(write_orientation(&repo, "d1bb4907-74d9-4228-85ff-76121523af7d", "forge").is_ok());
+        assert!(git(&repo, &["ls-files", "-v", ".forge/orientation.md"]).starts_with("S "));
+        assert_eq!(porcelain(&repo), "");
+    }
+
+    #[test]
+    fn epod_a_committed_orientation_without_an_import_is_held_and_imported_where_git_ignores_it() {
+        let prod = orientation_body("68567cd4-0000-4000-8000-000000000000", "epodsystem-core");
+        let repo = repo_with("epod", &[(".forge/orientation.md", &prod)]);
+        assert!(write_orientation(&repo, "73371520-e588-4540-a9b6-5b992344791d", "epod").is_ok());
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".forge/orientation.md")).unwrap(),
+            orientation_body("73371520-e588-4540-a9b6-5b992344791d", "epod")
+        );
+        assert!(git(&repo, &["ls-files", "-v", ".forge/orientation.md"]).starts_with("S "));
+        assert_eq!(porcelain(&repo), "");
+        assert_eq!(staged_by_add_all(&repo), "");
     }
 
     #[test]
