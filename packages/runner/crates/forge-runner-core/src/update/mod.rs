@@ -5,6 +5,8 @@
 //! replaces the running executable. The manifest is served by core
 //! (`{core}/install/latest.json`, track C2) or any URL set in config.
 
+pub mod probation;
+
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -336,6 +338,18 @@ pub async fn install_within(
                 )));
             }
         }
+        // The kept build is what a build that will not stay up is put back to,
+        // so the probation is written only where one is kept (ISS-1378).
+        if keep.is_some() {
+            if let Err(e) = probation::begin(exe, &claim.version) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(Error::Other(format!(
+                    "refused to install over {}: the probation the new build would serve on could not be written at {} ({e}), and without it a build that dies at start is restarted into for ever",
+                    exe.display(),
+                    probation::path(exe).display()
+                )));
+            }
+        }
     }
     #[cfg(not(unix))]
     let _ = (claim, keep, bound);
@@ -577,6 +591,10 @@ mod tests {
                 "criterion 12: every caller on the box still runs the served build"
             );
             assert!(
+                !probation::path(&exe).exists(),
+                "a refused build is put on no probation"
+            );
+            assert!(
                 !exe.with_extension("new").exists(),
                 "the refused download is not left beside it"
             );
@@ -654,6 +672,11 @@ mod tests {
                 runs_as(&kept_path(&exe)),
                 "rc=0 forge-runner 0.1.0 (served0)",
                 "kept beside it"
+            );
+            assert_eq!(
+                probation::enter(&exe, &claim().version),
+                probation::Entered::Counted { starts: 1 },
+                "ISS-1378 criterion 14: the build installed serves on probation"
             );
             let back = served.restore().expect("restored");
             assert_eq!(

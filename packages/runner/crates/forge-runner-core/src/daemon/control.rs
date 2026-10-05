@@ -174,9 +174,19 @@ pub struct GateMemory {
     /// Which tool call each pending declaration has been promised to. The
     /// gate reads it only over the control socket, which is unix's.
     #[cfg(unix)]
-    promised: std::collections::HashMap<String, String>,
+    promised: std::collections::HashMap<String, Promise>,
     #[cfg(unix)]
     allowed: std::collections::HashSet<String>,
+}
+
+/// What the gate promised a pending declaration to: the tool call, and the
+/// role that call dispatched through, which is the only role the subagent
+/// that binds the run may start as (ISS-1378).
+#[cfg(unix)]
+#[derive(Debug, Clone)]
+struct Promise {
+    tool_use: String,
+    role: Option<String>,
 }
 
 pub const HOOKS_CAN_REPORT: bool = cfg!(unix);
@@ -791,7 +801,7 @@ fn dispatch_gate_reply(
 
     let promised = pending
         .as_deref()
-        .and_then(|run| memory.promised.get(run).cloned());
+        .and_then(|run| memory.promised.get(run).map(|p| p.tool_use.clone()));
     let verdict = decide(
         &d,
         &Facts {
@@ -805,7 +815,13 @@ fn dispatch_gate_reply(
         Verdict::Replay { .. } => gate_allows(None),
         Verdict::Covered { run_id } => {
             if let Some(tool_use) = d.tool_use_id.clone() {
-                memory.promised.insert(run_id.clone(), tool_use.clone());
+                memory.promised.insert(
+                    run_id.clone(),
+                    Promise {
+                        tool_use: tool_use.clone(),
+                        role: d.subagent_type.clone(),
+                    },
+                );
                 memory.allowed.insert(tool_use);
             }
             tracing::info!("[control] run {run_id} is promised to this dispatch");
@@ -832,7 +848,12 @@ fn dispatch_gate_reply(
                 // names it to promise the run to or to tell a second hand-off from a replay, so
                 // that case still fails open once per call, and the drain counts only the one row.
                 if let Some(tool_use) = d.tool_use_id.clone() {
-                    if let Some(spent) = memory.promised.get(run).filter(|t| **t != tool_use) {
+                    if let Some(spent) = memory
+                        .promised
+                        .get(run)
+                        .map(|p| &p.tool_use)
+                        .filter(|t| **t != tool_use)
+                    {
                         tracing::warn!(
                             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
                         );
@@ -840,7 +861,13 @@ fn dispatch_gate_reply(
                             "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
                         ));
                     }
-                    memory.promised.insert(run.to_string(), tool_use.clone());
+                    memory.promised.insert(
+                        run.to_string(),
+                        Promise {
+                            tool_use: tool_use.clone(),
+                            role: d.subagent_type.clone(),
+                        },
+                    );
                     memory.allowed.insert(tool_use);
                 }
             }
@@ -921,7 +948,14 @@ fn dispatch_gate_roles(dir: &Path) -> Option<std::collections::BTreeSet<String>>
     crate::daemon::dispatch_gate::shipped_roles(dir)
 }
 
-/// A subagent started: it takes the run its master declared for it.
+/// A subagent started: it takes the run its master declared for it, where it
+/// is the subagent that run was declared for.
+///
+/// A master starts subagents the box knows nothing about, and the first of
+/// them to start used to take the binding meant for the run, whatever it was
+/// (ISS-1378). [`crate::daemon::dispatch_gate::claims_the_run`] decides; a
+/// start it turns away leaves the run unbound for the subagent dispatched for
+/// it and is read as any start with nothing pending is.
 ///
 /// A start is also the subagent heard from, in a process that is running now,
 /// so an end recorded for the pane it ran in before no longer speaks for it,
@@ -942,6 +976,7 @@ fn bind_declared(
         .filter(|p| p.is_absolute())
         .and_then(|p| crate::daemon::transcript_age::child_transcript(p, child))
         .map(|p| p.to_string_lossy().into_owned());
+    let roles = ctl.config_dir.as_deref().and_then(dispatch_gate_roles);
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else { return };
     let heard = |led: &crate::runner::ledger::Ledger, run_id: &str| {
@@ -949,38 +984,64 @@ fn bind_declared(
             tracing::warn!("[control] run {run_id}: cannot note that {child} started: {e}");
         }
     };
-    match led.unbound_run_for_master(session_id, &ctl.boot_id) {
-        Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
-            Ok(true) => {
-                heard(led, &run.run_id);
-                ctl.promises
-                    .lock()
-                    .expect("promises poisoned")
-                    .promised
-                    .remove(&run.run_id);
-                tracing::info!("[control] run {} is subagent {child}", run.run_id)
+    let pending = match led.unbound_run_for_master(session_id, &ctl.boot_id) {
+        Ok(pending) => pending,
+        Err(e) => {
+            tracing::warn!("[control] cannot read declared runs: {e}");
+            return;
+        }
+    };
+    if let Some(run) = pending {
+        let promised_role = ctl
+            .promises
+            .lock()
+            .expect("promises poisoned")
+            .promised
+            .get(&run.run_id)
+            .and_then(|p| p.role.clone());
+        match crate::daemon::dispatch_gate::claims_the_run(
+            agent_type,
+            roles.as_ref(),
+            promised_role.as_deref(),
+        ) {
+            Ok(()) => {
+                match led.bind_agent(&run.run_id, child) {
+                    Ok(true) => {
+                        heard(led, &run.run_id);
+                        ctl.promises
+                            .lock()
+                            .expect("promises poisoned")
+                            .promised
+                            .remove(&run.run_id);
+                        tracing::info!("[control] run {} is subagent {child}", run.run_id)
+                    }
+                    Ok(false) => tracing::debug!(
+                        "[control] run {} was already bound when {child} started",
+                        run.run_id
+                    ),
+                    Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
+                }
+                return;
             }
-            Ok(false) => tracing::debug!(
-                "[control] run {} was already bound when {child} started",
+            Err(why) => tracing::info!(
+                "[control] subagent {child} started under master session {session_id} and is not run {}'s: {why}. The run stays unbound for the subagent dispatched for it",
                 run.run_id
             ),
-            Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
-        },
-        Ok(None) => match classify_start(
-            led.run_for_agent(child)
-                .map(|r| r.map(|run| run.run_id))
-                .map_err(|e| e.to_string()),
-        ) {
-            StartKind::Replay(run_id) => {
-                heard(led, &run_id);
-                tracing::debug!(
-                    "[control] subagent {child} is already run {run_id}, so its start is a replay"
-                )
-            }
-            StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
-            StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
-        },
-        Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
+        }
+    }
+    match classify_start(
+        led.run_for_agent(child)
+            .map(|r| r.map(|run| run.run_id))
+            .map_err(|e| e.to_string()),
+    ) {
+        StartKind::Replay(run_id) => {
+            heard(led, &run_id);
+            tracing::debug!(
+                "[control] subagent {child} is already run {run_id}, so its start is a replay"
+            )
+        }
+        StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
+        StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
     }
 }
 
@@ -2014,7 +2075,12 @@ mod tests {
     /// Which tool call, if any, this run is currently promised to.
     #[cfg(unix)]
     fn promised_to(ctl: &Arc<Control>, run_id: &str) -> Option<String> {
-        ctl.promises.lock().unwrap().promised.get(run_id).cloned()
+        ctl.promises
+            .lock()
+            .unwrap()
+            .promised
+            .get(run_id)
+            .map(|p| p.tool_use.clone())
     }
 
     /// Criteria 11, 12 and 13. The cap is core's and the refusal is this
@@ -2073,7 +2139,7 @@ mod tests {
 
         // 1. Nothing declared: refused, in the declaration's own words.
         assert!(
-            refused_as_undeclared(&gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a")),
+            refused_as_undeclared(&gate_on(&ctl, &asking("forge:runner", "toolu_1"), "sess-a")),
             "a hand-off with nothing declared is refused by the socket, not merely by `decide`"
         );
 
@@ -2089,7 +2155,7 @@ mod tests {
         )
         .job_id
         .expect("declared");
-        let covered = gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a");
+        let covered = gate_on(&ctl, &asking("forge:runner", "toolu_1"), "sess-a");
         assert!(allowed(&covered));
         assert_eq!(
             named_run(&covered).as_deref(),
@@ -2103,7 +2169,7 @@ mod tests {
         );
 
         // 6. The same tool call again is the same answer, and consumes nothing.
-        let replay = gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a");
+        let replay = gate_on(&ctl, &asking("forge:runner", "toolu_1"), "sess-a");
         assert!(allowed(&replay));
         assert_eq!(
             named_run(&replay),
@@ -2119,13 +2185,24 @@ mod tests {
 
         // 5. A DIFFERENT dispatch cannot ride the same declaration.
         assert!(
-            refused_as_undeclared(&gate_on(&ctl, &asking("reviewer", "toolu_2"), "sess-a")),
+            refused_as_undeclared(&gate_on(
+                &ctl,
+                &asking("forge:reviewer", "toolu_2"),
+                "sess-a"
+            )),
             "two subagents under one declared row is two units of work with one record"
         );
 
         // 7. The subagent starts: the row is bound, the promise is released, and
         // the master is back to needing a fresh declaration.
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
+        bind_declared(
+            &ctl,
+            Some("child-1"),
+            Some("forge:runner"),
+            "sess-a",
+            0,
+            None,
+        );
         assert_eq!(
             promised_to(&ctl, &run_id),
             None,
@@ -2133,7 +2210,7 @@ mod tests {
         );
         assert!(refused_as_undeclared(&gate_on(
             &ctl,
-            &asking("runner", "toolu_3"),
+            &asking("forge:runner", "toolu_3"),
             "sess-a"
         )));
     }
@@ -2155,7 +2232,7 @@ mod tests {
         .expect("declared");
         assert!(allowed(&gate_on(
             &ctl,
-            &asking("runner", "toolu_1"),
+            &asking("forge:runner", "toolu_1"),
             "sess-a"
         )));
 
@@ -2181,7 +2258,11 @@ mod tests {
 
         // The declaration is still the master's, so the dispatch is allowed.
         assert!(
-            allowed(&gate_on(&restarted, &asking("runner", "toolu_2"), "sess-a")),
+            allowed(&gate_on(
+                &restarted,
+                &asking("forge:runner", "toolu_2"),
+                "sess-a"
+            )),
             "a declaration nothing consumed is still pending after a daemon restart"
         );
         assert_eq!(
@@ -2194,7 +2275,14 @@ mod tests {
         // Both dispatches were allowed, so two children may start. Exactly one
         // binds, and the other is named rather than quietly losing its work.
         for child in ["child-1", "child-2"] {
-            bind_declared(&restarted, Some(child), Some("runner"), "sess-a", 0, None);
+            bind_declared(
+                &restarted,
+                Some(child),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
         }
         let held = restarted.ledger.lock().unwrap();
         let bound = held.as_ref().unwrap().run_for_agent("child-1").unwrap();
@@ -2230,12 +2318,19 @@ mod tests {
         .expect("declared");
         let ask = crate::daemon::dispatch_gate::Dispatch {
             agent_id: None,
-            subagent_type: Some("runner".into()),
+            subagent_type: Some("forge:runner".into()),
             tool_use_id: Some("toolu_1".into()),
         };
         assert!(dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok);
 
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
+        bind_declared(
+            &ctl,
+            Some("child-1"),
+            Some("forge:runner"),
+            "sess-a",
+            0,
+            None,
+        );
 
         assert!(
             dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok,
@@ -2272,7 +2367,7 @@ mod tests {
             &ctl,
             crate::daemon::dispatch_gate::Dispatch {
                 agent_id: None,
-                subagent_type: Some("runner".into()),
+                subagent_type: Some("forge:runner".into()),
                 tool_use_id: Some("toolu_1".into()),
             },
             "sess-a",
@@ -2318,7 +2413,7 @@ mod tests {
         let dir = ship_roles(&ctl, &["runner"]);
         *ctl.ledger.lock().unwrap() = None;
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
-        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "forge:runner"), "sess-a");
         refused_naming_the_drain(&r, "no registry");
         assert!(r.reason.unwrap_or_default().contains("cannot be read"));
         assert_eq!(
@@ -2330,7 +2425,7 @@ mod tests {
         // Roles unreadable and nothing declared: Unknown with no run to count.
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
-        let r = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
+        let r = gate_on(&ctl, &asked(Some("toolu_2"), "forge:runner"), "sess-a");
         refused_naming_the_drain(&r, "unknown verdict, nothing declared");
         assert!(r.reason.unwrap_or_default().contains("declared no run"));
     }
@@ -2347,7 +2442,7 @@ mod tests {
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
-        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "forge:runner"), "sess-a");
         assert!(
             allowed(&r),
             "roles unreadable, declared before the drain: {r:?}"
@@ -2359,7 +2454,7 @@ mod tests {
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
-        let r = gate_on(&ctl, &asked(None, "runner"), "sess-a");
+        let r = gate_on(&ctl, &asked(None, "forge:runner"), "sess-a");
         assert!(
             allowed(&r),
             "no tool call id, declared before the drain: {r:?}"
@@ -2379,18 +2474,18 @@ mod tests {
         let run = declared.job_id.unwrap();
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
 
-        let first = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        let first = gate_on(&ctl, &asked(Some("toolu_1"), "forge:runner"), "sess-a");
         assert!(
             allowed(&first),
             "the declared run's own hand-off: {first:?}"
         );
-        let replay = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        let replay = gate_on(&ctl, &asked(Some("toolu_1"), "forge:runner"), "sess-a");
         assert!(
             allowed(&replay),
             "the same tool call again is a replay: {replay:?}"
         );
 
-        let second = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
+        let second = gate_on(&ctl, &asked(Some("toolu_2"), "forge:runner"), "sess-a");
         assert!(
             !second.ok,
             "a second subagent against a run spent once is work the drain never counted"
@@ -2414,7 +2509,7 @@ mod tests {
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
-        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "forge:runner"), "sess-a");
         assert!(allowed(&r), "{r:?}");
     }
 
@@ -2423,12 +2518,190 @@ mod tests {
     #[cfg(unix)]
     fn ship_roles(ctl: &Arc<Control>, roles: &[&str]) -> std::path::PathBuf {
         let dir = ctl.config_dir.clone().expect("a scratch config dir");
-        let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
+        let plugin = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin");
+        let agents = plugin.join("agents");
         std::fs::create_dir_all(&agents).unwrap();
+        std::fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
+        std::fs::write(
+            plugin.join(".claude-plugin/plugin.json"),
+            r#"{"name": "forge"}"#,
+        )
+        .unwrap();
         for r in roles {
             std::fs::write(agents.join(format!("{r}.md")), "---\n").unwrap();
         }
         dir
+    }
+
+    #[cfg(unix)]
+    fn bound_to(ctl: &Arc<Control>, run_id: &str) -> crate::runner::ledger::Run {
+        ctl.ledger
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .run(run_id)
+            .unwrap()
+            .unwrap()
+    }
+
+    #[cfg(unix)]
+    fn hook(child: &str, agent_type: Option<&str>) -> HookNames {
+        HookNames {
+            agent_id: Some(child.into()),
+            conversation_id: Some("conv-master".into()),
+            agent_type: agent_type.map(str::to_string),
+            transcript_path: None,
+        }
+    }
+
+    /// ISS-1378 criteria 1, 2 and 5, the issue's own case: two subagents under
+    /// one master, the undeclared one starting first and stopping first, and
+    /// the declared run still bound to the declared one and not ended.
+    #[cfg(unix)]
+    #[test]
+    fn a_sibling_helper_starting_and_stopping_first_neither_takes_nor_ends_the_declared_run() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner", "reviewer"]);
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+
+        let said = crate::log_capture::logged_while(|| {
+            agent_event(
+                &ctl,
+                "SubagentStart",
+                Some(1_000),
+                &hook("helper-1", Some("general-purpose")),
+                "sess-a",
+                None,
+            );
+        });
+        assert_eq!(
+            bound_to(&ctl, &run_id).agent_id,
+            None,
+            "criterion 1: a search helper starting first takes nothing: {said}"
+        );
+        assert!(
+            said.contains("is not run") && said.contains("no role this box ships"),
+            "and the journal says why it was turned away: {said}"
+        );
+
+        agent_event(
+            &ctl,
+            "SubagentStart",
+            Some(2_000),
+            &hook("runner-1", Some("forge:runner")),
+            "sess-a",
+            None,
+        );
+        agent_event(
+            &ctl,
+            "SubagentStop",
+            Some(3_000),
+            &hook("helper-1", Some("general-purpose")),
+            "sess-a",
+            None,
+        );
+        let run = bound_to(&ctl, &run_id);
+        assert_eq!(
+            run.agent_id.as_deref(),
+            Some("runner-1"),
+            "criterion 2: the declared run is the declared subagent's"
+        );
+        assert_eq!(
+            run.ended_by, None,
+            "criterion 5: the helper's stop ends nothing of a run it never was"
+        );
+        assert_eq!(
+            run.turn_ended_at_ms, None,
+            "and is not even recorded as the run's turn end"
+        );
+    }
+
+    /// ISS-1378 criterion 3: a shipped role the run was not promised to is an
+    /// undeclared hand-off, never the run.
+    #[cfg(unix)]
+    #[test]
+    fn a_shipped_role_other_than_the_promised_one_is_named_and_does_not_bind() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner", "reviewer"]);
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+
+        bind_declared(
+            &ctl,
+            Some("rev-1"),
+            Some("forge:reviewer"),
+            "sess-a",
+            0,
+            None,
+        );
+        assert_eq!(bound_to(&ctl, &run_id).agent_id, None);
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(undeclared.count, 1, "{undeclared:?}");
+        assert_eq!(
+            undeclared.last.unwrap_or_default().agent.as_deref(),
+            Some("rev-1")
+        );
+
+        bind_declared(&ctl, Some("run-1"), Some("forge:runner"), "sess-a", 0, None);
+        assert_eq!(
+            bound_to(&ctl, &run_id).agent_id.as_deref(),
+            Some("run-1"),
+            "the promised role still binds once it starts"
+        );
+    }
+
+    /// ISS-1378 criterion 4.
+    #[cfg(unix)]
+    #[test]
+    fn a_start_naming_no_agent_type_leaves_the_run_unbound_and_says_it_cannot_tell() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        let said = crate::log_capture::logged_while(|| {
+            bind_declared(&ctl, Some("child-x"), None, "sess-a", 0, None);
+        });
+        assert_eq!(bound_to(&ctl, &run_id).agent_id, None);
+        assert!(
+            said.contains("which agent is the run's cannot be told"),
+            "{said}"
+        );
     }
 
     #[cfg(unix)]
@@ -2440,7 +2713,7 @@ mod tests {
         bind_declared(
             &ctl,
             Some("child-nobody-declared"),
-            Some("runner"),
+            Some("forge:runner"),
             "sess-a",
             0,
             None,
@@ -2457,7 +2730,7 @@ mod tests {
         assert_eq!(said.agent.as_deref(), Some("child-nobody-declared"));
         assert_eq!(
             said.role.as_deref(),
-            Some("runner"),
+            Some("forge:runner"),
             "the role is a field a reader can filter on, not only a phrase in a sentence"
         );
     }
@@ -2520,7 +2793,14 @@ mod tests {
         .expect("declared");
 
         for _ in 0..3 {
-            bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
         }
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
@@ -2547,7 +2827,14 @@ mod tests {
         .job_id
         .expect("declared");
 
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
+        bind_declared(
+            &ctl,
+            Some("child-1"),
+            Some("forge:runner"),
+            "sess-a",
+            0,
+            None,
+        );
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
         assert_eq!(undeclared.count, 0, "{undeclared:?}");
@@ -2586,6 +2873,7 @@ mod tests {
             peers.insert(900_003, host(3_990_000, "977"));
         }
         let (ctl, _t, _dir) = declaring_control_over("sess-a", "proj-1", hosts);
+        ship_roles(&ctl, &["runner"]);
         let row = |ctl: &Arc<Control>| {
             let held = ctl.ledger.lock().unwrap();
             let led = held.as_ref().unwrap();
@@ -2612,7 +2900,7 @@ mod tests {
         let child = HookNames {
             agent_id: Some("afb821edfc48c7694".into()),
             conversation_id: Some("19793a14".into()),
-            agent_type: Some("runner".into()),
+            agent_type: Some("forge:runner".into()),
             transcript_path: None,
         };
         agent_event(
@@ -3611,13 +3899,21 @@ mod tests {
         #[test]
         fn once_every_inherited_run_is_answered_for_the_next_declaration_is_allowed() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let choice = run_choice(&ctl, &run_id, "restart", "the branch is empty", "sess-a");
             assert!(choice.ok, "{:?}", choice.reason);
             // The pre-existing one-unbound-row rule is a separate gate; bind this one so the assertion
             // below is about the resume gate and not about that.
-            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
 
             let reply = run_declare(
                 &ctl,
@@ -3632,6 +3928,7 @@ mod tests {
         #[test]
         fn a_pane_that_was_never_resumed_declares_freely() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let first = run_declare(
                 &ctl,
                 "proj-1",
@@ -3641,7 +3938,14 @@ mod tests {
                 None,
             );
             assert!(first.ok, "{:?}", first.reason);
-            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
 
             let second = run_declare(
                 &ctl,
@@ -3741,10 +4045,18 @@ mod tests {
         #[test]
         fn a_subagent_starting_binds_the_row_its_master_declared_and_stopping_leaves_it_open() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             assert_eq!(run_of(&ctl, &run_id).agent_id.as_deref(), Some("child-1"));
             ctl.ledger
                 .lock()
@@ -3779,10 +4091,18 @@ mod tests {
         #[test]
         fn each_stop_moves_the_turn_end_forward_and_a_replayed_older_one_does_not_move_it_back() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             let lead = crate::daemon::transcript_age::absolute_fixture("conv.jsonl");
             note_subagent_stop(&ctl, "child-1", 1_000, Some(&lead));
             note_subagent_stop(&ctl, "child-1", 5_000, None);
@@ -3798,10 +4118,18 @@ mod tests {
         #[test]
         fn a_stop_naming_a_relative_lead_records_no_transcript_it_would_misread() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-1"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             note_subagent_stop(&ctl, "child-1", 1_000, Some("conv.jsonl"));
             let run = run_of(&ctl, &run_id);
             assert_eq!(run.turn_ended_at_ms, Some(1_000));
@@ -3810,6 +4138,7 @@ mod tests {
         #[test]
         fn a_stop_heard_through_the_socket_reaches_the_run_with_its_time_and_path() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
@@ -3817,7 +4146,7 @@ mod tests {
             let names = HookNames {
                 agent_id: Some("child-9".into()),
                 conversation_id: Some("conv-live".into()),
-                agent_type: Some("runner".into()),
+                agent_type: Some("forge:runner".into()),
                 transcript_path: Some(lead.clone()),
             };
             agent_event(&ctl, "SubagentStart", Some(1_000), &names, "sess-a", None);
@@ -3834,14 +4163,29 @@ mod tests {
         #[test]
         fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            ship_roles(&ctl, &["runner"]);
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-a"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-a"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             let held = ctl.ledger.lock().unwrap();
             let led = held.as_ref().unwrap();
             assert_eq!(
@@ -3860,12 +4204,26 @@ mod tests {
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-a"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             assert!(run_close(&ctl, &run_a, None, "sess-a").ok);
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None)
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
+            bind_declared(
+                &ctl,
+                Some("child-a"),
+                Some("forge:runner"),
+                "sess-a",
+                0,
+                None,
+            );
             let held = ctl.ledger.lock().unwrap();
             assert!(
                 held.as_ref()

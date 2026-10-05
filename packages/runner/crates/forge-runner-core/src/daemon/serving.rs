@@ -68,6 +68,20 @@ pub struct Record {
     pub started_at_ms: i64,
     #[serde(default)]
     pub drain: Option<DrainState>,
+    /// The last update this daemon downloaded and did not install, until a
+    /// later check installs one or finds none newer. Only the journal said so
+    /// before, and `status` read as though nothing had happened (ISS-1379
+    /// judge 3, finding 2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_refused: Option<UpdateRefused>,
+}
+
+/// An update that was not installed, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateRefused {
+    pub version: String,
+    pub why: String,
+    pub at_ms: i64,
 }
 
 impl Record {
@@ -81,6 +95,7 @@ impl Record {
             commit: crate::update::BUILD_COMMIT.to_string(),
             started_at_ms: now_ms,
             drain: None,
+            update_refused: None,
         }
     }
 
@@ -777,6 +792,14 @@ pub fn lines(
         )),
         None => {}
     }
+    if let Some(u) = &record.update_refused {
+        out.push(format!(
+            "{INDENT}the update to {} was not installed {} ago — {}. This daemon serves the build it started with, and the next update check downloads the release again",
+            u.version,
+            ago(now_ms, u.at_ms),
+            u.why
+        ));
+    }
     out
 }
 
@@ -964,7 +987,42 @@ mod tests {
             commit: "abc1234".into(),
             started_at_ms: NOW - 3_600_000,
             drain,
+            update_refused: None,
         }
+    }
+
+    /// ISS-1378 criterion 16: a refused update is said by `status`, with its
+    /// version, why and how long ago, beside whatever else the daemon is doing.
+    #[test]
+    fn status_names_an_update_the_daemon_did_not_install() {
+        let mut r = rec("0.17.90", None);
+        r.update_refused = Some(UpdateRefused {
+            version: "0.17.91".into(),
+            why: "refused the downloaded build before installing it: `forge-runner.new --version` exited 1".into(),
+            at_ms: NOW - 20 * 60_000,
+        });
+        let out = lines(
+            &Ok(Some(r)),
+            &probe(|_| true, |_| Some("777".into())),
+            "0.17.90",
+            "abc1234",
+            NOW,
+        )
+        .join("\n");
+        assert!(
+            out.contains("the update to 0.17.91 was not installed 20m ago")
+                && out.contains("--version` exited 1"),
+            "{out}"
+        );
+        let quiet = lines(
+            &Ok(Some(rec("0.17.90", None))),
+            &probe(|_| true, |_| Some("777".into())),
+            "0.17.90",
+            "abc1234",
+            NOW,
+        )
+        .join("\n");
+        assert!(!quiet.contains("was not installed"), "{quiet}");
     }
 
     fn probe(alive: fn(u32) -> bool, ticks: fn(u32) -> Option<String>) -> Probe {

@@ -234,6 +234,16 @@ pub enum Ending {
         ended: Vec<Resident>,
         not_asked: usize,
     },
+    /// Residents running beneath a live Claude Code process: a live agent's
+    /// work, whatever the ledger says about the run that held the checkout.
+    /// Nothing was signalled, theirs or anybody else's (ISS-1378).
+    Live {
+        /// Each such resident, and the Claude Code process it runs beneath.
+        agents: Vec<(Resident, u32)>,
+        /// Everybody else living there, left alone with them.
+        others: Vec<Resident>,
+        not_asked: usize,
+    },
 }
 
 /// How loudly the line a removal owes arrives.
@@ -368,6 +378,33 @@ impl Ending {
                 "who is living in {} could not be read ({said}) — the directory stays, because \
                  not knowing is not the same as knowing nobody is in it",
                 at.display()
+            )),
+            Ending::Live {
+                agents,
+                others,
+                not_asked,
+            } => Verdict::Refuse(format!(
+                "{} process(es) living in {} run beneath a live Claude Code process — {} — so the \
+                 checkout is a live agent's work whatever the ledger says about the run that held \
+                 it. Nothing in it was signalled, and the directory stays for the next sweep{}{}",
+                agents.len(),
+                at.display(),
+                agents
+                    .iter()
+                    .map(|(r, agent)| format!("{r}, beneath Claude Code pid {agent}"))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                match others.as_slice() {
+                    [] => ".".to_string(),
+                    rest => format!(
+                        ". Also living in it, and left alone with them: {}.",
+                        rest.iter()
+                            .map(Resident::to_string)
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                },
+                also(*not_asked)
             )),
             // What was ended is named here too, and not only what stands. A
             // refusal that printed the survivors alone would leave the
@@ -665,6 +702,73 @@ fn parent_of(proc_root: &Path, pid: u32) -> Option<u32> {
         .and_then(|v| v.trim().parse::<u32>().ok())
 }
 
+/// What the walk up from a resident found above it.
+#[derive(Debug, PartialEq, Eq)]
+enum Above {
+    /// A Claude Code process, by pid: the resident is in a live agent's tree.
+    Agent(u32),
+    /// The top of the table, the walk's own ancestry, or a process that went
+    /// while it was read: no agent is running it.
+    Nobody,
+    /// A step that should have been readable and was not.
+    Unreadable(String),
+}
+
+/// How far up a walk goes. A gate is a handful of processes below its shell,
+/// and a table deeper than this is not one a reading should guess about.
+const MAX_WALK: usize = 64;
+
+/// The Claude Code process `pid` runs beneath, where one does.
+///
+/// An agent's own work — the gate its shell started, a server it runs in the
+/// background — is a descendant of its Claude Code process for as long as
+/// that agent can still act on it. A process orphaned from an agent's shell is
+/// handed to the box's subreaper (`systemd --user` on `sid-xeon-1`, measured
+/// 2026-10-05) and is nobody's, which is the population ISS-1271 ends. A
+/// Claude Code process in `ours` — the reaper's own ancestry, which is where a
+/// test run from an agent's shell stands — is not an agent living in the
+/// checkout, and the walk stops there.
+fn agent_above(proc_root: &Path, pid: u32, ours: &BTreeSet<u32>) -> Above {
+    let mut at = pid;
+    for _ in 0..MAX_WALK {
+        if ours.contains(&at) {
+            return Above::Nobody;
+        }
+        match crate::daemon::subagent_host::claude_at(proc_root, at) {
+            Ok(true) => return Above::Agent(at),
+            Ok(false) => {}
+            Err(why) => return Above::Unreadable(why),
+        }
+        let dir = proc_root.join(at.to_string());
+        let status = match std::fs::read_to_string(dir.join("status")) {
+            Ok(s) => s,
+            Err(e) if the_pid_went(&e) && !dir.exists() => return Above::Nobody,
+            Err(e) if e.raw_os_error() == Some(ESRCH) => return Above::Nobody,
+            Err(e) => {
+                return Above::Unreadable(format!(
+                    "what pid {at} runs beneath could not be read ({e})"
+                ))
+            }
+        };
+        let parent = status
+            .lines()
+            .find_map(|l| l.strip_prefix("PPid:"))
+            .and_then(|v| v.trim().parse::<u32>().ok());
+        match parent {
+            Some(p) if p > 1 => at = p,
+            Some(_) => return Above::Nobody,
+            None => {
+                return Above::Unreadable(format!(
+                    "pid {at}'s status names no parent, so what it runs beneath cannot be read"
+                ))
+            }
+        }
+    }
+    Above::Unreadable(format!(
+        "pid {pid}'s ancestry runs deeper than {MAX_WALK} processes"
+    ))
+}
+
 /// Give the checkout's residents back to the box, and say what is left.
 ///
 /// `SIGTERM` to every resident this box may signal, the first grace, `SIGKILL`
@@ -822,7 +926,8 @@ impl Clearing<'_> {
     /// growing residents is refused, and the refusal is what a caller is bound
     /// by.
     pub async fn clear(&self, worktree: &Path) -> Ending {
-        let ended = match residents_of(self.proc_root, worktree) {
+        let identity = |pid: u32| self.hand.identity(pid);
+        let ended = match residents_of_with(self.proc_root, worktree, identity) {
             Reading::NoTable(why) => return Ending::NoTable(why),
             Reading::Unreadable(why) => return Ending::Unreadable(why),
             Reading::Read { residents, .. } if residents.is_empty() => Vec::new(),
@@ -831,7 +936,33 @@ impl Clearing<'_> {
                 not_asked,
             } => {
                 let ours = ancestry(self.proc_root, std::process::id());
-                match end_residents(residents, not_asked, &ours, self.grace, self.hand).await {
+                // A resident in a live agent's tree is that agent's work, and
+                // the ledger calling its run over does not make it anybody's
+                // to end: a gate killed under a live run reads to that run as
+                // a red in its own code (ISS-1378). So it, and the checkout,
+                // are left whole, and nobody else in it is signalled either —
+                // the directory stays regardless.
+                let mut agents = Vec::new();
+                let mut others = Vec::new();
+                for r in residents {
+                    match agent_above(self.proc_root, r.pid, &ours) {
+                        Above::Agent(agent) => agents.push((r, agent)),
+                        Above::Nobody => others.push(r),
+                        Above::Unreadable(why) => {
+                            return Ending::Unreadable(format!(
+                                "{why}, so whether {r} is a live agent's work cannot be told"
+                            ))
+                        }
+                    }
+                }
+                if !agents.is_empty() {
+                    return Ending::Live {
+                        agents,
+                        others,
+                        not_asked,
+                    };
+                }
+                match end_residents(others, not_asked, &ours, self.grace, self.hand).await {
                     Ending::Clear { ended, .. } => ended,
                     standing => return standing,
                 }
@@ -839,7 +970,7 @@ impl Clearing<'_> {
         };
         // The count comes off the LAST reading, because that is the one the
         // verdict is taken over.
-        match residents_of(self.proc_root, worktree) {
+        match residents_of_with(self.proc_root, worktree, identity) {
             Reading::Read {
                 residents,
                 not_asked,
@@ -927,6 +1058,11 @@ mod tests {
         // a kernel annotation and a path that does not exist are both plantable.
         symlink(cwd, d.join("cwd")).expect("a cwd link");
         std::fs::write(d.join("cmdline"), cmd.replace(' ', "\0")).expect("a cmdline");
+        // Parented on the table's top unless a case says otherwise, so the
+        // walk up from it finds no agent and reads to its end.
+        if !d.join("status").exists() {
+            std::fs::write(d.join("status"), "Name:\tx\nPPid:\t1\n").expect("a status");
+        }
     }
 
     fn plant_parent(root: &Path, pid: u32, ppid: u32) {
@@ -1481,6 +1617,174 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(777, Why::Arrived)]
         );
+    }
+
+    /// A hand under which every signalled pid goes, as a process that honours
+    /// SIGTERM does, and which remembers what it signalled.
+    struct Ends<'a> {
+        proc_root: &'a Path,
+        sent: Mutex<Vec<u32>>,
+    }
+
+    impl Hand for Ends<'_> {
+        fn signal(&self, pid: u32, _sig: Sig) -> std::result::Result<(), String> {
+            self.sent.lock().unwrap().push(pid);
+            let _ = std::fs::remove_dir_all(self.proc_root.join(pid.to_string()));
+            Ok(())
+        }
+        fn present(&self, pid: u32) -> bool {
+            self.proc_root.join(pid.to_string()).exists()
+        }
+        fn identity(&self, pid: u32) -> Option<String> {
+            Some(format!("proc-{pid}"))
+        }
+    }
+
+    fn cleared(proc: &Path, wt: &Path) -> (Ending, Vec<u32>) {
+        let hand = Ends {
+            proc_root: proc,
+            sent: Mutex::new(Vec::new()),
+        };
+        let clearing = Clearing {
+            proc_root: proc,
+            grace: NO_WAIT,
+            hand: &hand,
+        };
+        let outcome = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime")
+            .block_on(clearing.clear(wt));
+        let sent = hand.sent.lock().unwrap().clone();
+        (outcome, sent)
+    }
+
+    /// ISS-1378 criterion 8: a live agent's gate, and the stranger living
+    /// beside it, are both left alone, and the checkout is refused.
+    #[test]
+    fn a_resident_beneath_a_live_agent_refuses_the_removal_and_nothing_is_signalled() {
+        let scratch = Scratch::new("wtproc-agent");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 801, &wt.to_string_lossy(), "node jest");
+        plant_parent(&proc, 801, 800);
+        plant(&proc, 800, "/home/someone", "bash -c pnpm test");
+        plant_parent(&proc, 800, 777);
+        plant(
+            &proc,
+            777,
+            "/home/someone",
+            "/home/someone/.local/share/claude/versions/2.1.289",
+        );
+        plant(&proc, 802, &wt.to_string_lossy(), "next-server");
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        let Ending::Live { agents, others, .. } = &outcome else {
+            panic!("a live agent's checkout is not cleared: {outcome:?}");
+        };
+        assert_eq!(
+            agents.iter().map(|(r, a)| (r.pid, *a)).collect::<Vec<_>>(),
+            vec![(801, 777)]
+        );
+        assert_eq!(others.iter().map(|r| r.pid).collect::<Vec<_>>(), vec![802]);
+        assert!(sent.is_empty(), "nothing is signalled: {sent:?}");
+        assert!(matches!(outcome.verdict(&wt), Verdict::Refuse(_)));
+    }
+
+    /// ISS-1378 criterion 10: residents beneath no Claude Code process are
+    /// still ended, as ISS-1271 made it.
+    #[test]
+    fn residents_beneath_no_agent_are_still_ended() {
+        let scratch = Scratch::new("wtproc-orphan");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 811, &wt.to_string_lossy(), "next-server");
+        plant(&proc, 812, &wt.to_string_lossy(), "node server.js");
+        plant_parent(&proc, 812, 810);
+        plant(&proc, 810, "/", "/usr/lib/systemd/systemd --user");
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        let Ending::Clear { ended, .. } = &outcome else {
+            panic!("an orphan's checkout is cleared: {outcome:?}");
+        };
+        assert_eq!(
+            ended.iter().map(|r| r.pid).collect::<Vec<_>>(),
+            vec![811, 812]
+        );
+        assert_eq!(sent, vec![811, 812]);
+    }
+
+    /// The walk stops at the reaper's own ancestry: a Claude Code process this
+    /// process runs under is not an agent living in the checkout.
+    #[test]
+    fn a_claude_code_process_the_reaper_itself_runs_under_is_not_read_as_an_agent_in_the_tree() {
+        let scratch = Scratch::new("wtproc-ours");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        let me = std::process::id();
+        plant(&proc, me, "/", "cargo test");
+        plant_parent(&proc, me, 950);
+        plant(&proc, 950, "/", "claude");
+        plant(&proc, 821, &wt.to_string_lossy(), "sleep 100000");
+        plant_parent(&proc, 821, 950);
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        assert!(
+            matches!(&outcome, Ending::Clear { ended, .. } if ended.len() == 1),
+            "{outcome:?}"
+        );
+        assert_eq!(sent, vec![821]);
+    }
+
+    /// ISS-1378 criterion 11, review F2: an ancestor whose parent can be read
+    /// and whose arguments cannot is one nobody can say is not an agent.
+    #[test]
+    fn an_ancestor_whose_arguments_cannot_be_read_refuses_the_removal_unsignalled() {
+        let scratch = Scratch::new("wtproc-noargs");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 841, &wt.to_string_lossy(), "node jest");
+        plant_parent(&proc, 841, 840);
+        plant_parent(&proc, 840, 1);
+        // A directory where the arguments belong: a read that should have
+        // been possible and was not.
+        std::fs::create_dir_all(proc.join("840/cmdline")).unwrap();
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        let Ending::Unreadable(why) = &outcome else {
+            panic!("an ancestor nobody could identify is not read as nobody's: {outcome:?}");
+        };
+        assert!(why.contains("pid 840"), "{why}");
+        assert!(sent.is_empty(), "{sent:?}");
+    }
+
+    /// ISS-1378 criterion 11.
+    #[test]
+    fn a_resident_whose_ancestry_cannot_be_read_refuses_the_removal_unsignalled() {
+        let scratch = Scratch::new("wtproc-noparent");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 831, &wt.to_string_lossy(), "node jest");
+        plant_parent(&proc, 831, 830);
+        // 830 is listed and its status is a directory: a read that should
+        // have been possible and was not.
+        std::fs::create_dir_all(proc.join("830/status")).unwrap();
+
+        let (outcome, sent) = cleared(&proc, &wt);
+        let Ending::Unreadable(why) = &outcome else {
+            panic!("not knowing is not knowing it is safe: {outcome:?}");
+        };
+        assert!(
+            why.contains("pid 830") && why.contains("live agent"),
+            "{why}"
+        );
+        assert!(sent.is_empty(), "{sent:?}");
+        assert!(matches!(outcome.verdict(&wt), Verdict::Refuse(_)));
     }
 
     #[test]

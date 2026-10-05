@@ -99,6 +99,51 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     }
 }
 
+/// Whether a subagent that just started under a master is the one that
+/// master's pending declaration was made for, or why it is not.
+///
+/// A master starts subagents the box knows nothing about — a search, a review —
+/// and before this the first of them to start took the binding meant for the
+/// run (ISS-1378). Only a role this box ships does the work a declaration is
+/// made for, and where the gate promised the run to a dispatch the promise
+/// carries that dispatch's role. A master holds one unbound declaration at a
+/// time and the gate refuses every shipped-role dispatch but the one it
+/// promised, so while the gate works the only shipped-role start under a
+/// promise is the promised one. The tool call itself cannot be matched here:
+/// Claude Code writes the child's metadata naming it after this hook is
+/// answered.
+pub fn claims_the_run(
+    agent_type: Option<&str>,
+    roles: Option<&BTreeSet<String>>,
+    promised_role: Option<&str>,
+) -> Result<(), String> {
+    let Some(role) = agent_type else {
+        return Err(
+            "its hook named no agent type, so which agent is the run's cannot be told and it is \
+             not taken for the run's"
+                .to_string(),
+        );
+    };
+    let Some(roles) = roles else {
+        return Err(format!(
+            "the roles this box's plugin copy ships could not be read, so whether `{role}` is the \
+             run's cannot be told and it is not taken for the run's"
+        ));
+    };
+    if !roles.contains(role) {
+        return Err(format!(
+            "`{role}` is no role this box ships, so it is a helper of the master's and not the \
+             run's"
+        ));
+    }
+    match promised_role {
+        Some(promised) if promised != role => Err(format!(
+            "the run was promised to a `{promised}` dispatch and this subagent started as `{role}`"
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// What a stat of one marketplace's `plugin/agents` established about it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Agents {
@@ -120,6 +165,22 @@ pub(crate) fn agents_reach(stat: Result<bool, std::io::ErrorKind>) -> Agents {
     }
 }
 
+/// The name a plugin copy's manifest gives it, which Claude Code puts in
+/// front of every role that copy ships: `forge:runner`, never `runner`.
+fn plugin_name(plugin: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(plugin.join(".claude-plugin").join("plugin.json")).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&text).ok()?;
+    doc.get("name")
+        .and_then(|n| n.as_str())
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+}
+
+/// Every role this box's plugin copies ship, by the name Claude Code sends:
+/// `<plugin>:<role>`. The file stem alone matched no dispatch Claude Code ever
+/// made, so the gate passed every one of them as not its subject (ISS-1378:
+/// 15 bindings and no promise in three days of the live journal).
 pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
     let mut out = BTreeSet::new();
     for clone in std::fs::read_dir(config_dir.join("marketplaces")).ok()? {
@@ -127,7 +188,8 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
         // incomplete, and an incomplete inventory is indistinguishable from a
         // complete one at every reader.
         let clone = clone.ok()?;
-        let agents = clone.path().join("plugin").join("agents");
+        let plugin = clone.path().join("plugin");
+        let agents = plugin.join("agents");
         match agents_reach(
             std::fs::metadata(&agents)
                 .map(|m| m.is_dir())
@@ -137,13 +199,16 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
             Agents::Unreadable => return None,
             Agents::Readable => {}
         }
+        // A copy whose roles cannot be named as Claude Code names them leaves
+        // the inventory as incomplete as one whose directory could not be read.
+        let name = plugin_name(&plugin)?;
         for agent in std::fs::read_dir(agents).ok()? {
             let path = agent.ok()?.path();
             if path.extension().and_then(|e| e.to_str()) != Some("md") {
                 continue;
             }
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                out.insert(stem.to_string());
+                out.insert(format!("{name}:{stem}"));
             }
         }
     }
@@ -162,8 +227,25 @@ mod tests {
     fn roles() -> BTreeSet<String> {
         ["runner", "reviewer", "qa", "triage", "evaluator"]
             .into_iter()
-            .map(str::to_string)
+            .map(|r| format!("forge:{r}"))
             .collect()
+    }
+
+    /// A plugin copy as the daemon syncs one: its manifest naming it, and a
+    /// file per role.
+    fn a_copy(at: &Path, name: Option<&str>, roles: &[&str]) {
+        let plugin = at.join("plugin");
+        std::fs::create_dir_all(plugin.join("agents")).expect("tree");
+        std::fs::create_dir_all(plugin.join(".claude-plugin")).expect("tree");
+        let manifest = match name {
+            Some(n) => format!("{{\"name\": \"{n}\", \"version\": \"1\"}}"),
+            None => "{\"version\": \"1\"}".to_string(),
+        };
+        std::fs::write(plugin.join(".claude-plugin/plugin.json"), manifest).expect("manifest");
+        for role in roles {
+            std::fs::write(plugin.join("agents").join(format!("{role}.md")), "---\n")
+                .expect("agent");
+        }
     }
 
     fn dispatch(role: &str, tool_use: &str) -> Dispatch {
@@ -191,7 +273,10 @@ mod tests {
     fn a_dispatch_to_a_shipped_role_with_nothing_declared_is_refused() {
         let r = roles();
         assert_eq!(
-            decide(&dispatch("runner", "toolu_1"), &facts(Some(&r), None, None)),
+            decide(
+                &dispatch("forge:runner", "toolu_1"),
+                &facts(Some(&r), None, None)
+            ),
             Verdict::Undeclared
         );
     }
@@ -215,7 +300,7 @@ mod tests {
         let r = roles();
         assert_eq!(
             decide(
-                &dispatch("runner", "toolu_1"),
+                &dispatch("forge:runner", "toolu_1"),
                 &facts(Some(&r), Some("run-7"), None)
             ),
             Verdict::Covered {
@@ -230,7 +315,7 @@ mod tests {
         let r = roles();
         let f = facts(Some(&r), Some("run-7"), Some("toolu_1"));
         assert_eq!(
-            decide(&dispatch("runner", "toolu_2"), &f),
+            decide(&dispatch("forge:runner", "toolu_2"), &f),
             Verdict::Undeclared,
             "two subagents under one declared row is two units of work with one record"
         );
@@ -242,7 +327,7 @@ mod tests {
         let r = roles();
         let f = facts(Some(&r), Some("run-7"), Some("toolu_1"));
         assert_eq!(
-            decide(&dispatch("runner", "toolu_1"), &f),
+            decide(&dispatch("forge:runner", "toolu_1"), &f),
             Verdict::Replay {
                 run_id: "run-7".into()
             }
@@ -266,7 +351,7 @@ mod tests {
     #[test]
     fn a_tool_call_raised_inside_a_child_is_not_this_gates_subject() {
         let r = roles();
-        let mut d = dispatch("runner", "toolu_1");
+        let mut d = dispatch("forge:runner", "toolu_1");
         d.agent_id = Some("acf9b1721de184fa7".into());
         assert_eq!(decide(&d, &facts(Some(&r), None, None)), Verdict::NotOurs);
     }
@@ -274,7 +359,7 @@ mod tests {
     #[test]
     fn a_dispatch_with_no_tool_call_id_is_uncertain_rather_than_covered() {
         let r = roles();
-        let mut d = dispatch("runner", "toolu_1");
+        let mut d = dispatch("forge:runner", "toolu_1");
         d.tool_use_id = None;
         let v = decide(&d, &facts(Some(&r), Some("run-7"), None));
         assert!(
@@ -290,7 +375,7 @@ mod tests {
         // payload that happens to be thin. This pins the id check BELOW the pending-run check --
         // hoisting it turns this refusal into an allow and every other test here stays green.
         let r = roles();
-        let mut d = dispatch("runner", "toolu_1");
+        let mut d = dispatch("forge:runner", "toolu_1");
         d.tool_use_id = None;
         let v = decide(&d, &facts(Some(&r), None, None));
         assert!(
@@ -306,7 +391,7 @@ mod tests {
         // tell a replay whose id was stripped from a genuine second ride. It allows and marks, and
         // whichever child ends up unbound is denounced at SubagentStart instead.
         let r = roles();
-        let mut d = dispatch("runner", "toolu_1");
+        let mut d = dispatch("forge:runner", "toolu_1");
         d.tool_use_id = None;
         let v = decide(&d, &facts(Some(&r), Some("run-7"), Some("toolu_other")));
         assert!(
@@ -317,7 +402,10 @@ mod tests {
 
     #[test]
     fn a_role_set_that_could_not_be_read_is_unknown_and_not_no_match() {
-        let v = decide(&dispatch("runner", "toolu_1"), &facts(None, None, None));
+        let v = decide(
+            &dispatch("forge:runner", "toolu_1"),
+            &facts(None, None, None),
+        );
         assert!(
             matches!(v, Verdict::Unknown(_)),
             "an unreadable role set must be UNKNOWN, not a silent pass: {v:?}"
@@ -357,9 +445,11 @@ mod tests {
     #[test]
     fn a_role_scan_that_could_not_finish_is_not_a_partial_answer() {
         let dir = Scratch::new("partialroles");
-        let good = dir.path().join("marketplaces/a__plugin/plugin/agents");
-        std::fs::create_dir_all(&good).expect("tree");
-        std::fs::write(good.join("runner.md"), "---\n").expect("agent");
+        a_copy(
+            &dir.path().join("marketplaces/a__plugin"),
+            Some("forge"),
+            &["runner"],
+        );
 
         // A second clone whose agents directory cannot even be STATTED, because
         // an ancestor of it is closed. This is the shape `is_dir()` alone reads
@@ -396,8 +486,11 @@ mod tests {
     #[test]
     fn a_marketplace_tree_with_no_agents_reads_as_unknown_rather_than_as_none() {
         let dir = Scratch::new("gatedecide-1");
-        std::fs::create_dir_all(dir.path().join("marketplaces/some__plugin/plugin/agents"))
-            .expect("tree");
+        a_copy(
+            &dir.path().join("marketplaces/some__plugin"),
+            Some("forge"),
+            &[],
+        );
         assert_eq!(shipped_roles(dir.path()), None);
     }
 
@@ -405,26 +498,111 @@ mod tests {
     #[test]
     fn the_roles_are_read_from_the_plugin_copy_on_this_box() {
         let dir = Scratch::new("gatedecide-2");
-        let agents = dir
-            .path()
-            .join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
-        std::fs::create_dir_all(&agents).expect("tree");
-        for role in ["runner", "reviewer", "a-role-nobody-has-written-yet"] {
-            std::fs::write(agents.join(format!("{role}.md")), "---\n").expect("agent");
-        }
-        std::fs::write(agents.join("README.txt"), "not an agent").expect("readme");
+        let copy = dir.path().join("marketplaces/sidcorp-co__forge-plugin");
+        a_copy(
+            &copy,
+            Some("forge"),
+            &["runner", "reviewer", "a-role-nobody-has-written-yet"],
+        );
+        std::fs::write(copy.join("plugin/agents/README.txt"), "not an agent").expect("readme");
         let found = shipped_roles(dir.path()).expect("roles");
-        assert!(found.contains("a-role-nobody-has-written-yet"));
-        assert!(!found.contains("README"));
+        assert!(
+            found.contains("forge:a-role-nobody-has-written-yet"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|r| r.contains("README")), "{found:?}");
 
         // and a role nobody has written yet is gated the moment the plugin ships it,
         // with no change to this binary.
         assert_eq!(
             decide(
-                &dispatch("a-role-nobody-has-written-yet", "toolu_1"),
+                &dispatch("forge:a-role-nobody-has-written-yet", "toolu_1"),
                 &facts(Some(&found), None, None)
             ),
             Verdict::Undeclared
         );
+    }
+
+    /// ISS-1378 criterion 6. Claude Code sends a plugin's role under the
+    /// plugin's own name, and the bare file stem is what no dispatch carries.
+    #[test]
+    fn a_role_is_named_as_claude_code_sends_it_and_never_by_its_file_stem() {
+        let dir = Scratch::new("gatedecide-ns");
+        a_copy(
+            &dir.path().join("marketplaces/sidcorp-co__forge-plugin"),
+            Some("forge"),
+            &["runner"],
+        );
+        let found = shipped_roles(dir.path()).expect("roles");
+        assert_eq!(
+            found.iter().map(String::as_str).collect::<Vec<_>>(),
+            vec!["forge:runner"]
+        );
+        assert_eq!(
+            decide(
+                &dispatch("forge:runner", "toolu_1"),
+                &facts(Some(&found), None, None)
+            ),
+            Verdict::Undeclared,
+            "the dispatch Claude Code really makes, with nothing declared, is refused"
+        );
+        assert_eq!(
+            decide(
+                &dispatch("forge:runner", "toolu_1"),
+                &facts(Some(&found), Some("run-7"), None)
+            ),
+            Verdict::Covered {
+                run_id: "run-7".into()
+            },
+            "and one a declaration covers is promised"
+        );
+    }
+
+    /// ISS-1378 criterion 7.
+    #[test]
+    fn a_copy_whose_manifest_names_no_plugin_leaves_the_inventory_unknown() {
+        let dir = Scratch::new("gatedecide-noname");
+        a_copy(
+            &dir.path().join("marketplaces/a__plugin"),
+            Some("forge"),
+            &["runner"],
+        );
+        a_copy(
+            &dir.path().join("marketplaces/b__plugin"),
+            None,
+            &["reviewer"],
+        );
+        assert_eq!(
+            shipped_roles(dir.path()),
+            None,
+            "roles that cannot be named as Claude Code names them leave the inventory as \
+             incomplete as a directory that could not be read, and a partial inventory reads \
+             every role in the missing half as not ours"
+        );
+    }
+
+    /// ISS-1378 criteria 1, 3, 4: the start decision.
+    #[test]
+    fn only_a_shipped_role_and_the_promised_one_claims_a_declared_run() {
+        let r = roles();
+        assert_eq!(claims_the_run(Some("forge:runner"), Some(&r), None), Ok(()));
+        assert_eq!(
+            claims_the_run(Some("forge:runner"), Some(&r), Some("forge:runner")),
+            Ok(())
+        );
+        for helper in ["general-purpose", "Explore", "runner"] {
+            let why = claims_the_run(Some(helper), Some(&r), None).expect_err(helper);
+            assert!(why.contains("no role this box ships"), "{helper}: {why}");
+        }
+        let why = claims_the_run(Some("forge:reviewer"), Some(&r), Some("forge:runner"))
+            .expect_err("another shipped role");
+        assert!(
+            why.contains("promised to a `forge:runner` dispatch"),
+            "{why}"
+        );
+        let why = claims_the_run(None, Some(&r), None).expect_err("no type");
+        assert!(why.contains("cannot be told"), "{why}");
+        let why = claims_the_run(Some("forge:runner"), None, None).expect_err("no roles");
+        assert!(why.contains("cannot be told"), "{why}");
     }
 }

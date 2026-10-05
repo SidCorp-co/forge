@@ -182,6 +182,7 @@ mod tests {
             commit: "abc".into(),
             started_at_ms: 0,
             drain: None,
+            update_refused: None,
         }
     }
 

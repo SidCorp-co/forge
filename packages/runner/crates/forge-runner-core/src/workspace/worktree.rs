@@ -1232,7 +1232,74 @@ pub(crate) mod tests {
             std::fs::create_dir_all(&d).expect("a pid directory");
             std::os::unix::fs::symlink(at, d.join("cwd")).expect("a cwd link");
             std::fs::write(d.join("cmdline"), b"next-server\0(v16.2.1)").expect("a cmdline");
+            std::fs::write(d.join("status"), "Name:\tnode\nPPid:\t1\n").expect("a status");
         }
+
+        /// A hand that records every signal asked of it and ends nothing.
+        #[derive(Default)]
+        pub(super) struct Counting(pub(super) std::sync::Mutex<Vec<u32>>);
+
+        impl Hand for Counting {
+            fn signal(&self, pid: u32, _sig: Sig) -> std::result::Result<(), String> {
+                self.0.lock().unwrap().push(pid);
+                Ok(())
+            }
+            fn present(&self, _pid: u32) -> bool {
+                true
+            }
+            fn identity(&self, pid: u32) -> Option<String> {
+                Some(format!("proc-{pid}"))
+            }
+        }
+    }
+
+    /// ISS-1378 criterion 9: the forced-release route's removal refuses a
+    /// checkout a live agent's process is living in, signals nothing, and
+    /// leaves the directory — whatever the ledger said about its run.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_removal_leaves_a_checkout_a_live_agents_gate_is_living_in() {
+        let root = repo("residents-live-agent").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1378", None).await.unwrap();
+        let proc = root.join("proc");
+        residents::one_living_in(&proc, &linked);
+        // pid 4242 is a gate whose shell 4241 a Claude Code process 4200 started.
+        for (pid, ppid, cmd) in [(4241u32, 4200u32, "bash"), (4200, 1, "claude")] {
+            let d = proc.join(pid.to_string());
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("cmdline"), cmd).unwrap();
+            std::fs::write(d.join("status"), format!("Name:\t{cmd}\nPPid:\t{ppid}\n")).unwrap();
+        }
+        std::fs::write(proc.join("4242/status"), "Name:\tnode\nPPid:\t4241\n").unwrap();
+        let hand = residents::Counting::default();
+
+        let refused = remove_at_clearing(
+            &r,
+            &linked,
+            "the ledger reads its run as ended",
+            &Clearing {
+                proc_root: &proc,
+                grace: residents::NO_WAIT,
+                hand: &hand,
+            },
+        )
+        .await
+        .expect_err("a live agent's checkout is not given back");
+
+        let said = refused.to_string();
+        assert!(
+            said.contains("pid 4242") && said.contains("beneath Claude Code pid 4200"),
+            "criterion 12: the refusal names the resident and the agent it runs beneath: {said}"
+        );
+        assert!(said.contains("stays for the next sweep"), "{said}");
+        assert!(
+            hand.0.lock().unwrap().is_empty(),
+            "nothing in a live agent's checkout is signalled: {:?}",
+            hand.0.lock().unwrap()
+        );
+        assert!(linked.exists(), "and the directory stands");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[cfg(unix)]

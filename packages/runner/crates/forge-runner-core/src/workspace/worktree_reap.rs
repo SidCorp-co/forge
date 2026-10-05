@@ -1134,6 +1134,15 @@ mod tests {
             std::fs::create_dir_all(&d).expect("a pid directory");
             std::os::unix::fs::symlink(cwd, d.join("cwd")).expect("a cwd link");
             std::fs::write(d.join("cmdline"), cmd.replace(' ', "\0")).expect("a cmdline");
+            parent(root, pid, 1);
+        }
+
+        /// What `pid` runs beneath, as the process table records it.
+        pub(super) fn parent(root: &Path, pid: u32, ppid: u32) {
+            let d = root.join(pid.to_string());
+            std::fs::create_dir_all(&d).expect("a pid directory");
+            std::fs::write(d.join("status"), format!("Name:\tx\nPPid:\t{ppid}\n"))
+                .expect("a status");
         }
 
         pub(super) use crate::workspace::worktree_processes::planted::Unaskable;
@@ -1178,6 +1187,48 @@ mod tests {
             "neither `git worktree remove` nor `remove_dir_all` was reached: removing the \
              directory leaves the process exactly as running and takes the only thing naming it"
         );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// ISS-1378 criteria 8 and 12, the issue's own case: the ledger says the
+    /// run that held the tree has ended, and a gate its live agent started is
+    /// still running in it. The sweep that would otherwise reap the tree
+    /// leaves it standing and signals nothing.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_tree_a_live_agents_gate_is_running_in_survives_a_sweep_that_would_reap_it() {
+        let (repo, wt) = repo_with_worktree("live-agent-gate").await;
+        let proc = repo.join("proc-of-this-test");
+        residents::plant(&proc, 909, &wt.to_string_lossy(), "node jest");
+        residents::parent(&proc, 909, 908);
+        residents::parent(&proc, 908, 900);
+        residents::parent(&proc, 900, 1);
+        std::fs::write(proc.join("900/cmdline"), "claude").unwrap();
+        let hand = residents::Wont::default();
+
+        let (log, guard) = crate::log_capture::capturing();
+        let swept = reap_repo_clearing(
+            &repo,
+            NOW,
+            &led_holding(&wt, true, true),
+            &residents::clearing(&proc, &hand),
+        )
+        .await;
+        drop(guard);
+        let said = log.said();
+
+        assert!(swept.removed.is_empty(), "{swept:?}");
+        assert!(wt.is_dir(), "the live agent's tree stands");
+        assert!(
+            hand.sent.lock().unwrap().is_empty(),
+            "nothing in it was signalled: {:?}",
+            hand.sent.lock().unwrap()
+        );
+        assert!(
+            said.contains("pid 909") && said.contains("beneath Claude Code pid 900"),
+            "{said}"
+        );
+        assert!(said.contains("stays for the next sweep"), "{said}");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
