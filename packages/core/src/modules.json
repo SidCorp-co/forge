@@ -323,7 +323,9 @@
         "REQ-5",
         "REQ-9",
         "requirement-to-delivery#contract-first",
-        "feedback-triage#breaking"
+        "feedback-triage#breaking",
+        "requirement-to-delivery#provider-live",
+        "feedback-triage#upgrade"
       ]
     },
     "error-intake": {
@@ -489,7 +491,10 @@
         "issue-delivery#issue",
         "issue-delivery#task-lease",
         "github-merge-sequence#m-stamp",
-        "workflow-step-health#in-builds"
+        "workflow-step-health#in-builds",
+        "issue-delivery#case-run",
+        "agent-run-standing#queued",
+        "requirement-to-delivery#contract-first"
       ]
     },
     "jobs": {
@@ -855,7 +860,8 @@
         "issue-delivery#case-release",
         "issue-delivery#task-release",
         "issue-delivery#act-release",
-        "requirement-to-delivery#release-requested"
+        "requirement-to-delivery#release-requested",
+        "requirement-to-delivery#release-gate"
       ]
     },
     "requirements": {
