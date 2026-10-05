@@ -13,16 +13,16 @@ import {
   type IntegrationConnectionRow,
   listBindingsForConnection,
 } from '../index.js';
-import { listGithubAppsReachableBy } from './install-candidates.js';
+import { type InstallCandidateScope, listGithubAppsReachableBy } from './install-candidates.js';
 import { appOctokit } from './octokit.js';
 
 export async function findConnectionOwningInstallation(args: {
-  userId: string;
+  scope: InstallCandidateScope;
   installationId: number;
   fetchImpl?: typeof fetch;
 }): Promise<{ connection: IntegrationConnectionRow; projectId: string | null } | null> {
   const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
-  const connections = await listGithubAppsReachableBy(args.userId);
+  const connections = await listGithubAppsReachableBy(args.scope);
 
   for (const connection of connections) {
     const { appId, privateKey } = decryptConnectionSecrets<{
