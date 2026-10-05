@@ -56,10 +56,8 @@ export type CommentNode<R extends CommentRow = CommentRow> = R & {
 /**
  * A comment's record: the event's content where the record was mirrored into one, placed where the
  * fence sits in the body so the prose around it keeps its place.
- *
- * cm:hack — the fence parse stands in for a record that has no event: a comment written before
- * migration 0347, read for history. Ends with the backfill that gives every such record an event
- * (`issues/record-events/history.ts`).
+ * A fence the mirror stored as prose only (no kind, a kind outside the set, or one only core writes;
+ * `issues/record-events/mirror.ts`) has no event, and is read from the body.
  */
 function recordOf(
   body: string,

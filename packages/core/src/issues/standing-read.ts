@@ -42,7 +42,6 @@ import {
   designUnapprovedSql,
   handoffContextsOf,
   holdsOpenHumanQuestion,
-  isDispatchGateError,
   policyGapsOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
@@ -275,7 +274,6 @@ const gateDetail = async (ask: () => Promise<void>): Promise<string | null> => {
     await ask();
     return null;
   } catch (err) {
-    if (isDispatchGateError(err)) return err.message.replace(/^WORKFLOW_DESIGN_NOT_APPROVED: /, '');
     if (isRefusal(err)) return err.refusals.map((r) => r.detail).join(' ');
     throw err;
   }

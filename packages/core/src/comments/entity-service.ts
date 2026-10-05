@@ -14,6 +14,7 @@ import { commentEvents } from '../db/schema-comments.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import {
   actorFor,
   type PermissionFacts,
@@ -28,7 +29,6 @@ import {
   type EntityCommentRow,
   entityCommentColumns,
   entityCommentView,
-  notFound,
   type ReadDoor,
   targetIn,
 } from './entity-read.js';

@@ -11,7 +11,6 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -26,6 +25,7 @@ import {
 } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
 import { feedbackRowIn, requirementRowIn } from './ports.js';
@@ -45,9 +45,6 @@ export interface CommentTarget {
   title: string | null;
   projectId: string;
 }
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const titleOf = (document: unknown, flow: string) => {
   const title = (document as { title?: unknown } | null)?.title;

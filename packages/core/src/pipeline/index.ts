@@ -1,7 +1,6 @@
 export { registerAnswerResume, resumeLapsedAnswers } from './answer-resume.js';
 export {
   AUTONOMOUS_ENTRY_STATUS,
-  AUTONOMOUS_QUESTION_STATUS,
   isEntryGateClosed,
 } from './autonomous-mode.js';
 export {
@@ -23,9 +22,7 @@ export {
 } from './deploy-lock.js';
 export { insertAndEnqueueJob } from './enqueue-helper.js';
 export {
-  FAILURE_CAUSE_ORIGIN,
   type FailureCause,
-  isRealFailureCause,
   resolveFailureCause,
 } from './failure-causes.js';
 export {
@@ -62,7 +59,6 @@ export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 export { assertRunAcceptsWork } from './run-guard.js';
-export type { PauseResumer } from './run-pause.js';
 export {
   describePause,
   type OrphanedPauseResult,

@@ -19,7 +19,6 @@ export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
-export type { ReleaseHold } from './hold.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,

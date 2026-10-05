@@ -1,7 +1,8 @@
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { edgeBetween, exitsOf } from '@forge/contracts/state-machine';
 import type { IssueStatus } from '../db/schema.js';
-import { TransitionError } from './apply-transition.js';
+import type { RefusalError } from '../lib/refusal.js';
+import { transitionRefused } from './apply-transition.js';
 import { guideRef } from './ports.js';
 
 const RECOVERY_EXITS = exitsOf(ISSUE_MACHINE, 'in_progress', true);
@@ -13,7 +14,7 @@ const isRecoveryEdge = (from: IssueStatus, to: IssueStatus) =>
 // holds; `apply-transition.ts` refuses it while anything does, so a live holder is never displaced.
 export function refuseOffRecoveryEdge(from: IssueStatus, to: IssueStatus): void {
   if (isRecoveryEdge(from, to)) return;
-  throw new TransitionError(
+  throw transitionRefused(
     'ILLEGAL_TRANSITION',
     `\`recovery: true\` names the hand-back of an \`in_progress\` issue nothing holds, to ${RECOVERY_TARGETS} (${guideRef('pipeline-and-issue-lifecycle')}). \`${from}\` → \`${to}\` is not one; send the move without \`recovery\`.`,
     { from, to, recovery: true, recoveryEdges: { in_progress: RECOVERY_EXITS } },
@@ -21,15 +22,16 @@ export function refuseOffRecoveryEdge(from: IssueStatus, to: IssueStatus): void 
 }
 
 export function withRecoveryHint(
-  err: TransitionError,
+  err: RefusalError,
   from: IssueStatus,
   to: IssueStatus,
   recovery: boolean | undefined,
-): TransitionError {
-  if (recovery || err.code !== 'ILLEGAL_TRANSITION' || !isRecoveryEdge(from, to)) return err;
-  return new TransitionError(
-    err.code,
-    `${err.detail} An \`in_progress\` issue nothing holds any more is handed back to ${RECOVERY_TARGETS} by the recovery move: once its holder has let it go, send \`recovery: true\` with the reason (a judge's failed criteria go back to \`reopen\`).`,
-    err.details,
+): RefusalError {
+  const [refusal] = err.refusals;
+  if (recovery || refusal?.code !== 'ILLEGAL_TRANSITION' || !isRecoveryEdge(from, to)) return err;
+  return transitionRefused(
+    refusal.code,
+    `${refusal.detail} An \`in_progress\` issue nothing holds any more is handed back to ${RECOVERY_TARGETS} by the recovery move: once its holder has let it go, send \`recovery: true\` with the reason (a judge's failed criteria go back to \`reopen\`).`,
+    refusal,
   );
 }

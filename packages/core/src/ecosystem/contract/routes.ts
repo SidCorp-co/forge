@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { refused } from '../../lib/refusal.js';
@@ -9,6 +8,7 @@ import {
   requireAuth,
   restActor,
 } from '../../middleware/auth.js';
+import { notFound } from '../../middleware/route-errors.js';
 import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/index.js';
@@ -25,10 +25,6 @@ export const contractRoutes = new Hono<{ Variables: AuthVars }>();
 for (const path of ['/:id/contracts/:contract/*', '/:id/consumes/:provider/:contract/*']) {
   contractRoutes.use(path, requireAuth(), assertEmailVerified());
 }
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 const contractParam = zValidator(
   'param',
   z.object({ id: z.uuid(), contract: slug() }),

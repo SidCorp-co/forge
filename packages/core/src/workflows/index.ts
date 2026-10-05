@@ -4,7 +4,6 @@ export {
   buildsWorkflowOf,
   designUnapprovedSql,
 } from './build-gate.js';
-export { WorkflowDesignNotApprovedError } from './design.js';
 export { proposesWorkflowOf } from './design-issue.js';
 export { workflowDesign } from './design-lookup.js';
 export { provideWorkflowHealthPorts } from './health-ports.js';

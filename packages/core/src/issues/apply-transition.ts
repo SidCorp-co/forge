@@ -9,7 +9,7 @@ import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import type { Refusal } from '../lib/refusal.js';
+import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
@@ -30,24 +30,19 @@ import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
 const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
-export type TransitionErrorCode = IssueTransitionRefusalCode;
-
 const isStale = (r: Refusal): r is ReturnType<typeof staleTransitionRefusal> =>
   r.code === 'STALE_TRANSITION';
 
 /**
- * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
- * the MCP surface exposes; REST callers map `code`/`detail`/`details` onto
- * HTTPException instead of parsing the string.
+ * A refused move, under the guard's own code and declared status, its structured facts
+ * (`openQuestionIds`, `requires`, …) on the refusal row. Both doors answer it in the envelope.
  */
-export class TransitionError extends Error {
-  constructor(
-    readonly code: TransitionErrorCode,
-    readonly detail: string,
-    readonly details: Record<string, unknown> = {},
-  ) {
-    super(`${code}: ${detail}`);
-  }
+export function transitionRefused(
+  code: IssueTransitionRefusalCode,
+  detail: string,
+  details: Record<string, unknown> = {},
+): RefusalError {
+  return new RefusalError([{ ...details, code, path: '', detail }], code);
 }
 
 export type TransitionIssueRow = {
@@ -128,13 +123,12 @@ function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): W
 }
 
 /**
- * THE issue state-machine writer. Every surface — REST `/transition`,
- * REST `PATCH /batch`, the reconciler, the release batch — routes through here so
+ * THE issue state-machine writer. Every surface — REST `/transition`, the reconciler, the release batch — routes through here so
  * the lifecycle's edges and guards (`transition-guards.ts`), the conditional UPDATE, the work state,
  * pipeline-health refresh and run close cannot drift apart. The broadcast is a consumer of the
  * move's outbox event.
  *
- * Throws `TransitionError`; callers map it onto their own error surface.
+ * Throws `transitionRefused`'s refusal.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -144,12 +138,12 @@ export async function transitionIssueStatus(
 ): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
   const [archived] = await archivedAmong(db, [issue.id]);
-  if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
+  if (archived) throw transitionRefused('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
   const work = await readWorkState(db, issue.id);
   const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
 
   if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
+    throw transitionRefused('NO_OP', `issue already in status ${toStatus}`, {
       status: fromStatus,
     });
   }
@@ -158,11 +152,11 @@ export async function transitionIssueStatus(
   const recovering = options.recovery === true;
   if (!recovering) {
     const edge = edgeFault({ from: fromStatus, to: toStatus, leftStatus });
-    if (edge) throw new TransitionError(edge.code, edge.detail, edge.details);
+    if (edge) throw transitionRefused(edge.code, edge.detail, edge.details);
   }
 
   if (options.waitingKind && toStatus !== 'needs_info') {
-    throw new TransitionError(
+    throw transitionRefused(
       'WAITING_KIND_NOT_APPLICABLE',
       `\`waitingKind\` is stored only for a \`needs_info\` park, and \`${toStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
       { from: fromStatus, to: toStatus, waitingKind: options.waitingKind },
@@ -171,7 +165,7 @@ export async function transitionIssueStatus(
 
   const needsRefused = needsNotApplicable({ issue, toStatus, actor, options });
   if (needsRefused) {
-    throw new TransitionError('NEEDS_NOT_APPLICABLE', needsRefused, {
+    throw transitionRefused('NEEDS_NOT_APPLICABLE', needsRefused, {
       from: fromStatus,
       to: toStatus,
     });
@@ -185,7 +179,7 @@ export async function transitionIssueStatus(
     waitingKind: options.waitingKind,
   });
   if (reasonMissing) {
-    throw new TransitionError(reasonMissing.code, reasonMissing.detail, reasonMissing.details);
+    throw transitionRefused(reasonMissing.code, reasonMissing.detail, reasonMissing.details);
   }
 
   const step = stepAfter(fromStatus, toStatus, work?.step ?? null);
@@ -299,7 +293,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     beforeWrite: async (tx) => {
       const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
       if (archiveRefusal) {
-        throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
+        throw transitionRefused('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
       }
       await options.beforeStatusWrite?.(tx);
       if (requiresAuthoredReason(fromStatus, toStatus)) {
@@ -324,7 +318,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         by,
         actor: kernelActorFor(actor),
       });
-      if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
+      if (asked) throw transitionRefused(asked.code, asked.detail, asked.details);
     },
     afterWrite: async (tx, rows) => {
       const row = rows[0];
@@ -339,7 +333,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   });
   const lead: Refusal | undefined = moved.refusals[0];
   if (lead && isStale(lead)) {
-    throw new TransitionError('STALE_TRANSITION', lead.detail, {
+    throw transitionRefused('STALE_TRANSITION', lead.detail, {
       from: fromStatus,
       to: toStatus,
       expected: lead.expected,
@@ -349,10 +343,10 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   const refused = lead as
     | (Refusal & { code: GuardCode; details?: Record<string, unknown> })
     | undefined;
-  if (refused) throw new TransitionError(refused.code, refused.detail, refused.details ?? {});
+  if (refused) throw transitionRefused(refused.code, refused.detail, refused.details ?? {});
   const [row] = moved.rows;
   if (!row) {
-    throw new TransitionError(
+    throw transitionRefused(
       'STALE_TRANSITION',
       `the issue was expected at \`${fromStatus}\` for the move to \`${toStatus}\`, and it was deleted first`,
       { from: fromStatus, to: toStatus, expected: fromStatus, actual: null },
@@ -366,8 +360,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
 }
 
 /** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as
- *  `transitionIssueStatus`; failures surface as `TransitionError`, whose legacy `CODE: detail`
- *  message MCP tool handlers wrap uniformly. */
+ *  `transitionIssueStatus`, refusals included. */
 export async function applyStatusTransition(
   issue: TransitionIssueRow,
   toStatus: IssueStatus,

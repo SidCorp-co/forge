@@ -57,7 +57,7 @@ import {
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
 import { mergeNotRecorded } from './merged-at.js';
-import { isDispatchGateError, planDriftOf, readProjectDocument } from './ports.js';
+import { planDriftOf, readProjectDocument } from './ports.js';
 import {
   type CriteriaEvidence,
   readMoveDrafts,
@@ -185,11 +185,12 @@ async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
         details: { from: ctx.from, to: ctx.to },
       };
     }
-    if (isDispatchGateError(err)) {
+    if (isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')) {
+      const [gate] = err.refusals as readonly (Refusal & { blocked?: unknown })[];
       return {
-        code: err.code,
-        detail: err.message.replace(`${err.code}: `, ''),
-        details: { from: ctx.from, to: ctx.to, blocked: err.blocked },
+        code: 'WORKFLOW_DESIGN_NOT_APPROVED',
+        detail: gate?.detail ?? '',
+        details: { from: ctx.from, to: ctx.to, blocked: gate?.blocked },
       };
     }
     throw err;

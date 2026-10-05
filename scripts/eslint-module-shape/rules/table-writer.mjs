@@ -19,7 +19,26 @@ export default {
       description:
         'A table is written only by the module modules.json names as its owner (docs/conventions/domain-entities.md).',
     },
-    schema: [],
+    schema: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          generic: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['file', 'why'],
+              properties: {
+                file: { type: 'string', minLength: 1 },
+                why: { type: 'string', minLength: 40 },
+              },
+            },
+          },
+        },
+      },
+    ],
     messages: {
       foreign:
         'writes {{table}} ({{sql}}), owned by {{owner}}; call a service of {{owner}} instead',
@@ -35,9 +54,11 @@ export default {
     const { owners, bySql, schemaFiles } = shape();
     const { file, module } = placeOf(context.filename);
     if (schemaFiles.has(file)) return {};
+    const generic = (context.options[0]?.generic ?? []).some((g) => g.file === file);
 
     function judge(node, sql, op) {
       if (sql === null) {
+        if (generic) return;
         context.report({ node, messageId: 'unnamed', data: { op } });
         return;
       }

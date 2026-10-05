@@ -7,13 +7,13 @@ import {
 } from '@forge/contracts/agent-reports';
 import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { agentReports } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { buildListEnvelope } from '../lib/list-envelope.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
@@ -21,12 +21,6 @@ import { fileReport, readReportFeed, reportFiltersSchema, submitReportSchema } f
 import { readReport, visibleIssue, writableProjectIds } from './service.js';
 import { triageBySignal } from './signal-triage.js';
 import { type ReportActor, type TriageOutcome, triageReports } from './triage.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 type Ctx = Context<{ Variables: AuthVars }>;
 

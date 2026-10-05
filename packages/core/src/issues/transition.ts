@@ -4,17 +4,13 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { RefusalError } from '../lib/refusal.js';
+import { isRefusal } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
-import {
-  type StatusTransitionResult,
-  TransitionError,
-  transitionIssueStatus,
-} from './apply-transition.js';
+import { type StatusTransitionResult, transitionIssueStatus } from './apply-transition.js';
 import { liveBlockedDependentsOf } from './dependency-read.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -34,17 +30,6 @@ const transitionBodySchema = z
     recovery: z.literal(true).optional(),
   })
   .strict();
-
-/**
- * A refused move answers in the one envelope under the guard's own code and declared status, its
- * structured facts (`openQuestionIds`, `requires`, …) on the refusal row.
- */
-function transitionRefusal(err: TransitionError): RefusalError {
-  return new RefusalError(
-    [{ ...err.details, code: err.code, path: '', detail: err.detail }],
-    err.code,
-  );
-}
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
  *  event payload. Anything above is summarised as `+N more` on the toast. */
@@ -186,9 +171,7 @@ transitionRoutes.post(
         },
       );
     } catch (err) {
-      if (err instanceof TransitionError) {
-        throw transitionRefusal(withRecoveryHint(err, fromStatus, toStatus, recovery));
-      }
+      if (isRefusal(err)) throw withRecoveryHint(err, fromStatus, toStatus, recovery);
       throw err;
     }
 

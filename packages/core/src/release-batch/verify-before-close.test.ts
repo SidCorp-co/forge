@@ -18,7 +18,6 @@ vi.mock('../pipeline/index.js', () => ({
   }),
 }));
 vi.mock('../issues/index.js', () => ({
-  TransitionError: class extends Error {},
   transitionIssueStatus: vi.fn(),
 }));
 vi.mock('./abort-stamp.js', () => ({

@@ -6,7 +6,6 @@ import {
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, count, desc, eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -15,6 +14,7 @@ import { findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
@@ -27,9 +27,6 @@ export interface FeedbackActor {
 }
 
 export type Row = typeof feedback.$inferSelect;
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** An item of `projectId` by uuid, `FB-n` or `n`, locked for update when asked; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false): Promise<Row> {

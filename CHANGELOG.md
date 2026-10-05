@@ -14,6 +14,9 @@
   REST route, contract-change filings wake masters, onboarding drafts read "Plan from code",
   and the retrieval log, plan-baseline column and build unlink are gone.
 
+- **A refused move and an unapproved design answer in the refusal envelope at both doors.**
+  Record history reads events only: pre-event record comments get their event in a backfill.
+
 ## [0.4.0-dev.32] - 2026-10-05
 
 Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates

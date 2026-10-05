@@ -11,10 +11,7 @@ import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-reco
 /**
  * How long a release batch may wait for a box to take its job.
  */
-export const RELEASE_UNSTARTED_DEADLINE_MS = (() => {
-  const raw = Number(process.env.FORGE_RELEASE_UNSTARTED_DEADLINE_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60_000;
-})();
+export const RELEASE_UNSTARTED_DEADLINE_MS = 30 * 60_000;
 
 interface ReleaseUnstartedRecoveryResult {
   /** Batches whose job was fenced and whose roster was handed back. */

@@ -292,21 +292,6 @@ export async function listRecordEvents(
   return rows.map(eventOfRow);
 }
 
-/** The ids of the comments whose record already stands as an event, so history never reads twice. */
-export async function mirroredCommentIds(issueId: string, executor: Tx = db): Promise<Set<string>> {
-  const rows = await executor
-    .select({ key: activityLog.dedupeKey })
-    .from(activityLog)
-    .where(
-      and(
-        eq(activityLog.issueId, issueId),
-        like(activityLog.dedupeKey, `${commentMirrorKey('')}%`),
-      ),
-    );
-  const prefix = commentMirrorKey('');
-  return new Set(rows.flatMap((r) => (r.key ? [r.key.slice(prefix.length)] : [])));
-}
-
 /** The events these comments' records were mirrored into, keyed by comment id. */
 export async function mirroredEventsFor(
   issueId: string,

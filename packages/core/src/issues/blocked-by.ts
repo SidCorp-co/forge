@@ -17,11 +17,7 @@ import {
   designHoldPhrase,
   designHoldsOf,
 } from './design-delivery.js';
-import {
-  assertDesignApprovedForIssue,
-  assertDesignsApprovedForSeqs,
-  isDispatchGateError,
-} from './ports.js';
+import { assertDesignApprovedForIssue, assertDesignsApprovedForSeqs } from './ports.js';
 
 const DROPPED: IssueStatus = 'dropped';
 
@@ -312,9 +308,6 @@ export function heldTakeRefusal(err: unknown): RefusalError | null {
     isRefusal(err, 'CONTRACT_WAIT_UNSETTLED')
   ) {
     return err;
-  }
-  if (isDispatchGateError(err)) {
-    return new RefusalError([{ code: err.code, path: '', detail: err.message }], err.code);
   }
   return null;
 }
