@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.33] - 2026-10-05
+
+Dead routes and unread data removed; unknown API filters are refused, not ignored
+
+
 ### Changed
 
 - **Unknown query keys are refused; audit 4's dead paths go.** Bulk triage by signal has a
