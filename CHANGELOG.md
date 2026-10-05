@@ -10,9 +10,9 @@
 
 ### Added
 
-- **A design shows its health (REQ-17, REQ-18).** Markers such as Upcoming, Not in design, Wrong and
-  Outdated are derived on every read and shown on the canvas, the rail and the list. Only rooted
-  designs are observed, and observer tokens cannot write designs.
+- **A design shows its health (REQ-17, REQ-18).** Markers such as Upcoming, Not in design and Wrong
+  are derived on every read and drawn on the canvas, rail and list. Only rooted designs are
+  observed; observer tokens cannot write designs.
 
 ### Fixed
 

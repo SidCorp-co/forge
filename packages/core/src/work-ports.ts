@@ -38,6 +38,7 @@ import {
   readConversationAgentMeta,
   resolveProjectHandle,
 } from './conversations/index.js';
+import { provideDevelopmentPorts } from './development/index.js';
 import { ADMITTED_RUNNER, readRunGate } from './devices/index.js';
 import {
   decideChannelGate,
@@ -116,6 +117,7 @@ import {
   buildsWorkflowOf,
   decisionNodeRefusal,
   designUnapprovedSql,
+  projectHealthAs,
   proposesWorkflowOf,
   provideWorkflowHealthPorts,
   provideWorkflowPorts,
@@ -258,6 +260,8 @@ export function provideWorkPorts(): void {
       };
     },
   });
+
+  provideDevelopmentPorts({ designHealthOf: projectHealthAs });
 
   provideWorkflowHealthPorts({
     openFeedbackOf: async (viewer, projectId) => {

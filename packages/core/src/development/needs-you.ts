@@ -23,7 +23,7 @@ import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
-import { projectHealthAs } from '../workflows/index.js';
+import { designHealthOf } from './ports.js';
 
 export interface NeedsYouViewer {
   userId: string;
@@ -79,7 +79,7 @@ export async function readNeedsYou(
       listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
       readContractStanding(projectId, viewer.userId, now),
       automationOf(projectId, viewer.userId, now),
-      projectHealthAs(viewer, projectId),
+      designHealthOf(viewer, projectId),
     ]);
   if (!feedback.ok) {
     throw new Error(
