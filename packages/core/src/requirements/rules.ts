@@ -1,5 +1,5 @@
 /**
- * The guards of workflow `requirement-lifecycle` rev 5, as pure functions over what the service
+ * The guards of workflow `requirement-lifecycle` rev 6, as pure functions over what the service
  * read: whether the actor holds requirements.approve, which revision may move where, what an agree pins, and the
  * BC codes a criteria list keeps or takes. Every refusal is named; the service answers it with
  * nothing written.
@@ -8,6 +8,7 @@
 import {
   type BaselineReadiness,
   DEFERRABLE_STATUSES,
+  type RequirementDedupCheck,
   type RequirementReadinessGate,
   type RequirementRefusalCode,
 } from '@forge/contracts/requirements';
@@ -173,13 +174,15 @@ export interface ReadinessAtHead {
 export function baselineReadiness(
   gate: RequirementReadinessGate,
   read: ReadinessAtHead | null,
+  dedup: RequirementDedupCheck,
 ): BaselineReadiness | null {
-  if (gate === 'off') return null;
+  if (gate === 'off' && dedup.ran) return null;
   return {
     gate,
     suggestionId: read?.suggestionId ?? null,
     ready: read !== null && read.failed.length === 0,
     failed: read?.failed ?? [],
+    ...(dedup.ran ? {} : { dedup }),
   };
 }
 

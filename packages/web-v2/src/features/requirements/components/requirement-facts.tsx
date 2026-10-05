@@ -192,15 +192,27 @@ export function RequirementFacts({
             {d.bindings.map((b) => (
               <li
                 key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
-                className="flex min-w-0 items-center gap-1.5 text-13"
+                className="grid min-w-0 gap-0.5 text-13"
                 data-testid="rail-binding"
               >
-                <span className="min-w-0 flex-1 truncate" title={`${b.flow} r${b.designRevision}, step ${b.step}: ${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}`}>
-                  {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate" title={`${b.flow} r${b.designRevision}, step ${b.step}: ${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}`}>
+                    {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
+                  </span>
+                  {b.brokenBy ? (
+                    <span className="flex-none text-12 text-danger" title={`${b.contract} ${b.brokenBy} removed or broke this element; re-agree to re-baseline`}>
+                      Broken by {b.brokenBy}
+                    </span>
+                  ) : null}
                 </span>
-                {b.brokenBy ? (
-                  <span className="flex-none text-12 text-danger" title={`${b.contract} ${b.brokenBy} removed or broke this element; re-agree to re-baseline`}>
-                    Broken by {b.brokenBy}
+                {b.buildingIssues.length > 0 ? (
+                  <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
+                    Built by
+                    {b.buildingIssues.map((i) => (
+                      <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${i.status})`} className="font-mono text-link hover:underline">
+                        {i.displayId}
+                      </Link>
+                    ))}
                   </span>
                 ) : null}
               </li>

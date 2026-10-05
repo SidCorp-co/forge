@@ -358,11 +358,24 @@ export const REQUIREMENT_NEAR_DUPLICATE_SIMILARITY = 0.9;
 export const REQUIREMENT_READINESS_GATE_DEFAULT: RequirementReadinessGate =
 	"off";
 
+/**
+ * requirement-to-delivery `similar` -> `ready`: whether the near-duplicate read ran on the head. A
+ * head with no stored vector (embeddings down, withheld by policy, not written yet) is not compared,
+ * and the agree says so rather than reading as if no near-duplicate exists.
+ */
+export type RequirementDedupCheck = { ran: true } | { ran: false; why: string };
+
+/**
+ * What an agree read of readiness at the head. Absent where the gate is off and dedup ran; at gate
+ * `off` it is written only to record that dedup was not checked.
+ */
 export interface BaselineReadiness {
-	gate: Exclude<RequirementReadinessGate, "off">;
+	gate: RequirementReadinessGate;
 	suggestionId: string | null;
 	ready: boolean;
 	failed: string[];
+	/** Absent on a baseline written before the agree recorded it. */
+	dedup?: RequirementDedupCheck;
 }
 
 /** Who a history entry came from, the filter the history is read by. */
@@ -650,6 +663,8 @@ export interface RequirementDetail extends RequirementSummary {
 		suggestionId: string;
 		decidedAt: string | null;
 	} | null;
+	/** Whether an agree at the head would compare it for near-duplicates; null with no head. */
+	dedup: RequirementDedupCheck | null;
 	deferral: RequirementDeferral | null;
 	feedback: RequirementFeedbackItem[];
 	/** Another project's contract request this draft landed as (E2); only this project agrees it. */
@@ -683,4 +698,17 @@ export interface RequirementScreenBinding {
 	 * the screen is affected and the BA re-agrees to re-baseline; null when none did.
 	 */
 	brokenBy: string | null;
+	/**
+	 * `impact`: the issues building this design's flow, once `brokenBy` names a version that reaches
+	 * it; empty while nothing broke the element.
+	 */
+	buildingIssues: RequirementBuildingIssue[];
+}
+
+/** An issue whose build link names the workflow a broken screen binding sits in. */
+export interface RequirementBuildingIssue {
+	issueId: string;
+	displayId: string;
+	title: string;
+	status: string;
 }

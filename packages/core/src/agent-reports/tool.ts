@@ -6,7 +6,7 @@ import {
   type TriageAgentReportRequest,
   triageAgentReportRequestSchema,
 } from '@forge/contracts/agent-reports';
-import { eq, inArray, type SQL } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   agentReportKinds,
@@ -33,6 +33,7 @@ import {
 } from '../projects/index.js';
 import { fileReport, readOneReport, readReportFeed, submitReportSchema } from './reports.js';
 import { readReport, visibleIssue, writableProjectIds } from './service.js';
+import { triageBySignal } from './signal-triage.js';
 import { triageReports } from './triage.js';
 
 const inputSchema = z
@@ -218,43 +219,41 @@ async function triage(ctx: McpContext, input: Input) {
     if (!linkIssue)
       throw new Error(`NOT_FOUND: issue ${act.issue} not found in any project you can see`);
   }
-  let scope: SQL[];
   if (input.signalKey) {
-    if (input.scope === 'all') {
-      if (act.act === 'file' && act.createIssue) {
-        throw new Error(
-          'BAD_REQUEST: createIssue files into one project, so a scope="all" triage names an existing issue instead',
-        );
-      }
-      const writable = writableProjectIds(await visibleProjectsWithRole(principal));
-      if (writable.length === 0) {
-        throw new Error('NOT_FOUND: no project you can write to holds agent reports');
-      }
-      scope = [
-        inArray(agentReports.projectId, writable),
-        eq(agentReports.signalKey, input.signalKey),
-      ];
-    } else {
-      const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-      await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
-      scope = [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)];
-    }
-  } else {
-    if (input.scope === 'all') {
-      throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk triage');
-    }
-    if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
-    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
-    const row = await readReport(input.reportId);
-    if (!row || row.projectId !== projectId) {
-      throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);
-    }
-    scope = [eq(agentReports.id, input.reportId)];
+    const all = input.scope === 'all';
+    const out = await triageBySignal(
+      {
+        signalKey: input.signalKey,
+        scope: all ? 'all' : 'project',
+        projectId: all ? null : await resolveEffectiveProjectId(ctx, input.projectId),
+        act,
+        actor,
+        channel: 'mcp',
+        linkIssue,
+      },
+      {
+        requireWrite: async (projectId) => {
+          await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
+        },
+        writableProjects: async () => writableProjectIds(await visibleProjectsWithRole(principal)),
+      },
+    );
+    if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
+    return { effect: out.effect };
+  }
+  if (input.scope === 'all') {
+    throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk triage');
+  }
+  if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
+  const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+  await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
+  const row = await readReport(input.reportId);
+  if (!row || row.projectId !== projectId) {
+    throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);
   }
   const out = await triageReports({
-    scope,
-    bulk: Boolean(input.signalKey),
+    scope: [eq(agentReports.id, input.reportId)],
+    bulk: false,
     act,
     actor,
     channel: 'mcp',

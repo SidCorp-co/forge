@@ -39,7 +39,7 @@ const TONE_GLYPH: Record<IssueStatusTone, string> = {
   err: "!",
 };
 
-/** A legend-toned mark with its own words ("New", "Open", "As-built"): the shared ToneBadge. */
+/** A legend-toned mark with its own words ("New", "Open", "Plan from code"): the shared ToneBadge. */
 export function ToneChip({
   tone,
   label,

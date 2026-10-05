@@ -17,7 +17,6 @@ import {
   linkBuildAs,
   proposeDesign,
   readDesignAs,
-  unlinkBuildAs,
 } from './design-service.js';
 import {
   noHealthSummary,
@@ -302,23 +301,6 @@ workflowRoutes.post(
     );
   },
 );
-
-workflowRoutes.delete('/:id/workflows/:workflow/builds/:issue', async (c) => {
-  const id = z.uuid().safeParse(c.req.param('id'));
-  const workflow = z.uuid().safeParse(c.req.param('workflow'));
-  if (!id.success || !workflow.success) {
-    throw badRequest('invalid path: the project and the workflow are uuids');
-  }
-  return answerDesign(
-    c,
-    await unlinkBuildAs({
-      projectId: id.data,
-      id: workflow.data,
-      actor: writerOf(c),
-      issue: c.req.param('issue'),
-    }),
-  );
-});
 
 workflowRoutes.get('/:id/workflow-templates', idParam, async (c) => {
   const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);

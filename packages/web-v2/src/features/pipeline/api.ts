@@ -75,7 +75,7 @@ export const pipelineApi = {
     apiClient<StepDurationRow[]>(`/pipeline/step-durations?${analyticsParams(opts)}`),
 
   /** `GET /api/pipeline/throughput?days&projectId` — daily closed/released. */
-  throughput: (opts: AnalyticsOpts = {}) =>
+  throughput: (opts: Omit<AnalyticsOpts, "step"> = {}) =>
     apiClient<ThroughputRow[]>(`/pipeline/throughput?${analyticsParams(opts)}`),
 
   issuesForProject: (projectId: string) => {

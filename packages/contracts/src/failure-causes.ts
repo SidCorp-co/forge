@@ -103,9 +103,6 @@ export type FailureCause = (typeof FAILURE_CAUSES)[number];
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 	job_failed: "unclassified",
 	usage_limit: "provider_usage_limit",
-	/** stored before the undelivered-turn causes existed; nothing writes it now (ISS-219). */
-	ws_publish_failed: "dispatch_failed",
-	"ws-publish-failed": "dispatch_failed",
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);

@@ -142,6 +142,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -177,6 +178,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -237,6 +239,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -372,6 +375,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -429,6 +433,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -514,6 +519,7 @@
           "assertEmailVerified",
           "requireAdmin"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -730,18 +736,139 @@
         ]
       }
     },
-    "/api/agent-reports/{id}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
+    "/api/agent-reports/triage": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "projectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "project",
+                      "all"
+                    ],
+                    "type": "string"
+                  },
+                  "signalKey": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "triage": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "file",
+                            "type": "string"
+                          },
+                          "createIssue": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "description": {
+                                "maxLength": 20000,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "issue": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "dismiss",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "duplicate",
+                            "type": "string"
+                          },
+                          "duplicateOf": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act",
+                          "duplicateOf"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "reopen",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      }
+                    ],
+                    "x-forge-refinements": [
+                      "file names exactly one of issue or createIssue"
+                    ]
+                  }
+                },
+                "required": [
+                  "signalKey",
+                  "triage"
+                ],
+                "type": "object"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "4XX": {
             "$ref": "#/components/responses/Problem"
@@ -757,7 +884,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": []
+        "x-forge-validated": [
+          "json"
+        ]
       }
     },
     "/api/agent-reports/{id}/triage": {
@@ -2036,6 +2165,7 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -2634,6 +2764,7 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -2671,6 +2802,7 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -2930,6 +3062,7 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -3207,6 +3340,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -4836,6 +4970,7 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -4869,6 +5004,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -4902,6 +5038,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -4997,6 +5134,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -5039,6 +5177,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -5084,6 +5223,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -5444,6 +5584,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -5508,6 +5649,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -5858,6 +6000,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -5891,6 +6034,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -6705,6 +6849,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -6748,6 +6893,7 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -7972,6 +8118,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -8056,6 +8203,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -8727,6 +8875,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -9203,6 +9352,7 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -9328,6 +9478,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -9456,6 +9607,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -9546,6 +9698,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
           "param",
@@ -9634,6 +9787,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
           "param",
@@ -9680,6 +9834,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -9843,6 +9998,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -11547,6 +11703,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -11891,6 +12048,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -12125,6 +12283,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -12279,6 +12438,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -12353,6 +12513,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -13265,6 +13426,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -14181,6 +14343,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -14226,6 +14389,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -14258,6 +14422,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -14564,6 +14729,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -19997,6 +20163,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -20180,6 +20347,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -21050,6 +21218,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -21583,6 +21752,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -22313,6 +22483,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -22462,6 +22633,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -26556,52 +26728,6 @@
         ]
       }
     },
-    "/api/projects/{id}/workflows/{workflow}/builds/{issue}": {
-      "delete": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "workflow",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "issue",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": []
-      }
-    },
     "/api/projects/{id}/workflows/{workflow}/comments": {
       "get": {
         "parameters": [
@@ -28652,6 +28778,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -28692,6 +28819,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -28732,6 +28860,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -28780,6 +28909,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -28820,6 +28950,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -29327,6 +29458,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -30575,6 +30707,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -30863,6 +30996,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -30978,6 +31112,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
@@ -31169,6 +31304,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
           "query"
@@ -32356,6 +32492,7 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]

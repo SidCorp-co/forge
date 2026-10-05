@@ -322,7 +322,3 @@ export async function setBuildSteps(
 ) {
   await tx.update(workflowBuilds).set(set).where(eq(workflowBuilds.issueId, issueId));
 }
-
-export async function unlinkBuild(tx: Tx, issueId: string): Promise<void> {
-  await tx.delete(workflowBuilds).where(eq(workflowBuilds.issueId, issueId));
-}

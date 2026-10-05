@@ -21,7 +21,6 @@ import {
   unlinkIssueFromRequirement,
 } from '../issues/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { linkIssueRefusal, refuseRequirement } from './rules.js';
@@ -76,12 +75,9 @@ export async function linkIssue(input: {
     // Without adoptPlan a pre-existing plan stays planned against no revision and reads changed-since-plan;
     // only a person attesting the plan already satisfies the current revision may record it (D1, requirements-walkthrough)
     const plannedRevision = input.adoptPlan ? (current.currentRevision ?? null) : null;
-    const plannedBaselineSeq = input.adoptPlan
-      ? await plannedBaselineSeqIn(tx, row.id, plannedRevision)
-      : null;
     if (held?.requirementId === row.id) {
       if (input.adoptPlan) {
-        await adoptIssuePlan(tx, issue.id, { plannedRevision, plannedBaselineSeq });
+        await adoptIssuePlan(tx, issue.id, { plannedRevision });
       }
       return null;
     }
@@ -95,7 +91,7 @@ export async function linkIssue(input: {
         },
       ];
     }
-    await linkIssueToRequirement(tx, issue.id, row.id, { plannedRevision, plannedBaselineSeq });
+    await linkIssueToRequirement(tx, issue.id, row.id, { plannedRevision });
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -209,7 +205,7 @@ export async function plannedRevisionFor(
   tx: Tx,
   issueId: string,
   plan: string | null,
-): Promise<{ plannedRevision: number | null; plannedBaselineSeq: number | null } | null> {
+): Promise<{ plannedRevision: number | null } | null> {
   const [r] = await tx
     .select({
       requirementId: issues.requirementId,
@@ -220,7 +216,7 @@ export async function plannedRevisionFor(
     .leftJoin(requirements, eq(requirements.id, issues.requirementId))
     .where(eq(issues.id, issueId));
   if (!r?.requirementId) return null;
-  if (!plan?.trim()) return { plannedRevision: null, plannedBaselineSeq: null };
+  if (!plan?.trim()) return { plannedRevision: null };
   if (r.currentRevision === null) {
     throw refuseRequirement(
       'REQUIREMENT_REVISION_NOT_CURRENT',
@@ -228,8 +224,5 @@ export async function plannedRevisionFor(
       '/plan',
     );
   }
-  return {
-    plannedRevision: r.currentRevision,
-    plannedBaselineSeq: await plannedBaselineSeqIn(tx, r.requirementId, r.currentRevision),
-  };
+  return { plannedRevision: r.currentRevision };
 }

@@ -157,7 +157,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               ) : (
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
-              <ToneChip tone="neutral" glyph="⌂" label="As-built" title="Drawn from the code; steps without file:symbol evidence are asked about" />
+              <ToneChip tone="neutral" glyph="⌂" label="Plan from code" title="The plan, drawn from the code: it holds no evidence, and nothing is observed while it is proposed" />
               {design && design.linkedItems.length > 0 && <LinkedItemsNote design={design} />}
               <DesignStatusChip status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (

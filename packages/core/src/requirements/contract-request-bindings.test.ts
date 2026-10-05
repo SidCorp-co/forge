@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { nodeSchema } from '../workflows/schema.js';
-import { bindingRefusals, bindingsInDocument, brokenByOf, reaches } from './bindings.js';
+import {
+  attachBuildingIssues,
+  bindingRefusals,
+  bindingsInDocument,
+  brokenByOf,
+  reaches,
+} from './bindings.js';
 import { contractRequestRefusal } from './contract-request.js';
 import { requestSignoffRefusal } from './request-signoff.js';
 
@@ -92,6 +98,7 @@ describe('screen bindings (pins, impact)', () => {
       element: 'order.placed',
       pinnedVersion: null,
       brokenBy: null,
+      buildingIssues: [],
     };
     for (const type of ['asyncapi', 'protobuf', 'opaque']) {
       const [r] = bindingRefusals([{ ...b, contractType: type }]);
@@ -129,5 +136,39 @@ describe('screen bindings (pins, impact)', () => {
     ).toBe('2.0.0');
     expect(reaches('Query.products', 'Query.products.variants.price')).toBe(true);
     expect(reaches('Query.product', 'Query.products')).toBe(false);
+  });
+});
+
+describe('impact: the issues building a flow a breaking version reaches', () => {
+  const binding = (workflowId: string, brokenBy: string | null) => ({
+    workflowId,
+    flow: workflowId,
+    designRevision: 2,
+    step: 'cart',
+    contract: 'pay/charges',
+    element: 'POST /charges',
+    contractType: 'openapi',
+    pinnedVersion: '1.0.0',
+    brokenBy,
+    buildingIssues: [],
+  });
+  const builds = [
+    { issueId: 'i1', workflowId: 'checkout', issSeq: 12, title: 'Cart screen', status: 'open' },
+    { issueId: 'i2', workflowId: 'refunds', issSeq: 14, title: 'Refunds', status: 'developed' },
+  ];
+  it('lists the issues building the flow of a broken binding, and none for an unbroken one', () => {
+    const [broken, whole] = attachBuildingIssues(
+      [binding('checkout', '3.0.0'), binding('refunds', null)],
+      builds,
+      'ISS',
+    );
+    expect(broken?.buildingIssues).toEqual([
+      { issueId: 'i1', displayId: 'ISS-12', title: 'Cart screen', status: 'open' },
+    ]);
+    expect(whole?.buildingIssues).toEqual([]);
+  });
+  it('names no issue when nothing builds the broken flow', () => {
+    const [b] = attachBuildingIssues([binding('search', '3.0.0')], builds, 'ISS');
+    expect(b?.buildingIssues).toEqual([]);
   });
 });

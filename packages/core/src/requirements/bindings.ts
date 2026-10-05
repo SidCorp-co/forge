@@ -5,13 +5,18 @@
  */
 
 import { isElementIndexed } from '@forge/contracts/ecosystem';
-import type { RequirementScreenBinding } from '@forge/contracts/requirements';
+import type {
+  RequirementBuildingIssue,
+  RequirementScreenBinding,
+} from '@forge/contracts/requirements';
 import { and, eq, inArray, or } from 'drizzle-orm';
 import type { db, Tx } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { projectWorkflowDesigns } from '../db/schema-workflows.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
+import { buildsOf } from '../workflows/index.js';
 import type { RequirementRefusal } from './rules.js';
 
 export interface PinnedDesign {
@@ -29,7 +34,10 @@ interface BindStep {
 export function bindingsInDocument(
   design: PinnedDesign,
   document: unknown,
-): Omit<RequirementScreenBinding, 'contractType' | 'pinnedVersion' | 'brokenBy'>[] {
+): Omit<
+  RequirementScreenBinding,
+  'contractType' | 'pinnedVersion' | 'brokenBy' | 'buildingIssues'
+>[] {
   const steps = (document as { steps?: BindStep[] } | null)?.steps ?? [];
   return steps.flatMap((s) =>
     (s.node?.binds ?? []).map((b) => ({
@@ -149,6 +157,7 @@ export async function screenBindingsOf(
       contractType: current.find(mine)?.contractType ?? null,
       pinnedVersion,
       brokenBy: pinnedVersion ? brokenByOf(b.element, pinnedVersion, versions.filter(mine)) : null,
+      buildingIssues: [],
     };
   });
 }
@@ -208,4 +217,46 @@ export function latestBaselineBindingsOf(
         : [],
     ),
   );
+}
+
+export interface BuildLink {
+  issueId: string;
+  workflowId: string;
+  issSeq: number;
+  title: string;
+  status: string;
+}
+
+/** `impact`: each broken binding names the issues building its flow; an unbroken one names none. */
+export function attachBuildingIssues(
+  bindings: readonly RequirementScreenBinding[],
+  builds: readonly BuildLink[],
+  prefix: string | null,
+): RequirementScreenBinding[] {
+  return bindings.map((b) => ({
+    ...b,
+    buildingIssues: b.brokenBy
+      ? builds
+          .filter((x) => x.workflowId === b.workflowId)
+          .map(
+            (x): RequirementBuildingIssue => ({
+              issueId: x.issueId,
+              displayId: formatIssueRef(prefix, x.issSeq),
+              title: x.title,
+              status: x.status,
+            }),
+          )
+      : [],
+  }));
+}
+
+/** The bindings with the issues building each broken one's flow, read only when one is broken. */
+export async function withBuildingIssues(
+  executor: Tx | typeof db,
+  bindings: readonly RequirementScreenBinding[],
+  prefix: string | null,
+): Promise<RequirementScreenBinding[]> {
+  const broken = [...new Set(bindings.filter((b) => b.brokenBy).map((b) => b.workflowId))];
+  const builds = broken.length ? await buildsOf(executor as Tx, broken) : [];
+  return attachBuildingIssues(bindings, builds, prefix);
 }

@@ -108,3 +108,48 @@ describe('requirement-to-delivery ready: agree files the duplicate suggestion it
     );
   });
 });
+
+describe('requirement-to-delivery similar -> ready: embeddings down, readiness says dedup was not checked', () => {
+  const row = { id: 'req-3', projectId: 'p', reqSeq: 3, currentRevision: 2 };
+
+  it('says dedup did not run when the head has no vector yet, instead of answering no near-duplicate', async () => {
+    const knowledge = await import('../knowledge/index.js');
+    vi.mocked(knowledge.itemEmbeddingOf).mockResolvedValueOnce(null);
+    const { nearDuplicatesOf } = await import('./near-duplicate.js');
+    const read = await nearDuplicatesOf(row);
+    expect(read.near).toEqual([]);
+    expect(read.check).toEqual({
+      ran: false,
+      why: "dedup was not checked: the head revision's vector is not written yet",
+    });
+  });
+
+  it('names the stored status when the vector failed or was withheld', async () => {
+    const knowledge = await import('../knowledge/index.js');
+    vi.mocked(knowledge.itemEmbeddingOf).mockResolvedValueOnce({
+      status: 'failed',
+      embedding: null,
+      model: null,
+      error: 'provider down',
+    } as never);
+    const { nearDuplicatesOf } = await import('./near-duplicate.js');
+    expect((await nearDuplicatesOf(row)).check).toEqual({
+      ran: false,
+      why: "dedup was not checked: the head revision's vector is failed",
+    });
+  });
+
+  it('records the unchecked dedup on the baseline even where the readiness gate is off', async () => {
+    const { baselineReadiness } = await import('./rules.js');
+    const unchecked = { ran: false as const, why: 'dedup was not checked: x' };
+    expect(baselineReadiness('off', null, { ran: true })).toBeNull();
+    expect(baselineReadiness('off', null, unchecked)).toEqual({
+      gate: 'off',
+      suggestionId: null,
+      ready: false,
+      failed: [],
+      dedup: unchecked,
+    });
+    expect(baselineReadiness('warn', null, unchecked)?.dedup).toEqual(unchecked);
+  });
+});

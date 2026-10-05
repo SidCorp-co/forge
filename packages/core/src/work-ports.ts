@@ -67,7 +67,7 @@ import {
   requestJobKill,
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
-import { deleteMemory, retrievalAnalyticsRetention, runMemorySearch } from './memory/index.js';
+import { deleteMemory, runMemorySearch } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
 import {
   emitNotification,
@@ -162,7 +162,6 @@ export function provideWorkPorts(): void {
       job_events: jobEventsRetention,
       agent_session_events: agentSessionEventsRetention,
       runner_events: runnerEventsRetention,
-      retrieval_analytics: retrievalAnalyticsRetention,
     },
     emitNotification,
     resolveNotifications,

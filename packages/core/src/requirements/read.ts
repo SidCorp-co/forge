@@ -33,11 +33,12 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
-import { latestBaselineBindingsOf } from './bindings.js';
+import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
+import { dedupCheckOf } from './near-duplicate.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
@@ -337,6 +338,7 @@ export async function detailOf(
     history,
     readiness,
     deferral,
+    dedup,
     releaseApproval,
     feedback,
     traces,
@@ -348,13 +350,14 @@ export async function detailOf(
     historyOf(row.id, row.projectId),
     readinessOf(row),
     deferralOf(row.id, row.status),
+    row.currentRevision === null ? null : dedupCheckOf(row.id),
     approvalRequiredIn(row.projectId),
     requirementDependents().feedbackOf(viewer ?? NO_PERSON, row.projectId, row.id, door),
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
   const [bindings, request] = await Promise.all([
-    latestBaselineBindingsOf(db, baselines, pins),
+    latestBaselineBindingsOf(db, baselines, pins).then((b) => withBuildingIssues(db, b, prefix)),
     requestViewOf(row),
   ]);
   const [people, standings, changedTraced] = await Promise.all([
@@ -396,6 +399,7 @@ export async function detailOf(
     standing,
     history,
     readiness,
+    dedup,
     deferral,
     feedback,
     request,

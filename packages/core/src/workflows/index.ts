@@ -27,4 +27,4 @@ export {
   loadRequirementContext,
   recordArtifactContext,
 } from './run-context-service.js';
-export { linkBuild } from './store.js';
+export { buildsOf, linkBuild } from './store.js';

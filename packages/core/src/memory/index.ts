@@ -8,7 +8,6 @@ export {
 } from './indexer.js';
 export { provideMemoryIssueReads } from './ports.js';
 export { registerMemoryReconcileTrigger, registerMemoryReconcileWorker } from './reconcile.js';
-export { retrievalAnalyticsRetention } from './retention.js';
 export { foreignScriptChars } from './script-guard.js';
 export type { MemoryHit } from './search.js';
 export { runMemorySearch } from './search-service.js';
