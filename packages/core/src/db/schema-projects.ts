@@ -53,7 +53,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
 export const projectInvitations = pgTable(
   'project_invitations',
   {
-    token: text('token').primaryKey(),
+    tokenHash: text('token_hash').primaryKey(),
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),

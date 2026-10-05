@@ -85,6 +85,7 @@ export { getStorage } from './storage/factory.js';
 export { isEnoent } from './storage/types.js';
 export {
   type BindingWithConnection,
+  bindingInboundSecret,
   buildContextFromBinding,
   createConnection,
   decryptConnectionSecrets,

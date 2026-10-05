@@ -11,6 +11,7 @@ export {
   SENTRY_LIST_MAX_LIMIT,
   SentryListingFailed,
 } from './listing.js';
+export { installSentryErrorTracking } from './own-errors.js';
 export { isSentryRefusal, SentryRefusal } from './refusals.js';
 export { resolveSentryTargets } from './targets.js';
 export type { SentryTarget } from './types.js';

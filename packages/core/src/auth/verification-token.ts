@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { emailVerificationTokens, users } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { digestToken } from '../lib/token-digest.js';
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -18,7 +19,9 @@ export async function issueVerificationToken(userId: string): Promise<string> {
     const token = generateToken();
     const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
     try {
-      await db.insert(emailVerificationTokens).values({ token, userId, expiresAt });
+      await db
+        .insert(emailVerificationTokens)
+        .values({ tokenHash: digestToken(token), userId, expiresAt });
       return token;
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
@@ -33,16 +36,19 @@ export async function issueVerificationToken(userId: string): Promise<string> {
 type ConsumeResult = 'ok' | 'expired' | null;
 
 export async function consumeVerificationToken(token: string): Promise<ConsumeResult> {
+  const tokenHash = digestToken(token);
   return db.transaction(async (tx) => {
     const rows = await tx.execute<{ user_id: string; expires_at: Date }>(
       sql`select user_id, expires_at from ${emailVerificationTokens}
-          where token = ${token} for update`,
+          where token_hash = ${tokenHash} for update`,
     );
     const row = rows[0];
     if (!row) return null;
 
     if (new Date(row.expires_at).getTime() < Date.now()) {
-      await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
+      await tx
+        .delete(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.tokenHash, tokenHash));
       return 'expired';
     }
 

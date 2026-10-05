@@ -18,13 +18,14 @@
  * the owner's user room so the web Runners surface updates without polling.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { RULES } from '../lib/rate-limits.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
+import { digestToken } from '../lib/token-digest.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -92,10 +93,6 @@ function normalizeCode(input: unknown): string {
     }
   }
   return stripped;
-}
-
-function sha256Hex(input: string): string {
-  return createHash('sha256').update(input, 'utf8').digest('hex');
 }
 
 function clientIp(c: import('hono').Context): string | undefined {
@@ -188,7 +185,7 @@ deviceLoginRoutes.post(
     let insertedId: string | null = null;
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
       canonical = generateCanonical();
-      const codeHash = sha256Hex(canonical);
+      const codeHash = digestToken(canonical);
       insertedId = await insertLoginCode({
         codeHash,
         deviceLabel,
@@ -262,7 +259,7 @@ deviceLoginRoutes.post(
     const userId = c.get('userId');
     const body = c.req.valid('json');
     const canonical = normalizeCode(body.pairing_code);
-    const codeHash = sha256Hex(canonical);
+    const codeHash = digestToken(canonical);
     const agentUserId = await resolveApprovableAgent(body.agent_id, userId);
 
     const row = await approveLoginCode(codeHash, {
@@ -307,7 +304,7 @@ deviceLoginRoutes.get(
   zValidator('query', pollQuery, refuseLoginInput),
   async (c) => {
     const canonical = normalizeCode(c.req.valid('query').pairing_code);
-    const codeHash = sha256Hex(canonical);
+    const codeHash = digestToken(canonical);
 
     // Atomic single-use consumption. Two concurrent polls can't both win.
     const row = await consumeLoginCode(codeHash);

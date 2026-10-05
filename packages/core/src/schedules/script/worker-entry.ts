@@ -25,8 +25,6 @@ interface WorkerResultMessage {
   notifications: NotifyPayload[];
 }
 
-const HTTP_TIMEOUT_MS = 25_000;
-
 const output: string[] = [];
 const notifications: NotifyPayload[] = [];
 
@@ -61,28 +59,12 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function sanitizeFetchInit(init: unknown): Pick<RequestInit, 'method' | 'headers' | 'body'> {
-  if (!init || typeof init !== 'object') return {};
-  const { method, headers, body } = init as Record<string, unknown>;
-  const result: Pick<RequestInit, 'method' | 'headers' | 'body'> = {};
-  if (typeof method === 'string') result.method = method;
-  if (headers !== undefined) result.headers = headers as NonNullable<RequestInit['headers']>;
-  if (body !== undefined) result.body = body as NonNullable<RequestInit['body']>;
-  return result;
-}
-
-async function sandboxedFetch(url: unknown, init?: unknown): Promise<Response> {
-  const parsed = new URL(String(url));
-  if (parsed.protocol !== 'https:') {
-    throw new Error(`ctx.http.fetch only allows https:// URLs, got "${parsed.protocol}"`);
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
-  try {
-    return await fetch(parsed, { ...sanitizeFetchInit(init), signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+// A schedule script reaches no network: core holds no egress policy for a URL a user's script names,
+// and an open fetch of any https URL from inside core is what the personal-data-flow design forbids.
+function refusedFetch(): never {
+  throw new Error(
+    'SCRIPT_HTTP_FETCH_REFUSED: ctx.http.fetch is not available to schedule scripts; core has no egress policy for a URL a script names, so a script reaches no network. Use ctx.log and ctx.notify.',
+  );
 }
 
 function notify(payload: unknown): void {
@@ -108,7 +90,7 @@ async function run(): Promise<void> {
       log,
       params: jsonCloneReadOnly(params),
       notify,
-      http: { fetch: sandboxedFetch },
+      http: { fetch: refusedFetch },
     },
   };
 

@@ -2,7 +2,13 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type OrgMemberRole, orgInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { generateInvitationToken, INVITATION_TTL_MS } from '../lib/invitation.js';
+import {
+  generateInvitationToken,
+  INVITATION_TTL_MS,
+  type InvitationKey,
+  invitationDigest,
+} from '../lib/invitation.js';
+import { digestToken } from '../lib/token-digest.js';
 import { addOrgMember } from '../permissions/index.js';
 
 /**
@@ -43,7 +49,7 @@ export async function issueOrgInvitationToken(
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
         await tx.insert(orgInvitations).values({
-          token,
+          tokenHash: digestToken(token),
           orgId: input.orgId,
           email: input.email,
           role: input.role,
@@ -70,9 +76,10 @@ type ConsumeOrgInvitationResult =
   | { status: 'email_mismatch'; invitedEmail: string };
 
 export async function consumeOrgInvitationToken(
-  token: string,
+  key: InvitationKey,
   accepting: { userId: string; email: string },
 ): Promise<ConsumeOrgInvitationResult> {
+  const tokenHash = invitationDigest(key);
   return db.transaction(async (tx) => {
     const rows = await tx.execute<{
       org_id: string;
@@ -83,7 +90,7 @@ export async function consumeOrgInvitationToken(
     }>(
       sql`SELECT org_id, email, role, expires_at, accepted_at
           FROM ${orgInvitations}
-          WHERE token = ${token}
+          WHERE token_hash = ${tokenHash}
           FOR UPDATE`,
     );
     const row = rows[0];
@@ -103,7 +110,7 @@ export async function consumeOrgInvitationToken(
     await tx
       .update(orgInvitations)
       .set({ acceptedAt: new Date() })
-      .where(eq(orgInvitations.token, token));
+      .where(eq(orgInvitations.tokenHash, tokenHash));
 
     return { status: 'ok', orgId: row.org_id, role: row.role };
   });

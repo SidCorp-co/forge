@@ -11,6 +11,7 @@ import {
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
+import { digestToken } from '../lib/token-digest.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -105,7 +106,7 @@ export async function mintPairingCode(input: {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generatePairingCode();
     try {
-      await db.insert(pairingCodes).values({ code, ...input, expiresAt });
+      await db.insert(pairingCodes).values({ codeHash: digestToken(code), ...input, expiresAt });
       return { code, expiresAt };
     } catch (err: unknown) {
       if (!isUniqueViolation(err)) throw err;

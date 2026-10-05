@@ -1,5 +1,5 @@
 import { parseSecretRef } from '@forge/contracts/project-config';
-import { scrubSecretValuesDeep } from '@forge/observability';
+import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
@@ -101,9 +101,9 @@ async function secretsHeldByJobs(jobIds: readonly string[]): Promise<string[]> {
   return [...values];
 }
 
+/** Everything a box posts, through the whole secret scrubber plus the testing-secret values its jobs were handed. */
 export async function scrubJobOutput<T>(jobIds: readonly string[], data: T): Promise<T> {
-  const secrets = await secretsHeldByJobs(jobIds);
-  return secrets.length === 0 ? data : scrubSecretValuesDeep(data, secrets);
+  return scrubSecretsDeep(data, await secretsHeldByJobs(jobIds));
 }
 
 export async function jobsOfSession(sessionId: string): Promise<string[]> {

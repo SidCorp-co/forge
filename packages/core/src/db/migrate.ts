@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { flushReports, initSentry, reportCondition } from '../lib/sentry.js';
+import { flushReports, isErrorTrackingEnabled, reportCondition } from '../lib/error-tracking.js';
 import { closeDb } from './client.js';
 import {
   describeUnrecorded,
@@ -44,7 +44,7 @@ try {
   if (unrecorded.length > 0) {
     console.warn(describeUnrecorded(unrecorded));
     try {
-      if (initSentry()) {
+      if (isErrorTrackingEnabled()) {
         const event = unrecordedSentryEvent(unrecorded);
         reportCondition(event.message, {
           level: event.level,

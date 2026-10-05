@@ -31,7 +31,7 @@ export const organizations = pgTable(
 export const orgInvitations = pgTable(
   'org_invitations',
   {
-    token: text('token').primaryKey(),
+    tokenHash: text('token_hash').primaryKey(),
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),

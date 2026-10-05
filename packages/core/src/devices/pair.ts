@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { type Device, pairingCodes } from '../db/schema.js';
+import { digestToken } from '../lib/token-digest.js';
 import { issueDeviceCredential } from './credential.js';
 import { type RegisterDeviceInput, registerDevice } from './register.js';
 
@@ -19,17 +20,17 @@ const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
 
 export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
+  const codeHash = digestToken(input.code);
   return db.transaction(async (tx) => {
     const rows = await tx.execute<{
-      code: string;
       user_id: string;
       project_id: string | null;
       expires_at: Date;
       used_at: Date | null;
       grant_epoch: number;
-    }>(sql`SELECT code, user_id, project_id, expires_at, used_at, grant_epoch
+    }>(sql`SELECT user_id, project_id, expires_at, used_at, grant_epoch
            FROM pairing_codes
-           WHERE code = ${input.code}
+           WHERE code_hash = ${codeHash}
            FOR UPDATE`);
     const row = rows[0];
     if (!row) throw badRequest('INVALID_CODE', 'invalid pairing code');
@@ -57,7 +58,7 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
     await tx
       .update(pairingCodes)
       .set({ usedAt: new Date() })
-      .where(eq(pairingCodes.code, input.code));
+      .where(eq(pairingCodes.codeHash, codeHash));
 
     const plaintext = await issueDeviceCredential({
       deviceId: device.id,

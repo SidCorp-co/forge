@@ -1,6 +1,6 @@
+import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { globalRoom, roomManager } from '../lib/rooms.js';
-import { traceStep } from '../lib/sentry.js';
 
 /** One missed `* * * * *` tick + 30s grace → 90s gap classes as desync. */
 const MISSED_TICK_THRESHOLD_MS = 90_000;

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
+import { encryptSecret } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { projectOrgOf } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
@@ -158,7 +159,7 @@ export const drizzleBindingStore = {
               .values({
                 id: write.id,
                 projectId: write.projectId,
-                integrationSecret: await integrationSecret(),
+                integrationSecretEnc: encryptSecret(await integrationSecret()),
                 ...values,
               })
               .returning(bindingColumns);
@@ -179,7 +180,7 @@ export async function setBindingInboundSecret(
 ): Promise<typeof integrationBindings.$inferSelect | null> {
   const [row] = await db
     .update(integrationBindings)
-    .set({ integrationSecret, updatedAt: new Date() })
+    .set({ integrationSecretEnc: encryptSecret(integrationSecret), updatedAt: new Date() })
     .where(eq(integrationBindings.id, id))
     .returning();
   return row ?? null;

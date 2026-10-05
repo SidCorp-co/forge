@@ -1,6 +1,6 @@
 // The composition root: run the start sequence, mount the route registry, serve, wind down.
 
-import './lib/sentry-init.js';
+import './error-tracking-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -15,6 +15,7 @@ import {
 } from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
+import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
@@ -80,6 +81,7 @@ import { registerOutboxConsumers } from './outbox-consumers.js';
 import { readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import {
+  encryptPlaintextBindingSecrets,
   provideProjectConfigPorts,
   readDeclaredSource,
   readProjectDocument,
@@ -256,6 +258,11 @@ if (isMain) {
   await startBoss();
   await declareOutboxQueues();
   await assertVaultBootSafety();
+  const encryptedBindingSecrets = await encryptPlaintextBindingSecrets();
+  if (encryptedBindingSecrets > 0) {
+    logger.info({ encryptedBindingSecrets }, 'vault: plaintext inbound webhook secrets encrypted');
+  }
+  await logUnprovenPatPeppers();
   registerAllIntegrations();
   await registerDeployWorker();
   const skillSeed = await seedBuiltinSkills(db);

@@ -8,6 +8,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
+import { digestToken } from '../lib/token-digest.js';
 import { readAuthUser } from '../middleware/auth.js';
 
 /** How many projects live in `orgId`. */
@@ -80,7 +81,7 @@ export async function orgInvitationByToken(token: string) {
     .from(orgInvitations)
     .innerJoin(organizations, eq(organizations.id, orgInvitations.orgId))
     .innerJoin(users, eq(users.id, orgInvitations.inviterId))
-    .where(eq(orgInvitations.token, token))
+    .where(eq(orgInvitations.tokenHash, digestToken(token)))
     .limit(1);
   return row ?? null;
 }

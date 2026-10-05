@@ -3,7 +3,8 @@ import { and, desc, eq, type InferSelectModel, inArray, isNull, or, sql } from '
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { env } from '../lib/env.js';
+import { env, LEGACY_PAT_PEPPER } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import {
   generatePatPlaintext,
   isPatValid,
@@ -51,15 +52,33 @@ interface MintedPat {
   plaintext: string;
 }
 
+/** The configured pepper; outside a deployed env (lib/env.ts refuses one without it) the legacy one stands in. */
+function patPepper(): string {
+  return env.PAT_PEPPER ?? LEGACY_PAT_PEPPER;
+}
+
+/** The legacy pepper a hash may still verify under, or null when it is the configured one. */
+function legacyPepperFallback(): string | null {
+  return patPepper() === LEGACY_PAT_PEPPER ? null : LEGACY_PAT_PEPPER;
+}
+
 /** Hash a plaintext PAT with the configured pepper. */
 async function hashPatPlaintext(plaintext: string): Promise<string> {
-  return argon2.hash(plaintext + env.PAT_PEPPER, ARGON2_OPTIONS);
+  return argon2.hash(plaintext + patPepper(), ARGON2_OPTIONS);
+}
+
+async function verifiesUnder(hash: string, plaintext: string, pepper: string): Promise<boolean> {
+  try {
+    return await argon2.verify(hash, plaintext + pepper);
+  } catch {
+    return false;
+  }
 }
 
 let dummyHashPromise: Promise<string> | null = null;
 function getDummyHash(): Promise<string> {
   if (!dummyHashPromise) {
-    dummyHashPromise = argon2.hash(`__pat_dummy__${env.PAT_PEPPER}__${Date.now()}`, ARGON2_OPTIONS);
+    dummyHashPromise = argon2.hash(`__pat_dummy__${patPepper()}__${Date.now()}`, ARGON2_OPTIONS);
   }
   return dummyHashPromise;
 }
@@ -80,6 +99,7 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
       userId: input.userId,
       name: input.name,
       tokenHash,
+      pepperProven: env.PAT_PEPPER !== undefined,
       tokenPrefix,
       scopes: input.scopes ?? ['read', 'write'],
       projectIds: input.projectIds ?? null,
@@ -216,25 +236,79 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     .innerJoin(users, eq(users.id, personalAccessTokens.userId))
     .where(and(eq(personalAccessTokens.tokenPrefix, prefix), patIsLive()));
 
+  const legacy = legacyPepperFallback();
   if (rows.length === 0) {
-    try {
-      await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
-    } catch {}
+    // As many verifications as a wrong token under a known prefix costs, so latency does not say
+    // whether the prefix exists.
+    await verifiesUnder(await getDummyHash(), plaintext, patPepper());
+    if (legacy !== null) await verifiesUnder(await getDummyHash(), plaintext, legacy);
     return null;
   }
 
   let matched: VerifiedPat | null = null;
+  let matchedUnderLegacy = false;
   for (const row of rows) {
-    let ok = false;
-    try {
-      ok = await argon2.verify(row.pat.tokenHash, plaintext + env.PAT_PEPPER);
-    } catch {
-      ok = false;
+    let ok = await verifiesUnder(row.pat.tokenHash, plaintext, patPepper());
+    let viaLegacy = false;
+    if (!ok && legacy !== null) {
+      viaLegacy = await verifiesUnder(row.pat.tokenHash, plaintext, legacy);
+      ok = viaLegacy;
     }
-    if (ok && matched === null) matched = { row: row.pat, ownerKind: row.ownerKind };
+    if (ok && matched === null) {
+      matched = { row: row.pat, ownerKind: row.ownerKind };
+      matchedUnderLegacy = viaLegacy;
+    }
   }
 
+  if (matched !== null && legacy !== null) {
+    matched = await provePatPepper(matched, plaintext, matchedUnderLegacy);
+  }
   return matched;
+}
+
+/**
+ * A token that verified: one that matched only under the legacy pepper is rehashed under the
+ * configured one in the same request; one that matched under the configured pepper is marked proven.
+ */
+async function provePatPepper(
+  matched: VerifiedPat,
+  plaintext: string,
+  underLegacy: boolean,
+): Promise<VerifiedPat> {
+  if (!underLegacy && matched.row.pepperProven) return matched;
+  const set = underLegacy
+    ? { tokenHash: await hashPatPlaintext(plaintext), pepperProven: true }
+    : { pepperProven: true };
+  const [row] = await db
+    .update(personalAccessTokens)
+    .set(set)
+    .where(eq(personalAccessTokens.id, matched.row.id))
+    .returning();
+  if (underLegacy) logger.info({ patId: matched.row.id }, 'pat: rehashed from the legacy pepper');
+  return row ? { ...matched, row } : matched;
+}
+
+/**
+ * Live tokens whose hash is not yet shown to verify under the configured PAT_PEPPER: the measure
+ * of the legacy-pepper amnesty, which ends at zero.
+ */
+export async function countUnprovenPatPeppers(): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(personalAccessTokens)
+    .where(and(eq(personalAccessTokens.pepperProven, false), patIsLive()));
+  return row?.n ?? 0;
+}
+
+/** Boot: the amnesty's count, in the log, while any token is left under it. */
+export async function logUnprovenPatPeppers(): Promise<void> {
+  const unproven = await countUnprovenPatPeppers();
+  if (unproven > 0) {
+    logger.warn(
+      { unproven },
+      'pat: live tokens not yet proven under PAT_PEPPER; each verifies under the legacy pepper until its next use rehashes it (amnesty: .forge/conformance.json $amnesties pat-legacy-pepper)',
+    );
+  }
 }
 
 /**

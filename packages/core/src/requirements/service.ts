@@ -10,6 +10,7 @@ import {
   requirementReturns,
   requirementRevisions,
 } from '../db/schema-requirements.js';
+import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
@@ -18,6 +19,7 @@ import {
   type RevisionWrite,
   resetDraftCriteria,
   specOf,
+  storedWrite,
   writeCriteria,
 } from './revision-write.js';
 import { reasonRefusal, staleBaseRefusal, stateRefusal } from './rules.js';
@@ -82,18 +84,19 @@ export async function writeRevision(input: {
     const target = await revisionIn(tx, current, input.revision);
     const notDraft = stateRefusal(target.revision, target.state as RevisionState, 'draft');
     if (notDraft) return [notDraft];
+    const stored = storedWrite(await dataPolicyOf(projectId), write);
     await tx
       .update(requirementRevisions)
       .set({
-        spec: specOf(write.spec),
-        tldr: write.tldr ?? null,
-        changeSummary: write.changeSummary ?? null,
-        reason: write.reason.trim(),
+        spec: specOf(stored.spec),
+        tldr: stored.tldr ?? null,
+        changeSummary: stored.changeSummary ?? null,
+        reason: stored.reason.trim(),
         authorId: actor.userId,
       })
       .where(revisionWhere(row.id, target.revision));
     const own = await resetDraftCriteria(tx, row.id, target.revision);
-    return writeCriteria(tx, row.id, target.revision, write.criteria, own);
+    return writeCriteria(tx, row.id, target.revision, stored.criteria, own);
   });
   return answer(projectId, row.id, actor, refusals);
 }
@@ -149,6 +152,7 @@ export async function returnRevision(input: {
       ],
     };
   }
+  const reason = storedText(await dataPolicyOf(projectId), input.reason.trim()).text;
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const target = await revisionIn(tx, row, input.revision);
@@ -156,13 +160,13 @@ export async function returnRevision(input: {
     if (refusal) return [refusal];
     await tx
       .update(requirementRevisions)
-      .set({ state: 'draft', returnReason: input.reason.trim() })
+      .set({ state: 'draft', returnReason: reason })
       .where(revisionWhere(row.id, target.revision));
     await tx.insert(requirementReturns).values({
       requirementId: row.id,
       revision: target.revision,
       returnedBy: actor.userId,
-      reason: input.reason.trim(),
+      reason,
     });
     return null;
   });

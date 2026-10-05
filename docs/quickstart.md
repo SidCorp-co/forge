@@ -25,6 +25,7 @@ Minimum required (full list in `.env.example`):
 # Generate strong values: openssl rand -base64 32
 JWT_SECRET=<random>
 DEVICE_TOKEN_PEPPER=<random>
+PAT_PEPPER=<random>
 
 # Database
 POSTGRES_PASSWORD=<choose-one>

@@ -85,7 +85,7 @@ export function toInvitationItem(
   actions: NotificationItem["actions"],
 ): NotificationItem {
   return {
-    id: `invite-${inv.token}`,
+    id: `invite-${inv.ref}`,
     subjectKey: inv.name,
     type: "invitation_received",
     text: `${inv.inviterEmail} invited you as ${enumLabel("role", inv.role)}`,

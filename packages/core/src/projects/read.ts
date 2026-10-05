@@ -13,6 +13,7 @@ import {
   users,
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
+import { digestToken } from '../lib/token-digest.js';
 import { PROJECT_DETAIL } from './projections.js';
 
 /** A project's id and slug, or null. */
@@ -202,7 +203,7 @@ export async function listPendingInvitationsFor(email: string) {
 
   const projectRows = await db
     .select({
-      token: projectInvitations.token,
+      ref: projectInvitations.tokenHash,
       name: projects.name,
       inviterEmail: users.email,
       role: projectInvitations.role,
@@ -223,7 +224,7 @@ export async function listPendingInvitationsFor(email: string) {
 
   const orgRows = await db
     .select({
-      token: orgInvitations.token,
+      ref: orgInvitations.tokenHash,
       name: organizations.name,
       inviterEmail: users.email,
       role: orgInvitations.role,
@@ -262,7 +263,7 @@ export async function projectInvitationByToken(token: string) {
     .from(projectInvitations)
     .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
     .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(eq(projectInvitations.token, token))
+    .where(eq(projectInvitations.tokenHash, digestToken(token)))
     .limit(1);
   return row ?? null;
 }

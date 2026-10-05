@@ -72,7 +72,7 @@ export function summarizeBinding(pair: BindingWithConnection) {
     breakerOpenedAt: connection.breakerOpenedAt,
     directoryStatus: connectionHealthStatus(connection),
     hasSecrets: connection.secretsEnc !== null,
-    integrationSecretSet: binding.integrationSecret !== null,
+    integrationSecretSet: binding.integrationSecretEnc !== null,
     agentAccess: binding.agentAccess as AgentAccess,
     agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
     revision: binding.revision,

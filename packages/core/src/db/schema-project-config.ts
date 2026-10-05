@@ -18,6 +18,10 @@ import { users } from './schema-auth.js';
 import { integrationConnections, integrationDeliveries } from './schema-integrations.js';
 import { projects } from './schema-projects.js';
 
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
+
 export const integrationBindings = pgTable(
   'integration_bindings',
   {
@@ -36,8 +40,12 @@ export const integrationBindings = pgTable(
     // top of connection.config at dispatch time.
     config: jsonb('config').notNull().default({}),
     // Per-binding HMAC secret for inbound webhook signature verification — an
-    // inbound webhook is project+env scoped, so this stays on the binding.
-    integrationSecret: text('integration_secret'),
+    // inbound webhook is project+env scoped, so this stays on the binding. It rests
+    // encrypted with the integration vault; it has to be recovered to compute an HMAC.
+    integrationSecretEnc: bytea('integration_secret_enc'),
+    // The plaintext column from before 0404, read only by the boot conversion
+    // (project-config/binding-secret-vault.ts), which encrypts each value and nulls it.
+    integrationSecretPlain: text('integration_secret'),
     // ISS-558 — multi-store support for epodsystem. Empty string = the default
     // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
     // Non-epodsystem providers always leave this as '' (the DB default), so
@@ -75,10 +83,6 @@ export const integrationBindingsRelations = relations(integrationBindings, ({ on
   }),
   deliveries: many(integrationDeliveries),
 }));
-
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => 'bytea',
-});
 
 export const projectConfigDocuments = pgTable(
   'project_config_documents',

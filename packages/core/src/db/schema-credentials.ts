@@ -1,5 +1,6 @@
 import { isNull, sql } from 'drizzle-orm';
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -22,6 +23,9 @@ export const personalAccessTokens = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
+    // False while the hash is not yet shown to verify under the configured PAT_PEPPER: written
+    // before 0404, it may verify only under the legacy built-in pepper (credentials/pat.ts:verifyPat).
+    pepperProven: boolean('pepper_proven').notNull().default(true),
     tokenPrefix: varchar('token_prefix', { length: 18 }).notNull(),
     scopes: text('scopes').array().notNull().default(sql`ARRAY['read','write']::text[]`),
     projectIds: uuid('project_ids').array(),

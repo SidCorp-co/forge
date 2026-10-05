@@ -10,7 +10,7 @@ import {
 } from '../db/schema.js';
 import { getIntegration } from './registry.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
-import { decryptJson, encryptJson } from './vault.js';
+import { decryptJson, decryptSecret, encryptJson } from './vault.js';
 
 export type IntegrationConnectionRow = typeof integrationConnections.$inferSelect;
 export type IntegrationBindingRow = typeof integrationBindings.$inferSelect;
@@ -115,6 +115,13 @@ export function effectiveConfig<TConfig extends Record<string, unknown> = Record
   return { ...shared, ...((pair.binding.config ?? {}) as object) } as TConfig;
 }
 
+/** A binding's inbound webhook secret, decrypted from the vault; null when it has none. */
+export function bindingInboundSecret(binding: {
+  integrationSecretEnc: Buffer | null;
+}): string | null {
+  return binding.integrationSecretEnc === null ? null : decryptSecret(binding.integrationSecretEnc);
+}
+
 /**
  * Build an {@link AdapterContext} from a binding+connection pair. Threads
  * `connectionId` (breaker/health target) + `bindingId` (delivery + inbound-HMAC
@@ -133,7 +140,7 @@ export function buildContextFromBinding<
     role: pair.binding.role as BindingRole,
     config: effectiveConfig<TConfig>(pair),
     secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
-    integrationSecret: pair.binding.integrationSecret,
+    integrationSecret: bindingInboundSecret(pair.binding),
   };
 }
 

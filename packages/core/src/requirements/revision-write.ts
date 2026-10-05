@@ -5,6 +5,7 @@
  * the transaction that marks it accepted (ISS-58).
  */
 
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -15,6 +16,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
@@ -36,6 +38,21 @@ export interface RevisionWrite {
 }
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
+
+/** A revision's text as it is stored at the project's data policy: scrubbed on write at redact and
+ *  no_egress, the way comments and issues are (personal-data-flow#ds-issues). */
+export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): RevisionWrite {
+  if (level === 'off') return write;
+  const text = (v: string) => storedText(level, v).text;
+  return {
+    ...write,
+    reason: text(write.reason),
+    spec: write.spec === undefined ? undefined : storedDeep(level, write.spec),
+    tldr: write.tldr == null ? write.tldr : text(write.tldr),
+    changeSummary: write.changeSummary == null ? write.changeSummary : text(write.changeSummary),
+    criteria: write.criteria.map((c) => ({ ...c, body: text(c.body) })),
+  };
+}
 
 /** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario
  *  unparseable. `ownCodes` are what a draft being rewritten held before its reset. */
@@ -112,7 +129,9 @@ export async function createRequirementIn(
     authorId?: string | undefined;
   },
 ): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
-  const { projectId, actor, write } = input;
+  const { projectId, actor } = input;
+  const level = await dataPolicyOf(projectId);
+  const write = storedWrite(level, input.write);
   const [{ next } = { next: 1 }] = await tx
     .select({ next: sql<number>`coalesce(max(${requirements.reqSeq}), 0)::int + 1` })
     .from(requirements)
@@ -122,7 +141,7 @@ export async function createRequirementIn(
     .values({
       projectId,
       reqSeq: next,
-      title: input.title.trim(),
+      title: storedText(level, input.title.trim()).text,
       ownerId: input.ownerId === undefined ? actor.userId : input.ownerId,
     })
     .returning({ id: requirements.id });
@@ -151,7 +170,13 @@ export async function newDraftRevisionIn(
     write: RevisionWrite;
   },
 ): Promise<RequirementRefusal[] | null> {
-  const { requirementId, write } = input;
+  const { requirementId } = input;
+  const [owner] = await tx
+    .select({ projectId: requirements.projectId })
+    .from(requirements)
+    .where(eq(requirements.id, requirementId));
+  if (!owner) throw new Error(`requirements: ${requirementId} has no row`);
+  const write = storedWrite(await dataPolicyOf(owner.projectId), input.write);
   const refusal =
     openRevisionRefusal(await openRevisionOf(tx, requirementId)) ??
     staleBaseRefusal(input.baseRevision, input.head);

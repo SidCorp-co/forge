@@ -5,6 +5,10 @@ const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
 	"x-device-token",
 	"x-api-key",
 	"x-csrf-token",
+	// Coolify, GitLab and GitLab webhook credentials, each sent in a header of its own.
+	"x-auth-token",
+	"private-token",
+	"x-gitlab-token",
 ]);
 
 const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
@@ -235,6 +239,31 @@ export function scrubLogText(
 			return out;
 		})
 		.join("\n");
+}
+
+// cm:why ingest payloads are parsed JSON, which holds no cycle, so unlike scrubLogRecord this has no
+// depth bound: a secret nested past any bound would be stored in plain text.
+/**
+ * A copy of a parsed JSON payload with the whole scrubber applied at every depth: secret-named keys
+ * filtered, every string through scrubLogText, and the caller's known secret values removed from
+ * keys and strings alike.
+ */
+export function scrubSecretsDeep<T>(value: T, knownSecrets: readonly string[] = []): T {
+	const known = scrubbable(knownSecrets);
+	const walk = (v: unknown): unknown => {
+		if (typeof v === "string") return scrubLogText(v, known);
+		if (Array.isArray(v)) return v.map(walk);
+		if (v && typeof v === "object") {
+			return Object.fromEntries(
+				Object.entries(v as Record<string, unknown>).map(([k, inner]) => [
+					scrubSecretValues(k, known),
+					isScrubbedKey(k) && inner !== null && inner !== "" ? FILTERED : walk(inner),
+				]),
+			);
+		}
+		return v;
+	};
+	return walk(value) as T;
 }
 
 /** Whether `text` carries anything the scrubber would redact, or a label that says a secret is
