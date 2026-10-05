@@ -23,6 +23,7 @@ import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
+import { designHealthOf } from './ports.js';
 
 export interface NeedsYouViewer {
   userId: string;
@@ -70,14 +71,16 @@ export async function readNeedsYou(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
-  const [requirements, feedback, releases, issues, contracts, automation] = await Promise.all([
-    listRequirementsAs(viewer, projectId),
-    listFeedbackAs(viewer, projectId),
-    listReleases(projectId, viewer),
-    listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
-    readContractStanding(projectId, viewer.userId, now),
-    automationOf(projectId, viewer.userId, now),
-  ]);
+  const [requirements, feedback, releases, issues, contracts, automation, health] =
+    await Promise.all([
+      listRequirementsAs(viewer, projectId),
+      listFeedbackAs(viewer, projectId),
+      listReleases(projectId, viewer),
+      listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
+      readContractStanding(projectId, viewer.userId, now),
+      automationOf(projectId, viewer.userId, now),
+      designHealthOf(viewer, projectId),
+    ]);
   if (!feedback.ok) {
     throw new Error(
       `needs-you: the feedback list refused its own unfiltered read (${feedback.refusals.map((r) => r.code).join(', ')})`,
@@ -120,6 +123,30 @@ export async function readNeedsYou(
       standing: c,
       touchedAt: c.touchedAt,
     })),
+    designs: [...health.values()]
+      .filter((h) => h.needsYou > 0)
+      .map(
+        (h): Row => ({
+          entity: 'workflow',
+          key: h.flow,
+          title: h.flow,
+          standing: {
+            attentionGroup: 'needs_you',
+            waitingOn: {
+              kind: 'person',
+              who: 'A person',
+              act: `settle ${h.needsYou} health ${h.needsYou === 1 ? 'marker' : 'markers'}`,
+              rule: 'a design needs you when a marker source waits on a person, or a node is Rewrite due or Not in design with no decision (REQ-17 BC-18)',
+              ref: h.flow,
+              dueAt: null,
+            },
+          },
+          touchedAt: h.markers.reduce<string | null>(
+            (at, m) => (m.since && (!at || m.since > at) ? m.since : at),
+            null,
+          ),
+        }),
+      ),
     automation: [
       ...automation.schedules.map(
         (s): Row => ({

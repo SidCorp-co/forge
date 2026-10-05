@@ -135,6 +135,21 @@ export function parentRefusal(
 export const posterRefusal = (facts: PermissionFacts, targetKey: string): CommentRefusal | null =>
   permissionRefusal(facts, 'project.write', `posting a comment on ${targetKey}`);
 
+/** A node decision is a design decision: whoever holds workflow-designs.approve posts it (ADR 0007). */
+export function nodeDeciderRefusal(
+  facts: PermissionFacts,
+  decision: DecisionFields | undefined,
+  targetKey: string,
+): CommentRefusal | null {
+  if (!decision?.node) return null;
+  const refused = permissionRefusal(
+    facts,
+    'workflow-designs.approve',
+    `deciding a node of ${targetKey}`,
+  );
+  return refused ? { ...refused, path: '/decision/node' } : null;
+}
+
 /** Its author edits a comment while holding project.write; anyone else needs comments.moderate. */
 export function editorRefusal(
   facts: PermissionFacts,

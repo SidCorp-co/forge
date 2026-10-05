@@ -38,6 +38,7 @@ import {
   readConversationAgentMeta,
   resolveProjectHandle,
 } from './conversations/index.js';
+import { provideDevelopmentPorts } from './development/index.js';
 import { ADMITTED_RUNNER, readRunGate } from './devices/index.js';
 import {
   decideChannelGate,
@@ -107,19 +108,25 @@ import {
   rowIn as requirementRowIn,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
+import { latestRunsOfIssues } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,
   buildsWorkflowOf,
-  designNodesIn,
+  decisionNodeRefusal,
   designUnapprovedSql,
-  nodeRefRefusal,
+  projectHealthAs,
   proposesWorkflowOf,
+  provideWorkflowHealthPorts,
+  provideWorkflowPorts,
   WorkflowDesignNotApprovedError,
 } from './workflows/index.js';
 import { wakeMastersForProject } from './ws/index.js';
+
+/** A cited file larger than this reads as unreadable rather than as missing. */
+const OBSERVED_FILE_BYTES = 4_000_000;
 
 export function provideWorkPorts(): void {
   providePipelinePorts({
@@ -227,10 +234,49 @@ export function provideWorkPorts(): void {
   provideCommentPorts({
     requirementRowIn,
     feedbackRowIn,
-    designNodeRefusal: async (tx, projectId, workflowRef, node, base) => {
-      const nodes = await designNodesIn(tx, projectId, workflowRef);
-      return nodes ? nodeRefRefusal(nodes, node, base) : null;
+    designNodeRefusal: decisionNodeRefusal,
+  });
+
+  provideWorkflowPorts({
+    repositoryOf: async (projectId) => {
+      const { defaultBranch } = await readLandingBranches(projectId);
+      if (!defaultBranch) {
+        return {
+          unreadable:
+            'the project document declares no default branch, so there is no landing branch an observed commit can be checked against',
+        };
+      }
+      let host: Awaited<ReturnType<typeof resolveSourceHost>>;
+      try {
+        host = await resolveSourceHost(projectId, 'kernel');
+      } catch (err) {
+        if (err instanceof SourceHostUnavailable) return { unreadable: err.message };
+        throw err;
+      }
+      return {
+        branch: defaultBranch,
+        contains: (sha) => host.branchContains(defaultBranch, sha),
+        readFile: (path, sha) => host.readFile(path, sha, OBSERVED_FILE_BYTES),
+      };
     },
+  });
+
+  provideDevelopmentPorts({ designHealthOf: projectHealthAs });
+
+  provideWorkflowHealthPorts({
+    openFeedbackOf: async (viewer, projectId) => {
+      const read = await listFeedbackAs(viewer, projectId, {
+        phases: ['new', 'triaged', 'planned', 'reopened'],
+      });
+      if (!read.ok) {
+        throw new Error(
+          `workflow health: the feedback list refused its own phase read (${read.refusals.map((r) => r.code).join(', ')})`,
+        );
+      }
+      return read.list.feedback;
+    },
+    latestRunsOf: (viewer, projectId, issueIds) =>
+      latestRunsOfIssues(projectId, issueIds, { userId: viewer.userId }),
   });
 
   provideLabelPorts({ listFeedbackAs: (viewer, projectId) => listFeedbackAs(viewer, projectId) });

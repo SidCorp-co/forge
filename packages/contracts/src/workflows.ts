@@ -2,6 +2,7 @@ import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
+import type { WorkflowHealthSummary } from "./workflow-health.js";
 
 export interface WorkflowSummaryView {
 	workflowId: string;
@@ -17,6 +18,8 @@ export interface WorkflowSummaryView {
 	returnReason: string | null;
 	writerName: string;
 	updatedAt: string;
+	/** The design's health counts and needs-you figure (workflow-step-health `d-list-summary`). */
+	health: WorkflowHealthSummary;
 }
 
 export const DESIGN_VIEWS = ["summary", "steps", "full"] as const;

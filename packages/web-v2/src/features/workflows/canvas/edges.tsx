@@ -1,8 +1,10 @@
 "use client";
 
+import type { HealthMarkerKind } from "@forge/contracts/workflow-health";
 import type { TemplateEdgeKind } from "@forge/contracts/workflow-templates";
 import { BaseEdge, type EdgeProps, EdgeLabelRenderer } from "@xyflow/react";
 import { memo } from "react";
+import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { DASH, edgeHue, MARK_HUE } from "./style";
 
@@ -21,6 +23,8 @@ export interface WfEdgeData extends Record<string, unknown> {
   dim: boolean;
   on: boolean;
   mark: StepMark | null;
+  /** The line's marker kinds while the Health overlay is on. */
+  health: HealthMarkerKind[];
 }
 
 function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
@@ -39,7 +43,7 @@ function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
           opacity: data.dim ? 0.15 : data.kind.line === "solid" ? 1 : 0.8,
         }}
       />
-      {data.labelAt && (data.label || data.detail) ? (
+      {data.labelAt && (data.label || data.detail || data.health.length) ? (
         <EdgeLabelRenderer>
           <div
             className="wfc-label nodrag nopan"
@@ -56,6 +60,13 @@ function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
           >
             {data.isReturn ? `↺ ${data.label || data.kind.label}` : data.label}
             {data.detail ? <span className="wfc-mono">{data.detail}</span> : null}
+            {data.health.length ? (
+              <span className="wfc-health" data-testid="edge-health">
+                {data.health.map((k) => (
+                  <HealthMark key={k} kind={k} dot />
+                ))}
+              </span>
+            ) : null}
           </div>
         </EdgeLabelRenderer>
       ) : null}

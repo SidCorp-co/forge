@@ -990,15 +990,37 @@
         "workflowBuilds"
       ],
       "serves": [
+        "REQ-17",
         "REQ-18",
         "workflow-step-health#in-design",
         "workflow-step-health#in-builds",
         "workflow-step-health#in-pins",
         "workflow-step-health#in-observation",
+        "workflow-step-health#in-threshold",
+        "workflow-step-health#bkm-trace",
+        "workflow-step-health#bkm-diff",
+        "workflow-step-health#bkm-waiting",
+        "workflow-step-health#bkm-match",
+        "workflow-step-health#d-outdated",
+        "workflow-step-health#d-needs-update",
+        "workflow-step-health#d-has-problem",
+        "workflow-step-health#d-remove-proposed",
+        "workflow-step-health#d-orphans",
+        "workflow-step-health#d-provenance",
+        "workflow-step-health#d-rewrite",
+        "workflow-step-health#d-node-lifecycle",
+        "workflow-step-health#d-step-health",
+        "workflow-step-health#d-list-summary",
+        "design-reconciliation#rooted",
+        "design-reconciliation#dispatch-observer",
         "design-reconciliation#observation",
         "design-reconciliation#cited",
+        "design-reconciliation#diff",
+        "design-reconciliation#health",
+        "design-reconciliation#threshold",
         "design-reconciliation#decision",
         "design-reconciliation#revise-design",
+        "design-reconciliation#closed",
         "project-onboarding#decided",
         "project-onboarding#approve",
         "project-onboarding#proposed",
@@ -1154,7 +1176,13 @@
       "serves": ["REQ-12"]
     },
     "workflows": {
-      "serves": ["design-reconciliation#root-fix"]
+      "serves": [
+        "design-reconciliation#root-fix",
+        "design-reconciliation#marked-canvas",
+        "design-reconciliation#reconciled-view",
+        "workflow-step-health#d-overlay",
+        "workflow-step-health#d-list-summary"
+      ]
     }
   },
   "runner": {

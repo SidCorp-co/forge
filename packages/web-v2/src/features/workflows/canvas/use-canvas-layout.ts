@@ -4,6 +4,8 @@ import { type Edge, MarkerType, type Node, useNodesInitialized, useNodesState, u
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DesignDiff } from "../design-diff";
 import { edgeKey } from "../design-diff";
+import { isObservedId } from "../health";
+import type { CanvasHealth } from "./workflow-canvas";
 import type { WfEdgeData } from "./edges";
 import { layoutView, type Placed, returnPath, rounded } from "./layout";
 import { type Canvas, bandSummary, lineLabel } from "./model";
@@ -30,6 +32,7 @@ interface Decoration {
   visited: Set<string>;
   contract: boolean;
   diff: DesignDiff | null;
+  health: CanvasHealth | null;
 }
 
 function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeData | BandNodeData {
@@ -56,6 +59,9 @@ function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeD
     hit: d.hits.has(n.id),
     visited: d.visited.has(n.id),
     mark: d.diff?.steps.get(n.id) ?? null,
+    health: d.health?.on ? (d.health.nodes.get(n.id) ?? null) : null,
+    hrefOf: d.health?.hrefOf ?? null,
+    provenance: d.health?.observed ? (d.health.nodes.get(n.id)?.provenance ?? (isObservedId(n.id) ? "observed" : "matched")) : null,
   };
 }
 
@@ -269,6 +275,7 @@ export function useCanvasLayout(input: {
         dim: Boolean(d.relEdges) && !lit,
         on: d.selectedEdge === e.key,
         mark,
+        health: e.merged || !d.health?.on ? [] : (d.health.edges.get(edgeKey(first.from, first.to)) ?? []),
       };
       return [
         {

@@ -124,3 +124,13 @@
   .wfc-bc { bottom: 108px; }
   .wfc-ib .wfc-t { display: none; }
 }
+
+/* Health overlay and provenance (REQ-17 BC-16, BC-28): matched solid, upcoming dashed, observed-only
+   drawn in the observed style; markers as dots zoomed out and chips on a full card. */
+.wfc-card[data-provenance="planned"] { border-style: dashed; border-color: var(--border-strong); }
+.wfc-card[data-provenance="observed"] { border-style: dotted; border-width: 2px; border-color: var(--wf-violet); background: var(--bg-sunken); }
+.wfc-health { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.wfc-card[data-compact="true"] .wfc-health { gap: 3px; }
+.wfc-rewrite { font-size: var(--text-11-5); font-weight: 700; color: var(--fg-muted); }
+.wfc-rewrite[data-due] { color: var(--wf-red); }
+.wfc-label .wfc-health { margin-top: 2px; justify-content: center; }

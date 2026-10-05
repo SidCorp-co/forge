@@ -1,7 +1,7 @@
 // What entity comments need from the design context they comment on: the requirement, feedback
 // and workflow rows a thread hangs off. The composition root provides them at boot.
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
+import type { NodeDecision } from '@forge/contracts/workflow-health';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -17,12 +17,12 @@ interface CommentPorts {
     projectId: string,
     ref: string,
   ) => Promise<{ id: string; fbSeq: number; title: string }>;
-  /** Why `node` is not a node of the workflow's latest design revision; null when it is, or when there is no design. */
+  /** Why `node` is not a node a decision may name (the approved revision, or the latest observation); null when it is, or when there is no design. */
   designNodeRefusal: (
     tx: Tx,
     projectId: string,
     workflowRef: string,
-    node: NodeRef,
+    node: NodeDecision,
     base: string,
   ) => Promise<Refusal | null>;
 }

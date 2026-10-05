@@ -42,9 +42,21 @@ names the workflow it builds is not dispatched while that design is not approved
    on itself.
 5. **Build the approved revision only.** Build what the approved revision draws. What the code holds is
    then read into an **observation** — \`POST /api/projects/:id/workflows/:workflow/observations\` with the
-   commit read, each observed step naming the planned step it \`matches\` (or null) and citing
-   \`{ kind: "repo", file, symbol }\`. It is stored apart and never touches the design or its approval; an
-   uncited node is refused \`WORKFLOW_OBSERVATION_UNCITED\`.
+   commit read (\`atSha\`), each observed step naming the planned step
+   it \`matches\` (or null) and citing \`{ kind: "repo", file, symbol }\`. It is stored apart and never
+   touches the design or its approval. Only a rooted design is observed — an approved revision and at
+   least one linked requirement, else \`WORKFLOW_OBSERVATION_UNROOTED\` — and only against its approved
+   revision (\`WORKFLOW_OBSERVATION_REVISION_NOT_APPROVED\`). The commit must be on the landing branch
+   (\`WORKFLOW_OBSERVATION_COMMIT_OFF_BRANCH\`) and every cited file and symbol must exist there
+   (\`WORKFLOW_OBSERVATION_CITATION_MISSING\`); an uncited node is \`WORKFLOW_OBSERVATION_UNCITED\`, and a repository Forge cannot read
+   \`WORKFLOW_OBSERVATION_SOURCE_UNREADABLE\`. Writing one takes \`workflow-observations.write\`; a
+   token whose grant names it is an observer credential and never holds \`workflow-designs.write\` or
+   \`workflow-designs.approve\`, so the agent that reads the code cannot change the design it reads. The
+   observation records who wrote it and their agency; one is kept per commit.
+6. **Decide each marked node.** A workflow decision comment carrying \`decision.node\` (a step or an edge,
+   \`verdict\` keep | rewrite | delete, \`layer\` planned or observed, the \`marker\` it carried) names a
+   node of the approved revision, or with \`layer: "observed"\` a node of the latest observation, else
+   \`WORKFLOW_NODE_UNKNOWN\`. Posting one takes \`workflow-designs.approve\`.
 
 ### A loop is a return edge, not a step
 \`after\` orders the steps, so a loop in it is refused \`WORKFLOW_AFTER_CYCLE\`. A design whose later step

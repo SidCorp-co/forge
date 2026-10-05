@@ -13,6 +13,7 @@ import type {
   SystemGraph,
 } from "@forge/contracts/system-graph";
 import type { WaitingOn } from "@forge/contracts/standing";
+import type { WorkflowHealthSummary } from "@forge/contracts/workflow-health";
 import type { DesignBuildGate, DesignRequirementLink, DesignWaitingKind } from "@forge/contracts/workflows";
 
 export type { DesignBuildGate, DesignRequirementLink };
@@ -128,6 +129,8 @@ export interface WorkflowRecord {
   /** `returnReason` is the approver's word on a returned design; the list only carries it then. */
   design: DesignListReading & { status: DesignStatus | null; approvedRevision: number | null; returnReason?: string | null };
   document: WorkflowDocument;
+  /** The design's marker counts and needs-you figure, from core's health read model (workflow-step-health `d-list-summary`). */
+  health: WorkflowHealthSummary;
 }
 
 /** `GET /api/projects/:id/workflows`. */

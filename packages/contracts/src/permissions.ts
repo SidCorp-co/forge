@@ -32,6 +32,7 @@ const READ = ["project.read"] as const;
 const WRITE = [
 	"project.write",
 	"workflow-designs.write",
+	"workflow-observations.write",
 	"questionnaires.write",
 	"onboarding.write",
 	"ecosystem-links.write",
@@ -116,6 +117,7 @@ export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermissi
  * permission is one (ADR 0007): a token approves only where its grant names the approval.
  */
 export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
+	"workflow-observations.write",
 	"questionnaires.answer",
 	"onboarding.request",
 	"charter.write",
@@ -124,6 +126,15 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"comments.moderate",
 	...APPROVE,
 ];
+
+/**
+ * Permissions a token whose grant names the key never holds, whatever its holder's role: an observer
+ * credential reads the code into an observation and cannot write or decide the design it is read
+ * against (REQ-17 BC-20, design-reconciliation `dispatch-observer`).
+ */
+export const TOKEN_GRANT_EXCLUSIONS: Readonly<Partial<Record<Permission, readonly Permission[]>>> = {
+	"workflow-observations.write": ["workflow-designs.write", "workflow-designs.approve"],
+};
 
 /** The verb of a permission: anything but `read` is a write, and needs a token's `write` scope. */
 export const permissionVerb = (permission: Permission): string =>

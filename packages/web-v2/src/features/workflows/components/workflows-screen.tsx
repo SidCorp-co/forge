@@ -13,10 +13,11 @@ import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
 import { SystemOverviewRegion } from "./system-overview";
+import { HealthSummaryChips } from "./health-parts";
 import { DesignPill, ProposedMarker } from "./workflow-parts";
 
 // One grid template for the header and every row, so the columns line up without a table
-const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px]";
+const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_minmax(0,220px)_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px_minmax(0,180px)]";
 
 function size(r: WorkflowRecord): string {
   const n = r.document.steps.length;
@@ -49,6 +50,9 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
         {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
         <ProposedMarker r={r} />
       </span>
+      <span className="min-w-0 max-md:order-4 max-md:col-span-2">
+        <HealthSummaryChips health={r.health} />
+      </span>
       <span className="text-right text-12-5 text-subtle max-lg:hidden" title={`${new Date(w.updatedAt).toLocaleString()} · ${r.writerName}`}>
         {formatRelativeTime(w.updatedAt)}
       </span>
@@ -77,6 +81,9 @@ function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; te
       </span>
       <span className="col-span-2 truncate text-12 text-muted" title={`${new Date(w.updatedAt).toLocaleString()} · ${r.writerName}`}>
         <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates)}</span> · {size(r)} · {formatRelativeTime(w.updatedAt)}
+      </span>
+      <span className="col-span-2 min-w-0 empty:hidden">
+        <HealthSummaryChips health={r.health} />
       </span>
     </Link>
   );
@@ -134,6 +141,7 @@ function Designs({
           <span>Diagram</span>
           <span>Size</span>
           <span>State</span>
+          <span>Health</span>
           <span className="text-right max-lg:hidden">Updated</span>
         </div>
       )}

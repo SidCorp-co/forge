@@ -20,8 +20,11 @@ import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { readCanvas, titleOf } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
-import { type DesignDiff, designDiff, stepsWithRemoved } from "../design-diff";
+import { type DesignDiff, diffOf, stepsWithRemoved } from "../design-diff";
+import { stepsForLayer } from "../health";
+import { useHealthOverlay, useWorkflowHealth } from "../hooks";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from "../types";
+import { OrphanedTraces } from "./design-decision";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
@@ -181,7 +184,9 @@ export function shownDesign(d: WorkflowDesign, record: WorkflowRecord) {
 export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, returnControl, walkDecision }: DesignPageProps) {
   const [changes, setChanges] = useState(false);
   const { shown, shownRevision, approved } = shownDesign(d, record);
-  const fullDiff = approved ? designDiff(approved, shown, template) : null;
+  const health = useWorkflowHealth(projectId, record.document.id).data;
+  const overlay = useHealthOverlay(health, "design", slug, record.document.flow);
+  const fullDiff = approved && health?.diff && health.diff.to === shownRevision ? diffOf(health.diff, approved) : null;
   const diff = changes ? fullDiff : null;
   const tabs = [
     { value: "design" as const, label: "Design" },
@@ -195,6 +200,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       <DetailMobileTitle itemKey={record.document.flow} title={shown.title} badge={badge} />
       <DesignBanner d={d} className="px-6 py-2.5 max-md:px-4">
         {returnControl}
+        {d.status === "proposed" && health ? <OrphanedTraces traces={health.orphanedTraces} revision={d.proposedRevision} /> : null}
       </DesignBanner>
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="design-tabs" />
     </>
@@ -205,7 +211,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       dataKey={record.document.flow}
       rail={
         <FactsRail testId="design-rail">
-          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} />
+          <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} />
         </FactsRail>
       }
     >
@@ -220,9 +226,10 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col">
             <WorkflowCanvas
-              doc={{ ...shown, steps: stepsWithRemoved(shown, diff) }}
+              doc={{ ...shown, steps: stepsForLayer({ steps: stepsWithRemoved(shown, diff) }, health ?? null, overlay?.layer ?? "planned") }}
               template={template}
               diff={diff}
+              health={overlay}
               decision={walkDecision}
               graph={{ projectId, workflowId: record.document.id, revision: shownRevision, against: diff ? d.approvedRevision : null }}
             />

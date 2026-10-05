@@ -14,6 +14,10 @@
   is refused until every issue shipped and every criterion is proven. An agree wakes the master;
   an overdue breakdown shows on its pass.
 
+- **A design shows its health (REQ-17, REQ-18).** Markers such as Upcoming, Not in design and Wrong
+  are derived on every read and drawn on the canvas, rail and list. Only rooted designs are
+  observed; observer tokens cannot write designs.
+
 ### Fixed
 
 - **A pool job's brief is its agent's first turn, not a paste.** The runner starts the job's agent

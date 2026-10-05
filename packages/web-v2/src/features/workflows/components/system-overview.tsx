@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils/cn";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { describeSystem, type OverviewFact, overviewFacts, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
-import { useSystemGraph } from "../hooks";
+import { useHealthOverlay, useSystemGraph, useWorkflowHealth } from "../hooks";
 import { WORKFLOWS_LIST, workflowHref } from "../routes";
 import type { SystemGraph, WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
@@ -240,6 +240,8 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
   const o = useMemo(() => systemOverview(records), [records]);
   const graphRef = useMemo(() => (o ? { projectId, workflowId: o.record.document.id, revision: o.record.revision } : null), [o, projectId]);
   const graph = useSystemGraph(graphRef);
+  const health = useWorkflowHealth(projectId, o?.record.document.id).data;
+  const overlay = useHealthOverlay(health, "overview", slug, o?.record.document.flow ?? "");
   const compact = variant === "compact";
   const workflows = `/projects/${encodeURIComponent(slug)}/workflows`;
 
@@ -285,7 +287,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
         <Facts o={o} graph={graph.data ?? null} slug={slug} projectDocument={projectDocument} />
       </div>
       <div className={cn("flex min-h-0 flex-1", compact ? "h-[620px] flex-none max-md:h-[64vh]" : "min-h-[420px] max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
-        <WorkflowCanvas doc={design.document} template={template} graph={graphRef} compact />
+        <WorkflowCanvas doc={design.document} template={template} graph={graphRef} health={overlay} compact />
       </div>
     </section>
   );

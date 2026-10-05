@@ -1,4 +1,5 @@
 import { pickFields } from '@forge/contracts/projection';
+import type { WorkflowHealthSummary } from '@forge/contracts/workflow-health';
 import {
   DESIGN_HEAD_FIELDS,
   type DesignRevisionSummary,
@@ -11,6 +12,7 @@ import type { DesignView } from './design-service.js';
 import type { workflowView } from './service.js';
 
 type WorkflowView = ReturnType<typeof workflowView>;
+type ListedWorkflow = WorkflowView & { health: WorkflowHealthSummary };
 
 const listIn = (doc: unknown, key: 'steps' | 'edges'): unknown[] => {
   if (doc === null || typeof doc !== 'object') return [];
@@ -25,7 +27,7 @@ function templateOf(doc: Record<string, unknown>): WorkflowSummaryView['template
     : null;
 }
 
-export function workflowSummaryOf(view: WorkflowView): WorkflowSummaryView {
+export function workflowSummaryOf(view: ListedWorkflow): WorkflowSummaryView {
   const doc = view.document as unknown as Record<string, unknown>;
   return {
     workflowId: view.document.id,
@@ -41,6 +43,7 @@ export function workflowSummaryOf(view: WorkflowView): WorkflowSummaryView {
     returnReason: 'returnReason' in view.design ? (view.design.returnReason ?? null) : null,
     writerName: view.writerName,
     updatedAt: view.document.updatedAt,
+    health: view.health,
   };
 }
 

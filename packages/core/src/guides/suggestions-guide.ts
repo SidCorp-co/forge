@@ -70,6 +70,9 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 - \`builds\` names the design the issue builds, one the requirement's latest baseline pins (\`null\`:
   none). Left out, the one pinned design is taken and none links nothing; with several pinned it is
   \`SUGGESTION_BUILD_UNNAMED\`, and a flow the baseline does not pin \`SUGGESTION_BUILD_UNPINNED\`.
+  \`steps\` names the steps of that design the issue builds, stored on its build link; a step the
+  design's latest revision does not hold is \`WORKFLOW_NODE_UNKNOWN\`, and steps on an issue that
+  builds no design \`SUGGESTION_BUILD_STEPS_UNBUILT\`.
 
 ### Deciding
 - **accept** \`{ reason? }\` and **reject** \`{ reason }\` take
