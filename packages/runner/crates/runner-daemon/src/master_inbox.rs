@@ -29,6 +29,8 @@ pub enum WakeSource {
     Comment,
     /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown.
     Requirement,
+    /// Feedback was filed at high or critical severity.
+    Feedback,
     /// A frame naming no source.
     ///
     /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
@@ -51,8 +53,9 @@ impl WakeSource {
                 "workflow_design" => Ok(WakeSource::WorkflowDesign),
                 "comment" => Ok(WakeSource::Comment),
                 "requirement" => Ok(WakeSource::Requirement),
+                "feedback" => Ok(WakeSource::Feedback),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -68,6 +71,7 @@ impl WakeSource {
             WakeSource::WorkflowDesign => "workflow_design",
             WakeSource::Comment => "comment",
             WakeSource::Requirement => "requirement",
+            WakeSource::Feedback => "feedback",
             WakeSource::Unstated => "source unstated",
         }
     }
@@ -170,6 +174,13 @@ mod tests {
         let source = WakeSource::of_frame(&serde_json::json!({ "source": "requirement" })).unwrap();
         assert_eq!(source, WakeSource::Requirement);
         assert_eq!(source.label(), "requirement");
+    }
+
+    #[test]
+    fn a_feedback_wake_is_read_by_its_name() {
+        let source = WakeSource::of_frame(&serde_json::json!({ "source": "feedback" })).unwrap();
+        assert_eq!(source, WakeSource::Feedback);
+        assert_eq!(source.label(), "feedback");
     }
 
     #[test]

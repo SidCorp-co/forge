@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Feedback closes its loop.** High or critical feedback wakes the master; reporters verify their
+  own items and can be asked to; declined items lose attachments after 180 days. GitLab refuses
+  foreign projects by name.
+
 ## [0.4.0-dev.30] - 2026-10-05
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts

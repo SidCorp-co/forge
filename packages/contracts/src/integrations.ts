@@ -357,6 +357,8 @@ export const INTEGRATION_REFUSAL_CODES = [
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
+/** The codes a verified inbound delivery is refused with, once its refused row is recorded. */
+export type InboundRefusalCode = Extract<IntegrationRefusalCode, `WEBHOOK_${string}`>;
 
 /** The rules the Coolify commands refuse by name, in the one refusal envelope. */
 export const COOLIFY_REFUSAL_CODES = [

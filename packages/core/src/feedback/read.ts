@@ -170,9 +170,15 @@ export async function detailAs(
         triage:
           holds(facts, 'feedback.approve') &&
           ['new', 'triaged', 'reopened'].includes(summary.phase),
-        verify: holds(facts, 'feedback.approve') && summary.phase === 'resolved',
+        verify:
+          (holds(facts, 'feedback.approve') || viewer.userId === row.reportedBy) &&
+          summary.phase === 'resolved',
         reopen:
           (holds(facts, 'feedback.approve') || viewer.userId === row.reportedBy) &&
+          summary.phase === 'resolved',
+        askVerify:
+          holds(facts, 'feedback.approve') &&
+          viewer.userId !== row.reportedBy &&
           summary.phase === 'resolved',
         redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
       },

@@ -290,12 +290,7 @@
           "twilio",
           "@rocket.chat/"
         ],
-        "exceptions": [
-          {
-            "glob": "packages/core/src/lib/sentry.ts",
-            "why": "Forge's own crash reporting, initialised at boot before any domain module loads, and the one module that imports @sentry/node. Callers reach it through its role-typed functions (reportFailure, reportCondition, traceStep, flushReports) and never name the vendor's namespace."
-          }
-        ]
+        "exceptions": []
       }
     },
     "integration-declarations": {

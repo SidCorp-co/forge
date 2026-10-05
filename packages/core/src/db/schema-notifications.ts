@@ -36,6 +36,7 @@ export const notificationTypes = [
   'channel_gate_pending',
   'contract_version_published',
   'requirement_delivered',
+  'feedback_verify_asked',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

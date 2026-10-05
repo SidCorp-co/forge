@@ -48,6 +48,12 @@
                   "@tanstack/react-virtual/**"
                 ],
                 "message": "A subpath of this package is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's."
+              },
+              {
+                "group": [
+                  "@sentry/**"
+                ],
+                "message": "The browser's own error reporting leaves through the error-tracking port. Report with reportFailure, reportCondition or traceStep from @/lib/error-tracking; only the adapter, src/lib/sentry.ts, imports the SDK."
               }
             ]
           }
@@ -59,6 +65,18 @@
     }
   },
   "overrides": [
+    {
+      "includes": [
+        "src/lib/sentry.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "src/design/**"

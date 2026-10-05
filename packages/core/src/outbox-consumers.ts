@@ -13,6 +13,7 @@ import {
 } from './memory/index.js';
 import {
   registerEcosystemNotifications,
+  registerFeedbackNotifications,
   registerNotifyMentionsSubscriber,
   registerRequirementNotifications,
   registerTransitionNotifications,
@@ -56,4 +57,5 @@ export function registerOutboxConsumers(): void {
   registerLiveReadingInvalidation();
   registerRequirementDelivery();
   registerRequirementNotifications();
+  registerFeedbackNotifications();
 }

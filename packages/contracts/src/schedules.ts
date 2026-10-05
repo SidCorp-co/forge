@@ -24,7 +24,6 @@ export type ScheduleRunStatus = (typeof SCHEDULE_RUN_STATUSES)[number];
 export const SCHEDULE_RUN_SKIP_REASONS = [
 	"no-device",
 	"project-not-found",
-	"already-applied",
 	"nothing-to-do",
 	"gate-refused",
 ] as const;

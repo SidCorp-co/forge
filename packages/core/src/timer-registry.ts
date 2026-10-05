@@ -17,6 +17,7 @@ import {
   runDevicePrune,
   runDeviceStaleSweep,
 } from './devices/index.js';
+import { sweepDeclinedFeedback } from './feedback/index.js';
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
 import { probePgBossBackstop, releaseHeldJobs, runStaleSweep } from './jobs/index.js';
@@ -55,14 +56,21 @@ async function embeddingBackfillTick(): Promise<void> {
   }
 }
 
-/** The nightly retention pass, and the suggestions it stales and purges beside it (ISS-58). */
+/** The nightly retention pass, the suggestions it stales and purges, and declined feedback past 180 days. */
 async function retentionTick(): Promise<object> {
   const retention = await runRetentionSweep();
   const suggestions = await sweepSuggestions();
   if (suggestions.staled > 0 || suggestions.purged > 0) {
     logger.info(suggestions, 'retention: suggestions staled and payloads purged');
   }
-  return { ...retention, suggestions };
+  const declinedFeedback = await sweepDeclinedFeedback();
+  if (declinedFeedback.items > 0) {
+    logger.info(
+      declinedFeedback,
+      'retention: declined feedback attachments and embeddings removed',
+    );
+  }
+  return { ...retention, suggestions, declinedFeedback };
 }
 
 const logged =

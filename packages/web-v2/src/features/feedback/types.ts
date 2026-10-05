@@ -22,5 +22,6 @@ export type {
 export type FeedbackAction =
   | { kind: "triage"; triage: FeedbackTriage }
   | { kind: "verify"; note?: string }
+  | { kind: "verify-ask" }
   | { kind: "reopen"; reason: string }
   | { kind: "redact" };

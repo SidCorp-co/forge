@@ -2,6 +2,7 @@
 // these events, written to `pipeline_outbox` in the transaction of the act it reports and delivered
 // to its consumers by the outbox worker. A type is listed only while a consumer reads it.
 
+import type { FeedbackSeverity } from "./feedback.js";
 import type { MachineEntity, StateOf } from "./machines.js";
 
 export const OUTBOX_EVENT_TYPES = [
@@ -36,6 +37,9 @@ export const OUTBOX_EVENT_TYPES = [
 	"requirement.agreed",
 	"requirement.delivered",
 	"requirement.accepted",
+	"feedback.filed",
+	"feedback.verifyAsked",
+	"feedback.verifySettled",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -346,6 +350,27 @@ export interface OutboxEventPayloads {
 		key: string;
 		revision: number;
 		baselineSeq: number;
+	};
+	/** A feedback item was filed, by a person or by core for a breaking contract version (E3). */
+	"feedback.filed": {
+		projectId: string;
+		feedbackId: string;
+		severity: FeedbackSeverity;
+	};
+	/** A holder of feedback.approve asked the reporter to verify a resolved item (feedback-triage `verify-ask`). */
+	"feedback.verifyAsked": {
+		projectId: string;
+		feedbackId: string;
+		key: string;
+		title: string;
+		reporter: string;
+	};
+	/** A resolved item was verified or reopened, which settles any ask to verify it. */
+	"feedback.verifySettled": {
+		projectId: string;
+		feedbackId: string;
+		key: string;
+		decision: "verified" | "reopened";
 	};
 	/** A linked issue's move left the requirement reading delivered at `revision`; its BA owes the check. */
 	"requirement.delivered": {

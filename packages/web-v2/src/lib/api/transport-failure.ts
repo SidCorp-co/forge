@@ -1,5 +1,4 @@
-
-import * as Sentry from '@sentry/react';
+import { reportFailure } from '../error-tracking';
 
 function skipReason(err: unknown): string | null {
   if (err instanceof DOMException && err.name === 'AbortError') return 'aborted';
@@ -20,7 +19,7 @@ export function reportTransportFailure(
   const skip = skipReason(err);
   if (skip !== null) return skip as 'aborted' | 'offline';
 
-  Sentry.captureException(err, {
+  reportFailure(err, {
     tags: { area: 'api-transport', outcome: 'unreachable', http_method: request.method },
     contexts: {
       forge_request: {

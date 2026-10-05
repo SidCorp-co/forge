@@ -13,7 +13,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
-\`route\`, \`verify\`, \`reopen\`, \`clarification\`). It is not an agent report,
+\`route\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -58,7 +58,8 @@ Nothing ever reads an item as \`verified\` on its own.
   an item others point at stays a root (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an
   item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`).
 - **decline** is a triage route whose reason, in \`note\`, the reporter reads
-  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\`.
+  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\`. 180 days after the
+  decline the nightly retention pass removes its attachments and embedding; the row stays.
 - **Triage is an approval.** Triage takes \`feedback.approve\` on the project
   (project admin, or an org owner or admin), person or agent alike; without it the call is refused
   \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST /api/projects/:id/suggestions\`
@@ -76,8 +77,11 @@ route, declining included, closes the open question.
 
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
-  before its fix shipped, and never automatically. It takes \`feedback.approve\`
-  (\`PERMISSION_FORBIDDEN\` without it).
+  before its fix shipped, and never automatically. The reporter verifies their own item; anyone else
+  takes \`feedback.approve\` (\`PERMISSION_FORBIDDEN\` without it).
+- \`verify-ask\` sends a resolved item to its reporter's bell, where it stays until the item is
+  verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
+  and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
 - Every triage, decline, verify, reopen, redaction and promotion is kept as its own decision record, so

@@ -260,6 +260,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_DUPLICATE_SELF",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
+	"FEEDBACK_VERIFY_ASK_SELF",
 	"FEEDBACK_ALREADY_REDACTED",
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
@@ -371,6 +372,9 @@ export const feedbackVerifyRequestSchema = z.strictObject({
 	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
 });
 export const FEEDBACK_VERIFY_SHAPE = "{ note? }";
+
+export const feedbackEmptyRequestSchema = z.strictObject({});
+export const FEEDBACK_EMPTY_SHAPE = "{}";
 
 /** `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5). */
 export const feedbackClarificationRequestSchema = z.strictObject({
@@ -497,7 +501,13 @@ export interface FeedbackView extends FeedbackSummary {
 	/** Proposed triage suggestions waiting on a person. */
 	openSuggestions: number;
 	/** What the viewer may do now; a refusal still names why when they try anyway. */
-	can: { triage: boolean; verify: boolean; reopen: boolean; redact: boolean };
+	can: {
+		triage: boolean;
+		verify: boolean;
+		reopen: boolean;
+		askVerify: boolean;
+		redact: boolean;
+	};
 	sensitive: boolean;
 }
 
