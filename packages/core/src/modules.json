@@ -315,7 +315,7 @@
     "feedback": {
       "kind": "domain",
       "context": "design",
-      "owns": ["feedback", "feedbackAttachments", "feedbackCases", "feedbackDecisions"],
+      "owns": ["feedback", "feedbackAttachments", "feedbackDecisions"],
       "serves": [
         "REQ-7",
         "feedback-lifecycle",
@@ -439,8 +439,6 @@
         "activityLog",
         "criterionVerdicts",
         "issueAttachments",
-        "issueAttributeDefs",
-        "issueAttributes",
         "issueCriteria",
         "issueDependencies",
         "issueLabels",
@@ -463,7 +461,7 @@
     "jobs": {
       "kind": "kernel",
       "context": "execution",
-      "owns": ["jobEvents", "jobs", "promptBlobs"],
+      "owns": ["jobEvents", "jobs"],
       "serves": [
         "REQ-15",
         "agent-run-standing#claimed",

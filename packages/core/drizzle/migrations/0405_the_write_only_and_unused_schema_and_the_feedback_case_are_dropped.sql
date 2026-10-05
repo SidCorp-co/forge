@@ -1,8 +1,10 @@
 -- Cleanup round 2: schema with no reader is dropped, and the feedback case that feedback-triage r4
 -- removed goes with it (requirement-to-delivery `fb-case`: the FB-n row and its group are the case).
+-- Issue attributes lost their only door (the /issues/:id/attributes routes) and every reader, and the
+-- outbox types schedule.fired and skill.globalUpdated lost their emitters and their one consumer.
 --
--- ROLLBACK: none for the contents. feedback_cases, prompt_blobs and the jobs prompt snapshot columns
--- were written and never read; they are deleted with their rows and cannot be recreated from the code
+-- ROLLBACK: none for the contents. feedback_cases, issue_attributes, prompt_blobs, the jobs prompt
+-- snapshot columns and the two retired outbox types' rows were written and never read; they are deleted with their rows and cannot be recreated from the code
 -- or this file (a triage's route stays on feedback_decisions). Undoing it means restoring from a
 -- backup taken before it ran. skills_scope_check can be widened again by hand.
 --
@@ -19,7 +21,8 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'agent_reports', 'agent_session_turns', 'feedback_cases', 'integration_connections', 'jobs',
+    'agent_reports', 'agent_session_turns', 'feedback_cases', 'integration_connections',
+    'issue_attribute_defs', 'issue_attributes', 'jobs', 'pipeline_outbox',
     'prompt_blobs', 'skills', 'usage_records'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
@@ -74,4 +77,10 @@ ALTER TABLE "skills" ADD CONSTRAINT "skills_scope_check" CHECK (
 );--> statement-breakpoint
 ALTER TABLE "integration_connections" DROP COLUMN "oauth_installation_id";--> statement-breakpoint
 ALTER TABLE "usage_records" DROP COLUMN "project_name";--> statement-breakpoint
-ALTER TABLE "agent_session_turns" DROP COLUMN "parent_turn_id";
+ALTER TABLE "agent_session_turns" DROP COLUMN "parent_turn_id";;--> statement-breakpoint
+DROP TABLE "issue_attributes";--> statement-breakpoint
+DROP TABLE "issue_attribute_defs";--> statement-breakpoint
+-- Their deliveries were pg-boss jobs to ws-broadcast and are long done; the rows are dropped.
+DELETE FROM "pipeline_outbox" WHERE "type" IN ('schedule.fired', 'skill.globalUpdated');--> statement-breakpoint
+ALTER TABLE "pipeline_outbox" DROP CONSTRAINT "pipeline_outbox_type_chk";--> statement-breakpoint
+ALTER TABLE "pipeline_outbox" ADD CONSTRAINT "pipeline_outbox_type_chk" CHECK ("type" IN ('issue.created', 'issue.updated', 'issue.transitioned', 'issue.dependency.changed', 'job.transitioned', 'run.transitioned', 'comment.created', 'comment.updated', 'comment.deleted', 'comment.mentioned', 'question.answered', 'notification.created', 'notification.read', 'user.preferencesChanged', 'skill.syncRequested', 'runner.provisionRequested', 'runner.provisionStatus', 'source.pushed', 'source.merged', 'source.reviewed', 'integration.changed', 'workflow.designDecided', 'channel.documentPublished', 'channel.gateAsked', 'channel.gateDecided', 'channel.threadHeld', 'contract.versionApproved', 'ecosystem.buildOwed'));
