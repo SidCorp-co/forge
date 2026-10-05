@@ -12,8 +12,9 @@ import {
   SCHEDULE_GROUP_LABELS,
 } from "@forge/contracts/automation-standing";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
+  Button,
   ErrorState,
   GroupedList,
   type ListGroup,
@@ -30,6 +31,7 @@ import {
   useUrlTab,
   visibleRows,
 } from "@/design";
+import { useCreateSchedule } from "@/features/schedules/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
@@ -37,6 +39,7 @@ import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportH
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
 import { FirePeek, fireRow } from "./fire-views";
 import { ReportPeek, reportRow } from "./report-views";
+import { ScheduleForm } from "./schedule-form";
 import { type AutomationAccess, SchedulePeek, scheduleRow } from "./schedule-views";
 
 const matches = (text: string, ...parts: Array<string | null | undefined>) =>
@@ -66,6 +69,8 @@ const NOUN: Record<AutomationTab, string> = { schedules: "schedules", fires: "fi
 export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const { projectId, slug } = access;
   const q = useAutomationStanding(projectId);
+  const create = useCreateSchedule(projectId);
+  const [creating, setCreating] = useState(false);
   const router = useRouter();
   const [tab, setTab] = useUrlTab(AUTOMATION_TABS);
   const [params, setParams] = useUrlParams();
@@ -136,12 +141,29 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
             <ListSearch noun={NOUN[tab]} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
+            {tab === "schedules" && access.canManage && !creating ? (
+              <Button type="button" variant="primary" size="sm" icon="plus" className="ml-auto" onClick={() => setCreating(true)} data-testid="schedule-new">
+                New schedule
+              </Button>
+            ) : null}
             {tab === "fires" && d.firesHasMore ? (
               <span className="text-12-5 text-subtle">
                 The newest {d.fires.length} of {d.firesTotal}
               </span>
             ) : null}
           </div>
+          {tab === "schedules" && creating ? (
+            <div className="border-b border-line-subtle px-5 py-4 max-md:px-3">
+              <ScheduleForm
+                submitLabel="Create schedule"
+                pending={create.isPending}
+                error={create.error}
+                testId="schedule-create"
+                onCancel={() => setCreating(false)}
+                onSubmit={(input) => create.mutate(input, { onSuccess: () => setCreating(false) })}
+              />
+            </div>
+          ) : null}
           <GroupedList
             ariaLabel={`Automation ${NOUN[tab]}`}
             groups={groups}

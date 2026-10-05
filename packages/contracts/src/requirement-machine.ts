@@ -1,4 +1,4 @@
-// The requirement machine: workflow `requirement-lifecycle`, approved revision 3. `in_delivery`
+// The requirement machine: workflow `requirement-lifecycle`, approved revision 4. `in_delivery`
 // and `delivered` are phases read from the linked issues, never stored; revisions carry their own
 // state beside it (`requirement_revisions.state`).
 
@@ -8,7 +8,7 @@ import { defineMachine, fromEach } from "./state-machine.js";
 export const REQUIREMENT_MACHINE = defineMachine({
 	entity: "requirement",
 	shapes: ["7bf2075a"],
-	design: { flow: "requirement-lifecycle", revision: 3 },
+	design: { flow: "requirement-lifecycle", revision: 4 },
 	states: REQUIREMENT_STATUSES,
 	initial: ["draft"],
 	terminal: ["dropped"],

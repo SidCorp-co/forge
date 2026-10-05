@@ -94,7 +94,7 @@
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
     "version": "unversioned",
-    "x-forge-generator": "packages/core/src/api-contract/generate.ts"
+    "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
   "paths": {

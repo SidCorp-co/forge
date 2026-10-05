@@ -7,19 +7,20 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type {
   SuggestionListResponse,
   SuggestionStatus,
-  SuggestionTargetType,
   SuggestionView,
 } from '@forge/contracts/suggestions';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { rowIn as feedbackRowIn } from '../feedback/index.js';
-import { resolveIssueRouteRef } from '../issues/index.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn } from '../requirements/index.js';
-import { designNodesIn } from '../workflows/index.js';
+import {
+  notFound,
+  resolveTarget,
+  type SuggestionTarget,
+  type SuggestionTargetRef,
+} from './target.js';
 
 export interface SuggestionActor {
   userId: string;
@@ -30,20 +31,7 @@ export function suggestionKernelActor(actor: SuggestionActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
 }
 
-export type SuggestionTargetRef =
-  | { requirement: string }
-  | { issue: string }
-  | { feedback: string }
-  | { workflow: string };
-export interface SuggestionTarget {
-  type: SuggestionTargetType;
-  id: string;
-}
-
 export type Row = typeof suggestions.$inferSelect;
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export const targetOfRow = (r: Row): SuggestionTarget =>
   r.requirementId
@@ -74,30 +62,6 @@ export const viewOf = (r: Row): SuggestionView => ({
   createdAt: r.createdAt.toISOString(),
   payloadPurgedAt: r.payloadPurgedAt?.toISOString() ?? null,
 });
-
-/** A target of `projectId` by requirement, issue or feedback uuid or key, or a workflow by uuid or flow; 404 otherwise. */
-export async function resolveTarget(
-  projectId: string,
-  target: SuggestionTargetRef,
-  userId: string,
-): Promise<SuggestionTarget> {
-  if ('requirement' in target) {
-    return { type: 'requirement', id: (await rowIn(db, projectId, target.requirement)).id };
-  }
-  if ('feedback' in target) {
-    return { type: 'feedback', id: (await feedbackRowIn(db, projectId, target.feedback)).id };
-  }
-  if ('workflow' in target) {
-    const nodes = await designNodesIn(db, projectId, target.workflow);
-    if (!nodes) throw notFound(`project ${projectId} holds no workflow ${target.workflow}`);
-    return { type: 'workflow', id: nodes.workflowId };
-  }
-  const issue = await resolveIssueRouteRef(target.issue, projectId, userId);
-  if (issue.projectId !== projectId) {
-    throw notFound(`issue ${target.issue} is not an issue of project ${projectId}`);
-  }
-  return { type: 'issue', id: issue.id };
-}
 
 export const onTarget = (t: SuggestionTarget) =>
   t.type === 'requirement'
@@ -156,3 +120,5 @@ export async function listSuggestions(input: {
     .where(and(scoped, eq(suggestions.status, 'proposed')));
   return { suggestions: rows.map(viewOf), open: open?.n ?? 0 };
 }
+
+export { resolveTarget, type SuggestionTarget, type SuggestionTargetRef } from './target.js';

@@ -21,3 +21,14 @@ export interface ScheduleRow {
   createdAt: string;
   updatedAt: string;
 }
+
+/** The fields a create or an edit sends; a release_batch or sentry_pull schedule carries no prompt or script. */
+export interface ScheduleInput {
+  name: string;
+  cron: string;
+  kind: ScheduleKind;
+  prompt?: string;
+  script?: string;
+  enabled?: boolean;
+  targetProjectSlug?: string | null;
+}

@@ -20,14 +20,10 @@ import { logger } from '../lib/logger.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/index.js';
 import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
+import { loadActiveIntegrationRows, renderIntegrations } from './facts/integration-facts.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
-import {
-  loadActiveIntegrationRows,
-  loadProjectFactInputs,
-  renderIntegrations,
-  renderStageFactsText,
-} from './facts/resolve.js';
+import { loadProjectFactInputs, renderStageFactsText } from './facts/resolve.js';
 import { getStatePrompt } from './state-prompts/index.js';
 
 interface BuiltPreamble {

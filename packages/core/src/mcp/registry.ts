@@ -6,7 +6,6 @@
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeAgentReportTool } from '../agent-reports/tool.js';
-import type { ChatToolSpec } from '../assistant/index.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import {
   forgeCoolifyDeployTool,
@@ -46,7 +45,7 @@ export const MCP_TOOLS = {
  * The chat assistant's tools over read models it may not import (ADR 0008); not served on /mcp.
  * The process entry hands them to the assistant's allowlist at boot.
  */
-export const CHAT_READ_MODEL_TOOLS: readonly ChatToolSpec[] = [
+export const CHAT_READ_MODEL_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [
   { factory: forgeMetricsProjectStepDurationsTool },
   { factory: forgeMetricsProjectTimeseriesTool },
 ];

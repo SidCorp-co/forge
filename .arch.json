@@ -26,9 +26,6 @@
     "core-body": [
       "packages/core/src/body/**"
     ],
-    "core-branches": [
-      "packages/core/src/branches/**"
-    ],
     "core-comments": [
       "packages/core/src/comments/**"
     ],
@@ -51,6 +48,9 @@
     ],
     "core-devices": [
       "packages/core/src/devices/**"
+    ],
+    "core-ecosystem": [
+      "packages/core/src/ecosystem/**"
     ],
     "core-error-intake": [
       "packages/core/src/error-intake/**"
@@ -125,14 +125,20 @@
     "core-orgs": [
       "packages/core/src/orgs/**"
     ],
+    "core-outbox": [
+      "packages/core/src/outbox/**"
+    ],
+    "core-permissions": [
+      "packages/core/src/permissions/**"
+    ],
     "core-pipeline": [
       "packages/core/src/pipeline/**"
     ],
-    "core-plugins": [
-      "packages/core/src/plugins/**"
-    ],
     "core-preferences": [
       "packages/core/src/preferences/**"
+    ],
+    "core-project-config": [
+      "packages/core/src/project-config/**"
     ],
     "core-projects": [
       "packages/core/src/projects/**"
@@ -152,6 +158,9 @@
     "core-release-batch": [
       "packages/core/src/release-batch/**"
     ],
+    "core-requirements": [
+      "packages/core/src/requirements/**"
+    ],
     "core-runners": [
       "packages/core/src/runners/**"
     ],
@@ -164,8 +173,14 @@
     "core-skills": [
       "packages/core/src/skills/**"
     ],
+    "core-suggestions": [
+      "packages/core/src/suggestions/**"
+    ],
     "core-uploads": [
       "packages/core/src/uploads/**"
+    ],
+    "core-workflows": [
+      "packages/core/src/workflows/**"
     ],
     "core-ws": [
       "packages/core/src/ws/**"
@@ -235,14 +250,6 @@
   ],
   "contracts": [
     {
-      "id": "branches-is-pure",
-      "type": "forbidden",
-      "from": "core-branches",
-      "to": "*",
-      "status": "locked",
-      "description": "branch naming and lookup answers from its inputs alone Measured: 0 outgoing cross-module edges today."
-    },
-    {
       "id": "config-is-pure",
       "type": "forbidden",
       "from": "core-config",
@@ -257,14 +264,6 @@
       "to": "*",
       "status": "locked",
       "description": "install describes a target; reaching outward would make it a second dispatcher Measured: 0 outgoing cross-module edges today."
-    },
-    {
-      "id": "plugins-is-pure",
-      "type": "forbidden",
-      "from": "core-plugins",
-      "to": "*",
-      "status": "locked",
-      "description": "plugin registry resolves by name only Measured: 0 outgoing cross-module edges today."
     },
     {
       "id": "no-coordinator-blob",

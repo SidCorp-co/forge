@@ -13,42 +13,24 @@ import {
   type NeedsYouAreaKey,
   type NeedsYouEntity,
   type NeedsYouItem,
-  type NeedsYouProjectItem,
   type NeedsYouResponse,
 } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
-import { inArray } from 'drizzle-orm';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
-import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
-import { holds } from '../permissions/index.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 
-interface NeedsYouViewer {
+export interface NeedsYouViewer {
   userId: string;
   agency: ActorAgency;
   isAdmin: boolean;
   /** Holds releases.approve (`permissions/can.ts:holds`). */
   mayApprove: boolean;
 }
-
-/** The viewer each list's route builds for this caller, so the counts read as the lists do. */
-export const needsYouViewerOf = (
-  access: ProjectAccess,
-  userId: string,
-  agency: ActorAgency,
-): NeedsYouViewer => ({
-  userId,
-  agency,
-  isAdmin: holds(access, 'project.admin'),
-  mayApprove: holds(access, 'releases.approve'),
-});
 
 interface Row {
   entity: NeedsYouEntity;
@@ -185,27 +167,4 @@ export async function readNeedsYou(
     requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
     untriagedFeedback: items.filter((f) => UNTRIAGED.has(f.phase)).length,
   };
-}
-
-/** The same rows across every project the viewer can see, each project read by `readNeedsYou`. */
-export async function readNeedsYouAcross(
-  userId: string,
-  agency: ActorAgency,
-  now: Date = new Date(),
-): Promise<NeedsYouProjectItem[]> {
-  const ids = await loadVisibleProjectIds(userId);
-  if (ids.length === 0) return [];
-  const names = await db
-    .select({ id: projects.id, slug: projects.slug, name: projects.name })
-    .from(projects)
-    .where(inArray(projects.id, ids));
-  const perProject = await Promise.all(
-    names.map(async (p) => {
-      const access = await effectiveProjectRole(userId, p.id);
-      if (!access || !holds(access, 'project.read')) return [];
-      const read = await readNeedsYou(p.id, needsYouViewerOf(access, userId, agency), now);
-      return read.items.map((i) => ({ ...i, projectSlug: p.slug, projectName: p.name }));
-    }),
-  );
-  return perProject.flat();
 }

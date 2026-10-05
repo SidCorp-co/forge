@@ -171,6 +171,9 @@ export async function detailAs(
           holds(facts, 'feedback.approve') &&
           ['new', 'triaged', 'reopened'].includes(summary.phase),
         verify: holds(facts, 'feedback.approve') && summary.phase === 'resolved',
+        reopen:
+          (holds(facts, 'feedback.approve') || viewer.userId === row.reportedBy) &&
+          summary.phase === 'resolved',
         redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
       },
       sensitive: level !== 'off',

@@ -34,7 +34,7 @@ export const useFeedbackTab = () => useUrlTab(FEEDBACK_TABS);
 
 /** The one primary act the header and the peek offer: it opens the form that commits it. */
 export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => void }) {
-  if (!f.can.triage && !f.can.verify) return null;
+  if (!f.can.triage && !f.can.verify && !f.can.reopen) return null;
   return (
     <Button type="button" variant="primary" size="sm" onClick={onAct} data-testid="feedback-primary">
       {f.can.triage ? "Triage" : "Confirm the fix"}
@@ -156,7 +156,7 @@ export function FeedbackPage({
         {tab === "overview" ? (
           <div className="grid gap-8" data-testid="view-overview">
             <Proposals projectId={projectId} f={f} />
-            {f.can.triage || f.can.verify || f.can.redact ? (
+            {f.can.triage || f.can.verify || f.can.reopen || f.can.redact ? (
               <section id="feedback-act">
                 <FeedbackActions projectId={projectId} f={f} />
               </section>

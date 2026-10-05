@@ -5,7 +5,6 @@ import type {
 	DeviceRow,
 	DeviceRunnerAssignment,
 	OrgDeviceRow,
-	PairingCode,
 	ProjectRunner,
 	RunnerActivity,
 } from "./types";
@@ -70,19 +69,6 @@ export const runnersApi = {
 	revokeDevice: (id: string) =>
 		apiClient<void>(`/devices/${id}`, { method: "DELETE" }),
 
-	initPairing: (
-		deviceLabel: string,
-		platform: "macos" | "linux" | "windows" = "linux",
-	) =>
-		apiClient<PairingCode>(`/devices/login/init`, {
-			method: "POST",
-			body: JSON.stringify({
-				device_label: deviceLabel,
-				device_platform: platform,
-			}),
-		}),
-
-	
 	/** `GET /api/projects/:id/runners` — the device pools serving THIS project. */
 	listProjectRunners: (projectId: string) =>
 		apiClient<ProjectRunner[]>(`/projects/${projectId}/runners`),

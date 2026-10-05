@@ -1,7 +1,7 @@
 /**
- * The guards of workflow `suggestion-lifecycle` rev 2, as pure functions over what the service read:
+ * The guards of workflow `suggestion-lifecycle` rev 3, as pure functions over what the service read:
  * which payload a kind takes and on which target, whether the base is still the head, the open
- * queue's cap, who may not accept, and what a decided row refuses. Every refusal is named; the
+ * queue's cap, who may withdraw, and what a decided row refuses. Every refusal is named; the
  * service answers it with nothing written, except a stale base on accept, which marks the row stale.
  */
 

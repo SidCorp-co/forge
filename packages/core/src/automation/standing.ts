@@ -20,6 +20,7 @@ import {
   type ScheduleStanding,
   type ScheduleState,
 } from '@forge/contracts/automation-standing';
+import { scheduleWritePermission } from '@forge/contracts/schedules';
 import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
 import { type LastFire, type ScheduleStreak, streakFails } from './ports.js';
 
@@ -27,7 +28,7 @@ export interface AutomationViewer {
   userId: string;
   /** member or above: may triage a report. */
   canWrite: boolean;
-  /** admin or above: may take over a schedule whose owner is gone. */
+  /** admin or above: may change any schedule, taking over one that is not theirs. */
   isAdmin: boolean;
 }
 
@@ -212,8 +213,15 @@ export function scheduleStandingOf(
     lastFire: lastFireOf(lastFire),
     attentionGroup: scheduleGroupOf(state, waitingOn),
     waitingOn,
+    viewerMay: viewerMayOf(s, ctx.viewer),
     createdAt: s.createdAt.toISOString(),
   };
+}
+
+function viewerMayOf(s: Pick<ScheduleFacts, 'owner'>, viewer: AutomationViewer) {
+  const needs = scheduleWritePermission(s.owner?.id ?? null, viewer.userId);
+  const edit = needs === 'project.admin' ? viewer.isAdmin : viewer.canWrite;
+  return { edit, takeOver: edit && needs === 'project.admin' };
 }
 
 /** Who triages a report: its fire's schedule owner first, otherwise any member with write access. */

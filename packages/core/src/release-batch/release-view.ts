@@ -129,7 +129,7 @@ function approvalTurn(f: TurnFacts): Turn {
     attentionGroup: 'waiting',
     waitingOn: {
       kind: 'person',
-      who: f.approvers.length === 1 && only ? only.name : 'A project admin',
+      who: f.approvers.length === 1 && only ? only.name : 'A holder of releases.approve',
       act: 'approve',
       rule,
       ref: null,

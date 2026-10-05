@@ -112,12 +112,16 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
           </Button>
         ) : (
           <>
-            <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify" })}>
-              Mark verified
-            </Button>
-            <Button type="button" size="sm" onClick={() => setReopening(true)}>
-              Reopen
-            </Button>
+            {f.can.verify ? (
+              <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify" })}>
+                Mark verified
+              </Button>
+            ) : null}
+            {f.can.reopen ? (
+              <Button type="button" size="sm" onClick={() => setReopening(true)}>
+                Reopen
+              </Button>
+            ) : null}
           </>
         )}
       </div>
@@ -154,7 +158,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
   return (
     <div className="grid gap-4">
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
-      {f.can.verify ? <VerifyBar projectId={projectId} f={f} /> : null}
+      {f.can.verify || f.can.reopen ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
     </div>
   );
