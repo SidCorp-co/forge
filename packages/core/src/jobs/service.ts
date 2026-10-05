@@ -5,17 +5,24 @@ import { db, type Tx } from '../db/client.js';
 import { agentSessions, jobEvents, jobs, skills } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { transition } from '../lifecycle/index.js';
+import { assertRunAcceptsWork } from '../pipeline/index.js';
 import type { JobGateRow } from './job-queries.js';
 import { jobsPorts } from './ports.js';
 
-/** A job created by REST, queued on the given run; answers the whole row. */
+/**
+ * A job created by REST, queued on the given run; answers the whole row. A run that no longer
+ * takes work refuses it `RUN_NOT_ACCEPTING_WORK`.
+ */
 export async function createQueuedJob(
   values: Omit<typeof jobs.$inferInsert, 'status'>,
 ): Promise<typeof jobs.$inferSelect> {
-  const [inserted] = await db
-    .insert(jobs)
-    .values({ ...values, status: 'queued' })
-    .returning();
+  const [inserted] = await db.transaction(async (tx) => {
+    await assertRunAcceptsWork(tx, values.pipelineRunId);
+    return tx
+      .insert(jobs)
+      .values({ ...values, status: 'queued' })
+      .returning();
+  });
   if (!inserted) throw new Error('jobs: insert returned no row');
   return inserted;
 }
@@ -96,31 +103,6 @@ export async function ackJob(
     return row;
   });
   return updated ?? null;
-}
-
-/**
- * A late successful completion of a job a sweep reaped to `failed` with a synthetic error:
- * flipped back to `done` unless a retry attempt is queued, dispatched or done. Answers the
- * reclaimed row, or null when a retry owns the outcome or the row moved.
- */
-export async function reclaimReapedJob(job: JobGateRow & { error: string }, deviceId: string) {
-  const activeRetry = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(eq(jobs.retryOf, job.id), inArray(jobs.status, ['queued', 'dispatched', 'done'])))
-    .limit(1);
-  if (activeRetry.length > 0) return null;
-  const [reclaimed] = (
-    await transition(db, JOB_MACHINE, {
-      to: 'done',
-      set: { exitCode: 0, error: null, finishedAt: new Date() },
-      where: and(eq(jobs.id, job.id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
-      reason: 'reconciled_late_complete',
-      actor: { type: 'runner', id: deviceId },
-      source: 'lifecycle',
-    })
-  ).rows;
-  return reclaimed ?? null;
 }
 
 /** A runner's terminal report applied to the job it holds, guarded on the status it read. */

@@ -32,7 +32,6 @@ import {
 import { scrubIssueText } from './patch-fields.js';
 import {
   type AppliedIssueRelation,
-  flushIssueRelationEffects,
   type IssueRelationInput,
   type PendingIssueRelation,
   writeIssueRelations,
@@ -319,8 +318,6 @@ export async function createIssue(
         writer.actor.agency,
       )
     : { persisted: [], errors: [] };
-
-  await flushIssueRelationEffects(input.projectId, pendingRelations);
 
   return {
     deduped: false,

@@ -6,7 +6,6 @@
  * only through its daemon, so there is one holder of the device token.
  */
 
-import { PARK_PROTECTIONS } from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -272,10 +271,6 @@ devicePoolRoutes.post(
     const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
     return c.json({ closed });
   },
-);
-
-devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
-  c.json({ protections: PARK_PROTECTIONS }),
 );
 
 function askAnswerOf(body: AskBody) {

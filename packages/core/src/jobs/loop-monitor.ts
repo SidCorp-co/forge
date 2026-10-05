@@ -116,8 +116,7 @@ interface KillGateReapConfig {
   /** CAS predicate for the terminal flip — MUST include the same status
    *  guard the candidate SELECT used. */
   where: SQL | undefined;
-  /** Written to `jobs.error` — also the SYNTHETIC_REAP_ERRORS marker the
-   *  late-`/complete` reconciler matches on, so keep it the short form. */
+  /** Written to `jobs.error` — also a SYNTHETIC_REAP_ERRORS marker, so keep it the short form. */
   error: string;
   /** Passed to `finalizeFailedJob`'s `error` option (logging / classifier
    *  fallback only). Defaults to `error` when the hop has no longer text. */

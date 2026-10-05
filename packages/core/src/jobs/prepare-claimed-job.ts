@@ -192,9 +192,6 @@ export async function prepareClaimedJob(args: {
     { ...job, runnerId: runner.id, deviceId: args.deviceId },
     { repoPath, resume: resume.record },
   );
-  if (!agentSessionId) {
-    throw new Error(`prepare: no agent session could be created for job ${job.id}`);
-  }
   await recordSessionContext(agentSessionId, built);
 
   return {

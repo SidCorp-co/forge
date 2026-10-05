@@ -1,11 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
+import { type IssueStatus, jobs, pipelineRuns } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { traceStep } from '../lib/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
+import { projectCreatorOf } from './ports.js';
 import { emitPipelineWedge, rescueCapWedgeEntityId } from './wedge.js';
 
 /**
@@ -105,13 +106,7 @@ async function parkForHuman(args: {
   reopenCount: number;
   doneDriveJobs: number;
 }): Promise<void> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
-  const actorId = row?.createdBy;
+  const actorId = await projectCreatorOf(args.projectId);
   if (!actorId) throw new Error(`the project of issue ${args.issueId} has no owner to act as`);
 
   await applyStatusTransition(

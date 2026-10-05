@@ -13,8 +13,9 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
-import { resolvePipelineWedge } from '../pipeline/index.js';
+import { assertRunAcceptsWork, resolvePipelineWedge } from '../pipeline/index.js';
 import { onlineCapableDeviceIds, type RequiredCapabilities } from '../runners/index.js';
 
 export {
@@ -34,6 +35,9 @@ const HOLD_REASONS: ReadonlySet<string> = new Set([
   'verify_unavailable',
 ]);
 
+/** The outcome a hold or retry reads when its run no longer takes work: no successor, by name. */
+export const RUN_CLOSED = 'run_not_accepting_work';
+
 /** How long a {@link TIME_CHECKED_REASONS} hold waits before it tries again. */
 const HOLD_RECHECK_MS = 10 * 60_000;
 
@@ -48,12 +52,13 @@ export function holdAutoReleases(priorPayload: unknown, reason: string): boolean
 /**
  * Insert the held successor for a job whose retries are spent. `null` for a reason that is not a
  * hold reason; `superseded` when `jobs_active_unique` refused it because another active job of
- * the same issue and type exists, which still carries the run. Any other insert error throws.
+ * the same issue and type exists, which still carries the run; {@link RUN_CLOSED} when the run
+ * has closed, so there is nothing left to hold for. Any other insert error throws.
  */
 export async function holdJobForReason(
   job: JobRow,
   reason: string,
-): Promise<{ heldId: string } | 'superseded' | null> {
+): Promise<{ heldId: string } | 'superseded' | typeof RUN_CLOSED | null> {
   if (!HOLD_REASONS.has(reason)) return null;
 
   const state: HoldState = {
@@ -67,23 +72,26 @@ export async function holdJobForReason(
     : null;
 
   try {
-    const [created] = await db
-      .insert(jobs)
-      .values({
-        projectId: job.projectId,
-        issueId: job.issueId,
-        pipelineRunId: job.pipelineRunId,
-        createdBy: job.createdBy,
-        type: job.type,
-        payload: { ...basePayload, [HOLD_PAYLOAD_KEY]: state },
-        modelTier: job.modelTier,
-        status: 'held',
-        attempts: job.attempts,
-        retryOf: job.id,
-        failureReason: reason,
-        ...(retryAfterAt ? { retryAfterAt } : {}),
-      })
-      .returning({ id: jobs.id });
+    const [created] = await db.transaction(async (tx) => {
+      await assertRunAcceptsWork(tx, job.pipelineRunId);
+      return tx
+        .insert(jobs)
+        .values({
+          projectId: job.projectId,
+          issueId: job.issueId,
+          pipelineRunId: job.pipelineRunId,
+          createdBy: job.createdBy,
+          type: job.type,
+          payload: { ...basePayload, [HOLD_PAYLOAD_KEY]: state },
+          modelTier: job.modelTier,
+          status: 'held',
+          attempts: job.attempts,
+          retryOf: job.id,
+          failureReason: reason,
+          ...(retryAfterAt ? { retryAfterAt } : {}),
+        })
+        .returning({ id: jobs.id });
+    });
     if (!created) throw new Error(`hold: successor insert for job ${job.id} returned no row`);
     logger.info(
       { jobId: created.id, heldFrom: job.id, issueId: job.issueId, ...state },
@@ -91,6 +99,10 @@ export async function holdJobForReason(
     );
     return { heldId: created.id };
   } catch (err) {
+    if (isRefusal(err, 'RUN_NOT_ACCEPTING_WORK')) {
+      logger.info({ jobId: job.id, runId: job.pipelineRunId, reason }, 'hold: run closed, no hold');
+      return RUN_CLOSED;
+    }
     if (!isUniqueViolation(err)) throw err;
     logger.warn({ jobId: job.id, reason }, 'hold: another active job of this issue holds the slot');
     return 'superseded';
@@ -99,13 +111,16 @@ export async function holdJobForReason(
 
 /**
  * The kernel's `held → queued` move (`hold.released`), with the columns a requeue resets: a fresh
- * rotation, and the lineage's one auto-release spent so a second hold is a person's.
+ * rotation, and the lineage's one auto-release spent so a second hold is a person's. A run that
+ * no longer takes work refuses it `RUN_NOT_ACCEPTING_WORK`; run it inside a transaction so that
+ * read holds.
  */
 export async function requeueHeldJob(
   exec: KernelExecutor,
   job: JobRow,
   move: { actor: KernelActor; reason: string; source: string },
 ): Promise<{ id: string; issueId: string | null } | null> {
+  await assertRunAcceptsWork(exec, job.pipelineRunId);
   const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...payload } = (job.payload ?? {}) as Record<
     string,
     unknown
@@ -164,11 +179,13 @@ export async function releaseHeldJobs(): Promise<{ released: number }> {
     const reason = state?.reason ?? job.failureReason ?? '';
     try {
       if (!(await conditionCleared(job, reason))) continue;
-      const row = await requeueHeldJob(db, job, {
-        actor: { type: 'system' },
-        reason: `hold condition cleared: ${reason}`,
-        source: 'hold-release',
-      });
+      const row = await db.transaction((tx) =>
+        requeueHeldJob(tx, job, {
+          actor: { type: 'system' },
+          reason: `hold condition cleared: ${reason}`,
+          source: 'hold-release',
+        }),
+      );
       if (row) released += 1;
     } catch (err) {
       logger.error({ err, jobId: job.id, reason }, 'hold: release failed, staying held');

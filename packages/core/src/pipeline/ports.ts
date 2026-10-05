@@ -124,6 +124,8 @@ interface PipelinePorts {
   emitNotification: (input: NotificationInput) => Promise<{ id: string; delivered: number }>;
   resolveNotifications: (resolutionKey: string, outcome?: string) => Promise<number>;
   projectAdminUserIds: (projectId: string) => Promise<string[]>;
+  /** Who created the project: the account a system-authored act is attributed to. */
+  projectCreatorOf: (projectId: string) => Promise<string | null>;
   projectAdminUserIdsFor: (projectIds: readonly string[]) => Promise<Map<string, string[]>>;
   existingProjectHandle: (tx: Tx, projectId: string) => Promise<{ userId: string } | undefined>;
   resolveProjectHandle: (tx: Tx, projectId: string, mintAs?: string) => Promise<{ userId: string }>;
@@ -182,6 +184,7 @@ export const retentionStatements = (): RetentionStatements => pipelinePorts().re
 export const emitNotification = port('emitNotification');
 export const resolveNotifications = port('resolveNotifications');
 export const projectAdminUserIds = port('projectAdminUserIds');
+export const projectCreatorOf = port('projectCreatorOf');
 export const projectAdminUserIdsFor = port('projectAdminUserIdsFor');
 export const existingProjectHandle = port('existingProjectHandle');
 export const resolveProjectHandle = port('resolveProjectHandle');

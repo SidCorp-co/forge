@@ -24,7 +24,7 @@ import {
 } from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
-import { holdAutoReleases, holdJobForReason } from './hold.js';
+import { holdAutoReleases, holdJobForReason, RUN_CLOSED } from './hold.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -120,9 +120,11 @@ async function reconcileIssueStatusAfterFailure(
   // territory) — the work is effectively done; leave the issue untouched.
   if (recoveredViaVerify) return;
 
+  // A run that closed under the failure takes no successor; whoever closed it owns the issue.
+  if (retry.reason === RUN_CLOSED) return;
   const reason = retry.reason ?? 'unknown';
   const hold = retry.scheduled ? null : await holdJobForReason(job, reason);
-  if (hold === 'superseded') return;
+  if (hold === 'superseded' || hold === RUN_CLOSED) return;
   const heldJobId = hold?.heldId ?? null;
 
   const entry = JOB_TYPE_ENTRY_STATUS[job.type];

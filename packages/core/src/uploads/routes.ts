@@ -2,7 +2,7 @@ import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { contentDisposition } from '../lib/attachment-headers.js';
+import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
@@ -88,13 +88,6 @@ uploadRoutes.get(
       });
     }
 
-    const bytes = await readAttachmentBytes(att);
-    return c.body(new Uint8Array(bytes), 200, {
-      'content-type': att.mime,
-      'content-length': String(bytes.byteLength),
-      'x-content-type-options': 'nosniff',
-      'content-disposition': contentDisposition('attachment', att.name),
-      'cache-control': 'private, no-store',
-    });
+    return sendStoredAttachment(c, att, () => readAttachmentBytes(att), { download: true });
   },
 );

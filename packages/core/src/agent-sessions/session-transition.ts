@@ -1,6 +1,7 @@
 import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import {
   type AgentSessionStatus,
+  LIVE_SESSION_STATUSES,
   SESSION_MACHINE,
   TERMINAL_AGENT_SESSION_STATUSES,
 } from '@forge/contracts/session-machine';
@@ -15,6 +16,7 @@ import {
   type TransitionResult,
   transition,
 } from '../lifecycle/index.js';
+import { assertRunAcceptsWork } from '../pipeline/index.js';
 import { agentSessionsPorts } from './ports.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 
@@ -50,6 +52,22 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
   const result = await transition(exec, SESSION_MACHINE, {
     ...args,
     ...(returning ? { returning } : {}),
+    beforeWrite: async (tx, prior) => {
+      // A move into a live status is a write the parent run has to accept (the I1 rule).
+      if (LIVE_SESSION_STATUSES.includes(args.to) && prior.length > 0) {
+        const runs = await tx
+          .selectDistinct({ runId: agentSessions.pipelineRunId })
+          .from(agentSessions)
+          .where(
+            inArray(
+              agentSessions.id,
+              prior.map((r) => r.id),
+            ),
+          );
+        for (const { runId } of runs) await assertRunAcceptsWork(tx, runId);
+      }
+      await args.beforeWrite?.(tx, prior);
+    },
     afterWrite: async (tx, rows) => {
       await args.afterWrite?.(tx, rows);
       if (ending) {
@@ -67,6 +85,7 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
     returned = await handBackRunIssues(exec, result.rows, args);
     await fireSessionBridges(exec, result.rows, args.returning === undefined);
     await descendFrom(
+      exec,
       result.rows.map((r) => r.id),
       args,
     );
@@ -159,13 +178,14 @@ export async function retryOwedHandBacks(): Promise<{ owed: number; returned: nu
 
 /** A flip the descent itself wrote is skipped: the walk owns its depth bound. */
 async function descendFrom(
+  exec: KernelExecutor,
   ids: string[],
   args: { to: string; source: string; reason?: string | null | undefined },
 ): Promise<void> {
   const { closeSessionsOwnedBy, DESCENT_SOURCE } = await import('./session-descent.js');
   if (args.source === DESCENT_SOURCE) return;
   try {
-    await closeSessionsOwnedBy(ids, {
+    await closeSessionsOwnedBy(exec, ids, {
       reason: 'owner_session_closed',
       detail: `session-descent: the session that owned this one went ${args.to} (${args.reason ?? args.source})`,
     });

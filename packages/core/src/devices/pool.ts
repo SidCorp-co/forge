@@ -90,7 +90,7 @@ export async function readPool(args: {
         SELECT 1 FROM jobs other
         WHERE other.issue_id = j.issue_id
           AND other.id <> j.id
-          AND other.status IN ('dispatched','running','held')
+          AND other.status IN ('dispatched','held')
       )
       ${projectFilter}
     GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status, ipj.issue_prefix

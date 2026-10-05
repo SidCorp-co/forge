@@ -1,4 +1,3 @@
-import { RUN_MACHINE } from '@forge/contracts/run-machine';
 /**
  * pipeline_runs lifecycle helpers: opening the run a job or session works
  * under, advancing its current step and closing it when its issue ends.
@@ -6,16 +5,11 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import { afterCommit, db, type Tx } from '../db/client.js';
 import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { transition } from '../lifecycle/index.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
-import {
-  cascadeCancelChildJobs,
-  reasonForOutcome,
-  requestKillsForCascade,
-} from './runs-cascade.js';
+import { closeRunsInTx, reasonForOutcome, requestKillsForCascade } from './runs-cascade.js';
 
 type OpenIssueRun = { id: string; startedAt: Date };
 
@@ -166,24 +160,18 @@ export async function closeRun(
 ): Promise<CloseResult> {
   const resolved = await gatedOutcome(runId, outcome);
   if (resolved === null) return 'deferred';
-  const { cascade } = await db.transaction(async (tx) => {
-    const updated = (
-      await transition(tx, RUN_MACHINE, {
-        to: resolved,
-        set: { finishedAt: new Date(), updatedAt: new Date() },
-        where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-        reason: reasonForOutcome(resolved),
-        actor: { type: 'system' },
-        source: 'runs',
-      })
-    ).rows;
-    const c =
-      updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved))
-        : null;
-    return { rows: updated, cascade: c };
-  });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(resolved));
+  const { cascades } = await db.transaction((tx) =>
+    closeRunsInTx(tx, {
+      to: resolved,
+      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+      reason: reasonForOutcome(resolved),
+      actor: { type: 'system' },
+      source: 'runs',
+    }),
+  );
+  for (const c of cascades) {
+    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved));
+  }
   return 'settled';
 }
 
@@ -197,28 +185,36 @@ export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  const { cascade } = await db.transaction(async (tx) => {
-    const updated = (
-      await transition(tx, RUN_MACHINE, {
-        to: outcome,
-        set: { finishedAt: new Date(), updatedAt: new Date() },
-        where: and(
-          eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.kind, ['interactive', 'system']),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-        reason: reasonForOutcome(outcome),
-        actor: { type: 'system' },
-        source: 'runs',
-      })
-    ).rows;
-    const c =
-      updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
-        : null;
-    return { rows: updated, cascade: c };
+  await db.transaction((tx) => closeRunIfOneShotInTx(tx, runId, outcome));
+}
+
+/**
+ * `closeRunIfOneShot` inside a transaction the caller holds, for a close that has to commit with
+ * the write that caused it. The cascade's kills are requested once that transaction commits.
+ * Answers whether this call closed the run.
+ */
+export async function closeRunIfOneShotInTx(
+  tx: Tx,
+  runId: string,
+  outcome: 'completed' | 'failed' | 'cancelled',
+): Promise<boolean> {
+  const { rows, cascades } = await closeRunsInTx(tx, {
+    to: outcome,
+    where: and(
+      eq(pipelineRuns.id, runId),
+      inArray(pipelineRuns.kind, ['interactive', 'system']),
+      inArray(pipelineRuns.status, ['running', 'paused']),
+    ),
+    reason: reasonForOutcome(outcome),
+    actor: { type: 'system' },
+    source: 'runs',
   });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
+  for (const c of cascades) {
+    afterCommit(() => {
+      void requestKillsForCascade(c.result.killableJobs, reasonForOutcome(outcome));
+    });
+  }
+  return rows.length > 0;
 }
 
 interface CancelConcludedResult {
@@ -236,34 +232,27 @@ export async function cancelConcludedRun(runId: string): Promise<CancelConcluded
     .limit(1);
   if (!before) return { cancelled: false, was: null };
 
-  const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = (
-      await transition(tx, RUN_MACHINE, {
-        to: 'cancelled',
-        set: {
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-          metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({
-            cancelledFrom: before.status,
-          })}::jsonb`,
-        },
-        where: and(
-          eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.kind, ['interactive', 'system']),
-          inArray(pipelineRuns.status, ['completed', 'failed']),
-        ),
-        reason: reasonForOutcome('cancelled'),
-        actor: { type: 'system' },
-        source: 'runs',
-      })
-    ).rows;
-    const c =
-      updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome('cancelled'))
-        : null;
-    return { rows: updated, cascade: c };
-  });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome('cancelled'));
+  const { rows, cascades } = await db.transaction((tx) =>
+    closeRunsInTx(tx, {
+      to: 'cancelled',
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.kind, ['interactive', 'system']),
+        inArray(pipelineRuns.status, ['completed', 'failed']),
+      ),
+      set: {
+        metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({
+          cancelledFrom: before.status,
+        })}::jsonb`,
+      },
+      reason: reasonForOutcome('cancelled'),
+      actor: { type: 'system' },
+      source: 'runs',
+    }),
+  );
+  for (const c of cascades) {
+    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome('cancelled'));
+  }
   return { cancelled: rows.length > 0, was: before.status };
 }
 
@@ -281,29 +270,19 @@ export async function closeOpenRunForIssue(
   if (!open) return 'settled';
   const resolved = await gatedOutcome(open.id, outcome);
   if (resolved === null) return 'deferred';
-  const { cascades } = await db.transaction(async (tx) => {
-    const updatedRows = (
-      await transition(tx, RUN_MACHINE, {
-        to: resolved,
-        set: { finishedAt: new Date(), updatedAt: new Date() },
-        where: and(
-          eq(pipelineRuns.kind, 'issue'),
-          eq(pipelineRuns.issueId, issueId),
-          inArray(pipelineRuns.status, ['running', 'paused']),
-        ),
-        reason: reasonForOutcome(resolved),
-        actor: { type: 'system' },
-        source: 'runs',
-      })
-    ).rows;
-    const cs = await Promise.all(
-      updatedRows.map(async (r) => ({
-        runId: r.id,
-        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved)),
-      })),
-    );
-    return { rows: updatedRows, cascades: cs };
-  });
+  const { cascades } = await db.transaction((tx) =>
+    closeRunsInTx(tx, {
+      to: resolved,
+      where: and(
+        eq(pipelineRuns.kind, 'issue'),
+        eq(pipelineRuns.issueId, issueId),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+      ),
+      reason: reasonForOutcome(resolved),
+      actor: { type: 'system' },
+      source: 'runs',
+    }),
+  );
   for (const c of cascades) {
     await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved));
   }

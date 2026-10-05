@@ -45,7 +45,6 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   queue_timeout: 'transport',
   turn_never_reported: 'transport',
   no_client_ack: 'transport',
-  ws_publish_failed: 'transport',
   checkout_unbound: 'workspace',
   credential_mint_failed: 'forge',
   attachment_unreadable: 'forge',

@@ -9,17 +9,12 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { SYNTHETIC_REAP_ERRORS } from './agent-session-link.js';
 import { cancelJob } from './cancel-job.js';
 import { readJobGate } from './job-queries.js';
 import { salvageSchema } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
 import { resumeHeldJob } from './resume-job.js';
-import {
-  completeJobFromRunner,
-  failJobFromRunner,
-  reconcileLateCompletion,
-} from './runner-finish.js';
+import { failJobFromRunner } from './runner-finish.js';
 import { ackJob, confirmJobKill } from './service.js';
 
 const notFound = (message: string) =>
@@ -32,14 +27,6 @@ const ackBodySchema = z
     skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
   })
   .passthrough();
-
-const completeBodySchema = z
-  .object({
-    exitCode: z.number().int(),
-    error: z.string().max(10_000).nullable().optional(),
-    summary: z.string().max(10_000).optional(),
-  })
-  .strict();
 
 const failBodySchema = z
   .object({ error: z.string().max(10_000), salvage: salvageSchema.optional() })
@@ -111,36 +98,6 @@ jobLifecycleDeviceRoutes.post(
       ackedAt: now.toISOString(),
       acked: true,
     });
-  },
-);
-
-jobLifecycleDeviceRoutes.post(
-  '/:id/complete',
-  requireDevice(),
-  zValidator('param', jobIdParamSchema),
-  zValidator('json', completeBodySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const input = c.req.valid('json');
-    const device = c.get('device');
-
-    const job = await loadJob(id);
-    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
-
-    if (
-      !OCCUPYING_JOB_STATUSES.includes(job.status) &&
-      input.exitCode === 0 &&
-      job.status === 'failed' &&
-      typeof job.error === 'string' &&
-      SYNTHETIC_REAP_ERRORS.has(job.error)
-    ) {
-      const reconciled = await reconcileLateCompletion({ ...job, error: job.error }, device.id);
-      if (reconciled) return c.json(reconciled);
-    }
-    if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
-      throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
-    }
-    return c.json(await completeJobFromRunner(job, input, device.id));
   },
 );
 

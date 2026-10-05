@@ -4,46 +4,34 @@
  * The rows minted before this are owned by an individual, and the admin
  * finishing an install is not necessarily them.
  *
- * Reading them is not authorizing them — the caller is still asserted admin of
- * the resolved binding's project, and the App still answers to its own JWT.
+ * The door decides which projects the caller administers (permissions/can) and
+ * hands only those in; this adapter never reads a role. Reading the Apps is not
+ * authorizing them — the caller is still asserted admin of the resolved
+ * binding's project, and the App still answers to its own JWT.
  */
 
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import {
-  integrationBindings,
-  integrationConnections,
-  organizationMembers,
-  projectMembers,
-  projects,
-} from '../../db/schema.js';
+import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { type IntegrationConnectionRow, listConnectionsForPrincipalUser } from '../index.js';
 
-/** Org admin and owner are implicit project admins; a plain member is not. */
-const ORG_ADMIN_ROLES = ['admin', 'owner'] as const;
+/** The caller, and the projects the door found it may administer. */
+export interface InstallCandidateScope {
+  userId: string;
+  administeredProjectIds: readonly string[];
+}
 
-async function githubConnectionsOnAdministeredProjects(
-  userId: string,
+async function githubConnectionsBoundTo(
+  projectIds: readonly string[],
 ): Promise<IntegrationConnectionRow[]> {
+  if (projectIds.length === 0) return [];
   const bound = await db
     .selectDistinct({ connectionId: integrationBindings.connectionId })
     .from(integrationBindings)
-    .innerJoin(projects, eq(projects.id, integrationBindings.projectId))
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
     .where(
       and(
         eq(integrationBindings.provider, 'github'),
-        or(
-          eq(projectMembers.role, 'admin'),
-          inArray(organizationMembers.role, [...ORG_ADMIN_ROLES]),
-        ),
+        inArray(integrationBindings.projectId, [...projectIds]),
       ),
     );
   const ids = bound.map((row) => row.connectionId);
@@ -57,12 +45,12 @@ async function githubConnectionsOnAdministeredProjects(
 }
 
 export async function listGithubAppsReachableBy(
-  userId: string,
+  scope: InstallCandidateScope,
 ): Promise<IntegrationConnectionRow[]> {
-  const mine = (await listConnectionsForPrincipalUser(userId)).filter(
+  const mine = (await listConnectionsForPrincipalUser(scope.userId)).filter(
     (c) => c.provider === 'github',
   );
-  const administered = await githubConnectionsOnAdministeredProjects(userId);
+  const administered = await githubConnectionsBoundTo(scope.administeredProjectIds);
   const byId = new Map<string, IntegrationConnectionRow>();
   for (const connection of [...mine, ...administered]) byId.set(connection.id, connection);
   return [...byId.values()];

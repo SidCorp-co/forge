@@ -6,8 +6,8 @@ import {
   contentLanguageRecord,
 } from '@forge/contracts/content-language';
 import { isSlashCommandSkillName } from '@forge/contracts/skills';
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { eq, sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import {
   agentSessions,
   devices,
@@ -24,7 +24,7 @@ import { logger } from '../lib/logger.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
-import { openOneShotRun } from '../pipeline/index.js';
+import { assertRunAcceptsWork, insertOneShotRun, openOneShotRun } from '../pipeline/index.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
@@ -321,6 +321,34 @@ async function coldStartPrompt(
   return args.skillName ? `/${args.skillName}\n${prompt}` : prompt;
 }
 
+/**
+ * The run a chat turn is written under, read FOR SHARE in the turn's transaction: the session's own
+ * while it accepts work. A chat whose one-shot run already closed (the session ended, or a reaper
+ * closed it) gets a fresh one-shot run of the same kind for this turn, so the follow-up is a new
+ * run of work rather than a revival under a dead one. A session under any other run kind is refused
+ * by name (`RUN_NOT_ACCEPTING_WORK`).
+ */
+async function liveRunFor(
+  tx: Tx,
+  session: Pick<AgentSessionRow, 'pipelineRunId' | 'projectId'>,
+): Promise<string> {
+  const runId = session.pipelineRunId;
+  const [run] = (await tx.execute(
+    sql`SELECT status, kind FROM pipeline_runs WHERE id = ${runId} FOR SHARE`,
+  )) as unknown as Array<{ status: string; kind: string }>;
+  if (!run || run.status === 'running' || run.status === 'paused') return runId;
+  if (run.kind !== 'interactive' && run.kind !== 'system') {
+    await assertRunAcceptsWork(tx, runId);
+    return runId;
+  }
+  const next = await insertOneShotRun(tx, {
+    projectId: session.projectId,
+    kind: run.kind,
+    metadata: { followsRun: runId },
+  });
+  return next.id;
+}
+
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client } = args;
   const { deviceId } = client;
@@ -406,9 +434,10 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const { updated, sync, eventSeqBase } = await db.transaction(async (tx) => {
+    const pipelineRunId = await liveRunFor(tx, session);
     const [written] = await tx
       .update(agentSessions)
-      .set(updates)
+      .set({ ...updates, pipelineRunId })
       .where(eq(agentSessions.id, session.id))
       .returning();
     if (!written) throw new Error('agent_sessions: update returned no row');

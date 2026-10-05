@@ -20,7 +20,6 @@ import {
   heldIssuePrefixes,
   insertIssueRow,
   isUuid,
-  type PendingIssueRelation,
   putCriteria,
   writeIssueRelations,
 } from '../issues/index.js';
@@ -259,19 +258,17 @@ export async function breakdownEffect(
     actor: { type: 'user' as const, id: actor.userId, agency: actor.agency },
     createdById: actor.userId,
   };
-  const relations: PendingIssueRelation[] = [];
   for (const [i, item] of p.issues.entries()) {
     const edges = (item.blockedBy ?? []).map((k) => ({
       kind: 'blocks' as const,
       dependsOnId: (typeof k === 'number' ? ids[k] : blockers.get(k)) as string,
       reason: `breakdown of ${requirementKey(req.reqSeq)} (suggestion ${row.id})`,
     }));
-    relations.push(...(await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx)));
+    await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx);
   }
   const prefix = await activeIssuePrefix(projectId);
   return {
     refusals: null,
-    relations,
     effect: {
       requirementId: req.id,
       requirement: requirementKey(req.reqSeq),

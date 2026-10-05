@@ -17,12 +17,7 @@ import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn, triageIn } from '../feedback/index.js';
-import {
-  activeIssuePrefix,
-  emitIssueFieldUpdate,
-  type PendingIssueRelation,
-  setIssueTriage,
-} from '../issues/index.js';
+import { activeIssuePrefix, emitIssueFieldUpdate, setIssueTriage } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/index.js';
@@ -42,8 +37,6 @@ export type AcceptChannel = 'web' | 'mcp';
 export interface EffectWritten {
   refusals: Refusal[] | null;
   effect?: Effect;
-  /** Edges the accept landed, whose effects are flushed after the commit. */
-  relations?: PendingIssueRelation[];
 }
 
 const undecided = (kind: string, path: string, what: string): Refusal => ({

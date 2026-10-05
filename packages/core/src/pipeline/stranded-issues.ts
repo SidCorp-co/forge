@@ -260,7 +260,7 @@ export async function detectOwedCloses(
                 sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
               ]
             : []),
-          sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
+          sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched'))`,
           sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
         ),

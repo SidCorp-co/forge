@@ -18,8 +18,8 @@
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import type { DispatchState } from '@forge/contracts/project-config';
 import { and, eq, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
-import { jobs, pipelineRuns } from '../db/schema.js';
+import { db } from '../db/client.js';
+import { jobs } from '../db/schema.js';
 import {
   activeIssuePrefix,
   assertDesignApprovedForIssue,
@@ -31,6 +31,7 @@ import {
   canNameItsAgent,
   checkoutUnboundMessage,
   dispatchHeldJob,
+  type HoldRefusal,
   holdQueuedJob,
   type PreparedJob,
   poolPrompt,
@@ -60,12 +61,30 @@ type PrepareResult = {
 
 type StartResult = { ok: true };
 
-/** A run dispatches only while it is `running`: a paused run's job is `run_paused`, any other stop `run_not_running`. */
-function runNotRunning(jobId: string, runStatus: string, after: string): RefusalError {
-  return refusePool(
-    runStatus === 'paused' ? 'POOL_RUN_PAUSED' : 'POOL_RUN_NOT_RUNNING',
-    `job ${jobId} belongs to a run that is ${runStatus}, and a run dispatches only while it is running; resume the run first.${after}`,
-  );
+/** A hold or stamp jobs refused, as the pool code the box reads back as its reason. */
+function holdRefused(jobId: string, refused: HoldRefusal, after: string): RefusalError {
+  switch (refused.reason) {
+    case 'run_paused':
+    case 'run_not_running':
+      return refusePool(
+        refused.reason === 'run_paused' ? 'POOL_RUN_PAUSED' : 'POOL_RUN_NOT_RUNNING',
+        `job ${jobId} belongs to a run that is ${refused.runStatus}, and a run dispatches only while it is running; resume the run first.${after}`,
+      );
+    case 'not_found':
+      return refusePool('POOL_NOT_FOUND', `no job ${jobId}`);
+    case 'already_held':
+      return refusePool('POOL_ALREADY_HELD', `job ${jobId} was taken or started by another holder`);
+    case 'issue_busy':
+      return refusePool(
+        'POOL_ISSUE_BUSY',
+        `another step for job ${jobId}'s issue is already dispatched or held`,
+      );
+    case 'hold_lost':
+      return refusePool(
+        'POOL_HOLD_LOST',
+        `job ${jobId} is no longer held by this session, so it was not started`,
+      );
+  }
 }
 
 const HOLD_LOST = (args: { jobId: string; sessionId: string }) =>
@@ -163,51 +182,20 @@ export async function prepareJobForMaster(args: {
   await designGateFor(job);
 
   const claimed = await db.transaction(async (tx) => {
-    const runStatus = await lockedRunStatus(tx, args.jobId);
-    if (runStatus !== null && runStatus !== 'running') {
-      return { kind: 'run_not_running', runStatus } as const;
-    }
-    const row = await holdQueuedJob(tx, args.jobId, args.sessionId);
-    if (!row) {
-      const diag = (await tx.execute(sql`
-        SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
-               EXISTS (SELECT 1 FROM jobs o
-                       WHERE o.issue_id = j.issue_id AND o.id <> j.id
-                         AND o.status IN ('dispatched','running','held')) AS busy
-        FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
-      `)) as unknown as Array<Record<string, unknown>>;
-      const d = diag[0];
-      if (!d) return { kind: 'not_found' } as const;
-      return { kind: d.taken ? 'already_held' : 'issue_busy' } as const;
-    }
-
-    const keyRows = row.issueId
+    const hold = await holdQueuedJob(tx, args.jobId, args.sessionId);
+    if (!hold.ok) return hold;
+    const keyRows = hold.job.issueId
       ? ((await tx.execute(sql`
-          SELECT i.iss_seq FROM issues i WHERE i.id = ${row.issueId} LIMIT 1
+          SELECT i.iss_seq FROM issues i WHERE i.id = ${hold.job.issueId} LIMIT 1
         `)) as unknown as Array<Record<string, unknown>>)
       : [];
-
     return {
-      kind: 'held',
-      job: row,
+      ok: true,
+      job: hold.job,
       issSeq: (keyRows[0]?.iss_seq as number | null) ?? null,
     } as const;
   });
-
-  if (claimed.kind === 'run_not_running') throw runNotRunning(args.jobId, claimed.runStatus, '');
-  if (claimed.kind === 'not_found') throw refusePool('POOL_NOT_FOUND', `no job ${args.jobId}`);
-  if (claimed.kind === 'already_held') {
-    throw refusePool(
-      'POOL_ALREADY_HELD',
-      `job ${args.jobId} was taken or started by another holder`,
-    );
-  }
-  if (claimed.kind !== 'held') {
-    throw refusePool(
-      'POOL_ISSUE_BUSY',
-      `another step for job ${args.jobId}'s issue is already dispatched, running or held`,
-    );
-  }
+  if (!claimed.ok) throw holdRefused(args.jobId, claimed, '');
 
   let prepared: PreparedJob;
   try {
@@ -268,20 +256,6 @@ async function designGateFor(job: JobRow): Promise<void> {
 }
 
 /**
- * The status of the run a job belongs to, its row share-locked for the rest of the transaction so a
- * pause cannot land between this read and the hold; null for a job with no run row.
- */
-async function lockedRunStatus(tx: Tx, jobId: string): Promise<string | null> {
-  const rows = (await tx.execute(sql`
-    SELECT pr.status FROM pipeline_runs pr
-    JOIN jobs j ON j.pipeline_run_id = pr.id
-    WHERE j.id = ${jobId}
-    FOR SHARE OF pr
-  `)) as unknown as Array<{ status: string }>;
-  return rows[0]?.status ?? null;
-}
-
-/**
  * A queued, unheld job the pool cannot brief is refused before it is held, and
  * settled where it stands — given back instead, it would head its project's
  * pool on every pass and nothing behind it would be reached.
@@ -308,22 +282,18 @@ export async function startJobForMaster(args: {
     throw refusePool('POOL_RUNNER_TOO_OLD', RUNNER_TOO_OLD);
   await assertMasterSessionHeld({ deviceId: args.deviceId, sessionId: args.sessionId, live: true });
   const [job] = await db
-    .select({ projectId: jobs.projectId, runStatus: pipelineRuns.status })
+    .select({ projectId: jobs.projectId })
     .from(jobs)
-    .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
     .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
     .limit(1);
   if (!job) throw refusePool('POOL_HOLD_LOST', HOLD_LOST(args));
-  if (job.runStatus !== null && job.runStatus !== 'running') {
-    await releaseJobHold(args.jobId, args.sessionId);
-    throw runNotRunning(args.jobId, job.runStatus, ' Its hold was given back.');
-  }
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
   const stamped = await dispatchHeldJob({ ...args, runnerId: runner.id });
-  if (!stamped) {
+  if (!stamped.ok) {
+    // a paused run's job goes back to the pool; one under a closed run is settled cancelled
     await releaseJobHold(args.jobId, args.sessionId);
-    throw refusePool('POOL_HOLD_LOST', HOLD_LOST(args));
+    throw holdRefused(args.jobId, stamped, ' Its hold was given back.');
   }
   return { ok: true };
 }

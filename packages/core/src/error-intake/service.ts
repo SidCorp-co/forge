@@ -2,7 +2,7 @@ import type { ErrorTrackerIssue, ErrorTrackerTarget } from '@forge/contracts/out
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
-import { issues, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import {
   fileDetectedIssue,
   rewriteIssueMetadata,
@@ -88,15 +88,6 @@ type SentryIntakeOutcome =
   | { kind: 'refreshed' }
   | { kind: 'reopened' }
   | { kind: 'refused'; reason: string };
-
-export async function projectCreatedById(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
-}
 
 /** The admission policy the scheduled pull reads. */
 export function readSentryThresholds(): SentryAdmissionThresholds {

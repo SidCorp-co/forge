@@ -9,7 +9,7 @@ import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/sche
 import { logger } from '../lib/logger.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import type { FailureCause } from '../pipeline/index.js';
-import { classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
+import { assertRunAcceptsWork, classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -129,24 +129,30 @@ function sessionMetadata(
   return metadata;
 }
 
+/**
+ * The job's pipeline session, created `queued` and linked in one transaction under the run's
+ * guard: a run that no longer takes work refuses it `RUN_NOT_ACCEPTING_WORK`, and every failure
+ * reaches the caller.
+ */
 export async function ensureAgentSessionForJob(
   job: JobRow,
   context: { repoPath: string | null; resume: ResumeRecord },
-): Promise<string | null> {
-  try {
-    if (job.agentSessionId) return job.agentSessionId;
-    const parentSession = await loadRetryParentSession(job);
-    const issue = await loadIssueFacts(job);
-    const skillName = deriveSkillName(job.payload);
-    const title = buildTitle(skillName, job.type, issue.title);
-    const metadata = sessionMetadata(job, context.resume, skillName, issue.issSeq, parentSession);
+): Promise<string> {
+  if (job.agentSessionId) return job.agentSessionId;
+  const parentSession = await loadRetryParentSession(job);
+  const issue = await loadIssueFacts(job);
+  const skillName = deriveSkillName(job.payload);
+  const title = buildTitle(skillName, job.type, issue.title);
+  const metadata = sessionMetadata(job, context.resume, skillName, issue.issSeq, parentSession);
 
-    // Pipeline sessions enter `queued`; worker CAS flips to `running` on
-    // first write (routes.ts PATCH/send). Separates "waiting for worker"
-    // from "actually streaming" so the sweeper can distinguish zombies.
-    // ISS-101 — inherit the parent job's pipeline_run so the session shares its job's run lifecycle.
-    const parentSessionId = await resolveHoldingMaster(job);
-    const inserted = await insertSessionRow(db, {
+  // Pipeline sessions enter `queued`; worker CAS flips to `running` on
+  // first write (routes.ts PATCH/send). Separates "waiting for worker"
+  // from "actually streaming" so the sweeper can distinguish zombies.
+  // ISS-101 — inherit the parent job's pipeline_run so the session shares its job's run lifecycle.
+  const parentSessionId = await resolveHoldingMaster(job);
+  const inserted = await db.transaction(async (tx) => {
+    await assertRunAcceptsWork(tx, job.pipelineRunId);
+    const row = await insertSessionRow(tx, {
       projectId: job.projectId,
       userId: issue.ownerId,
       deviceId: job.deviceId,
@@ -162,19 +168,16 @@ export async function ensureAgentSessionForJob(
         ? { pipelineHealth: parentSession.pipelineHealth as never }
         : {}),
     });
+    await tx.update(jobs).set({ agentSessionId: row.id }).where(eq(jobs.id, job.id));
+    return row;
+  });
 
-    await db.update(jobs).set({ agentSessionId: inserted.id }).where(eq(jobs.id, job.id));
+  broadcastSessionEvent(inserted.id, job.projectId, job.deviceId, 'agent-session.created', {
+    title,
+    issueId: job.issueId,
+  });
 
-    broadcastSessionEvent(inserted.id, job.projectId, job.deviceId, 'agent-session.created', {
-      title,
-      issueId: job.issueId,
-    });
-
-    return inserted.id;
-  } catch (err) {
-    logger.error({ err, jobId: job.id }, 'agent-session-link: failed to link session');
-    return null;
-  }
+  return inserted.id;
 }
 
 /**

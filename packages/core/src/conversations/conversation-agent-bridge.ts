@@ -159,7 +159,6 @@ const NO_FAILOVER: ReadonlySet<FailureCause> = new Set<FailureCause>([
   'user_cancelled',
   'skill_not_synced',
   'attachment_unreadable',
-  'ws_publish_failed',
 ]);
 
 async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<void> {

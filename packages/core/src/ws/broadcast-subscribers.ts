@@ -19,6 +19,14 @@ function on<T extends ConsumedBy<'ws-broadcast'>>(
 }
 
 export function registerWsBroadcastSubscribers(): void {
+  // every open view of either side refetches the edge
+  on('issue.dependency.changed', (p) => {
+    pub(projectRoom(p.projectId), 'dependencyChanged', {
+      fromIssueId: p.fromIssueId,
+      toIssueId: p.toIssueId,
+    });
+  });
+
   on('issue.transitioned', (p) => {
     pub(projectRoom(p.projectId), 'issue.statusChanged', {
       issueId: p.id,

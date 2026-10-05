@@ -10,7 +10,7 @@ import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
-import { decideChannelGate, wakeMastersForAnswer } from './ports.js';
+import { decideChannelGate } from './ports.js';
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
 
 export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
@@ -175,6 +175,5 @@ export async function answerQuestion(args: AnswerInput) {
     });
     return { ...row, steps, status: 'answered' as const };
   });
-  void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
   return view(committed);
 }

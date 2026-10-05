@@ -34,6 +34,7 @@ import {
   resolveApiBaseUrl,
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -41,6 +42,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   actorFor,
+  can,
   orgResource,
   projectResource,
   requireCan,
@@ -49,6 +51,16 @@ import {
 import { projectOrgHead } from '../projects/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
+/** The projects the caller may administer, asked of can() one by one: the scope an install may resolve in. */
+async function projectsAdministeredBy(userId: string): Promise<string[]> {
+  const actor = actorFor(userId);
+  const visible = await loadVisibleProjectIds(userId);
+  const held = await Promise.all(
+    visible.map((id) => can(actor, 'project.admin', projectResource(id))),
+  );
+  return visible.filter((_, i) => held[i]);
+}
 
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });
 const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
@@ -299,7 +311,12 @@ githubCallbackRoutes.get(
     if (rawState && !state) throw badRequest({ state: 'invalid or expired' });
     if (state && state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-    const owner = state ? null : await findConnectionOwningInstallation({ userId, installationId });
+    const owner = state
+      ? null
+      : await findConnectionOwningInstallation({
+          scope: { userId, administeredProjectIds: await projectsAdministeredBy(userId) },
+          installationId,
+        });
     if (!state && !owner) throw notFound('github app');
     const projectId = state?.projectId ?? owner?.projectId ?? null;
     if (!projectId) return c.redirect(`${webBaseUrl()}/integrations`);

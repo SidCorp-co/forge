@@ -85,7 +85,9 @@ export const notifications = pgTable(
     opsAlertActiveUq: uniqueIndex('notifications_ops_alert_active_uq')
       .on(t.resolutionKey)
       .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
-    dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
+    dedupeKeyUq: uniqueIndex('notifications_dedupe_key_uq')
+      .on(t.dedupeKey)
+      .where(sql`dedupe_key IS NOT NULL`),
     groupKeyIdx: index('notifications_group_key_idx').on(t.groupKey),
     scheduleRunIdx: index('notifications_schedule_run_idx')
       .on(t.scheduleRunId)

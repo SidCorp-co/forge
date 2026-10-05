@@ -9,8 +9,8 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { notFound } from '../middleware/route-errors.js';
+import { consume, emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
@@ -90,24 +90,23 @@ export type IssueDependencyWrite = {
 export async function setIssueDependency(
   input: SetIssueDependencyInput,
   writer: IssueDependencyWriter,
-  opts?: { deferHealthPublish?: boolean },
 ): Promise<SetIssueDependencyResult> {
   // One transaction, so the `FOR SHARE` read of both sides holds until the edge commits.
   const written = await db.transaction((tx) => writeIssueDependency(input, writer, tx));
-  await emitIssueDependencyEffects(input, written, opts);
   const effects = describeDependencyKind(input.kind);
   if (written.created) return { id: written.id, created: true, effects };
   return { id: written.id, created: false, updated: written.updated, effects };
 }
 
 /**
- * The DURABLE half: validate, detect a cycle, and land the row. Runs on the
- * caller's executor so a create can commit the issue and its edge together.
+ * Validate, detect a cycle, land the row, and write its activity and its
+ * `issue.dependency.changed` event with it. Runs on the caller's executor so a
+ * create can commit the issue and its edge together.
  */
 export async function writeIssueDependency(
   input: SetIssueDependencyInput,
   writer: IssueDependencyWriter,
-  ex: IssueDependencyExecutor = db,
+  ex: IssueDependencyExecutor,
 ): Promise<IssueDependencyWrite> {
   if (input.fromIssueId === input.toIssueId) {
     throw refuse('SELF_DEP', 'an issue cannot depend on itself: name two different issues');
@@ -171,6 +170,7 @@ export async function writeIssueDependency(
     await recordOnBothSides(ex, input, id, writer.actor, 'issue.dependency.added', {
       ...(input.reason ? { reason: input.reason } : {}),
     });
+    await emitEdgeChanged(ex, input, 'added');
     return { id, created: true, updated: false, effect: 'added' };
   }
 
@@ -188,21 +188,10 @@ export async function writeIssueDependency(
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     });
+    await emitEdgeChanged(ex, input, 'updated');
   }
 
   return { id: existing.id, created: false, updated, effect: updated ? 'updated' : null };
-}
-
-/** The EFFECTS half, after the edge committed: the room is told, and a blocks edge refreshes its
- *  dependent's health. The activity lines are written with the edge. */
-export async function emitIssueDependencyEffects(
-  input: SetIssueDependencyInput,
-  written: IssueDependencyWrite,
-  opts?: { deferHealthPublish?: boolean },
-): Promise<void> {
-  if (written.effect === null) return;
-  announceEdge(input);
-  if (!opts?.deferHealthPublish) await refreshDependentHealth(input);
 }
 
 async function recordOnBothSides(
@@ -225,13 +214,29 @@ async function recordOnBothSides(
   }
 }
 
-async function refreshDependentHealth(input: {
-  projectId: string;
-  toIssueId: string;
-  kind: IssueDependencyKind;
-}): Promise<void> {
-  if (input.kind !== 'blocks') return;
-  await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
+function emitEdgeChanged(
+  tx: IssueDependencyExecutor,
+  edge: { projectId: string; fromIssueId: string; toIssueId: string; kind: IssueDependencyKind },
+  change: 'added' | 'updated' | 'removed',
+): Promise<void> {
+  return emitEvent(tx, 'issue.dependency.changed', {
+    projectId: edge.projectId,
+    fromIssueId: edge.fromIssueId,
+    toIssueId: edge.toIssueId,
+    kind: edge.kind,
+    change,
+  });
+}
+
+/** A blocks edge that moved changes whether its dependent can run, so its health is published again. */
+export function registerDependencyHealth(): void {
+  consume('issue.dependency.changed', {
+    name: 'dependency-health',
+    handle: async (p) => {
+      if (p.kind !== 'blocks') return;
+      await publishPipelineHealthChanged(p.projectId, [p.toIssueId]);
+    },
+  });
 }
 
 /** Removes one dependency edge. */
@@ -256,15 +261,6 @@ export async function deleteIssueDependency(
     for (const issueId of [edge.fromIssueId, edge.toIssueId]) {
       await recordActivityTx(tx, { issueId, actor, action: 'issue.dependency.removed', payload });
     }
-  });
-  announceEdge(edge);
-  await refreshDependentHealth(edge);
-}
-
-/** Tells the project room an edge moved, so every open view of either side refetches it. */
-function announceEdge(edge: { projectId: string; fromIssueId: string; toIssueId: string }): void {
-  roomManager.publish(projectRoom(edge.projectId), {
-    event: 'dependencyChanged',
-    data: { fromIssueId: edge.fromIssueId, toIssueId: edge.toIssueId },
+    await emitEdgeChanged(tx, edge, 'removed');
   });
 }

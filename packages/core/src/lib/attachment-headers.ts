@@ -12,19 +12,31 @@ export function contentDisposition(kind: 'inline' | 'attachment', name: string):
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-export function setInertAttachmentHeaders(c: Context, mime: string, name: string): void {
+export function setInertAttachmentHeaders(
+  c: Context,
+  mime: string,
+  name: string,
+  download = false,
+): void {
   c.header('Content-Type', mime);
   c.header('X-Content-Type-Options', 'nosniff');
   const inert = INERT_MIMES.has(mime);
-  c.header('Content-Disposition', contentDisposition(inert ? 'attachment' : 'inline', name));
+  c.header(
+    'Content-Disposition',
+    contentDisposition(inert || download ? 'attachment' : 'inline', name),
+  );
   if (inert) c.header('Content-Security-Policy', "default-src 'none'; sandbox");
 }
 
-/** A stored file as an inert download, or 410 when its bytes are gone from storage. */
+/**
+ * A stored file as an inert download, or 410 when its bytes are gone from storage. `download`
+ * forces the attachment disposition and forbids caching, for a self-authenticating ticket URL.
+ */
 export async function sendStoredAttachment(
   c: Context,
   file: { path: string; mime: string; name: string },
   read: (path: string) => Promise<Buffer>,
+  opts: { download?: boolean } = {},
 ): Promise<Response> {
   let buffer: Buffer;
   try {
@@ -36,6 +48,7 @@ export async function sendStoredAttachment(
       cause: { code: 'ATTACHMENT_FILE_MISSING' },
     });
   }
-  setInertAttachmentHeaders(c, file.mime, file.name);
+  setInertAttachmentHeaders(c, file.mime, file.name, opts.download);
+  if (opts.download) c.header('Cache-Control', 'private, no-store');
   return c.body(new Uint8Array(buffer));
 }

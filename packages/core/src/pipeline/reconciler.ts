@@ -58,7 +58,7 @@ export async function runReconcilerOnce(): Promise<{
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
         WHERE j.issue_id = i.id
-          AND j.status IN ('queued','dispatched','running')
+          AND j.status IN ('queued','dispatched')
       )
     LIMIT ${STUCK_ISSUE_LIMIT}
   `);
@@ -163,7 +163,7 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.issue_id = i.id
-          AND j2.status IN ('queued', 'dispatched', 'running')
+          AND j2.status IN ('queued', 'dispatched')
       )
       AND (
         (

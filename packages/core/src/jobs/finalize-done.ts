@@ -68,8 +68,7 @@ export async function publishFinished(
 }
 
 /**
- * CAS-flip a job to `done` and run the shared completion side-effects (the
- * same ones `runner-finish.ts` runs for `/complete`). The CAS is keyed on
+ * CAS-flip a job to `done` and run the shared completion side-effects. The CAS is keyed on
  * the status the caller observed, so a concurrent terminal write wins instead
  * of double-finalizing.
  */

@@ -30,19 +30,21 @@ interface InsertAndEnqueueArgs {
 export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{ jobId: string }> {
   let insertedId: string | null = null;
   try {
-    const inserted = await insertJobRow(db, {
-      projectId: args.projectId,
-      issueId: args.issueId,
-      pipelineRunId: args.pipelineRunId,
-      createdBy: args.createdBy,
-      type: args.type,
-      payload: {
-        skillName: args.skillName,
-        promptString: args.promptString,
-        ...args.payloadExtras,
-      },
-      status: 'queued',
-    });
+    const inserted = await db.transaction((tx) =>
+      insertJobRow(tx, {
+        projectId: args.projectId,
+        issueId: args.issueId,
+        pipelineRunId: args.pipelineRunId,
+        createdBy: args.createdBy,
+        type: args.type,
+        payload: {
+          skillName: args.skillName,
+          promptString: args.promptString,
+          ...args.payloadExtras,
+        },
+        status: 'queued',
+      }),
+    );
     insertedId = inserted.id;
   } catch (err) {
     if (isUniqueViolation(err)) {

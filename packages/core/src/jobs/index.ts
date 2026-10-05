@@ -22,6 +22,7 @@ export {
 export { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 export {
   dispatchHeldJob,
+  type HoldRefusal,
   holdQueuedJob,
   releaseHoldsOf,
   releaseHoldsOfDeadMasters,

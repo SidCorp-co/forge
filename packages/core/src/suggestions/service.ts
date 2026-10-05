@@ -17,8 +17,6 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import {
   activeIssuePrefix,
-  flushIssueRelationEffects,
-  type PendingIssueRelation,
   resolveIssueRouteRef,
   TransitionError,
   transitionIssueStatus,
@@ -56,13 +54,6 @@ import {
 
 export { createSuggestion, reviseSuggestion } from './propose.js';
 export type { SuggestionOutcome } from './write.js';
-
-/** After the accept committed: the effects of the edges it landed. Its issue creates, field writes
- *  and comments wrote their outbox events in the accept's own transaction. */
-async function announceEffect(written: EffectWritten, projectId: string) {
-  if (!written.relations?.length) return;
-  await flushIssueRelationEffects(projectId, written.relations);
-}
 
 // Workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
 // on an issue drops it with the root named and a relates edge to it, through the one transition
@@ -108,7 +99,6 @@ async function acceptDuplicateOfIssue(
     };
   }
   const rootKey = formatIssueRef(prefix, root.issSeq);
-  let relations: PendingIssueRelation[] = [];
   try {
     await transitionIssueStatus(
       {
@@ -126,7 +116,7 @@ async function acceptDuplicateOfIssue(
           const row = await rowOf(tx, projectId, first.id, true);
           const decided = decidedRefusal(row.status);
           if (decided) throw new RefusalError([decided], 'SUGGESTION_REFUSED');
-          relations = await writeIssueRelations(
+          await writeIssueRelations(
             {
               actor: { type: 'user', id: actor.userId, agency: actor.agency },
               createdById: actor.userId,
@@ -158,7 +148,6 @@ async function acceptDuplicateOfIssue(
     }
     throw err;
   }
-  await announceEffect({ refusals: null, relations }, projectId);
   return answer(first.id, {
     effect: { issueId: issue.id, issue: key, duplicateOf: rootKey, status: 'dropped' },
   });
@@ -225,7 +214,6 @@ export async function acceptSuggestion(input: {
   });
   if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
-  await announceEffect(written, projectId);
   const effect: Effect | undefined = written.effect;
   return answer(first.id, effect ? { effect } : {});
 }

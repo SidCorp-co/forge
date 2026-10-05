@@ -10,7 +10,9 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { activeChildUnderTerminalRun } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -120,6 +122,14 @@ function isPartialStreamEvent(e: { kind: string; data?: unknown }): boolean {
   return line?.type === 'stream_event';
 }
 
+/**
+ * A session write the kernel refused because its run closed: it reaches the box as a 409, which
+ * the runner reads as disowned, never a warning behind a 200.
+ */
+function runClosed(err: unknown): boolean {
+  return activeChildUnderTerminalRun(err) !== null || isRefusal(err, 'RUN_NOT_ACCEPTING_WORK');
+}
+
 /** The linked session hears the batch: a heartbeat, the last reported runtime state, an incremental derive. */
 async function syncLinkedSession(
   jobId: string,
@@ -145,6 +155,7 @@ async function syncLinkedSession(
         );
       }
     } catch (err) {
+      if (runClosed(err)) throw err;
       logger.warn(
         { err, jobId, agentSessionId: sessionId },
         'events-routes: agent_sessions heartbeat sync failed',
@@ -159,6 +170,7 @@ async function syncLinkedSession(
     try {
       await setSessionRuntimeState(sessionId, reported);
     } catch (err) {
+      if (runClosed(err)) throw err;
       logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
     }
   }

@@ -8,6 +8,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.created",
 	"issue.updated",
 	"issue.transitioned",
+	"issue.dependency.changed",
 	"job.transitioned",
 	"run.transitioned",
 	"comment.created",
@@ -174,6 +175,14 @@ export interface OutboxEventPayloads {
 		commentId: string;
 		actor: OutboxActor;
 		mentionedUserIds: string[];
+	};
+	/** An edge between two issues was added, changed (retracted or re-reasoned) or removed. */
+	"issue.dependency.changed": {
+		projectId: string;
+		fromIssueId: string;
+		toIssueId: string;
+		kind: "blocks" | "relates" | "duplicates" | "parent" | "decomposes";
+		change: "added" | "updated" | "removed";
 	};
 	"question.answered": {
 		questionId: string;

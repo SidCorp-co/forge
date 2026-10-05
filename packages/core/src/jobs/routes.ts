@@ -125,7 +125,7 @@ jobProjectRoutes.get(
 );
 
 // Auth is applied per-handler so the middleware doesn't intercept device-only
-// paths (POST /:id/events, /:id/complete, /:id/fail) mounted on sibling routers.
+// paths (POST /:id/events, /:id/fail) mounted on sibling routers.
 // A bare `.use('*')` would 401 those before Hono falls through to the device router.
 export const jobRoutes = new Hono<{ Variables: AuthVars }>();
 

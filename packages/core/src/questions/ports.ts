@@ -33,10 +33,6 @@ interface QuestionPorts {
   doorOfRequest: (c: Context<{ Variables: AuthVars }>) => Promise<PersonVia>;
   /** Null when the session ran no conversation turn; `{ meta: null }` when its record of one is unreadable. */
   conversationTurnOf: (metadata: unknown) => { meta: ConversationTurnMeta | null } | null;
-  wakeMastersForAnswer: (args: {
-    projectId: string;
-    questionId: string;
-  }) => Promise<{ boxes: number; delivered: number }>;
 }
 
 const slot = portSlot<QuestionPorts>('questions', 'provideQuestionPorts');
@@ -46,4 +42,3 @@ const { port } = slot;
 export const decideChannelGate = port('decideChannelGate');
 export const doorOfRequest = port('doorOfRequest');
 export const conversationTurnOf = port('conversationTurnOf');
-export const wakeMastersForAnswer = port('wakeMastersForAnswer');

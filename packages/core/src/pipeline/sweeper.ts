@@ -47,7 +47,7 @@ export interface IdleChatCloseResult {
  *
  * `avg_wait_ms` is the mean current wait (now - queued_at) over jobs still
  * `queued` (NULL when none are queued). `queue_depth` counts `queued`;
- * `running_count` counts `dispatched`+`running`.
+ * `running_count` counts `dispatched` jobs.
  */
 export async function recordQueueSnapshots(): Promise<number> {
   try {
@@ -55,11 +55,11 @@ export async function recordQueueSnapshots(): Promise<number> {
       INSERT INTO queue_snapshots (project_id, queue_depth, running_count, avg_wait_ms)
       SELECT project_id,
              count(*) FILTER (WHERE status = 'queued')::int AS queue_depth,
-             count(*) FILTER (WHERE status IN ('dispatched', 'running'))::int AS running_count,
+             count(*) FILTER (WHERE status = 'dispatched')::int AS running_count,
              avg(extract(epoch from (now() - queued_at)) * 1000.0)
                FILTER (WHERE status = 'queued')::bigint AS avg_wait_ms
       FROM jobs
-      WHERE status IN ('queued', 'dispatched', 'running')
+      WHERE status IN ('queued', 'dispatched')
       GROUP BY project_id
       RETURNING project_id
     `);
@@ -170,7 +170,7 @@ function orphanedJobAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): 
     SELECT j.id, j.project_id, j.issue_id
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
-    WHERE j.status IN ('dispatched', 'running')
+    WHERE j.status = 'dispatched'
       AND s.status IN ('failed', 'cancelled_stale')
       AND NOT EXISTS (
         SELECT 1 FROM job_events e
