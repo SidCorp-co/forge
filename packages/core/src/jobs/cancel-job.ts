@@ -9,6 +9,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
+import { pushJobChanged } from './job-push.js';
 import { refuseJob } from './refusals.js';
 
 /**
@@ -65,7 +66,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    await emitEvent(db, 'job.changed', {
+    await pushJobChanged({
       projectId: updated.projectId,
       jobId: updated.id,
       deviceId: updated.deviceId,
@@ -98,7 +99,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   if (!updated) throw notFound('job not found');
 
   if (updated.deviceId) {
-    await emitEvent(db, 'job.changed', {
+    await pushJobChanged({
       projectId: updated.projectId,
       jobId: updated.id,
       deviceId: updated.deviceId,
@@ -107,7 +108,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       rooms: ['device'],
     });
   }
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: updated.projectId,
     jobId: updated.id,
     deviceId: updated.deviceId,

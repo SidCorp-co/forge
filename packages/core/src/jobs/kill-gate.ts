@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { emitEvent } from '../outbox/index.js';
+import { pushJobChanged } from './job-push.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -58,7 +59,7 @@ export async function requestJobKill(
       .where(eq(jobs.id, job.id));
   }
   if (!job.deviceId) return 'no_device';
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: job.projectId,
     jobId: job.id,
     deviceId: job.deviceId,

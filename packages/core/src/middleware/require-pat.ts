@@ -6,7 +6,6 @@ import { touchPatUsage, verifyPat } from '../credentials/pat.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { patPrincipalOf } from '../credentials/pat-principal.js';
 import { tokenChanged } from '../credentials/ports.js';
-import { db } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 import { type PatRequestClass, patRuleFor } from '../lib/rate-limits.js';
 import { parseBearerHeader } from './bearer.js';

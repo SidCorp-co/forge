@@ -79,7 +79,7 @@ export function projectOrgOf(projectId: string, executor?: Tx): Promise<string |
 }
 
 /** Every project a user can see, read by the projects domain over `visibleProjectsWhere`. */
-type VisibleProjectsSource = (userId: string) => Promise<string[]>;
+type VisibleProjectsSource = (userId: string, fence: readonly string[] | null) => Promise<string[]>;
 
 let visibleProjectsSource: VisibleProjectsSource | null = null;
 
@@ -151,11 +151,13 @@ export async function loadOrgRole(
  * query's project id column), for a query that has already left-joined `projectMembers` and
  * `organizationMembers` on the caller. `and(...)` the result into the WHERE.
  */
-export function visibleProjectsWhere(projectId: SQLWrapper): SQL[] {
+export function visibleProjectsWhere(
+  projectId: SQLWrapper,
+  fence: readonly string[] | null = fencedProjectIds(),
+): SQL[] {
   const conditions: SQL[] = [
     sql`(${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin'))`,
   ];
-  const fence = fencedProjectIds();
   if (fence) conditions.push(fence.length > 0 ? inArray(projectId, [...fence]) : sql`false`);
   return conditions;
 }
@@ -182,5 +184,5 @@ export async function loadVisibleProjectIds(userId: string | null | undefined): 
       'project visibility: no visible-projects source was provided, so which projects a user sees cannot be read; the process entry calls provideVisibleProjects(findVisibleProjectIds) from projects/service.ts before it serves',
     );
   }
-  return visibleProjectsSource(userId);
+  return visibleProjectsSource(userId, fencedProjectIds());
 }

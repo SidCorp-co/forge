@@ -18,6 +18,7 @@ import { transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { pushJobChanged } from './job-push.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 
@@ -67,7 +68,7 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
   );
   // the publish finalizeFailedJob ends with, without its retry or hold: there is nothing to retry
   await syncAgentSessionLifecycle(settled, 'failed');
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: settled.projectId,
     jobId: settled.id,
     deviceId: settled.deviceId,

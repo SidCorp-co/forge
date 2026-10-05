@@ -7,6 +7,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { readHoldState, requeueHeldJob } from './hold.js';
 import { insertInterventionEvent } from './intervention-event.js';
+import { pushJobChanged } from './job-push.js';
 import { refuseJob } from './refusals.js';
 
 /**
@@ -43,7 +44,7 @@ export async function resumeHeldJob(
   });
   if (!updated) throw refuseJob('NOT_HELD', 'job state changed mid-request');
 
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: job.projectId,
     jobId: updated.id,
     deviceId: job.deviceId,

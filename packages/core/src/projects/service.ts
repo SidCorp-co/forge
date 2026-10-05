@@ -163,7 +163,10 @@ export async function listVisibleProjectsWithRole(
 }
 
 /** The ids of every project `userId` can see, under the request's PAT fence. */
-export async function findVisibleProjectIds(userId: string): Promise<string[]> {
+export async function findVisibleProjectIds(
+  userId: string,
+  fence: readonly string[] | null,
+): Promise<string[]> {
   const rows = await db
     .selectDistinct({ id: projects.id })
     .from(projects)
@@ -175,7 +178,7 @@ export async function findVisibleProjectIds(userId: string): Promise<string[]> {
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(and(...visibleProjectsWhere(projects.id)));
+    .where(and(...visibleProjectsWhere(projects.id, fence)));
   return rows.map((r) => r.id);
 }
 

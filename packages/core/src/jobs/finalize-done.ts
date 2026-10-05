@@ -9,6 +9,7 @@ import { transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { pushJobChanged } from './job-push.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -55,7 +56,7 @@ export async function publishFinished(
   opts: { clearRunnerHealth: boolean } = { clearRunnerHealth: status === 'done' },
 ): Promise<void> {
   await syncAgentSessionLifecycle(row, status);
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: row.projectId,
     jobId: row.id,
     deviceId: row.deviceId,

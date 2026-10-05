@@ -14,6 +14,7 @@ import {
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason, RUN_CLOSED } from './hold.js';
+import { pushJobChanged } from './job-push.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -175,7 +176,7 @@ export async function finalizeFailedJob(
     retryPending: retry.scheduled === true,
   });
 
-  await emitEvent(db, 'job.changed', {
+  await pushJobChanged({
     projectId: updated.projectId,
     jobId: updated.id,
     deviceId: updated.deviceId,
