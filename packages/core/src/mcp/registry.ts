@@ -23,16 +23,19 @@ import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
 export const MCP_TOOLS = {
-  // submit reads the caller's live job or session context, which no REST route resolves.
+  // POST /api/agent-reports is its REST twin; kept while the drive prompt (prompt/facts/drive-rules.ts)
+  // and the forge-skills skill still send agents here.
   forge_agent_report: (ctx) => forgeAgentReportTool(ctx),
   // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
   forge_uploads: (ctx) => forgeUploadsTool(ctx),
-  // The channel's unanswered read is device-only over REST and its gate answers across the
-  // ecosystem fence; the ecosystem's contract context has no REST route.
+  // Most actions have REST twins under /api/projects/:id/channel|interface|links|builder-runs; kept
+  // because masters still work the inbox through these tools and the forge CLI has no REST verbs for
+  // them yet (reported to forge-plugin). The channel's unanswered read is device-only over REST.
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
-  // A core-mediated integration's agent path: the provider credential stays in core, and no REST
-  // route serves these reads and writes (for Coolify, its deployment and runtime logs).
+  // A core-mediated integration's agent path: the provider credential stays in core. forge_source,
+  // forge_sentry and forge_storefront_target have no REST route; forge_coolify_deploy's deployment and
+  // runtime logs have none, and masters deploy through it until the forge CLI maps the rest.
   forge_source: (ctx) => forgeSourceTool(ctx),
   forge_coolify_deploy: (ctx) => forgeCoolifyDeployTool(ctx),
   forge_sentry: (ctx) => forgeSentryTool(ctx),
