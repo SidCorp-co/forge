@@ -12,7 +12,7 @@ use notices::*;
 
 use runner_core::agent_activity::now_ms;
 use runner_core::ledger::{
-    Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+    Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
 };
 use runner_core::run_exit::{self, Reported, Verdict};
 use runner_core::subagent_end;
@@ -209,6 +209,7 @@ pub async fn reconcile(
             }
             continue;
         }
+        end_if_unbound(ledger, &mut run, boot_id)?;
         let pid_refuted = match run.pid {
             Some(pid) => procs.is_gone(pid).await,
             None => false,
@@ -463,6 +464,70 @@ pub async fn reconcile(
         tracing::warn!("{line}");
     }
     Ok(out)
+}
+
+/// End `run` where it is a declaration nothing has bound past
+/// [`UNBOUND_BEFORE_END_SECS`], and stand it as a master's close ends one, so
+/// the close loop takes it from here in this same sweep.
+fn end_if_unbound(ledger: &Ledger, run: &mut Run, boot_id: &str) -> Result<()> {
+    let Some(age_secs) = unbound_past_the_bound(run, boot_id, now_ms() / 1000) else {
+        return Ok(());
+    };
+    let reason = unbound_reason(age_secs);
+    ledger.end_run(&run.run_id, ENDED_BY_BOX, &reason)?;
+    let keys = ledger
+        .issues(&run.run_id)?
+        .into_iter()
+        .map(|m| m.issue_key)
+        .collect::<Vec<_>>()
+        .join(", ");
+    tracing::warn!(
+        "[recovery] run {} ({}: {keys}) under master session {} ended: {reason}",
+        run.run_id,
+        run.project_id.as_deref().unwrap_or("no project"),
+        runner_core::ledger::short_id(&run.master_session_id)
+    );
+    run.incarnation = Incarnation::Exited;
+    run.ended_by = Some(ENDED_BY_BOX.to_string());
+    run.ended_reason = Some(reason);
+    Ok(())
+}
+
+/// How long a declared run may stand bound to nothing before the box ends it
+/// (ISS-1379).
+///
+/// A declaration is the master saying a subagent is about to start; the
+/// subagent binds it with its first hook. One that is never bound holds its
+/// issues' leases and its master's one unbound slot — the dispatch gate
+/// refuses that master every further declaration while it stands — and before
+/// this rule nothing but that master's own close ever ended it. Measured over
+/// 781 bound runs on the fleet, declaration to first transcript entry took 51s
+/// at the median, 399s at p99 and 3,037s at the longest, so an hour is past
+/// every binding this box has seen.
+pub(crate) const UNBOUND_BEFORE_END_SECS: i64 = 60 * 60;
+
+/// Who a run ended by [`UNBOUND_BEFORE_END_SECS`] says ended it.
+pub(crate) const ENDED_BY_BOX: &str = "box";
+
+/// How old `run` is, where it is a declaration of this boot that nothing has
+/// bound for the whole bound. A run of another boot is not this rule's: its
+/// process could not have bound it here, and the boot rules already own it.
+fn unbound_past_the_bound(run: &Run, boot_id: &str, now_secs: i64) -> Option<i64> {
+    let age = now_secs - run.created_at;
+    (run.agent_id.is_none()
+        && run.pid.is_none()
+        && run.ended_by.is_none()
+        && run.boot_id == boot_id
+        && age >= UNBOUND_BEFORE_END_SECS)
+        .then_some(age)
+}
+
+fn unbound_reason(age_secs: i64) -> String {
+    format!(
+        "declared {}m ago and never bound to a subagent or a process, past the {}m within which a declared run binds, so the box ended it; its session and its leases go back by the close loop, and its issues can be declared again",
+        age_secs / 60,
+        UNBOUND_BEFORE_END_SECS / 60
+    )
 }
 
 /// End the runs no master on this box answers for once their marks close
