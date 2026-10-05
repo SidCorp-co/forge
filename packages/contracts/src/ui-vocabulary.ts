@@ -373,7 +373,6 @@ export const ENUM_LABELS = {
 		queue_timeout: "Queue timed out",
 		turn_never_reported: "Turn never reported",
 		no_client_ack: "No client acknowledgement",
-		ws_publish_failed: "Live publish failed",
 		checkout_unbound: "No checkout bound",
 		credential_mint_failed: "Credential not minted",
 		attachment_unreadable: "Attachment unreadable",

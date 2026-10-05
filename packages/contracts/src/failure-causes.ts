@@ -47,9 +47,6 @@ export const FAILURE_CAUSES = [
 	"turn_never_reported",
 	/** the ack hop reaped it. 7 sessions all-time. */
 	"no_client_ack",
-	/** the websocket publish that carries a chat turn failed. Writers:
-	 *  schedules/scheduled-session.ts. */
-	"ws_publish_failed",
 	/** the device's binding to the project names no checkout, so the turn was never handed over.
 	 *  Writers: conversations/conversation-agent.ts, assistant/chat-room/escalation.ts. */
 	"checkout_unbound",
@@ -102,7 +99,9 @@ export type FailureCause = (typeof FAILURE_CAUSES)[number];
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 	job_failed: "unclassified",
 	usage_limit: "provider_usage_limit",
-	"ws-publish-failed": "ws_publish_failed",
+	/** stored before the undelivered-turn causes existed; nothing writes it now (ISS-219). */
+	ws_publish_failed: "dispatch_failed",
+	"ws-publish-failed": "dispatch_failed",
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
@@ -146,7 +145,6 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	queue_timeout: "swept",
 	turn_never_reported: "failure",
 	no_client_ack: "swept",
-	ws_publish_failed: "failure",
 	checkout_unbound: "failure",
 	credential_mint_failed: "failure",
 	attachment_unreadable: "failure",
