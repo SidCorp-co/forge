@@ -303,7 +303,8 @@ async fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
     if let Some(d) = dir {
         cmd.arg("-C").arg(d);
     }
-    let out = tokio::time::timeout(COMMAND_TIMEOUT, cmd.args(args).output())
+    runner_platform::git::non_interactive(cmd.args(args));
+    let out = tokio::time::timeout(COMMAND_TIMEOUT, cmd.output())
         .await
         .map_err(|_| format!("git {} timed out", args.join(" ")))?
         .map_err(|e| e.to_string())?;

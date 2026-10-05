@@ -1,4 +1,4 @@
-//! Job lifecycle: `POST /api/jobs/:id/ack`, `/complete` and `/fail`.
+//! Job lifecycle: `POST /api/jobs/:id/ack`, `/fail` and `/kill-ack`.
 
 use crate::CoreClient;
 use runner_platform::error::{Error, Result};

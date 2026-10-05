@@ -376,7 +376,7 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     let Some(event_seq_base) = turn.event_seq_base else {
         let msg = "[EVENT_SEQ_BASE_MISSING] this turn carried no event sequence base, so its lines cannot be numbered — core is older than this runner release; upgrade core first".to_string();
         tracing::error!("[chat {session_id}] {msg}");
-        let _ = patch_failed(client, &session_id, None, &msg).await;
+        patch_failed(client, &session_id, None, &msg).await;
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     };
@@ -436,7 +436,7 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     if let Err(e) = started {
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
-        let _ = patch_failed(client, &session_id, None, &msg).await;
+        patch_failed(client, &session_id, None, &msg).await;
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     }
@@ -518,7 +518,7 @@ async fn consume(
                             "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {e}"
                         );
                         tracing::error!("[chat {session_id}] {msg}");
-                        let _ = patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+                        patch_failed(client, session_id, claude_sid.clone(), &msg).await;
                         return;
                     }
                     Err(e) => {
@@ -537,7 +537,7 @@ async fn consume(
                 pending.len()
             );
             tracing::error!("[chat {session_id}] {msg}");
-            let _ = patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+            patch_failed(client, session_id, claude_sid.clone(), &msg).await;
             return;
         }
         pending.clear();
@@ -558,11 +558,11 @@ async fn consume(
             }
         }
         Some(Terminal::Failed(err)) => {
-            let _ = patch_failed(client, session_id, claude_sid.clone(), &err).await;
+            patch_failed(client, session_id, claude_sid.clone(), &err).await;
             tracing::info!("[chat {session_id}] turn failed: {err}");
         }
         None => {
-            let _ = patch_failed(
+            patch_failed(
                 client,
                 session_id,
                 claude_sid.clone(),
@@ -587,12 +587,28 @@ async fn patch_failed(
     session_id: &str,
     claude_sid: Option<String>,
     error: &str,
-) -> Result<()> {
+) {
     let patch = SessionPatch {
         status: Some("failed".into()),
         claude_session_id: claude_sid,
         turn_error: Some(error.to_string()),
         runtime_state: Some("closed".into()),
     };
-    agent_sessions::patch_session(client, session_id, &patch).await
+    // A session-state write is kernel input: a failure core did not take is
+    // said, and tried once more, never dropped. The second refusal is left to
+    // core's zombie reaper, and this line is where the turn's real error stays.
+    for attempt in 1..=2 {
+        match agent_sessions::patch_session(client, session_id, &patch).await {
+            Ok(()) => return,
+            Err(e) if attempt == 1 => {
+                tracing::warn!(
+                    "[chat {session_id}] core did not take this turn's failure ({e}); trying once more. The failure it carried: {error}"
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(e) => tracing::error!(
+                "[chat {session_id}] core refused this turn's failure twice ({e}), so the session stays open at core until its reaper ends it under a generic reason. The failure it carried: {error}"
+            ),
+        }
+    }
 }

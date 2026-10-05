@@ -443,11 +443,11 @@ impl Runner for ClaudeCodeRunner {
                             if let Some(s) = sessions.lock().await.get_mut(&job_id) {
                                 s.claude_session_id = Some(sid.to_string());
                             }
-                            let _ = turn_tx
-                                .lock()
-                                .await
-                                .send(RunnerEvent::ClaudeSessionId(sid.to_string()))
-                                .await;
+                            // Cloned under the lock and sent outside it: a
+                            // full channel must not hold the lock a resident
+                            // send takes to swap in the next turn's sender.
+                            let tx = turn_tx.lock().await.clone();
+                            let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.to_string())).await;
                             got_sid = true;
                         }
                     }
@@ -486,7 +486,8 @@ impl Runner for ClaudeCodeRunner {
                         // Definitive done marker — wake the completion task.
                         result_notify.notify_one();
                     }
-                    let _ = turn_tx.lock().await.send(RunnerEvent::Stdout(json)).await;
+                    let tx = turn_tx.lock().await.clone();
+                    let _ = tx.send(RunnerEvent::Stdout(json)).await;
                 }
             })
         };
