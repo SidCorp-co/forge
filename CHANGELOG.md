@@ -8,6 +8,36 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **A refused request answers the status that says what to do (ISS-186):** 403 for a missing
+  permission, 409 when someone else changed or holds it first, 422 for other rules, 400 for a
+  malformed request naming each bad field.
+
+- **An access token approves only where its own grant names the approval, not because its holder is
+  an admin (ISS-187).** Agent credentials carry their memberships' approvals, and every status move
+  records the token and whom it acts for.
+
+- **Blocked-by, held-job, master-silence and abandoned-issue facts read the same rows as the gates
+  that act on them (ISS-188).** A screen no longer shows a different blocker than the one a take is
+  refused for.
+
+- **A status move that loses a race answers 409 STALE_TRANSITION naming the expected and the actual
+  status, instead of a 422 (ISS-189).** Every move's history records which state machine version
+  judged it.
+
+- **Outbox deliveries run on pg-boss 12, one queue per consumer, an issue's events in order (ISS-192).**
+  A delivery failing every retry blocks that issue for that consumer until replayed, raising alert
+  A6. Node 22.12 or later is required.
+
+- **Assistant chat, summarising, embeddings and GraphQL contract checks run on the AI SDK, graphql-js
+  and graphql-inspector (ISS-194).** GraphQL breaking-change messages read differently, and
+  description-only edits are not listed.
+
+- **Memory search rerank grades each candidate on its own, and hybrid search says which path ordered
+  its hits (ISS-197).** When the rerank falls back to fused order, it says why and for how many
+  candidates.
+
 ## [0.4.0-dev.6] - 2026-10-04
 
 One approval permission, nine MCP tools, and a durable outbox behind every reaction
