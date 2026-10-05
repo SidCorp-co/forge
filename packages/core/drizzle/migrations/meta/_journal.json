@@ -2605,6 +2605,13 @@
       "when": 1817769600000,
       "tag": "0403_an_active_child_under_a_terminal_run_is_refused_not_rewritten",
       "breakpoints": true
+    },
+    {
+      "idx": 405,
+      "version": "7",
+      "when": 1817942400000,
+      "tag": "0405_the_write_only_and_unused_schema_and_the_feedback_case_are_dropped",
+      "breakpoints": true
     }
   ]
 }

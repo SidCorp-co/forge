@@ -31,7 +31,6 @@ export const usageRecords = pgTable(
     estimatedCost: real('estimated_cost').notNull().default(0),
     requestCount: integer('request_count').notNull().default(1),
     sessionId: text('session_id'),
-    projectName: text('project_name'),
     jobId: uuid('job_id'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

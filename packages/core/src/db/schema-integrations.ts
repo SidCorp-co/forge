@@ -84,8 +84,6 @@ export const integrationConnections = pgTable(
     // The ONE encrypted copy of the credential — rotate once, every binding
     // follows. Same <iv:12><tag:16><ct> format as project_integrations.
     secretsEnc: bytea('secrets_enc'),
-    // Future OAuth-first connect (GitHub App installation id, etc.).
-    oauthInstallationId: text('oauth_installation_id'),
     active: boolean('active').notNull().default(true),
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     lastHealthStatus: text('last_health_status'),

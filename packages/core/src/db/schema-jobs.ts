@@ -105,19 +105,7 @@ export const jobs = pgTable(
     failureReason: text('failure_reason'),
     failureMeta: jsonb('failure_meta'),
     classifierVersion: integer('classifier_version'),
-    // S1.1 — Prompt snapshot for Inspector + Analytics. system_prompt_hash
-    // points at prompt_blobs (content-addressable dedup, ~70% storage win);
-    // user_prompt_snapshot is the rendered `/skill id + ## Issue + ## Prev
-    // Session Context` string inline because every job is unique here.
-    // prompt_blocks is the per-block char/token breakdown for analytics.
-    // archive_path is set by the retention sweeper once the row ages past
-    // FORGE_PROMPT_RETENTION_DAYS.
-    systemPromptHash: text('system_prompt_hash').references((): AnyPgColumn => promptBlobs.hash),
-    userPromptSnapshot: text('user_prompt_snapshot'),
-    promptInputTokenEst: integer('prompt_input_token_est'),
     modelUsed: text('model_used'),
-    promptBlocks: jsonb('prompt_blocks'),
-    archivePath: text('archive_path'),
     skillsRanWith: jsonb('skills_ran_with'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -136,26 +124,12 @@ export const jobs = pgTable(
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','held') AND issue_id IS NOT NULL`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
-    finishedArchiveIdx: index('jobs_finished_archive_idx')
-      .on(t.finishedAt)
-      .where(sql`archive_path IS NULL AND finished_at IS NOT NULL`),
     // ISS-455 — a project's smoke canaries, kept off the hot jobs rows.
     smokeProjectQueuedIdx: index('jobs_smoke_project_queued_idx')
       .on(t.projectId, t.queuedAt)
       .where(sql`type = 'smoke'`),
   }),
 );
-
-// S1.1 — Content-addressable store for system prompts. Many jobs share the
-// same preamble (PIPELINE_RULES + TOOL_REFERENCE + branches) so we keep
-// one row per unique hash and reference-count via jobs.system_prompt_hash.
-// GC happens when ref_count hits 0 during retention sweep.
-export const promptBlobs = pgTable('prompt_blobs', {
-  hash: text('hash').primaryKey(),
-  content: text('content').notNull(),
-  firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
-  refCount: integer('ref_count').notNull().default(0),
-});
 
 export const jobEvents = pgTable(
   'job_events',

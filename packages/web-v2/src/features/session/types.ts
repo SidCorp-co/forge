@@ -96,7 +96,6 @@ export interface TurnRow {
   turnIndex: number;
   role: TurnRole;
   content: { value?: MessageEntry } | MessageEntry | null;
-  parentTurnId?: string | null;
   editedAt: string | null;
   createdAt: string;
 }
