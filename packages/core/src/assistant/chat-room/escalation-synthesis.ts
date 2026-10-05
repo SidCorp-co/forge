@@ -178,7 +178,6 @@ async function synthesizeWith(
       adapter: 'rocketchat',
       message: correction ?? buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
       tools,
-      turnKind: tools ? 'agentic' : 'relay',
       persona,
       userKey: meta.askedByUsername || null,
     });

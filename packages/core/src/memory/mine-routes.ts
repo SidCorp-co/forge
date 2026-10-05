@@ -4,10 +4,11 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, can, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deleteMine, findMine, listMine } from './mine-service.js';
 
 const listQuerySchema = z.object({ projectId: z.uuid().optional() });
@@ -24,7 +25,7 @@ memoryMineRoutes.get('/mine', zValidator('query', listQuerySchema), async (c) =>
   for (const row of rows) {
     let ok = readable.get(row.projectId);
     if (ok === undefined) {
-      ok = await can(actorFor(userId), 'project.read', projectResource(row.projectId));
+      ok = (await effectiveProjectRole(userId, row.projectId))?.role !== undefined;
       readable.set(row.projectId, ok);
     }
     if (ok) items.push(row);
