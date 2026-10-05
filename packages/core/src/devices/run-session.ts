@@ -44,6 +44,7 @@ import {
   lockRunForClose,
   type OneShotRunSpec,
   type RunFailureCause,
+  writeRunMetadata,
 } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
@@ -297,25 +298,35 @@ export async function releaseIssueLease(args: {
     // Narrowed to the project whose row went: the same key names a different
     // issue in every other project this box serves, and a run of one of those
     // is still carrying it (ISS-1139).
-    await tx.execute(sql`
-    UPDATE pipeline_runs r
-       SET metadata = jsonb_set(
-             COALESCE(r.metadata, '{}'::jsonb),
-             ARRAY[${RUN_ISSUES_METADATA_KEY}],
-             COALESCE(
-               (SELECT jsonb_agg(k)
-                  FROM jsonb_array_elements_text(
-                    COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)
-                  ) AS k
-                 WHERE k <> ${args.issueKey}),
-               '[]'::jsonb))
-      FROM agent_sessions s
-     WHERE s.pipeline_run_id = r.id
-       AND s.device_id = ${args.deviceId}
-       AND s.kind = ${RUN_SESSION_KIND}
-       AND r.project_id = ${outcome.projectId}
-       AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
-  `);
+    const carrying = (await tx.execute(sql`
+      SELECT r.id
+        FROM pipeline_runs r
+        JOIN agent_sessions s ON s.pipeline_run_id = r.id
+       WHERE s.device_id = ${args.deviceId}
+         AND s.kind = ${RUN_SESSION_KIND}
+         AND r.project_id = ${outcome.projectId}
+         AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)
+    `)) as unknown as Array<{ id: string }>;
+    for (const run of new Set(carrying.map((r) => r.id))) {
+      await writeRunMetadata(
+        run,
+        {
+          value: sql`jsonb_set(
+            COALESCE(${pipelineRuns.metadata}, '{}'::jsonb),
+            ARRAY[${RUN_ISSUES_METADATA_KEY}],
+            COALESCE(
+              (SELECT jsonb_agg(k)
+                 FROM jsonb_array_elements_text(
+                   COALESCE(${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb)
+                 ) AS k
+                WHERE k <> ${args.issueKey}),
+              '[]'::jsonb))`,
+          when: sql`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY} @> to_jsonb(${args.issueKey}::text)`,
+          touch: false,
+        },
+        tx,
+      );
+    }
     return outcome;
   });
 }
