@@ -8,6 +8,7 @@ import {
   RELEASE_ROSTER_LIMIT,
   type ReleaseBlockerCode,
 } from '@forge/contracts/releases';
+import type { Weighing } from '../issues/index.js';
 import { agrees, counted } from '../lib/plural.js';
 import {
   AGENT_NAMING_MIN_RUNNER,
@@ -67,6 +68,8 @@ export interface CollectReleaseBlockersOptions {
   /** Read by the CALLER — this enumerator reaches no network; without one the criteria check
    *  reports itself unevaluated rather than guess (ISS-1286). */
   serving?: ServingReading | undefined;
+  /** Read beside `serving` (ISS-1368), or why it failed; absent, equality alone weighs a verdict. */
+  weighing?: Weighing | string | undefined;
 }
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {

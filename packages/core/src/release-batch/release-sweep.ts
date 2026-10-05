@@ -38,6 +38,7 @@ import {
   reportHeldBack,
   reportUncorroborated,
 } from './release-sweep-report.js';
+import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -163,7 +164,8 @@ async function readGate(
  * are one project's rows weighed against one answer about that project, at one moment (ISS-1286).
  * `readServingNow` answers rather than throwing for a host that will not talk — an unreachable
  * probe is a reading this gate has, not a criteria read that failed — so only a tracker or database
- * failure reaches the catch below.
+ * failure reaches the catch below. The weighing beside it (ISS-1368) answers a repository that will
+ * not talk the same way, as a reason kept on each pair it could not read.
  */
 async function readCriteria(
   projectId: string,
@@ -171,7 +173,8 @@ async function readCriteria(
 ): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
   try {
     const serving = await readServingNow(projectId);
-    return { ok: true, value: await unearnedCriteriaReports(waiting, serving) };
+    const weighing = await readWeighingNow(projectId, serving, waiting);
+    return { ok: true, value: await unearnedCriteriaReports(waiting, serving, weighing) };
   } catch (err) {
     logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
     return {

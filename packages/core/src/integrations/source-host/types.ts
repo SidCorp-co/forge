@@ -37,6 +37,15 @@ export interface HostCommit {
 /** Where `head` stands against `base`. `ahead` and `identical` both mean head contains base. */
 export type HostCompare = 'ahead' | 'behind' | 'identical' | 'diverged';
 
+/** A compare taken only whole: where head stands, and every file its tree differs from base's in
+ *  since their merge base, a rename by both its names; or why the list cannot be taken whole. */
+export type HostFileCompare =
+  | { readonly status: HostCompare; readonly files: readonly string[] }
+  | { readonly why: string };
+
+/** The files one commit changed against its first parent, or why they cannot be named whole. */
+export type HostCommitFiles = { readonly files: readonly string[] } | { readonly why: string };
+
 export interface ChangeRequestDiff {
   number: number;
   repository: string;
@@ -128,6 +137,8 @@ export interface SourceHost {
   readCommit(ref: string): Promise<HostCommit | null>;
   branchHead(branch: string): Promise<string>;
   compare(base: string, head: string): Promise<HostCompare>;
+  compareFiles(base: string, head: string): Promise<HostFileCompare>;
+  commitFiles(sha: string): Promise<HostCommitFiles>;
   /** Whether `branch` contains `sha`. */
   branchContains(branch: string, sha: string): Promise<boolean>;
   readDivergence(refs: BranchRefs): Promise<LiveDivergence>;
