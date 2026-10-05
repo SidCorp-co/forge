@@ -1,3 +1,4 @@
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, jobs, projects } from '../db/schema.js';
@@ -93,12 +94,7 @@ export async function retryIssueDispatch(args: {
   const [active] = await db
     .select({ id: jobs.id, status: jobs.status })
     .from(jobs)
-    .where(
-      and(
-        eq(jobs.issueId, args.issueId),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
-      ),
-    )
+    .where(and(eq(jobs.issueId, args.issueId), inArray(jobs.status, [...LIVE_JOB_STATUSES])))
     .limit(1);
   if (active) {
     throw refusePipeline(

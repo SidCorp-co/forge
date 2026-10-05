@@ -12874,6 +12874,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
         ]
