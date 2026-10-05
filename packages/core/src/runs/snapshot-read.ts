@@ -29,9 +29,7 @@ export async function readPmSnapshot(projectId: string) {
     .where(eq(issues.projectId, projectId))
     .groupBy(issues.status);
   const countsByStatus: Record<string, number> = {};
-  for (const row of countsRows) {
-    countsByStatus[row.status] = Number(row.n);
-  }
+  for (const row of countsRows) countsByStatus[row.status] = Number(row.n);
 
   const activeJobsRows = await db
     .select({
@@ -68,11 +66,10 @@ export async function readPmSnapshot(projectId: string) {
     .orderBy(asc(issues.updatedAt))
     .limit(10);
 
-  const [queuedCountRow] = await db
+  const [queued] = await db
     .select({ n: count() })
     .from(jobs)
     .where(and(eq(jobs.projectId, projectId), eq(jobs.status, 'queued')));
-  const queuedCount = Number(queuedCountRow?.n ?? 0);
 
   const recentFailuresRows = await db
     .select({
@@ -100,18 +97,13 @@ export async function readPmSnapshot(projectId: string) {
     countsByStatus,
     activeJobs: activeJobsRows,
     stalledIssues: stalledIssuesRows.map((r) => ({
-      id: r.id,
+      ...r,
       issueId: formatIssueRef(snapshotPrefix, r.issueId),
-      status: r.status,
-      updatedAt: r.updatedAt,
     })),
-    queuedCount,
+    queuedCount: Number(queued?.n ?? 0),
     recentFailures: recentFailuresRows.map((r) => ({
-      id: r.id,
-      type: r.type,
-      failureKind: r.failureKind,
+      ...r,
       failureReason: truncate(r.failureReason, FAILURE_REASON_TRUNC),
-      finishedAt: r.finishedAt,
     })),
     runnerHealth,
   };

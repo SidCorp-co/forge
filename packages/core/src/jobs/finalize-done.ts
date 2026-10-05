@@ -1,13 +1,12 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, gte } from 'drizzle-orm';
-import { deriveSessionFinal } from '../agent-sessions/index.js';
+import { deriveSessionFinal, materializeJobUsage } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { materializeJobUsage } from '../usage-records/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
 type JobRow = typeof jobs.$inferSelect;

@@ -16,14 +16,8 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { strictBody } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
-import {
-  type ReportActor,
-  readReport,
-  type TriageOutcome,
-  triageReports,
-  visibleIssue,
-  writableProjectIds,
-} from './service.js';
+import { readReport, visibleIssue, writableProjectIds } from './service.js';
+import { type ReportActor, type TriageOutcome, triageReports } from './triage.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

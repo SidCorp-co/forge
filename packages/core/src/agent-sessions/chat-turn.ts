@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   CONTENT_LANGUAGE_KEY,
+  type ContentLanguageView,
   contentLanguageBlock,
   contentLanguageRecord,
 } from '@forge/contracts/content-language';
@@ -290,31 +291,57 @@ export function checkoutUnbound(projectId: string, deviceId: string | null): Ref
   );
 }
 
+/**
+ * A cold start carries the tool reference and project preamble; after a migration it also
+ * re-injects the prior transcript, since the on-disk `--resume` state stayed on the old box.
+ * ISS-733 — the slash-command goes on line 1, as a pipeline job's prompt carries it.
+ */
+async function coldStartPrompt(
+  args: DispatchChatTurnArgs,
+  decoratedMessage: string,
+  language: ContentLanguageView | null,
+  prevMessages: ReadonlyArray<{ type?: string; content?: unknown }>,
+): Promise<string> {
+  let prompt = decoratedMessage;
+  if (!args.preBuilt) {
+    const languageSection = language ? `${contentLanguageBlock(language, 'chat')}\n\n---\n\n` : '';
+    prompt = languageSection + decoratedMessage;
+    try {
+      const preamble = await agentSessionsPorts().buildChatPreamble(
+        args.project.id,
+        args.session.userId,
+        args.forceLenses ?? readLensOverride(args.session.metadata),
+      );
+      prompt = preamble + languageSection + buildRehydrationBlock(prevMessages) + decoratedMessage;
+    } catch {
+      // non-fatal — proceed with the raw prompt and its language block
+    }
+  }
+  return args.skillName ? `/${args.skillName}\n${prompt}` : prompt;
+}
+
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client } = args;
   const { deviceId, isLocal } = client;
   const migrated = !!client.migrated;
   const broadcastEvent = args.broadcastEvent ?? 'agent-session.updated';
 
-  // Re-prepend the [Context: …] header only when the user switched page/issue
-  // since the previous turn. A brand-new session has no prior context, so its
-  // first turn always gets the header (matches the legacy /start behaviour).
+  // The [Context: …] header goes first only when the user switched page/issue since the
+  // previous turn; a brand-new session has none, so its first turn always gets it.
   const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & { pageContext?: unknown };
-  const lastPageContext = readPersistedPageContext(prevMeta.pageContext);
-  const shouldPrepend = !!args.pageContext && !samePageContext(lastPageContext, args.pageContext);
-  const decoratedMessage = shouldPrepend
-    ? `${formatPageContextLine(args.pageContext as PageContext)}\n${args.message}`
-    : args.message;
+  const decoratedMessage =
+    !args.pageContext ||
+    samePageContext(readPersistedPageContext(prevMeta.pageContext), args.pageContext)
+      ? args.message
+      : `${formatPageContextLine(args.pageContext)}\n${args.message}`;
 
   const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
   let repoPath = session.repoPath ?? null;
-  if (!repoPath || deviceChanged) {
+  if (!repoPath || deviceChanged)
     repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId);
-  }
   if (!isLocal && !repoPath) throw checkoutUnbound(project.id, deviceId);
 
-  // ISS-499 — hydrate attachment refs (drops ids not belonging to this session)
-  // BEFORE building the user message so they persist on the turn for re-render.
+  // ISS-499 — ids not belonging to this session drop here, before the turn persists them.
   const attachments: SessionAttachmentRef[] = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
     : [];
@@ -330,9 +357,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   };
   const messages = [...prevMessages, userMessage];
 
-  // Resolved here (not just inside the remote-dispatch branch below) so the
-  // ISS-733 `pendingSkillName` marker can be persisted in THIS transaction —
-  // the remote branch only ever publishes a WS event, it never writes the DB.
+  // Resolved before the transaction so the ISS-733 `pendingSkillName` marker persists in it.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
   if (args.credential && isLocal) {
@@ -361,7 +386,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     failureReason: null,
     repoPath,
   };
-  // Pin the freshly-picked device so the next /send reuses it.
   if (deviceId && session.deviceId !== deviceId) updates.deviceId = deviceId;
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
@@ -377,9 +401,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
   updates.metadata = nextMeta;
 
-  const shouldAutoTitle = prevMessages.length === 0 && isPlaceholderTitle(session.title);
   let fallbackTitle: string | null = null;
-  if (shouldAutoTitle) {
+  if (prevMessages.length === 0 && isPlaceholderTitle(session.title)) {
     fallbackTitle = deriveChatTitle(stripSystemNoise(args.message)) || null;
     if (fallbackTitle) updates.title = fallbackTitle;
   }
@@ -404,8 +427,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       );
     }
     const row = { ...written, status: 'running' as const };
-    // Materialize the appended user turn in the same transaction so the legacy
-    // blob and per-turn rows can never diverge if the turn insert throws.
+    // the legacy blob and the per-turn rows are written in one transaction so they never diverge
     const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
     const seeded = await seedTurn(tx, row.id, {
       priorMessages: prevMessages,
@@ -416,10 +438,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   });
   for (const t of sync.appended) broadcastTurnAppended(updated, t);
 
-  // AI title upgrade — fire-and-forget, OUTSIDE the turn transaction, never
-  // awaited (must not block or slow the chat response). Covers both LOCAL
-  // (desktop) and REMOTE turns since it runs before the isLocal branch.
-  if (shouldAutoTitle && fallbackTitle) {
+  // the AI title upgrade runs outside the transaction and is never awaited
+  if (fallbackTitle) {
     void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
   }
 
@@ -432,80 +452,38 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         ...(attachments.length ? { attachments } : {}),
       },
     });
-    broadcastSession(updated, broadcastEvent);
-    return updated;
-  }
-
-  const target = deviceId as string;
-  const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
-    project.id,
-  );
-  // `claudeSessionId`/`resumable` were already resolved above (before the
-  // transaction, so the `pendingSkillName` marker could be persisted).
-  if (!resumable) {
-    // Cold start — fresh Claude session: carry the tool reference + project
-    // preamble. On a migration, re-inject the prior transcript from the DB so
-    // the new runner continues the conversation without the on-disk --resume
-    // state (the unlock: history lives in the DB, not only on the old box).
-    let prompt = decoratedMessage;
-    if (!args.preBuilt) {
-      const languageSection = language
-        ? `${contentLanguageBlock(language, 'chat')}\n\n---\n\n`
-        : '';
-      prompt = languageSection + decoratedMessage;
-      try {
-        const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
-        const preamble = await agentSessionsPorts().buildChatPreamble(
-          project.id,
-          session.userId,
-          forceLenses,
-        );
-        const history = buildRehydrationBlock(prevMessages);
-        prompt = preamble + languageSection + history + decoratedMessage;
-      } catch {
-        // non-fatal — proceed with the raw prompt and its language block
-      }
-    }
-    // ISS-733 — job-parity skill invocation: line 1 = the slash-command, same
-    // shape a pipeline job's `-p` prompt already uses. Cold-start only (this
-    // whole branch is `!resumable`) — a `--resume` turn never re-prepends it.
-    // Shape already validated above (before the DB transaction).
-    if (args.skillName) {
-      prompt = `/${args.skillName}\n${prompt}`;
-    }
-    roomManager.publish(deviceRoom(target), {
-      event: 'agent:start',
-      data: {
-        sessionId: updated.id,
-        repoPath,
-        prompt,
-        eventSeqBase,
-        projectSlug: project.slug,
-        preBuilt: args.preBuilt ?? false,
-        systemPrompt: agentSessionsPorts().toolReference(),
-        mcpServersOverride,
-        ...(model ? { model } : {}),
-        ...(attachments.length ? { attachments } : {}),
-        ...(args.credential ? { forgeToken: args.credential } : {}),
-      },
-    });
   } else {
-    // Follow-up — `--resume` keeps the original system prompt + history.
-    roomManager.publish(deviceRoom(target), {
-      event: 'agent:send',
-      data: {
-        sessionId: updated.id,
-        message: decoratedMessage,
-        claudeSessionId,
-        eventSeqBase,
-        repoPath,
-        projectSlug: project.slug,
-        mcpServersOverride,
-        ...(model ? { model } : {}),
-        ...(attachments.length ? { attachments } : {}),
-        ...(args.credential ? { forgeToken: args.credential } : {}),
-      },
-    });
+    const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
+      project.id,
+    );
+    const common = {
+      sessionId: updated.id,
+      eventSeqBase,
+      repoPath,
+      projectSlug: project.slug,
+      mcpServersOverride,
+      ...(model ? { model } : {}),
+      ...(attachments.length ? { attachments } : {}),
+      ...(args.credential ? { forgeToken: args.credential } : {}),
+    };
+    roomManager.publish(
+      deviceRoom(deviceId as string),
+      resumable
+        ? // `--resume` keeps the original system prompt and history
+          {
+            event: 'agent:send',
+            data: { ...common, message: decoratedMessage, claudeSessionId },
+          }
+        : {
+            event: 'agent:start',
+            data: {
+              ...common,
+              prompt: await coldStartPrompt(args, decoratedMessage, language, prevMessages),
+              preBuilt: args.preBuilt ?? false,
+              systemPrompt: agentSessionsPorts().toolReference(),
+            },
+          },
+    );
   }
   broadcastSession(updated, broadcastEvent);
   return updated;

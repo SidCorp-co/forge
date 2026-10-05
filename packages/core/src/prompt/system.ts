@@ -39,8 +39,6 @@ interface BuiltPreamble {
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
-export { TOOL_REFERENCE } from './facts/mandatory-blocks.js';
-
 const CHAT_ORIENTATION = `## Project Orientation
 You are working in a Forge-managed project. Its issues, comments, status and project memory are reached through the Forge REST API (\`forge-runner api <path>\` or the \`forge\` CLI): \`issues/<id>\`, \`issues/<id>/comments\`, \`projects/<id>/config\`, \`memory/search\`. Use them when the request relates to issues, tasks, status, or project memory.
 

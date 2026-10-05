@@ -1,4 +1,3 @@
-
 import {
   FAILURE_CAUSE_PRESENTATION,
   type FailureCause,
@@ -10,7 +9,6 @@ import {
   RUN_STUCK_AFTER_MS,
   SESSION_SILENCE_REAP_MS,
 } from "@forge/contracts/run-standing";
-import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/session-machine";
 import type { StatusKey } from "@/design/status";
 
 export type AgentSessionStatus =
@@ -22,10 +20,6 @@ export type AgentSessionStatus =
   | "completed_via_recovery"
   | "cancelled_stale"
   | "cancelled";
-
-export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessionStatus>(
-  TERMINAL_AGENT_SESSION_STATUSES,
-);
 
 /** Synthetic UI-only state derived from heartbeat freshness. The backend only
  *  persists `running`; the `stalled` distinction is presentational. */
@@ -169,8 +163,7 @@ export function sessionKind(
 export function isJobDriven(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {
-  const k = sessionKind(session);
-  return k === "pipeline";
+  return sessionKind(session) === "pipeline";
 }
 
 /** Whether a session is an interactive chat (not driven by a pipeline job). */
@@ -379,7 +372,6 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
   }
 }
 
-
 export type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
 
 function presentationOf(reason: string): "cleanup" | "swept" | "failure" {
@@ -491,4 +483,33 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
 /** Whether a session can be retried (job-driven sessions tied to an issue). */
 export function isRetryable(row: SessionRow): boolean {
   return isJobDriven(row) && !!row.metadata?.issueId;
+}
+
+/** `useElapsed`'s format, for a duration that has stopped. */
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+/** Short absolute timestamp, or "—" when absent/invalid (older rows). */
+export function formatShortTime(iso: string | null | undefined): string {
+  const ms = iso ? new Date(iso).getTime() : Number.NaN;
+  if (Number.isNaN(ms)) return "—";
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise; "—" when absent. */
+export function formatCost(usd: number | undefined): string {
+  if (usd == null) return "—";
+  if (usd > 0 && usd < 0.01) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
 }

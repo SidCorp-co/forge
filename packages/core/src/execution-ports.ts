@@ -77,12 +77,10 @@ import {
   renderPinnedContracts,
 } from './workflows/index.js';
 
-const skillActivity = { recordSkillActivityEvent };
-
 export function provideExecutionPorts(): void {
   provideJobsPorts({
-    buildPipelinePreamble: (projectId, opts) => buildPipelinePreambleStructured(projectId, opts),
-    skillActivity,
+    buildPipelinePreamble: buildPipelinePreambleStructured,
+    skillActivity: { recordSkillActivityEvent },
     dispatchPolicy: {
       dispatchState: async (projectId, wanted) =>
         dispatchStateOf(projectId, await requirePolicy(projectId), wanted),
@@ -110,7 +108,7 @@ export function provideExecutionPorts(): void {
     buildChatPreamble,
     toolReference: () => TOOL_REFERENCE,
     attachments: () => getStorage(),
-    callFastModel: (scope, prompt, maxTokens) => callFastModel(scope, prompt, maxTokens),
+    callFastModel,
     foreignScriptChars,
     readContentLanguage,
     resolveRegisteredEffectiveSkills,

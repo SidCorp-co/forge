@@ -127,6 +127,52 @@ function isPartialStreamEvent(e: { kind: string; data?: unknown }): boolean {
   return line?.type === 'stream_event';
 }
 
+/** The linked session hears the batch: a heartbeat, the last reported runtime state, an incremental derive. */
+async function syncLinkedSession(
+  jobId: string,
+  sessionId: string,
+  events: ReadonlyArray<{ kind: string; data?: unknown }>,
+  deviceId: string,
+): Promise<void> {
+  if (events.some((e) => !isParkEvent(e))) {
+    try {
+      const started = await beatLinkedSession(
+        sessionId,
+        new Date(),
+        events.some(isTurnEvidence),
+        deviceId,
+      );
+      if (started) {
+        broadcastSessionEvent(
+          started.id,
+          started.projectId,
+          started.deviceId,
+          'agent-session.status',
+          { status: 'running' },
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, jobId, agentSessionId: sessionId },
+        'events-routes: agent_sessions heartbeat sync failed',
+      );
+    }
+  }
+  const reported = events.reduce<SessionRuntimeState | undefined>(
+    (acc, e) => runtimeStateOf(e) ?? acc,
+    undefined,
+  );
+  if (reported) {
+    try {
+      await setSessionRuntimeState(sessionId, reported);
+    } catch (err) {
+      logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
+    }
+  }
+  const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
+  void maybeDeriveIncremental(jobId, sessionId, stdoutCount);
+}
+
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
@@ -146,9 +192,7 @@ jobEventsRoutes.post(
     if (job.deviceId !== device.id) {
       throw forbidden('job is not dispatched to this device');
     }
-    if (
-      TERMINAL_STATUSES.has(job.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never)
-    ) {
+    if (TERMINAL_STATUSES.has(job.status)) {
       throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }
 
@@ -163,13 +207,7 @@ jobEventsRoutes.post(
     for (const row of inserted) {
       roomManager.publish(projectRoom(job.projectId), {
         event: 'job.event',
-        data: {
-          jobId,
-          seq: row.seq,
-          kind: row.kind,
-          ts: row.ts,
-          data: row.data,
-        },
+        data: { jobId, seq: row.seq, kind: row.kind, ts: row.ts, data: row.data },
       });
     }
 
@@ -181,57 +219,12 @@ jobEventsRoutes.post(
       }
     }
 
-    const linkedSessionId = job.agentSessionId;
-    if (linkedSessionId && events.some((e) => !isParkEvent(e))) {
-      try {
-        const heartbeatNow = new Date();
-        const sawTurn = events.some(isTurnEvidence);
-        const started = await beatLinkedSession(linkedSessionId, heartbeatNow, sawTurn, device.id);
-        if (started) {
-          broadcastSessionEvent(
-            started.id,
-            started.projectId,
-            started.deviceId,
-            'agent-session.status',
-            { status: 'running' },
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          { err, jobId, agentSessionId: job.agentSessionId },
-          'events-routes: agent_sessions heartbeat sync failed',
-        );
-      }
-    }
+    if (job.agentSessionId) await syncLinkedSession(job.id, job.agentSessionId, events, device.id);
 
-    if (job.agentSessionId) {
-      const reported = events.reduce<SessionRuntimeState | undefined>(
-        (acc, e) => runtimeStateOf(e) ?? acc,
-        undefined,
-      );
-      if (reported) {
-        try {
-          await setSessionRuntimeState(job.agentSessionId, reported);
-        } catch (err) {
-          logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
-        }
-      }
-    }
-
-    if (job.agentSessionId) {
-      const stdoutCount = events.reduce((n, e) => (e.kind === 'stdout' ? n + 1 : n), 0);
-      void maybeDeriveIncremental(jobId, job.agentSessionId, stdoutCount);
-    }
-
-    const first = inserted[0];
-    const last = inserted[inserted.length - 1];
-    return c.json(
-      {
-        accepted: inserted.length,
-        firstSeq: first?.seq ?? null,
-        lastSeq: last?.seq ?? null,
-      },
-      200,
-    );
+    return c.json({
+      accepted: inserted.length,
+      firstSeq: inserted[0]?.seq ?? null,
+      lastSeq: inserted[inserted.length - 1]?.seq ?? null,
+    });
   },
 );

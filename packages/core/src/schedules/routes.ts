@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { scheduleKinds } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   createSchedule,
@@ -13,8 +13,6 @@ import {
   updateSchedule,
 } from './service.js';
 
-const idParamSchema = z.object({ id: z.uuid() });
-
 const listQuerySchema = z
   .object({
     projectId: z.uuid(),
@@ -24,18 +22,22 @@ const listQuerySchema = z
 
 const apiScheduleKind = z.enum(scheduleKinds);
 
+const scheduleFields = {
+  prompt: z.string().trim().min(1).max(20_000).optional(),
+  kind: apiScheduleKind.optional(),
+  script: z.string().trim().min(1).max(50_000).optional(),
+  enabled: z.boolean().optional(),
+  targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  params: z.record(z.string(), z.unknown()).nullable().optional(),
+};
+
 const createSchema = z
   .object({
     projectId: z.uuid(),
     name: z.string().trim().min(1).max(200),
     cron: z.string().trim().min(1).max(200),
-    prompt: z.string().trim().min(1).max(20_000).optional(),
-    kind: apiScheduleKind.optional(),
-    script: z.string().trim().min(1).max(50_000).optional(),
-    enabled: z.boolean().optional(),
-    targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
-    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-    params: z.record(z.string(), z.unknown()).nullable().optional(),
+    ...scheduleFields,
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -82,13 +84,7 @@ const updateSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     cron: z.string().trim().min(1).max(200).optional(),
-    prompt: z.string().trim().min(1).max(20_000).optional(),
-    kind: apiScheduleKind.optional(),
-    script: z.string().trim().min(1).max(50_000).optional(),
-    enabled: z.boolean().optional(),
-    targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
-    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-    params: z.record(z.string(), z.unknown()).nullable().optional(),
+    ...scheduleFields,
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
@@ -111,9 +107,6 @@ const updateSchema = z
       });
     }
   });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());

@@ -177,7 +177,7 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | Closed: `forge_suggestions` is not served since the MCP slimming of 2026-10-04; suggestions are `/api/projects/:id/suggestions` | ISS-168 |
 | 43 | A master pass has no key: refusals name it by its verb and start time, and its history (`GET /api/projects/:id/masters/passes`) pages by `before`, the last start a page served (`packages/core/src/masters/read.ts:listMasterPasses`), not by a key | review |
-| 44 | Agent-report triage (ISS-113) keeps its outcome on the report row (`packages/core/src/db/schema-agent-reports.ts:agentReports`, triage columns): a reopen clears it and a later triage overwrites it, with no row per decision, so a re-triaged report loses who decided before; writes serialise on a row lock (`packages/core/src/agent-reports/service.ts:triageReports`), not an advisory lock; reports migrated by 0368 carry no `triaged_by` | ISS-116 |
+| 44 | Agent-report triage (ISS-113) keeps its outcome on the report row (`packages/core/src/db/schema-agent-reports.ts:agentReports`, triage columns): a reopen clears it and a later triage overwrites it, with no row per decision, so a re-triaged report loses who decided before; writes serialise on a row lock (`packages/core/src/agent-reports/triage.ts:triageReports`), not an advisory lock; reports migrated by 0368 carry no `triaged_by` | ISS-116 |
 
 ## Phase 2 — pilot observation (requirement-to-delivery)
 

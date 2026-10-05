@@ -62,6 +62,9 @@ import {
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
+  formatCost,
+  formatDuration,
+  formatShortTime,
   AGENT_SESSION_KINDS,
   SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
@@ -78,44 +81,12 @@ interface SessionsScreenProps {
   scope?: { projectId?: string; issueId?: string };
 }
 
-/** Mirror of `useElapsed`'s formatter for static (terminal) durations. */
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
-
 /** `m ss` / `s` countdown for the reap-window label. */
 function formatCountdown(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(s / 60);
   if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
   return `${s}s`;
-}
-
-/** Short absolute timestamp for the Started column, or "—" when absent/invalid.
- *  Mirrors the context-rail detail formatter (ISS-391). */
-function fmtTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const ms = new Date(iso).getTime();
-  if (Number.isNaN(ms)) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise; "—" when
- *  the row carries no cost rollup (older payloads). Mirrors context-rail. */
-function fmtCost(usd: number | undefined): string {
-  if (usd == null) return "—";
-  if (usd > 0 && usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
 }
 
 // ISS-664 — "waiting" leads the tab order: it's the one the owner scans for
@@ -140,8 +111,7 @@ const KIND_LABEL: Record<KindFilter, string> = {
 };
 
 function matchesKind(kind: KindFilter, row: SessionRow): boolean {
-  if (kind === "all") return true;
-  return sessionKind(row) === kind;
+  return kind === "all" || sessionKind(row) === kind;
 }
 
 function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
@@ -217,13 +187,15 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const abort = useAbortSession();
   const sweep = useSweepZombies();
 
-  const rows = useMemo(() => {
+  // ISS-465 — kind counts come from this issue- and org-scoped set, before the
+  // kind filter, so switching tabs shows the true population in each.
+  const kindRows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
     const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
     // ISS-477 — workspace tier: keep only sessions whose project is in the active org.
-    const scoped = projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
-    return scoped.filter((r) => matchesKind(kind, r));
-  }, [sessionsQ.data, issueFilter, kind, projectId, orgProjectIds]);
+    return projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
+  }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
+  const rows = useMemo(() => kindRows.filter((r) => matchesKind(kind, r)), [kindRows, kind]);
 
   // ISS-664 — resolve the open panel's row (and its slug) from the currently
   // loaded rows so the panel can render without a second fetch.
@@ -295,13 +267,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     label: `${FILTER_LABEL[f]} ${counts[f]}`,
   }));
 
-  // ISS-465 — kind dimension; counts come from the unfiltered (issue-scoped)
-  // set so switching tabs shows the true population in each.
-  const kindRows = useMemo(() => {
-    const all = sessionsQ.data?.items ?? [];
-    const issueFiltered = issueFilter ? all.filter((r) => r.metadata?.issueId === issueFilter) : all;
-    return projectId ? issueFiltered : issueFiltered.filter((r) => orgProjectIds.has(r.projectId));
-  }, [sessionsQ.data, issueFilter, projectId, orgProjectIds]);
   const kindCounts: Record<KindFilter, number> = {
     all: kindRows.length,
     master: 0,
@@ -487,6 +452,43 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   );
 }
 
+interface RowProps {
+  row: SessionRow;
+  slug?: string;
+  deviceName?: string;
+  now: number;
+  actions: RowActions;
+  /** How far under its owner this row sits, in the list as filtered. */
+  depth: number;
+  /** Set at the project tier only — when present, rows navigate as before. */
+  projectId?: string;
+  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
+   *  navigating away from the cross-project list. */
+  onInlineOpen: (id: string) => void;
+}
+
+/** A row's display state, its duration and how it opens: project tier keeps
+ *  the route navigation, workspace tier opens the inline reply panel (ISS-664). */
+function useRowView({ row, slug, now, projectId, onInlineOpen }: RowProps) {
+  const router = useRouter();
+  const display = deriveSessionDisplayStatus(row, now);
+  const live = display === "running" || display === "stalled";
+  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
+  const elapsed = useElapsed(startMs, live);
+  const duration = !startMs
+    ? "—"
+    : live
+      ? elapsed
+      : formatDuration(new Date(row.updatedAt).getTime() - startMs);
+  const stage = sessionStep(row.metadata) ?? undefined;
+  const open = projectId
+    ? slug
+      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
+      : undefined
+    : () => onInlineOpen(row.id);
+  return { display, duration, stage, open };
+}
+
 interface MutationLike {
   mutate: (id: string) => void;
 }
@@ -522,7 +524,6 @@ function StatPill({
   );
 }
 
-/** Build the contextual row-action menu, choosing items by display status. */
 function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
   const isLive = display === "running" || display === "stalled";
@@ -728,53 +729,12 @@ function StatusCell({
   );
 }
 
-function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): string {
-  const live = display === "running" || display === "stalled";
-  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  if (!startMs) return "—";
-  if (live) return elapsed;
-  return formatDuration(new Date(row.updatedAt).getTime() - startMs);
-}
-
-function SessionTableRow({
-  row,
-  slug,
-  deviceName,
-  now,
-  actions,
-  projectId,
-  onInlineOpen,
-  depth,
-  hasChildren,
-}: {
-  row: SessionRow;
-  slug?: string;
-  deviceName?: string;
-  now: number;
-  actions: RowActions;
-  /** How far under its owner this row sits, in the list as filtered. */
-  depth: number;
+function SessionTableRow(props: RowProps & {
   /** Whether anything in this list is owned by it. */
   hasChildren: boolean;
-  /** Set at the project tier only — when present, rows navigate as before. */
-  projectId?: string;
-  /** Workspace tier only (ISS-664): opens the inline reply panel instead of
-   *  navigating away from the cross-project list. */
-  onInlineOpen: (id: string) => void;
 }) {
-  const router = useRouter();
-  const display = deriveSessionDisplayStatus(row, now);
-  const duration = useRowDuration(row, display);
-  const stage = sessionStep(row.metadata) ?? undefined;
-  // ISS-664 — tier-aware open: project tier keeps the existing route
-  // navigation; workspace tier opens the inline reply panel instead (no
-  // navigation, list stays visible).
-  const open = projectId
-    ? slug
-      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
-      : undefined
-    : () => onInlineOpen(row.id);
+  const { row, slug, deviceName, now, actions, depth, hasChildren } = props;
+  const { display, duration, stage, open } = useRowView(props);
   return (
     <TR>
       <TD>
@@ -808,10 +768,10 @@ function SessionTableRow({
       <TD className="max-w-[160px]">
         <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
       </TD>
-      <TD className="whitespace-nowrap font-mono text-muted">{fmtTime(row.startedAt ?? row.dispatchedAt)}</TD>
+      <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
-      <TD className="text-right font-mono text-muted">{fmtCost(row.estimatedCost)}</TD>
+      <TD className="text-right font-mono text-muted">{formatCost(row.estimatedCost)}</TD>
       <TD>
         <StatusCell row={row} display={display} stage={stage} now={now} />
       </TD>
@@ -835,34 +795,9 @@ function SessionKindTag({ row }: { row: SessionRow }) {
   return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
 }
 
-function SessionMobileCard({
-  row,
-  slug,
-  deviceName,
-  now,
-  actions,
-  projectId,
-  onInlineOpen,
-  depth,
-}: {
-  row: SessionRow;
-  slug?: string;
-  deviceName?: string;
-  now: number;
-  actions: RowActions;
-  depth: number;
-  projectId?: string;
-  onInlineOpen: (id: string) => void;
-}) {
-  const router = useRouter();
-  const display = deriveSessionDisplayStatus(row, now);
-  const duration = useRowDuration(row, display);
-  const stage = sessionStep(row.metadata) ?? undefined;
-  const open = projectId
-    ? slug
-      ? () => router.push(`/projects/${slug}/agents/${row.id}`)
-      : undefined
-    : () => onInlineOpen(row.id);
+function SessionMobileCard(props: RowProps) {
+  const { row, slug, deviceName, now, actions, depth } = props;
+  const { display, duration, stage, open } = useRowView(props);
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
     // has to survive the narrow layout or the tree is a desktop-only claim.
@@ -890,10 +825,10 @@ function SessionMobileCard({
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
             <span className="fg-mono text-muted">{duration}</span>
-            <span className="fg-mono text-muted">{fmtCost(row.estimatedCost)}</span>
+            <span className="fg-mono text-muted">{formatCost(row.estimatedCost)}</span>
           </div>
         </div>
-        <div className="fg-caption mt-1.5 text-subtle">Started {fmtTime(row.startedAt ?? row.dispatchedAt)}</div>
+        <div className="fg-caption mt-1.5 text-subtle">Started {formatShortTime(row.startedAt ?? row.dispatchedAt)}</div>
         {row.deviceId && (
           <div className="mt-2.5">
             <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />

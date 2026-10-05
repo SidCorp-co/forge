@@ -3,8 +3,5 @@ export {
   describeInvariantDelta,
   type PlatformInvariantEntry,
 } from './facts/invariant-set.js';
-export {
-  buildChatPreamble,
-  buildPipelinePreambleStructured,
-  TOOL_REFERENCE,
-} from './system.js';
+export { TOOL_REFERENCE } from './facts/mandatory-blocks.js';
+export { buildChatPreamble, buildPipelinePreambleStructured } from './system.js';

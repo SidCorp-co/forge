@@ -214,7 +214,7 @@ excluded.
   door, and `orgs` and `conversations` imported it, which no non-door may: it is now a domain, and
   it reaches the identity adapter through the port as any domain may. `usage-records`, a read
   model, wrote `usage_records` when a job finished and four kernels read it: it is the job's cost
-  evidence, so it is a kernel module in execution. `admin`, a read model, wrote `admin_thresholds`:
+  evidence, so it is a kernel module in execution (since ISS-218, part of `agent-sessions`). `admin`, a read model, wrote `admin_thresholds`:
   the thresholds moved to the domain `admin-thresholds` (since ISS-220 fixed defaults, with no
   table), and `admin` keeps only derived views.
   `app-config`, declared platform, holds a project's assistant settings behind routes and a

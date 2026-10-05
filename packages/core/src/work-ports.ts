@@ -11,12 +11,15 @@ import {
 import {
   agentSessionEventsRetention,
   deriveSessionFinal,
+  EMPTY_USAGE_TOTALS,
   persistSessionAttachment,
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   steerIssue,
   transitionSessions,
+  usageSessionMatch,
+  usageTotalsSelection,
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
@@ -111,11 +114,6 @@ import { runnerEventsRetention } from './runners/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { getStorage, isEnoent } from './storage/index.js';
 import { provideUploadPorts } from './uploads/index.js';
-import {
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from './usage-records/index.js';
 import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,

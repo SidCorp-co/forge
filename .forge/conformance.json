@@ -21,12 +21,11 @@
         "improves": "down",
         "$amnesty": {
           "files": [
-            "packages/core/src/agent-sessions/chat-turn.ts",
             "packages/core/src/issues/criteria/store.ts",
             "packages/core/src/issues/standing.ts"
           ],
-          "$what": "Three files the pattern-v2 rewrite and the cleanup lanes grew past the budget are frozen at their size on 2026-10-05 (ISS-225): chat-turn.ts's longest function at 152 lines, issues/criteria/store.ts at 502 and issues/standing.ts at 639 (feedback/read.ts left in ISS-218's design lane).",
-          "$costs": "Each may stay over 500 lines (or 150 per function) and grow no further; a reader of these three pays the length, and a fourth file growing past the budget is still refused.",
+          "$what": "Two files the pattern-v2 rewrite and the cleanup lanes grew past the budget are frozen at their size on 2026-10-05 (ISS-225): issues/criteria/store.ts at 502 and issues/standing.ts at 639 (feedback/read.ts left in ISS-218's design lane, chat-turn.ts in its execution lane).",
+          "$costs": "Each may stay over 500 lines (or 150 per function) and grow no further; a reader of these two pays the length, and a third file growing past the budget is still refused.",
           "$ends": "ISS-218, the simplify phase, splits them; the entries leave the baseline in that change and this block is deleted."
         }
       },
@@ -57,11 +56,9 @@
         "improves": "down",
         "$amnesty": {
           "files": {
-            "packages/core/src/devices/claim.ts": "7 modules: a box claiming a job checks the runner, the job, the issue and its lifecycle in one admission. The amnesty ends when ISS-218 simplify splits or slims it.",
-            "packages/core/src/jobs/finalize-done.ts": "7 modules: finishing a job closes its agent session link, records usage and moves the issue's lifecycle. The amnesty ends when ISS-218 simplify splits or slims it.",
             "packages/core/src/release-batch/release-sweep.ts": "7 modules: the release sweep reads pipeline runs and schedules and comments on the issues it releases. The amnesty ends when ISS-218 simplify splits or slims it."
           },
-          "$what": "Six files the cleanup left reaching 7 or 8 modules against no-coordinator-blob's 6 are frozen in .arch.baseline.json on 2026-10-05 (ISS-225), beside jobs/lifecycle-routes.ts, which was already frozen and fell from 10 to 7. Read one by one: each reaches three or four platform modules (db, lib, observability, messaging) plus the domains its use case spans, so no import can go without splitting the file by responsibility.",
+          "$what": "Four files the cleanup left reaching 7 or 8 modules against no-coordinator-blob's 6 are frozen in .arch.baseline.json on 2026-10-05 (ISS-225); devices/claim.ts, jobs/finalize-done.ts and jobs/lifecycle-routes.ts left in ISS-218. Read one by one: each reaches three or four platform modules (db, lib, observability, messaging) plus the domains its use case spans, so no import can go without splitting the file by responsibility.",
           "$costs": "Each may keep its current reach and gain no module; a reader of these files pays one use case spread over several concerns, and a seventh file past 6 is still refused.",
           "$ends": "ISS-218 simplify splits or slims each file; its entry leaves .arch.baseline.json in that change, and this block goes with the last one."
         },

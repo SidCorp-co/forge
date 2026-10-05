@@ -17,7 +17,7 @@ import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { listAgentSessionsForMcp, readAgentSession } from './service.js';
+import { listAgentSessionsForMcp, readAgentSession } from './read.js';
 
 const paramSchema = z.object({ id: z.uuid() });
 const sessionParamSchema = z.object({ id: z.uuid(), sessionId: z.uuid() });

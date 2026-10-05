@@ -20,6 +20,7 @@ export {
 } from './loop-monitor-axis.js';
 export { getLoopThresholds } from './loop-monitor-thresholds.js';
 export {
+  dispatchHeldJob,
   holdQueuedJob,
   releaseHoldsOf,
   releaseHoldsOfDeadMasters,
