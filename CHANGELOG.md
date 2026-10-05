@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pool job's brief is its agent's first turn, not a paste.** The runner starts the job's agent
+  with the brief as its launch prompt, so release jobs no longer refuse a pasted brief and wait.
+
 ## [0.4.0-dev.28] - 2026-10-05
 
 Secrets rest digested or encrypted, and pool claims and release failures are repaired

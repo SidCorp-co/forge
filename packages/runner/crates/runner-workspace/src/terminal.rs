@@ -18,6 +18,9 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use crate::composer;
+
+mod launch;
+pub use launch::*;
 use runner_platform::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";
@@ -722,46 +725,6 @@ async fn still_there(name: &str) -> Result<bool> {
         .await?
         .status
         .success())
-}
-
-pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
-    job_argv(mcp_config, resume, None, &[])
-}
-
-/// [`pane_argv`] for a job: the model and the tools its policy state names.
-///
-/// Each denied pattern is its own argument: a pattern may hold a space (`Bash(git push:*)`), and a
-/// list joined into one argument would be split by the CLI where the policy wrote one entry.
-// cm:edge contract -> packages/core/src/project-config/schema.ts:TOOL_PATTERN — every entry core
-// hands here passed that grammar, which is the one `--disallowed-tools` reads; `--disallowed-tools`
-// narrows the tool SET even under `bypassPermissions` (claude_code.rs says where that was verified).
-pub fn job_argv(
-    mcp_config: Option<&std::path::Path>,
-    resume: Option<&str>,
-    model: Option<&str>,
-    denied_tools: &[String],
-) -> Vec<String> {
-    let bin = shell_quote(runner_platform::process::resolve_claude_bin());
-    let mut line = format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions");
-    if let Some(model) = model.filter(|m| !m.is_empty()) {
-        line.push_str(&format!(" --model {}", shell_quote(model)));
-    }
-    if !denied_tools.is_empty() {
-        line.push_str(" --disallowed-tools");
-        for tool in denied_tools {
-            line.push_str(&format!(" {}", shell_quote(tool)));
-        }
-    }
-    if let Some(path) = mcp_config {
-        line.push_str(&format!(
-            " --mcp-config {}",
-            shell_quote(&path.to_string_lossy())
-        ));
-    }
-    if let Some(id) = resume.filter(|s| !s.is_empty()) {
-        line.push_str(&format!(" --resume {}", shell_quote(id)));
-    }
-    vec!["sh".into(), "-c".into(), line]
 }
 
 /// What a pane's shell is started with. `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` are what a

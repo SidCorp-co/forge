@@ -282,9 +282,17 @@ pub fn job_denied_tools(policy: &[String]) -> Vec<String> {
 
 /// The command a job pane is started with: the launch a master pane takes, handed the project's
 /// declared servers through a config of the job's own, the model and denied tools of its policy
-/// state, and every tool that waits on a person, which no job pane may call. A declaration that cannot be written is a refusal, because the pane it would
-/// start carries none of it.
-pub(crate) fn job_pane_argv(dir: &Path, name: &str, launch: &Launch<'_>) -> Result<Vec<String>> {
+/// state, every tool that waits on a person, which no job pane may call, and the job's brief as
+/// the agent's first turn. A declaration or brief that cannot be written is a refusal, because the
+/// pane it would start carries none of it.
+pub(crate) fn job_pane_argv(
+    dir: &Path,
+    name: &str,
+    launch: &Launch<'_>,
+    prompt: &str,
+) -> Result<Vec<String>> {
+    let brief = runner_workspace::mcp::config::write_job_brief_in(dir, name, prompt)
+        .map_err(|e| Error::Other(format!("the brief for {name} could not be written: {e}")))?;
     let servers = launch.servers;
     let config =
         runner_workspace::mcp::config::write_job_session_in(dir, name, servers).map_err(|e| {
@@ -298,6 +306,7 @@ pub(crate) fn job_pane_argv(dir: &Path, name: &str, launch: &Launch<'_>) -> Resu
         None,
         Some(launch.model),
         &job_denied_tools(launch.denied_tools),
+        Some(&brief),
     ))
 }
 
@@ -316,9 +325,20 @@ impl Panes for TmuxPanes {
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
-        let argv = job_pane_argv(&runner_workspace::mcp::config::session_dir(), name, launch)?;
-        terminal::ensure(name, cwd, &argv, env, None).await?;
-        terminal::brief_new_pane(name, prompt).await
+        let argv = job_pane_argv(
+            &runner_workspace::mcp::config::session_dir(),
+            name,
+            launch,
+            prompt,
+        )?;
+        // The brief rides the launch, so a pane already holding this name was started with some
+        // other brief, and this job's reaches nobody.
+        if !terminal::ensure(name, cwd, &argv, env, None).await? {
+            return Err(Error::Other(format!(
+                "a pane named {name} was already running, so this job's brief was not delivered to it"
+            )));
+        }
+        Ok(())
     }
 
     async fn released(&self, name: &str) {
