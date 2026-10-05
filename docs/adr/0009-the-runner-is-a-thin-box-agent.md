@@ -92,7 +92,7 @@ The choices inside that, and why:
 ### How the change is made
 
 - **Cleanup first (ISS-216).** Delete legacy and unused code, the Rust test modules and
-  the crates' integration-test directories (QA restores them, as ISS-172 did for TS), and any decision code core already makes.
+  the crates' integration-test directories (the QA phase rewrites them, as ISS-172 plans for TS), and any decision code core already makes.
   Decision code core should own but does not yet is listed, not moved. No crate split.
 - **Simplify second (ISS-218).** Split into the crates above and turn shared state into actors.
 - **The wire protocol keeps working** against the core on `dev` through both phases. A change a

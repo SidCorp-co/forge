@@ -59,10 +59,6 @@ pub(crate) fn agent_event(
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one match over the hook events a pane reports (ISS-218 amnesty)"
-)]
 pub(crate) fn dispatch_gate_reply(
     ctl: &Arc<Control>,
     d: runner_core::dispatch_gate::Dispatch,
@@ -80,42 +76,16 @@ pub(crate) fn dispatch_gate_reply(
             Err(e) => {
                 let why = "this box's own registry of declared runs could not be read";
                 tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
-                if let Some(refused) = refused_while_draining(ctl, why, None) {
-                    return refused;
-                }
-                if let Some(dir) = dir.as_deref() {
-                    runner_core::degraded::mark(
-                        dir,
-                        &runner_core::degraded::Mark::new(
-                            runner_core::degraded::Kind::Degraded,
-                            runner_core::degraded::Source::Daemon,
-                            why,
-                            runner_core::degraded::Run::Unknown(why),
-                        )
-                        .about(&d),
-                    );
-                }
-                return gate_allows(Some(why));
+                return allowed_unregistered(ctl, dir.as_deref(), why, &d);
             }
         },
         None => {
-            let why = "this box holds no registry of declared runs";
-            if let Some(refused) = refused_while_draining(ctl, why, None) {
-                return refused;
-            }
-            if let Some(dir) = dir.as_deref() {
-                runner_core::degraded::mark(
-                    dir,
-                    &runner_core::degraded::Mark::new(
-                        runner_core::degraded::Kind::Degraded,
-                        runner_core::degraded::Source::Daemon,
-                        why,
-                        runner_core::degraded::Run::Unknown(why),
-                    )
-                    .about(&d),
-                );
-            }
-            return gate_allows(Some(why));
+            return allowed_unregistered(
+                ctl,
+                dir.as_deref(),
+                "this box holds no registry of declared runs",
+                &d,
+            );
         }
     };
     let mut memory = ctl.promises.lock().expect("promises poisoned");
@@ -207,6 +177,33 @@ pub(crate) fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// The gate's answer when this box's registry of declared runs cannot say
+/// whether `d` was declared: refused while draining, otherwise allowed and the
+/// box marked degraded with `why`.
+fn allowed_unregistered(
+    ctl: &Arc<Control>,
+    dir: Option<&Path>,
+    why: &str,
+    d: &runner_core::dispatch_gate::Dispatch,
+) -> ClaimReply {
+    if let Some(refused) = refused_while_draining(ctl, why, None) {
+        return refused;
+    }
+    if let Some(dir) = dir {
+        runner_core::degraded::mark(
+            dir,
+            &runner_core::degraded::Mark::new(
+                runner_core::degraded::Kind::Degraded,
+                runner_core::degraded::Source::Daemon,
+                why,
+                runner_core::degraded::Run::Unknown(why),
+            )
+            .about(d),
+        );
+    }
+    gate_allows(Some(why))
 }
 
 /// Where the gate cannot decide it fails open, and a draining box does not

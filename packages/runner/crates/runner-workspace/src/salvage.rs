@@ -480,13 +480,6 @@ fn parse_worktrees(porcelain: &str) -> Vec<Target> {
     out
 }
 
-#[allow(dead_code)]
-fn modified_at(p: &Path) -> std::time::SystemTime {
-    std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .unwrap_or(std::time::UNIX_EPOCH)
-}
-
 async fn is_dirty(wt: &Path) -> bool {
     git(wt, &["status", "--porcelain"])
         .await

@@ -4,7 +4,8 @@ export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     environment: 'node',
-    // cm:hack ISS-172 until:QA phase on dev — the suites and their global setup are removed; restore this file from the commit before the removal
+    // cm:hack ISS-172 until:QA phase on dev — the suites and their global setup are removed; the QA phase rewrites them against
+    // current source, since the removed ones have drifted (docs/proposals/the-removed-test-suites-are-rewritten-not-restored.md)
     // The guard fails a test that lists the repository root without declaring it (ISS-1314).
     setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],
     hookTimeout: 60_000,

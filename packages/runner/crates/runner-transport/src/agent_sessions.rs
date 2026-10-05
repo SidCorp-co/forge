@@ -52,10 +52,20 @@ pub fn is_refused(e: &Error) -> bool {
 async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
     let path = format!("/api/agent-sessions/{session_id}/events");
     let body = serde_json::json!({ "events": events });
+    send_with_backoff("post_events", REFUSED, || client.post(&path).json(&body)).await
+}
+
+/// Send `request` up to [`MAX_ATTEMPTS`] times with exponential backoff. A 409
+/// (422 from ISS-162 on) is `SESSION_TERMINATED`; any other 4xx is refused at
+/// once, named by `refusal`; `name` heads the error once the attempts run out.
+async fn send_with_backoff(
+    name: &str,
+    refusal: &str,
+    request: impl Fn() -> reqwest::RequestBuilder,
+) -> Result<()> {
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {
-        let resp = client.post(&path).json(&body).send().await;
-        match resp {
+        match request().send().await {
             Ok(r) => {
                 let status = r.status();
                 if status.is_success() {
@@ -66,26 +76,26 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
                 }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    let said = status::refused(REFUSED, status.as_u16(), &text);
+                    let said = status::refused(refusal, status.as_u16(), &text);
                     return Err(Error::Other(said));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
-                        "post_events failed after {attempt} attempts: {}",
+                        "{name} failed after {attempt} attempts: {}",
                         status::named(status.as_u16())
                     )));
                 }
             }
             Err(e) => {
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("post_events transport: {e}")));
+                    return Err(Error::Other(format!("{name} transport: {e}")));
                 }
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         delay_ms = delay_ms.saturating_mul(2);
     }
-    Err(Error::Other("post_events: exhausted retries".into()))
+    Err(Error::Other(format!("{name}: exhausted retries")))
 }
 
 /// How many lines one request may carry; core's own schema caps the batch here.
@@ -180,38 +190,8 @@ pub async fn patch_session(
     patch: &SessionPatch,
 ) -> Result<()> {
     let path = format!("/api/agent-sessions/{session_id}");
-    let mut delay_ms: u64 = 1000;
-    for attempt in 1..=MAX_ATTEMPTS {
-        let resp = client.patch(&path).json(patch).send().await;
-        match resp {
-            Ok(r) => {
-                let status = r.status();
-                if status.is_success() {
-                    return Ok(());
-                }
-                if matches!(status.as_u16(), 409 | 422) {
-                    return Err(Error::Other("SESSION_TERMINATED".into()));
-                }
-                if status.is_client_error() {
-                    let text = r.text().await.unwrap_or_default();
-                    let said = status::refused("patch session", status.as_u16(), &text);
-                    return Err(Error::Other(said));
-                }
-                if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!(
-                        "patch_session failed after {attempt} attempts: {}",
-                        status::named(status.as_u16())
-                    )));
-                }
-            }
-            Err(e) => {
-                if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("patch_session transport: {e}")));
-                }
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-        delay_ms = delay_ms.saturating_mul(2);
-    }
-    Err(Error::Other("patch_session: exhausted retries".into()))
+    send_with_backoff("patch_session", "patch session", || {
+        client.patch(&path).json(patch)
+    })
+    .await
 }
