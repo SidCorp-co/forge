@@ -1,3 +1,4 @@
+import { refusalsOf } from '../../messaging/contract.js';
 // Carrying a parked run's question to a room, and remembering which thread it went to.
 //
 // The obligation is DERIVED, never inserted: an open `human` question whose
@@ -22,7 +23,6 @@ import {
 import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { type KernelActor, transition } from '../../lifecycle/index.js';
-import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { emitNotification, resolveNotifications } from '../../notifications/index.js';
 import { logger } from '../../observability/logger.js';
@@ -296,14 +296,16 @@ async function deliverOwedRound(
       {
         questionId: owed.questionId,
         round: owed.round,
-        problems: problemsOf(screening.verdict),
+        refusals: refusalsOf(screening.verdict),
       },
       'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
     );
     return await noteFailure(
       owed,
       attempt,
-      `screen refused the round: ${problemsOf(screening.verdict).join('; ')}`,
+      `screen refused the round: ${refusalsOf(screening.verdict)
+        .map((r) => r.why)
+        .join('; ')}`,
       now,
     );
   }

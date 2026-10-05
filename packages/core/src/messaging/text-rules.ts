@@ -11,9 +11,9 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
 import { issueTokenRe } from './issue-tokens.js';
-import { OPTION_LINE_RE } from './option-line.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
+const OPTION_LINE_RE = /^\s*\d+(-\d+)?\s*[.)]/;
 const one = (why: string, quote: string | null = null): RuleBreak[] => [{ why, quote }];
 const none: RuleBreak[] = [];
 

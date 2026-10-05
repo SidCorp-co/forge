@@ -21,11 +21,8 @@ interface GatherInput {
   readonly intent: Intent;
   readonly segments: readonly string[];
   readonly toolCalls?: readonly { name: string; arguments: string }[];
-  /**
-   * The snapshot the writer's own turn was shown. `'compute'` re-queries, and is
-   * only for a caller that has none to pass.
-   */
-  readonly progress?: ProgressFacts | null | 'compute';
+  /** The snapshot the writer's own turn was shown. */
+  readonly progress?: ProgressFacts | null;
   /**
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
@@ -36,7 +33,6 @@ interface GatherInput {
 interface IssueFactReads {
   activeIssuePrefix(projectId: string, tx: Tx): Promise<string | null>;
   heldIssuePrefixes(projectId: string, tx: Tx): Promise<readonly string[]>;
-  projectProgress(projectId: string, tx: Tx): Promise<ProgressFacts | null>;
 }
 
 let issueFactReads: IssueFactReads | null = null;
@@ -147,11 +143,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     ? await issueRowsFor(input.projectId, cited(input.segments, prefixes), tx)
     : { rows: new Map<number, IssueRow>(), ids: new Set<string>(), failed: false };
 
-  const progress = needs.has('progress')
-    ? input.progress === 'compute'
-      ? await reads().projectProgress(input.projectId, tx)
-      : (input.progress ?? null)
-    : null;
+  const progress = needs.has('progress') ? (input.progress ?? null) : null;
 
   return {
     ...base,

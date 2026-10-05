@@ -7,7 +7,12 @@ import {
   screened,
   unverifiedFallbackReply,
 } from '../conversations/index.js';
-import { type DoorId, type MessageVerdict, problemsOf } from '../messaging/contract.js';
+import {
+  type DoorId,
+  type MessageRefusal,
+  type MessageVerdict,
+  refusalsOf,
+} from '../messaging/contract.js';
 import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -36,8 +41,8 @@ export function declinedTail(text: string): string {
     .trim();
 }
 
-const correctiveMessage = (problems: string[]): string =>
-  `${CORRECTIVE_PREFIX} Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
+const correctiveMessage = (refusals: readonly MessageRefusal[]): string =>
+  `${CORRECTIVE_PREFIX} Your previous reply cannot be sent as-is: ${refusals.map((r) => r.why).join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
 const EMPTY_RETRY = {
   rule: 'non-empty',
@@ -100,18 +105,18 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     rewrite: async (verdict) => {
       attempt += 1;
       logger.warn(
-        { ...args.log, problems: problemsOf(verdict) },
+        { ...args.log, refusals: refusalsOf(verdict) },
         'conversations: reply failed its door screen; corrective retry',
       );
       args.setPhase('retry');
-      result = await args.retry(correctiveMessage(problemsOf(verdict)));
+      result = await args.retry(correctiveMessage(refusalsOf(verdict)));
       return [result.reply];
     },
   });
 
   if (outcome.kind === 'exhausted') {
     logger.error(
-      { ...args.log, problems: problemsOf(outcome.verdict) },
+      { ...args.log, refusals: refusalsOf(outcome.verdict) },
       'conversations: reply still failing its door screen; sending honest fallback',
     );
     if (args.fallback === 'none') return null;
