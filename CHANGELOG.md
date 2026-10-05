@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.34] - 2026-10-05
+
+Simpler core and web, and projects that live only on a runner's checkout
+
+
 ### Changed
 
 - **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
