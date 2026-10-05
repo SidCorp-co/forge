@@ -157,7 +157,7 @@ const [memRaw, knRaw] = await Promise.all([
     return rows;
   })(),
   (async () => {
-    const list = await get(`/api/projects/${PROJECT}/knowledge?limit=100`);
+    const list = await get(`/api/projects/${PROJECT}/knowledge`);
     return Promise.all(
       (list.rows ?? []).map((r) => get(`/api/projects/${PROJECT}/knowledge/${r.slug}`)),
     );
