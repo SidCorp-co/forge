@@ -15,9 +15,12 @@ mod actors;
 pub mod control;
 pub mod dispatch;
 pub mod drain;
+pub mod handover;
 pub mod inbox;
 pub mod master;
+pub mod master_build;
 pub mod master_exit;
+pub mod master_handed;
 pub mod master_inbox;
 pub mod master_limit;
 pub mod master_pass;
@@ -34,7 +37,6 @@ pub mod skill_pull;
 use runner_agent::chat;
 use runner_core::agent_activity;
 use runner_core::degraded;
-use runner_core::subagent_end;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -51,7 +53,6 @@ use runner_transport::ws::{self, WsConfig};
 use runner_transport::{heartbeat, lifecycle, CoreClient};
 
 use dispatch::resolve_repo;
-use runner_platform::proc::pid_alive;
 
 pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -82,115 +83,137 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 /// How often the update loop asks whether a newer release exists.
 const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
-/// Every run session the drain must assume is live, each by name.
-fn live_run_sessions() -> Vec<String> {
-    let boot = runner_core::inflight::boot_identity().unwrap_or_default();
-    let led = match runner_core::ledger::Ledger::default_path()
-        .and_then(|p| runner_core::ledger::Ledger::open(&p))
+/// What a handover carries across its exec besides the control listener.
+#[cfg_attr(not(unix), allow(dead_code))]
+pub(crate) struct HandOver {
+    /// The build this process serves, kept beside the install path once an
+    /// update installed another there, which a handover that does not happen
+    /// puts back.
+    pub(crate) served: Arc<runner_update::ServedBuild>,
+    /// The master panes declarations are checked against, which the next
+    /// image serves at once rather than after its first sweep.
+    pub(crate) masters: Arc<master::Masters>,
+}
+
+/// Replace this process's image with the build installed on disk, the control
+/// listener carried, once `drain_to_idle` has closed the window for it.
+/// Returns only where the exec did not happen: the build this process serves
+/// goes back on disk where an update had replaced it, admission opens again
+/// and this process goes on serving that build, until `next`.
+fn hand_over(
+    drain: &drain::Drain,
+    carry: &HandOver,
+    what: &str,
+    cause: &str,
+    next: drain::NextAttempt,
+) {
+    #[cfg(unix)]
     {
-        Ok(led) => led,
-        Err(err) => return vec![unreadable_ledger(&err)],
+        let why = match runner_platform::exe::own() {
+            Ok(own) => {
+                let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+                tracing::warn!(
+                    "[{what}] handing over for {cause}: replacing this process's image with {} — pid {} stays, and every pane, run and job stays where it is",
+                    own.path.display(),
+                    std::process::id()
+                );
+                let dir = runner_platform::config::config_dir();
+                if let Some(dir) = &dir {
+                    write_handed_masters(dir, &carry.masters, what);
+                }
+                let err = handover::replace_image(&own.path, &args, drain.socket().listener());
+                if let Some(dir) = &dir {
+                    master_handed::withdraw(dir);
+                }
+                format!("could not exec {}: {err}", own.path.display())
+            }
+            Err(e) => format!("could not name the build installed on disk: {e}"),
+        };
+        handover_did_not_happen(drain, &carry.served, what, cause, why, &next);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = carry;
+        let why = handover::NO_HANDOVER_HERE.to_string();
+        tracing::error!(
+            "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with"
+        );
+        drain.handover_failed(&why, &next);
+    }
+}
+
+/// Write the master panes this process serves for the image that follows.
+#[cfg(unix)]
+fn write_handed_masters(dir: &std::path::Path, masters: &master::Masters, what: &str) {
+    let (served, masters) = masters.hand_on();
+    let handed = master_handed::Handed {
+        pid: std::process::id(),
+        boot_id: runner_core::inflight::boot_identity(),
+        written_at_ms: agent_activity::now_ms(),
+        served,
+        masters,
     };
-    live_sessions_from(led.unclosed_runs(), &boot, pid_alive, |run_id| {
-        led.issues(run_id)
-            .map(|m| m.into_iter().map(|i| i.issue_key).collect())
-            .unwrap_or_default()
-    })
-}
-
-/// Whether a subagent run reads quiet on its own evidence: its last turn ended
-/// an hour or more ago and nothing but that turn-end's own records, or an
-/// entry left an hour unanswered, was written after it; or the master pane its
-/// subagent lived in has ended since anything was heard from it. A restart
-/// touches neither the subagent, which lives in its master's process, nor its
-/// tree, so a quiet run does not hold one. One still working, or one whose
-/// transcript this box cannot read, still does (ISS-1246, ISS-1312).
-///
-/// A run declared and never bound is its declaring pane's, so that pane
-/// ending is the end of it too: nothing that pane would have started can bind
-/// it now.
-fn reads_quiet(run: &runner_core::ledger::Run, now: i64) -> bool {
-    if run.pid.is_some() {
-        return false;
-    }
-    let evidence = subagent_end::of_run(run, now);
-    match run.agent_id {
-        Some(_) => subagent_end::is_quiet(evidence),
-        None => matches!(evidence, subagent_end::Evidence::HostEnded { .. }),
+    if let Err(e) = master_handed::write(dir, &handed) {
+        tracing::warn!(
+            "[{what}] the master panes this process serves could not be written for the image that follows ({e}); it serves them from its first sweep, refusing their declarations until then"
+        );
     }
 }
 
-/// Why the drain counts `run` as work a restart would stop, in its own line.
-fn why_held(run: &runner_core::ledger::Run, now: i64) -> String {
-    match (run.pid, run.agent_id.as_deref()) {
-        (Some(pid), _) => format!("its process {pid} is alive"),
-        (None, Some(_)) => subagent_end::held_because(
-            subagent_end::of_run(run, now),
-            run.agent_transcript.as_deref(),
-        ),
-        (None, None) => "declared, and no subagent or process is bound to it yet".to_string(),
-    }
-}
-
-/// The holder a ledger that will not answer stands for.
-///
-/// A ledger this cannot read is not an empty one. Answering nought there told
-/// the drain the box was idle, and the drain's whole job is to decide whether a
-/// restart would kill work — so the one reply it could not check became the one
-/// that restarts over every run in flight. The path that reaches it is the
-/// first start after an upgrade, which is exactly where the ledger was
-/// unreadable in the first place (ISS-1201). So it holds the drain like any
-/// other holder, and is named like one.
-fn unreadable_ledger(err: &runner_platform::error::Error) -> String {
-    tracing::error!(
-        "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
-    );
-    format!("the run ledger, which will not answer ({err})")
-}
-
-/// The live runs among `runs`, each named by id and the issues it was given.
-fn live_sessions_from(
-    runs: Result<Vec<runner_core::ledger::Run>>,
-    this_boot: &str,
-    alive: impl Fn(u32) -> bool,
-    issue_keys: impl Fn(&str) -> Vec<String>,
-) -> Vec<String> {
-    match runs {
-        Ok(runs) => {
-            let now = agent_activity::now_ms();
-            live_runs(&runs, this_boot, alive, |r| reads_quiet(r, now))
-                .into_iter()
-                .map(|r| {
-                    let keys = issue_keys(&r.run_id);
-                    let keys = if keys.is_empty() {
-                        "no issue recorded".to_string()
-                    } else {
-                        keys.join(", ")
-                    };
-                    format!("run {} ({keys}): {}", r.run_id, why_held(r, now))
-                })
-                .collect()
+/// Serve the master panes the image before this one handed on, where this
+/// process is that image's exec, and say what was found.
+fn take_handed_masters(masters: &master::Masters) {
+    let Some(dir) = runner_platform::config::config_dir() else {
+        return;
+    };
+    let boot = runner_core::inflight::boot_identity();
+    match master_handed::take(
+        &dir,
+        std::process::id(),
+        boot.as_deref(),
+        agent_activity::now_ms(),
+    ) {
+        master_handed::Taken::Nothing => {}
+        master_handed::Taken::Handed(handed) => {
+            let n = masters.take_handed(handed);
+            tracing::info!(
+                "[master] serving the {n} master pane(s) the build before this one handed over, so their declarations are answered from now rather than from this image's first sweep"
+            );
         }
-        Err(err) => vec![unreadable_ledger(&err)],
+        master_handed::Taken::Refused(why) => tracing::warn!(
+            "[master] a handed-over masters registry was found and not taken: {why}. This image serves its master panes from its first sweep"
+        ),
     }
 }
 
-fn live_runs<'a>(
-    runs: &'a [runner_core::ledger::Run],
-    this_boot: &str,
-    alive: impl Fn(u32) -> bool,
-    quiet: impl Fn(&runner_core::ledger::Run) -> bool,
-) -> Vec<&'a runner_core::ledger::Run> {
-    use runner_core::ledger::{Ledger, Liveness};
-    runs.iter()
-        .filter(|r| !r.is_parked_on_human())
-        .filter(|r| r.boot_id == this_boot)
-        .filter(|r| !quiet(r))
-        .filter(|r| {
-            let pid_refuted = r.pid.is_some_and(|p| !alive(p));
-            !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
-        })
-        .collect()
+/// The exec did not happen: put the build this process serves back on the path
+/// an update installed another at, so every hook and command on the box runs
+/// it again, then reopen admission naming why.
+#[cfg(unix)]
+fn handover_did_not_happen(
+    drain: &drain::Drain,
+    served: &runner_update::ServedBuild,
+    what: &str,
+    cause: &str,
+    mut why: String,
+    next: &drain::NextAttempt,
+) {
+    match served.restore() {
+        Ok(Some(kept)) => why.push_str(&format!(
+            "; the build this process serves is back at {} from {}, so every hook and command on this box runs it again",
+            kept.exe.display(),
+            kept.at.display()
+        )),
+        Ok(None) => {}
+        Err(e) => why.push_str(&format!(
+            "; {e}, so every hook and command on this box runs a build that did not start until one that runs is installed there"
+        )),
+    }
+    tracing::error!(
+        "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
+        next.by
+    );
+    drain.handover_failed(&why, next);
 }
 
 /// Rewrite the hook commands of every project bound on this box that name a
@@ -457,6 +480,12 @@ pub async fn run(
     // it, and the record `forge-runner status` reads of the build it serves.
     let drain = Arc::new(drain::Drain::new(runner_platform::config::config_dir()));
 
+    // The build this process serves, kept where an update installs another,
+    // and the master panes it serves, both carried by a handover's exec.
+    let served = Arc::new(runner_update::ServedBuild::new());
+    let masters = Arc::new(master::Masters::new());
+    take_handed_masters(&masters);
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set.
     if let Some(url) =
@@ -470,6 +499,10 @@ pub async fn run(
             runner: runner.clone(),
             bound: cfg.clone(),
             assignments: client.clone(),
+            carry: HandOver {
+                served: served.clone(),
+                masters: masters.clone(),
+            },
         };
         tokio::spawn(actors::updates(u, cancel_rx.clone()));
     }
@@ -479,6 +512,10 @@ pub async fn run(
         inflight.clone(),
         drain.clone(),
         runner.clone(),
+        HandOver {
+            served: served.clone(),
+            masters: masters.clone(),
+        },
         cancel_rx.clone(),
     ));
     tokio::spawn(actors::heartbeat(client.clone(), cancel_rx.clone()));
@@ -526,8 +563,6 @@ pub async fn run(
         cfg.clone(),
         cancel_rx.clone(),
     ));
-
-    let masters = Arc::new(master::Masters::new());
 
     let activity = Arc::new(agent_activity::Activities::new());
 

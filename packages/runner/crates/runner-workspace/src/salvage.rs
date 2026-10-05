@@ -17,7 +17,6 @@
 //! can be live on one box at once, and only `git worktree list` sees them all.
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::process::Command;
@@ -382,10 +381,7 @@ async fn git_over_network(
     cred: &RepoCred,
 ) -> Option<std::process::Output> {
     let mut cmd = Command::new("git");
-    cmd.args(args)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .kill_on_drop(true);
+    runner_platform::git::non_interactive(cmd.args(args).current_dir(dir));
     cred.apply(&mut cmd);
     cmd.output().await.ok()
 }

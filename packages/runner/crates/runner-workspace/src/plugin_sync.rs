@@ -303,7 +303,8 @@ async fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
     if let Some(d) = dir {
         cmd.arg("-C").arg(d);
     }
-    let out = tokio::time::timeout(COMMAND_TIMEOUT, cmd.args(args).output())
+    runner_platform::git::non_interactive(cmd.args(args));
+    let out = tokio::time::timeout(COMMAND_TIMEOUT, cmd.output())
         .await
         .map_err(|_| format!("git {} timed out", args.join(" ")))?
         .map_err(|e| e.to_string())?;
@@ -321,7 +322,7 @@ async fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
 /// Resolve the Claude config dir the CLI itself would use: an explicit
 /// `CLAUDE_CONFIG_DIR` (respecting an operator override, same rule as
 /// `process::build_command`'s `MCP_TOOL_TIMEOUT`), else `~/.claude`.
-fn claude_config_dir() -> Option<PathBuf> {
+pub fn claude_config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         if !dir.is_empty() {
             return Some(PathBuf::from(dir));

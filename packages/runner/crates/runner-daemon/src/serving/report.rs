@@ -272,13 +272,25 @@ pub(crate) const INDENT: &str = "           ";
 
 pub(crate) fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
     match drain {
+        DrainState::Waiting {
+            cause,
+            since_ms,
+            bound_secs,
+            outstanding,
+        } => vec![format!(
+            "{INDENT}handing over for {cause} once its in-process work ends: {} of at most {} waited, {} outstanding{}. Admission is open meanwhile, and the runs in the ledger hold nothing — they live in their panes",
+            ago(now_ms, *since_ms),
+            span_secs(*bound_secs),
+            outstanding.len(),
+            listed(outstanding)
+        )],
         DrainState::Draining {
             cause,
             since_ms,
             bound_secs,
             outstanding,
         } => vec![format!(
-            "{INDENT}draining for {cause} for {} of at most {}: {} outstanding{}. No run, pool job or master is admitted meanwhile",
+            "{INDENT}handing over for {cause}: admission closed {} ago, for at most {} while the requests in flight are answered, {} outstanding{}",
             ago(now_ms, *since_ms),
             span_secs(*bound_secs),
             outstanding.len(),
@@ -290,14 +302,21 @@ pub(crate) fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             outstanding,
             next_attempt,
             next_attempt_at_ms,
+            failed,
         } => {
             let due = if *next_attempt_at_ms >= now_ms {
                 format!("due in {}", ago(*next_attempt_at_ms, now_ms))
             } else {
                 format!("due {} ago", ago(now_ms, *next_attempt_at_ms))
             };
+            if let Some(why) = failed {
+                return vec![format!(
+                    "{INDENT}the handover for {cause} did not happen {} ago — {why}. Nothing was outstanding; admission is open, this process serves the build it started with, and the next attempt is {next_attempt}, {due}",
+                    ago(now_ms, *gave_up_at_ms)
+                )];
+            }
             vec![format!(
-                "{INDENT}the drain for {cause} gave up {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
+                "{INDENT}the handover for {cause} was deferred {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
                 ago(now_ms, *gave_up_at_ms),
                 outstanding.len(),
                 listed(outstanding)

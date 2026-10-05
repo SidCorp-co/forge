@@ -10,7 +10,6 @@
 //! fast-forwards the tree, and reports what it actually ended up on.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
 use runner_platform::git::{git, git_line};
@@ -103,14 +102,14 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
     };
     state.base_branch = Some(base.clone());
 
-    let fetch = Command::new("git")
-        .args(["-C"])
-        .arg(repo_path)
-        .args(["fetch", "origin", &base])
-        .stdin(Stdio::null())
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .kill_on_drop(true)
-        .output();
+    let mut fetch = Command::new("git");
+    runner_platform::git::non_interactive(
+        fetch
+            .args(["-C"])
+            .arg(repo_path)
+            .args(["fetch", "origin", &base]),
+    );
+    let fetch = fetch.output();
     match tokio::time::timeout(FETCH_TIMEOUT, fetch).await {
         Err(_) => {
             state.detail = Some(format!(

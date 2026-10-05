@@ -15,7 +15,9 @@
 //! never panics.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
+
+use tokio::process::Command;
 
 use crate::git_cred;
 use crate::mcp;
@@ -141,7 +143,9 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Adopt implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = adopt_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()) {
+            if let Err(detail) =
+                adopt_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()).await
+            {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
             }
@@ -153,7 +157,9 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Clone implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = clone_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()) {
+            if let Err(detail) =
+                clone_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()).await
+            {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
             }
@@ -360,12 +366,53 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
     cfg.projects_root.as_ref().map(|root| root.join(&p.slug))
 }
 
+/// How long one provisioning git call may run. A clone of a large repository
+/// over a slow link takes minutes; one that has not finished in this long is
+/// waiting on something it will not get, and the checkout is handed to a person.
+const GIT_BUDGET: Duration = Duration::from_secs(30 * 60);
+
+/// Run `git <args>` (in `dir` where given) with no prompt and within
+/// [`GIT_BUDGET`]; its trimmed stdout, or why it failed in one sentence.
+async fn provision_git(
+    dir: Option<&Path>,
+    git_cfg: &[String],
+    args: &[&std::ffi::OsStr],
+) -> std::result::Result<String, String> {
+    let shown = args
+        .iter()
+        .map(|a| a.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut cmd = Command::new("git");
+    if let Some(d) = dir {
+        cmd.arg("-C").arg(d);
+    }
+    runner_platform::git::non_interactive(cmd.args(git_cfg).args(args));
+    let out = match tokio::time::timeout(GIT_BUDGET, cmd.output()).await {
+        Err(_) => {
+            return Err(format!(
+                "git {shown} did not finish within {} minutes and was stopped — the remote is unreachable or asked for a credential this box cannot give without a prompt",
+                GIT_BUDGET.as_secs() / 60
+            ))
+        }
+        Ok(Err(e)) => return Err(format!("spawn git {shown}: {e}")),
+        Ok(Ok(out)) => out,
+    };
+    if !out.status.success() {
+        return Err(format!(
+            "git {shown} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 /// `git clone <url> <path>`.
 /// Returns the trimmed git stderr on failure. When `branch` is set (the
 /// project's base branch), check it out after cloning so the main worktree
 /// lands on the base branch rather than the repo's default HEAD — the job
 /// dispatcher assumes the base branch is already checked out here.
-fn clone_repo(
+async fn clone_repo(
     repo_url: &str,
     repo_path: &Path,
     git_cfg: &[String],
@@ -374,15 +421,12 @@ fn clone_repo(
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {e}"))?;
     }
-    let mut cmd = Command::new("git");
-    cmd.args(git_cfg).arg("clone").arg(repo_url).arg(repo_path);
-    let out = cmd.output().map_err(|e| format!("spawn git clone: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git clone failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
+    provision_git(
+        None,
+        git_cfg,
+        &["clone".as_ref(), repo_url.as_ref(), repo_path.as_os_str()],
+    )
+    .await?;
 
     // A full clone already fetched every remote branch, so a local `git checkout
     // <branch>` creates a tracking branch off origin/<branch> with no network.
@@ -390,65 +434,76 @@ fn clone_repo(
     // default already checked out), stay put and let provisioning continue —
     // a missing base branch shouldn't turn a good clone into needs_manual_setup.
     if let Some(branch) = branch.map(str::trim).filter(|b| !b.is_empty()) {
-        let checkout = Command::new("git")
-            .arg("-C")
-            .arg(repo_path)
-            .arg("checkout")
-            .arg(branch)
-            .output();
-        match checkout {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => tracing::warn!(
-                "[provision] base-branch checkout '{branch}' failed (staying on default): {}",
-                String::from_utf8_lossy(&o.stderr).trim()
-            ),
-            Err(e) => tracing::warn!("[provision] spawn git checkout '{branch}': {e}"),
+        if let Err(e) = provision_git(
+            Some(repo_path),
+            &[],
+            &["checkout".as_ref(), branch.as_ref()],
+        )
+        .await
+        {
+            tracing::warn!(
+                "[provision] base-branch checkout '{branch}' failed (staying on default): {e}"
+            );
         }
     }
     Ok(())
 }
 
-fn adopt_repo(
+async fn in_repo(
+    repo_path: &Path,
+    git_cfg: &[String],
+    args: Vec<&str>,
+) -> std::result::Result<String, String> {
+    let args: Vec<&std::ffi::OsStr> = args.iter().map(|a| a.as_ref()).collect();
+    provision_git(Some(repo_path), git_cfg, &args).await
+}
+
+async fn adopt_repo(
     repo_url: &str,
     repo_path: &Path,
     git_cfg: &[String],
     branch: Option<&str>,
 ) -> std::result::Result<(), String> {
-    let git = |args: &[&str]| -> std::result::Result<String, String> {
-        let mut cmd = Command::new("git");
-        cmd.arg("-C").arg(repo_path).args(git_cfg).args(args);
-        let out = cmd
-            .output()
-            .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
-        if !out.status.success() {
-            return Err(format!(
-                "git {} failed: {}",
-                args.join(" "),
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    };
+    let git = |args: &'static [&'static str]| in_repo(repo_path, git_cfg, args.to_vec());
 
-    git(&["init"])?;
+    git(&["init"]).await?;
     // An adopt may re-run (a fetch that failed on a network blip), so the remote
     // may already be there. Set it either way rather than branching on `git
     // remote get-url`, which is one more process for the same outcome.
-    if git(&["remote", "add", "origin", repo_url]).is_err() {
-        git(&["remote", "set-url", "origin", repo_url])?;
+    if in_repo(
+        repo_path,
+        git_cfg,
+        vec!["remote", "add", "origin", repo_url],
+    )
+    .await
+    .is_err()
+    {
+        in_repo(
+            repo_path,
+            git_cfg,
+            vec!["remote", "set-url", "origin", repo_url],
+        )
+        .await?;
     }
-    git(&["fetch", "--prune", "origin"])?;
+    git(&["fetch", "--prune", "origin"]).await?;
 
     let target = match branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(b) => b.to_string(),
         None => {
-            let _ = git(&["remote", "set-head", "origin", "--auto"]);
-            let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])?;
+            if let Err(e) = git(&["remote", "set-head", "origin", "--auto"]).await {
+                tracing::warn!("[provision] {e}; reading origin/HEAD as it stands");
+            }
+            let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).await?;
             head.strip_prefix("origin/").unwrap_or(&head).to_string()
         }
     };
     let remote_ref = format!("origin/{target}");
-    git(&["checkout", "-f", "-B", &target, &remote_ref])?;
+    in_repo(
+        repo_path,
+        git_cfg,
+        vec!["checkout", "-f", "-B", &target, &remote_ref],
+    )
+    .await?;
     Ok(())
 }
 

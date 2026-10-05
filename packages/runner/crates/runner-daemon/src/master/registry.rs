@@ -65,6 +65,10 @@ pub(crate) struct Registry {
     /// Why each project's channel inbox could not be read on the last sweep,
     /// so a core that does not answer it is said once and not every pass.
     pub(crate) inbox_unread: HashMap<String, String>,
+    /// What this box last said about each project's outdated pane, so the
+    /// account is given once per pane and reason rather than once a sweep
+    /// (ISS-1379).
+    pub(crate) outdated: HashMap<String, String>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -222,6 +226,16 @@ impl Masters {
         }
     }
 
+    /// Whether what this sweep found about the project's outdated pane is news,
+    /// and remember it either way. `None` is a pane that is current or gone.
+    pub(crate) fn note_outdated(&self, project_id: &str, said: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match said {
+            Some(said) => reg.outdated.insert(project_id.to_string(), said.clone()) != Some(said),
+            None => reg.outdated.remove(project_id).is_some(),
+        }
+    }
+
     pub(crate) fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.said.get(project_id) != Some(&said);
@@ -300,6 +314,51 @@ impl Masters {
         reg.served = served;
     }
 
+    /// What this registry serves, for the image a handover's exec starts.
+    /// Unix only, where a handover is an exec.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub(crate) fn hand_on(&self) -> (Option<Vec<String>>, Vec<master_handed::HandedMaster>) {
+        let reg = self.0.lock().expect("masters poisoned");
+        let served = match &reg.served {
+            Served::Read(ids) => Some(ids.clone()),
+            Served::Unread | Served::Unreadable(_) => None,
+        };
+        let mut masters: Vec<_> = reg
+            .live
+            .iter()
+            .map(|(project_id, m)| master_handed::HandedMaster {
+                project_id: project_id.clone(),
+                session_id: m.session_id.clone(),
+                pane: m.name.clone(),
+            })
+            .collect();
+        masters.sort_by(|a, b| a.project_id.cmp(&b.project_id));
+        (served, masters)
+    }
+
+    /// Serve the panes the image before this one served, as it served them,
+    /// until this image's first sweep reads them for itself. Answers how many.
+    pub(crate) fn take_handed(&self, handed: master_handed::Handed) -> usize {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(ids) = handed.served {
+            reg.served = Served::Read(ids);
+        }
+        let n = handed.masters.len();
+        for m in handed.masters {
+            reg.live.insert(
+                m.project_id,
+                MasterState {
+                    session_id: m.session_id,
+                    name: m.pane,
+                    last_work: Instant::now(),
+                    last_nudge: None,
+                    mcp_stale_reported: false,
+                },
+            );
+        }
+        n
+    }
+
     pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.unplaced.get(project_id) != Some(&why);
@@ -324,13 +383,13 @@ impl Masters {
     }
 
     /// Count an exit into this project's run of early exits, answering its
-    /// place in it (0 where it was not early).
+    /// place in it and the named run it ended, if any.
     pub(crate) fn count_exit(
         &self,
         project_id: &str,
         lived: Option<Duration>,
         exit: &pane_exit::Exit,
-    ) -> u32 {
+    ) -> pane_exit::Counted {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.exits
             .entry(project_id.to_string())

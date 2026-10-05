@@ -53,7 +53,7 @@ use runner_transport::{runners, CoreClient};
 use runner_workspace::terminal;
 
 use super::Ctx;
-use runner_platform::git::now_secs as now_unix;
+use runner_platform::clock::now_secs as now_unix;
 
 #[derive(ClapArgs)]
 pub struct Args {

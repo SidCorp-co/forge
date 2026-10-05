@@ -18,7 +18,7 @@ use runner_platform::cred_store;
 use runner_transport::{git_credential, CoreClient};
 
 use super::Ctx;
-use runner_platform::git::days_from_civil;
+use runner_platform::clock::days_from_civil;
 
 #[derive(ClapArgs)]
 pub struct Args {

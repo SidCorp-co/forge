@@ -227,7 +227,18 @@ pub async fn take_one(
     match pool_ports.start(&prepared.job_id, session_id).await {
         Ok(Started::Ok) => {}
         Ok(Started::Refused(r)) => {
-            let _ = panes.kill(&pane).await;
+            if let Err(e) = panes.kill(&pane).await {
+                // The pane may still be working a job core refused, so the
+                // slot and the record stay: the next tick asks core again,
+                // hears the job is not this box's, and closes it then.
+                registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
+                tracing::warn!(
+                    "[pool] {project_id}: start refused for job {} ({}) but {pane} would not close: {e} — kept under supervision, and the next tick closes it",
+                    prepared.job_id,
+                    r.as_str()
+                );
+                return Took::Refused(r.as_str().to_string());
+            }
             panes.released(&pane).await;
             records.forget(&prepared.job_id).await;
             tracing::warn!(
@@ -439,7 +450,14 @@ pub async fn supervise(
         {
             Ok(true) => {}
             Ok(false) => {
-                let _ = panes.kill(&live.pane).await;
+                if let Err(e) = panes.kill(&live.pane).await {
+                    tracing::warn!(
+                        "[pool] job {} is terminal but {} would not close: {e} — keeping it under supervision, and the next tick closes it",
+                        live.job_id,
+                        live.pane
+                    );
+                    continue;
+                }
                 panes.released(&live.pane).await;
                 registry.forget(&live.job_id);
                 records.forget(&live.job_id).await;

@@ -95,7 +95,7 @@ pub(crate) async fn duplex_turns(
                     runner_transport::inbox::applied(client, &sid, seq, turn).await;
                 }
                 {
-                    let tx = turn_tx.lock().await;
+                    let tx = turn_tx.lock().await.clone();
                     let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
                     let _ = tx.send(ev).await;
                 }

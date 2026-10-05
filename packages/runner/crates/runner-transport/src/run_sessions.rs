@@ -200,10 +200,38 @@ pub async fn close(
     }
     let resp = status::sent(client.post(&path).json(&body), "run-session close").await?;
     if resp.status().as_u16() == 404 {
-        return Ok(());
+        return no_such_session(resp, "run-session close").await;
     }
     status::checked(resp, "run-session close").await?;
     Ok(())
+}
+
+/// The message core's `notFound('run session')` carries, under code
+/// `NOT_FOUND`: this device holds no run session by that id.
+const NO_SUCH_SESSION: &str = "run session not found";
+
+/// `Ok` where a 404 is core saying this device holds no such run session, and
+/// an error naming the reply otherwise. Read by code and message, never by
+/// status: a 404 an edge or proxy answers for an unrouted path during a deploy
+/// says nothing about the session, and reading it as "no such session" stops
+/// the box from ever sending the close again while core's session stays open.
+async fn no_such_session(resp: reqwest::Response, what: &str) -> Result<()> {
+    let text = resp.text().await.unwrap_or_default();
+    let parsed: Option<serde_json::Value> = serde_json::from_str(&text).ok();
+    let field = |name: &str| {
+        parsed.as_ref().and_then(|v| {
+            v.pointer(&format!("/error/{name}"))
+                .or_else(|| v.get(name))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+    };
+    if field("code").as_deref() == Some("NOT_FOUND")
+        && field("message").as_deref() == Some(NO_SUCH_SESSION)
+    {
+        return Ok(());
+    }
+    Err(Error::Other(status::refused(what, 404, &text)))
 }
 
 pub async fn report_resume_choice(
@@ -237,7 +265,9 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
     let path = format!("/api/devices/me/run-sessions/{session_id}");
     let resp = status::sent(client.get(&path), "run-session state").await?;
     if resp.status().as_u16() == 404 {
-        return Ok(true);
+        return no_such_session(resp, "run-session state")
+            .await
+            .map(|()| true);
     }
     let resp = status::checked(resp, "run-session state").await?;
     let parsed: Reply = status::decode(resp, "run-session state").await?;

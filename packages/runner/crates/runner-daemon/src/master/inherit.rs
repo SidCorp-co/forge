@@ -280,38 +280,57 @@ pub(crate) fn carried_across(
     pane_pid: Option<u32>,
     hosts: &dyn subagent_host::Hosts,
     slug: &str,
-) -> usize {
+) -> Carried {
     let runs = match led.unclosed_runs() {
         Ok(runs) => runs,
         Err(e) => {
             tracing::warn!(
                 "[master] {slug}: cannot read the open runs to carry {pane}'s across to {successor} ({e}); they stay where they are this sweep"
             );
-            return 0;
+            return Carried {
+                moved: 0,
+                unattributed: vec![format!("none could be read ({e})")],
+            };
         }
     };
     let mut moved = 0;
-    let mut unattributed = 0;
-    for run in runs.iter().filter(|r| {
-        r.ended_by.is_none()
-            && r.project_id.as_deref() == Some(project_id)
-            && r.master_session_id != successor
-    }) {
+    let mut unattributed = Vec::new();
+    let mut unread = 0;
+    for run in runs
+        .iter()
+        .filter(|r| r.project_id.as_deref() == Some(project_id) && r.master_session_id != successor)
+    {
         let ours = match (run.host_pid, run.host_start.as_deref(), pane_pid) {
             (Some(pid), Some(start), Some(pane)) => hosts.beneath(pid, start, pane),
             _ => subagent_host::HostRead::Unreadable,
         };
-        match ours {
-            subagent_host::HostRead::Alive => match led.reparent_run(&run.run_id, successor) {
-                Ok(()) => moved += 1,
-                Err(e) => tracing::warn!(
-                    "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
-                    run.run_id,
-                    run.master_session_id
-                ),
-            },
-            subagent_host::HostRead::Gone => {}
-            subagent_host::HostRead::Unreadable => unattributed += 1,
+        let left = |why: &str| format!("{} ({why})", run.run_id);
+        match (ours, run.ended_by.is_some()) {
+            (subagent_host::HostRead::Gone, _) => {}
+            // Ended, so not recorded anew; its close loop is still this pane's
+            // to finish, under the session the row no longer names.
+            (subagent_host::HostRead::Alive, true) => unattributed.push(left(
+                "ended under the session before, its close not finished",
+            )),
+            (subagent_host::HostRead::Alive, false) => {
+                match led.reparent_run(&run.run_id, successor) {
+                    Ok(()) => moved += 1,
+                    Err(e) => {
+                        tracing::warn!(
+                            "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
+                            run.run_id,
+                            run.master_session_id
+                        );
+                        unattributed.push(left(
+                            "could not be recorded under the session it is served as",
+                        ));
+                    }
+                }
+            }
+            (subagent_host::HostRead::Unreadable, _) => {
+                unread += 1;
+                unattributed.push(left("whose process could not be read"));
+            }
         }
     }
     if moved > 0 {
@@ -319,12 +338,15 @@ pub(crate) fn carried_across(
             "[master] {slug}: {moved} open run(s) declared from a process still running in {pane} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
         );
     }
-    if unattributed > 0 {
+    if unread > 0 {
         tracing::warn!(
-            "[master] {slug}: {unattributed} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are"
+            "[master] {slug}: {unread} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are"
         );
     }
-    moved
+    Carried {
+        moved,
+        unattributed,
+    }
 }
 
 /// What [`placed_again`] says it did. A run is called ended with the pane only
@@ -502,18 +524,68 @@ pub(crate) fn conversation_transcript(
     cwd: &std::path::Path,
     conversation_id: &str,
 ) -> Option<std::path::PathBuf> {
-    let encoded: String = cwd
-        .to_string_lossy()
-        .chars()
-        .map(|c| if c == '/' || c == '.' { '-' } else { c })
+    Some(transcript_under(
+        &dirs_next::home_dir()?,
+        cwd,
+        conversation_id,
+    ))
+}
+
+/// Where Claude Code keeps the transcript of `conversation_id`, run in `cwd`,
+/// for a user whose home is `home`.
+pub(crate) fn transcript_under(
+    home: &std::path::Path,
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> std::path::PathBuf {
+    home.join(".claude")
+        .join("projects")
+        .join(project_dir_name(cwd))
+        .join(format!("{conversation_id}.jsonl"))
+}
+
+/// The directory Claude Code names for a project run in `cwd`: each UTF-16
+/// unit of the path that is not an ASCII letter or digit becomes `-`, and a
+/// name past 200 units is cut there and followed by a hash of the whole path.
+/// A drive's `:` and `\` are replaced like any other, so on Windows the name
+/// is one component and never an absolute path that `join` would put in place
+/// of the home it is under.
+fn project_dir_name(cwd: &std::path::Path) -> String {
+    const CAP: usize = 200;
+    let path = cwd.to_string_lossy();
+    let units: Vec<u16> = path.encode_utf16().collect();
+    let name: String = units
+        .iter()
+        .map(|&u| match u8::try_from(u) {
+            Ok(b) if b.is_ascii_alphanumeric() => char::from(b),
+            _ => '-',
+        })
         .collect();
-    Some(
-        dirs_next::home_dir()?
-            .join(".claude")
-            .join("projects")
-            .join(encoded)
-            .join(format!("{conversation_id}.jsonl")),
+    if name.len() <= CAP {
+        return name;
+    }
+    let hash = units.iter().fold(0i32, |h, &u| {
+        h.wrapping_shl(5).wrapping_sub(h).wrapping_add(i32::from(u))
+    });
+    format!(
+        "{}-{}",
+        &name[..CAP],
+        base36(i64::from(hash).unsigned_abs())
     )
+}
+
+fn base36(mut n: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut out = Vec::new();
+    loop {
+        out.push(DIGITS[(n % 36) as usize]);
+        n /= 36;
+        if n == 0 {
+            break;
+        }
+    }
+    out.reverse();
+    String::from_utf8(out).expect("base-36 digits are ASCII")
 }
 
 pub(crate) fn resume_for(
@@ -546,4 +618,102 @@ pub(crate) fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
         .join(slug);
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("transcript.log"))
+}
+
+/// Carry an adopted pane's runs to the session this box serves it as, and
+/// record on its `masters` row both that session and every open run of the
+/// project the carry could not attribute (ISS-1379).
+///
+/// The row is what `master_exit::holding` reads, for the sweep's outdated
+/// judgement and for `master stand-down` alike, and the pane's own hooks write
+/// its session only when they next fire. A pane idle at its prompt fires none,
+/// so a pane a handover adopted under a session core re-minted read as
+/// holding nothing while its runs sat under the other, and was ended with them
+/// open. The row is moved first, marked as mid-carry, so a reader between the
+/// two writes is refused a count rather than handed a short one; the mark is
+/// then replaced by the runs left unattributed, or cleared where none were,
+/// which every sweep recomputes. A run the carry could not read stays under
+/// the session it had, and until it ends or is read, which runs the pane holds
+/// is not known — the session the row names now does not find it.
+pub(crate) fn carry_and_record(
+    led: &mut Ledger,
+    project_id: &str,
+    pane: &str,
+    successor: &str,
+    pane_pid: Option<u32>,
+    hosts: &dyn subagent_host::Hosts,
+    slug: &str,
+) -> Carried {
+    let mid = format!("this box is carrying {pane}'s open runs to session {successor}");
+    if let Err(e) = led.note_master_session(project_id, successor, Some(&mid)) {
+        tracing::warn!(
+            "[master] {slug}: cannot record session {successor} on {pane}'s ledger row ({e}); its runs are not carried this sweep, and the pane is judged by no count while the row and this box disagree"
+        );
+        return Carried::default();
+    }
+    let carried = carried_across(led, project_id, pane, successor, pane_pid, hosts, slug);
+    let left = (!carried.unattributed.is_empty()).then(|| {
+        format!(
+            "{} run(s) of this project whose close has not finished stay under another session, which {pane} may still owe: {}",
+            carried.unattributed.len(),
+            carried.unattributed.join("; ")
+        )
+    });
+    if let Err(e) = led.note_master_session(project_id, successor, left.as_deref()) {
+        tracing::warn!(
+            "[master] {slug}: cannot record what the carry left on {pane}'s ledger row ({e}); it reads as mid-carry, so no count of its runs is given until a sweep writes it"
+        );
+    }
+    carried
+}
+
+/// What one carry did: how many runs it moved, and each run of the project
+/// under another session, its close not finished, that it left there while it
+/// is or may be the pane's, with why.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Carried {
+    pub moved: usize,
+    pub unattributed: Vec<String>,
+}
+
+/// The transcript of `conversation_id` under `home`, or under this user's
+/// home where none is given: the one place both the turn read and the resume
+/// check look, so neither can find a file the other does not.
+pub(crate) fn transcript_at(
+    home: Option<&std::path::Path>,
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> Option<std::path::PathBuf> {
+    match home {
+        Some(h) => Some(transcript_under(h, cwd, conversation_id)),
+        None => conversation_transcript(cwd, conversation_id),
+    }
+}
+
+/// Why the successor of a pane placed again could not resume its
+/// conversation, or `None` where it could: the conversation its ledger row
+/// records has a transcript where Claude Code keeps one. Placed without it, a
+/// successor starts cold and the work its predecessor was in the middle of is
+/// lost to it, which no build is worth (judge r2, plant at 17:36:18Z).
+pub(crate) fn unresumable(
+    home: Option<&std::path::Path>,
+    repo: &std::path::Path,
+    conversation: Option<&str>,
+) -> Option<String> {
+    let Some(id) = conversation.filter(|c| !c.is_empty()) else {
+        return Some(
+            "this box has recorded no conversation for it, so a successor would start cold, without what it was doing"
+                .into(),
+        );
+    };
+    match transcript_at(home, repo, id) {
+        Some(path) if path.is_file() => None,
+        Some(path) => Some(format!(
+            "its conversation {id} has no transcript at {}, so a successor could not resume it and would start cold, without what it was doing",
+            path.display()
+        )),
+        None => Some(format!(
+            "this box has no home directory to find conversation {id}'s transcript under, so a successor could not be shown to resume it"
+        )),
+    }
 }

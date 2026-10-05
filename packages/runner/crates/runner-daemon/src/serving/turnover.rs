@@ -12,8 +12,8 @@ pub enum Turnover {
     },
     /// A live daemon of this configuration already serves this one.
     Already { pid: u32, unverified: bool },
-    /// It is turning itself over already, and a restart now would stop the
-    /// very work it is waiting for.
+    /// It is handing itself over already, and a restart now would cut the
+    /// in-process work it is waiting on: a chat turn or a message into a pane.
     Draining {
         pid: u32,
         cause: String,
@@ -71,14 +71,19 @@ pub fn turnover(
         Liveness::Unverified => true,
         Liveness::Same => false,
     };
-    // A drain under way is the daemon restarting ITSELF, holding admission shut
-    // until the runs it waits on end. Restarting the unit here would stop
-    // exactly those runs — the one thing the drain exists to prevent — so the
-    // build comparison is not even reached. A drain that GAVE UP is the
-    // opposite case: nothing will turn the box over now but a restart.
-    if let Some(DrainState::Draining {
-        cause, outstanding, ..
-    }) = &record.drain
+    // A handover under way is the daemon replacing ITSELF once its in-process
+    // work ends. Restarting the unit here would cut exactly that work — a chat
+    // turn, a message into a pane — so the build comparison is not even
+    // reached. A handover that was DEFERRED is the opposite case: nothing will
+    // turn the box over now but a restart.
+    if let Some(
+        DrainState::Waiting {
+            cause, outstanding, ..
+        }
+        | DrainState::Draining {
+            cause, outstanding, ..
+        },
+    ) = &record.drain
     {
         return Turnover::Draining {
             pid: record.pid,

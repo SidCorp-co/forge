@@ -220,31 +220,84 @@ pub struct Tally {
     last: Option<Exit>,
 }
 
+/// Where one exit stands in its project's run of early exits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counted {
+    /// Its place in a run of early exits for its reason: 0 where it was not
+    /// early.
+    pub in_a_row: u32,
+    /// The length of a run already named as a condition that this exit ended,
+    /// by being for another reason or by not being early.
+    pub ended: Option<u32>,
+}
+
 impl Tally {
-    /// Count an exit read gone `lived` after its placement, and answer the
-    /// place it takes in a run of early exits for one reason: 0 where it was
-    /// not early, which ends any run.
-    pub fn count(&mut self, lived: Option<Duration>, exit: &Exit) -> u32 {
+    /// The length of the run so far, where it has been named as a condition.
+    fn named(&self) -> Option<u32> {
+        (self.in_a_row >= NAMED_AFTER).then_some(self.in_a_row)
+    }
+
+    /// Count an exit read gone `lived` after its placement into the run of
+    /// early exits for one reason. An exit that is not early, or is for
+    /// another reason, ends the run, and a run that had been named answers its
+    /// length so that its end is said once.
+    pub fn count(&mut self, lived: Option<Duration>, exit: &Exit) -> Counted {
         if !lived.is_some_and(|l| l < EARLY_EXIT) {
+            let ended = self.named();
             *self = Self::default();
-            return 0;
+            return Counted { in_a_row: 0, ended };
         }
         if self.last.as_ref() == Some(exit) {
             self.in_a_row += 1;
-        } else {
-            self.in_a_row = 1;
-            self.last = Some(exit.clone());
+            return Counted {
+                in_a_row: self.in_a_row,
+                ended: None,
+            };
         }
-        self.in_a_row
+        let ended = self.named();
+        self.in_a_row = 1;
+        self.last = Some(exit.clone());
+        Counted { in_a_row: 1, ended }
     }
 
     /// A pane read up past the early window: ends the run, answering its
     /// length where it had been named as a condition.
     pub fn outlived(&mut self) -> Option<u32> {
-        let named = (self.in_a_row >= NAMED_AFTER).then_some(self.in_a_row);
+        let named = self.named();
         *self = Self::default();
         named
     }
+}
+
+/// What ended a run of early exits that had been named as one condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ended {
+    /// The pane placed after it was read alive past the early window.
+    StayedUp,
+    /// The next pane exited early for a different reason.
+    OtherReason,
+    /// The next pane was read gone, but not within the early window of its
+    /// placement, or with no placement mark to measure from.
+    NotEarly(Option<Duration>),
+}
+
+/// The one line that says a named condition of `n` early exits has ended.
+pub fn ended(slug: &str, name: &str, n: u32, how: Ended) -> String {
+    let window = EARLY_EXIT.as_secs();
+    let because = match how {
+        Ended::StayedUp => format!("{name} has stayed up past {window}s of its placement"),
+        Ended::OtherReason => format!(
+            "{name} has exited early for a different reason, said next on its own"
+        ),
+        Ended::NotEarly(Some(l)) => format!(
+            "{name} was read gone {}s after its placement, outside the {window}s early window",
+            l.as_secs()
+        ),
+        Ended::NotEarly(None) => format!(
+            "{name} was read gone with no placement mark in this daemon to measure it from, so its exit cannot count as early"
+        ),
+    };
+    format!("[master] {slug}: {because}, so the condition of {n} early exits in a row has ended")
 }
 
 /// A journal line and the level it is said at.

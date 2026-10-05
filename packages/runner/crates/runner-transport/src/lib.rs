@@ -1,9 +1,8 @@
 //! Transport to core.
 //!
-//! - `frames`         — WS frame envelope and the job-scoped token newtype
 //! - `ws`             — connect `/ws`, Bearer device token, subscribe, reconnect (M1)
 //! - `events`         — POST `/api/jobs/:id/events` (batch + retry) (M3)
-//! - `lifecycle`      — POST `/complete`, `/fail` (M3)
+//! - `lifecycle`      — POST `/api/jobs/:id/ack`, `/fail`, `/kill-ack` (M3)
 //! - `heartbeat`      — POST `/api/devices/heartbeat` every 30s (M1)
 //! - `runners`        — GET `/api/devices/me/runners` discovery + self PATCH (ISS-271)
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)

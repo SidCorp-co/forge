@@ -24,10 +24,8 @@ pub(crate) async fn supervise(
     }
     if read == recovery::MasterPresence::Alive {
         if let Some(n) = masters.outlived(project_id) {
-            tracing::info!(
-                "[master] {slug}: {name} has stayed up past {}s of its placement, so the condition of {n} early exits in a row has ended",
-                pane_exit::EARLY_EXIT.as_secs()
-            );
+            let line = pane_exit::ended(slug, &name, n, pane_exit::Ended::StayedUp);
+            tracing::info!("{line}");
         }
     }
     if read == recovery::MasterPresence::Gone {
@@ -45,7 +43,16 @@ pub(crate) async fn supervise(
                 ..
             }) => pane_exit::classify(path, *from),
         };
-        let in_a_row = masters.count_exit(project_id, lived, &exit);
+        let counted = masters.count_exit(project_id, lived, &exit);
+        if let Some(n) = counted.ended {
+            let how = match counted.in_a_row {
+                0 => pane_exit::Ended::NotEarly(lived),
+                _ => pane_exit::Ended::OtherReason,
+            };
+            let line = pane_exit::ended(slug, &name, n, how);
+            tracing::info!("{line}");
+        }
+        let in_a_row = counted.in_a_row;
         match pane_exit::journal(slug, &name, lived, &exit, in_a_row) {
             pane_exit::Say::Warn(line) => tracing::warn!("{line}"),
             pane_exit::Say::Error(line) => tracing::error!("{line}"),

@@ -17,8 +17,8 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
-    /// This daemon is draining before a restart, so it admits no new work for
-    /// any project until it has restarted or the drain gives up (ISS-1223).
+    /// This daemon is inside a handover's closing window, so it admits no new
+    /// work for any project for the seconds that takes (ISS-1379).
     Restarting {
         cause: String,
     },
@@ -126,7 +126,7 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::Restarting { cause } => write!(
                 f,
-                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
+                "this box is handing over to a new build ({cause}), so it starts no work and places no master for any project for the seconds that takes; the new build does"
             ),
             Self::NoRepoPath => write!(
                 f,

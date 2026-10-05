@@ -94,7 +94,7 @@ impl AuthoritySink {
 
 #[expect(
     clippy::too_many_lines,
-    reason = "master placement, a decision core should take (ADR 0009 moveToCore); deleted rather than split once core owns it (ISS-218 amnesty)"
+    reason = "master placement, which core takes over per ADR 0009 What core takes over: Placement; deleted rather than split once core answers it (ISS-218 amnesty)"
 )]
 pub(crate) async fn ensure_master(
     client: &CoreClient,
@@ -575,6 +575,16 @@ surface it reads",
             let carried = carry.lifted.is_some();
             let order = std::sync::atomic::Ordering::Relaxed;
             carry.stood_down_told.store(carried, order);
+        }
+        // A pane that exited before its brief reached it is reported by the
+        // sweep that reads it gone, with why, as a failed nudge is: a warning
+        // here too was the line sid-desk's journal carried once per placement
+        // beside the exit (ISS-1343 criterion 8).
+        Err(e) if recovery_ports::pane_presence(&name).await == recovery::MasterPresence::Gone => {
+            tracing::debug!(
+                "[master] {}: {name} exited before its brief reached it ({e}); the sweep that reads it gone says why",
+                resolved.slug
+            );
         }
         Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
