@@ -63,7 +63,7 @@ function deepFreeze<T>(value: T): T {
 // and an open fetch of any https URL from inside core is what the personal-data-flow design forbids.
 function refusedFetch(): never {
   throw new Error(
-    'SCRIPT_HTTP_FETCH_REFUSED: ctx.http.fetch is not available to schedule scripts; core has no egress policy for a URL a script names, so a script reaches no network. Use ctx.log and ctx.notify.',
+    'ctx.http.fetch is refused: core has no egress policy for a URL a schedule script names, so a script reaches no network. Use ctx.log and ctx.notify.',
   );
 }
 

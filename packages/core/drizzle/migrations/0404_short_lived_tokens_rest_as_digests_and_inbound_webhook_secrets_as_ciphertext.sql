@@ -6,7 +6,7 @@
 -- Existing rows are converted in place, so a token or code already handed out keeps working: core
 -- digests what it is handed and looks the digest up. The webhook secret needs the app's
 -- INTEGRATION_MASTER_KEY, which SQL does not hold, so core encrypts it at boot and nulls the
--- plaintext column (project-config/binding-secret-vault.ts); that column is dropped by a later
+-- plaintext column (project-config/binding-store.ts:encryptPlaintextBindingSecrets); that column is dropped by a later
 -- migration once no row holds it.
 --
 -- ROLLBACK: none for the digests. A digest cannot be turned back into its token; undoing this

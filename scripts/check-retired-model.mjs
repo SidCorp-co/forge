@@ -158,7 +158,7 @@ export const RULES = [
     // ISS-15 — only the inbound-secret rotation stays a row update; a switch-off is a binding document.
     re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
     allow: BINDING_STORE,
-    why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). Switching a binding off is DELETE /api/projects/:projectId/bindings/:bindingId, which `project-config/bindings.ts:removeBinding` writes through the same document. The one row update left is `project-config/binding-store.ts:setBindingInboundSecret`, which rotation writes. Write the document instead of updating the row.',
+    why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). Switching a binding off is DELETE /api/projects/:projectId/bindings/:bindingId, which `project-config/bindings.ts:removeBinding` writes through the same document. The row updates left are `project-config/binding-store.ts:setBindingInboundSecret`, which rotation writes, and `project-config/binding-store.ts:encryptPlaintextBindingSecrets`, which encrypts a pre-0404 plaintext inbound secret at boot. Write the document instead of updating the row.',
   },
   {
     id: 'legacy-project-columns',

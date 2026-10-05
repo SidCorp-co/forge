@@ -44,7 +44,7 @@ export const integrationBindings = pgTable(
     // encrypted with the integration vault; it has to be recovered to compute an HMAC.
     integrationSecretEnc: bytea('integration_secret_enc'),
     // The plaintext column from before 0404, read only by the boot conversion
-    // (project-config/binding-secret-vault.ts), which encrypts each value and nulls it.
+    // (project-config/binding-store.ts:encryptPlaintextBindingSecrets), which encrypts each value and nulls it.
     integrationSecretPlain: text('integration_secret'),
     // ISS-558 — multi-store support for epodsystem. Empty string = the default
     // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
