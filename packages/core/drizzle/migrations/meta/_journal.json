@@ -2549,6 +2549,13 @@
       "when": 1817078400000,
       "tag": "0395_tables_and_columns_the_cleanup_made_dead_are_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1817164800000,
+      "tag": "0396_the_columns_and_values_the_simplify_lanes_made_dead_are_dropped",
+      "breakpoints": true
     }
   ]
 }

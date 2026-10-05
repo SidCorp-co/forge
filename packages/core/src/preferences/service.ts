@@ -5,8 +5,7 @@
  * Two actors write these — the person and the assistant from a room — and
  * both come through here, because the person's way back from a change they
  * did not make is the previous value, and only a writer that records it can
- * offer one. `admin` stays a change actor for the trail rows the retired org
- * admin route left (ISS-213).
+ * offer one.
  */
 
 import type { AuthRefusalCode } from '@forge/contracts/auth';

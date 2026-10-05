@@ -5,7 +5,6 @@ import {
 } from '@forge/contracts/releases';
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
-  boolean,
   check,
   index,
   jsonb,
@@ -45,12 +44,6 @@ export const releaseAttempts = pgTable(
     readings: jsonb('readings').$type<string[]>(),
     /** The agent's own account of this act, stored beside the verdict. */
     account: text('account'),
-    /** The tail of whatever the act printed. */
-    logTail: text('log_tail'),
-    logTailTruncated: boolean('log_tail_truncated').notNull().default(false),
-    /** NULL means nobody has read past the cut. */
-    logTailReadAt: timestamp('log_tail_read_at', { withTimezone: true }),
-    logTailReadBy: uuid('log_tail_read_by'),
     /** When the intent was recorded — BEFORE the act it describes. */
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     /** When the act reported back. NULL means it never did. */

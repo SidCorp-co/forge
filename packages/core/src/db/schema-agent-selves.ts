@@ -40,7 +40,7 @@ export const agentSelves = pgTable(
 export const preferenceChangeFields = ['answer_style', 'assistant_instructions'] as const;
 export type PreferenceChangeField = (typeof preferenceChangeFields)[number];
 
-export const preferenceChangeActors = ['person', 'admin', 'assistant'] as const;
+export const preferenceChangeActors = ['person', 'assistant'] as const;
 export type PreferenceChangeActor = (typeof preferenceChangeActors)[number];
 
 export const preferenceChanges = pgTable(

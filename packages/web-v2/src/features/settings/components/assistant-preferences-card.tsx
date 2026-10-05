@@ -40,7 +40,6 @@ const FIELD_LABEL: Record<PreferenceChange["field"], string> = {
 };
 const ACTOR_LABEL: Record<PreferenceChange["changedBy"], string> = {
   person: "you",
-  admin: "an org admin",
   assistant: "the assistant, in a conversation",
 };
 

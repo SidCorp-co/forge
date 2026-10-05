@@ -174,10 +174,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   };
 }
 
-function attemptView(
-  a: ReleaseAttemptRow,
-  readers: ReadonlyMap<string, { name: string }>,
-): ReleaseAttemptView {
+function attemptView(a: ReleaseAttemptRow): ReleaseAttemptView {
   return {
     id: a.id,
     stage: a.stage,
@@ -189,10 +186,6 @@ function attemptView(
     readings: a.readings ?? [],
     verdictReason: a.verdictReason,
     account: a.account,
-    logTail: a.logTail,
-    logTailTruncated: a.logTailTruncated,
-    logTailReadBy: a.logTailReadBy ? (readers.get(a.logTailReadBy)?.name ?? null) : null,
-    logTailReadAt: iso(a.logTailReadAt),
     startedAt: a.startedAt.toISOString(),
     settledAt: iso(a.settledAt),
   };
@@ -243,7 +236,6 @@ export function detailOf(
   p: Part,
   s: Shared,
   production: ReleaseDetail['production'],
-  readers: ReadonlyMap<string, { name: string }>,
 ): ReleaseDetail {
   const summary = summaryOf(p, s);
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
@@ -269,7 +261,7 @@ export function detailOf(
     approvals: p.approvals.map(strip),
     approvers: s.approvers,
     approvalRequired: s.required,
-    attempts: p.attempts.map((a) => attemptView(a, readers)),
+    attempts: p.attempts.map(attemptView),
     bounds: {
       holding: p.bounds?.holding ?? false,
       bounds: p.bounds?.bounds ?? [],

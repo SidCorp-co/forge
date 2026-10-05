@@ -321,10 +321,6 @@ export interface ReleaseAttemptView {
 	readings: string[];
 	verdictReason: string | null;
 	account: string | null;
-	logTail: string | null;
-	logTailTruncated: boolean;
-	logTailReadBy: string | null;
-	logTailReadAt: string | null;
 	startedAt: string;
 	settledAt: string | null;
 }

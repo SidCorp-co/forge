@@ -6,7 +6,6 @@ import type {
 import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
 import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
-import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { approvalRequired, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
@@ -157,16 +156,14 @@ export async function readRelease(
   if (!part || part.version !== version) {
     throw notFound(`project ${projectId} has cut no version ${version}`);
   }
-  const [shared, read, readers] = await Promise.all([
+  const [shared, read] = await Promise.all([
     sharedFor(projectId, [part], viewer, current, required),
     readReleasePath(projectId),
-    peopleOf(part.attempts.map((a) => a.logTailReadBy)),
   ]);
   const prod = read.ok ? read.path.production : null;
   return detailOf(
     part,
     shared,
     prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
-    readers,
   );
 }
