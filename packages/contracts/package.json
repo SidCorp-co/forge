@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "typescript": "^5.7.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",

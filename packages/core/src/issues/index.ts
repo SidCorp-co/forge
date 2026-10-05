@@ -34,7 +34,11 @@ export {
 export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
-export { type IssueCriteriaReport, unearnedCriteriaReports } from './criteria-verdicts.js';
+export {
+  type IssueCriteriaReport,
+  unearnedCriteriaReports,
+  verdictWeighingInputs,
+} from './criteria-verdicts.js';
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export {
   allRelationDigests,
@@ -149,5 +153,14 @@ export {
   strandRuleFor,
 } from './strand-rules.js';
 export { emitIssueFieldUpdate } from './update-hook.js';
+export {
+  type Carriage,
+  type ChangedPaths,
+  carriageKey,
+  type RuntimeReading,
+  rotated,
+  UNWEIGHED,
+  type Weighing,
+} from './weighing.js';
 export { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
 export { readWorkState, setWorkStep } from './work-state.js';

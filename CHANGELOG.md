@@ -3632,6 +3632,10 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 - **The Integrations page names a GitLab repository GitLab.** The repository card was keyed and
   labelled GitHub whatever host the repository lived on.
 
+- **An automatic release no longer waits on a commit it already serves.** A verdict judged at an
+  earlier commit counts once production runs a later one containing it, and a runner-only change is
+  weighed against the runner build (ISS-1368).
+
 - **The CI jobs that run after the merge can run on a branch before it lands**:
   `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks
   for want of a base branch (ISS-1370).
@@ -6669,9 +6673,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   not enforce is refused when saved, as `TOOL_PATTERN_INVALID`, naming its position.
 - **The Pipeline settings screen edits the policy:** the QA mode, how work is admitted, and each
   status's model and permission profile.
-- **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, issue
-  lanes, a coloured verdict and what changed; arrow keys select, Enter opens the full detail, `s`
-  shows sources. `--once` still prints everything.
+- **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, lanes, a
+  coloured verdict and change; Enter opens its detail, `s` shows sources, the legend explains each
+  verdict (`l` on small screens). `--once` is unchanged.
 - **Pull requests wait on the fast checks only.** The integration suite, image build, whole-repository
   tests and macOS/Windows runner builds now run after merging, on `main` and nightly; a red there no
   longer blocks anyone.

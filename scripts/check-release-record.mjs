@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
-import { baseRev } from './lib/baseline-ratchet.mjs';
+import { mergeTarget } from './lib/base-branch.mjs';
+import { BASIS, baseRevision } from './lib/baseline-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
 import { CORRECTION_SPAN, ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
@@ -104,13 +105,13 @@ function main() {
     return 2;
   }
 
-  let rev;
-  try {
-    rev = baseRev(ROOT);
-  } catch (err) {
-    console.error(`release-record: could not run — ${err.message}`);
+  const { rev, basis, refusal } = baseRevision(ROOT);
+  if (refusal) {
+    console.error(`release-record: could not run — no base revision can be taken: ${refusal}`);
     return 2;
   }
+  if (rev !== null)
+    console.log(`release-record: judged against ${rev.slice(0, 9)}, ${BASIS[basis]}`);
   const verdict = judge({
     head,
     base: rev === null ? null : readAt(rev, RECORD),
@@ -118,9 +119,13 @@ function main() {
   });
 
   if (verdict.code === 2) {
+    const target = mergeTarget(ROOT);
+    const fetch = target.branch
+      ? `Run \`git fetch origin ${target.branch}\` (the merge target, from ${target.source}),`
+      : `No merge target could be derived to fetch (${target.summary}), so set one,`;
     console.error(
       `release-record: could not run — ${verdict.reason}. This rule compares the record against\n` +
-        `its base revision, so a shallow checkout has nothing to check. Run \`git fetch origin main\`,\n` +
+        `its base revision, so a shallow checkout has nothing to check. ${fetch}\n` +
         `or give the CI job \`fetch-depth: 0\`.`,
     );
     return 2;
