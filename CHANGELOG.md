@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.31] - 2026-10-05
+
+Onboarding hand-off, feedback loop, verified releases and cross-project contracts
+
+
 ### Added
 
 - **Onboarding hands off to first requirements, and a design reads reconciled.** Approved designs
