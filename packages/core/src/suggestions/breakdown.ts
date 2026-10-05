@@ -26,7 +26,7 @@ import {
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn, linkIssueRefusal, rowIn } from '../requirements/index.js';
-import { linkBuild } from '../workflows/index.js';
+import { designNodesIn, linkBuild, nodeSetRefusals } from '../workflows/index.js';
 import type { AcceptChannel, EffectWritten } from './effects.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
 import {
@@ -149,13 +149,36 @@ export async function breakdownGuardIn(
     (baseline?.pins ?? []).flatMap((pin) => (pin.workflowId ? [pin.workflowId] : [])),
   );
   const planned = breakdownBuilds(p, designs);
+  const steps = await buildStepRefusals(tx, projectId, p, planned.builds);
   return {
-    refusals: [...breakdownFaults(p, codes, head), ...named.refusals, ...planned.refusals],
+    refusals: [
+      ...breakdownFaults(p, codes, head),
+      ...named.refusals,
+      ...planned.refusals,
+      ...steps,
+    ],
     codes,
     blockers: named.ids,
     builds: planned.builds,
     baselineSeq: baseline?.seq ?? null,
   };
+}
+
+/** Every step a breakdown issue names that the design it builds does not hold (design-reconciliation `breakdown`). */
+async function buildStepRefusals(
+  tx: Tx,
+  projectId: string,
+  p: Breakdown,
+  builds: readonly (PinnedDesign | null)[],
+): Promise<Refusal[]> {
+  const out: Refusal[] = [];
+  for (const [i, issue] of p.issues.entries()) {
+    const design = builds[i];
+    if (!issue.steps || !design) continue;
+    const nodes = await designNodesIn(tx, projectId, design.workflowId);
+    if (nodes) out.push(...nodeSetRefusals(nodes, { steps: issue.steps }, `/payload/issues/${i}`));
+  }
+  return out;
 }
 
 /** The flows of the designs a baseline pins, in flow order. */
@@ -234,6 +257,7 @@ export async function breakdownEffect(
         workflowId: design.workflowId,
         projectId,
         userId: actor.userId,
+        stepIds: item.steps ? [...new Set(item.steps)] : null,
       });
     }
     filed.push({

@@ -196,6 +196,15 @@ export function breakdownBuilds(
     });
     return null;
   });
+  p.issues.forEach((issue, i) => {
+    if (issue.steps && builds[i] === null && issue.builds !== undefined) {
+      refusals.push({
+        code: 'SUGGESTION_BUILD_STEPS_UNBUILT',
+        path: `/payload/issues/${i}/steps`,
+        detail: `issue ${i} names steps but builds no design; steps are steps of the design it builds, so name that design in builds.`,
+      });
+    }
+  });
   return { builds, refusals };
 }
 
