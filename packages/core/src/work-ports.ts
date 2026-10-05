@@ -117,7 +117,7 @@ import {
   proposesWorkflowOf,
   WorkflowDesignNotApprovedError,
 } from './workflows/index.js';
-import { wakeMastersForAnswer, wakeMastersForProject } from './ws/index.js';
+import { wakeMastersForProject } from './ws/index.js';
 
 export function provideWorkPorts(): void {
   providePipelinePorts({
@@ -249,7 +249,6 @@ export function provideWorkPorts(): void {
         ? null
         : { meta: readConversationAgentMeta(metadata) };
     },
-    wakeMastersForAnswer,
   });
 
   provideUploadPorts({ persistConversationAttachment });

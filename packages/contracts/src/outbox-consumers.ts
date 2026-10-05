@@ -27,7 +27,7 @@ export const OUTBOX_CONSUMERS = {
 	"comment.updated": ["activity-feed"],
 	"comment.deleted": ["activity-feed"],
 	"comment.mentioned": ["activity-feed", "notify-mentions"],
-	"question.answered": ["answer-resume"],
+	"question.answered": ["answer-resume", "master-wake"],
 	"schedule.fired": ["ws-broadcast"],
 	"notification.created": ["ws-broadcast"],
 	"notification.read": ["ws-broadcast"],

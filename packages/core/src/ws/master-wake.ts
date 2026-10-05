@@ -64,7 +64,7 @@ export async function wakeMastersForProject(args: {
  * Publish one `master.wake` per box because a question this project was
  * waiting on has been answered.
  */
-export async function wakeMastersForAnswer(args: {
+async function wakeMastersForAnswer(args: {
   projectId: string;
   questionId: string;
 }): Promise<{ boxes: number; delivered: number }> {
@@ -186,6 +186,14 @@ export function registerMasterWakeSubscribers(): void {
     name: 'master-wake',
     handle: async (p) => {
       for (const side of p.parties) await wakeMastersForChannel(side);
+    },
+  });
+
+  // The answer's own transaction wrote the event, so a wake is never lost to a crash after commit.
+  consume('question.answered', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForAnswer({ projectId: p.projectId, questionId: p.questionId });
     },
   });
 
