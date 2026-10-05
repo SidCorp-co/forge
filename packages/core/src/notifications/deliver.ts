@@ -37,6 +37,7 @@ interface DeliverInput {
   severity?: string | null;
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
+  /** A redelivery of the same emission: a record already carrying it is not written or delivered again. */
   dedupeKey?: string | null;
   /** Records raised by one evaluation share this and reach a reader as one delivery. */
   groupKey?: string | null;
@@ -250,9 +251,17 @@ export async function recordAndDeliver(
     throw new Error(
       `recordAndDeliver: type '${input.type}' is a signal, and a signal may not carry a ` +
         `resolutionKey (got '${input.resolutionKey}'). An event cannot resolve. Either pass ` +
-        'no key, or declare the type a condition in notifications/kinds.ts and in ' +
-        'packages/contracts/src/notifications.ts.',
+        'no key, or declare the type a condition in packages/contracts/src/notifications.ts.',
     );
+  }
+
+  if (input.dedupeKey) {
+    const [delivered] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(eq(notifications.dedupeKey, input.dedupeKey))
+      .limit(1);
+    if (delivered) return { id: delivered.id, delivered: 0 };
   }
 
   const existing = kind === 'condition' ? await activeRecord(input) : null;

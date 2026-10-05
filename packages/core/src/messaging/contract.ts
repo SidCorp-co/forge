@@ -51,10 +51,6 @@ export interface CellSpec {
   readonly audience: Audience;
   readonly intent: Intent;
   readonly rules: readonly MessageRule[];
-  /**
-   * True where no surface of the product screens this pair yet.
-   */
-  readonly reserved: boolean;
 }
 
 /**

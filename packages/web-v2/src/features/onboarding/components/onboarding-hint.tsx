@@ -9,23 +9,35 @@ import { LEGEND } from "@/design";
 import { useChatDock } from "@/features/conversations/dock";
 import { refusalsOf } from "@/lib/api/refusals";
 import { formatApiError } from "@/lib/api/error";
-import { onboardingApi } from "../api";
-import { useOnboardingState, useStartOnboarding } from "../hooks";
+import { useJoinOnboarding, useOnboardingState, useStartOnboarding } from "../hooks";
 
 const TONE: Record<Hint["tone"], { bg: string; dot: string }> = {
   ...LEGEND,
   attention: { bg: LEGEND.you.bg, dot: LEGEND.err.dot },
 };
 
-/** Opens the project's onboarding thread in the panel: start it, or join it, then show the room. */
+/**
+ * Opens the project's onboarding thread in the panel: start it, or join it, then show the room.
+ * A refused start or join is the hook's `error`, shown by name; `open` never rejects.
+ */
 export function useOpenOnboarding(projectId: string) {
   const dock = useChatDock();
   const start = useStartOnboarding(projectId);
+  const join = useJoinOnboarding(projectId);
   const open = async (action: Hint["action"]) => {
-    const res = action === "start" ? await start.mutateAsync() : await onboardingApi.join(projectId);
-    dock?.show({ kind: "room", projectId, conversationId: res.onboarding.conversationId });
+    const act = action === "start" ? start : join;
+    const other = action === "start" ? join : start;
+    other.reset();
+    const res = await act.mutateAsync().catch(() => null);
+    if (res) dock?.show({ kind: "room", projectId, conversationId: res.onboarding.conversationId });
+    return res !== null;
   };
-  return { open, pending: start.isPending, error: start.error };
+  return { open, pending: start.isPending || join.isPending, error: start.error ?? join.error };
+}
+
+/** The line a refused start or join shows: the refusal's own detail, else the error's message. */
+export function refusalLine(error: unknown): string | null {
+  return error ? (refusalsOf(error)[0]?.detail ?? formatApiError(error)) : null;
 }
 
 export function OnboardingHint({ projectId, projectName }: { projectId: string; projectName: string }) {
@@ -34,7 +46,7 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
   const hint = q.data?.hint;
   if (!hint) return null;
   const t = TONE[hint.tone];
-  const refusal = error ? (refusalsOf(error)[0]?.detail ?? formatApiError(error)) : null;
+  const refusal = refusalLine(error);
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="onboarding-hint">
       <div className="flex items-baseline gap-2 text-[13.5px] text-fg">
@@ -45,7 +57,7 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
             type="button"
             className="font-medium text-link hover:underline disabled:opacity-60"
             disabled={pending}
-            onClick={() => void open(hint.action).catch(() => undefined)}
+            onClick={() => void open(hint.action)}
           >
             {hint.actionLabel}
           </button>

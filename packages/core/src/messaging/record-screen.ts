@@ -1,6 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 
@@ -15,13 +13,14 @@ import {
   type ForgeRecordFault,
   type ForgeRecordField,
 } from './forge-record.js';
+import { messageReads } from './reads.js';
 import { screenMessage } from './screen.js';
 import {
   type ContractLookup,
-  dbContractLookup,
+  contractLookup,
   verdictContractRefusals,
 } from './verdict-contract.js';
-import { type DesignLookup, dbDesignLookup, verdictDesignRefusals } from './verdict-design.js';
+import { type DesignLookup, designLookup, verdictDesignRefusals } from './verdict-design.js';
 import { verdictIdentityRefusals } from './verdict-identity.js';
 /** The guide that holds the whole table, named by every record-in-comment message. */
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
@@ -123,37 +122,10 @@ function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
  * Which reading the lead is screened under, for one project.
  */
 export async function projectLens(projectId: string, executor?: Tx): Promise<RecordLens> {
-  const handle = executor ?? db;
   try {
-    const [project] = await handle
-      .select({ orgId: projects.orgId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!project?.orgId) return 'product';
-    const rows = await handle
-      .select({ lenses: organizationMembers.lenses, orgRole: organizationMembers.role })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .leftJoin(
-        projectMembers,
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, organizationMembers.userId),
-        ),
-      )
-      .where(
-        and(
-          eq(organizationMembers.orgId, project.orgId),
-          eq(users.kind, 'human'),
-          or(
-            isNotNull(projectMembers.userId),
-            inArray(organizationMembers.role, ['owner', 'admin']),
-          ),
-        ),
-      );
-    const technical = rows.some((r) => ((r.lenses ?? []) as string[]).includes('technical'));
-    return technical ? 'technical' : 'product';
+    return (await messageReads().readsTechnical(projectId, executor ?? db))
+      ? 'technical'
+      : 'product';
   } catch {
     return 'product';
   }
@@ -185,8 +157,8 @@ export async function recordRefusals(
   projectId: string,
   record: ForgeRecord | null,
   executor?: Tx,
-  designs: DesignLookup = dbDesignLookup(executor),
-  contracts: ContractLookup = dbContractLookup(executor),
+  designs: DesignLookup = designLookup(executor),
+  contracts: ContractLookup = contractLookup(executor),
 ): Promise<MessageRefusal[]> {
   if (!record) return [];
   const refusals = [

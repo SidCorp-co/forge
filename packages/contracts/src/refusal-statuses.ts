@@ -1,6 +1,7 @@
 // Every module's non-422 refusal codes in one table, read by both doors of core.
 import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
 import { AUTH_REFUSAL_STATUSES } from "./auth.js";
+import { CONVERSATION_REFUSAL_STATUSES } from "./conversations.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import { ISSUE_TAKE_REFUSAL_STATUSES } from "./issues.js";
@@ -18,10 +19,13 @@ import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
 /** The request-shape answer core builds from a failed validator. */
 const REQUEST_REFUSAL_STATUSES = { BAD_REQUEST: 400 } as const;
 
-const DECLARED: ReadonlyArray<Readonly<Record<string, Exclude<RefusalStatus, 422>>>> = [
+const DECLARED: ReadonlyArray<
+	Readonly<Record<string, Exclude<RefusalStatus, 422>>>
+> = [
 	REQUEST_REFUSAL_STATUSES,
 	AGENT_SESSION_REFUSAL_STATUSES,
 	AUTH_REFUSAL_STATUSES,
+	CONVERSATION_REFUSAL_STATUSES,
 	ECOSYSTEM_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,
@@ -42,7 +46,9 @@ function collect(): ReadonlyMap<string, Exclude<RefusalStatus, 422>> {
 		for (const [code, status] of Object.entries(table)) {
 			const held = out.get(code);
 			if (held !== undefined && held !== status) {
-				throw new Error(`refusal code ${code} is declared ${held} in one module and ${status} in another`);
+				throw new Error(
+					`refusal code ${code} is declared ${held} in one module and ${status} in another`,
+				);
 			}
 			out.set(code, status);
 		}

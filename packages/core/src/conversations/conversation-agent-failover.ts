@@ -16,8 +16,10 @@ import {
   createAgentSession,
   dispatchAgentTurn,
   markSessionFailed,
+  notDispatchedCause,
   TITLE_MAX,
 } from './conversation-agent.js';
+import { carryImagesToSession } from './conversation-agent-images.js';
 import {
   type ConversationAgentMeta,
   readConversationAgentMeta,
@@ -38,6 +40,7 @@ export type ConversationAgentFailoverResult =
         | 'no-prompt'
         | 'no-asker'
         | 'authority-refused'
+        | 'attachment-unreadable'
         | 'error';
     };
 
@@ -128,6 +131,15 @@ export async function redispatchConversationAgentTurn(
     return { ok: false, status: 'error' };
   }
 
+  // cm:why the retry is shown the files the person attached, or not run: never answered without them
+  const carried = meta.images.length
+    ? await carryImagesToSession(meta.conversationId, retry.id, meta.images)
+    : { ok: true as const, ids: [] };
+  if (!carried.ok) {
+    await failRetry(retry, next, meta, 'attachment_unreadable');
+    return { ok: false, status: 'attachment-unreadable' };
+  }
+
   try {
     const dispatched = await dispatchAgentTurn({
       session: retry,
@@ -136,6 +148,7 @@ export async function redispatchConversationAgentTurn(
       authorised,
       marker: next,
       message: firstUser,
+      attachmentIds: carried.ids,
       ...(priorMeta.lensOverride
         ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }
         : {}),
@@ -157,13 +170,23 @@ export async function redispatchConversationAgentTurn(
       { err, failedSessionId: session.id, retrySessionId: retry.id, attempt },
       'conversation-agent failover: re-dispatch failed',
     );
-    const at = new Date().toISOString();
-    await markSessionFailed(retry, 'conversation-agent-failover', {
-      ...next,
-      claimedAt: at,
-      deliveredAt: at,
-      failure: meta.replies.failed,
-    });
+    await failRetry(retry, next, meta, notDispatchedCause(err));
     return { ok: false, status: 'error' };
   }
+}
+
+/** A retry that never reached its box is failed with its marker stamped, so no bridge answers it. */
+async function failRetry(
+  retry: SessionRow,
+  next: ConversationAgentMeta,
+  meta: ConversationAgentMeta,
+  cause: Parameters<typeof markSessionFailed>[2],
+): Promise<void> {
+  const at = new Date().toISOString();
+  await markSessionFailed(retry, 'conversation-agent-failover', cause, {
+    ...next,
+    claimedAt: at,
+    deliveredAt: at,
+    failure: meta.replies.failed,
+  });
 }

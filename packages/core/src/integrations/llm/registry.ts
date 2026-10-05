@@ -2,10 +2,11 @@
  * v1 EPIC 1 (ISS-270) — Chat provider registry (same convention as the runner-framework registry, ISS-271). Providers register at bootstrap; `resolveForProject` reads `app_config.chat_provider_id` and falls back to the env default, and picks the model per turn kind — an `agentic` turn (tools offered) and a `relay` turn (tool-less prose, e.g. escalation synthesis) may run different models on one provider via `app_config.chat_model_by_kind`.
  */
 
+import type { ConversationRefusalCode } from '@forge/contracts/conversations';
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../../db/client.js';
 import { appConfig } from '../../db/schema.js';
+import { refuser } from '../../lib/refusal.js';
 import type { ChatProvider, ChatProviderFactory } from './types.js';
 
 const factories = new Map<string, ChatProviderFactory>();
@@ -51,7 +52,7 @@ function modelForKind(byKind: unknown, kind: ChatTurnKind): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
-/** `app_config.chat_provider_id` when registered (model: `chat_model_by_kind[kind]` → `chat_model` → provider default), else the env fallback id; throws 503 when neither resolves. */
+/** `app_config.chat_provider_id` when registered (model: `chat_model_by_kind[kind]` → `chat_model` → provider default), else the env fallback id; refuses ASSISTANT_MODEL_NOT_CONFIGURED (503), naming the env variables, when neither resolves. */
 export async function resolveForProject(
   projectId: string,
   opts: ResolveOptions = {},
@@ -82,8 +83,8 @@ export async function resolveForProject(
     return { provider, model: c.model ?? provider.defaultModel };
   }
 
-  throw new HTTPException(503, {
-    message: 'no chat provider configured',
-    cause: { code: 'CHAT_PROVIDER_UNAVAILABLE' },
-  });
+  throw refuser<ConversationRefusalCode>('ASSISTANT_MODEL_NOT_CONFIGURED')(
+    'ASSISTANT_MODEL_NOT_CONFIGURED',
+    'no chat model is configured on this instance, so Assistant mode cannot answer: set ANTHROPIC_API_KEY, or LITELLM_API_URL + LITELLM_API_KEY, in the instance .env and restart core',
+  );
 }

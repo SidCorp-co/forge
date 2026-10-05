@@ -49,19 +49,10 @@ export type ChatStreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string };
 
-/** OpenAI `response_format`. Plumbing with no caller yet; `runTurnEvents` sends it only on a round that offers no tools. */
-export type ChatResponseFormat =
-  | { type: 'json_object' }
-  | {
-      type: 'json_schema';
-      json_schema: { name: string; schema: Record<string, unknown>; strict?: boolean };
-    };
-
 export interface ChatStreamRequest {
   model: string;
   messages: ChatMessage[];
   tools?: ChatTool[] | undefined;
-  responseFormat?: ChatResponseFormat | undefined;
   /** Passed through to an endpoint that reads it; omitted entirely when unset. */
   reasoningEffort?: string | undefined;
   temperature?: number | undefined;

@@ -68,7 +68,6 @@ import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/inde
 import { deleteMemory, retrievalAnalyticsRetention, runMemorySearch } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
 import {
-  createNotification,
   emitNotification,
   projectAdminUserIds,
   projectAdminUserIdsFor,
@@ -149,7 +148,6 @@ export function provideWorkPorts(): void {
       retrieval_analytics: retrievalAnalyticsRetention,
     },
     emitNotification,
-    createNotification,
     resolveNotifications,
     projectAdminUserIds,
     projectAdminUserIdsFor,

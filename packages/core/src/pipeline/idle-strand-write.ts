@@ -135,5 +135,5 @@ export async function surface(args: {
       `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move. ` +
       'Nothing was moved: the finding is on the issue itself, under `strand`.',
   });
-  return sent?.delivered ?? 0;
+  return sent.delivered;
 }

@@ -12,10 +12,6 @@ interface ReplyScreenInput {
   readonly toolCalls: readonly {
     name: string;
     arguments: string;
-    /** Every issue-shaped reference the whole result named (ISS-1057). */
-    resultIssueRefs?: readonly string[];
-    /** MCP's own flag on the result; an errored call verifies nothing. */
-    isError?: boolean;
   }[];
   /**
    * The snapshot the writer's own turn was shown.

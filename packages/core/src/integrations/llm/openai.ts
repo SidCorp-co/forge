@@ -1,12 +1,11 @@
 /**
  * v1 EPIC 1 (ISS-270) — the OpenAI-wire chat adapter over `@ai-sdk/openai-compatible`. In production
  * the endpoint is a LiteLLM proxy fanning out to several upstream models, so "Vertex" and "Gemini"
- * name models reached THROUGH that proxy. `response_format` rides as an extra body field so the
- * caller's shape reaches the wire unchanged.
+ * name models reached THROUGH that proxy.
  */
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { type JSONValue, streamText } from 'ai';
+import { streamText } from 'ai';
 import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
 import { bridgeStream, MAX_RETRIES, toModelMessages, toToolSet } from './ai-sdk.js';
 import type { ChatProvider, ChatStreamEvent, ChatStreamRequest } from './types.js';
@@ -35,7 +34,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
     stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
       const offered = req.tools && req.tools.length > 0 ? req.tools : undefined;
       let toolChoice = offered ? req.toolChoice : undefined;
-      let responseFormat = req.responseFormat;
       let reasoningEffort = req.reasoningEffort;
       const messages = toModelMessages(req.messages);
       return bridgeStream({
@@ -51,9 +49,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             providerOptions: {
               [PROVIDER]: {
                 ...(reasoningEffort ? { reasoningEffort } : {}),
-                ...(responseFormat
-                  ? { response_format: responseFormat as unknown as JSONValue }
-                  : {}),
               },
             },
             maxRetries: cfg.maxRetries ?? MAX_RETRIES,
@@ -63,13 +58,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
         degrade: (body) => {
           if (toolChoice && /too many states/i.test(body)) {
             toolChoice = undefined;
-            return true;
-          }
-          if (
-            responseFormat &&
-            /response_format|json_schema|unsupported|unrecognized/i.test(body)
-          ) {
-            responseFormat = undefined;
             return true;
           }
           if (reasoningEffort && /reasoning_effort|unsupported|unrecognized/i.test(body)) {

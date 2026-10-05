@@ -1,27 +1,8 @@
+import { defaultSeverityForType } from '@forge/contracts/notifications';
 import type { Tx } from '../db/client.js';
 import { type NotificationType, notifications } from '../db/schema.js';
+import { recordAndDeliver } from './deliver.js';
 import { INITIAL_STATE, kindOf, tierOf } from './kinds.js';
-import { createNotification } from './service.js';
-
-const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
-  issue_status_changed: 'info',
-  mention: 'info',
-  pipeline_wedge: 'error',
-  invitation_received: 'warning',
-  intake_pending: 'info',
-  schedule_report: 'info',
-  issue_stranded: 'warning',
-  retry_rescue_threshold: 'warning',
-  ops_alert: 'warning',
-  channel_document_published: 'info',
-  channel_thread_held: 'warning',
-  channel_gate_pending: 'warning',
-  contract_version_published: 'info',
-};
-
-function defaultSeverityForType(type: NotificationType): string {
-  return DEFAULT_SEVERITY_BY_TYPE[type] ?? 'info';
-}
 
 interface EmitNotificationInput {
   userId?: string;
@@ -31,6 +12,7 @@ interface EmitNotificationInput {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   scheduleRunId?: string | null;
   /** Overrides the contract default severity for this single event. */
@@ -45,11 +27,13 @@ interface EmitNotificationInput {
   groupTitle?: string | null;
 }
 
+/** The one write entry: a record of `type` at its contract severity unless overridden, delivered. */
 export async function emitNotification(
   input: EmitNotificationInput,
 ): Promise<{ id: string; delivered: number }> {
-  return createNotification({
+  return recordAndDeliver({
     ...input,
+    recipients: input.recipients ?? (input.userId ? [input.userId] : []),
     severity: input.severity ?? defaultSeverityForType(input.type),
   });
 }

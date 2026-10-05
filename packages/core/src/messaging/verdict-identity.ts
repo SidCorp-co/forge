@@ -177,6 +177,13 @@ const SINGLE_FIELDS = {
   [ENVIRONMENT_FIELD]: 'environment',
 } as const satisfies Record<string, Exclude<keyof CriterionBlock, 'criterion' | 'cited'>>;
 
+/** A `criterion:` value as the whole positive number it must be written as, or null. */
+function criterionNumber(value: string): number | null {
+  if (!/^\d+$/u.test(value)) return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
+}
+
 /**
  * The criterion blocks a `verdict`-kind record holds, in the order written.
  *
@@ -195,8 +202,8 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     const value = field.value.trim();
     if (field.key === 'criterion') {
       close();
-      const n = Number.parseInt(value, 10);
-      if (Number.isFinite(n)) {
+      const n = criterionNumber(value);
+      if (n !== null) {
         block = {
           criterion: n,
           verdict: null,
@@ -332,6 +339,20 @@ export async function namedIdentityRefusals<N, F>(
 /** Everything a `verdict` record is refused for about the identities its blocks name. */
 export function verdictIdentityRefusals(record: ForgeRecord | null): MessageRefusal[] {
   const out: MessageRefusal[] = [];
+  if (record?.kind === 'verdict') {
+    for (const field of record.fields) {
+      const value = field.value.trim();
+      if (field.key !== 'criterion' || criterionNumber(value) !== null) continue;
+      out.push({
+        rule: 'verdict-criterion',
+        why: `a \`criterion\` line holds \`${value}\`, which is not a criterion number: it is the whole number of 1 or more the issue's criterion carries, so the block under it is neither read nor recorded until it is written as one`,
+        quote: `criterion: ${value}`,
+        shape:
+          'a `criterion:` line names one criterion of the issue by its whole number, 1 or more, and nothing else',
+        example: EXAMPLE,
+      });
+    }
+  }
   for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) continue;
     out.push(...refusalsForBlock(block));

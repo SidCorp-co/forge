@@ -6,11 +6,10 @@
  * project would read as earned on nothing, so the write door asks while the writer is there.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
+import { type DesignLookupResult, messageReads } from './reads.js';
 import {
   DESIGN_FIELD,
   type DesignIdentity,
@@ -28,77 +27,12 @@ const EXAMPLE = [
   '```',
 ].join('\n');
 
-/** How many of a project's flows a refusal lists when the one named is not among them. */
-const FLOWS_LISTED = 10;
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
-/** A workflow a design identity resolved to, and every revision of it that exists. */
-interface FoundDesign {
-  readonly id: string;
-  readonly flow: string;
-  readonly projectId: string;
-  /** The current revision first, then each stored design revision, ascending, no repeats. */
-  readonly revisions: readonly number[];
-}
-
-/** What a design identity resolved to: the workflow, or the flows the project does hold. */
-type DesignLookupResult =
-  | { readonly kind: 'found'; readonly design: FoundDesign }
-  | { readonly kind: 'missing'; readonly flows: readonly string[] };
-
 export type DesignLookup = (projectId: string, workflow: string) => Promise<DesignLookupResult>;
 
-/** By id anywhere, so a design in another project is refused by name rather than as missing; by
- *  flow only within the project, the flow being unique per project and meaningless outside it. */
-export function dbDesignLookup(executor?: Tx): DesignLookup {
-  const handle = executor ?? db;
-  return async (projectId, workflow) => {
-    const columns = {
-      id: projectWorkflows.id,
-      flow: projectWorkflows.flow,
-      projectId: projectWorkflows.projectId,
-      revision: projectWorkflows.revision,
-    };
-    const [byId] = UUID.test(workflow)
-      ? await handle
-          .select(columns)
-          .from(projectWorkflows)
-          .where(eq(projectWorkflows.id, workflow))
-          .limit(1)
-      : [];
-    const [byFlow] = byId
-      ? [byId]
-      : await handle
-          .select(columns)
-          .from(projectWorkflows)
-          .where(
-            and(eq(projectWorkflows.projectId, projectId), eq(projectWorkflows.flow, workflow)),
-          )
-          .limit(1);
-    if (!byFlow) {
-      const flows = await handle
-        .select({ flow: projectWorkflows.flow })
-        .from(projectWorkflows)
-        .where(eq(projectWorkflows.projectId, projectId))
-        .orderBy(asc(projectWorkflows.flow))
-        .limit(FLOWS_LISTED);
-      return { kind: 'missing', flows: flows.map((row) => row.flow) };
-    }
-    const stored = await handle
-      .select({ revision: projectWorkflowDesigns.revision })
-      .from(projectWorkflowDesigns)
-      .where(eq(projectWorkflowDesigns.workflowId, byFlow.id))
-      .orderBy(asc(projectWorkflowDesigns.revision));
-    const revisions = [
-      byFlow.revision,
-      ...stored.map((row) => row.revision).filter((n) => n !== byFlow.revision),
-    ];
-    return {
-      kind: 'found',
-      design: { id: byFlow.id, flow: byFlow.flow, projectId: byFlow.projectId, revisions },
-    };
-  };
+/** The provided workflow read, through the caller's handle. */
+export function designLookup(executor?: Tx): DesignLookup {
+  return (projectId, workflow) =>
+    messageReads().workflowDesign(projectId, workflow, executor ?? db);
 }
 
 /** Everything a `verdict` record is refused for about the designs its blocks name. */

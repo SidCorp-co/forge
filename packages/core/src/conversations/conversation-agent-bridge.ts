@@ -9,6 +9,7 @@
  * delivers it verbatim.
  */
 
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import {
   claimSessionMarker,
   messageRoleToTurnRole,
@@ -149,6 +150,18 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
 /**
  * Deliver one runner-hosted conversation reply, at most once.
  */
+/**
+ * The causes another box cannot cure: a person stopped it, the skill never synced, or a file it
+ * carries cannot be read. A missing checkout, a credential that would not mint or a hand-over that
+ * threw are about one box, so they fail over (ISS-219).
+ */
+const NO_FAILOVER: ReadonlySet<FailureCause> = new Set<FailureCause>([
+  'user_cancelled',
+  'skill_not_synced',
+  'attachment_unreadable',
+  'ws_publish_failed',
+]);
+
 async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<void> {
   const meta = readConversationAgentMeta(session.metadata);
   if (!meta) return;
@@ -174,12 +187,9 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
 
   if (!(await claimDelivery(session, null))) return;
 
-  const cause = resolveFailureCause(session.failureReason);
   if (
     session.status !== 'completed' &&
-    cause !== 'user_cancelled' &&
-    cause !== 'skill_not_synced' &&
-    cause !== 'ws_publish_failed'
+    !NO_FAILOVER.has(resolveFailureCause(session.failureReason))
   ) {
     const failover = await redispatchConversationAgentTurn(session);
     if (failover.ok) {

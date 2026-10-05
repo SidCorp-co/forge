@@ -36,7 +36,7 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
     projectId: ctx.req.venue.projectId,
     reason,
   });
-  return { send: false, reason, declined: true };
+  return { send: false, reason, ended: 'declined' };
 }
 
 const said = (text: string): TurnReply => ({
@@ -164,7 +164,7 @@ async function settleFirst(
 
   if (!ctx.req.mayDecline) return result;
   if (result.terminal !== 'done' || result.reply.trim().length === 0) {
-    return { send: false, reason: result.error ?? 'empty-reply', declined: true };
+    return { send: false, reason: result.error ?? 'empty-reply', ended: 'declined' };
   }
   if (!declinedTurn(result.reply)) return result;
   const tail = declinedTail(result.reply);

@@ -31,6 +31,7 @@ export {
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
+export { citedIssues } from './cited-issues.js';
 export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';

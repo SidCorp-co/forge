@@ -11,8 +11,8 @@ import {
 } from '../../db/schema-issue-criteria.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { RefusalError } from '../../lib/refusal.js';
-import { dbContractLookup } from '../../messaging/verdict-contract.js';
-import { dbDesignLookup } from '../../messaging/verdict-design.js';
+import { contractLookup } from '../../messaging/verdict-contract.js';
+import { designLookup } from '../../messaging/verdict-design.js';
 import type { Actor } from '../activity.js';
 import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
@@ -140,7 +140,7 @@ async function identityColumns(
       return { identityKind: 'runtime', runtimeRef: identity.ref.trim().toLowerCase() };
     case 'contract': {
       const [project = '', contract = ''] = identity.ref.trim().split('/');
-      const held = await dbContractLookup(tx)(projectId, {
+      const held = await contractLookup(tx)(projectId, {
         project,
         contract,
         version: identity.version.trim(),
@@ -159,7 +159,7 @@ async function identityColumns(
       };
     }
     case 'design': {
-      const found = await dbDesignLookup(tx)(projectId, identity.workflow);
+      const found = await designLookup(tx)(projectId, identity.workflow);
       if (
         found.kind === 'missing' ||
         found.design.projectId !== projectId ||

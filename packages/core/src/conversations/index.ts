@@ -13,7 +13,11 @@ export {
   persistConversationAttachment,
 } from './attachment-service.js';
 export { collectInboundMessage } from './collect-inbound.js';
-export { startConversationAgentTurn } from './conversation-agent.js';
+export {
+  mintTurnCredential,
+  notDispatchedCause,
+  startConversationAgentTurn,
+} from './conversation-agent.js';
 export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
 export { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent-meta.js';
 export {

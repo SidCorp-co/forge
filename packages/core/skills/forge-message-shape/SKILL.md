@@ -1,6 +1,6 @@
 ---
 name: forge-message-shape
-description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the five cells they make, the rules each cell holds, and the eight doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
+description: "The shape every agent-written message to a person must have before Forge will accept it: the three intents, the two audiences, the four cells they make, the rules each cell holds, and the eight doors those cells are read at. Read this when a write was refused with a rule id, before writing a comment or a question round, or before adding a rule or a door. Triggers on: /forge-message-shape, my comment was refused, MESSAGE_REFUSED, QUESTION_MESSAGE_REFUSED, what shape does a comment need, message screen, audience and intent."
 user_invocable: true
 ---
 
@@ -33,14 +33,13 @@ who reads them and what they claim, not by the transport that carries them.
 - `public` (no role) — somebody with no role. They cannot check a claim, cannot
   open an issue you name, and cannot act on a detail about our internals.
 
-Two audiences and three intents make **five cells** — the pairs are sparse, not a filled grid — and a cell is the only thing that holds rules:
+Two audiences and three intents make **four cells** — the pairs are sparse, not a filled grid — and a cell is the only thing that holds rules:
 
 | cell | what it is |
 |---|---|
 | `role:ask` | a question put to somebody who can answer it |
 | `role:report` | a comment on an issue, read by the person who decides |
 | `role:chat` | the assistant's reply to somebody holding a role, in a Forge UI room |
-| `public:ask` | **reserved** — see the bottom of this page |
 | `public:report` | a reply to somebody who cannot open the tracker to check it |
 | `role:product:report` | the `lead` of a record, where no human member of the project reads as technical |
 | `role:technical:report` | the same lead, where one of them does |
@@ -117,7 +116,7 @@ The budget applies to every field you do write, today.
 |---|---|
 | `non-empty` | there is text |
 | `status-matches-the-row` | as in `role:report` |
-| `only-verified-citations` | every issue key named is a real issue of this project |
+| `issue-keys-exist` | every issue key named is a real issue of this project |
 | `issue-link-shape` | an issue link reads `<base>/projects/<slug>/issues/<documentId>` — never a hash route, never a key or number in the path |
 | `no-empty-promise` | no commitment to do something later — a chat turn ends, and nothing will come back to keep it |
 | `progress-figures-match` | figures quoted match the progress snapshot this turn was shown |
@@ -141,18 +140,9 @@ are checked against the snapshot the model was actually given.
 |---|---|
 | `issue-references-exist` | every issue key named is a real issue of this project — the reader cannot check |
 | `no-developer-detail` | no file paths, stack frames, branch names or internals |
-| `only-verified-citations` | a claim about an issue matches its row |
 | `issue-link-shape` | as in `role:chat` |
 | `no-empty-promise` | no commitment to do something later that nothing will hold you to |
 | `progress-figures-match` | figures quoted match the progress the run was given |
-
-### `public:ask` — reserved
-
-It has rules and it is wired to **no door**. The product has no place where an
-agent puts a question to a reader holding no role, and the reply that would sit
-there today cannot say which of the two it is. Folding it into `public:report`
-would let `no-empty-promise` refuse the one message that reader is there to
-answer. The shortfall is priced in `docs/proposals/`.
 
 ## What a rule may be about
 

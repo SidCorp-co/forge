@@ -9,12 +9,12 @@ import type { SessionAsker } from '../../agent-sessions/index.js';
 import {
   createChatSessionRow,
   dispatchChatTurn,
-  mintSessionCredential,
   noTurnCredentialDeviceReason,
   pickTurnCredentialDevice,
   resolveSessionAuthority,
   transitionSessions,
 } from '../../agent-sessions/index.js';
+import { mintTurnCredential, notDispatchedCause } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { logger } from '../../lib/logger.js';
@@ -124,7 +124,7 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
       session,
       project: args.project,
       client: { deviceId, isLocal: false, migrated: false },
-      credential: await mintSessionCredential({
+      credential: await mintTurnCredential({
         sessionId: session.id,
         deviceId,
         value: authorised.value,
@@ -141,9 +141,9 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
     try {
       await transitionSessions(db, {
         to: 'failed',
-        set: { failureReason: 'ws_publish_failed' },
+        set: { failureReason: notDispatchedCause(err) },
         where: eq(agentSessions.id, session.id),
-        reason: 'ws-publish-failed',
+        reason: notDispatchedCause(err),
         actor: { type: 'system' },
         source: 'rocketchat.escalation',
       });

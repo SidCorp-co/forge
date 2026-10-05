@@ -109,10 +109,7 @@ interface PipelinePorts {
   stampFinalizeAttempt: (agentSessionId: string, at: Date) => Promise<void>;
   retentionStatements: RetentionStatements;
 
-  emitNotification: (input: NotificationInput) => Promise<{ id: string; delivered: number } | null>;
-  createNotification: (
-    input: NotificationInput,
-  ) => Promise<{ id: string; delivered: number } | null>;
+  emitNotification: (input: NotificationInput) => Promise<{ id: string; delivered: number }>;
   resolveNotifications: (resolutionKey: string, outcome?: string) => Promise<number>;
   projectAdminUserIds: (projectId: string) => Promise<string[]>;
   projectAdminUserIdsFor: (projectIds: readonly string[]) => Promise<Map<string, string[]>>;
@@ -170,7 +167,6 @@ export const stampFinalizeAttempt = port('stampFinalizeAttempt');
 export const retentionStatements = (): RetentionStatements => pipelinePorts().retentionStatements;
 
 export const emitNotification = port('emitNotification');
-export const createNotification = port('createNotification');
 export const resolveNotifications = port('resolveNotifications');
 export const projectAdminUserIds = port('projectAdminUserIds');
 export const projectAdminUserIdsFor = port('projectAdminUserIdsFor');

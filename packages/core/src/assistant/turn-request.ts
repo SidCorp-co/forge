@@ -42,7 +42,7 @@ export interface TurnHookContext {
 }
 
 export type TurnReply =
-  | { send: false; reason: string; declined?: boolean }
+  | { send: false; reason: string; ended?: 'declined' | 'superseded' | 'not-dispatched' }
   | { send: true; message: ScreenedMessage; screenReplaced: boolean };
 
 export interface ConversationTurnRequest {
@@ -133,4 +133,5 @@ export type TurnOutcome =
   | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
+  | { kind: 'not-dispatched'; reason: string }
   | { kind: 'undeliverable'; reason: string };

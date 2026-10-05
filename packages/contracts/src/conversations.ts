@@ -1,5 +1,7 @@
 // The codes a conversation write is refused under, at REST and MCP alike (the refusal envelope).
 
+import type { RefusalStatuses } from "./refusal.js";
+
 export const CONVERSATION_REFUSAL_CODES = [
 	"CONVERSATION_REFUSED",
 	"CONVERSATION_UNADDRESSED",
@@ -12,6 +14,7 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"CONVERSATION_MODE_SETTLED",
 	"CONVERSATION_BA_ASSISTANT_ONLY",
 	"CONVERSATION_AGENT_NO_DEVICE",
+	"ASSISTANT_MODEL_NOT_CONFIGURED",
 	"CONVERSATION_ATTACHMENT_FOREIGN",
 	"CONVERSATION_TURN_HANDED_OFF",
 	"CONVERSATION_TURN_ON_ANOTHER_CORE",
@@ -30,4 +33,10 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"MIME_NOT_ALLOWED",
 ] as const;
 
-export type ConversationRefusalCode = (typeof CONVERSATION_REFUSAL_CODES)[number];
+export type ConversationRefusalCode =
+	(typeof CONVERSATION_REFUSAL_CODES)[number];
+
+/** No chat model is configured on this instance: nothing the caller sends can fix it (REQ-19). */
+export const CONVERSATION_REFUSAL_STATUSES = {
+	ASSISTANT_MODEL_NOT_CONFIGURED: 503,
+} as const satisfies RefusalStatuses<ConversationRefusalCode>;

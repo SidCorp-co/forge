@@ -97,16 +97,6 @@ export function useCreateProject() {
   });
 }
 
-export function useOnboardProject(projectId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => projectApi.onboard(projectId as string),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-sessions'] });
-    },
-  });
-}
-
 /** Full detail for one project. Keyed `['project', id]`. */
 export function useProject(id: string | undefined) {
   return useQuery({
