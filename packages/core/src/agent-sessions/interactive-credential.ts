@@ -5,9 +5,10 @@
  * holder may do there — and it is revoked when the turn stops (migration 0324).
  */
 
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import type { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { RefusalError } from '../lib/refusal.js';
+import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { type PermissionFacts, permissionRefusal, requireHeld } from '../permissions/index.js';
 import {
@@ -140,6 +141,18 @@ export async function authorizeInteractiveTurn(args: {
  * Dispatch a web turn under a token minted for the person it acts as. A dispatch that throws
  * revokes the token it minted, so no token outlives a turn that never reached a box.
  */
+const MINT_STAGE = Symbol('mintStage');
+
+/** Why an interactive turn never reached its box: the binding, the credential, or the hand-over. */
+export function undeliveredTurnCause(
+  err: unknown,
+): Extract<FailureCause, 'checkout_unbound' | 'credential_mint_failed' | 'dispatch_failed'> {
+  if (isRefusal(err, 'CHECKOUT_UNBOUND')) return 'checkout_unbound';
+  return (err as { [MINT_STAGE]?: boolean } | null)?.[MINT_STAGE]
+    ? 'credential_mint_failed'
+    : 'dispatch_failed';
+}
+
 export async function dispatchInteractiveTurn(
   args: Omit<DispatchChatTurnArgs, 'credential'> & { authority: InteractiveAuthority },
 ): Promise<AgentSessionRow> {
@@ -154,6 +167,9 @@ export async function dispatchInteractiveTurn(
     deviceId: authority.deviceId,
     value: authority.value,
     ttlMs: INTERACTIVE_TURN_CREDENTIAL_TTL_MS,
+  }).catch((err: unknown) => {
+    if (err && typeof err === 'object') Object.assign(err, { [MINT_STAGE]: true });
+    throw err;
   });
   try {
     return await dispatchChatTurn({ ...turn, credential });

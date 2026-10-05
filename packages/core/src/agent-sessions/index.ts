@@ -10,6 +10,7 @@ export {
   resolveInteractiveClient,
   type SessionRefusal,
   sessionRoleRefusal,
+  undeliveredTurnCause,
 } from './interactive-credential.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
 export { provideAgentSessionsPorts } from './ports.js';

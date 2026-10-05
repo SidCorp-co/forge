@@ -21947,7 +21947,6 @@
               "enum": [
                 "queued",
                 "dispatched",
-                "running",
                 "held",
                 "done",
                 "failed",

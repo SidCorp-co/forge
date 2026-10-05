@@ -151,7 +151,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
       { err, sessionId: session.id, scheduleId: schedule.id },
       'schedule.dispatch: chat-turn dispatch failed',
     );
-    await failUndeliveredRun(session);
+    await failUndeliveredRun(session, err);
     return {
       result: { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id },
       settle: null,

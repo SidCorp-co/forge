@@ -69,7 +69,7 @@ export function quietJobCandidateQuery(opts: QuietJobCandidateOptions): SQL {
     ${LAST_PHASE_LATERAL}
     ${RESIDENT_SESSION_JOIN}
     ${RESULT_EVENT_LATERAL}
-    WHERE j.status IN ('dispatched', 'running')
+    WHERE j.status = 'dispatched'
       AND ${RESULT_GUARD}
       AND ${NOT_PARKED}
       AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(opts.quietMinutes))} minutes'

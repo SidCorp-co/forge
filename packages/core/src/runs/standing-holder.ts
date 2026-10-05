@@ -176,7 +176,7 @@ function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
     );
   }
   const job = f.job;
-  if (job && (job.status === 'running' || job.status === 'dispatched')) {
+  if (job && job.status === 'dispatched') {
     const session =
       job.status === 'dispatched' && !job.ackedAt
         ? ackClock(job, ctx)
@@ -242,7 +242,7 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
       device: s.device,
       acquiredAt: first ?? s.startedAt,
     };
-  } else if (job && (job.status === 'running' || job.status === 'dispatched')) {
+  } else if (job && job.status === 'dispatched') {
     identity = {
       kind: 'run',
       name: `${job.type} job`,

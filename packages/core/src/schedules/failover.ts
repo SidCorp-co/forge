@@ -296,7 +296,7 @@ async function attemptScheduleFailover(
       { err, failedSessionId: sessionId, scheduleId: meta.scheduleId, attempt },
       'schedule.failover: re-dispatch failed',
     );
-    await failUndeliveredRun(session);
+    await failUndeliveredRun(session, err);
     return { ok: false, status: 'error' };
   }
 }

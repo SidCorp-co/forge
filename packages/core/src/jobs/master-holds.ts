@@ -30,7 +30,7 @@ export async function holdQueuedJob(
           SELECT 1 FROM jobs other
           WHERE other.issue_id = jobs.issue_id
             AND other.id <> jobs.id
-            AND other.status IN ('dispatched','running','held')
+            AND other.status IN ('dispatched','held')
         )`,
         sql`NOT EXISTS (
           SELECT 1 FROM pipeline_runs r WHERE r.id = jobs.pipeline_run_id AND r.status <> 'running'

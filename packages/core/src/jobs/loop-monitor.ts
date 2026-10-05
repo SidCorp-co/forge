@@ -470,7 +470,7 @@ async function reapSessionLostJobs(scope: LoopScope): Promise<JobAxisReapResult>
     FROM jobs j
     JOIN agent_sessions s ON s.id = j.agent_session_id
     ${RESULT_EVENT_LATERAL}
-    WHERE j.status IN ('dispatched', 'running')
+    WHERE j.status = 'dispatched'
       AND s.status IN ('failed', 'cancelled_stale')
       AND ${RESULT_GUARD}
       ${projectClause}
