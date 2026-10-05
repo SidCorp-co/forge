@@ -18,7 +18,7 @@ async function selectGhosts(offlineDays: number): Promise<GhostRow[]> {
       AND COALESCE(r.last_seen_at, r.created_at) < now() - (${offlineDays}::int * interval '1 day')
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
-        WHERE j.runner_id = r.id AND j.status IN ('dispatched', 'running')
+        WHERE j.runner_id = r.id AND j.status = 'dispatched'
       )
       AND NOT EXISTS (
         SELECT 1 FROM agent_sessions s

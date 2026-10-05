@@ -6,6 +6,7 @@
 import type { AgentReportTriage } from "./agent-reports.js";
 import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type { JobStatus } from "./job-machine.js";
 import type { MasterState, MasterVerb } from "./master-standing.js";
 import type {
 	RunActorType,
@@ -239,12 +240,11 @@ export const STATE_READINGS = {
 	job: {
 		queued: ["Queued", "neutral", "○"],
 		dispatched: ["Dispatched", "run", "◔"],
-		running: ["Running", "run", "●"],
 		held: ["Held", "blocked", "‖"],
 		done: ["Done", "done", "✓"],
 		failed: ["Failed", "err", "✕"],
 		cancelled: ["Cancelled", "done", "–"],
-	},
+	} satisfies Record<JobStatus, Reading>,
 	pipelineRun: {
 		running: ["Running", "run", "●"],
 		paused: ["Paused", "blocked", "‖"],

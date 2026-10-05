@@ -65,7 +65,7 @@ function selectConcluded(now: Date, scope: LoopScope) {
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.pipeline_run_id = r.id
-          AND j2.status IN ('queued', 'dispatched', 'running', 'held')
+          AND j2.status IN ('queued', 'dispatched', 'held')
       )
       AND NOT EXISTS (
         SELECT 1 FROM jobs j3

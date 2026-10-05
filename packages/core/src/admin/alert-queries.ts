@@ -140,7 +140,7 @@ async function alertOrphanJobs(): Promise<AdminAlert> {
     FROM jobs j
     JOIN pipeline_runs r ON r.id = j.pipeline_run_id
     JOIN projects p ON p.id = j.project_id
-    WHERE j.status IN ('queued', 'dispatched', 'running')
+    WHERE j.status IN ('queued', 'dispatched')
       AND r.status IN ('completed', 'failed', 'cancelled')
     ORDER BY j.queued_at ASC
     LIMIT ${ENTITY_LIMIT}
@@ -169,14 +169,14 @@ type StuckRow = {
   age_seconds: number;
 };
 
-/** A2 — jobs dispatched or running past staleSeconds (AC 5: BOTH statuses, not dispatched alone). */
+/** A2 — jobs dispatched past staleSeconds (a job has no `running` state; its session does). */
 async function alertStuckJobs(staleSeconds: number): Promise<AdminAlert> {
   const rows = await db.execute<StuckRow & { total: number }>(sql`
     SELECT j.id, j.type AS job_type, j.dispatched_at,
            extract(epoch FROM (now() - j.dispatched_at))::float8 AS age_seconds,
            count(*) OVER ()::int AS total
     FROM jobs j
-    WHERE j.status IN ('dispatched', 'running')
+    WHERE j.status = 'dispatched'
       AND j.dispatched_at IS NOT NULL
       AND j.dispatched_at < now() - (${staleSeconds}::int * interval '1 second')
     ORDER BY j.dispatched_at ASC

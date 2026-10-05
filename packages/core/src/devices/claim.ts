@@ -173,7 +173,7 @@ export async function prepareJobForMaster(args: {
         SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
                EXISTS (SELECT 1 FROM jobs o
                        WHERE o.issue_id = j.issue_id AND o.id <> j.id
-                         AND o.status IN ('dispatched','running','held')) AS busy
+                         AND o.status IN ('dispatched','held')) AS busy
         FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
       `)) as unknown as Array<Record<string, unknown>>;
       const d = diag[0];
@@ -205,7 +205,7 @@ export async function prepareJobForMaster(args: {
   if (claimed.kind !== 'held') {
     throw refusePool(
       'POOL_ISSUE_BUSY',
-      `another step for job ${args.jobId}'s issue is already dispatched, running or held`,
+      `another step for job ${args.jobId}'s issue is already dispatched or held`,
     );
   }
 

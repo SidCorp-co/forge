@@ -6,5 +6,5 @@
  */
 
 import { sql } from 'drizzle-orm';
-export const OCCUPYING = sql`j.status IN ('dispatched', 'running')
+export const OCCUPYING = sql`j.status = 'dispatched'
   AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))`;

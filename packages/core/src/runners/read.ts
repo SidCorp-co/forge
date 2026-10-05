@@ -73,7 +73,7 @@ export async function activeRunnersOf(projectId: string) {
     -- still appears — as IDLE — instead of dropping out of the result.
     LEFT JOIN jobs j
       ON j.runner_id = r.id
-     AND j.status IN ('dispatched','running')
+     AND j.status = 'dispatched'
     LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     LEFT JOIN issues i ON i.id = j.issue_id
     LEFT JOIN projects rp ON rp.id = i.project_id
