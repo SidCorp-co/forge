@@ -40,14 +40,19 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       throw badRequest('CODE_EXPIRED', 'pairing code expired');
     }
 
-    const device = await registerDevice({
-      ownerId: row.user_id,
-      name: input.name,
-      platform: input.platform,
-      agentVersion: input.agentVersion ?? null,
-      capabilities: input.capabilities,
-      machineId: input.machineId ?? null,
-    });
+    // Every write below runs on the code's own transaction: a failed mint takes the device row
+    // and the spent code back with it, so a retry with the same code cannot pair a second box.
+    const device = await registerDevice(
+      {
+        ownerId: row.user_id,
+        name: input.name,
+        platform: input.platform,
+        agentVersion: input.agentVersion ?? null,
+        capabilities: input.capabilities,
+        machineId: input.machineId ?? null,
+      },
+      tx,
+    );
 
     await tx
       .update(pairingCodes)
@@ -58,6 +63,7 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       deviceId: device.id,
       holderUserId: row.user_id,
       grantEpoch: row.grant_epoch,
+      tx,
     });
 
     return { device, plaintext, projectId: row.project_id };

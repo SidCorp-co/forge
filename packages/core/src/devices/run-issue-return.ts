@@ -35,7 +35,7 @@ import {
 } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { TransitionError, transitionIssueStatus } from '../issues/index.js';
-import { canonicalIssueKey } from '../lib/issue-ref.js';
+import { canonicalIssueKey, seqOfCanonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 
 interface ReturnedIssue {
@@ -105,9 +105,7 @@ export async function returnIssuesForRun(
   const run = await readRun(runId);
   if (!run || run.keys.length === 0) return [];
 
-  const seqs = run.keys
-    .map((k) => Number.parseInt(k.replace(/^ISS-/, ''), 10))
-    .filter((n) => Number.isInteger(n));
+  const seqs = run.keys.map(seqOfCanonicalIssueKey);
   if (seqs.length === 0) return [];
 
   const rows = await db

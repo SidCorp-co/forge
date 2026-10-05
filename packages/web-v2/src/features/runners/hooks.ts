@@ -223,7 +223,14 @@ export function useActiveRunners(projectId: string | null) {
 	});
 }
 
-export function useAssignDeviceToProject(projectId: string) {
+/**
+ * Bind a device to the project, the one mutation behind both "assign" and "re-provision": core
+ * answers either by queuing a provision for the binding.
+ */
+function useBindRunner(
+	projectId: string,
+	copy: { success: string; failure: string },
+) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
@@ -234,14 +241,21 @@ export function useAssignDeviceToProject(projectId: string) {
 			runnersApi.bindRunner(projectId, deviceId, repoPath),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			toast({ title: "Device assigned — provisioning…", tone: "success" });
+			toast({ title: copy.success, tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Assign failed",
+				title: copy.failure,
 				description: formatApiError(err),
 				tone: "error",
 			}),
+	});
+}
+
+export function useAssignDeviceToProject(projectId: string) {
+	return useBindRunner(projectId, {
+		success: "Device assigned — provisioning…",
+		failure: "Assign failed",
 	});
 }
 
@@ -294,23 +308,8 @@ export function useClearRunnerError(projectId: string) {
 
 /** Re-provision a device (re-bind with same path re-queues provision). */
 export function useReprovision(projectId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			deviceId,
-			repoPath,
-		}: { deviceId: string; repoPath: string | null }) =>
-			runnersApi.bindRunner(projectId, deviceId, repoPath),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			toast({ title: "Re-provisioning…", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Re-provision failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+	return useBindRunner(projectId, {
+		success: "Re-provisioning…",
+		failure: "Re-provision failed",
 	});
 }

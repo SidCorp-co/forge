@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { seqOfCanonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { devicesPorts } from './ports.js';
 import { BOX_RUN_ID_METADATA_KEY } from './run-session.js';
@@ -320,9 +321,7 @@ async function heldIssuesOf(
     )
     .limit(1);
   if (!session) return null;
-  const seqs = (session.issueKeys ?? [])
-    .map((k) => Number.parseInt(String(Number(k.split('-')[1])), 10))
-    .filter((n) => Number.isFinite(n));
+  const seqs = (session.issueKeys ?? []).map(seqOfCanonicalIssueKey);
   if (seqs.length === 0) return { boxRunId: session.boxRunId, rows: [] };
   const rows = await db
     .select({

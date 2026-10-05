@@ -70,7 +70,7 @@ import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '..
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
-import { prepareJobForMaster, startJobForMaster } from './claim.js';
+import { assertMasterSessionHeld, prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession } from './master-session.js';
@@ -210,7 +210,8 @@ const claimBodySchema = z.object({
  * Take a job without starting it (ISS-919 B2).
  *
  * The job comes back `queued` and held, with its token and preparation. The
- * caller owes `/me/pool/start` or a release.
+ * caller owes `/me/pool/start` or a release. Nothing taken is a refusal under a
+ * `POOL_*` code with its declared status (`@forge/contracts/devices`).
  */
 devicePoolRoutes.post(
   '/me/pool/prepare',
@@ -246,6 +247,8 @@ devicePoolRoutes.post(
   zValidator('json', releaseBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
+    // A master that died still owns the holds it left, so its box may give them back.
+    await assertMasterSessionHeld({ deviceId: c.get('device').id, sessionId, live: false });
     if (jobId) {
       const released = await releaseJobHold(jobId, sessionId);
       return c.json({ released: released ? 1 : 0 });

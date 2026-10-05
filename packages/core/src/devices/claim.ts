@@ -15,10 +15,11 @@
  * after it.
  */
 
-import type { DispatchState, PolicyRefusalCode } from '@forge/contracts/project-config';
+import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
+import type { DispatchState } from '@forge/contracts/project-config';
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
+import { db, type Tx } from '../db/client.js';
+import { jobs, pipelineRuns } from '../db/schema.js';
 import {
   activeIssuePrefix,
   assertDesignApprovedForIssue,
@@ -41,43 +42,69 @@ import {
 } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
-import { refusalCodeOf } from '../lib/refusal.js';
+import { type RefusalError, refusalCodeOf } from '../lib/refusal.js';
 import { releaseLabelAllows } from '../runners/index.js';
+import { masterSessionOnDevice } from './master-session.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
+import { refuseDevice } from './refusals.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-type PrepareResult =
-  | {
-      ok: true;
-      jobId: string;
-      issueKey: string | null;
-      prepared: PreparedJob;
-    }
-  | {
-      ok: false;
-      reason:
-        | 'not_found'
-        | 'already_held'
-        | 'issue_busy'
-        | 'hold_lost'
-        | 'runner_too_old'
-        | 'runner_withdrawn'
-        | 'device_disabled'
-        | 'runner_unbound'
-        | 'release_label_missing'
-        | 'no_prompt';
-    }
-  | {
-      ok: false;
-      reason: 'policy_refused';
-      code: PolicyRefusalCode | DispatchGateCode | 'ISSUE_BLOCKED';
-      detail: string;
-    }
-  | { ok: false; reason: 'checkout_unbound'; detail: string };
+type PrepareResult = {
+  ok: true;
+  jobId: string;
+  issueKey: string | null;
+  prepared: PreparedJob;
+};
 
-type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
+type StartResult = { ok: true };
+
+/** A run dispatches only while it is `running`: a paused run's job is `run_paused`, any other stop `run_not_running`. */
+function runNotRunning(jobId: string, runStatus: string, after: string): RefusalError {
+  return refusePool(
+    runStatus === 'paused' ? 'POOL_RUN_PAUSED' : 'POOL_RUN_NOT_RUNNING',
+    `job ${jobId} belongs to a run that is ${runStatus}, and a run dispatches only while it is running; resume the run first.${after}`,
+  );
+}
+
+const HOLD_LOST = (args: { jobId: string; sessionId: string }) =>
+  `job ${args.jobId} is no longer held by session ${args.sessionId}, so it was not started`;
+
+/** The refusal a claim answers with: the box reads the code back as its reason (`contracts/devices`). */
+function refusePool(code: PoolClaimRefusalCode, detail: string): RefusalError {
+  return refuseDevice(code, detail);
+}
+
+const ADMISSION_REFUSAL = {
+  runner_unbound: 'POOL_RUNNER_UNBOUND',
+  device_disabled: 'POOL_DEVICE_DISABLED',
+  runner_withdrawn: 'POOL_RUNNER_WITHDRAWN',
+} as const satisfies Record<string, PoolClaimRefusalCode>;
+
+const RUNNER_TOO_OLD =
+  'this runner build cannot name the agent a job runs as; update forge-runner before it takes pool work';
+
+/**
+ * The master session a claim names, refused by name unless it is a live master on the calling box,
+ * and of the job's project where one is given: a session id in a body is a claim, never the record.
+ */
+export async function assertMasterSessionHeld(args: {
+  deviceId: string;
+  sessionId: string;
+  projectId?: string;
+  live: boolean;
+}): Promise<void> {
+  const held = await masterSessionOnDevice(args);
+  if (held) return;
+  throw refuseDevice(
+    'MASTER_SESSION_NOT_HELD',
+    `session ${args.sessionId} is not ${args.live ? 'a live' : 'a'} master session on this box` +
+      `${args.projectId ? ` for project ${args.projectId}` : ''}, so nothing was taken or given back. ` +
+      'Send the master session core issued to this box (`POST /api/devices/me/master-session`).',
+    '/sessionId',
+  );
+}
 
 /**
  * Take one queued job for `sessionId` on `deviceId` and build the work, WITHOUT
@@ -92,35 +119,54 @@ export async function prepareJobForMaster(args: {
   deviceId: string;
   sessionId: string;
 }): Promise<PrepareResult> {
-  if (!(await canNameItsAgent(args.deviceId))) {
-    return { ok: false, reason: 'runner_too_old' };
-  }
+  if (!(await canNameItsAgent(args.deviceId)))
+    throw refusePool('POOL_RUNNER_TOO_OLD', RUNNER_TOO_OLD);
 
   const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
   if (!admission.admitted) {
-    return { ok: false, reason: admission.reason };
+    throw refusePool(
+      ADMISSION_REFUSAL[admission.reason],
+      `job ${args.jobId} is not admitted on this box: ${admission.reason}`,
+    );
   }
 
-  if (!(await releaseLabelAllows(args))) return { ok: false, reason: 'release_label_missing' };
+  if (!(await releaseLabelAllows(args))) {
+    throw refusePool(
+      'POOL_RELEASE_LABEL_MISSING',
+      `job ${args.jobId} needs a release label this box's runner does not carry`,
+    );
+  }
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
-  if (!job) return { ok: false, reason: 'not_found' };
+  if (!job) throw refusePool('POOL_NOT_FOUND', `no job ${args.jobId}`);
+
+  await assertMasterSessionHeld({
+    deviceId: args.deviceId,
+    sessionId: args.sessionId,
+    projectId: job.projectId,
+    live: true,
+  });
 
   const binding = await resolveRunnerForDevice(job.projectId, args.deviceId);
   if (!binding.repoPath) {
-    const detail = checkoutUnboundMessage(job.projectId, args.deviceId, binding.id);
-    return { ok: false, reason: 'checkout_unbound', detail };
+    throw refusePool(
+      'POOL_CHECKOUT_UNBOUND',
+      checkoutUnboundMessage(job.projectId, args.deviceId, binding.id),
+    );
   }
 
-  if (await refusedForNoPrompt(job)) return { ok: false, reason: 'no_prompt' };
+  if (await refusedForNoPrompt(job)) {
+    throw refusePool('POOL_NO_PROMPT', `job ${args.jobId} carries no prompt the pool can brief`);
+  }
 
   const policy = await policyStateFor(job);
-  if (!policy.ok) return policy.refusal;
-
-  const design = await designGateFor(job);
-  if (design) return design;
+  await designGateFor(job);
 
   const claimed = await db.transaction(async (tx) => {
+    const runStatus = await lockedRunStatus(tx, args.jobId);
+    if (runStatus !== null && runStatus !== 'running') {
+      return { kind: 'run_not_running', runStatus } as const;
+    }
     const row = await holdQueuedJob(tx, args.jobId, args.sessionId);
     if (!row) {
       const diag = (await tx.execute(sql`
@@ -148,14 +194,27 @@ export async function prepareJobForMaster(args: {
     } as const;
   });
 
-  if (claimed.kind !== 'held') return { ok: false, reason: claimed.kind };
+  if (claimed.kind === 'run_not_running') throw runNotRunning(args.jobId, claimed.runStatus, '');
+  if (claimed.kind === 'not_found') throw refusePool('POOL_NOT_FOUND', `no job ${args.jobId}`);
+  if (claimed.kind === 'already_held') {
+    throw refusePool(
+      'POOL_ALREADY_HELD',
+      `job ${args.jobId} was taken or started by another holder`,
+    );
+  }
+  if (claimed.kind !== 'held') {
+    throw refusePool(
+      'POOL_ISSUE_BUSY',
+      `another step for job ${args.jobId}'s issue is already dispatched, running or held`,
+    );
+  }
 
   let prepared: PreparedJob;
   try {
     prepared = await prepareClaimedJob({
       jobId: claimed.job.id,
       deviceId: args.deviceId,
-      policy: policy.state,
+      policy,
     });
   } catch (err) {
     await releaseJobHold(claimed.job.id, args.sessionId);
@@ -177,21 +236,14 @@ export async function prepareJobForMaster(args: {
  * The policy state a job runs under, read before it is held: a job its project's policy cannot
  * place is refused by name and stays queued, so the refusal repeats until the policy says how.
  */
-async function policyStateFor(
-  job: JobRow,
-): Promise<
-  { ok: true; state: DispatchState } | { ok: false; refusal: Extract<PrepareResult, { ok: false }> }
-> {
+async function policyStateFor(job: JobRow): Promise<DispatchState> {
   try {
-    return { ok: true, state: await resolveJobPolicy(job) };
+    return await resolveJobPolicy(job);
   } catch (err) {
     const refused = devicesPorts().policyRefusalOf(err);
     if (!refused) throw err;
     logger.warn({ jobId: job.id, projectId: job.projectId, code: refused.code }, refused.detail);
-    return {
-      ok: false,
-      refusal: { ok: false, reason: 'policy_refused', code: refused.code, detail: refused.detail },
-    };
+    throw refusePool('POOL_POLICY_REFUSED', `${refused.code}: ${refused.detail}`);
   }
 }
 
@@ -200,20 +252,33 @@ async function policyStateFor(
  * not approved, or one that waits on a contract version not yet published, is refused by the policy-refusal shape the box already reads, and stays
  * queued until the design is approved or the version is.
  */
-async function designGateFor(job: JobRow): Promise<Extract<PrepareResult, { ok: false }> | null> {
-  if (!job.issueId) return null;
+async function designGateFor(job: JobRow): Promise<void> {
+  if (!job.issueId) return;
   try {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
     await assertDesignApprovedForIssue(job.projectId, job.issueId);
-    return null;
   } catch (err) {
     const refused = heldTakeRefusal(err);
     if (!refused) throw err;
     const code = refusalCodeOf(refused) as DispatchGateCode | 'ISSUE_BLOCKED';
     const detail = refused.refusals.map((r) => r.detail).join(' ');
     logger.warn({ jobId: job.id, projectId: job.projectId, code }, detail);
-    return { ok: false, reason: 'policy_refused', code, detail };
+    throw refusePool('POOL_POLICY_REFUSED', `${code}: ${detail}`);
   }
+}
+
+/**
+ * The status of the run a job belongs to, its row share-locked for the rest of the transaction so a
+ * pause cannot land between this read and the hold; null for a job with no run row.
+ */
+async function lockedRunStatus(tx: Tx, jobId: string): Promise<string | null> {
+  const rows = (await tx.execute(sql`
+    SELECT pr.status FROM pipeline_runs pr
+    JOIN jobs j ON j.pipeline_run_id = pr.id
+    WHERE j.id = ${jobId}
+    FOR SHARE OF pr
+  `)) as unknown as Array<{ status: string }>;
+  return rows[0]?.status ?? null;
 }
 
 /**
@@ -239,21 +304,26 @@ export async function startJobForMaster(args: {
   deviceId: string;
   sessionId: string;
 }): Promise<StartResult> {
-  if (!(await canNameItsAgent(args.deviceId))) {
-    return { ok: false, reason: 'runner_too_old' };
-  }
+  if (!(await canNameItsAgent(args.deviceId)))
+    throw refusePool('POOL_RUNNER_TOO_OLD', RUNNER_TOO_OLD);
+  await assertMasterSessionHeld({ deviceId: args.deviceId, sessionId: args.sessionId, live: true });
   const [job] = await db
-    .select({ projectId: jobs.projectId })
+    .select({ projectId: jobs.projectId, runStatus: pipelineRuns.status })
     .from(jobs)
+    .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
     .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
     .limit(1);
-  if (!job) return { ok: false, reason: 'hold_lost' };
+  if (!job) throw refusePool('POOL_HOLD_LOST', HOLD_LOST(args));
+  if (job.runStatus !== null && job.runStatus !== 'running') {
+    await releaseJobHold(args.jobId, args.sessionId);
+    throw runNotRunning(args.jobId, job.runStatus, ' Its hold was given back.');
+  }
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
   const stamped = await dispatchHeldJob({ ...args, runnerId: runner.id });
   if (!stamped) {
     await releaseJobHold(args.jobId, args.sessionId);
-    return { ok: false, reason: 'hold_lost' };
+    throw refusePool('POOL_HOLD_LOST', HOLD_LOST(args));
   }
   return { ok: true };
 }

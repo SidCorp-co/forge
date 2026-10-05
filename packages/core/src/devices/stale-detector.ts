@@ -1,10 +1,9 @@
 import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { BOX_STALE_MS } from '../lib/dispatch-liveness.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
-
-const DEVICE_STALE_THRESHOLD = "interval '90 seconds'";
 
 export async function runDeviceStaleSweep(): Promise<{
   markedOffline: number;
@@ -14,7 +13,7 @@ export async function runDeviceStaleSweep(): Promise<{
   const { rows } = await transition(db, DEVICE_MACHINE, {
     to: 'offline',
     from: 'online',
-    where: sql.raw(`(last_seen_at IS NULL OR last_seen_at < now() - ${DEVICE_STALE_THRESHOLD})`),
+    where: sql`(last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => ${BOX_STALE_MS / 1000}))`,
     reason: 'stale',
     actor: { type: 'sweeper' },
     source: 'device-stale-detector',

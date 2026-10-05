@@ -1,5 +1,5 @@
 import argon2 from 'argon2';
-import { and, desc, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, type InferSelectModel, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -108,16 +108,23 @@ export async function lockPatName(tx: Tx, name: string): Promise<void> {
 }
 
 /** Who a live token is revoked for: its holder, the box it was issued to, or its name. */
-type TokenHolder = { userId: string } | { deviceId: string } | { name: string };
+type TokenHolder =
+  | { userId: string }
+  | { deviceId: string }
+  | { deviceIds: readonly string[] }
+  | { name: string };
 
 /** Revoke every live token of one holder; answers how many. */
 export async function revokeLiveTokens(holder: TokenHolder, tx: Tx = db): Promise<number> {
+  if ('deviceIds' in holder && holder.deviceIds.length === 0) return 0;
   const of =
     'userId' in holder
       ? eq(personalAccessTokens.userId, holder.userId)
       : 'deviceId' in holder
         ? eq(personalAccessTokens.deviceId, holder.deviceId)
-        : eq(personalAccessTokens.name, holder.name);
+        : 'deviceIds' in holder
+          ? inArray(personalAccessTokens.deviceId, [...holder.deviceIds])
+          : eq(personalAccessTokens.name, holder.name);
   const rows = await tx
     .update(personalAccessTokens)
     .set({ revokedAt: sql`now()` })

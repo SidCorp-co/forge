@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertDeviceBoundToProject } from '../devices/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -11,9 +10,6 @@ import { resolveRegisteredEffectiveSkills } from './effective.js';
 //
 // Device-token endpoints let the Rust runner pull the effective (post-shadow)
 // skill manifest for a project and fetch only the skills whose hash changed.
-
-const unauth = () =>
-  new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
 
 const projectQuerySchema = z.object({
   projectId: z.uuid(),
@@ -36,7 +32,6 @@ deviceSkillRoutes.get(
   zValidator('query', projectQuerySchema),
   async (c) => {
     const device = c.get('device');
-    if (device.status === 'revoked') throw unauth();
     const { projectId, includeFiles } = c.req.valid('query');
     await assertDeviceBoundToProject(device.id, projectId);
 
@@ -75,7 +70,6 @@ deviceSkillRoutes.get(
   zValidator('query', contentQuerySchema),
   async (c) => {
     const device = c.get('device');
-    if (device.status === 'revoked') throw unauth();
     const { skillId } = c.req.valid('param');
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(device.id, projectId);

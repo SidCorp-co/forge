@@ -8,7 +8,7 @@ import { RULES } from '../lib/rate-limits.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { mintEpochFor } from '../middleware/pat-rest-surface.js';
+import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
@@ -198,17 +198,6 @@ deviceOwnerRoutes.delete('/devices/:id', zValidator('param', deviceIdParamSchema
 
   await revokeDevice(id, restActor(c));
 
-  try {
-    roomManager.publish(userRoom(userId), {
-      event: 'device.revoked',
-      data: { deviceId: id },
-    });
-    roomManager.publish(deviceRoom(id), {
-      event: 'device.revoked',
-      data: { deviceId: id },
-    });
-  } catch {}
-
   return c.body(null, 204);
 });
 
@@ -245,6 +234,8 @@ deviceUserRoutes.post(
 
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
+    // The code redeems into a box credential granted everything its holder holds.
+    assertMayMintFullCredential(c);
 
     // 5-minute TTL, server-minted. Retry on unique-violation (collision).
     const minted = await mintPairingCode({ projectId, userId, grantEpoch: mintEpochFor(c) });
@@ -265,8 +256,6 @@ deviceAuthRoutes.post(
   async (c) => {
     const device = c.get('device');
     const input = c.req.valid('json');
-
-    if (device.status === 'revoked') throw unauth();
 
     const wasOffline = device.status !== 'online';
 
@@ -296,13 +285,11 @@ deviceAuthRoutes.post(
 // already 401s on a missing/invalid/revoked token, so no extra auth handling.
 deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
   const device = c.get('device');
-  if (device.status === 'revoked') throw unauth();
   return c.json(await listDeviceAssignments(device.id));
 });
 
 deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
   const device = c.get('device');
-  if (device.status === 'revoked') throw unauth();
 
   const rows = await deviceProjectAgentConfigs(device.id);
 
@@ -337,7 +324,6 @@ deviceAuthRoutes.patch(
   zValidator('json', meRunnerPatchSchema),
   async (c) => {
     const device = c.get('device');
-    if (device.status === 'revoked') throw unauth();
     const { runnerId } = c.req.valid('param');
     const { repoPath, branch } = c.req.valid('json');
 
@@ -370,7 +356,6 @@ deviceAuthRoutes.post(
   zValidator('json', provisionStatusSchema),
   async (c) => {
     const device = c.get('device');
-    if (device.status === 'revoked') throw unauth();
     const { runnerId } = c.req.valid('param');
     const { status, detail } = c.req.valid('json');
 

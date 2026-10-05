@@ -24,48 +24,6 @@ function poolClause(deviceIds: string[] | null | undefined, column = sql`device_
   )})`;
 }
 
-/**
- * Circuit breaker — number of consecutive recent FAILED terminal jobs on a
- * device (for a project) that trips it out of dispatch selection. Override via
- * `DEVICE_FAILURE_STREAK` env. Default 3.
- */
-export const DEVICE_FAILURE_STREAK = (() => {
-  const n = Number.parseInt(process.env.DEVICE_FAILURE_STREAK ?? '', 10);
-  return Number.isFinite(n) && n > 0 ? n : 3;
-})();
-
-const DEVICE_TRIP_WINDOW_MS = (() => {
-  const n = Number.parseInt(process.env.DEVICE_TRIP_WINDOW_MS ?? '', 10);
-  return Number.isFinite(n) && n > 0 ? n : 15 * 60_000;
-})();
-
-export async function getTrippedDeviceIds(projectId: string): Promise<string[]> {
-  const windowSeconds = Math.floor(DEVICE_TRIP_WINDOW_MS / 1000);
-  const rows = await db.execute<{ device_id: string }>(
-    sql`
-      WITH recent AS (
-        SELECT j.device_id, j.status, j.finished_at,
-               row_number() OVER (
-                 PARTITION BY j.device_id ORDER BY j.finished_at DESC
-               ) AS rn
-        FROM jobs j
-        WHERE j.project_id = ${projectId}
-          AND j.device_id IS NOT NULL
-          AND j.finished_at IS NOT NULL
-          AND j.status IN ('failed', 'done')
-      )
-      SELECT device_id
-      FROM recent
-      WHERE rn <= ${DEVICE_FAILURE_STREAK}
-      GROUP BY device_id
-      HAVING count(*) = ${DEVICE_FAILURE_STREAK}
-         AND bool_and(status = 'failed')
-         AND max(finished_at) > now() - (${windowSeconds} || ' seconds')::interval
-    `,
-  );
-  return rows.map((r) => r.device_id).filter((id): id is string => Boolean(id));
-}
-
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,

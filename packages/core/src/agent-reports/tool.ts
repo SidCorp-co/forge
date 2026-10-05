@@ -236,7 +236,7 @@ async function triage(ctx: McpContext, input: Input) {
       ];
     } else {
       const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+      await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
       scope = [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)];
     }
   } else {
@@ -245,7 +245,7 @@ async function triage(ctx: McpContext, input: Input) {
     }
     if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+    await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
     const row = await readReport(input.reportId);
     if (!row || row.projectId !== projectId) {
       throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);

@@ -1,11 +1,10 @@
 import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { BOX_STALE_MS } from '../lib/dispatch-liveness.js';
 import { projectRoom, roomManager, runnerRoom } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
 import { insertRunnerEvent } from './runner-events.js';
-
-const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";
 
 export async function runRunnerStaleSweep(): Promise<{
   markedOffline: number;
@@ -16,7 +15,7 @@ export async function runRunnerStaleSweep(): Promise<{
     to: 'offline',
     from: 'online',
     set: { updatedAt: new Date() },
-    where: sql.raw(`(last_seen_at IS NULL OR last_seen_at < now() - ${RUNNER_STALE_THRESHOLD})`),
+    where: sql`(last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => ${BOX_STALE_MS / 1000}))`,
     reason: 'stale',
     actor: { type: 'sweeper' },
     source: 'runner-stale-detector',
