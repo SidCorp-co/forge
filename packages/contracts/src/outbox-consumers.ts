@@ -54,6 +54,9 @@ export const OUTBOX_CONSUMERS = {
 	"requirement.agreed": ["master-wake"],
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
+	"feedback.filed": ["master-wake"],
+	"feedback.verifyAsked": ["notify-feedback"],
+	"feedback.verifySettled": ["notify-feedback"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

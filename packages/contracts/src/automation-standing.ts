@@ -188,7 +188,7 @@ export interface ScheduleStanding
 	nextFireAt: string | null;
 	/** Whom a prompt fire runs as; null once that account is gone. */
 	owner: AutomationPerson | null;
-	/** Trailing failed fires, a no-device skip counted and already-applied not (alert A5's rule). */
+	/** Trailing failed fires, a no-device or project-not-found skip counted and the others not (alert A5's rule). */
 	streak: number;
 	lastFire: ScheduleLastFire | null;
 	/** What the viewer may do: edit it (pause and fix included), and take it over when it is not theirs. */

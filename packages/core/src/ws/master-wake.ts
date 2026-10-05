@@ -1,3 +1,4 @@
+import type { FeedbackSeverity } from '@forge/contracts/feedback';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { masterCharterPath } from '@forge/contracts/master-standing';
 import { eq } from 'drizzle-orm';
@@ -25,6 +26,7 @@ export const MASTER_WAKE_SOURCES = [
   'workflow_design',
   'comment',
   'requirement',
+  'feedback',
 ] as const;
 type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
@@ -137,6 +139,22 @@ async function wakeMastersForRequirement(args: {
   });
 }
 
+/** Feedback filed at high or critical severity is the only filing a master is woken for. */
+const WAKING_SEVERITIES: readonly FeedbackSeverity[] = ['high', 'critical'];
+
+async function wakeMastersForFeedback(args: {
+  projectId: string;
+  feedbackId: string;
+  severity: FeedbackSeverity;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'feedback',
+    feedbackId: args.feedbackId,
+    severity: args.severity,
+  });
+}
+
 async function publishWake(
   projectId: string,
   data: { projectId: string; source: MasterWakeSource } & Record<string, unknown>,
@@ -239,6 +257,14 @@ export function registerMasterWakeSubscribers(): void {
     name: 'master-wake',
     handle: async (p) => {
       await wakeMastersForRequirement(p);
+    },
+  });
+
+  consume('feedback.filed', {
+    name: 'master-wake',
+    handle: async (p) => {
+      if (!WAKING_SEVERITIES.includes(p.severity)) return;
+      await wakeMastersForFeedback(p);
     },
   });
 

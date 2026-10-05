@@ -1,6 +1,5 @@
-import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
+import type { InboundRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../../db/schema.js';
-import { refuser } from '../../lib/refusal.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -11,6 +10,7 @@ import {
   type InboundFact,
   type IntegrationAdapterMethods,
   recordRefusedInbound,
+  refusedInbound,
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
@@ -118,8 +118,6 @@ async function grantShortfall(
   return grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
 }
 
-const refuseInbound = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecretField: 'webhookSecret',
   inboundSecretHome:
@@ -203,7 +201,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     // A verified delivery that cannot be applied is a recorded refusal, never a throw the door
     // answers 500 with and no row remembers.
     const refuseRecorded = async (
-      code: Extract<IntegrationRefusalCode, `WEBHOOK_${string}`>,
+      code: InboundRefusalCode,
       detail: string,
       path: string,
     ): Promise<never> => {
@@ -215,7 +213,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
         code,
         detail,
       });
-      throw refuseInbound(code, `${detail} (delivery ${deliveryId})`, path);
+      throw refusedInbound(code, detail, deliveryId, path);
     };
     if (!eventType) {
       return refuseRecorded(

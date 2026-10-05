@@ -156,7 +156,7 @@ export function FeedbackPage({
         {tab === "overview" ? (
           <div className="grid gap-8" data-testid="view-overview">
             <Proposals projectId={projectId} f={f} />
-            {f.can.triage || f.can.verify || f.can.reopen || f.can.redact ? (
+            {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
               <section id="feedback-act">
                 <FeedbackActions projectId={projectId} f={f} />
               </section>

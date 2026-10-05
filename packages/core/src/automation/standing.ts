@@ -130,7 +130,7 @@ function scheduleStateOf(
   if (streak && streakFails(streak, s, failStreak, now)) {
     return {
       state: 'failing',
-      rule: `its last ${streak.streak} fires failed, at or above scheduleFailStreak ${failStreak} (a no-device skip counts, already-applied does not); it clears on the next successful fire, not on an edit`,
+      rule: `its last ${streak.streak} fires failed, at or above scheduleFailStreak ${failStreak} (a no-device or project-not-found skip counts, nothing-to-do and gate-refused do not); it clears on the next successful fire, not on an edit`,
     };
   }
   if (lastFire?.status === 'running')

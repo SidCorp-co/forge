@@ -7,5 +7,6 @@ export { listFeedbackAs } from './list-read.js';
 export { rowIn } from './read.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
+export { sweepDeclinedFeedback } from './retention.js';
 export { lockFeedback } from './service.js';
 export { triageIn } from './triage.js';

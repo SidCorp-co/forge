@@ -1,3 +1,4 @@
+import type { InboundRefusalCode } from '@forge/contracts/integrations';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -10,6 +11,8 @@ import {
   type IntegrationAdapterMethods,
   inboundWebhookUrl,
   isPreviousCredentialValid,
+  recordRefusedInbound,
+  refusedInbound,
   resolveApiBaseUrl,
   updateConnection,
 } from '../index.js';
@@ -175,16 +178,41 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
 
   async handleInbound(ctx, input: InboundDispatchInput): Promise<InboundDispatchResult> {
     const eventType = input.headers['x-gitlab-event'];
-    if (!eventType) throw new Error('gitlab webhook: x-gitlab-event missing');
     const payload = (input.payload ?? {}) as {
       project?: { path_with_namespace?: string; id?: number };
     };
+    const uuid = input.headers['x-gitlab-event-uuid'] ?? input.headers['x-gitlab-webhook-uuid'];
+    const refuseRecorded = async (
+      code: InboundRefusalCode,
+      detail: string,
+      path: string,
+    ): Promise<never> => {
+      const deliveryId = await recordRefusedInbound({
+        bindingId: ctx.bindingId,
+        eventName: eventType ?? 'unknown',
+        payload,
+        requestId: uuid,
+        code,
+        detail,
+      });
+      throw refusedInbound(code, detail, deliveryId, path);
+    };
+    if (!eventType) {
+      return refuseRecorded(
+        'WEBHOOK_EVENT_MISSING',
+        'gitlab webhook: the x-gitlab-event header is missing, so there is no event to apply',
+        '',
+      );
+    }
     const arrived = payload.project?.path_with_namespace;
     const expected = ctx.config?.projectPath;
     if (arrived && expected && arrived.toLowerCase() !== expected.toLowerCase()) {
-      throw new Error(`gitlab webhook: delivery is for ${arrived}, this binding is ${expected}`);
+      return refuseRecorded(
+        'WEBHOOK_FOREIGN_REPOSITORY',
+        `gitlab webhook: delivery is for ${arrived}, this binding is ${expected}`,
+        '/project/path_with_namespace',
+      );
     }
-    const uuid = input.headers['x-gitlab-event-uuid'] ?? input.headers['x-gitlab-webhook-uuid'];
     const facts: InboundFact[] = [];
     const { deliveryId, result } = await applyClaimedInbound(
       {

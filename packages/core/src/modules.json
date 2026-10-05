@@ -720,7 +720,12 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["notificationDeliveries", "notificationDeliveryMembers", "notifications"],
-      "serves": ["REQ-11", "REQ-14", "requirement-to-delivery#acceptance"]
+      "serves": [
+        "REQ-11",
+        "REQ-14",
+        "requirement-to-delivery#acceptance",
+        "feedback-triage#verify-ask"
+      ]
     },
     "onboarding": {
       "kind": "domain",
@@ -1037,7 +1042,12 @@
     "ws": {
       "kind": "door",
       "context": "platform",
-      "serves": ["REQ-11", "issue-delivery#rule-dispatch", "requirement-to-delivery#delivery"]
+      "serves": [
+        "REQ-11",
+        "issue-delivery#rule-dispatch",
+        "requirement-to-delivery#delivery",
+        "feedback-lifecycle#start"
+      ]
     }
   },
   "web": {

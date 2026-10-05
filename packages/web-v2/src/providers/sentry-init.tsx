@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { initSentry } from "@/lib/sentry";
+import { installSentryErrorTracking } from "@/lib/sentry";
 
 export function SentryInit() {
   useEffect(() => {
-    initSentry();
+    installSentryErrorTracking();
   }, []);
   return null;
 }

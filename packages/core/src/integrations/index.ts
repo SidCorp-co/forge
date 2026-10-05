@@ -18,6 +18,7 @@ export {
   recentOutboundDeliveries,
   recordDelivery,
   recordRefusedInbound,
+  refusedInbound,
   updateDelivery,
 } from './deliveries.js';
 export { forgeReads, provideForgeReads } from './forge-reads.js';

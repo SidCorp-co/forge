@@ -101,6 +101,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
     <section className="grid gap-2" data-testid="feedback-verify">
       <h3 className="text-12 font-semibold text-muted">Confirm the fix</h3>
       <p className="text-12 text-muted">Feedback is never verified automatically: the reporter, or a BA on their behalf, confirms it.</p>
+      {f.can.askVerify ? <p className="text-12 text-muted">Asking sends the item to the reporter, where it stays until it is verified or reopened.</p> : null}
       {reopening ? (
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="What the fix does not answer" />
       ) : null}
@@ -115,6 +116,11 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
             {f.can.verify ? (
               <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify" })}>
                 Mark verified
+              </Button>
+            ) : null}
+            {f.can.askVerify ? (
+              <Button type="button" size="sm" loading={act.isPending} onClick={() => act.mutate({ kind: "verify-ask" })}>
+                Ask the reporter
               </Button>
             ) : null}
             {f.can.reopen ? (
@@ -158,7 +164,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
   return (
     <div className="grid gap-4">
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
-      {f.can.verify || f.can.reopen ? <VerifyBar projectId={projectId} f={f} /> : null}
+      {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
     </div>
   );

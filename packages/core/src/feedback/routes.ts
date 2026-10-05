@@ -3,6 +3,7 @@ import {
   createFeedbackRequestSchema,
   FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_CLARIFICATION_SHAPE,
+  FEEDBACK_EMPTY_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
@@ -10,6 +11,7 @@ import {
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
+  feedbackEmptyRequestSchema,
   feedbackReasonRequestSchema,
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
@@ -30,7 +32,13 @@ import { listFeedbackAs } from './list-read.js';
 import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor } from './read.js';
 import { redactReporterData } from './redact.js';
-import { createFeedback, type FeedbackOutcome, reopenFeedback, verifyFeedback } from './service.js';
+import {
+  askReporterToVerify,
+  createFeedback,
+  type FeedbackOutcome,
+  reopenFeedback,
+  verifyFeedback,
+} from './service.js';
 import { triageFeedback } from './triage.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
@@ -168,6 +176,16 @@ feedbackRoutes.post(
         note: c.req.valid('json').note,
       }),
     );
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/verify-ask',
+  itemParam,
+  strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return answer(c, await askReporterToVerify({ projectId: id, ref: fb, actor: actorOf(c) }));
   },
 );
 

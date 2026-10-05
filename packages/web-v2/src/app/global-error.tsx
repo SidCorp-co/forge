@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { PageTitle } from "@/design";
-import * as Sentry from "@sentry/react";
+import { reportFailure } from "@/lib/error-tracking";
 
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
-    Sentry.captureException(error, {
+    reportFailure(error, {
       tags: { area: "root-layout" },
       contexts: error.digest ? { forge_next: { digest: error.digest } } : undefined,
     });

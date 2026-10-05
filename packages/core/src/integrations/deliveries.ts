@@ -1,3 +1,4 @@
+import type { InboundRefusalCode, IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { and, desc, eq, gte, isNotNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -5,6 +6,7 @@ import {
   type IntegrationDeliveryStatus,
   integrationDeliveries,
 } from '../db/schema.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 
 interface RecordDeliveryInput {
   bindingId: string | null;
@@ -120,6 +122,21 @@ export async function applyClaimedInbound<
     await updateDelivery(claim.id, { status: 'failed', errorMessage, completedAt: new Date() });
     throw err;
   }
+}
+
+const refuseInbound = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
+/**
+ * The refusal an adapter throws once `recordRefusedInbound` has written the row, naming that row,
+ * so a verified delivery that cannot be applied is never a plain throw the door answers 500 with.
+ */
+export function refusedInbound(
+  code: InboundRefusalCode,
+  detail: string,
+  deliveryId: string,
+  path = '',
+): RefusalError {
+  return refuseInbound(code, `${detail} (delivery ${deliveryId})`, path);
 }
 
 /**

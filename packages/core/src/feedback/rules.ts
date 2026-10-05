@@ -108,6 +108,29 @@ export function verifyRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
   );
 }
 
+// the reporter is asked only about a resolved item (FEEDBACK_NOT_RESOLVED), and never by themselves
+// (FEEDBACK_VERIFY_ASK_SELF): the reporter verifies their own item directly
+export function verifyAskRefusal(
+  phase: FeedbackPhase,
+  askerIsReporter: boolean,
+): FeedbackRefusal | null {
+  if (phase !== 'resolved') {
+    return refusal(
+      'FEEDBACK_NOT_RESOLVED',
+      '/status',
+      `the item reads ${phase}; the reporter is asked to verify it only once its linked work shipped (resolved).`,
+    );
+  }
+  if (askerIsReporter) {
+    return refusal(
+      'FEEDBACK_VERIFY_ASK_SELF',
+      '',
+      'you reported this item; verify it (POST .../verify) or reopen it (POST .../reopen) instead of asking yourself.',
+    );
+  }
+  return null;
+}
+
 // a reopen follows resolved and carries the reporter's reason (FEEDBACK_REOPEN_REASON_REQUIRED)
 export function reopenRefusal(
   phase: FeedbackPhase,
@@ -164,6 +187,16 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
 /** Picking a route, declining, marking a duplicate, verifying, reopening: approvals (ADR 0007). */
 export const decideActRefusal = (facts: PermissionFacts, act: string) =>
   permissionRefusal(facts, 'feedback.approve', act);
+
+/** The reporter verifies or reopens their own item; anyone else does it with feedback.approve. */
+export function personalActRefusal(
+  facts: PermissionFacts,
+  act: 'verified' | 'reopened',
+  actorIsReporter: boolean,
+): FeedbackRefusal | null {
+  if (actorIsReporter) return null;
+  return decideActRefusal(facts, act === 'verified' ? 'verifying feedback' : 'reopening feedback');
+}
 
 /** Deleting reporter data (UC15). */
 export const redactActRefusal = (facts: PermissionFacts) =>

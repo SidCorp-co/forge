@@ -514,7 +514,6 @@ export const ENUM_LABELS = {
 	fireSkipReason: {
 		"no-device": "No box could take it",
 		"project-not-found": "Its target project is gone",
-		"already-applied": "Already applied",
 		"nothing-to-do": "Nothing to do",
 		"gate-refused": "The gate refused it",
 	} satisfies Record<ScheduleRunSkipReason, string>,

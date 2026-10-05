@@ -6,11 +6,12 @@
  * `feedback_decisions` row.
  */
 
-import type {
-  CreateFeedbackRequest,
-  FeedbackRoute,
-  FeedbackTriageEffect,
-  FeedbackView,
+import {
+  type CreateFeedbackRequest,
+  type FeedbackRoute,
+  type FeedbackTriageEffect,
+  type FeedbackView,
+  feedbackKey,
 } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
@@ -23,6 +24,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { embedFeedbackLater } from './embeddings.js';
@@ -32,8 +34,11 @@ import { isRefusal, resolveTarget } from './refs.js';
 import {
   decideActRefusal,
   declineRefusal,
+  personalActRefusal,
+  redactedRefusal,
   reopenRefusal,
   targetCountRefusal,
+  verifyAskRefusal,
   verifyRefusal,
 } from './rules.js';
 
@@ -132,8 +137,13 @@ export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<str
   const [row] = await tx
     .insert(feedback)
     .values({ ...values, fbSeq: next })
-    .returning({ id: feedback.id });
+    .returning({ id: feedback.id, severity: feedback.severity });
   if (!row) throw new Error('feedback: the insert returned no row');
+  await emitEvent(tx, 'feedback.filed', {
+    projectId: values.projectId,
+    feedbackId: row.id,
+    severity: row.severity,
+  });
   return row.id;
 }
 
@@ -268,14 +278,11 @@ async function personalAct(
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const first = await rowIn(db, projectId, input.ref);
-  // the machine's reporter.reopened edge carries no permission: the reporter reopens their own item
-  const ownReopen = act === 'reopened' && actor.userId === first.reportedBy;
-  const forbidden = ownReopen
-    ? null
-    : decideActRefusal(
-        await roleFacts(actor, projectId),
-        act === 'verified' ? 'verifying feedback' : 'reopening feedback',
-      );
+  const forbidden = personalActRefusal(
+    await roleFacts(actor, projectId),
+    act,
+    actor.userId === first.reportedBy,
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
@@ -301,13 +308,56 @@ async function personalAct(
         [input.note?.trim(), act === 'verified' ? onBehalf : null].filter(Boolean).join(' · ') ||
         null,
     });
+    await emitEvent(tx, 'feedback.verifySettled', {
+      projectId,
+      feedbackId: row.id,
+      key: feedbackKey(row.fbSeq),
+      decision: act,
+    });
     return null;
   });
   if (refusals) return { ok: false, refusals };
   return answer(projectId, first.id, actor);
 }
 
-/** The reporter, or a BA naming them, confirms the fix: never automatic, never an agent. */
+/**
+ * feedback-triage `verify-ask`: a holder of feedback.approve sends a resolved item to its reporter,
+ * whose bell then holds the ask until the item is verified or reopened.
+ */
+export async function askReporterToVerify(input: {
+  projectId: string;
+  ref: string;
+  actor: FeedbackActor;
+}): Promise<FeedbackOutcome> {
+  const { projectId, actor } = input;
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  const forbidden = decideActRefusal(
+    await roleFacts(actor, projectId),
+    'asking the reporter to verify',
+  );
+  if (forbidden) return { ok: false, refusals: [forbidden] };
+  const first = await rowIn(db, projectId, input.ref);
+  const refusals = await inTx(async (tx) => {
+    await lockFeedback(tx, projectId);
+    const row = await rowIn(tx, projectId, first.id, true);
+    const refused =
+      verifyAskRefusal(await phaseOfRow(projectId, row), row.reportedBy === actor.userId) ??
+      redactedRefusal(row.redactedAt);
+    if (refused) return [refused];
+    await emitEvent(tx, 'feedback.verifyAsked', {
+      projectId,
+      feedbackId: row.id,
+      key: feedbackKey(row.fbSeq),
+      title: row.title,
+      reporter: row.reportedBy,
+    });
+    return null;
+  });
+  if (refusals) return { ok: false, refusals };
+  return answer(projectId, first.id, actor);
+}
+
+/** The reporter confirms the fix, or a holder of feedback.approve on their behalf; never automatic. */
 export const verifyFeedback = (input: {
   projectId: string;
   ref: string;
