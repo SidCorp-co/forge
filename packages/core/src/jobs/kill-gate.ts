@@ -2,12 +2,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { deviceRoom, roomManager } from '../lib/rooms.js';
+import { emitEvent } from '../outbox/index.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
 export interface KillableJobRef {
   id: string;
+  projectId: string;
   deviceId: string | null;
   runnerId: string | null;
   killRequestedAt: Date | null;
@@ -57,9 +58,13 @@ export async function requestJobKill(
       .where(eq(jobs.id, job.id));
   }
   if (!job.deviceId) return 'no_device';
-  roomManager.publish(deviceRoom(job.deviceId), {
+  await emitEvent(db, 'job.changed', {
+    projectId: job.projectId,
+    jobId: job.id,
+    deviceId: job.deviceId,
     event: 'job.cancel',
     data: { jobId: job.id, reason },
+    rooms: ['device'],
   });
   return 'requested';
 }

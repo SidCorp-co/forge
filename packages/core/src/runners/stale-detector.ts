@@ -2,8 +2,8 @@ import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { BOX_STALE_MS } from '../lib/dispatch-liveness.js';
-import { projectRoom, roomManager, runnerRoom } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { insertRunnerEvent } from './runner-events.js';
 
 export async function runRunnerStaleSweep(): Promise<{
@@ -31,13 +31,12 @@ export async function runRunnerStaleSweep(): Promise<{
       newStatus: 'offline',
       reason: 'stale',
     });
-    roomManager.publish(runnerRoom(row.id), {
+    await emitEvent(db, 'runner.changed', {
+      projectId: row.projectId,
+      runnerId: row.id,
       event: 'runner.status',
       data: { runnerId: row.id, status: 'offline', reason: 'stale' },
-    });
-    roomManager.publish(projectRoom(row.projectId), {
-      event: 'runner.status',
-      data: { runnerId: row.id, status: 'offline', reason: 'stale' },
+      runnerRoom: true,
     });
   }
 

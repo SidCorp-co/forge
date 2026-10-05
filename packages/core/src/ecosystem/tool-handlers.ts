@@ -4,11 +4,7 @@ import { supersedeBuilderRun } from './builder-supersede.js';
 import type { ContractDecision } from './contract/approval.js';
 import { decideContractVersion, decidedView } from './contract/decide.js';
 import { publishContractVersion } from './contract/publish.js';
-import {
-  loadContractContext,
-  recordContractContext,
-  sessionInProject,
-} from './contract/run-context-service.js';
+import { readContractContext } from './contract/run-context-service.js';
 import { interfaceView, loadInterface, writeInterface } from './interface-service.js';
 import {
   listBuilderRunsAs,
@@ -74,16 +70,10 @@ export const HANDLERS: Record<
   context: async (ctx, side, a) => {
     await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
     const session = typeof a.session === 'string' ? a.session : null;
-    if (session && !(await sessionInProject(side, session))) {
-      return one(
-        'ECOSYSTEM_RECORD_NOT_FOUND',
-        '/session',
-        `project ${side} holds no agent session ${session}`,
-      );
-    }
-    const loaded = await loadContractContext(side, a.paths as string[]);
-    if (session && loaded.length) await recordContractContext(session, loaded, 'agent');
-    return { loaded, returned: loaded.length, recorded: Boolean(session && loaded.length) };
+    const read = await readContractContext(side, a.paths as string[], session);
+    if (!read.ok) return refusedWith(read.refusals);
+    const { ok: _ok, ...answer } = read;
+    return answer;
   },
   interface_write: async (ctx, side, a) => {
     const outcome = await writeInterface({ projectId: side, ...writeOf(ctx, a) });

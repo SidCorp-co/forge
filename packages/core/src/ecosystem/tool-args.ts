@@ -32,6 +32,12 @@ const envelope = {
   document: z.unknown().refine((v) => v !== undefined, 'document is required'),
 };
 
+/** What a contract-context load takes, at both doors. */
+export const CONTEXT_ARGS = z.strictObject({
+  paths: z.array(repoPath()).min(1).max(200),
+  session: z.uuid().optional(),
+});
+
 /** What each action takes; a key another action takes is refused here, not dropped. */
 const BY_ACTION = {
   interface: z.strictObject({}),
@@ -40,10 +46,7 @@ const BY_ACTION = {
   builder_runs: z.strictObject({}),
   builder_run: z.strictObject({ run: z.uuid() }),
   bus: z.strictObject({ ecosystem: z.uuid() }),
-  context: z.strictObject({
-    paths: z.array(repoPath()).min(1).max(200),
-    session: z.uuid().optional(),
-  }),
+  context: CONTEXT_ARGS,
   interface_write: z.strictObject(envelope),
   link_create: z.strictObject(envelope),
   link_update: z.strictObject({ link: z.uuid(), ...envelope }),
@@ -75,6 +78,9 @@ const BY_ACTION = {
   }),
 } satisfies Record<Action, z.ZodType>;
 
+export const CONTEXT_SHAPE =
+  '{ paths: the repository paths this run touches, session?: the agent session to record the load on }';
+
 const SHAPES: Record<Action, string> = {
   interface: '{}',
   links: '{}',
@@ -82,8 +88,7 @@ const SHAPES: Record<Action, string> = {
   builder_runs: '{}',
   builder_run: '{ run: a builder run uuid }',
   bus: '{ ecosystem: an ecosystem uuid }',
-  context:
-    '{ paths: the repository paths this run touches, session?: the agent session to record the load on }',
+  context: CONTEXT_SHAPE,
   interface_write: '{ baseRevision: the revision read, or null for a first write, document }',
   link_create: '{ baseRevision: null, document: a link-v1 document }',
   link_update: '{ link, baseRevision, document: a link-v1 document }',

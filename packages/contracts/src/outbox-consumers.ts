@@ -24,7 +24,11 @@ export const OUTBOX_CONSUMERS = {
 	],
 	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
-	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims", "run-status-broadcast"],
+	"run.transitioned": [
+		"paused-run-wedge-resolve",
+		"release-batch-claims",
+		"run-status-broadcast",
+	],
 	"comment.created": ["activity-feed", "master-wake"],
 	"comment.updated": ["activity-feed"],
 	"comment.deleted": ["activity-feed"],
@@ -50,6 +54,11 @@ export const OUTBOX_CONSUMERS = {
 	"requirement.agreed": ["master-wake"],
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
+	"credential.tokenChanged": ["ws-broadcast"],
+	"runner.changed": ["ws-broadcast"],
+	"job.changed": ["ws-broadcast"],
+	"job.eventsAppended": ["ws-broadcast"],
+	"session.changed": ["ws-broadcast"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

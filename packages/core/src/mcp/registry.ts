@@ -27,10 +27,10 @@ export const MCP_TOOLS = {
   forge_agent_report: (ctx) => forgeAgentReportTool(ctx),
   // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
   forge_uploads: (ctx) => forgeUploadsTool(ctx),
-  // Every action but forge_ecosystem `context` has a REST twin under
-  // /api/projects/:id/channel|interface|links|builder-runs|contracts and /api/ecosystems, and every
-  // prompt in this repo names the route; kept only for forge-plugin clients, whose CLI has no REST
-  // verbs for them, until mcp_audit_log shows no call (reported there). `context` is MCP-only.
+  // Every action has a REST twin under
+  // /api/projects/:id/channel|interface|links|builder-runs|contracts|contract-context and
+  // /api/ecosystems, and every prompt in this repo names the route; kept only for forge-plugin
+  // clients, whose CLI has no REST verbs for them, until mcp_audit_log shows no call (reported there).
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
   // A core-mediated integration's agent path: the provider credential stays in core. forge_source,

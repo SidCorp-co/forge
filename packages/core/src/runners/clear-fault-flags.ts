@@ -34,7 +34,7 @@ export async function clearRunnerFaultFlags(runnerId: string, projectId: string)
 
   if (!cleared) return false;
   logger.info({ runnerId, projectId }, 'runner fault flags cleared by operator');
-  broadcastRunnerChanged(projectId, runnerId);
+  await broadcastRunnerChanged(projectId, runnerId);
   await resolvePipelineWedge(runnerId);
   return true;
 }

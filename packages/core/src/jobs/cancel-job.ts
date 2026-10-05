@@ -4,9 +4,9 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
-import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
+import { emitEvent } from '../outbox/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
 import { refuseJob } from './refusals.js';
@@ -65,9 +65,13 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    roomManager.publish(projectRoom(updated.projectId), {
+    await emitEvent(db, 'job.changed', {
+      projectId: updated.projectId,
+      jobId: updated.id,
+      deviceId: updated.deviceId,
       event: 'job.cancelled',
       data: { jobId: updated.id, status: 'cancelled' },
+      rooms: ['project'],
     });
 
     if (updated.issueId) {
@@ -94,14 +98,22 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   if (!updated) throw notFound('job not found');
 
   if (updated.deviceId) {
-    roomManager.publish(deviceRoom(updated.deviceId), {
+    await emitEvent(db, 'job.changed', {
+      projectId: updated.projectId,
+      jobId: updated.id,
+      deviceId: updated.deviceId,
       event: 'job.cancel',
       data: { jobId: updated.id },
+      rooms: ['device'],
     });
   }
-  roomManager.publish(projectRoom(updated.projectId), {
+  await emitEvent(db, 'job.changed', {
+    projectId: updated.projectId,
+    jobId: updated.id,
+    deviceId: updated.deviceId,
     event: 'job.cancelRequested',
     data: { jobId: updated.id },
+    rooms: ['project'],
   });
 
   return {

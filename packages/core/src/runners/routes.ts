@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runnerStatuses, runnerTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
 import { ownedDeviceForBind } from './project-binding.js';
@@ -180,9 +181,12 @@ runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
     config: result.config,
   });
 
-  roomManager.publish(projectRoom(input.projectId), {
+  await emitEvent(db, 'runner.changed', {
+    projectId: input.projectId,
+    runnerId: row.id,
     event: 'runner.created',
     data: { runnerId: row.id, type: row.type },
+    runnerRoom: false,
   });
 
   return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
@@ -233,9 +237,12 @@ runnerRoutes.patch(
       row = { ...updated, status: input.status };
     }
 
-    roomManager.publish(projectRoom(row.projectId), {
+    await emitEvent(db, 'runner.changed', {
+      projectId: row.projectId,
+      runnerId: row.id,
       event: 'runner.updated',
       data: { runnerId: row.id, status: row.status },
+      runnerRoom: false,
     });
 
     return c.json({ runner: publicRunner(rowToRunner(row)) });
@@ -250,9 +257,12 @@ runnerRoutes.delete('/:id', zValidator('param', idParam), async (c) => {
   const access = await loadProjectAccess(existing.projectId, userId);
   requireHeld(access, 'project.admin');
   await deleteRunner(id);
-  roomManager.publish(projectRoom(existing.projectId), {
+  await emitEvent(db, 'runner.changed', {
+    projectId: existing.projectId,
+    runnerId: id,
     event: 'runner.deleted',
     data: { runnerId: id },
+    runnerRoom: false,
   });
   return c.json({ ok: true });
 });

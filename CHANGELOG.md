@@ -13,6 +13,8 @@
 - **Kernels reach each other only through their faces.** Strand findings use the issues writer,
   permissions and the WebSocket door read no foreign table, chat egress is gated in the LLM
   adapter, and prompts name REST over three MCP tools.
+- **Live pushes for jobs, runners and tokens go through the outbox.** A project's unanswered
+  channel documents and its contract context now have REST routes a personal token can call.
 
 ## [0.4.0-dev.30] - 2026-10-05
 

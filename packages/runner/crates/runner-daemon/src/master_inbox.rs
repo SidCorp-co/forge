@@ -143,7 +143,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
             .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
             .collect();
         line.push_str(&format!(
-            " The ecosystem channel owes {} repl{} ({}): read each (`forge-runner api projects/<projectId>/channel/documents/<number>`), and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
+            " The ecosystem channel owes {} repl{} ({}): list them (`forge-runner api projects/<projectId>/channel/unanswered`), read each (`forge-runner api projects/<projectId>/channel/documents/<number>`), and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
             docs.len(),
             if docs.len() == 1 { "y" } else { "ies" },
             numbers.join(", ")

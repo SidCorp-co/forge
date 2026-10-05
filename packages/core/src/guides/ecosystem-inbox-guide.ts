@@ -11,14 +11,16 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
-  version: 6,
+  version: 7,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
 about a contract it consumes, a request for information, a change request. A document that owes a
 reply is work for the project's master exactly as an open issue is, and it is worked over REST: the
 channel under \`/api/projects/:id/channel\`, the interface, links and builder runs under
-\`/api/projects/:id/interface|links|builder-runs\`, where \`:id\` is this project. On a box,
+\`/api/projects/:id/interface|links|builder-runs\`, where \`:id\` is this project. The contracts a
+set of repository paths reaches, recorded on your session when you name it:
+\`POST /api/projects/:id/contract-context { paths, session? }\`. On a box,
 \`forge-runner api <path>\` supplies the \`/api/\` prefix and the box's token.
 
 ### How it reaches you
@@ -35,8 +37,8 @@ channel under \`/api/projects/:id/channel\`, the interface, links and builder ru
 
 ### What counts as owed
 \`GET /api/devices/me/channel/unanswered?projectId=<id>\` lists exactly what the sweep counted. It
-answers a device's token only, so the nudge names each number it counted; a personal token reads
-\`GET /api/projects/:id/channel/inbox\` and each number from there. A document is on it when it is
+answers a device's token; a personal token reads the same list at
+\`GET /api/projects/:id/channel/unanswered\`, and the nudge names each number it counted. A document is on it when it is
 published to this project, its type owes a reply (a binding change notice owes an acknowledgement; an
 RFI and a change request owe a decision), no published reply from this project answers it yet, no
 person holds its thread, and no reply of yours is already waiting at the approve gate. A non-binding

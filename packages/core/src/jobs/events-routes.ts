@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
+import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   DEVICE_POSTED_JOB_EVENT_KINDS,
@@ -11,11 +12,11 @@ import {
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
@@ -140,7 +141,7 @@ async function syncLinkedSession(
       deviceId,
     );
     if (started) {
-      broadcastSessionEvent(
+      await broadcastSessionEvent(
         started.id,
         started.projectId,
         started.deviceId,
@@ -186,11 +187,17 @@ jobEventsRoutes.post(
 
     const inserted = await appendJobEvents(jobId, persisted);
 
-    // Post-commit broadcast. Iterate and publish; failures bubble (fail-fast).
-    for (const row of inserted) {
-      roomManager.publish(projectRoom(job.projectId), {
-        event: 'job.event',
-        data: { jobId, seq: row.seq, kind: row.kind, ts: row.ts, data: row.data },
+    // Post-commit push, one outbox event per stored batch; failures bubble (fail-fast).
+    if (inserted.length > 0) {
+      await emitEvent(db, 'job.eventsAppended', {
+        projectId: job.projectId,
+        jobId,
+        events: inserted.map((row) => ({
+          seq: row.seq,
+          kind: row.kind,
+          ts: row.ts.toISOString(),
+          data: row.data,
+        })),
       });
     }
 

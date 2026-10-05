@@ -97,6 +97,7 @@ const KILL_GATE_CANDIDATE_COLUMNS = sql`j.id, j.project_id, j.issue_id, j.device
 function toKillableRef(row: KillGateCandidateRow): KillableJobRef {
   return {
     id: row.id,
+    projectId: row.project_id,
     deviceId: row.device_id,
     runnerId: row.runner_id,
     killRequestedAt: row.kill_requested_at ? new Date(row.kill_requested_at) : null,
@@ -349,7 +350,7 @@ export async function reapZombieSessions(
   ).rows;
 
   for (const z of heartbeatFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
+    await broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
     await emitPipelineWedge({
       projectId: z.projectId,
       issueId: await lookupIssueForRun(z.pipelineRunId),
@@ -398,7 +399,7 @@ export async function reapZombieSessions(
   ).rows;
 
   for (const z of noClientFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
+    await broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
     // ISS-584 (B): a schedule run that never attached ran zero side effects, so
     // it is safe to re-dispatch onto another runner (async failover, mirrors the
     // job reaper→retry model). Plain chat returns `not-schedule` and is left for

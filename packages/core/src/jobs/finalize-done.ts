@@ -5,8 +5,8 @@ import { db } from '../db/client.js';
 import { issueStepContexts, jobEvents, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
@@ -55,9 +55,13 @@ export async function publishFinished(
   opts: { clearRunnerHealth: boolean } = { clearRunnerHealth: status === 'done' },
 ): Promise<void> {
   await syncAgentSessionLifecycle(row, status);
-  roomManager.publish(projectRoom(row.projectId), {
+  await emitEvent(db, 'job.changed', {
+    projectId: row.projectId,
+    jobId: row.id,
+    deviceId: row.deviceId,
     event: status === 'done' ? 'job.completed' : 'job.cancelled',
     data: { jobId: row.id, status, exitCode },
+    rooms: ['project'],
   });
   if (opts.clearRunnerHealth) {
     void clearRunnerLimit(row.runnerId, row.projectId);

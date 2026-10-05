@@ -103,10 +103,15 @@ export async function reapOrphanedOneShotRuns(
         ).rows;
         afterCommit(() => {
           for (const s of flipped) {
-            broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+            void broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
               status: 'failed',
               failureReason: 'heartbeat_timeout',
-            });
+            }).catch((err: unknown) =>
+              logger.warn(
+                { err, sessionId: s.id },
+                'one-shot-reap: the session push was not written',
+              ),
+            );
           }
         });
 

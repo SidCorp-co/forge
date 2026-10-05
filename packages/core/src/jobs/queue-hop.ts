@@ -37,13 +37,13 @@ export async function lookupIssueForRun(pipelineRunId: string | null): Promise<s
   }
 }
 
-export function broadcastZombieTransition(
+export async function broadcastZombieTransition(
   sessionId: string,
   projectId: string,
   deviceId: string | null,
   reason: 'queue_timeout' | 'turn_never_reported' | 'heartbeat_timeout' | 'no_client_ack',
-): void {
-  broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
+): Promise<void> {
+  await broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
     status: 'failed',
     failureReason: reason,
   });
@@ -89,7 +89,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
   ).rows;
 
   for (const z of queuedFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
+    await broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
     await emitPipelineWedge({
       projectId: z.projectId,
       issueId: await lookupIssueForRun(z.pipelineRunId),
@@ -121,7 +121,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
   ).rows;
 
   for (const z of neverReportedFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'turn_never_reported');
+    await broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'turn_never_reported');
     await emitPipelineWedge({
       projectId: z.projectId,
       issueId: await lookupIssueForRun(z.pipelineRunId),

@@ -1,4 +1,4 @@
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db, type Tx } from '../db/client.js';
@@ -7,7 +7,6 @@ import {
   organizationMembers,
   type ProjectMemberRole,
   projectMembers,
-  projects,
 } from '../db/schema.js';
 
 /**
@@ -79,6 +78,16 @@ export function projectOrgOf(projectId: string, executor?: Tx): Promise<string |
   return projectOrgSource(projectId, executor);
 }
 
+/** Every project a user can see, read by the projects domain over `visibleProjectsWhere`. */
+type VisibleProjectsSource = (userId: string) => Promise<string[]>;
+
+let visibleProjectsSource: VisibleProjectsSource | null = null;
+
+/** The projects domain answers which projects a user sees; the HTTP door provides it at boot. */
+export function provideVisibleProjects(source: VisibleProjectsSource): void {
+  visibleProjectsSource = source;
+}
+
 /**
  * Non-throwing resolver — the single read behind every gate. Returns null
  * when the project does not exist.
@@ -138,16 +147,16 @@ export async function loadOrgRole(
 }
 
 /**
- * The "this user can see this project" predicate, plus the PAT fence, for a
- * query that has already left-joined `projectMembers` and `organizationMembers`
- * on the caller. `and(...)` the result into the WHERE.
+ * The "this user can see this project" predicate, plus the PAT fence over `projectId` (the
+ * query's project id column), for a query that has already left-joined `projectMembers` and
+ * `organizationMembers` on the caller. `and(...)` the result into the WHERE.
  */
-export function visibleProjectsWhere(): SQL[] {
+export function visibleProjectsWhere(projectId: SQLWrapper): SQL[] {
   const conditions: SQL[] = [
     sql`(${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin'))`,
   ];
   const fence = fencedProjectIds();
-  if (fence) conditions.push(fence.length > 0 ? inArray(projects.id, [...fence]) : sql`false`);
+  if (fence) conditions.push(fence.length > 0 ? inArray(projectId, [...fence]) : sql`false`);
   return conditions;
 }
 
@@ -168,17 +177,10 @@ export function assertUnfenced(what: string): void {
 
 export async function loadVisibleProjectIds(userId: string | null | undefined): Promise<string[]> {
   if (!userId) return [];
-  const rows = await db
-    .selectDistinct({ id: projects.id })
-    .from(projects)
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
-    .where(and(...visibleProjectsWhere()));
-  return rows.map((r) => r.id);
+  if (!visibleProjectsSource) {
+    throw new Error(
+      'project visibility: no visible-projects source was provided, so which projects a user sees cannot be read; the process entry calls provideVisibleProjects(findVisibleProjectIds) from projects/service.ts before it serves',
+    );
+  }
+  return visibleProjectsSource(userId);
 }

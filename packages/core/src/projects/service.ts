@@ -159,7 +159,24 @@ export async function listVisibleProjectsWithRole(
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(and(...visibleProjectsWhere()));
+    .where(and(...visibleProjectsWhere(projects.id)));
+}
+
+/** The ids of every project `userId` can see, under the request's PAT fence. */
+export async function findVisibleProjectIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ id: projects.id })
+    .from(projects)
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
+    .where(and(...visibleProjectsWhere(projects.id)));
+  return rows.map((r) => r.id);
 }
 
 /** The slug and name the project document declares, projected onto the row; false when no row. */

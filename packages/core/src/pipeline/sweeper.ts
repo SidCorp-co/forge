@@ -300,7 +300,7 @@ export async function closeIdleChatSessions(
   ).rows;
 
   for (const s of flipped) {
-    broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+    await broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
       status: 'completed',
     });
   }

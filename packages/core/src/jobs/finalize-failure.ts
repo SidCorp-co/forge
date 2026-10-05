@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { issues, type jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
+import { emitEvent } from '../outbox/index.js';
 import { classifyFailure, closeOpenRunForIssue, emitPipelineWedge } from '../pipeline/index.js';
 import {
   attributeFailureToRunner,
@@ -175,8 +175,12 @@ export async function finalizeFailedJob(
     retryPending: retry.scheduled === true,
   });
 
-  roomManager.publish(projectRoom(updated.projectId), {
+  await emitEvent(db, 'job.changed', {
+    projectId: updated.projectId,
+    jobId: updated.id,
+    deviceId: updated.deviceId,
     event: 'job.failed',
+    rooms: ['project'],
     data: {
       jobId: updated.id,
       status: 'failed',
