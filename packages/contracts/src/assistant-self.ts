@@ -34,7 +34,7 @@ export interface AgentSelfPatch {
 }
 
 export type PreferenceChangeField = 'answer_style' | 'assistant_instructions';
-export type PreferenceChangeActor = 'person' | 'admin' | 'assistant';
+export type PreferenceChangeActor = 'person' | 'assistant';
 
 /** One row of `GET /api/auth/me/preferences/changes`. */
 export interface PreferenceChange {

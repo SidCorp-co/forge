@@ -22,7 +22,7 @@ function verdictBadge(a: ReleaseAttemptView) {
 
 function Attempt({ a }: { a: ReleaseAttemptView }) {
   const [open, setOpen] = useState(false);
-  const hasMore = a.readings.length > 0 || a.logTail || a.verdictReason;
+  const hasMore = a.readings.length > 0 || a.verdictReason;
   return (
     <li className="border-b border-line-subtle py-2.5 text-13" data-testid="release-attempt" data-stage={a.stage}>
       <div className="flex flex-wrap items-center gap-2">
@@ -53,12 +53,6 @@ function Attempt({ a }: { a: ReleaseAttemptView }) {
                 <li key={x}>{x}</li>
               ))}
             </ul>
-          ) : null}
-          {a.logTail ? (
-            <pre className="max-h-[240px] overflow-auto bg-sunken p-2 font-mono text-11-5" data-testid="attempt-log">
-              {a.logTail}
-              {a.logTailTruncated ? "\n… the log is cut to its tail" : ""}
-            </pre>
           ) : null}
         </div>
       ) : null}
