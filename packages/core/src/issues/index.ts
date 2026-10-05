@@ -43,6 +43,7 @@ export {
 } from './dependency-read.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';
+export { registerIssueMoveReactions } from './drop-unblock.js';
 export {
   fileDetectedIssue,
   type IssueTriage,
@@ -51,7 +52,6 @@ export {
   stampRunStarted,
 } from './field-writes.js';
 export { resolveIssueForHeadRef } from './head-ref-link.js';
-export { registerIssueMoveReactions } from './drop-unblock.js';
 export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,

@@ -1,11 +1,11 @@
 import { and, eq, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, projects } from '../db/schema.js';
+import { comments, issues } from '../db/schema.js';
 import { resolveIssueForHeadRef } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
-import { insertComment } from './service.js';
 import { projectCreatorOf } from '../projects/index.js';
+import { insertComment } from './service.js';
 
 /** One review, in the shape both doors already hold it in. */
 interface ReviewToNote {

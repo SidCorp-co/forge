@@ -10,8 +10,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { getStorage, isEnoent } from '../integrations/index.js';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { getStorage } from '../integrations/index.js';
+import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -98,19 +98,6 @@ commentAttachmentRoutes.get(
     const access = await loadProjectAccess(row.projectId, userId);
     requireHeld(access, 'project.read');
 
-    let buffer: Buffer;
-    try {
-      buffer = await getStorage().get(row.path);
-    } catch (err) {
-      if (isEnoent(err)) {
-        throw new HTTPException(410, {
-          message: 'attachment file missing on disk',
-          cause: { code: 'ATTACHMENT_FILE_MISSING' },
-        });
-      }
-      throw err;
-    }
-    setInertAttachmentHeaders(c, row.mime, row.name);
-    return c.body(new Uint8Array(buffer));
+    return sendStoredAttachment(c, row, (path) => getStorage().get(path));
   },
 );

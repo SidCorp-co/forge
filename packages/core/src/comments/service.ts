@@ -12,7 +12,6 @@ import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
 import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
-import { logger } from '../lib/logger.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { emitEvent } from '../outbox/index.js';
@@ -227,19 +226,15 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
 async function recordMentions(row: CommentThreadRow, projectId: string, t: Tx): Promise<string[]> {
   const handles = parseMentions(row.body);
   if (handles.length === 0) return [];
-  try {
-    const resolved = await resolveMentions(handles, projectId);
-    const targets = resolved.filter((r) => r.userId !== row.authorId).map((r) => r.userId);
-    if (targets.length === 0) return [];
-    await t
-      .insert(commentMentions)
-      .values(targets.map((userId) => ({ commentId: row.id, userId })))
-      .onConflictDoNothing();
-    return targets;
-  } catch (err) {
-    logger.error({ err, commentId: row.id }, 'comment mentions could not be recorded');
-    return [];
-  }
+  // inside the comment's transaction: a failed mention write fails the comment, never drops silently
+  const resolved = await resolveMentions(handles, projectId);
+  const targets = resolved.filter((r) => r.userId !== row.authorId).map((r) => r.userId);
+  if (targets.length === 0) return [];
+  await t
+    .insert(commentMentions)
+    .values(targets.map((userId) => ({ commentId: row.id, userId })))
+    .onConflictDoNothing();
+  return targets;
 }
 
 /**

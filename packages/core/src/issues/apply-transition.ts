@@ -1,7 +1,6 @@
 import {
   ISSUE_DISPATCH_TERMINAL_STATUSES,
   ISSUE_MACHINE,
-  ISSUE_TERMINAL_STATUSES,
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
@@ -17,8 +16,7 @@ import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
-import { publishPipelineHealthChanged } from './pipeline-health.js';
-import { closeOpenRunForIssue, settleOpenQuestions } from './ports.js';
+import { settleOpenQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';

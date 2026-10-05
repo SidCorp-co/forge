@@ -8,9 +8,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import type { z } from 'zod';
-import { loadProjectAccess } from '../../lib/authz.js';
 import { egressForRequest } from '../../lib/data-egress.js';
 import {
   type AuthVars,
@@ -20,26 +17,9 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { requireHeld } from '../../permissions/index.js';
-import { issueScopeOf } from '../read-service.js';
+import { heldIssue } from '../issue-route-ref.js';
 import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { addVerdict, readCriteriaWithDrafts as readCriteria, replaceCriteria } from './service.js';
-
-const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: r.error ? r.error : undefined },
-    });
-  }
-};
-
-async function issueFor(id: string, userId: string, permission: 'project.read' | 'project.write') {
-  const issue = await issueScopeOf(id);
-  if (!issue) throw new HTTPException(404, { message: 'issue not found' });
-  requireHeld(await loadProjectAccess(issue.projectId, userId), permission);
-  return { id: issue.id, projectId: issue.projectId };
-}
 
 export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -60,24 +40,20 @@ async function criteriaShown(
   );
 }
 
-issueCriteriaRoutes.get(
-  '/:id/criteria',
-  zValidator('param', idParamSchema, badInput),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const issue = await issueFor(id, c.get('userId'), 'project.read');
-    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
-  },
-);
+issueCriteriaRoutes.get('/:id/criteria', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const issue = await heldIssue(id, c.get('userId'), 'project.read');
+  return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
+});
 
 issueCriteriaRoutes.put(
   '/:id/criteria',
-  zValidator('param', idParamSchema, badInput),
-  zValidator('json', criteriaPutSchema, badInput),
+  zValidator('param', idParamSchema),
+  zValidator('json', criteriaPutSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'project.write');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
     await replaceCriteria(id, criteria);
     return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
   },
@@ -85,12 +61,12 @@ issueCriteriaRoutes.put(
 
 issueCriteriaRoutes.post(
   '/:id/verdicts',
-  zValidator('param', idParamSchema, badInput),
-  zValidator('json', verdictPostSchema, badInput),
+  zValidator('param', idParamSchema),
+  zValidator('json', verdictPostSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'project.write');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
     const written = await addVerdict({
       issue,
       draft: {

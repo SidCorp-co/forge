@@ -1,19 +1,18 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { issuePriorities, issueStatuses } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
 import { triggerPipelineStepManual } from '../pipeline/index.js';
 import { patchIssueBatch } from './batch-patch.js';
 import {
+  heldIssue,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { issueScopeOf, issueUsageTotals } from './read-service.js';
+import { issueUsageTotals } from './read-service.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
@@ -46,11 +45,7 @@ issueExtrasRoutes.post(
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const issue = await issueScopeOf(issueId);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write', "starting an issue's pipeline");
+    const issue = await heldIssue(issueId, userId, 'project.write', "starting an issue's pipeline");
 
     const { startedAt } = await triggerPipelineStepManual({
       projectId: issue.projectId,

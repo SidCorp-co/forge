@@ -1,15 +1,15 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { consume } from '../outbox/index.js';
 import type { TransitionActor } from './actor-agency.js';
 import type { TransitionIssueRow } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { closeOpenRunForIssue, postIssueNotice } from './ports.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { consume } from '../outbox/index.js';
+import { closeOpenRunForIssue, postIssueNotice } from './ports.js';
 
 /** The dependents a drop unblocked are told so, in the drop's own transaction. */
 export async function postDropUnblockNotices(

@@ -6,12 +6,14 @@
  * the envelope. What stays here is transport: authz against the project role.
  */
 
+import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { issueDependencyKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { dependencyEdgeById, loadIssueDependencyEdges } from './dependency-read.js';
@@ -21,11 +23,13 @@ import {
   setIssueDependency,
 } from './dependency-service.js';
 import {
+  heldIssue,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { issueScopeOf } from './read-service.js';
+
+const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
 
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
@@ -79,10 +83,7 @@ issueDependencyRoutes.post(
     const userId = c.get('userId');
 
     // the service refuses a self edge, a missing side and a cross-project pair under its lock
-    const target = await issueScopeOf(toIssueId);
-    if (!target) throw notFound('issue not found');
-    const access = await loadProjectAccess(target.projectId, userId);
-    requireHeld(access, 'project.write');
+    const target = await heldIssue(toIssueId, userId, 'project.write');
 
     const input: SetIssueDependencyInput = {
       projectId: target.projectId,
@@ -122,7 +123,7 @@ issueDependencyRoutes.delete(
     requireHeld(access, 'project.write');
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
-      throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
+      throw refuse('EDGE_MISMATCH', 'the edge does not involve this issue', '/edgeId');
     }
 
     await deleteIssueDependency(edge, restActor(c));

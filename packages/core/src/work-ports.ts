@@ -85,6 +85,7 @@ import {
   declaredIssueSeqs,
   issueRefPattern,
   liveReachForIssue,
+  projectCreatorOf,
   subjectOf,
 } from './projects/index.js';
 import { provideQuestionnairePorts } from './questionnaires/index.js';
@@ -117,7 +118,6 @@ import {
   WorkflowDesignNotApprovedError,
 } from './workflows/index.js';
 import { wakeMastersForAnswer, wakeMastersForProject } from './ws/index.js';
-import { projectCreatorOf } from './projects/index.js';
 
 export function provideWorkPorts(): void {
   providePipelinePorts({
