@@ -215,7 +215,8 @@ download refused ─▶ nothing installed: the file the kernel will not run, the
                     the rename, and the path keeps the build every hook and command runs
 exec refused (unix) ─▶ the kept build goes back on the path, admission reopens, the old build goes on
                        serving, the log names the path tried (it is never run under /bin/sh)
-not unix            ─▶ exit 0 for the service manager to start the new build, as before
+Windows             ─▶ refused by name: no download is taken and a re-login is not picked up; the
+                       log says to stop forge-runner, install the release by hand and start it again
 ```
 
 - **Nothing reaches the path that has not run.** The download is written beside

@@ -96,7 +96,17 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                 runner_update::CURRENT_VERSION,
                 m.version
             );
-            if auto {
+            if auto && cfg!(not(unix)) {
+                // Renaming over the running image is refused here, and nothing
+                // would start the new build after it, so the download is not
+                // even taken: the release is named and left to the operator.
+                tracing::error!(
+                    "[update] {} is available and auto-update is refused on this platform: {}. Stop forge-runner, install {} by hand, and start it again",
+                    m.version,
+                    handover::NO_HANDOVER_HERE,
+                    m.version
+                );
+            } else if auto {
                 match runner_update::apply(&m, Some(&carry.served)).await {
                     Ok(Some(o)) => {
                         // The new binary is already swapped on disk; this
