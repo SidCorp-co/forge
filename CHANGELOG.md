@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.28] - 2026-10-05
+
+Secrets rest digested or encrypted, and pool claims and release failures are repaired
+
+
 ### Changed
 
 - **Secrets rest digested or encrypted, and core refuses to boot without `PAT_PEPPER` (ISS-227).**
