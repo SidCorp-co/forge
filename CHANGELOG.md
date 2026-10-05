@@ -28,6 +28,14 @@
   `scripts/verify-window.mjs` and `.forge/verify-queue.json` are removed: dev merges locally and
   runs the whole gate on the merged tree.
 
+### Fixed
+
+- **The size budget refuses a scope that scanned no files, not one that is clean.** It read zero
+  diagnostics as "the scope matched nothing", so once `packages/core` drained to no file over budget
+  every verify refused. It now counts the files biome scanned, and only a count of zero is refused.
+  `packages/core` lint debt drained to zero (280 at the original freeze) and the baseline records
+  that with `--accept-emptied-scope`.
+
 ## [0.4.0-dev.33] - 2026-10-05
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
