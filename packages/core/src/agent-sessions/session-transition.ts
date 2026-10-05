@@ -6,7 +6,7 @@ import {
   TERMINAL_AGENT_SESSION_STATUSES,
 } from '@forge/contracts/session-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { afterCommit, db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import type { MachineRow } from '../lifecycle/index.js';
@@ -39,11 +39,21 @@ const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
  * ended, what its end owes: the schedule fire it started settles in the same transaction, a run
  * session hands back every issue it left `in_progress` with nothing holding it, a bridge-marked
  * session delivers its completion, and a session closes what it owns.
+ *
+ * The hand-back is written as owed in the flip's own transaction and done only once that write
+ * has committed: on `db`, on return, here; inside a caller's transaction, by an after-commit hook
+ * on it, or by the caller over `owedHandBacks` when it passes `handBack: 'caller'` because it
+ * answers the keys. A close that rolls back takes the owed mark with it and runs no hook, so the
+ * issues stay where they stood (VISION: state-never-lies); a hand-back that fails after the
+ * commit stays owed for the `run-hand-back-retry` sweep.
  */
 export async function transitionSessions<K extends keyof SessionRow = keyof SessionRow>(
   exec: KernelExecutor,
   args: TransitionArgs<'session', K>,
-): Promise<TransitionResult<Pick<SessionRow, K | 'id'>> & { returned: string[] }> {
+  opts: { handBack?: 'after-commit' | 'caller' } = {},
+): Promise<
+  TransitionResult<Pick<SessionRow, K | 'id'>> & { returned: string[]; owedHandBacks: string[] }
+> {
   const ending = ENDED.includes(args.to);
   const returning =
     ending && args.returning
@@ -77,12 +87,20 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
           actor: args.actor,
           source: args.source,
         });
+        const owed = runSessionRuns(rows);
+        await markHandBacksOwed(tx, owed);
+        if (owed.length > 0 && exec !== db && opts.handBack !== 'caller') {
+          afterCommit(() => void settleHandBacks(owed, handBackReason(args)));
+        }
       }
     },
   });
   let returned: string[] = [];
+  const owedHandBacks = ending ? runSessionRuns(result.rows) : [];
   if (ending && result.rows.length > 0) {
-    returned = await handBackRunIssues(exec, result.rows, args);
+    if (exec === db) {
+      returned = await settleHandBacks(owedHandBacks, handBackReason(args));
+    }
     await fireSessionBridges(exec, result.rows, args.returning === undefined);
     await descendFrom(
       exec,
@@ -90,48 +108,65 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
       args,
     );
   }
-  return { ...result, returned };
+  return { ...result, returned, owedHandBacks };
 }
 
-/**
- * The kernel's hand-back (workflow `issue-lifecycle` rev 8): a run that ended, whatever its outcome,
- * returns each issue it still has at `in_progress`, held by nothing else, to the status it took it
- * from, along the issue machine's recovery edges. A failure never undoes the end: the session is
- * marked as owing its hand-back, and `retryOwedHandBacks` repeats it until it lands. Answers the
- * keys of the issues handed back.
- */
-async function handBackRunIssues(
-  exec: KernelExecutor,
-  rows: ReadonlyArray<{ id: string }>,
-  args: { to: string; source: string; reason?: string | null | undefined },
-): Promise<string[]> {
+/** The runs of the run sessions among `rows`: the ones whose end owes a hand-back. */
+function runSessionRuns(rows: ReadonlyArray<{ id: string }>): string[] {
   const runs = new Set<string>();
   for (const row of rows) {
     const { kind, pipelineRunId } = row as Partial<Pick<SessionRow, 'kind' | 'pipelineRunId'>>;
     if (kind === RUN_SESSION_KIND && pipelineRunId) runs.add(pipelineRunId);
   }
-  if (runs.size === 0) return [];
+  return [...runs];
+}
+
+function handBackReason(args: { to: string; source: string; reason?: string | null }): string {
+  return `its run session ended ${args.to} (${args.reason ?? args.source})`;
+}
+
+/** Written in the ending flip's transaction, so the owed hand-back commits or rolls back with it. */
+async function markHandBacksOwed(exec: KernelExecutor, runIds: string[]): Promise<void> {
+  if (runIds.length === 0) return;
+  await exec
+    .update(agentSessions)
+    .set({
+      metadata: sql`COALESCE(${agentSessions.metadata}, '{}'::jsonb) || jsonb_build_object(${HAND_BACK_OWED}::text, true)`,
+    })
+    .where(
+      and(inArray(agentSessions.pipelineRunId, runIds), eq(agentSessions.kind, RUN_SESSION_KIND)),
+    );
+}
+
+/**
+ * The kernel's hand-back (workflow `issue-lifecycle` rev 8), run once the end that owes it has
+ * committed: each run returns every issue it still has at `in_progress`, held by nothing else, to
+ * the status it took it from, along the issue machine's recovery edges, and its owed mark clears.
+ * A run whose return fails stays owed for the `run-hand-back-retry` sweep. Answers the keys of
+ * the issues handed back.
+ */
+export async function settleHandBacks(
+  runIds: readonly string[],
+  reason: string,
+): Promise<string[]> {
+  if (runIds.length === 0) return [];
   const { returnIssuesForRun } = await import('../devices/index.js');
   const returned: string[] = [];
-  for (const runId of runs) {
+  for (const runId of runIds) {
     try {
-      const back = await returnIssuesForRun(runId, {
-        reason: `its run session ended ${args.to} (${args.reason ?? args.source})`,
-      });
+      const back = await returnIssuesForRun(runId, { reason });
       returned.push(...back.map((r) => r.issueKey));
-    } catch (err) {
-      logger.error(
-        { err, runId, source: args.source },
-        'session-transition: an ended run session could not hand its issues back; the retry sweep repeats it',
-      );
-      await exec
+      await db
         .update(agentSessions)
-        .set({
-          metadata: sql`COALESCE(${agentSessions.metadata}, '{}'::jsonb) || jsonb_build_object(${HAND_BACK_OWED}::text, true)`,
-        })
+        .set({ metadata: sql`${agentSessions.metadata} - ${HAND_BACK_OWED}` })
         .where(
           and(eq(agentSessions.pipelineRunId, runId), eq(agentSessions.kind, RUN_SESSION_KIND)),
         );
+    } catch (err) {
+      logger.error(
+        { err, runId },
+        'session-transition: an ended run session could not hand its issues back; it stays owed for the retry sweep',
+      );
     }
   }
   return returned;
@@ -152,27 +187,9 @@ export async function retryOwedHandBacks(): Promise<{ owed: number; returned: nu
       ),
     )
     .limit(50);
-  const { returnIssuesForRun } = await import('../devices/index.js');
-  let returned = 0;
-  for (const { runId } of owed) {
-    if (!runId) continue;
-    try {
-      returned += (
-        await returnIssuesForRun(runId, { reason: 'its ended run session owed this hand-back' })
-      ).length;
-      await db
-        .update(agentSessions)
-        .set({ metadata: sql`${agentSessions.metadata} - ${HAND_BACK_OWED}` })
-        .where(
-          and(eq(agentSessions.pipelineRunId, runId), eq(agentSessions.kind, RUN_SESSION_KIND)),
-        );
-    } catch (err) {
-      logger.error(
-        { err, runId },
-        'session-transition: an owed hand-back failed again; it stays owed',
-      );
-    }
-  }
+  const runIds = owed.flatMap(({ runId }) => (runId ? [runId] : []));
+  const returned = (await settleHandBacks(runIds, 'its ended run session owed this hand-back'))
+    .length;
   return { owed: owed.length, returned };
 }
 

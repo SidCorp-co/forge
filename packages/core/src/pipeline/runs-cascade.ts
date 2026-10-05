@@ -5,7 +5,7 @@ import {
 } from '@forge/contracts/job-machine';
 import { RUN_MACHINE } from '@forge/contracts/run-machine';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -43,15 +43,76 @@ function settled<R>(result: TransitionResult<R>): R[] {
 }
 
 /**
- * Lock a run for a close the caller is about to make in this transaction, taken before the write
- * that decides the close so the run is locked before its children (ISS-219).
+ * Lock the runs a close is about to end in this transaction, and every run their cascade and
+ * session descent can reach, before the first write that decides the close (ISS-219). The locks
+ * are taken one at a time in {@link runTreeInLockOrder}'s order, which every close shares.
  */
-export async function lockRunForClose(tx: Tx | Db, runId: string): Promise<void> {
-  await tx
-    .select({ id: pipelineRuns.id })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .for('update');
+export async function lockRunForClose(
+  tx: Tx | Db,
+  runIds: string | readonly string[],
+): Promise<void> {
+  const roots = (typeof runIds === 'string' ? [runIds] : [...runIds]).filter(Boolean);
+  if (roots.length === 0) return;
+  for (const id of await runTreeInLockOrder(tx, roots)) {
+    await tx
+      .select({ id: pipelineRuns.id })
+      .from(pipelineRuns)
+      .where(eq(pipelineRuns.id, id))
+      .for('update');
+  }
+}
+
+/** The same bound the descent walks to (`agent-sessions/session-descent.ts:MAX_DEPTH`). */
+const TREE_DEPTH = 8;
+
+/**
+ * Every run a close of `roots` can reach: the roots, and each run whose sessions are owned,
+ * transitively, by a session on one of them or linked from one of their jobs, which is the set
+ * the cascade and the session descent write under. Ordered by each run's depth in the whole
+ * ownership forest (the ancestors above it, not its distance from these roots), then by id, so
+ * two closes that share a run always take their locks in one order and the descent deadlock
+ * cannot form: a parent run is always locked before its child.
+ */
+async function runTreeInLockOrder(tx: Tx | Db, roots: string[]): Promise<string[]> {
+  const ids = sql.join(
+    roots.map((r) => sql`${r}::uuid`),
+    sql`, `,
+  );
+  const rows = (await tx.execute(sql`
+    WITH RECURSIVE down(run_id, session_id, n) AS (
+      SELECT s.pipeline_run_id, s.id, 0
+        FROM agent_sessions s
+       WHERE s.pipeline_run_id IN (${ids})
+          OR s.id IN (SELECT j.agent_session_id FROM jobs j WHERE j.pipeline_run_id IN (${ids}))
+      UNION
+      SELECT c.pipeline_run_id, c.id, d.n + 1
+        FROM agent_sessions c
+        JOIN down d ON c.parent_session_id = d.session_id
+       WHERE d.n < ${TREE_DEPTH}
+    ),
+    tree(run_id) AS (
+      SELECT run_id FROM down WHERE run_id IS NOT NULL
+      UNION
+      SELECT r FROM unnest(ARRAY[${ids}]) AS r
+    ),
+    up(run_id, ancestor, n) AS (
+      SELECT s.pipeline_run_id, s.parent_session_id, 0
+        FROM agent_sessions s
+        JOIN tree t ON s.pipeline_run_id = t.run_id
+       WHERE s.parent_session_id IS NOT NULL
+      UNION
+      SELECT u.run_id, p.parent_session_id, u.n + 1
+        FROM up u
+        JOIN agent_sessions p ON p.id = u.ancestor
+       WHERE p.parent_session_id IS NOT NULL AND u.n < ${TREE_DEPTH}
+    )
+    SELECT t.run_id::text AS run_id, COALESCE(MAX(u.n) + 1, 0) AS depth
+      FROM tree t
+      LEFT JOIN up u ON u.run_id = t.run_id
+     GROUP BY t.run_id
+     ORDER BY depth, t.run_id
+  `)) as unknown as Array<{ run_id: string }>;
+  return rows.map((r) => String(r.run_id));
 }
 
 export interface RunClose {
@@ -78,12 +139,12 @@ export async function closeRunsInTx(
 ): Promise<{ rows: RunRow[]; cascades: Array<{ runId: string; result: CascadeResult }> }> {
   // An absent predicate would lock and close every open run.
   if (!close.where) throw new Error(`closeRunsInTx: ${close.source} named no runs to close`);
-  const locked = await tx
-    .select({ id: pipelineRuns.id })
-    .from(pipelineRuns)
-    .where(close.where)
-    .for('update');
+  const locked = await tx.select({ id: pipelineRuns.id }).from(pipelineRuns).where(close.where);
   if (locked.length === 0) return { rows: [], cascades: [] };
+  await lockRunForClose(
+    tx,
+    locked.map((r) => r.id),
+  );
   const now = new Date();
   const rows = settled(
     await transition(tx, RUN_MACHINE, {
