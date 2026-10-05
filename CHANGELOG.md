@@ -24,6 +24,10 @@
   commit or the finish is refused. Issues › Stuck names why a row is withheld; a run behind
   another's deploy lock waits on a gate.
 
+- **Requirements answer for contracts across projects.** Another project can request a contract
+  change as a draft only the provider agrees; screens bind contract elements; only issues tracing a
+  changed criterion re-plan; upgrades carry deadlines; recorded releases ask the provider gate.
+
 ## [0.4.0-dev.30] - 2026-10-05
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts

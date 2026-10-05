@@ -50,6 +50,7 @@ export const OUTBOX_CONSUMERS = {
 	"channel.gateDecided": ["notify-ecosystem"],
 	"channel.threadHeld": ["notify-ecosystem", "master-wake"],
 	"contract.versionApproved": ["notify-ecosystem", "master-wake"],
+	"contract.requested": ["master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
 	"requirement.agreed": ["master-wake"],
 	"requirement.delivered": ["notify-requirements"],

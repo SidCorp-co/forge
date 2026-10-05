@@ -19,7 +19,8 @@ export const CONTRACT_WAIT_REFUSAL_CODES = [
 	"CONTRACT_WAIT_ISSUE_FINISHED",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
-export type ContractWaitRefusalCode = (typeof CONTRACT_WAIT_REFUSAL_CODES)[number];
+export type ContractWaitRefusalCode =
+	(typeof CONTRACT_WAIT_REFUSAL_CODES)[number];
 
 /** A dispatch door refuses an issue whose live wait no approved version has settled. */
 export const CONTRACT_WAIT_UNSETTLED = "CONTRACT_WAIT_UNSETTLED" as const;
@@ -42,15 +43,20 @@ export const addContractWaitRequestSchema = z.strictObject({
 	minVersion: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.version),
 	reason: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.reason).optional(),
 });
-export type AddContractWaitRequest = z.infer<typeof addContractWaitRequestSchema>;
+export type AddContractWaitRequest = z.infer<
+	typeof addContractWaitRequestSchema
+>;
 export const ADD_CONTRACT_WAIT_SHAPE =
 	"{ contract: <provider slug>/<contract slug>, a contract this project publishes or consumes; minVersion: the version this issue needs, in the provider's versioning scheme; reason? }";
 
 export const retractContractWaitRequestSchema = z.strictObject({
 	reason: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.reason),
 });
-export type RetractContractWaitRequest = z.infer<typeof retractContractWaitRequestSchema>;
-export const RETRACT_CONTRACT_WAIT_SHAPE = "{ reason } says why the issue no longer waits";
+export type RetractContractWaitRequest = z.infer<
+	typeof retractContractWaitRequestSchema
+>;
+export const RETRACT_CONTRACT_WAIT_SHAPE =
+	"{ reason } says why the issue no longer waits";
 
 /** The version a consumer needs beside the version its provider's production serves (step provider-live). */
 export interface ProviderLiveView {
@@ -79,6 +85,8 @@ export interface ContractWaitView {
 	createdAt: string;
 	retractedAt: string | null;
 	retractReason: string | null;
+	/** The end of the provider's commitment window, where a breaking version's feedback wrote the wait. */
+	dueAt: string | null;
 	/** Null for an in-project or retracted wait, which no release gate reads. */
 	providerLive: ProviderLiveView | null;
 }
@@ -101,6 +109,13 @@ export interface LiveShortfall {
 	needed: string;
 	live: string | null;
 	unread: string | null;
+}
+
+/** The release gate's reading of a roster (E4): the waits it refuses on, and those the ecosystem's off switch let through. */
+export interface ProviderLiveGate {
+	shortfalls: LiveShortfall[];
+	/** Recorded on the release as gate off: the provider did not serve the version, and the gate was off. */
+	gateOff: LiveShortfall[];
 }
 
 export function notLiveSentence(shortfalls: readonly LiveShortfall[]): string {

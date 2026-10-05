@@ -33,6 +33,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"channel.gateDecided",
 	"channel.threadHeld",
 	"contract.versionApproved",
+	"contract.requested",
 	"ecosystem.buildOwed",
 	"requirement.agreed",
 	"requirement.delivered",
@@ -48,7 +49,12 @@ export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
  * (`event`), Forge's own merge (`kernel`), a mark whose commit Forge read from the repository or its
  * record of the pull request (`repository`), or a mark resting on its writer's word (`mark`).
  */
-export const MERGE_STAMP_VIAS = ["event", "kernel", "repository", "mark"] as const;
+export const MERGE_STAMP_VIAS = [
+	"event",
+	"kernel",
+	"repository",
+	"mark",
+] as const;
 export type MergeStampVia = (typeof MERGE_STAMP_VIAS)[number];
 
 /** Who acted. A runner box, the sweeper or the system records as a device, always an agent. */
@@ -340,6 +346,15 @@ export interface OutboxEventPayloads {
 		classification: string;
 		consumerIds: string[];
 		filer: { userId: string; agency: "human" | "agent" };
+	};
+	/** Another project's contract request landed as a draft requirement here (E2); this project's master owes its triage. */
+	"contract.requested": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+		revision: number;
+		requestedByProjectId: string;
+		contract: string;
 	};
 	/** A builder run of this project is open (a join, a push, a supersede), and its master owes it. */
 	"ecosystem.buildOwed": { projectId: string };

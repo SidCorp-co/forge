@@ -116,7 +116,6 @@ const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_REJECT_REASON_REQUIRED",
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
-	"SUGGESTION_EFFECT_UNDECIDED",
 	"SUGGESTION_BLOCKER_UNKNOWN",
 	"SUGGESTION_BLOCKER_TERMINAL",
 	"SUGGESTION_BUILD_UNNAMED",
@@ -424,13 +423,22 @@ export interface SuggestionDuplicateEffect {
 	status: "dropped";
 }
 
+/** A duplicate accept on a requirement: dropped as a duplicate of the requirement it repeats. */
+export interface SuggestionRequirementDuplicateEffect {
+	requirementId: string;
+	requirement: string;
+	duplicateOf: string;
+	status: "dropped";
+}
+
 /** What an accept wrote, read back for the caller; never stored on the row. */
 export type SuggestionEffect =
 	| SuggestionRevisionEffect
 	| SuggestionBreakdownEffect
 	| SuggestionReadinessEffect
 	| SuggestionIssueTriageEffect
-	| SuggestionDuplicateEffect;
+	| SuggestionDuplicateEffect
+	| SuggestionRequirementDuplicateEffect;
 
 /** The answer to create, accept, reject, revise and withdraw. */
 export interface SuggestionResponse {

@@ -38,6 +38,7 @@ import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
   approvalRequired,
   assertDesignApprovedForIssue,
+  changedTracedOf,
   designUnapprovedSql,
   handoffContextsOf,
   holdsOpenHumanQuestion,
@@ -83,7 +84,6 @@ interface IssueRowRaw {
   created_by_id: string | null;
   requirement_id: string | null;
   planned_revision: number | null;
-  planned_baseline_seq: number | null;
   plan: string | null;
   created_at: string;
   updated_at: string;
@@ -115,7 +115,6 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
     await db.execute(sql`
       SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at, i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
-             i.planned_baseline_seq,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
@@ -177,6 +176,7 @@ type Facts = {
   edges: BlockingEdge[];
   criteria: Awaited<ReturnType<typeof criteriaOf>>;
   requirements: Awaited<ReturnType<typeof requirementsOf>>;
+  changedTraced: Map<string, { code: string; revision: number }[]>;
   modules: Awaited<ReturnType<typeof modulesOf>>;
   feedback: Awaited<ReturnType<typeof feedbackOf>>;
   people: Awaited<ReturnType<typeof peopleOf>>;
@@ -205,6 +205,7 @@ function requirementRef(
   r: IssueRowRaw,
   req: RequirementRaw | undefined,
   mine: Facts['criteria'],
+  changed: readonly { code: string; revision: number }[],
 ): IssueStandingInput['requirement'] {
   if (!req) return null;
   return {
@@ -219,8 +220,7 @@ function requirementRef(
       plan: r.plan,
       plannedRevision: r.planned_revision,
       currentRevision: req.current_revision,
-      plannedBaselineSeq: r.planned_baseline_seq,
-      latestBaselineSeq: req.latest_baseline_seq,
+      changedTraced: changed,
     }),
   };
 }
@@ -253,6 +253,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
       r,
       r.requirement_id ? f.requirements.get(r.requirement_id) : undefined,
       mine,
+      f.changedTraced.get(r.id) ?? [],
     ),
     module: f.modules.get(r.id) ?? null,
     feedback: f.feedback.get(r.id) ?? [],
@@ -333,9 +334,10 @@ async function standingRows(
       viewerOf(viewer, projectId),
       withheldOf(projectId, raws),
     ]);
-  const [requirements, people] = await Promise.all([
+  const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
+    changedTracedOf(db, ids),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const facts: Facts = {
@@ -343,6 +345,7 @@ async function standingRows(
     edges,
     criteria,
     requirements,
+    changedTraced,
     modules,
     feedback,
     people,

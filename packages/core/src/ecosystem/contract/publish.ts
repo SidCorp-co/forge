@@ -1,8 +1,9 @@
+import { ELEMENT_INDEXED_CONTRACT_TYPES } from '@forge/contracts/ecosystem';
 import { db } from '../../db/client.js';
 import { loadInterface, type ProviderWriter, providerWriterMiss } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { projectsWhere } from '../store.js';
-import { INDEXED_TYPES, isIndexed } from './elements.js';
+import { isIndexed } from './elements.js';
 import { recordVersion } from './record.js';
 import { versionsOf } from './store.js';
 import { type UploadBody, uploadRefusals } from './upload-rules.js';
@@ -31,7 +32,7 @@ function kindRefusals(kind: string | undefined, published: string | undefined, r
       {
         code: 'CONTRACT_KIND_UNKNOWN' as const,
         path: '/kind',
-        detail: `"${kind}" is no contract kind core indexes; a version is published as one of ${INDEXED_TYPES.join(', ')}.`,
+        detail: `"${kind}" is no contract kind core indexes; a version is published as one of ${ELEMENT_INDEXED_CONTRACT_TYPES.join(', ')}.`,
       },
     ];
   }

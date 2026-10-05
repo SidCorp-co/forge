@@ -12,6 +12,7 @@ import type {
   FeedbackTriage,
   FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { SuggestionKind } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -417,6 +418,32 @@ export function duplicateRefusal(
       '/duplicateOf',
       `${pointedAtBy.join(', ')} ${pointedAtBy.length === 1 ? 'is a duplicate' : 'are duplicates'} of this item, so it stays a root; mark ${root.key} a duplicate of this one instead.`,
     );
+  }
+  return null;
+}
+
+/**
+ * A contract change routed to an issue writes its wait there (requirement-to-delivery `triage`): a
+ * finished issue is dispatched no more, and one already waiting on the contract keeps its own wait
+ * and deadline, so the route is refused by name rather than folded into the wait it holds.
+ */
+export function upgradeTargetRefusal(
+  issue: { key: string; status: string },
+  held: { id: string; minVersion: string; contractSlug: string } | null,
+): FeedbackRefusal | null {
+  if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issue.status)) {
+    return {
+      code: 'CONTRACT_WAIT_ISSUE_FINISHED',
+      path: '/issue',
+      detail: `${issue.key} is ${issue.status}; a contract change is carried by an issue that will still be dispatched, so it waits on the version and its deadline. Name a live issue or file a new one.`,
+    };
+  }
+  if (held) {
+    return {
+      code: 'CONTRACT_WAIT_DUPLICATE',
+      path: '/issue',
+      detail: `${issue.key} already waits on ${held.contractSlug} >= ${held.minVersion} (wait ${held.id}); retract that wait first so this change's version and deadline are written, or file a new issue for it.`,
+    };
   }
   return null;
 }

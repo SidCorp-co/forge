@@ -34,6 +34,7 @@ import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
+import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { notVerifiedRefusal, reasonOf } from './refuse.js';
 import { verifyServingNow } from './verify.js';
 
@@ -158,6 +159,7 @@ export async function recordPerformedRelease(
   // (ISS-1127). A refused declaration is already the report's blocker, so this cannot throw.
   const verification = closeVerification(report.channels ?? []);
   const roster = await admissibleIssues(projectId, issueIds);
+  const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
   const read =
     verification.kind === 'probed'
@@ -185,6 +187,7 @@ export async function recordPerformedRelease(
       providerRef,
       recordedBy: userId,
       issues: roster,
+      ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
     },
   });
 
@@ -266,6 +269,8 @@ interface ReleaseRecordView {
   /** Records written before ISS-1321 could only be `probed`: that door refused a project with none. */
   verification: RecordedVerification;
   issues: RecordedIssue[];
+  /** The contract waits this release passed only because the ecosystem turned the provider-live gate off. */
+  providerLiveGateOff: GateOffRecord;
 }
 
 /**
@@ -320,5 +325,8 @@ export async function readReleaseRecord(
       ? (meta.verification as RecordedVerification)
       : 'probed',
     issues: Array.isArray(meta.issues) ? (meta.issues as RecordedIssue[]) : [],
+    providerLiveGateOff: Array.isArray(meta.providerLiveGateOff)
+      ? (meta.providerLiveGateOff as GateOffRecord)
+      : [],
   };
 }

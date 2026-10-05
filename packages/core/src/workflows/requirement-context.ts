@@ -4,7 +4,7 @@
  * refused by name when it cannot be given at its current revision.
  */
 
-import { changedSincePlan } from '@forge/contracts/requirements';
+import { type ChangedTrace, changedSincePlan } from '@forge/contracts/requirements';
 import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
@@ -70,7 +70,8 @@ export interface RequirementContextRow {
     mockups: MockupContextRow[];
   } | null;
   plannedRevision: number | null;
-  plannedBaselineSeq: number | null;
+  /** The BCs this issue traces that a revision after its plan's changed. */
+  changedTraced: ChangedTrace[];
   plan: string | null;
 }
 
@@ -126,14 +127,14 @@ export function requirementContext(
       `its latest baseline pins revision ${row.baseline.revision}, but the current revision is ${row.currentRevision}; the current revision is re-agreed before a job is given it`,
     );
   }
-  const changed = changedSincePlan({ ...row, latestBaselineSeq: row.baseline.seq });
+  const changed = changedSincePlan(row);
   const lines = [
     `## The requirement this issue delivers`,
     `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
   ];
   if (row.tldr) lines.push(row.tldr);
   if (row.goal) lines.push(`Goal: ${row.goal}`);
-  lines.push(planLine(changed, row.plannedRevision, row.currentRevision));
+  lines.push(planLine(changed, row.plannedRevision, row.currentRevision, row.changedTraced));
   lines.push(
     '',
     'Business criteria (each issue criterion traces to one of these codes):',

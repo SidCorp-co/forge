@@ -110,6 +110,8 @@ export interface NewContractWait {
   minVersion: string;
   reason: string | null;
   createdBy: string;
+  /** The end of the provider's commitment window, where a breaking version's feedback asked for the wait. */
+  dueAt?: Date | null;
 }
 
 /** The live (unretracted) wait this issue already holds on the contract, if any. */

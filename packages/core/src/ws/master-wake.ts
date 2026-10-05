@@ -268,6 +268,13 @@ export function registerMasterWakeSubscribers(): void {
     },
   });
 
+  consume('contract.requested', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForRequirement(p);
+    },
+  });
+
   consume('ecosystem.buildOwed', {
     name: 'master-wake',
     handle: async (p) => {

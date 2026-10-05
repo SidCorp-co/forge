@@ -348,6 +348,13 @@ export interface RequirementStanding
 export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;
 export type RequirementReadinessGate =
 	(typeof REQUIREMENT_READINESS_GATES)[number];
+/**
+ * How close another requirement's head vector must sit to this head's for an agree to read it as a
+ * near-duplicate (requirement-to-delivery `ready`): the agree waits until a duplicate suggestion
+ * naming it is decided.
+ */
+export const REQUIREMENT_NEAR_DUPLICATE_SIMILARITY = 0.9;
+
 export const REQUIREMENT_READINESS_GATE_DEFAULT: RequirementReadinessGate =
 	"off";
 
@@ -454,6 +461,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_AGREED",
 	"REQUIREMENT_ALREADY_AGREED",
 	"REQUIREMENT_NOT_READY",
+	"REQUIREMENT_DUPLICATE_UNDECIDED",
+	"REQUIREMENT_DUPLICATE_TARGET_INVALID",
 	"REQUIREMENT_ISSUE_LINKED_ELSEWHERE",
 	"REQUIREMENT_NO_PLAN_TO_ADOPT",
 	"REQUIREMENT_DEFERRED",
@@ -468,6 +477,9 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_DROPPABLE",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
+	"REQUIREMENT_SIGNOFF_FORBIDDEN",
+	"REQUIREMENT_REQUEST_OWN_PROJECT",
+	"REQUIREMENT_BINDING_NOT_INDEXED",
 	"REQUIREMENT_DESIGN_UNLINKED",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
@@ -487,20 +499,28 @@ export const REQUIREMENT_REFUSAL_STATUSES = {
 export const requirementKey = (seq: number) => `REQ-${seq}`;
 
 /**
- * Whether a requirement has changed since an issue's plan was written: its head is another
- * revision than the one the plan names, or that revision was re-pinned onto newly approved designs
- * after the plan. Read, never stored; an issue with no plan has nothing to drift from.
+ * Whether an issue's plan is flagged by a change to its requirement (requirement-to-delivery
+ * `impact`): a later revision changed or retired a BC one of its criteria traces. A plan that names
+ * no revision has nothing to compare against and is flagged while the requirement has a head. Read,
+ * never stored; an issue with no plan has nothing to drift from, and a re-pin changes no BC.
  */
 export function changedSincePlan(input: {
 	plan: string | null;
 	plannedRevision: number | null;
 	currentRevision: number | null;
-	plannedBaselineSeq?: number | null | undefined;
-	latestBaselineSeq?: number | null | undefined;
+	/** BCs the issue traces that a revision after its planned one, up to the head, changed. */
+	changedTraced: readonly ChangedTrace[];
 }): boolean {
 	if (!input.plan?.trim()) return false;
-	if (input.plannedRevision !== input.currentRevision) return true;
-	return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
+	if (input.plannedRevision === null) return input.currentRevision !== null;
+	if (input.plannedRevision === input.currentRevision) return false;
+	return input.changedTraced.length > 0;
+}
+
+/** A BC wording an issue criterion traces, retired at `revision` (reworded or removed). */
+export interface ChangedTrace {
+	code: string;
+	revision: number;
 }
 
 // The list and detail responses of /requirements, as core builds them (`requirements/read.ts`) and
@@ -632,4 +652,35 @@ export interface RequirementDetail extends RequirementSummary {
 	} | null;
 	deferral: RequirementDeferral | null;
 	feedback: RequirementFeedbackItem[];
+	/** Another project's contract request this draft landed as (E2); only this project agrees it. */
+	request: RequirementContractRequest | null;
+	/** The screen bindings inside the designs its latest baseline pins (`pins`). */
+	bindings: RequirementScreenBinding[];
+}
+
+export interface RequirementContractRequest {
+	projectId: string;
+	project: string;
+	/** `<provider>/<contract>`. */
+	contract: string;
+}
+
+/** A contract element a screen of a pinned design binds, and whether its contract type can be bound. */
+export interface RequirementScreenBinding {
+	workflowId: string;
+	flow: string;
+	designRevision: number;
+	step: string;
+	/** `<provider>/<contract>`. */
+	contract: string;
+	element: string;
+	/** The contract's type at its current version; null while it has none. */
+	contractType: string | null;
+	/** The version the baseline pins of that contract; null when it pins none. */
+	pinnedVersion: string | null;
+	/**
+	 * `impact`: the newest approved version past the pin that removed or broke the bound element, so
+	 * the screen is affected and the BA re-agrees to re-baseline; null when none did.
+	 */
+	brokenBy: string | null;
 }

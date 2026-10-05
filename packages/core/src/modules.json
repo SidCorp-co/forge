@@ -343,6 +343,7 @@
         "feedback-lifecycle",
         "feedback-triage#intake",
         "requirement-to-delivery#fb-filed",
+        "requirement-to-delivery#triage",
         "feedback-triage#file",
         "feedback-triage#decide",
         "feedback-triage#issue",
@@ -910,7 +911,10 @@
         "requirement-to-delivery#acceptance",
         "requirement-to-delivery#accept",
         "requirement-to-delivery#accept-result",
-        "requirement-to-delivery#stalled"
+        "requirement-to-delivery#stalled",
+        "requirement-to-delivery#pins",
+        "requirement-to-delivery#ready",
+        "requirement-to-delivery#impact"
       ]
     },
     "runners": {

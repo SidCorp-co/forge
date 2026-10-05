@@ -32,7 +32,7 @@ interface IssuePlanDrift {
   plannedRevision: number | null;
   currentRevision: number | null;
   changed: boolean;
-  repinned: boolean;
+  changedCriteria: { code: string; revision: number }[];
   detail: string;
 }
 
@@ -118,6 +118,10 @@ interface IssuePorts {
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
   planDriftOf: (executor: Pick<Tx, 'execute'>, issueId: string) => Promise<IssuePlanDrift | null>;
+  changedTracedOf: (
+    executor: Pick<Tx, 'execute'>,
+    issueIds: readonly string[],
+  ) => Promise<Map<string, { code: string; revision: number }[]>>;
   readLandingBranches: (
     projectId: string,
   ) => Promise<{ defaultBranch: string | null; promoted: string | null }>;
@@ -250,6 +254,7 @@ export const messageRefusalHttp = port('messageRefusalHttp');
 
 export const readProjectDocument = port('readProjectDocument');
 export const planDriftOf = port('planDriftOf');
+export const changedTracedOf = port('changedTracedOf');
 export const readLandingBranches = port('readLandingBranches');
 export const issueRefPattern = port('issueRefPattern');
 export const declaredIssueSeqs = port('declaredIssueSeqs');

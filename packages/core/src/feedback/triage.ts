@@ -21,6 +21,7 @@ import {
   activeIssuePrefix,
   insertContractWaitIn,
   insertIssueRow,
+  liveWaitOn,
   writeRecordEvent,
 } from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
@@ -52,6 +53,7 @@ import {
   routeRuleRefusal,
   routeShapeRefusal,
   triagePhaseRefusal,
+  upgradeTargetRefusal,
 } from './rules.js';
 import {
   answer,
@@ -227,6 +229,8 @@ interface Carrier {
   columns: RouteColumns;
   key: string | null;
   facts: Pick<RouteFacts, 'suggestion' | 'routedRequirement'>;
+  /** The existing issue the route names, which a contract change's wait is written on. */
+  issue?: { id: string; key: string; status: string };
 }
 
 interface RouteInput {
@@ -257,7 +261,7 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
   if (route === 'issue' && w.issue) {
     const issue = await issueRefIn(projectId, w.issue, actor.userId, '/issue');
     if (isRefusal(issue)) return { refusal: issue };
-    return { ...none, columns: { ...NO_ROUTE, routedIssueId: issue.id }, key: issue.key };
+    return { ...none, columns: { ...NO_ROUTE, routedIssueId: issue.id }, key: issue.key, issue };
   }
   if (route === 'revision' && w.suggestion) {
     const [s] = await tx
@@ -322,29 +326,42 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
 
 /**
  * The upgrade issue waits on the contract version the change names (contract >= version), never on
- * the provider's issue (E1); written in the triage's own transaction, so it is never dispatched first.
+ * the provider's issue (E1), due by the end of the provider's commitment window (E3), written as
+ * data on the wait. Written in the triage's own transaction, so it is never dispatched first; a
+ * filed issue and an existing one the route names carry it alike.
  */
 async function upgradeWaitIn(
   tx: Tx,
   row: RouteInput['row'],
-  issueId: string,
+  issue: { id: string; key: string; status: string },
   userId: string,
-): Promise<void> {
+): Promise<Refusal | null> {
   const { contractProviderProjectId, contractSlug, contractVersion } = row;
   if (!contractProviderProjectId || !contractSlug || !contractVersion) {
     throw new Error(
       `${feedbackKey(row.fbSeq)} is a contract change naming no provider contract version, so its upgrade issue has nothing to wait on`,
     );
   }
+  const refusal = upgradeTargetRefusal(
+    issue,
+    await liveWaitOn(tx, {
+      issueId: issue.id,
+      providerProjectId: contractProviderProjectId,
+      contractSlug,
+    }),
+  );
+  if (refusal) return refusal;
   await insertContractWaitIn(tx, {
     projectId: row.projectId,
-    issueId,
+    issueId: issue.id,
     providerProjectId: contractProviderProjectId,
     contractSlug,
     minVersion: contractVersion,
     reason: `Upgrade carried by ${feedbackKey(row.fbSeq)}`,
     createdBy: userId,
+    dueAt: row.dueAt,
   });
+  return null;
 }
 
 /** A bug's issue, or a contract change's upgrade issue due by the provider's commitment window. */
@@ -358,15 +375,10 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
     { title: row.title, body: row.body ?? '' },
     key,
   );
-  const due =
-    row.kind === 'contract_change' && row.dueAt
-      ? `Due by ${row.dueAt.toISOString().slice(0, 10)}, the end of the provider's commitment window.`
-      : null;
   const carried = copied.ok
-    ? [`Carries ${key}: ${copied.value.title}`, due, copied.value.body]
+    ? [`Carries ${key}: ${copied.value.title}`, copied.value.body]
     : [
         `Carries ${key}. Its content stays in Forge under this project's no_egress policy; read it on the Feedback page.`,
-        due,
       ];
   const linkable =
     target && !linkIssueRefusal(target.status as Parameters<typeof linkIssueRefusal>[0]);
@@ -388,11 +400,15 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
     },
     { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
   );
-  if (row.kind === 'contract_change') await upgradeWaitIn(tx, row, issue.id, actor.userId);
-  return {
+  const filed = {
     id: issue.id,
     key: formatIssueRef(await activeIssuePrefix(row.projectId), issue.issSeq),
   };
+  if (row.kind === 'contract_change') {
+    const refusal = await upgradeWaitIn(tx, row, { ...filed, status: issue.status }, actor.userId);
+    if (refusal) throw new Error(`a filed upgrade issue was refused its wait: ${refusal.detail}`);
+  }
+  return filed;
 }
 
 async function writeRouteIn(
@@ -414,6 +430,9 @@ async function writeRouteIn(
     const issue = await fileIssueIn(tx, input);
     columns = { ...NO_ROUTE, routedIssueId: issue.id };
     key = issue.key;
+  } else if (route === 'issue' && row.kind === 'contract_change' && named.issue) {
+    const refusal = await upgradeWaitIn(tx, row, named.issue, actor.userId);
+    if (refusal) return { refusals: [refusal] };
   }
   if (route === 'new_requirement' && w.title) {
     await lockRequirements(tx, row.projectId);

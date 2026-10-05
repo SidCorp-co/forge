@@ -64,6 +64,8 @@ export interface WorkflowNode {
   channel?: string;
   /** The contracts the step uses. */
   contracts?: { provider: string; slug: string }[];
+  /** The contract elements a screen binds (`pins`). */
+  binds?: { provider: string; slug: string; element: string }[];
   /** Steps of the project's other designs this one is. */
   refs?: { template: string; flow: string; step: string }[];
 }

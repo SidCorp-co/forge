@@ -2,6 +2,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
+  type ChangedTrace,
   changedSincePlan,
   type RequirementDetail,
   type RequirementSpec,
@@ -32,10 +33,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
+import { latestBaselineBindingsOf } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
+import { changedTracedOf } from './plan-drift.js';
+import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
@@ -69,8 +73,23 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
   return row;
 }
 
-export async function signerRefusal(actor: RequirementActor, projectId: string, act: string) {
-  return signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
+/** `row` is the requirement being signed, when there is one: a contract request is signed only here. */
+export async function signerRefusal(
+  actor: RequirementActor,
+  projectId: string,
+  act: string,
+  row?: Pick<Row, 'requestedByProjectId' | 'reqSeq'>,
+) {
+  const refusal = signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
+  if (!refusal || !row?.requestedByProjectId) return refusal;
+  const requestedBy = await requestedByOf(row);
+  return requestSignoffRefusal({
+    refusal,
+    key: requirementKey(row.reqSeq),
+    requestedBy,
+    signerInRequestingProject:
+      !!requestedBy && (await permissionFactsOf(actor.userId, requestedBy.id)).role !== null,
+  });
 }
 
 export const criterionView = (c: CriterionRow) => ({
@@ -241,7 +260,6 @@ function detailRowsOf(requirementId: string) {
         requirementId: issues.requirementId,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
-        plannedBaselineSeq: issues.plannedBaselineSeq,
       })
       .from(issues)
       .where(eq(issues.requirementId, requirementId))
@@ -287,7 +305,7 @@ function baselineViews(
 function issueViews(
   row: Row,
   linked: DetailRows[5],
-  baselines: DetailRows[3],
+  changedTraced: Map<string, ChangedTrace[]>,
   prefix: string | null,
   releaseApproval: boolean,
 ) {
@@ -302,7 +320,7 @@ function issueViews(
     changedSincePlan: changedSincePlan({
       ...i,
       currentRevision: row.currentRevision,
-      latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
+      changedTraced: changedTraced.get(i.id) ?? [],
     }),
   }));
 }
@@ -335,7 +353,11 @@ export async function detailOf(
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
-  const [people, standings] = await Promise.all([
+  const [bindings, request] = await Promise.all([
+    latestBaselineBindingsOf(db, baselines, pins),
+    requestViewOf(row),
+  ]);
+  const [people, standings, changedTraced] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -348,6 +370,10 @@ export async function detailOf(
       prefix,
       releaseApproval,
     }),
+    changedTracedOf(
+      db,
+      linked.map((i) => i.id),
+    ),
   ]);
   const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
@@ -365,13 +391,15 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, baselines, prefix, releaseApproval),
+    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval),
     canSignOff: viewerFacts?.canSignOff ?? false,
     standing,
     history,
     readiness,
     deferral,
     feedback,
+    request,
+    bindings,
   };
 }
 

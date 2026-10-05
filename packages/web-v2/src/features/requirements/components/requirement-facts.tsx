@@ -113,6 +113,11 @@ export function RequirementFacts({
         <Fact label="Current">
           <span>{d.currentRevision !== null ? `r${d.currentRevision}` : "None accepted yet"}</span>
         </Fact>
+        {d.request ? (
+          <Fact label="Requested by">
+            <span title={`A contract request for ${d.request.contract}; only this project agrees it`}>{d.request.project}</span>
+          </Fact>
+        ) : null}
         {open !== null ? (
           <Fact label={f.proposedRevision !== null ? "Proposed" : "In draft"}>
             {onOpenRevisions ? (
@@ -180,6 +185,29 @@ export function RequirementFacts({
           </ul>
         )}
       </FactsGroup>
+
+      {d.bindings.length > 0 ? (
+        <FactsGroup title="Screen bindings" count={`${d.bindings.length}`} testId="facts-bindings">
+          <ul className="grid gap-1">
+            {d.bindings.map((b) => (
+              <li
+                key={`${b.workflowId}|${b.step}|${b.contract}|${b.element}`}
+                className="flex min-w-0 items-center gap-1.5 text-13"
+                data-testid="rail-binding"
+              >
+                <span className="min-w-0 flex-1 truncate" title={`${b.flow} r${b.designRevision}, step ${b.step}: ${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}`}>
+                  {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
+                </span>
+                {b.brokenBy ? (
+                  <span className="flex-none text-12 text-danger" title={`${b.contract} ${b.brokenBy} removed or broke this element; re-agree to re-baseline`}>
+                    Broken by {b.brokenBy}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </FactsGroup>
+      ) : null}
 
       {needs.length > 0 ? (
         <FactsGroup title="Needs from other projects">

@@ -1,3 +1,4 @@
+export { dropAsDuplicateIn } from './acceptance.js';
 export { latestBaselineIn } from './baselines.js';
 export { type InterfaceContracts, provideInterfaceContracts } from './contract-links.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
@@ -5,7 +6,7 @@ export { provideRequirementDependents, type RequirementDependents } from './depe
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
-export { planDriftOf } from './plan-drift.js';
+export { changedTracedOf, planDriftOf } from './plan-drift.js';
 export { readRequirementAs, rowIn } from './read.js';
 export {
   createRequirementIn,

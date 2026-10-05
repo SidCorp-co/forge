@@ -7,7 +7,7 @@
  */
 
 import type {
-  LiveShortfall,
+  ProviderLiveGate,
   ProviderLiveMode,
   ProviderLiveView,
 } from '@forge/contracts/contract-waits';
@@ -70,22 +70,28 @@ export async function providerLiveOf(w: ContractWaitRow): Promise<ProviderLiveVi
   return { needed: w.minVersion, live, unread, gate };
 }
 
-function reaches(view: ProviderLiveView, versioning: 'dated' | 'semver' | null): boolean {
-  if (view.gate === 'off') return true;
-  return !!view.live && !!versioning && compareVersions(versioning, view.live, view.needed) >= 0;
+/** What the gate makes of one wait: served, short of the version, or let through because the gate is off. */
+export function gateReading(
+  view: Pick<ProviderLiveView, 'gate' | 'live' | 'needed'>,
+  versioning: 'dated' | 'semver' | null,
+): 'served' | 'short' | 'gate_off' {
+  if (view.live && versioning && compareVersions(versioning, view.live, view.needed) >= 0) {
+    return 'served';
+  }
+  return view.gate === 'off' ? 'gate_off' : 'short';
 }
 
 /**
- * The roster's issues whose cross-project waits their providers' production does not serve. An
+ * The roster's issues whose cross-project waits their providers' production does not serve, and
+ * those the ecosystem's off switch lets through, which the release records as gate off. An
  * in-project wait ships in the same release as its provider, so the gate does not read it.
  */
-export async function contractProviderShortfalls(
-  issueIds: readonly string[],
-): Promise<LiveShortfall[]> {
+export async function contractProviderGate(issueIds: readonly string[]): Promise<ProviderLiveGate> {
+  const out: ProviderLiveGate = { shortfalls: [], gateOff: [] };
   const waits = (await contractWaitsOfIssues(issueIds)).filter(
     (w) => !w.retractedAt && w.providerProjectId !== w.projectId,
   );
-  if (waits.length === 0) return [];
+  if (waits.length === 0) return out;
   const [shown, providers] = await Promise.all([
     issueDisplayIds(waits.map((w) => w.issueId)),
     projectsWhere(db, { ids: [...new Set(waits.map((w) => w.providerProjectId))] }),
@@ -94,16 +100,16 @@ export async function contractProviderShortfalls(
     db,
     providers.map((p) => p.id),
   );
-  const out: LiveShortfall[] = [];
   for (const w of waits) {
     const row = ifaces.get(w.providerProjectId);
     const versioning = row
       ? heldInterface(row, w.providerProjectId).document.commitments.versioning
       : null;
     const view = await providerLiveOf(w);
-    if (reaches(view, versioning)) continue;
+    const reading = gateReading(view, versioning);
+    if (reading === 'served') continue;
     const slug = providers.find((p) => p.id === w.providerProjectId)?.slug ?? w.providerProjectId;
-    out.push({
+    (reading === 'gate_off' ? out.gateOff : out.shortfalls).push({
       issueId: w.issueId,
       issue: shown.get(w.issueId) ?? w.issueId,
       contract: `${slug}/${w.contractSlug}`,

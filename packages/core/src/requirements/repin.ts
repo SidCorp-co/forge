@@ -28,7 +28,7 @@ export async function repinRequirement(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 're-pinning a requirement');
+  const signer = await signerRefusal(actor, projectId, 're-pinning a requirement', row);
   if (signer) return { ok: false, refusals: [signer] };
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

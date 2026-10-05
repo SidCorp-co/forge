@@ -126,6 +126,22 @@ export const nodeSchema = z.strictObject({
     .min(1)
     .max(WORKFLOW_LIMITS.refs)
     .optional(),
+  /**
+   * Screen bindings (requirement-to-delivery `pins`): the contract elements a screen reads or calls,
+   * by provider, contract and element key (`GET /products`, `Query.products`). A baseline pinning
+   * the design pins them with it; only an element-indexed contract type can be bound.
+   */
+  binds: z
+    .array(
+      z.strictObject({
+        provider: slug(),
+        slug: slug(),
+        element: z.string().min(1).max(WORKFLOW_LIMITS.ref),
+      }),
+    )
+    .min(1)
+    .max(WORKFLOW_LIMITS.io)
+    .optional(),
   /** Cross-links: steps of the project's other designs this one is, each held to its type's `links`. */
   refs: z
     .array(

@@ -43,6 +43,8 @@ export const issueContractWaits = pgTable(
     retractedBy: uuid('retracted_by').references(() => users.id, { onDelete: 'restrict' }),
     retractedAt: timestamp('retracted_at', { withTimezone: true }),
     retractReason: text('retract_reason'),
+    /** The end of the provider's commitment window, where the wait came from a breaking version (0410). */
+    dueAt: timestamp('due_at', { withTimezone: true }),
   },
   (t) => ({
     liveUq: uniqueIndex('issue_contract_waits_live_uq')

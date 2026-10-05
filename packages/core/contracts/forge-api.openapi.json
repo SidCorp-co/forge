@@ -16123,6 +16123,158 @@
         ]
       }
     },
+    "/api/projects/{id}/contract-requests": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "changeSummary": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "contract": {
+                    "pattern": "^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*$",
+                    "type": "string"
+                  },
+                  "criteria": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "body": {
+                          "maxLength": 10000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "code": {
+                          "pattern": "^BC-[1-9][0-9]*$",
+                          "type": "string"
+                        },
+                        "form": {
+                          "enum": [
+                            "statement",
+                            "scenario"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "body"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "reason": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "spec": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "goal": {
+                        "maxLength": 20000,
+                        "type": "string"
+                      },
+                      "personas": {
+                        "items": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
+                      "scopeIn": {
+                        "items": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      },
+                      "scopeOut": {
+                        "items": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "title": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tldr": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "contract",
+                  "title",
+                  "reason",
+                  "criteria"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/contract-standing": {
       "get": {
         "parameters": [
@@ -27591,6 +27743,35 @@
                             "band": {
                               "pattern": "^[a-z][a-z0-9_-]{0,31}$",
                               "type": "string"
+                            },
+                            "binds": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "element": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "provider": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "provider",
+                                  "slug",
+                                  "element"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 20,
+                              "minItems": 1,
+                              "type": "array"
                             },
                             "channel": {
                               "maxLength": 60,

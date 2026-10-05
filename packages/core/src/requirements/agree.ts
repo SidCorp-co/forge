@@ -20,6 +20,7 @@ import { readProjectDocument } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
+import { nearDuplicateRefusal, nearDuplicatesOf } from './near-duplicate.js';
 import { linkedDesigns, type RequirementActor, readinessAt, rowIn, signerRefusal } from './read.js';
 import {
   agreeRefusals,
@@ -99,7 +100,7 @@ export async function acceptRevision(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 'accepting a revision');
+  const signer = await signerRefusal(actor, projectId, 'accepting a revision', row);
   if (signer) return { ok: false, refusals: [signer] };
   const gate = await readinessGateOf(projectId);
   const refusals = await inTx(async (tx) => {
@@ -184,7 +185,7 @@ export async function agreeRequirement(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 'agreeing a requirement');
+  const signer = await signerRefusal(actor, projectId, 'agreeing a requirement', row);
   if (signer) return { ok: false, refusals: [signer] };
   const gate = await readinessGateOf(projectId);
   const refusals = await inTx(async (tx) => {
@@ -218,6 +219,11 @@ export async function agreeRequirement(input: {
     );
     const notReady = readinessRefusal(readiness, current.currentRevision);
     if (notReady) return [notReady];
+    const duplicate = nearDuplicateRefusal(
+      requirementKey(current.reqSeq),
+      await nearDuplicatesOf(current),
+    );
+    if (duplicate) return [duplicate];
     const seq = await writeBaseline(
       tx,
       row.id,

@@ -26,6 +26,7 @@ import { peopleOf } from '../lib/people.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
+import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import {
@@ -63,22 +64,11 @@ export interface StandingPreload {
     | 'updatedAt'
     | 'plan'
     | 'plannedRevision'
-    | 'plannedBaselineSeq'
   >[];
   baselines: readonly (typeof requirementBaselines.$inferSelect)[];
   prefix: string | null;
   releaseApproval: boolean;
 }
-
-const latestSeqAt = (
-  rows: readonly { requirementId: string; revision: number; seq: number }[],
-  id: string,
-  revision: number | null,
-) =>
-  rows.reduce<number | null>(
-    (m, b) => (b.requirementId === id && b.revision === revision ? Math.max(m ?? 0, b.seq) : m),
-    null,
-  );
 
 const firstBaselineAt = (
   rows: readonly { requirementId: string; revision: number; agreedAt: Date }[],
@@ -155,7 +145,6 @@ export async function standingsOf(
           updatedAt: issues.updatedAt,
           plan: issues.plan,
           plannedRevision: issues.plannedRevision,
-          plannedBaselineSeq: issues.plannedBaselineSeq,
         })
         .from(issues)
         .where(inArray(issues.requirementId, ids))
@@ -180,11 +169,15 @@ export async function standingsOf(
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
   ]);
-  const [people, issueCriteria, feedbackLinks, closedAt] = await Promise.all([
+  const [people, issueCriteria, feedbackLinks, closedAt, changedTraced] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
     feedbackLinksOf(projectId, ids),
     closedAtOf(linked.filter((i) => i.status === 'closed').map((i) => i.id)),
+    changedTracedOf(
+      db,
+      linked.map((i) => i.id),
+    ),
   ]);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
@@ -202,7 +195,7 @@ export async function standingsOf(
       changedSincePlan: changedSincePlan({
         ...i,
         currentRevision: row.currentRevision,
-        latestBaselineSeq: latestSeqAt(baselineSeqs, row.id, row.currentRevision),
+        changedTraced: changedTraced.get(i.id) ?? [],
       }),
     }));
     const issueIds = new Set(mine.map((i) => i.id));
