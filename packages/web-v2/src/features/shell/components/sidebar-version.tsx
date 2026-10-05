@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon, Tooltip } from "@/design";
-import { ForgeVersion } from "@/features/version";
+import { ForgeVersion } from "@/features/version/components/forge-version";
 import { cn } from "@/lib/utils/cn";
 
 interface SidebarVersionProps {

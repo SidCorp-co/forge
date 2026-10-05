@@ -41,6 +41,7 @@ export function Checkbox({
   );
   if (!label) return box;
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the label wraps ShadcnCheckbox, which renders the control; biome cannot see through the component
     <label className="inline-flex cursor-pointer items-center gap-2.5">
       {box}
       <span className="fg-body-sm text-fg">{label}</span>

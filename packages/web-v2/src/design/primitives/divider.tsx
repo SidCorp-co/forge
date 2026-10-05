@@ -7,11 +7,10 @@ export interface DividerProps {
 
 export function Divider({ orientation = "horizontal", className }: DividerProps) {
   return (
-    <span
-      role="separator"
+    <hr
       aria-orientation={orientation}
       className={cn(
-        "block bg-[var(--border-subtle)]",
+        "block border-0 bg-[var(--border-subtle)]",
         orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
         className,
       )}

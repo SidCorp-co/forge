@@ -392,6 +392,7 @@ export function NavRail({
       <div data-testid="brand-row" className={cn("flex items-center", collapsed ? "justify-center" : "gap-1.5 px-1")}>
         {/* Real Forge brand mark. Plain <img> needs assetPath() so the src is
             prefixed with the /v2 basePath (Next does NOT auto-prefix raw img). */}
+        {/* biome-ignore lint/performance/noImgElement: a 28px static brand mark above the fold; next/image would lazy-load it and add a loader */}
         <img
           src={assetPath("/forge-mark-32.png")}
           width={28}

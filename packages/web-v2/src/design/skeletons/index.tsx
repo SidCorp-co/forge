@@ -35,6 +35,7 @@ export function KanbanColumnSkeleton({ cards = 3 }: { cards?: number }) {
     <div className="flex w-full flex-col gap-3">
       <Skeleton className="h-4 w-20" />
       {Array.from({ length: cards }).map((_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: identical placeholders of a fixed count, never reordered
         <KanbanCardSkeleton key={i} />
       ))}
     </div>

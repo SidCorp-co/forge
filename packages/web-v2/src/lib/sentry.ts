@@ -24,8 +24,6 @@ export function installSentryErrorTracking(): boolean {
   });
   provideErrorTracker({
     captureException: (err, context) => Sentry.captureException(err, context),
-    captureMessage: (message, context) => Sentry.captureMessage(message, context),
-    addBreadcrumb: (step) => Sentry.addBreadcrumb(step),
   });
   installed = true;
   return true;

@@ -52,10 +52,14 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
     const byGroup = new Map<CommandGroup, Array<{ cmd: Command; idx: number }>>();
     commands.forEach((cmd, idx) => {
       const g = cmd.group ?? "navigate";
-      if (!byGroup.has(g)) byGroup.set(g, []);
-      byGroup.get(g)!.push({ cmd, idx });
+      const items = byGroup.get(g);
+      if (items) items.push({ cmd, idx });
+      else byGroup.set(g, [{ cmd, idx }]);
     });
-    return GROUP_ORDER.filter((g) => byGroup.has(g)).map((g) => ({ group: g, items: byGroup.get(g)! }));
+    return GROUP_ORDER.flatMap((g) => {
+      const items = byGroup.get(g);
+      return items ? [{ group: g, items }] : [];
+    });
   }, [commands]);
 
   const run = (cmd: Command) => {

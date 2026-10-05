@@ -36,6 +36,7 @@ export function ColdBoot({ label = "booting control plane…" }: { label?: strin
             animation: "fm-glow 2.6s var(--ease-in-out) infinite",
           }}
         />
+        {/* biome-ignore lint/performance/noImgElement: a static brand PNG at a fixed size, its src prefixed by assetPath for the basePath; next/image would lazy-load the loader's own mark */}
         <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt="Forge" />
       </div>
       <div className="fg-h2" style={{ fontWeight: 800 }}>Forge</div>
