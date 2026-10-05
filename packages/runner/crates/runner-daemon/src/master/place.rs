@@ -357,7 +357,7 @@ pub(crate) async fn ensure_master(
     runner_workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
 
     let transcript = transcript_path(&resolved.slug);
-    let mut env = terminal::pane_env();
+    let mut env = terminal::pane_env(project_id, &resolved.slug);
     env.extend(cli_borrow_env(&resolved.slug));
     let mcp_config = match runner_workspace::mcp::config::write_session(
         &resolved.slug,

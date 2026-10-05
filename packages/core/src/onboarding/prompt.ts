@@ -22,7 +22,9 @@ export interface OnboardingPromptContext {
   reason?: string | null;
 }
 
-const TOOLS = `Forge, through \`forge-runner api <path>\` (every write is refused by name with what is valid — read the refusal and fix, never work around it). P is projects/<projectId>:
+const tools = (
+  projectId: string,
+) => `Forge, through \`forge-runner api <path>\` (every write is refused by name with what is valid — read the refusal and fix, never work around it). P is projects/${projectId}:
 - onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
 - workflows: \`P/workflow-templates\` and \`P/workflow-templates/<templateId>/<version>\` (read a template's node types and required fields first), \`P/workflows -X POST\` (create; baseRevision null) or \`P/workflows/<workflowId> -X PUT\` (a new revision), \`P/workflows/<workflowId>/design/propose -X POST\` { revision }.
 - knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
@@ -68,7 +70,7 @@ function landedTree(branch: string | null, onboardingId: string) {
 export function analysePrompt(ctx: OnboardingPromptContext): string {
   return [
     `You are onboarding project "${ctx.projectName}" (${ctx.projectId}) into Forge: onboarding ${ctx.onboardingId}, its thread is conversation ${ctx.conversationId}. This is the ONE analysis job of this onboarding${ctx.reason ? `, a re-analysis a person asked for: ${ctx.reason}` : ''}. Onboarding never blocks the project; do not touch its issues.`,
-    TOOLS,
+    tools(ctx.projectId),
     `Do, in order, then stop:
 1. Analyse ${ctx.repository ? `${landedTree(ctx.defaultBranch, ctx.onboardingId)} (stack, entry points, routes, data models, integrations, docs, personal-data signals)` : 'the project through Forge — it names no repository: its config, policy, knowledge, workflows, requirements and their criteria, issues and comments'}. Read before you write.
 2. Write the code map as knowledge entries (below).
@@ -85,7 +87,7 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
 export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string }): string {
   return [
     `Onboarding ${ctx.onboardingId} of project "${ctx.projectName}" (${ctx.projectId}): the person answered questionnaire ${ctx.batchId} in conversation ${ctx.conversationId}. Turn the answers into revisions, then stop.`,
-    TOOLS,
+    tools(ctx.projectId),
     `Do, in order, then stop:
 1. P/onboarding/answers: each item with its state (answered / open / void) and the answer.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
 2. For each answered question or clarification, write a new revision of the design it affects that cites the item (in the step's does or the revision reason) and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED).

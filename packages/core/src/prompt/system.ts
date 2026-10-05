@@ -209,7 +209,7 @@ async function renderChatIntegrations(
 ): Promise<string | null> {
   try {
     const rows = await loadActiveIntegrationRows(projectId, orgId);
-    return rows.length > 0 ? renderIntegrations(rows) : null;
+    return rows.length > 0 ? renderIntegrations(rows, projectId) : null;
   } catch (err) {
     logger.warn({ err, projectId }, 'chat preamble: integrations block unavailable');
     return null;

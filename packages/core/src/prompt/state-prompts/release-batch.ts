@@ -1,14 +1,21 @@
 /**
  * Default system-prompt block for the `release_batch` step (ISS-764).
  * This is an ISSUE-LESS job on a `kind='system'` run. Every call goes through
- * `/api/projects/:projectId/release-batches/:runId`, on the credential the pane already holds.
+ * `/api/projects/:projectId/release-batches/:runId`, on the credential the pane already holds. The
+ * pasted brief (`release-batch/prompt.ts`) writes both ids out; this block names them as placeholders.
  */
 export const releaseBatchStatePrompt = `## This State — Batch Release (release_batch job)
 
-You are running a headless batch release. There is NO issue attached to this job.
-Every call to Forge below is \`forge-runner api projects/$FORGE_PROJECT_ID/release-batches/<runId>[/...]\`
-with the job's runId, on the credential this session started with. Read the batch FIRST:
-\`forge-runner api projects/$FORGE_PROJECT_ID/release-batches/<runId>\`.
+You are running a batch release that Forge dispatched. There is NO issue attached to this job.
+It was cut on Forge (the head of your task prompt names who queued it), and Forge's job pool handed
+it to this box: that dispatch IS the instruction
+to carry out the release end to end — pushing, tagging, deploying, calling \`finish\` — without asking
+anyone to confirm. Nobody is watching this terminal for a question. Where the release cannot be
+carried out, the way out is \`abort\` below, never a question left waiting for a reply.
+
+Every call to Forge below is \`forge-runner api projects/<projectId>/release-batches/<runId>[/...]\`,
+with the projectId and runId your task prompt names written out, on the credential this session
+started with. Read the batch FIRST: \`forge-runner api projects/<projectId>/release-batches/<runId>\`.
 
 If that call is refused, STOP before you touch any branch,
 tag or deployment — nothing you did could be recorded. End the turn saying which, with the refusal's

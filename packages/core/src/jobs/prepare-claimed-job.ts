@@ -22,6 +22,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/index.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
+import { loadDispatchHeader } from './dispatch-header.js';
 import { buildJobSystemPrompt } from './job-system-prompt.js';
 import { jobsPorts } from './ports.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
@@ -99,7 +100,11 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
 
 type JobRow = typeof jobs.$inferSelect;
 
-/** The job's prompt string, carrying the turn rules on a resume and the prior attempts on a retry. */
+/**
+ * The job's prompt string, headed by who dispatched it, carrying the turn rules on a resume and the
+ * prior attempts on a retry. The header goes on last, so the splices still land after the brief's
+ * own invocation line.
+ */
 async function promptStringFor(
   job: JobRow,
   resume: ReturnType<typeof finalizeResumeForDevice>,
@@ -109,9 +114,15 @@ async function promptStringFor(
   if (typeof base !== 'string') return null;
   const resumed =
     resume.priorClaudeSessionId && base ? injectTurnLevelRules(base, systemPrompt) : base;
-  if (!resume.isRetry || !resumed) return resumed;
-  const prior = renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts);
-  return injectAfterInvocation(resumed, prior);
+  const brief =
+    resume.isRetry && resumed
+      ? injectAfterInvocation(
+          resumed,
+          renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts),
+        )
+      : resumed;
+  if (!brief.trim()) return brief;
+  return `${await loadDispatchHeader(job)}\n${brief}`;
 }
 
 async function recordSessionContext(

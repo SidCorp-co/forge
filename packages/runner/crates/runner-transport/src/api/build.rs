@@ -47,6 +47,12 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
     if spec.path.trim().is_empty() {
         return Err("path is empty".to_string());
     }
+    if let Some(at) = empty_segment(spec.path) {
+        return Err(format!(
+            "path `{}` has an empty segment after `{at}/` — a shell variable meant to fill it is unset (a job pane exports $FORGE_PROJECT_ID and $FORGE_PROJECT_SLUG; elsewhere write the project id out)",
+            spec.path
+        ));
+    }
 
     let method = spec
         .method
@@ -64,6 +70,15 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
         headers,
         include_headers: spec.include,
     })
+}
+
+/// The part of the path before an empty segment, where one sits between two `/`. The query is not
+/// read: a value there may carry `//` legitimately.
+fn empty_segment(path: &str) -> Option<&str> {
+    let route = path.split(['?', '#']).next().unwrap_or(path);
+    let trimmed = route.trim_start_matches('/');
+    let at = trimmed.find("//")?;
+    Some(&trimmed[..at])
 }
 
 fn default_slug(slugs: &SlugSources<'_>) -> Option<String> {

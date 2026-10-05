@@ -4,8 +4,8 @@ export const RELEASE_PROCEDURE_FACT = 'release-procedure';
 export const RELEASE_BATCH_SKILL = 'release-flow';
 
 /** The REST path a release run reads and records its batch through, on the credential its pane holds. */
-export const releaseBatchPath = (runId: string): string =>
-  `projects/$FORGE_PROJECT_ID/release-batches/${runId}`;
+export const releaseBatchPath = (projectId: string, runId: string): string =>
+  `projects/${projectId}/release-batches/${runId}`;
 
 import { promotedBranch, type ReleasePath } from '../project-config/index.js';
 import type { VerifyConfig } from './verify.js';

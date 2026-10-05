@@ -134,7 +134,7 @@ function indentBlock(text: string): string {
     .join('\n');
 }
 
-export function renderIntegrations(rows: IntegrationRow[]): string {
+export function renderIntegrations(rows: IntegrationRow[], projectId: string): string {
   if (rows.length === 0) {
     return '## Project integrations\nNo external integrations are connected to this project.';
   }
@@ -144,7 +144,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
     const guidePointer = guideSlug
-      ? ` Full guide: \`forge-runner api projects/$FORGE_PROJECT_ID/guides/${guideSlug}.md\`.`
+      ? ` Full guide: \`forge-runner api projects/${projectId}/guides/${guideSlug}.md\`.`
       : '';
     const scope = r.role === 'deploy' ? (r.environment ?? 'deploy') : r.role;
     const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
@@ -180,7 +180,7 @@ function makeProjectResolver(src: {
     'test-urls': () => renderTestUrls(src.document),
     'test-creds': () => renderTestCreds(src.projectId, src.document),
     'test-notes': () => renderTestNotes(src.document, src.profiles),
-    integrations: () => renderIntegrations(src.integrations),
+    integrations: () => renderIntegrations(src.integrations, src.projectId),
   };
   return (key) =>
     key in reserved ? reserved[key as keyof typeof reserved]() : unreservedProjectKeyRefusal(key);

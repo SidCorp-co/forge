@@ -319,7 +319,7 @@ fn open_channel(
     tokens: Option<&session_tokens::SessionTokens>,
     hooks_can_report: bool,
 ) -> (Vec<(String, String)>, Option<String>) {
-    let env = terminal::pane_env();
+    let env = terminal::pane_env(project_id, slug);
     if !hooks_can_report {
         tracing::info!(
             "[pool] {project_id}: this platform hosts no control socket — {pane} starts unhooked, and nothing will be concluded from its silence"

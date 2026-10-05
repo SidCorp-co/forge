@@ -58,8 +58,8 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
-Start by reading the batch context: \`forge-runner api ${releaseBatchPath(runId)}\`.
+${renderReach(projectId, runId)}${renderMethod()}${renderProcedure(plan)}
+Start by reading the batch context: \`forge-runner api ${releaseBatchPath(projectId, runId)}\`.
 `;
 }
 
@@ -68,8 +68,8 @@ Start by reading the batch context: \`forge-runner api ${releaseBatchPath(runId)
  * opened with. A run that cannot reach it cannot record a release, so it is told to stop before the
  * release rather than discover that at `finish` (ISS-1211).
  */
-function renderReach(runId: string): string {
-  const path = releaseBatchPath(runId);
+function renderReach(projectId: string, runId: string): string {
+  const path = releaseBatchPath(projectId, runId);
   return `
 ### How you reach Forge
 Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with.
