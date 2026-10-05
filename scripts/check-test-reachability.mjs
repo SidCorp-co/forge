@@ -20,7 +20,9 @@ const git = (args) => gitOut(args)?.split('\n').filter(Boolean) ?? null;
 /**
  * Ask one vitest project which files it would collect.
  *
- * Returns repo-relative paths, or `null` when the runner could not answer.
+ * Returns repo-relative paths — empty for a project that holds no tests yet, which is an answer —
+ * or `null` when the runner could not answer. An empty answer hides nothing: a tracked test file no
+ * project collects is still reported unreachable below.
  */
 function collect(configRel) {
   const cwd = resolve(ROOT, dirname(configRel));
@@ -35,7 +37,7 @@ function collect(configRel) {
     .map((l) => l.trim())
     .filter((l) => TEST_FILE_RE.test(l))
     .map((l) => relative(ROOT, resolve(cwd, l)));
-  return files.length > 0 ? files : null;
+  return files;
 }
 
 function readSkips() {
