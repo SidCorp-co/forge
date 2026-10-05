@@ -215,20 +215,20 @@ function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): Stu
   const resumesAt = new Date(w.resumesAt);
   const since = after(resumesAt, ctx.stuckAfterMs);
   if (since.getTime() >= ctx.now.getTime()) return null;
-  const lock = gate === 'deploy_locked' ? lockAheadOf(f) : null;
-  if (lock) {
+  const refusal = gate === 'deploy_locked' ? lockAheadOf(f) : null;
+  if (refusal?.refusedUntil) {
     return {
       rule: 'overdue',
       disagreement: null,
       since,
       evidence: evidence(
-        'deploy_locks',
-        lock.environment,
-        'expires_at',
-        lock.runId,
-        lock.expiresAt,
+        'deploy_lock_refusals',
+        refusal.environment,
+        'refused_until',
+        refusal.holderRunId,
+        refusal.refusedUntil,
       ),
-      detail: `the deploy lock pipeline run ${lock.runId} holds on ${lock.environment} expired at ${lock.expiresAt.toISOString()} and nobody reclaimed it in ${mins(ctx.stuckAfterMs)}`,
+      detail: `this release's deploy was refused the ${refusal.environment} environment until ${refusal.refusedUntil.toISOString()}, held by pipeline run ${refusal.holderRunId}, and nothing took it in ${mins(ctx.stuckAfterMs)} after`,
     };
   }
   const j = f.job;

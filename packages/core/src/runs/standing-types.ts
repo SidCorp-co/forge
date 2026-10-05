@@ -112,13 +112,15 @@ export interface RunFacts {
       held: boolean;
     }
   >;
-  /** The project's deploy locks another run holds: what a release's deploy would be refused on. */
-  foreignLocks: Array<{
+  /** This run's own refused deploy-lock acquires: who refused it, on which lock, until when. A
+   *  holder is null where the refusal read none (an acquisition in flight). */
+  lockRefusals: Array<{
     environment: string;
-    runId: string;
-    subject: string;
-    acquiredAt: Date;
-    expiresAt: Date;
+    holderRunId: string | null;
+    holderSubject: string | null;
+    holderAcquiredAt: Date | null;
+    refusedUntil: Date | null;
+    refusedAt: Date;
   }>;
   question: { id: string; createdAt: Date; admin: boolean; issueKey: string | null } | null;
   approval: { id: string; requestedAt: Date } | null;

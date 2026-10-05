@@ -22,6 +22,17 @@ const otherLock = (expiresAt: Date) => ({
   expiresAt,
 });
 
+/** The record this release's own refused acquire left (deploy_lock_refusals). */
+const refusedBy = (refusedUntil: Date | null, over: Record<string, unknown> = {}) => ({
+  environment: 'production',
+  holderRunId: 'run-holder',
+  holderSubject: 'v1.2.0',
+  holderAcquiredAt: minutes(-10),
+  refusedUntil,
+  refusedAt: minutes(-8),
+  ...over,
+});
+
 function release(over: Partial<Record<keyof RunFacts, unknown>> = {}): RunFacts {
   return {
     run: {
@@ -41,33 +52,47 @@ function release(over: Partial<Record<keyof RunFacts, unknown>> = {}): RunFacts 
     master: null,
     liveJobs: 0,
     deployLocks: [],
-    foreignLocks: [otherLock(minutes(5))],
+    lockRefusals: [refusedBy(minutes(5))],
     releaseAttempt: null,
     ...over,
   } as unknown as RunFacts;
 }
 
-describe('agent-run-standing waiting_gate: a deploy lock another run holds', () => {
-  it('serves a release behind it as waiting on the deploy_locked gate, resuming at the lock expiry', () => {
+describe('agent-run-standing waiting_gate: a deploy lock this release was refused', () => {
+  it('serves a release whose acquire was refused as waiting on the deploy_locked gate, resuming at the lock expiry', () => {
     const d = liveOf(release(), ctx);
     expect(d.state).toBe('waiting_gate');
     expect(d.waitingOn).toEqual({
       kind: 'gate',
       gate: 'deploy_locked',
       resumesAt: minutes(5).toISOString(),
-      rule: expect.stringContaining(
-        'DEPLOY_ENVIRONMENT_LOCKED: pipeline run run-holder holds the production environment',
-      ),
+      rule: expect.stringContaining('pipeline run run-holder holds the production environment'),
     });
   });
 
-  it('resumes once the last lock ends, where the project locks several environments', () => {
-    const later = { ...otherLock(minutes(9)), environment: 'staging' };
-    const d = liveOf(release({ foreignLocks: [otherLock(minutes(5)), later] }), ctx);
+  it('reads the latest refusal where the release was refused more than once', () => {
+    const later = refusedBy(minutes(9), { environment: 'staging', refusedAt: minutes(-1) });
+    const d = liveOf(release({ lockRefusals: [refusedBy(minutes(5)), later] }), ctx);
     expect(d.waitingOn).toMatchObject({
       gate: 'deploy_locked',
       resumesAt: minutes(9).toISOString(),
     });
+  });
+
+  it('serves resumesAt null for a refusal that read no holder (an acquisition in flight)', () => {
+    const blind = refusedBy(null, {
+      holderRunId: null,
+      holderSubject: null,
+      holderAcquiredAt: null,
+    });
+    const d = liveOf(release({ lockRefusals: [blind] }), ctx);
+    expect(d.waitingOn).toMatchObject({ gate: 'deploy_locked', resumesAt: null });
+    expect(stuckOf(release({ lockRefusals: [blind] }), ctx, d)).toBeNull();
+  });
+
+  it('is no gate for a release that never asked, while another run holds a lock of the project', () => {
+    const d = liveOf(release({ lockRefusals: [] }), ctx);
+    expect(d.state).not.toBe('waiting_gate');
   });
 
   it('is no gate for the release that holds a lock of its own', () => {
@@ -91,18 +116,18 @@ describe('agent-run-standing waiting_gate: a deploy lock another run holds', () 
   });
 
   it('reads stuck overdue once the lock expired and nobody reclaimed it past the threshold', () => {
-    const f = release({ foreignLocks: [otherLock(minutes(-4))] });
+    const f = release({ lockRefusals: [refusedBy(minutes(-4))] });
     const reading = stuckOf(f, ctx, liveOf(f, ctx));
     expect(reading?.rule).toBe('overdue');
     expect(reading?.evidence).toMatchObject({
-      table: 'deploy_locks',
+      table: 'deploy_lock_refusals',
       id: 'production',
-      column: 'expires_at',
+      column: 'refused_until',
     });
   });
 
   it('is not overdue while inside the threshold after expiry', () => {
-    const f = release({ foreignLocks: [otherLock(minutes(-2))] });
+    const f = release({ lockRefusals: [refusedBy(minutes(-2))] });
     expect(stuckOf(f, ctx, liveOf(f, ctx))).toBeNull();
   });
 });

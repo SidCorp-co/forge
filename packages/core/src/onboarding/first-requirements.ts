@@ -4,29 +4,32 @@
  * journeys, each a requirement_draft suggestion on the journey design it serves.
  *
  * The room IS the case's record: its venue id is derived from the onboarding, so opening it twice
- * finds the first. A BA turn acts as the person whose message it answers (`window-decision.ts`), so
- * the case opens with a Forge line addressed to the onboarding's starter and the BA drafts on their
- * first message in it.
+ * finds the first. The case opens with a Forge line and a window of origin `onboarding_handoff` over
+ * it, so the BA drafts without waiting for a message; that turn acts for the onboarding's starter
+ * with nothing but the suggestion acts (`assistant/turn-origin.ts`). The BA asks what the journeys
+ * leave open through the onboarding questionnaire card, due and flagged unanswered by the same rule.
  */
 
 import type { OnboardingFirstRequirements } from '@forge/contracts/onboarding';
 import { and, count, eq, inArray, ne } from 'drizzle-orm';
 import {
   addPerson,
+  appendMessagesIn,
   findConversation,
   openConversationIn,
+  openOrExtendWindow,
   settleShape,
   type TxOnly,
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
+import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { consume } from '../outbox/index.js';
 import { announce } from '../questionnaires/index.js';
-import { systemLine } from './act.js';
-import { designsOf, type OnboardingRow, onboardingOf } from './read.js';
+import { designsOf, type OnboardingRow, onboardingOf, openBatchView } from './read.js';
 
 const VENUE_PREFIX = 'first-requirements:';
 
@@ -62,6 +65,7 @@ export function firstRequirementsStatusOf(facts: {
 /** The project's first-requirements outcome, or null while no case is open. */
 export async function readFirstRequirements(
   projectId: string,
+  now = new Date(),
 ): Promise<FirstRequirementsResult | null> {
   const row = await onboardingOf(db, projectId);
   if (!row) return null;
@@ -96,6 +100,7 @@ export async function readFirstRequirements(
     status: firstRequirementsStatusOf({ suggested, baAnswered: Number(answers?.n ?? 0) > 0 }),
     conversationId: room.id,
     suggested,
+    openBatch: await openBatchView(db, eq(questionnaireBatches.firstRequirementsOf, row.id), now),
   };
 }
 
@@ -175,7 +180,7 @@ export async function firstRequirementsJourneys(
 
 function caseBrief(designs: readonly { flow: string; title: string }[]): string {
   const named = designs.map((d) => `${d.title} (${d.flow})`).join(', ');
-  return `Every onboarding design is approved: ${named}. The BA assistant drafts the first requirements from these journeys, one suggestion per journey with its business criteria; you accept or reject each. Say "go" to start.`;
+  return `Every onboarding design is approved: ${named}. The BA assistant now drafts the first requirements from these journeys, one suggestion per journey with its business criteria, and may ask what they leave open; you accept or reject each.`;
 }
 
 async function openCaseIn(tx: TxOnly, row: OnboardingRow, brief: string): Promise<string | null> {
@@ -197,8 +202,32 @@ async function openCaseIn(tx: TxOnly, row: OnboardingRow, brief: string): Promis
     tx: handle,
   });
   await settleShape(handle, room.id);
-  await systemLine(tx, room.id, brief);
+  const [line] = await appendMessagesIn(tx, {
+    conversationId: room.id,
+    messages: [{ role: 'system', content: brief, authorLabel: 'Forge' }],
+  });
+  if (!line) throw new Error(`first-requirements: the hand-off line in ${room.id} returned no row`);
+  await openOrExtendWindow(
+    {
+      conversationId: room.id,
+      projectId: row.projectId,
+      adapter: 'web',
+      seq: line.seq,
+      origin: 'onboarding_handoff',
+    },
+    handle,
+  );
   return room.id;
+}
+
+/** Whom a hand-off turn in this onboarding's case room acts for: its starter, or null once it is gone. */
+export async function firstRequirementsStarterOf(onboardingId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ startedBy: onboardings.startedBy })
+    .from(onboardings)
+    .where(eq(onboardings.id, onboardingId))
+    .limit(1);
+  return row?.startedBy ?? null;
 }
 
 /** Step `req-case`: the case room, opened once per onboarding when it reads onboarded. */

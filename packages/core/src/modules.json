@@ -128,6 +128,7 @@
         "REQ-10",
         "project-onboarding#card",
         "project-onboarding#requirements",
+        "project-onboarding#req-case",
         "suggestion-lifecycle#start",
         "personal-data-flow#pr-assistant",
         "personal-data-flow#pr-chat-out"
@@ -789,6 +790,7 @@
       "kind": "kernel",
       "context": "work",
       "owns": [
+        "deployLockRefusals",
         "deployLocks",
         "issueStepContexts",
         "phaseJournal",
@@ -929,6 +931,7 @@
       "reads": [
         "agentQuestions",
         "agentSessions",
+        "deployLockRefusals",
         "deployLocks",
         "deviceRunLedger",
         "devices",
@@ -983,6 +986,7 @@
         "REQ-8",
         "suggestion-lifecycle",
         "requirement-to-delivery#approve",
+        "requirement-to-delivery#ready",
         "feedback-triage#suggest",
         "project-onboarding#suggested"
       ]
@@ -1005,6 +1009,7 @@
       "serves": [
         "REQ-17",
         "REQ-18",
+        "requirement-to-delivery#impact",
         "workflow-step-health#in-design",
         "workflow-step-health#in-builds",
         "workflow-step-health#in-pins",

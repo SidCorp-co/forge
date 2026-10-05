@@ -84,10 +84,14 @@ export const questionnaireBatches = pgTable(
     conversationId: uuid('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    // cm:why an exclusive arc of real foreign keys: an onboarding round, or a BA clarification on a
-    // requirement; feedback joins the arc with ISS-59
+    // cm:why an exclusive arc of real foreign keys: an onboarding round, a BA clarification on a
+    // requirement, or a BA ask in an onboarding's first-requirements room
     onboardingId: uuid('onboarding_id').references(() => onboardings.id, { onDelete: 'cascade' }),
     requirementId: uuid('requirement_id').references(() => requirements.id, {
+      onDelete: 'cascade',
+    }),
+    /** A BA ask in the first-requirements room this onboarding opened (project-onboarding `requirements`). */
+    firstRequirementsOf: uuid('first_requirements_of').references(() => onboardings.id, {
       onDelete: 'cascade',
     }),
     title: text('title').notNull(),
@@ -118,7 +122,7 @@ export const questionnaireBatches = pgTable(
   (t) => ({
     arcChk: check(
       'questionnaire_batches_arc_chk',
-      sql`num_nonnulls(${t.onboardingId}, ${t.requirementId}) = 1`,
+      sql`num_nonnulls(${t.onboardingId}, ${t.requirementId}, ${t.firstRequirementsOf}) = 1`,
     ),
     statusChk: check(
       'questionnaire_batches_status_chk',
@@ -151,5 +155,8 @@ export const questionnaireBatches = pgTable(
       .where(sql`status IN ('open', 'skipped') AND requirement_id IS NOT NULL`),
     projectIdx: index('questionnaire_batches_project_idx').on(t.projectId, t.status),
     onboardingIdx: index('questionnaire_batches_onboarding_idx').on(t.onboardingId),
+    firstRequirementsIdx: index('questionnaire_batches_first_requirements_idx')
+      .on(t.firstRequirementsOf)
+      .where(sql`${t.firstRequirementsOf} IS NOT NULL`),
   }),
 );

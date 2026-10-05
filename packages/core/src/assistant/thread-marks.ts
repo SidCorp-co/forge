@@ -11,10 +11,10 @@ import { agentSessions } from '../db/schema.js';
 import { conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { requirements } from '../db/schema-requirements.js';
-import { onboardingStatusesOf } from '../onboarding/index.js';
+import { firstRequirementsOnboardingOf, onboardingStatusesOf } from '../onboarding/index.js';
 
 export interface ThreadMark {
-  kind: 'onboarding' | 'requirement' | null;
+  kind: 'onboarding' | 'requirement' | 'first_requirements' | null;
   /** The thread's badge, as `threadStatusOf` reads it. */
   threadStatus: OnboardingStatus;
   /** The record the room is about, by key (`REQ-3` for a requirement's BA room); null for a project room. */
@@ -67,7 +67,7 @@ async function roomsWithLiveAgentTurn(conversationIds: readonly string[]): Promi
 
 /** What the conversation list and detail show beside each room: its kind, status and subject. */
 export async function threadMarks(
-  rooms: readonly { id: string; requirementId: string | null }[],
+  rooms: readonly { id: string; requirementId: string | null; externalId: string | null }[],
 ): Promise<Map<string, ThreadMark>> {
   const ids = rooms.map((r) => r.id);
   const out = new Map<string, ThreadMark>();
@@ -107,7 +107,13 @@ export async function threadMarks(
   for (const r of rooms) {
     const onboarding = status.get(r.id) ?? null;
     out.set(r.id, {
-      kind: onboarding ? 'onboarding' : r.requirementId ? 'requirement' : null,
+      kind: onboarding
+        ? 'onboarding'
+        : r.requirementId
+          ? 'requirement'
+          : firstRequirementsOnboardingOf(r.externalId)
+            ? 'first_requirements'
+            : null,
       threadStatus: threadStatusOf({
         onboarding,
         batchOpen: open.has(r.id),

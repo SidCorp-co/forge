@@ -6,6 +6,7 @@ export { provideRequirementDependents, type RequirementDependents } from './depe
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
+export type { ProposeDuplicate } from './near-duplicate.js';
 export { changedTracedOf, planDriftOf } from './plan-drift.js';
 export { readRequirementAs, rowIn } from './read.js';
 export {

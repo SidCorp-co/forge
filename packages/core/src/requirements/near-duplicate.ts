@@ -7,6 +7,7 @@
  * the agree is not refused for it.
  */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   REQUIREMENT_NEAR_DUPLICATE_SIMILARITY,
   requirementKey,
@@ -25,6 +26,52 @@ export interface NearDuplicate {
   decided: boolean;
   /** The proposed duplicate suggestion naming the pair, waiting on a decision. */
   pendingId: string | null;
+  /** This agree filed `pendingId` itself. */
+  filed?: boolean;
+  /** Why the suggestions door refused to file one, where it did. */
+  fileRefused?: string;
+}
+
+/** Proposes one duplicate suggestion on a requirement; the suggestions module answers it at boot. */
+export type ProposeDuplicate = (input: {
+  projectId: string;
+  requirementId: string;
+  baseRevision: number | null;
+  duplicateOf: string;
+  similarity: number;
+  actor: { userId: string; agency: ActorAgency };
+}) => Promise<{ ok: true; id: string } | { ok: false; refused: string }>;
+
+/**
+ * requirement-to-delivery `ready`: a near-duplicate with no decided and no proposed duplicate suggestion
+ * gets one filed on this requirement, so the agree's refusal names a suggestion to decide rather than
+ * asking the caller to write it. Run outside the agree's transaction, which its refusal rolls back.
+ */
+export async function fileUndecidedDuplicates(
+  row: { id: string; projectId: string; currentRevision: number | null },
+  actor: { userId: string; agency: ActorAgency },
+  near: readonly NearDuplicate[],
+  propose: ProposeDuplicate,
+): Promise<NearDuplicate[]> {
+  const out: NearDuplicate[] = [];
+  for (const n of near) {
+    if (n.decided || n.pendingId) {
+      out.push(n);
+      continue;
+    }
+    const filed = await propose({
+      projectId: row.projectId,
+      requirementId: row.id,
+      baseRevision: row.currentRevision,
+      duplicateOf: n.key,
+      similarity: n.similarity,
+      actor,
+    });
+    out.push(
+      filed.ok ? { ...n, pendingId: filed.id, filed: true } : { ...n, fileRefused: filed.refused },
+    );
+  }
+  return out;
 }
 
 /** Refused while any near-duplicate has no decided duplicate suggestion naming it. */
@@ -35,15 +82,19 @@ export function nearDuplicateRefusal(
   const open = near.filter((n) => !n.decided);
   if (open.length === 0) return null;
   const named = open
-    .map(
-      (n) =>
-        `${n.key} (similarity ${n.similarity}${n.pendingId ? `, duplicate suggestion ${n.pendingId} is proposed` : ', no duplicate suggestion proposed'})`,
-    )
+    .map((n) => {
+      const sugg = n.pendingId
+        ? `duplicate suggestion ${n.pendingId} ${n.filed ? 'was filed by this agree' : 'is proposed'}`
+        : n.fileRefused
+          ? `no duplicate suggestion could be filed (${n.fileRefused})`
+          : 'no duplicate suggestion proposed';
+      return `${n.key} (similarity ${n.similarity}, ${sugg})`;
+    })
     .join(', ');
   return {
     code: 'REQUIREMENT_DUPLICATE_UNDECIDED',
     path: '/revision',
-    detail: `${key} reads as a near-duplicate of ${named}. Decide a duplicate suggestion on ${key} naming each first: accept it to merge (${key} is dropped as the duplicate), or reject it with a reason to keep both; where none is proposed, propose one (kind duplicate, payload.duplicateOf).`,
+    detail: `${key} reads as a near-duplicate of ${named}. Decide a duplicate suggestion on ${key} naming each first: accept it to merge (${key} is dropped as the duplicate), or reject it with a reason to keep both.`,
   };
 }
 

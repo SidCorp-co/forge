@@ -84,8 +84,8 @@ export interface Tables {
   liveness: Map<string, RunLiveness>;
   leases: Row[];
   locks: Row[];
-  /** Every deploy lock of the project, whichever run holds it. */
-  projectLocks: Row[];
+  /** The refused deploy-lock acquires of these runs (deploy_lock_refusals). */
+  lockRefusals: Row[];
   approvals: Row[];
   releases: Row[];
   runFlips: Map<string, KernelFlip>;
@@ -296,13 +296,15 @@ export async function readTables(projectId: string, base: BaseRun[]): Promise<Ta
   const [
     [sessions, jobs, liveness, leases, locks, approvals, releases, runFlips, attempts, phases],
     issues,
-    projectLocks,
+    lockRefusals,
   ] = await Promise.all([
     runRows(projectId, ids),
     issueRowsOf(projectId, seqs),
     q(sql`
-      SELECT run_id, environment, subject, acquired_at, expires_at
-        FROM deploy_locks WHERE project_id = ${projectId}`),
+      SELECT run_id, environment, holder_run_id, holder_subject, holder_acquired_at,
+             refused_until, refused_at
+        FROM deploy_lock_refusals
+       WHERE project_id = ${projectId} AND run_id IN (${uuids(ids)})`),
   ]);
   const masterIds = [
     ...new Set(
@@ -328,7 +330,7 @@ export async function readTables(projectId: string, base: BaseRun[]): Promise<Ta
     liveness,
     leases,
     locks,
-    projectLocks,
+    lockRefusals,
     approvals,
     releases,
     runFlips,

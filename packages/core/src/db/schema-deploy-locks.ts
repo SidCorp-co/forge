@@ -33,6 +33,33 @@ export const deployLocks = pgTable(
   }),
 );
 
+/** A refused acquire, one row per run and environment: what the run's `deploy_locked` wait reads,
+ *  so a release reads it only when its own acquire was refused. `holder_*` is null where the
+ *  refusal could read no holder (an acquisition in flight); no foreign key on the holder, which the
+ *  row must outlive. A later acquire by the same run that takes the environment deletes the row. */
+export const deployLockRefusals = pgTable(
+  'deploy_lock_refusals',
+  {
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    environment: text('environment').notNull(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    holderRunId: uuid('holder_run_id'),
+    holderSubject: text('holder_subject'),
+    holderAcquiredAt: timestamp('holder_acquired_at', { withTimezone: true }),
+    /** The holder's `expires_at` at the refusal: until when the refusal stands. */
+    refusedUntil: timestamp('refused_until', { withTimezone: true }),
+    refusedAt: timestamp('refused_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.runId, t.environment] }),
+    byProject: index('deploy_lock_refusals_project_idx').on(t.projectId),
+  }),
+);
+
 export const deployLocksRelations = relations(deployLocks, ({ one }) => ({
   project: one(projects, { fields: [deployLocks.projectId], references: [projects.id] }),
   run: one(pipelineRuns, { fields: [deployLocks.runId], references: [pipelineRuns.id] }),

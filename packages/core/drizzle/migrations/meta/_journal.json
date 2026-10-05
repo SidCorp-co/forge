@@ -2654,6 +2654,13 @@
       "when": 1818374400000,
       "tag": "0410_a_contract_wait_carries_its_deadline_and_a_contract_request_names_its_project",
       "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1818460800000,
+      "tag": "0411_a_hand_off_turn_drafts_first_requirements_and_a_refused_deploy_lock_is_recorded",
+      "breakpoints": true
     }
   ]
 }

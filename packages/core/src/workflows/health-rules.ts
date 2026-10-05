@@ -34,6 +34,8 @@ import {
   provenanceOf,
   removeMarkers,
 } from './health-markers.js';
+import { matchLayers } from './health-match.js';
+import type { WorkflowWrite } from './schema.js';
 
 function diffView(
   diff: DesignDiff | null,
@@ -65,6 +67,67 @@ type Decision = HealthFacts['decisions'][number];
 const buildsAfter = (f: HealthFacts, target: NodeTarget, decision: Decision) =>
   f.builds.filter((b) => b.linkedAt > decision.at && buildNames(b, target));
 
+/** Whether the observation matches the node to a step or line of `doc` with no divergence. */
+function observedMatching(
+  doc: WorkflowWrite,
+  obs: NonNullable<HealthFacts['observation']>,
+  target: NodeTarget,
+): boolean {
+  const match = matchLayers(doc, obs.document);
+  const plannedOf = (id: string) =>
+    target.layer === 'planned'
+      ? id
+      : [...match.steps].find(([, pair]) => pair.observed === id)?.[0];
+  if (target.kind === 'step') {
+    const id = plannedOf(target.step);
+    return id !== undefined && match.steps.get(id)?.aspects.length === 0;
+  }
+  const from = plannedOf(target.from);
+  const to = plannedOf(target.to);
+  return from !== undefined && to !== undefined && match.edges.get(edgeKey(from, to))?.length === 0;
+}
+
+/**
+ * A keep with no build after it is settled by the first revision approved after the decision that
+ * adopts the code; it is reconciled by an observation taken after that approval, just as a build is
+ * by one taken after its close. Null when no such revision exists yet.
+ */
+function adoptionOf(f: HealthFacts, target: NodeTarget, decision: Decision): Date | null {
+  if (decision.node.verdict !== 'keep') return null;
+  const obs = f.observation;
+  const approved = f.revisions
+    .filter(
+      (r): r is typeof r & { document: WorkflowWrite; decidedAt: Date } =>
+        r.document !== null && r.decidedAt !== null && r.decidedAt > decision.at,
+    )
+    .sort((a, b) => a.decidedAt.getTime() - b.decidedAt.getTime());
+  const adopting = approved.find((r) => {
+    if (target.layer === 'planned') {
+      return target.kind === 'step'
+        ? r.document.steps.some((s) => s.id === target.step)
+        : (r.document.edges ?? []).some(
+            (e) => edgeKey(e.from, e.to) === edgeKey(target.from, target.to),
+          );
+    }
+    return obs !== null && observedMatching(r.document, obs, target);
+  });
+  return adopting?.decidedAt ?? null;
+}
+
+/** A keep reads reconciled when an observation after its adopting approval matches the node to the approved plan. */
+function adoptedReconciled(f: HealthFacts, target: NodeTarget, decision: Decision): boolean {
+  const at = adoptionOf(f, target, decision);
+  const obs = f.observation;
+  const approved = approvedDocumentOf(f);
+  return (
+    at !== null &&
+    obs !== null &&
+    approved !== null &&
+    obs.createdAt > at &&
+    observedMatching(approved, obs, target)
+  );
+}
+
 function lifecycleOf(
   f: HealthFacts,
   target: NodeTarget,
@@ -73,7 +136,14 @@ function lifecycleOf(
 ): NodePhase | null {
   if (!decision) return kinds.length > 0 ? 'marked' : null;
   const after = buildsAfter(f, target, decision);
-  if (after.length === 0) return 'decided';
+  if (after.length === 0) {
+    const adopted = adoptionOf(f, target, decision);
+    const obs = f.observation;
+    if (!adopted || !obs || obs.createdAt <= adopted) return 'decided';
+    return kinds.some((k) => PROVENANCE.has(k)) || !adoptedReconciled(f, target, decision)
+      ? 'marked'
+      : 'reconciled';
+  }
   if (after.some((b) => OPEN_ISSUE(b.status))) return 'cleaning';
   const settled = Math.max(...after.map((b) => (b.closedAt ?? b.updatedAt).getTime()));
   const obs = f.observation;
@@ -91,8 +161,12 @@ function reconciliationOf(
   ).length;
   const cleaning = nodes.filter((n) => n.phase === 'cleaning').length;
   const carried = new Map<string, HealthFacts['builds'][number]>();
+  let unbuilt = 0;
   for (const d of latestDecision.values()) {
-    for (const b of buildsAfter(f, decisionTarget(d.node), d)) carried.set(b.issueKey, b);
+    const target = decisionTarget(d.node);
+    const after = buildsAfter(f, target, d);
+    for (const b of after) carried.set(b.issueKey, b);
+    if (after.length === 0 && !adoptedReconciled(f, target, d)) unbuilt += 1;
   }
   const builds = [...carried.values()];
   const unreleased = builds.filter((b) => !b.release?.releasedAt);
@@ -114,18 +188,21 @@ function reconciliationOf(
       ? `${undecided} marked node(s) wait on a keep, rewrite or delete decision`
       : cleaning > 0
         ? `${cleaning} decided node(s) wait on their build issue to close`
-        : builds.length === 0
-          ? f.decisions.length === 0
-            ? 'no node is marked or decided, so nothing waits on a reconciliation'
-            : 'no build issue was linked after a node decision, so no version carries one'
-          : unreleased.length > 0
-            ? `${unreleased.map((b) => b.issueKey).join(', ')} is not in a released version yet`
-            : null;
+        : unbuilt > 0
+          ? `${unbuilt} decided node(s) have no build issue linked after the decision, and no approved revision adopting a kept one was observed`
+          : builds.length === 0
+            ? latestDecision.size === 0
+              ? 'no node is marked or decided, so nothing waits on a reconciliation'
+              : null
+            : unreleased.length > 0
+              ? `${unreleased.map((b) => b.issueKey).join(', ')} is not in a released version yet`
+              : null;
   const reconciled =
     f.observation !== null &&
     undecided === 0 &&
     cleaning === 0 &&
-    (builds.length === 0 ? f.decisions.length === 0 : version !== null);
+    unbuilt === 0 &&
+    (builds.length === 0 || version !== null);
   return {
     state: reconciled ? 'reconciled' : 'open',
     undecided,
@@ -135,7 +212,9 @@ function reconciliationOf(
     criteria,
     rule:
       why ??
-      `every marked node is decided and ${version?.version ?? 'the version'} carried its builds`,
+      (version
+        ? `every marked node is decided and ${version.version} carried its builds`
+        : 'every decided node is kept by an approved revision the code was observed to match'),
   };
 }
 

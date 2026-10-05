@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import {
   POST_QUESTIONNAIRE_SHAPE,
   postQuestionnaireRequestSchema,
+  QUESTIONNAIRE_DUE_DAYS,
   QUESTIONNAIRE_MAX_ROUNDS,
   type QuestionnaireRefusalCode,
 } from '@forge/contracts/onboarding';
@@ -46,19 +47,41 @@ export async function clarificationOf(requirementId: string) {
 // cm:why the BA door asks through the same questionnaire card and submit as onboarding (BC-10): one
 // batch is the one open ask a requirement holds (Q5), so it is refused over an open single question
 // and a single question is refused over an open batch
-export const sendQuestionnaire =
-  (room: BaRoom): ContextScopedMcpToolFactory =>
+export const sendQuestionnaire = (room: BaRoom): ContextScopedMcpToolFactory =>
+  questionnaireTool(
+    { projectId: room.projectId, requirementId: room.requirementId, firstRequirementsOf: null },
+    `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. At most one ask is open per requirement: a batch over an open clarification is CLARIFICATION_ALREADY_OPEN, a second batch QUESTIONNAIRE_ALREADY_OPEN; at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
+  );
+
+/** project-onboarding `requirements`: the BA asks in the first-requirements room through the same card. */
+export const sendFirstRequirementsQuestionnaire = (room: {
+  projectId: string;
+  onboardingId: string;
+}): ContextScopedMcpToolFactory =>
+  questionnaireTool(
+    { projectId: room.projectId, requirementId: null, firstRequirementsOf: room.onboardingId },
+    `Ask the person what the approved journeys leave open, as ONE questionnaire card they answer inline and send once (partial allowed), before or after suggesting. Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "question" for a missing business fact, "clarification" for a vague journey step, "recommendation" (control accept_reject) for a requirement you would propose. One batch is open in the room at a time (QUESTIONNAIRE_ALREADY_OPEN); at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. It is due ${QUESTIONNAIRE_DUE_DAYS} days after it is sent; their answers arrive as their next message.`,
+  );
+
+interface QuestionnaireThread {
+  projectId: string;
+  requirementId: string | null;
+  firstRequirementsOf: string | null;
+}
+
+const questionnaireTool =
+  (thread: QuestionnaireThread, description: string): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_send_questionnaire',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
-    description: `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. At most one ask is open per requirement: a batch over an open clarification is CLARIFICATION_ALREADY_OPEN, a second batch QUESTIONNAIRE_ALREADY_OPEN; at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
+    description,
     inputSchema: schema(postQuestionnaireRequestSchema),
     handler: async (args) => {
       const body = postQuestionnaireRequestSchema.parse(args);
       const conversationId = ctx.turn?.conversationId;
-      if (!conversationId) throw new Error('ba_send_questionnaire runs inside a requirement room');
+      if (!conversationId) throw new Error('ba_send_questionnaire runs inside a BA room');
       const actor = actorOf(ctx);
       let batchId = '';
       let messageId: string | null = null;
@@ -68,10 +91,11 @@ export const sendQuestionnaire =
         const exhausted = roundsRefusal(sent);
         if (exhausted) return [exhausted];
         const posted = await postQuestionnaireIn(tx, {
-          projectId: room.projectId,
+          projectId: thread.projectId,
           conversationId,
           onboardingId: null,
-          requirementId: room.requirementId,
+          requirementId: thread.requirementId,
+          firstRequirementsOf: thread.firstRequirementsOf,
           round: sent + 1,
           seriesSince: new Date(0),
           actor,

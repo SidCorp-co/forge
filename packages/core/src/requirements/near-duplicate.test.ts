@@ -56,3 +56,55 @@ describe('suggestion-lifecycle start: a duplicate on a requirement names another
     expect(r?.detail).toContain('is dropped');
   });
 });
+
+describe('requirement-to-delivery ready: agree files the duplicate suggestion itself', () => {
+  const row = { id: 'req-3', projectId: 'p', currentRevision: 2 };
+  const actor = { userId: 'u', agency: 'human' as const };
+
+  it('files one for each undecided near-duplicate with none proposed, and the refusal names it', async () => {
+    const { fileUndecidedDuplicates } = await import('./near-duplicate.js');
+    const calls: unknown[] = [];
+    const near = await fileUndecidedDuplicates(
+      row,
+      actor,
+      [
+        { key: 'REQ-1', similarity: 0.95, decided: true, pendingId: null },
+        { key: 'REQ-2', similarity: 0.93, decided: false, pendingId: 'sugg-9' },
+        { key: 'REQ-4', similarity: 0.91, decided: false, pendingId: null },
+      ],
+      async (input) => {
+        calls.push(input);
+        return { ok: true, id: 'sugg-new' };
+      },
+    );
+    expect(calls).toEqual([
+      {
+        projectId: 'p',
+        requirementId: 'req-3',
+        baseRevision: 2,
+        duplicateOf: 'REQ-4',
+        similarity: 0.91,
+        actor,
+      },
+    ]);
+    const r = nearDuplicateRefusal('REQ-3', near);
+    expect(r?.code).toBe('REQUIREMENT_DUPLICATE_UNDECIDED');
+    expect(r?.detail).toContain(
+      'REQ-4 (similarity 0.91, duplicate suggestion sugg-new was filed by this agree)',
+    );
+    expect(r?.detail).toContain('REQ-2 (similarity 0.93, duplicate suggestion sugg-9 is proposed)');
+  });
+
+  it('names a filing the suggestions door refused, never a silent miss', async () => {
+    const { fileUndecidedDuplicates } = await import('./near-duplicate.js');
+    const near = await fileUndecidedDuplicates(
+      row,
+      actor,
+      [{ key: 'REQ-4', similarity: 0.91, decided: false, pendingId: null }],
+      async () => ({ ok: false, refused: 'SUGGESTION_DUPLICATE: a twin is proposed' }),
+    );
+    expect(nearDuplicateRefusal('REQ-3', near)?.detail).toContain(
+      'no duplicate suggestion could be filed (SUGGESTION_DUPLICATE: a twin is proposed)',
+    );
+  });
+});

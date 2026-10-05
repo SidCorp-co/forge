@@ -27,6 +27,7 @@ import { readInterfaces } from '../interface-store.js';
 import { lockKeys, projectsWhere } from '../store.js';
 import { compareVersions, parseVersion, SCHEME_SHAPE, type Versioning } from './naming.js';
 import { versionsOf } from './store.js';
+import { dueAtOf } from './wait-due.js';
 import { providerLiveOf } from './waits-live.js';
 
 type Reader = Tx;
@@ -121,8 +122,10 @@ async function addRefusals(t: WaitTarget): Promise<ContractWaitRefusal[] | Resol
 type Outcome<T> = { ok: true; value: T } | { ok: false; refusals: ContractWaitRefusal[] };
 
 export async function addContractWait(
-  t: WaitTarget & { reason: string | null; userId: string },
+  t: WaitTarget & { reason: string | null; dueAt?: string | undefined; userId: string },
 ): Promise<Outcome<ContractWaitRow>> {
+  const due = dueAtOf(t.dueAt, new Date());
+  if (!due.ok) return { ok: false, refusals: [due.refusal] };
   const resolved = await addRefusals(t);
   if (Array.isArray(resolved)) return { ok: false, refusals: resolved };
   return db.transaction(async (tx): Promise<Outcome<ContractWaitRow>> => {
@@ -152,6 +155,7 @@ export async function addContractWait(
       minVersion: t.minVersion,
       reason: t.reason,
       createdBy: t.userId,
+      dueAt: due.value,
     });
     return { ok: true, value: row };
   });

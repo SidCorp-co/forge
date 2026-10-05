@@ -29,10 +29,12 @@ import {
   withTerminalStatus,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
+import { firstRequirementsOnboardingOf, firstRequirementsStarterOf } from '../onboarding/index.js';
 import { readSelvesFor } from '../orgs/index.js';
 import { resolveTurnAuthority } from '../permissions/index.js';
 import { refuseAuthority } from './authority-refusal.js';
 import type { RoutedWindow, RouteWindowArgs, WindowCut } from './route-window.js';
+import { handoffPersonSpoke, handoffVenueRefusal } from './turn-origin.js';
 import { runConversationTurn, type TurnOutcome } from './turn-runner.js';
 
 /** How many messages back a window may reach for its own contents. */
@@ -74,6 +76,9 @@ export async function decide(
     projectId: window.projectId,
     title: conversation.title,
   };
+  if (window.origin === 'onboarding_handoff' && !handoffPersonSpoke(messages)) {
+    return handoffTurn(r, conversation, venue, messages);
+  }
   const last = messages[messages.length - 1];
   const speaker = [...messages].reverse().find((m) => m.role === 'user') ?? last;
   const unlinked = () =>
@@ -106,6 +111,54 @@ export async function decide(
     authority: resolved.authority,
   });
 }
+
+/**
+ * project-onboarding `req-case`: the BA drafts first requirements with no person's message to answer.
+ * It acts for the onboarding's starter, the person the case room is addressed to, with the origin on
+ * its authority, so its tools are cut to reading the journeys and proposing suggestions; every
+ * suggestion still waits on a person's accept. Outside a first-requirements room it is refused.
+ */
+async function handoffTurn(
+  r: Routing,
+  conversation: Conversation,
+  venue: ConversationVenue,
+  messages: StoredConversationMessage[],
+): Promise<RoutedWindow> {
+  const { args, deliveryKey, claim } = r;
+  const { window } = args;
+  const refused = (refusal: { code: string; message: string }) =>
+    refuseAuthority(args, venue, window, deliveryKey, claim, undefined, refusal);
+  const outside = handoffVenueRefusal(venue.externalId);
+  if (outside) return refused(outside);
+  const onboardingId = firstRequirementsOnboardingOf(venue.externalId) as string;
+  const starter = await firstRequirementsStarterOf(onboardingId);
+  if (!starter) {
+    return refused({
+      code: 'TURN_ORIGIN_REFUSED',
+      message: `I will not draft here: the onboarding ${onboardingId} this room was opened for no longer exists.`,
+    });
+  }
+  const room = await mayRoomSpeak(r, conversation, venue, messages);
+  if ('decision' in room) return room;
+  const resolved = await resolveTurnAuthority({
+    userId: starter,
+    projectId: venue.projectId,
+    viaTokenId: null,
+  });
+  if (!resolved.ok) return refused(resolved.refusal);
+  return takeTurn(r, {
+    conversation,
+    venue,
+    messages,
+    speaker: undefined,
+    room,
+    authority: { ...resolved.authority, origin: 'onboarding_handoff' },
+    message: HANDOFF_MESSAGE,
+  });
+}
+
+const HANDOFF_MESSAGE =
+  'Onboarding hand-off: every onboarding design is approved and nobody has asked yet. Draft the first requirements now, one suggestion per approved journey, and say which journeys you suggested for and which you skipped. You may only read the journeys, look for similar requirements and suggest; a person accepts or rejects each suggestion.';
 
 /** What a window already settled: a delivery recorded under its key, or one reserved and never recorded. */
 async function priorDecision({ args, deliveryKey }: Routing): Promise<RoutedWindow | null> {
@@ -240,6 +293,8 @@ async function takeTurn(
     speaker: StoredConversationMessage | undefined;
     room: Room;
     authority: TurnAuthority;
+    /** What the turn is asked; the window's messages joined, unless its origin words it. */
+    message?: string;
   },
 ): Promise<RoutedWindow> {
   const { window } = args;
@@ -281,8 +336,11 @@ async function takeTurn(
       authority,
       speakerUserId,
       handleUserId,
-      speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',
-      message: messages.map((m) => m.content).join('\n'),
+      speakerKey:
+        speaker?.authorLabel ??
+        speaker?.authorUserId ??
+        (authority.origin === 'message' ? 'unknown' : authority.origin),
+      message: t.message ?? messages.map((m) => m.content).join('\n'),
       questionAlreadyRecorded: true,
       mayDecline: true,
       sendMode: group && room.presence.answerInGroup === 'tool' ? 'tool' : 'reply',

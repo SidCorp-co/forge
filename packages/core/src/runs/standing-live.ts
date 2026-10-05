@@ -69,16 +69,29 @@ function gate(w: {
   };
 }
 
-/** The deploy lock another run holds that this release's deploy waits behind: one per environment
- *  the project locks, and the release reaches them all, so it resumes once the last one ends. Read
- *  only while the release holds no lock of its own and has not reached its verify stage. */
-export function lockAheadOf(f: RunFacts): RunFacts['foreignLocks'][number] | null {
+type LockRefusal = RunFacts['lockRefusals'][number];
+
+/** The refusal this release's own deploy-lock acquire recorded (deploy_lock_refusals), never a
+ *  lock another run merely holds: a release that never asked waits on nothing. Read only while the
+ *  release holds no lock of its own and has not reached its verify stage. */
+export function lockAheadOf(f: RunFacts): LockRefusal | null {
   if (!isReleaseRun(f) || f.deployLocks.some((l) => l.held)) return null;
   if (f.releaseAttempt?.stage === 'verify') return null;
-  return f.foreignLocks.reduce<RunFacts['foreignLocks'][number] | null>(
-    (last, l) => (last === null || l.expiresAt.getTime() > last.expiresAt.getTime() ? l : last),
+  return f.lockRefusals.reduce<LockRefusal | null>(
+    (last, r) => (last === null || r.refusedAt.getTime() > last.refusedAt.getTime() ? r : last),
     null,
   );
+}
+
+function refusalRule(r: LockRefusal): string {
+  if (!r.holderRunId) {
+    return `DEPLOY_ENVIRONMENT_LOCKED: this release's deploy was refused the ${r.environment} environment at ${r.refusedAt.toISOString()} while another acquisition was in flight and uncommitted; no holder or deadline was readable, so none is served`;
+  }
+  const since = r.holderAcquiredAt ? ` since ${r.holderAcquiredAt.toISOString()}` : '';
+  const until = r.refusedUntil
+    ? `until that deploy ends or its hold expires at ${r.refusedUntil.toISOString()}, when the next deploy reclaims it`
+    : 'until that deploy ends';
+  return `DEPLOY_ENVIRONMENT_LOCKED: this release's deploy was refused at ${r.refusedAt.toISOString()}: pipeline run ${r.holderRunId} holds the ${r.environment} environment, deploying ${r.holderSubject ?? 'an unnamed subject'}${since}; refused ${until}`;
 }
 
 function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
@@ -208,13 +221,13 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       rule: `pipeline health reads ${barrier}: ${DISPATCH_GATES[barrier]}, which has no deadline`,
     });
   }
-  const lock = lockAheadOf(f);
-  if (lock) {
+  const refusal = lockAheadOf(f);
+  if (refusal) {
     return gate({
       gate: 'deploy_locked',
-      resumesAt: lock.expiresAt,
-      since: lock.acquiredAt,
-      rule: `DEPLOY_ENVIRONMENT_LOCKED: pipeline run ${lock.runId} holds the ${lock.environment} environment, deploying ${lock.subject} since ${lock.acquiredAt.toISOString()}; this release's deploy is refused until that deploy ends or its hold expires at ${lock.expiresAt.toISOString()}, when the next deploy reclaims it`,
+      resumesAt: refusal.refusedUntil,
+      since: refusal.refusedAt,
+      rule: refusalRule(refusal),
     });
   }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind && f.ledger.blockerKind !== 'human') {

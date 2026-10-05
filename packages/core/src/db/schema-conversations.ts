@@ -223,8 +223,11 @@ export const conversationMessages = pgTable(
 /**
  * Why a window stopped, in the vocabulary rule 4 of ISS-1004 names.
  */
-/** What opened a window: a message that arrived, or a heartbeat tick re-reading a quiet room (ISS-1034). */
-export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
+/**
+ * What opened a window: a message that arrived, a heartbeat tick re-reading a quiet room (ISS-1034),
+ * or the onboarding hand-off that lets the BA draft first requirements unprompted.
+ */
+export const conversationWindowOrigins = ['inbound', 'heartbeat', 'onboarding_handoff'] as const;
 export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
 
 /**
@@ -286,7 +289,7 @@ export const conversationWindows = pgTable(
   (t) => ({
     originKnown: check(
       'conversation_windows_origin_known',
-      sql`${t.origin} IN ('inbound','heartbeat')`,
+      sql`${t.origin} IN ('inbound','heartbeat','onboarding_handoff')`,
     ),
     oneCollecting: uniqueIndex('conversation_windows_one_collecting')
       .on(t.conversationId)

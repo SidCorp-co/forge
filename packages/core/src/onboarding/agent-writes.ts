@@ -74,6 +74,7 @@ export async function postOnboardingQuestionnaire(input: {
       conversationId: row.conversationId,
       onboardingId: row.id,
       requirementId: null,
+      firstRequirementsOf: null,
       round: row.roundsSent + 1,
       seriesSince: row.reanalyzedAt ?? row.startedAt,
       actor,

@@ -18,6 +18,7 @@ export const TURN_AUTHORITY_REFUSAL_CODES = [
 	"TURN_GRANT_EMPTY",
 	"TURN_DEVICE_NO_ROLE",
 	"TURN_DEVICE_OUTRANKED",
+	"TURN_ORIGIN_REFUSED",
 ] as const;
 
 export type TurnAuthorityRefusalCode = (typeof TURN_AUTHORITY_REFUSAL_CODES)[number];
@@ -25,4 +26,5 @@ export const AUTH_REFUSAL_STATUSES = {
 	PREFERENCE_CHANGE_SUPERSEDED: 409,
 	TURN_NO_ROLE: 403,
 	TURN_DEVICE_NO_ROLE: 403,
+	TURN_ORIGIN_REFUSED: 403,
 } as const satisfies RefusalStatuses<AuthRefusalCode | TurnAuthorityRefusalCode>;

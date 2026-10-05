@@ -64,6 +64,7 @@ export async function resolveTurnAuthority(args: {
     authority: {
       userId: args.userId,
       projectId: args.projectId,
+      origin: 'message',
       viaTokenId: args.viaTokenId,
       grant,
       fence,

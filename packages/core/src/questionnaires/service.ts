@@ -26,7 +26,12 @@ import {
   type TxOnly,
 } from './ports.js';
 import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
-import { alreadyOpenRefusal, itemRefusals, repeatRefusals } from './rules.js';
+import {
+  alreadyOpenRefusal,
+  itemRefusals,
+  questionnaireArmRefusal,
+  repeatRefusals,
+} from './rules.js';
 import { questionnaireText } from './text.js';
 
 export function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
@@ -103,6 +108,7 @@ interface PostInput {
   conversationId: string;
   onboardingId: string | null;
   requirementId: string | null;
+  firstRequirementsOf: string | null;
   round: number;
   /** Items answered since this moment are not asked again (the series a re-analysis restarts). */
   seriesSince: Date;
@@ -116,6 +122,8 @@ interface PostInput {
 /** Why this batch may not be posted now: a malformed item, a batch already open, an item answered
  *  or rejected in this series, or a requirement already holding an open ask. */
 async function postRefusals(tx: TxOnly, input: PostInput): Promise<Refusal[]> {
+  const thread = questionnaireArmRefusal(input);
+  if (thread) return [thread];
   const shape = itemRefusals(input.items);
   if (shape.length) return shape;
   const busy = alreadyOpenRefusal(await openBatchOf(tx, input.conversationId));
@@ -203,6 +211,7 @@ export async function postQuestionnaireIn(
       conversationId: input.conversationId,
       onboardingId: input.onboardingId,
       requirementId: input.requirementId,
+      firstRequirementsOf: input.firstRequirementsOf,
       title: input.title,
       intro: input.intro ?? null,
       round: input.round,

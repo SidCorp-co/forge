@@ -257,14 +257,15 @@ function factsOf(
         reclaimedFromRunId: str(l.reclaimed_from_run_id),
         held: true,
       })),
-    foreignLocks: t.projectLocks
-      .filter((l) => String(l.run_id) !== b.id)
-      .map((l) => ({
-        environment: String(l.environment),
-        runId: String(l.run_id),
-        subject: String(l.subject),
-        acquiredAt: must(l.acquired_at),
-        expiresAt: must(l.expires_at),
+    lockRefusals: t.lockRefusals
+      .filter((r) => String(r.run_id) === b.id)
+      .map((r) => ({
+        environment: String(r.environment),
+        holderRunId: str(r.holder_run_id),
+        holderSubject: str(r.holder_subject),
+        holderAcquiredAt: date(r.holder_acquired_at),
+        refusedUntil: date(r.refused_until),
+        refusedAt: must(r.refused_at),
       })),
     question: questionFacts(
       t,
