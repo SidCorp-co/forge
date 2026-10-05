@@ -1,58 +1,8 @@
 {
-  "generatedAt": "2026-10-05T14:14:49.124Z",
+  "generatedAt": "2026-10-05T14:26:38.527Z",
   "original": {
     "packages/web-v2": 226,
     "packages/core": 280
   },
-  "files": {
-    "packages/web-v2/src/features/auth/components/auth-shell.tsx": {
-      "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/features/auth/components/password-meter.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/issues/components/attachment-list.tsx": {
-      "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/features/issues/components/image-lightbox.tsx": {
-      "lint/a11y/noStaticElementInteractions": 4,
-      "lint/a11y/useKeyWithClickEvents": 3,
-      "lint/performance/noImgElement": 2
-    },
-    "packages/web-v2/src/features/issues/components/issues-list-view.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/issues/components/new-issue-dialog.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 1,
-      "lint/suspicious/noImplicitAnyLet": 1
-    },
-    "packages/web-v2/src/features/operator/components/operator-topbar.tsx": {
-      "lint/a11y/noNoninteractiveTabindex": 1
-    },
-    "packages/web-v2/src/features/overview/components/overview-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/session/components/context-rail.tsx": {
-      "lint/style/noNonNullAssertion": 1
-    },
-    "packages/web-v2/src/features/session/components/conversation.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/session/components/tool-card.tsx": {
-      "lint/correctness/noUnusedFunctionParameters": 1,
-      "lint/suspicious/noArrayIndexKey": 4
-    },
-    "packages/web-v2/src/features/session/components/use-stick-to-bottom.ts": {
-      "lint/correctness/useExhaustiveDependencies": 1
-    },
-    "packages/web-v2/src/features/sessions/components/sessions-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/shell/nav-rail-compact.tsx": {
-      "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/lib/utils/use-persisted-state.ts": {
-      "lint/correctness/useExhaustiveDependencies": 3
-    }
-  }
+  "files": {}
 }
