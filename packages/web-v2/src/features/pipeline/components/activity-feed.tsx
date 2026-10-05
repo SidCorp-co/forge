@@ -125,7 +125,7 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
         className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
         style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
       >
-        round {summary.round}/{summary.maxRounds}
+        attempt {summary.attempt}/{summary.maxAttempts}
       </span>
       <span className="fg-caption ml-auto text-subtle">{summary.totalAttempts} attempts</span>
     </div>

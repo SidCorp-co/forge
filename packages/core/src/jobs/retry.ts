@@ -1,7 +1,8 @@
 import {
   AUTO_RETRY_PAYLOAD_KEY,
   type AutoRetryPayload,
-  RETRY_MAX_ROUNDS,
+  FAILOVER_MAX_ATTEMPTS,
+  RETRY_MAX_ATTEMPTS,
   readAutoRetryPayload,
 } from '@forge/contracts/jobs';
 import { eq, sql } from 'drizzle-orm';
@@ -31,7 +32,6 @@ type JobRow = typeof jobs.$inferSelect;
 export {
   AUTO_RETRY_PAYLOAD_KEY,
   type AutoRetryPayload,
-  RETRY_MAX_ROUNDS,
   readAutoRetryPayload,
 } from '@forge/contracts/jobs';
 
@@ -44,9 +44,6 @@ export interface RetryOutcome {
 /** Uniform cooldown between every retry. No phases, no Retry-After. */
 const RETRY_COOLDOWN_MS = 60_000;
 
-/** Attempts a single device gets before the chain rotates to the next one. */
-const RETRY_TRIES_PER_DEVICE = 3;
-
 /**
  * How long a job may sit deferred for want of ANY usable device before it stops
  * retrying and holds instead.
@@ -54,71 +51,22 @@ const RETRY_TRIES_PER_DEVICE = 3;
 const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
 
 /**
- * What {@link nextRotation} decided. Three outcomes, not two: "nowhere to send
+ * What {@link nextRetry} decided. Three outcomes, not two: "nowhere to send
  * it" is not the same answer as "budget spent".
  */
-type RotationOutcome =
-  | { kind: 'rotate'; state: AutoRetryPayload }
+type RetryDecision =
+  | { kind: 'retry'; state: AutoRetryPayload }
   | { kind: 'defer'; state: AutoRetryPayload }
   | { kind: 'give_up'; reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' };
 
-function nextRotation(
-  job: JobRow,
-  state: AutoRetryPayload,
-  online: string[],
-  now: Date,
-): RotationOutcome {
-  const ranOn = job.deviceId ?? null;
-  const target = state.target ?? ranOn;
-  const tries = state.target ? state.tries : 1;
-
-  if (online.length === 0) {
-    const deferredSince = state.deferredSince ?? now.toISOString();
-    const waited = now.getTime() - new Date(deferredSince).getTime();
-    if (waited > CAPACITY_DEFER_CEILING_MS) {
-      return { kind: 'give_up', reason: 'all_devices_exhausted' };
-    }
-    return { kind: 'defer', state: { ...state, target, tries, deferredSince } };
+function nextRetry(job: JobRow, maxAttempts: number, online: string[], now: Date): RetryDecision {
+  if (job.attempts + 1 > maxAttempts) return { kind: 'give_up', reason: 'retry_rounds_exhausted' };
+  if (online.length > 0) return { kind: 'retry', state: { maxAttempts, deferredSince: null } };
+  const deferredSince = readAutoRetryPayload(job.payload)?.deferredSince ?? now.toISOString();
+  if (now.getTime() - new Date(deferredSince).getTime() > CAPACITY_DEFER_CEILING_MS) {
+    return { kind: 'give_up', reason: 'all_devices_exhausted' };
   }
-
-  if (ranOn && target === ranOn && tries < RETRY_TRIES_PER_DEVICE) {
-    return {
-      kind: 'rotate',
-      state: {
-        round: state.round,
-        target: ranOn,
-        tries: tries + 1,
-        done: state.done,
-        deferredSince: null,
-      },
-    };
-  }
-
-  const done = Array.from(
-    new Set([...state.done, target, ranOn].filter((x): x is string => Boolean(x))),
-  );
-  const remaining = online.filter((d) => !done.includes(d));
-
-  if (remaining.length > 0) {
-    return {
-      kind: 'rotate',
-      state: {
-        round: state.round,
-        target: remaining[0] ?? null,
-        tries: 1,
-        done,
-        deferredSince: null,
-      },
-    };
-  }
-
-  const nextRound = state.round + 1;
-  if (nextRound > RETRY_MAX_ROUNDS) return { kind: 'give_up', reason: 'retry_rounds_exhausted' };
-  // New sweep: clear `done`, start again from the first online device.
-  return {
-    kind: 'rotate',
-    state: { round: nextRound, target: online[0] ?? null, tries: 1, done: [], deferredSince: null },
-  };
+  return { kind: 'defer', state: { maxAttempts, deferredSince } };
 }
 
 /**
@@ -343,7 +291,7 @@ async function insertRetryJob(
  * Schedule the next retry under the per-class policy (see module header), or
  * return `{ scheduled: false }` once the budget is spent.
  *
- * Idempotent: cancellation + class policy + verify-first + round budget all
+ * Idempotent: cancellation + class policy + verify-first + attempt budget all
  * guard the insert.
  */
 export async function scheduleAutoRetryWithVerify(
@@ -370,19 +318,16 @@ export async function scheduleAutoRetryWithVerify(
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
   const healthyDevices = await onlineCapableDeviceIds(job.projectId, required);
-  const state = readAutoRetryPayload(job.payload);
-  const outcome = nextRotation(
+  const outcome = nextRetry(
     job,
-    isFailoverAction
-      ? { ...state, target: state.target ?? job.deviceId ?? null, tries: RETRY_TRIES_PER_DEVICE }
-      : state,
+    isFailoverAction ? FAILOVER_MAX_ATTEMPTS : RETRY_MAX_ATTEMPTS,
     healthyDevices,
     new Date(),
   );
   const capacityEntityId = capacityWedgeEntityId(job.projectId, 'all');
   if (outcome.kind === 'give_up') {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason: outcome.reason },
+      { jobId: job.id, attempts: job.attempts, reason: outcome.reason },
       'retry: chain stopped',
     );
     return { scheduled: false, reason: outcome.reason };
@@ -391,7 +336,7 @@ export async function scheduleAutoRetryWithVerify(
   else await resolvePipelineWedge(capacityEntityId);
   const next = outcome.state;
 
-  // A failover retries at once for whichever box claims it; nothing pins it to `next.target`.
+  // A failover retries at once for whichever box claims it.
   const cooldownMs = isFailoverAction ? 0 : RETRY_COOLDOWN_MS;
   const newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
   await bumpSession(job, 'autoRetries', incrementAutoRetryCount);
@@ -401,8 +346,7 @@ export async function scheduleAutoRetryWithVerify(
     data: {
       sessionId: job.agentSessionId,
       attempt: job.attempts + 1,
-      round: next.round,
-      target: next.target,
+      maxAttempts: next.maxAttempts,
       cooldownUsed: cooldownMs / 1000,
     },
   });
@@ -410,9 +354,8 @@ export async function scheduleAutoRetryWithVerify(
     {
       originalJobId: job.id,
       newJobId,
-      round: next.round,
-      target: next.target,
-      tries: next.tries,
+      attempt: job.attempts + 1,
+      maxAttempts: next.maxAttempts,
       cooldownSec: cooldownMs / 1000,
       reason,
     },

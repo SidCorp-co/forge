@@ -40,7 +40,7 @@ export interface PipelineRunCostSummary {
  * ISS-411 — one job row of a run's per-attempt timeline. Unlike `steps`
  * (one row per `jobType`, derived from `agent_sessions`), this is sourced from
  * the `jobs` table so the `retry_of` chain, the device each attempt landed on,
- * and the auto-retry round (`payload._autoRetry`) are all visible.
+ * and the auto-retry budget (`payload._autoRetry`) are all visible.
  */
 export interface PipelineRunAttempt {
   jobId: string;
@@ -67,18 +67,18 @@ export interface PipelineRunAttempt {
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  /** The auto-retry round and try count at the time this row was (re)queued. */
-  autoRetry: { round: number; tries: number } | null;
+  /** The retry budget this row was queued under; null on a first dispatch. */
+  maxAttempts: number | null;
 }
 
 /**
- * The run's retry headline, from the most recent attempt's `_autoRetry`: `round N / maxRounds`.
+ * The run's retry headline, from the most recent retry: `attempt N / maxAttempts`.
  * No device is named, because a retry is taken by whichever box claims it.
  */
 export interface PipelineRunRetrySummary {
   totalAttempts: number;
-  round: number;
-  maxRounds: number;
+  attempt: number;
+  maxAttempts: number;
 }
 
 export interface PipelineRunSummary {

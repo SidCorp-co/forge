@@ -51,7 +51,7 @@ export interface PipelineRunStepSummary {
 }
 
 /** ISS-411 — one job row of a run's per-attempt timeline (jobs-sourced, so the
- *  `retry_of` chain, the device and the `_autoRetry` round are visible). */
+ *  `retry_of` chain, the device and the `_autoRetry` budget are visible). */
 export interface PipelineRunAttempt {
   jobId: string;
   jobType: string;
@@ -73,14 +73,14 @@ export interface PipelineRunAttempt {
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  autoRetry: { round: number; tries: number } | null;
+  maxAttempts: number | null;
 }
 
-/** The run's retry headline, from the latest attempt: `round N / maxRounds`. */
+/** The run's retry headline, from the latest retry: `attempt N / maxAttempts`. */
 export interface PipelineRunRetrySummary {
   totalAttempts: number;
-  round: number;
-  maxRounds: number;
+  attempt: number;
+  maxAttempts: number;
 }
 
 /** `GET /api/pipeline-runs/:id` — the full run rollup (steps + cost + attempts). */

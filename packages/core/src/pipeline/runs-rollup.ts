@@ -9,7 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '@forge/contracts/jobs';
+import { readAutoRetryPayload } from '@forge/contracts/jobs';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -128,8 +128,8 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
  * ISS-411 — per-attempt timeline for one run, sourced from `jobs` (NOT
  * `agent_sessions`), ordered oldest-first. Left-joins `devices` so each
  * attempt carries the runner-friendly device name, and reads each row's
- * `payload._autoRetry` round (absent on a first dispatch → null). Also returns
- * a derived `retrySummary` headline from the latest row.
+ * `payload._autoRetry` budget (absent on a first dispatch → null). Also returns
+ * a derived `retrySummary` headline from the latest retry.
  */
 async function loadAttemptsForRun(runId: string): Promise<{
   attempts: PipelineRunAttempt[];
@@ -161,12 +161,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
     .orderBy(asc(jobs.queuedAt));
 
   const attempts: PipelineRunAttempt[] = rows.map((r) => {
-    const hasAutoRetry =
-      !!r.payload &&
-      typeof r.payload === 'object' &&
-      '_autoRetry' in (r.payload as Record<string, unknown>);
-    const held = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
-    const ar = held ? { round: held.round, tries: held.tries } : null;
+    const held = readAutoRetryPayload(r.payload);
     return {
       jobId: r.jobId,
       jobType: r.jobType,
@@ -183,18 +178,18 @@ async function loadAttemptsForRun(runId: string): Promise<{
       queuedAt: toIso(r.queuedAt),
       startedAt: toIso(r.startedAt),
       finishedAt: toIso(r.finishedAt),
-      autoRetry: ar,
+      maxAttempts: held?.maxAttempts ?? null,
     } satisfies PipelineRunAttempt;
   });
 
   let retrySummary: PipelineRunRetrySummary | null = null;
   for (let i = attempts.length - 1; i >= 0; i--) {
-    const ar = attempts[i]?.autoRetry;
-    if (ar) {
+    const latest = attempts[i];
+    if (latest?.maxAttempts) {
       retrySummary = {
         totalAttempts: attempts.length,
-        round: ar.round,
-        maxRounds: RETRY_MAX_ROUNDS,
+        attempt: latest.attempts,
+        maxAttempts: latest.maxAttempts,
       };
       break;
     }

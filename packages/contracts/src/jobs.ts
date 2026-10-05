@@ -59,42 +59,36 @@ export function readHoldState(payload: unknown): HoldState | null {
 	return { reason, heldAt, autoRelease: autoRelease === true };
 }
 
-/** Full device sweeps before the retry chain gives up and the caller parks the issue at `needs_info`. */
-export const RETRY_MAX_ROUNDS = 10;
+/**
+ * Retries one failure chain may spend before the caller parks the issue at `needs_info`, counted on
+ * `jobs.attempts`. A transient failure waits a cooldown between retries; a failover retries at once,
+ * so it is given a third of the budget.
+ */
+export const RETRY_MAX_ATTEMPTS = 30;
+export const FAILOVER_MAX_ATTEMPTS = 10;
 
 /**
- * Round-robin rotation state carried on `payload[AUTO_RETRY_PAYLOAD_KEY]`.
+ * The retry state carried on `payload[AUTO_RETRY_PAYLOAD_KEY]` of a retry job.
  *
- *   - `round`  — 1-based sweep counter (1..RETRY_MAX_ROUNDS).
- *   - `target` — device the NEXT attempt should land on (dispatcher pins it).
- *   - `tries`  — attempts already spent on `target` this round.
- *   - `done`   — devices that finished their tries this round (dispatcher
- *                excludes them so the sweep doesn't repeat a device).
+ *   - `maxAttempts`   — the budget the chain was retried under.
+ *   - `deferredSince` — when the chain first found NO usable device; null once one appears.
  */
 export const AUTO_RETRY_PAYLOAD_KEY = "_autoRetry";
 
 export interface AutoRetryPayload {
-	round: number;
-	target: string | null;
-	tries: number;
-	done: string[];
-	/** When this chain first found NO usable device. Null once one appears. */
-	deferredSince?: string | null;
+	maxAttempts: number;
+	deferredSince: string | null;
 }
 
-/** Always returns a normalized state — never undefined — so callers can read fields without guards.
- *  A first dispatch (no prior state) reads as the round-1 zero state. */
-export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
-	const zero: AutoRetryPayload = { round: 1, target: null, tries: 0, done: [], deferredSince: null };
-	if (!payload || typeof payload !== "object") return zero;
+/** The retry state a job carries, or null on a job that is not a retry (or predates the budget). */
+export function readAutoRetryPayload(payload: unknown): AutoRetryPayload | null {
+	if (!payload || typeof payload !== "object") return null;
 	const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
-	if (!raw || typeof raw !== "object") return zero;
+	if (!raw || typeof raw !== "object") return null;
 	const r = raw as Partial<AutoRetryPayload>;
+	if (typeof r.maxAttempts !== "number" || r.maxAttempts < 1) return null;
 	return {
-		round: typeof r.round === "number" && r.round >= 1 ? r.round : 1,
-		target: typeof r.target === "string" ? r.target : null,
-		tries: typeof r.tries === "number" && r.tries >= 0 ? r.tries : 0,
-		done: Array.isArray(r.done) ? r.done.filter((x): x is string => typeof x === "string") : [],
+		maxAttempts: r.maxAttempts,
 		deferredSince: typeof r.deferredSince === "string" ? r.deferredSince : null,
 	};
 }
