@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.32] - 2026-10-05
+
+Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates
+
+
 ### Changed
 
 - **Only the WebSocket door publishes to rooms, and streaming frames skip the outbox.** State
