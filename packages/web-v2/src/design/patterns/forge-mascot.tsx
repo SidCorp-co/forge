@@ -100,7 +100,7 @@ export function ForgeMascot({
           const on = i === activeIdx;
           return (
             <span
-              key={i}
+              key={c}
               style={{
                 position: "absolute", left: "50%", top: "50%",
                 width: on ? 13 : 10, height: on ? 13 : 10,
@@ -124,16 +124,19 @@ export function ForgeMascot({
       />
 
       <div className="fm-breathe" style={{ position: "absolute", inset: 0 }}>
+        {/* biome-ignore lint/performance/noImgElement: the mascot PNG is layered three times with clip paths and blend modes; next/image would wrap each layer and lazy-load it */}
         <img src={MASCOT_SRC} width={size} height={size} alt="Forge" draggable={false} style={{ position: "absolute", inset: 0, display: "block" }} />
 
         {flicker && (
           <Fragment>
+            {/* biome-ignore lint/performance/noImgElement: a clipped layer of the same mascot PNG, see above */}
             <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameA" style={{ position: "absolute", inset: 0, clipPath: leftHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
+            {/* biome-ignore lint/performance/noImgElement: a clipped layer of the same mascot PNG, see above */}
             <img src={MASCOT_SRC} width={size} height={size} alt="" draggable={false} className="fm-flameB" style={{ position: "absolute", inset: 0, clipPath: rightHorn, mixBlendMode: "screen", pointerEvents: "none" }} />
           </Fragment>
         )}
 
-        <svg viewBox="0 0 180 180" width={size} height={size} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+        <svg aria-hidden="true" viewBox="0 0 180 180" width={size} height={size} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
           <defs>
             <linearGradient id="fm-eye" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor="#2E6CF1" />

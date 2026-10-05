@@ -181,30 +181,6 @@ function scrubSecretValues(text: string, secrets: readonly string[]): string {
 	return out;
 }
 
-// cm:why unlike scrubStringValues this has no depth bound: a known value nested past any bound
-// would leave in plain text, and its input is parsed JSON, which holds no cycle.
-export function scrubSecretValuesDeep<T>(
-	value: T,
-	secrets: readonly string[],
-): T {
-	const known = scrubbable(secrets);
-	if (known.length === 0) return value;
-	const walk = (v: unknown): unknown => {
-		if (typeof v === "string") return scrubSecretValues(v, known);
-		if (Array.isArray(v)) return v.map(walk);
-		if (v && typeof v === "object") {
-			return Object.fromEntries(
-				Object.entries(v as Record<string, unknown>).map(([k, inner]) => [
-					scrubSecretValues(k, known),
-					walk(inner),
-				]),
-			);
-		}
-		return v;
-	};
-	return walk(value) as T;
-}
-
 const HEADER_RE = new RegExp(
 	`\\b(${Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join("|")})(\\s*[:=]\\s*).+`,
 	"gi",

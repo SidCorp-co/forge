@@ -2,8 +2,6 @@
 
 import { Toaster, showToast, type ToastInput } from "@/design/primitives/toast";
 
-export { MAX_VISIBLE_TOASTS, type ToastInput } from "@/design/primitives/toast";
-
 interface ToastApi {
   toast: (t: ToastInput) => void;
 }
