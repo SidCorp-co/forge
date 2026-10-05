@@ -3,6 +3,7 @@
 import { useOrgs } from "@/features/orgs/hooks";
 import { invalidateBindingChange } from "@/features/project-settings/config-hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -316,7 +317,7 @@ export function useCanManageConnection(
   if (!connection) return false;
   if (connection.ownerType === "user") return true;
   const role = orgsQ.data?.find((o) => o.id === connection.ownerId)?.role;
-  return role === "owner" || role === "admin";
+  return isOrgAdmin(role);
 }
 
 function useInvalidateConnections() {
