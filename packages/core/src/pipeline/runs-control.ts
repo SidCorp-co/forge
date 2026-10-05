@@ -8,8 +8,8 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
  * transition semantics live in one place.
  */
 
-import type { Refusal } from '@forge/contracts';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { Refusal } from '@forge/contracts/refusal';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
