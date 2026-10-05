@@ -1,5 +1,5 @@
-import type { NotificationSeverity } from '@forge/contracts';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { NotificationSeverity } from '@forge/contracts/notifications';
 import { owedCloseResolutionKey, strandedResolutionKey } from '@forge/contracts/notifications';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq } from 'drizzle-orm';

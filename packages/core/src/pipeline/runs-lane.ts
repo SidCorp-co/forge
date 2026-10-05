@@ -1,8 +1,8 @@
 import {
-  MASTER_SESSION_METADATA_TYPE,
+  MASTER_SESSION_KIND,
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_SESSION_METADATA_TYPE,
+  RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
 import type { pipelineRuns } from '../db/schema.js';
 
@@ -78,8 +78,8 @@ export function groupOf(row: Pick<RunRow, 'metadata'>, lane: PipelineRunLane): P
 export function laneOf(row: Pick<RunRow, 'issueId' | 'metadata'>): PipelineRunLane {
   if (row.issueId !== null) return 'job';
   const type = metadataObject(row.metadata)?.type;
-  if (type === RUN_SESSION_METADATA_TYPE) return 'run_session';
-  return type === MASTER_SESSION_METADATA_TYPE ? 'master' : 'system';
+  if (type === RUN_SESSION_KIND) return 'run_session';
+  return type === MASTER_SESSION_KIND ? 'master' : 'system';
 }
 
 /** ISS-1335 — never from the lane alone: `closeMasterSession` leaves the run `running`. */

@@ -1,5 +1,5 @@
-import type { Refusal } from '@forge/contracts';
 import type { PluginRefusalCode } from '@forge/contracts/plugins';
+import type { Refusal } from '@forge/contracts/refusal';
 import { z } from 'zod';
 
 export const pluginDesignationSchema = z

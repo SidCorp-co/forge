@@ -2,7 +2,7 @@
 
 
 import { useState } from "react";
-import type { AgentAccess, AgentPathKind } from "@forge/contracts";
+import type { AgentAccess, AgentPathKind } from "@forge/contracts/integrations";
 import { Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useIsOrgAdmin, useUpdateProviderIntegration } from "../hooks";

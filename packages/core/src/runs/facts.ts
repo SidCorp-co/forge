@@ -1,7 +1,4 @@
-import {
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_SESSION_METADATA_TYPE,
-} from '@forge/contracts/agent-sessions';
+import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { readHoldState } from '../jobs/index.js';
@@ -72,7 +69,7 @@ function strandOf(raw: unknown): { at: Date; status: string; reason: string } | 
 }
 
 function sessionFacts(s: Row | undefined, lane: string): RunFacts['session'] {
-  if (!s || lane !== RUN_SESSION_METADATA_TYPE) return null;
+  if (!s || lane !== RUN_SESSION_KIND) return null;
   return {
     id: String(s.id),
     status: String(s.status),

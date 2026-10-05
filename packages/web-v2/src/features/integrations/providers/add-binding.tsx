@@ -2,7 +2,7 @@
 
 import { Banner, Button, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import type { AgentPathKind } from "@forge/contracts";
+import type { AgentPathKind } from "@forge/contracts/integrations";
 import { type ReactNode, useState } from "react";
 import {
   AGENT_ACCESS_CLOSED,

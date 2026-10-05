@@ -49,8 +49,6 @@ export function readSessionAsker(raw: unknown): SessionAsker | null {
 export const MASTER_SESSION_KIND = "master";
 /** `agent_sessions.kind` of a run a master declared on its box. */
 export const RUN_SESSION_KIND = "run_session";
-export const MASTER_SESSION_METADATA_TYPE = MASTER_SESSION_KIND;
-export const RUN_SESSION_METADATA_TYPE = RUN_SESSION_KIND;
 export const RUN_ISSUES_METADATA_KEY = "runIssues";
 export const RUN_GROUP_METADATA_KEY = "runGroup";
 export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";

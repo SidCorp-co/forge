@@ -63,6 +63,9 @@ function servedTable() {
   }
   if (!Array.isArray(table.routes) || table.routes.length === 0)
     die('the running app serves zero routes — refusing to pass vacuously');
+  const unmarked = table.routes.find((r) => typeof r.serves !== 'boolean');
+  if (unmarked)
+    die(`the route table did not say whether ${unmarked.method} ${unmarked.path} serves a request`);
   if (Object.keys(table.resources ?? {}).length === 0)
     die('PAT_PERMISSION_RESOURCES is empty — refusing to pass vacuously');
   if (Object.keys(table.ungrantable ?? {}).length === 0)
@@ -167,7 +170,7 @@ const under = (path) => projectPrefixes.some((p) => path === p || path.startsWit
 const served = [
   ...new Set(
     table.routes
-      .filter((r) => r.method !== 'ALL' && under(r.path))
+      .filter((r) => r.serves && under(r.path))
       .filter((r) => !excluded.some((entry) => excludes(entry, r.path, r.method)))
       .map((r) => `${r.method} ${r.path}`),
   ),

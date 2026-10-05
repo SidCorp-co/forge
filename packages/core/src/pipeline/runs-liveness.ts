@@ -4,7 +4,7 @@
  * Read by both run lists, so the REST row and the MCP row cannot answer differently.
  */
 
-import { MASTER_SESSION_METADATA_TYPE } from '@forge/contracts/agent-sessions';
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -59,7 +59,7 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
       SELECT s.id, s.metadata->>'terminalName' AS name, s.last_heartbeat_at
         FROM ${agentSessions} s
        WHERE s.pipeline_run_id = r.id
-         AND s.kind = ${MASTER_SESSION_METADATA_TYPE}
+         AND s.kind = ${MASTER_SESSION_KIND}
          AND s.status NOT IN (${idList(terminalAgentSessionStatuses)})
        ORDER BY s.started_at DESC NULLS LAST
        LIMIT 1

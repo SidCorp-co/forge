@@ -3,7 +3,7 @@
 
 import { useId, useState } from "react";
 import { Badge, Button, Icon, statusReading } from "@/design";
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";

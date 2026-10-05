@@ -11,7 +11,7 @@ import {
   Icon,
   SectionTitle,
 } from "@/design";
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
 import { providerIcon } from "../providers/registry";
 import { ConnectionRow } from "./connection-row";
