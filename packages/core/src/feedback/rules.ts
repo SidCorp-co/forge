@@ -1,26 +1,19 @@
 /**
  * The guards of feedback as pure functions over what the service read: workflows
- * `feedback-lifecycle`, `feedback-triage` r3 and requirement-to-delivery r2 (`triage`, `fb-case`,
- * `route`). The phase a reader sees is the read model's (`standing.ts:phaseOf`).
+ * `feedback-lifecycle`, `feedback-triage` r4 and requirement-to-delivery (`triage`, `route`). The phase a reader sees is the read model's (`standing.ts:phaseOf`).
  */
 
-import {
-  FEEDBACK_KIND_ROUTES,
-  FEEDBACK_ROUTE_SLA_WORKING_DAYS,
-  type FeedbackCaseOwner,
-  type FeedbackKind,
-  type FeedbackPhase,
-  type FeedbackRefusal,
-  type FeedbackRefusalCode,
-  type FeedbackRouteWrite,
-  type FeedbackSeverity,
-  type FeedbackStatus,
-  type FeedbackTriage,
-  type FeedbackTriageRoute,
+import type {
+  FeedbackKind,
+  FeedbackPhase,
+  FeedbackRefusal,
+  FeedbackRefusalCode,
+  FeedbackStatus,
+  FeedbackTriage,
+  FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
 import type { SuggestionKind } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
-import { addWorkingDays } from '../lib/working-days.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type { FeedbackRefusal } from '@forge/contracts/feedback';
@@ -227,7 +220,7 @@ export function triagePhaseRefusal(phase: FeedbackPhase): FeedbackRefusal | null
   );
 }
 
-const CARRIERS: Record<FeedbackTriageRoute, readonly (keyof FeedbackRouteWrite)[]> = {
+const CARRIERS: Record<FeedbackTriageRoute, readonly (keyof FeedbackTriage)[]> = {
   issue: ['issue', 'createIssue'],
   revision: ['suggestion'],
   new_requirement: ['requirement', 'title'],
@@ -245,8 +238,8 @@ const CARRIER_FIELDS = [
   'duplicateOf',
 ] as const;
 
-/** Which carrier fields a triage or a route write named. */
-export const carriersNamed = (w: FeedbackRouteWrite) =>
+/** Which carrier fields a triage named. */
+export const carriersNamed = (w: FeedbackTriage) =>
   CARRIER_FIELDS.filter((k) => w[k] !== undefined && !(k === 'answer' && !w.answer?.trim()));
 
 // a carrier belongs to one route: one sent for another route is refused, never ignored, and a route
@@ -274,48 +267,34 @@ function carrierFitRefusal(
   return null;
 }
 
-// step triage: the decision names its route; what carries it may come with it or be written later
-// through the case, except a duplicate, whose root is the decision, and a decline, whose reason is
+// step triage (feedback-triage r4 `decide`): the route is written in the triage act, so the triage
+// names what carries it; an issue route naming neither carrier files a draft, a decline carries its reason
 export function routeShapeRefusal(t: FeedbackTriage): FeedbackRefusal | null {
-  const fit = carrierFitRefusal(t.route, carriersNamed(t));
+  const named = carriersNamed(t);
+  const fit = carrierFitRefusal(t.route, named);
   if (fit) return fit;
-  if (t.route === 'duplicate' && !t.duplicateOf) {
-    return refusal(
-      'FEEDBACK_ROUTE_INCOMPLETE',
-      '/duplicateOf',
-      'route duplicate names its root, `duplicateOf`.',
-    );
+  if (t.route === 'decline') {
+    return t.note?.trim()
+      ? null
+      : refusal(
+          'FEEDBACK_DECLINE_REASON_REQUIRED',
+          '/note',
+          'a declined item says why in `note`; the reporter reads the reason.',
+        );
   }
-  if (t.route === 'decline' && !t.note?.trim()) {
-    return refusal(
-      'FEEDBACK_DECLINE_REASON_REQUIRED',
-      '/note',
-      'a declined item says why in `note`; the reporter reads the reason.',
-    );
-  }
-  return null;
-}
-
-// step fb-case → route: the case's owner writes exactly what carries the route triage decided
-export function routeWriteShapeRefusal(
-  route: FeedbackTriageRoute,
-  w: FeedbackRouteWrite,
-): FeedbackRefusal | null {
-  const named = carriersNamed(w);
-  const fit = carrierFitRefusal(route, named);
-  if (fit) return fit;
-  if (named.length === 1) return null;
-  if (route === 'answer') {
+  if (named.length === 1 || t.route === 'issue') return null;
+  if (t.route === 'answer') {
     return refusal(
       'FEEDBACK_ANSWER_MISSING',
       '/answer',
       'route answer carries the answer the reporter reads.',
     );
   }
+  const own = CARRIERS[t.route] as readonly string[];
   return refusal(
     'FEEDBACK_ROUTE_INCOMPLETE',
-    '',
-    `the case routes ${route}; write it with ${(CARRIERS[route] as readonly string[]).map((k) => `\`${k}\``).join(' or ')}.`,
+    `/${own[0]}`,
+    `route ${t.route} is written in the triage act; name what carries it with ${own.map((k) => `\`${k}\``).join(' or ')}.`,
   );
 }
 
@@ -327,20 +306,17 @@ export interface RouteFacts {
   routedRequirement: { key: string; status: string } | null;
 }
 
-// workflow requirement-to-delivery step `triage`, the rule table: bug → issue; contract change →
-// the consumer's upgrade issue; question → answer (feedback-triage r3); change request or idea → a
-// revision of the agreed requirement it is about, else a new draft requirement; any kind →
-// duplicate or decline (FEEDBACK_ROUTE_KIND_MISMATCH, FEEDBACK_ROUTE_TARGET_MISMATCH)
+// step triage: a person picks the route and no rule keyed on kind picks it, except that a contract
+// change takes the issue route (FEEDBACK_ROUTE_TARGET_MISMATCH); the route must also fit the target
 export function routeRuleRefusal(
   route: FeedbackTriageRoute,
   f: RouteFacts,
 ): FeedbackRefusal | null {
-  const allowed = FEEDBACK_KIND_ROUTES[f.kind];
-  if (!allowed.includes(route)) {
+  if (f.kind === 'contract_change' && route !== 'issue' && route !== 'decline') {
     return refusal(
-      'FEEDBACK_ROUTE_KIND_MISMATCH',
+      'FEEDBACK_ROUTE_TARGET_MISMATCH',
       '/route',
-      `${f.kind} feedback routes to ${allowed.join(', ')}, not ${route}; change its kind first if it is something else.`,
+      `contract change feedback routes to the consumer's upgrade issue, not ${route}.`,
     );
   }
   const mismatch = (path: string, detail: string) =>
@@ -381,21 +357,6 @@ export function routeRuleRefusal(
   return null;
 }
 
-// step fb-case: a route is written only while the item's case waits on it (FEEDBACK_CASE_NOT_OPEN)
-export function caseOpenRefusal(
-  c: { route: FeedbackTriageRoute; routedAt: Date | null } | null,
-  phase: FeedbackPhase,
-): FeedbackRefusal | null {
-  if (c && c.routedAt === null && phase === 'triaged') return null;
-  return refusal(
-    'FEEDBACK_CASE_NOT_OPEN',
-    '',
-    c
-      ? `the item reads ${phase} and its case's route ${c.route} was ${c.routedAt ? `written at ${c.routedAt.toISOString()}` : 'not left open'}; triage it again to open the case.`
-      : `the item reads ${phase} and holds no case; triage opens one.`,
-  );
-}
-
 // duplicate_of names a root that is not itself a duplicate, and an item other items point
 // at never becomes a duplicate (FEEDBACK_DUPLICATE_CHAIN); an item is never its own (FEEDBACK_DUPLICATE_SELF)
 export function duplicateRefusal(
@@ -425,17 +386,4 @@ export function duplicateRefusal(
     );
   }
   return null;
-}
-
-/** An issue route is the project master's to file or link; every other route is the BA's. */
-export const caseOwnerOf = (route: FeedbackTriageRoute): FeedbackCaseOwner =>
-  route === 'issue' ? 'master' : 'ba';
-
-/** The route task is due by severity; a contract change at the end of its commitment window. */
-export function caseDueAt(
-  item: { kind: FeedbackKind; severity: FeedbackSeverity; dueAt: Date | null },
-  now: Date,
-): Date {
-  if (item.kind === 'contract_change' && item.dueAt) return item.dueAt;
-  return addWorkingDays(now, FEEDBACK_ROUTE_SLA_WORKING_DAYS[item.severity]);
 }

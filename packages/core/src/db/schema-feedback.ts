@@ -1,11 +1,9 @@
 import {
-  FEEDBACK_CASE_OWNERS,
   FEEDBACK_DECISIONS,
   FEEDBACK_KINDS,
   FEEDBACK_ROUTES,
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
-  FEEDBACK_TRIAGE_ROUTES,
 } from '@forge/contracts/feedback';
 import { sql } from 'drizzle-orm';
 import {
@@ -151,7 +149,7 @@ export const feedback = pgTable(
         OR (${t.route} = 'answer' AND ${t.answer} ~ '[^[:space:]]' AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}) = 0)
         OR (${t.route} = 'duplicate' AND ${t.duplicateOf} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.answer}) = 0)`,
     ),
-    // a triaged item's route is written by its case, so triaged may hold none yet
+    // a new item holds no route; triage writes it
     statusRouteChk: check(
       'feedback_status_route_chk',
       sql`${t.status} <> 'new' OR ${t.route} IS NULL`,
@@ -253,57 +251,5 @@ export const feedbackAttachments = pgTable(
   },
   (t) => ({
     feedbackIdx: index('feedback_attachments_feedback_idx').on(t.feedbackId),
-  }),
-);
-
-// workflow requirement-to-delivery step `fb-case`: one case per feedback item, opened by triage with
-// the route it decided, owned by the project master for an issue route and by the BA otherwise; it
-// assigns writing the route, due by severity (or the commitment window), and a re-triage re-opens it
-export const feedbackCases = pgTable(
-  'feedback_cases',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    feedbackId: uuid('feedback_id')
-      .notNull()
-      .references(() => feedback.id, { onDelete: 'cascade' }),
-    route: text('route', { enum: FEEDBACK_TRIAGE_ROUTES }).notNull(),
-    owner: text('owner', { enum: FEEDBACK_CASE_OWNERS }).notNull(),
-    openedBy: uuid('opened_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    openedAgency: text('opened_agency', { enum: ['human', 'agent'] }).notNull(),
-    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
-    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
-    routedAt: timestamp('routed_at', { withTimezone: true }),
-    routedBy: uuid('routed_by').references(() => users.id, { onDelete: 'restrict' }),
-  },
-  (t) => ({
-    routeChk: check(
-      'feedback_cases_route_chk',
-      sql`${t.route} IN (${inList(FEEDBACK_TRIAGE_ROUTES)})`,
-    ),
-    ownerChk: check(
-      'feedback_cases_owner_chk',
-      sql`${t.owner} IN (${inList(FEEDBACK_CASE_OWNERS)})`,
-    ),
-    ownerRouteChk: check(
-      'feedback_cases_owner_route_chk',
-      sql`(${t.route} = 'issue') = (${t.owner} = 'master')`,
-    ),
-    agencyChk: check(
-      'feedback_cases_opened_agency_chk',
-      sql`${t.openedAgency} IN ('human', 'agent')`,
-    ),
-    routedChk: check(
-      'feedback_cases_routed_chk',
-      sql`(${t.routedAt} IS NULL) = (${t.routedBy} IS NULL)`,
-    ),
-    feedbackUq: uniqueIndex('feedback_cases_feedback_uq').on(t.feedbackId),
-    openIdx: index('feedback_cases_project_open_idx')
-      .on(t.projectId, t.dueAt)
-      .where(sql`routed_at IS NULL`),
   }),
 );

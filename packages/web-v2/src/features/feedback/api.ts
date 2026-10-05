@@ -15,7 +15,6 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 function actionRequest(projectId: string, key: string, a: FeedbackAction): [string, RequestInit] {
   if (a.kind === "redact") return [`${one(projectId, key)}/reporter-data`, { method: "DELETE" }];
   if (a.kind === "triage") return [`${one(projectId, key)}/triage`, post(a.triage)];
-  if (a.kind === "route") return [`${one(projectId, key)}/route`, post(a.write)];
   if (a.kind === "verify") return [`${one(projectId, key)}/verify`, post(a.note ? { note: a.note } : {})];
   return [`${one(projectId, key)}/${a.kind}`, post({ reason: a.reason })];
 }

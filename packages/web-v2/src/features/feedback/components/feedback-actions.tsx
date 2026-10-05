@@ -6,22 +6,21 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useFeedbackAction } from "../hooks";
-import type { FeedbackDedup, FeedbackRouteWrite, FeedbackTriage, FeedbackView } from "../types";
+import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
-type Choice = "link_issue" | "file_issue" | "master_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
+type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
   { value: "file_issue", label: "Bug: file a draft issue", hint: "A master picks it up once it is accepted as work." },
   { value: "link_issue", label: "Bug: link an issue", hint: "An issue already carries it." },
-  { value: "master_issue", label: "Bug: leave the issue to the project master", hint: "Its case waits on the master to create or link one." },
-  { value: "revision", label: "Scope change: revise the requirement", hint: "Name the revision proposal, or leave it to the BA." },
+  { value: "revision", label: "Scope change: revise the requirement", hint: "Name the revision proposal that carries it." },
   { value: "new_requirement", label: "Out of scope: start a requirement", hint: "A new draft requirement carries it." },
   { value: "answer", label: "Question: answer it", hint: "The reporter reads the answer; it resolves the item." },
   { value: "duplicate", label: "Duplicate of an item", hint: "It follows its root from here." },
   { value: "decline", label: "Decline", hint: "A reason is required; the reporter reads it." },
 ];
 
-const OPTIONAL: readonly Choice[] = ["file_issue", "master_issue", "revision"];
+const OPTIONAL: readonly Choice[] = ["file_issue"];
 
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
@@ -35,26 +34,21 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
         ? { route: "issue", createIssue: value ? { title: value } : {} }
         : choice === "link_issue"
           ? { route: "issue", issue: value }
-          : choice === "master_issue"
-            ? { route: "issue" }
-            : choice === "revision"
-              ? value
-                ? { route: "revision", suggestion: value }
-                : { route: "revision" }
-              : choice === "new_requirement"
-                ? { route: "new_requirement", title: value }
-                : choice === "answer"
-                  ? { route: "answer", answer: value }
-                  : choice === "decline"
-                    ? { route: "decline", note: value }
-                    : { route: "duplicate", duplicateOf: value };
+          : choice === "revision"
+            ? { route: "revision", suggestion: value }
+            : choice === "new_requirement"
+              ? { route: "new_requirement", title: value }
+              : choice === "answer"
+                ? { route: "answer", answer: value }
+                : choice === "decline"
+                  ? { route: "decline", note: value }
+                  : { route: "duplicate", duplicateOf: value };
     act.mutate({ kind: "triage", triage });
   };
   const placeholder: Record<Choice, string> = {
     file_issue: "Issue title (optional; the item's title by default)",
     link_issue: "ISS-12",
-    master_issue: "",
-    revision: "Revision proposal id (optional)",
+    revision: "Revision proposal id",
     new_requirement: "Requirement title",
     answer: "The answer the reporter reads",
     duplicate: "FB-3",
@@ -77,7 +71,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           />
         ))}
       </RadioGroup>
-      {choice === "master_issue" ? null : choice === "answer" || choice === "decline" ? (
+      {choice === "answer" || choice === "decline" ? (
         <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={placeholder[choice]} />
       ) : (
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder[choice]} />
@@ -93,52 +87,6 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           onClick={submit}
         >
           {choice === "decline" ? "Decline" : "Route it"}
-        </Button>
-      </div>
-    </section>
-  );
-}
-
-const WRITE_FIELD: Record<string, { key: keyof FeedbackRouteWrite; placeholder: string }> = {
-  issue: { key: "issue", placeholder: "ISS-12 to link (or leave empty to file a draft)" },
-  revision: { key: "suggestion", placeholder: "Revision proposal id" },
-  new_requirement: { key: "requirement", placeholder: "REQ-n of a draft requirement" },
-  answer: { key: "answer", placeholder: "The answer the reporter reads" },
-  duplicate: { key: "duplicateOf", placeholder: "FB-3" },
-};
-
-/** The case's owner writes what carries the route triage decided. */
-function RouteForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
-  const act = useFeedbackAction(projectId, f.key);
-  const [text, setText] = useState("");
-  const c = f.case;
-  const field = c ? WRITE_FIELD[c.route] : undefined;
-  if (!c || !field) return null;
-  const submit = () => {
-    const value = text.trim();
-    const write: FeedbackRouteWrite =
-      c.route === "issue" && !value ? { createIssue: {} } : ({ [field.key]: value } as FeedbackRouteWrite);
-    act.mutate({ kind: "route", write });
-  };
-  return (
-    <section className="grid gap-3" data-testid="feedback-route">
-      <h3 className="text-12 font-semibold text-muted">Write the route: {enumLabel("feedbackRoute", c.route)}</h3>
-      {c.route === "answer" ? (
-        <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={field.placeholder} />
-      ) : (
-        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={field.placeholder} />
-      )}
-      <RefusalLine error={act.error} />
-      <div>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          loading={act.isPending}
-          disabled={c.route !== "issue" && !text.trim()}
-          onClick={submit}
-        >
-          Write the route
         </Button>
       </div>
     </section>
@@ -205,7 +153,6 @@ function RedactBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
 export function FeedbackActions({ projectId, f }: { projectId: string; f: FeedbackView }) {
   return (
     <div className="grid gap-4">
-      {f.can.route ? <RouteForm projectId={projectId} f={f} /> : null}
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.verify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}

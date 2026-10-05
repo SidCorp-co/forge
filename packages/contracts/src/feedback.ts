@@ -90,36 +90,6 @@ export type FeedbackRoute = (typeof FEEDBACK_ROUTES)[number];
 export const FEEDBACK_TRIAGE_ROUTES = [...FEEDBACK_ROUTES, "decline"] as const;
 export type FeedbackTriageRoute = (typeof FEEDBACK_TRIAGE_ROUTES)[number];
 
-/** The triage rule table: the routes each kind may take. Duplicate and decline fit any kind. */
-export const FEEDBACK_KIND_ROUTES: Record<
-	FeedbackKind,
-	readonly FeedbackTriageRoute[]
-> = {
-	bug: ["issue", "duplicate", "decline"],
-	contract_change: ["issue", "duplicate", "decline"],
-	question: ["answer", "duplicate", "decline"],
-	change_request: ["revision", "new_requirement", "duplicate", "decline"],
-	idea: ["revision", "new_requirement", "duplicate", "decline"],
-};
-
-/** Who owns a feedback case (step `fb-case`): the project master for an issue route, the BA otherwise. */
-export const FEEDBACK_CASE_OWNERS = ["ba", "master"] as const;
-export type FeedbackCaseOwner = (typeof FEEDBACK_CASE_OWNERS)[number];
-export const FEEDBACK_CASE_OWNER_LABELS: Record<FeedbackCaseOwner, string> = {
-	ba: "BA",
-	master: "Project master",
-};
-
-/** The route of an opened case is written within this many working days, by severity; a contract
- *  change is due at the end of the provider's commitment window instead. */
-export const FEEDBACK_ROUTE_SLA_WORKING_DAYS: Record<FeedbackSeverity, number> =
-	{
-		critical: 1,
-		high: 2,
-		medium: 5,
-		low: 10,
-	};
-
 /** One row per decision on an item, insert-only, so a re-triage keeps the history (domain-entities.md "Records and audit"). */
 export const FEEDBACK_DECISIONS = [
 	"triaged",
@@ -245,7 +215,7 @@ export const FEEDBACK_PHASE_GLYPHS: Record<FeedbackPhase, string> = {
 export const FEEDBACK_PHASE_HINTS: Record<FeedbackPhase, string> = {
 	new: "new: not triaged; a person picks a route",
 	triaged:
-		"triaged: its case waits on the BA or the project master to write the route, or the route's carrier died and a person routes it again",
+		"triaged: the route's carrier died, and a person routes it again",
 	planned: "planned: an issue, revision or requirement carries it",
 	resolved:
 		"resolved: the linked work shipped; waiting on the reporter to verify",
@@ -282,8 +252,6 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_TARGET_NOT_IN_PROJECT",
 	"FEEDBACK_TARGET_NOT_ONE",
 	"FEEDBACK_ROUTE_TARGET_MISMATCH",
-	"FEEDBACK_ROUTE_KIND_MISMATCH",
-	"FEEDBACK_CASE_NOT_OPEN",
 	"FEEDBACK_ROUTE_INCOMPLETE",
 	"FEEDBACK_ANSWER_MISSING",
 	"FEEDBACK_DECLINE_REASON_REQUIRED",
@@ -356,9 +324,9 @@ const carrierFields = {
 };
 
 /**
- * A route as a person picks it, or as a `feedback_triage` suggestion carries it, which opens the
- * item's case. What carries it may come with it or be written later through the case: issue:
- * `issue` links one, `createIssue` files a draft; revision: `suggestion` names a revision_diff
+ * A route as a person picks it, or as a `feedback_triage` suggestion carries it, written in the
+ * triage act with what carries it: issue: `issue` links one, `createIssue` (or neither) files a
+ * draft; revision: `suggestion` names a revision_diff
  * suggestion; new_requirement: `requirement` names a draft, `title` starts one; answer: `answer`.
  * duplicate names its root (`duplicateOf`), and decline its reason (`note`).
  */
@@ -370,12 +338,6 @@ export const feedbackTriageSchema = z.strictObject({
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
 export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
-
-/** `POST …/feedback/:fb/route`: the case's owner writes what carries the route triage decided. */
-export const feedbackRouteWriteSchema = z.strictObject(carrierFields);
-export type FeedbackRouteWrite = z.infer<typeof feedbackRouteWriteSchema>;
-export const FEEDBACK_ROUTE_WRITE_SHAPE =
-	"{ issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, note? }, the carrier of the case's route";
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({
@@ -454,17 +416,6 @@ export interface FeedbackRouteView {
 	answer: string | null;
 }
 
-/** The item's case: the route triage decided, its owner, and the route task's due. */
-export interface FeedbackCaseView {
-	route: FeedbackTriageRoute;
-	owner: FeedbackCaseOwner;
-	openedAt: string;
-	dueAt: string;
-	/** When the route was written; null while the case waits on its owner. */
-	routedAt: string | null;
-	overdue: boolean;
-}
-
 export interface FeedbackDecisionView {
 	decision: FeedbackDecision;
 	route: FeedbackRoute | null;
@@ -521,7 +472,6 @@ export interface FeedbackSummary
 	phase: FeedbackPhase;
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
-	case: FeedbackCaseView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
 	dueAt: string | null;
 	redacted: boolean;
@@ -547,7 +497,7 @@ export interface FeedbackView extends FeedbackSummary {
 	/** Proposed triage suggestions waiting on a person. */
 	openSuggestions: number;
 	/** What the viewer may do now; a refusal still names why when they try anyway. */
-	can: { triage: boolean; route: boolean; verify: boolean; redact: boolean };
+	can: { triage: boolean; verify: boolean; redact: boolean };
 	sensitive: boolean;
 }
 

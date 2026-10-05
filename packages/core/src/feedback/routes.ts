@@ -5,14 +5,12 @@ import {
   FEEDBACK_CLARIFICATION_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
-  FEEDBACK_ROUTE_WRITE_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
   feedbackReasonRequestSchema,
-  feedbackRouteWriteSchema,
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
@@ -38,7 +36,7 @@ import {
   reopenFeedback,
   verifyFeedback,
 } from './service.js';
-import { routeFeedback, triageFeedback } from './triage.js';
+import { triageFeedback } from './triage.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -154,25 +152,6 @@ feedbackRoutes.post(
         ref: fb,
         actor: actorOf(c),
         triage: c.req.valid('json'),
-        channel: 'web',
-      }),
-    );
-  },
-);
-
-feedbackRoutes.post(
-  '/:id/feedback/:fb/route',
-  itemParam,
-  strictBody(feedbackRouteWriteSchema, FEEDBACK_ROUTE_WRITE_SHAPE),
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    return answer(
-      c,
-      await routeFeedback({
-        projectId: id,
-        ref: fb,
-        actor: actorOf(c),
-        write: c.req.valid('json'),
         channel: 'web',
       }),
     );

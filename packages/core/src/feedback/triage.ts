@@ -1,13 +1,11 @@
 /**
- * Triage and the feedback case (workflow requirement-to-delivery steps `triage`, `fb-case` and
- * `route`; feedback-triage `decide`). Triage checks the route against the rule table, moves the item
- * to triaged or declined and opens its case in one transaction; the route is written in the same act
- * when triage names what carries it, else later by the case's owner through `routeFeedback`. An
+ * Triage (workflow requirement-to-delivery steps `triage` and `route`; feedback-triage r4 `decide`).
+ * A person picks the route; triage checks it against the target, moves the item to triaged or
+ * declined and writes what carries the route, all in one transaction. An
  * agent's `feedback_triage` suggestion reaches `triageIn` from its accept, held to feedback.approve like a person's triage.
  */
 
 import {
-  type FeedbackRouteWrite,
   type FeedbackTriage,
   type FeedbackTriageEffect,
   type FeedbackTriageRoute,
@@ -17,7 +15,7 @@ import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { feedback, feedbackCases } from '../db/schema-feedback.js';
+import { feedback } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, insertIssueRow, writeRecordEvent } from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
@@ -33,8 +31,6 @@ import {
 } from '../requirements/index.js';
 import { phaseOfRow } from './list-read.js';
 import {
-  type CaseRow,
-  caseIn,
   duplicateKeysOf,
   type FeedbackActor,
   type Row,
@@ -45,15 +41,11 @@ import {
 import { isRefusal, issueRefIn, requirementRefIn } from './refs.js';
 import {
   carriersNamed,
-  caseDueAt,
-  caseOpenRefusal,
-  caseOwnerOf,
   decideActRefusal,
   duplicateRefusal,
   type RouteFacts,
   routeRuleRefusal,
   routeShapeRefusal,
-  routeWriteShapeRefusal,
   triagePhaseRefusal,
 } from './rules.js';
 import {
@@ -75,39 +67,6 @@ interface TriageWritten {
   effect?: FeedbackTriageEffect;
 }
 
-async function openCaseIn(
-  tx: Tx,
-  row: Row,
-  route: FeedbackTriageRoute,
-  actor: FeedbackActor,
-): Promise<CaseRow> {
-  const now = new Date();
-  const values = {
-    route,
-    owner: caseOwnerOf(route),
-    openedBy: actor.userId,
-    openedAgency: actor.agency,
-    openedAt: now,
-    dueAt: caseDueAt(row, now),
-    routedAt: null,
-    routedBy: null,
-  };
-  const [opened] = await tx
-    .insert(feedbackCases)
-    .values({ projectId: row.projectId, feedbackId: row.id, ...values })
-    .onConflictDoUpdate({ target: feedbackCases.feedbackId, set: values })
-    .returning();
-  if (!opened) throw new Error('feedback_cases: the open returned no row');
-  return opened;
-}
-
-async function markRoutedIn(tx: Tx, caseId: string, actor: FeedbackActor): Promise<void> {
-  await tx
-    .update(feedbackCases)
-    .set({ routedAt: new Date(), routedBy: actor.userId })
-    .where(eq(feedbackCases.id, caseId));
-}
-
 async function declineTriageIn(
   tx: Tx,
   row: Row,
@@ -120,7 +79,6 @@ async function declineTriageIn(
     .where(eq(feedback.id, row.id));
   const refused = await declineIn(tx, row, actor, note);
   if (refused) return { refusals: [refused] };
-  await markRoutedIn(tx, (await openCaseIn(tx, row, 'decline', actor)).id, actor);
   return {
     refusals: null,
     effect: { feedback: feedbackKey(row.fbSeq), route: 'decline', carrier: null },
@@ -128,9 +86,8 @@ async function declineTriageIn(
 }
 
 /**
- * Triage inside the caller's transaction: the route is checked against the rule table, the item
- * moves to triaged (or declined, the decline act), its case opens, and the route is written at once
- * when the triage names what carries it.
+ * Triage inside the caller's transaction: the route is checked against the target, the item moves to
+ * triaged (or declined, the decline act), and what carries the route is written in the same act.
  */
 export async function triageIn(
   tx: Tx,
@@ -185,23 +142,20 @@ export async function triageIn(
     });
     movedRow(moved);
   }
-  const kase = await openCaseIn(tx, row, t.route, actor);
-  let carrier: string | null = null;
-  if (carriersNamed(t).length > 0) {
-    const route = t.route;
-    const written = await writeRouteIn(tx, {
-      row,
-      route,
-      write: t,
-      target,
-      actor,
-      channel: input.channel,
-      fromSuggestionId,
-    });
-    if ('refusals' in written) return { refusals: written.refusals };
-    carrier = written.carrier;
-    await markRoutedIn(tx, kase.id, actor);
-  }
+  // an issue route naming no existing issue files a draft in the same act (feedback-triage r4 `issue`)
+  const write =
+    t.route === 'issue' && carriersNamed(t).length === 0 ? { ...t, createIssue: {} } : t;
+  const written = await writeRouteIn(tx, {
+    row,
+    route: t.route,
+    write,
+    target,
+    actor,
+    channel: input.channel,
+    fromSuggestionId,
+  });
+  if ('refusals' in written) return { refusals: written.refusals };
+  const carrier = written.carrier;
   await decide(tx, row, actor, {
     decision: 'triaged',
     route: t.route,
@@ -247,49 +201,7 @@ export function triageFeedback(input: {
   );
 }
 
-/** The case's owner writes what carries the route triage decided (step `route`). */
-export function routeFeedback(input: {
-  projectId: string;
-  ref: string;
-  actor: FeedbackActor;
-  write: FeedbackRouteWrite;
-  channel: FeedbackChannel;
-}): Promise<FeedbackOutcome> {
-  const { projectId, actor, write } = input;
-  return approvedActOn(input, "writing a feedback case's route", async (tx, row) => {
-    const kase = await caseIn(tx, row.id);
-    const closed = caseOpenRefusal(kase, await phaseOfRow(projectId, row));
-    if (closed) return { refusals: [closed] };
-    if (!kase || kase.route === 'decline') {
-      throw new Error(`feedback_cases: ${row.id} reads open with no route left to write`);
-    }
-    const shape = routeWriteShapeRefusal(kase.route, write);
-    if (shape) return { refusals: [shape] };
-    const done = await writeRouteIn(tx, {
-      row,
-      route: kase.route,
-      write,
-      target: await targetRequirementOf(tx, row),
-      actor,
-      channel: input.channel,
-      fromSuggestionId: null,
-    });
-    if ('refusals' in done) return { refusals: done.refusals };
-    await markRoutedIn(tx, kase.id, actor);
-    await decide(tx, row, actor, {
-      decision: 'routed',
-      route: kase.route,
-      carrier: done.carrier,
-      reason: write.note ?? null,
-    });
-    return {
-      refusals: null,
-      effect: { feedback: feedbackKey(row.fbSeq), route: kase.route, carrier: done.carrier },
-    };
-  });
-}
-
-/** The route write (step `route`): a named carrier is resolved, the rule table checked against it, a carrier triage asks for is filed, and the route columns set. */
+/** The route write (step `route`): a named carrier is resolved and checked against the target, a carrier triage asks for is filed, and the route columns set. */
 
 type CarriedRoute = Exclude<FeedbackTriageRoute, 'decline'>;
 
@@ -315,7 +227,7 @@ interface Carrier {
 interface RouteInput {
   row: Row;
   route: CarriedRoute;
-  write: FeedbackRouteWrite;
+  write: FeedbackTriage;
   target: TargetRequirement | null;
   actor: FeedbackActor;
   channel: FeedbackChannel;
