@@ -44,10 +44,6 @@ import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permis
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
-const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!result.success && result.error) throw badRequest(result.error);
-};
-
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });
 const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
 const manifestCallbackQuerySchema = z.object({
@@ -137,7 +133,7 @@ async function ownerOrgForProjectApp(args: {
 githubConnectRoutes.post(
   '/:projectId/integrations/github/connect',
   projectAdmin,
-  zValidator('query', connectQuerySchema, invalidQuery),
+  zValidator('query', connectQuerySchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
@@ -209,7 +205,7 @@ async function githubConnectionForPicker(args: {
 githubConnectRoutes.get(
   '/:projectId/integrations/github/repositories',
   projectAdmin,
-  zValidator('query', repositoriesQuerySchema, invalidQuery),
+  zValidator('query', repositoriesQuerySchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
@@ -232,7 +228,7 @@ githubConnectRoutes.get(
 
 githubCallbackRoutes.get(
   '/integrations/github/manifest-callback',
-  zValidator('query', manifestCallbackQuerySchema, invalidQuery),
+  zValidator('query', manifestCallbackQuerySchema),
   async (c) => {
     const { code, state: rawState } = c.req.valid('query');
     if (!code || !rawState) throw badRequest({ query: 'code and state are required' });
@@ -275,7 +271,7 @@ githubCallbackRoutes.get(
 
 githubCallbackRoutes.get(
   '/integrations/github/installed',
-  zValidator('query', installedQuerySchema, invalidQuery),
+  zValidator('query', installedQuerySchema),
   async (c) => {
     const query = c.req.valid('query');
     const installationId = Number(query.installation_id);

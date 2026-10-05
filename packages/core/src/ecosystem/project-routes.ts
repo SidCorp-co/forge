@@ -1,11 +1,10 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
@@ -28,14 +27,11 @@ for (const path of ['/:id/interface', '/:id/interface/*', '/:id/api-page', '/:id
   ecosystemProjectRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'invalid path: the project id is a uuid',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const idParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 const serialise = (held: HeldInterface, setBy: CommitmentsSetter | null) => ({
   declared: true as const,

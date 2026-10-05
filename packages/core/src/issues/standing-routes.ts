@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -28,9 +27,7 @@ issueStandingRoutes.use('*', requireAuth(), assertEmailVerified());
 issueStandingRoutes.get(
   '/:id/issues/standing',
   zValidator('param', projectParam),
-  zValidator('query', scopeQuery, (r) => {
-    if (!r.success) throw queryBadRequest(scopeQuery, r.error);
-  }),
+  zValidator('query', scopeQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { scope } = c.req.valid('query');

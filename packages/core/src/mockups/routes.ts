@@ -6,12 +6,11 @@ import {
   proposeMockupRequestSchema,
 } from '@forge/contracts/mockups';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { getMockupAs, listMockupsAs, mockupBytes } from './list.js';
 import type { MockupActor } from './read.js';
 import {
@@ -29,28 +28,23 @@ for (const path of ['/:id/mockups', '/:id/mockups/*']) {
   mockupRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
-
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 const mockupParam = zValidator(
   'param',
   z.object({ id: z.uuid(), mk: z.string().trim().min(1).max(64) }),
-  (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: a project uuid and a mockup uuid or key (MK-n)');
-  },
+  invalid('invalid path: a project uuid and a mockup uuid or key (MK-n)'),
 );
 
-const listQuery = zValidator('query', listMockupsQuerySchema, (r) => {
-  if (!r.success)
-    throw badRequest(
-      'invalid query: exactly one of requirement=REQ-n, feedback=FB-n or issue=ISS-n',
-    );
-});
+const listQuery = zValidator(
+  'query',
+  listMockupsQuerySchema,
+  invalid('invalid query: exactly one of requirement=REQ-n, feedback=FB-n or issue=ISS-n'),
+);
 
 function actorOf(c: Context<{ Variables: AuthVars }>): MockupActor {
   const agency = c.get('agency');

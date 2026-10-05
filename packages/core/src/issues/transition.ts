@@ -6,7 +6,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import {
@@ -178,7 +178,6 @@ transitionRoutes.post(
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
-      throw badRequest(result.error);
     }
   }),
   async (c) => {

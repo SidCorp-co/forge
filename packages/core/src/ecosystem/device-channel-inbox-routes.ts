@@ -4,8 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { assertDeviceBoundToProject } from '../devices/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { unanswered } from './channel-read.js';
 import { unansweredView } from './channel-view.js';
 import { openRunsOf } from './link-service.js';
@@ -17,9 +16,7 @@ const querySchema = z.object({ projectId: z.uuid() });
 deviceChannelInboxRoutes.get(
   '/me/channel/unanswered',
   requireDevice(),
-  zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest('projectId is required and is a project uuid');
-  }),
+  zValidator('query', querySchema, invalid('projectId is required and is a project uuid')),
   async (c) => {
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(c.get('device').id, projectId);

@@ -13,7 +13,6 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { type IssueStatus, issueStatuses } from '../../db/schema.js';
-import { queryBadRequest } from '../../lib/query-strict.js';
 import { RULES } from '../../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
@@ -111,12 +110,8 @@ function streamHeaders(c: { header: (k: string, v: string) => void }): void {
 
 backlogStreamRoutes.get(
   '/:id/backlog/ordering',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw queryBadRequest(idParamSchema, r.error);
-  }),
-  zValidator('query', orderingQuerySchema, (r) => {
-    if (!r.success) throw queryBadRequest(orderingQuerySchema, r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', orderingQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
@@ -142,12 +137,8 @@ backlogStreamRoutes.get(
 
 backlogStreamRoutes.get(
   '/:id/backlog/alike',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw queryBadRequest(idParamSchema, r.error);
-  }),
-  zValidator('query', alikeQuerySchema, (r) => {
-    if (!r.success) throw queryBadRequest(alikeQuerySchema, r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', alikeQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');

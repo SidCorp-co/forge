@@ -9,7 +9,7 @@ import {
   requireAuth,
   restActor,
 } from '../../middleware/auth.js';
-import { zValidator } from '../../middleware/zod-validator.js';
+import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/index.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
@@ -29,41 +29,24 @@ for (const path of ['/:id/contracts/:contract/*', '/:id/consumes/:provider/:cont
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const contractParam = zValidator('param', z.object({ id: z.uuid(), contract: slug() }), (r) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'invalid path: the project id is a uuid and the contract is its publication slug',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const contractParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), contract: slug() }),
+  invalid('invalid path: the project id is a uuid and the contract is its publication slug'),
+);
 
 const versionParam = zValidator(
   'param',
   z.object({ id: z.uuid(), contract: slug(), version: z.string().min(1).max(40) }),
-  (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message:
-          'invalid path: /api/projects/<uuid>/contracts/<slug>/versions/<version of 1 to 40 characters>',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-  },
+  invalid(
+    'invalid path: /api/projects/<uuid>/contracts/<slug>/versions/<version of 1 to 40 characters>',
+  ),
 );
 
 const consumedParam = zValidator(
   'param',
   z.object({ id: z.uuid(), provider: z.uuid(), contract: slug() }),
-  (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message:
-          'invalid path: /api/projects/<consumer uuid>/consumes/<provider uuid>/<contract slug>/…',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-  },
+  invalid('invalid path: /api/projects/<consumer uuid>/consumes/<provider uuid>/<contract slug>/…'),
 );
 
 const uploadSchema = z.strictObject({
@@ -80,19 +63,14 @@ const uploadSchema = z.strictObject({
     .optional(),
 });
 
-const uploadBody = zValidator('json', uploadSchema, (r, c) => {
-  if (!r.success) {
-    return refused(
-      c,
-      r.error.issues.map((i) => ({
-        code: 'SCHEMA_VIOLATION' as const,
-        path: `/${i.path.map(String).join('/')}`,
-        detail: `${i.message}; the body is { version?, kind?, artifact?: <the contract text>, sourceRef?: <repo path>@<commit sha>, semantic?: { classification, reason, elements } }`,
-      })),
-      'ECOSYSTEM_REFUSED',
-    );
-  }
-});
+const uploadBody = zValidator(
+  'json',
+  uploadSchema,
+  invalid(
+    'the body is { version?, kind?, artifact?: <the contract text>, sourceRef?: <repo path>@<commit sha>, semantic?: { classification, reason, elements } }',
+    'SCHEMA_VIOLATION',
+  ),
+);
 
 contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
@@ -163,19 +141,10 @@ const decisionBody = zValidator(
     decision: z.enum(CONTRACT_DECISIONS),
     reason: z.string().trim().max(CONTRACT_DECISION_REASON_MAX).optional(),
   }),
-  (r, c) => {
-    if (!r.success) {
-      return refused(
-        c,
-        r.error.issues.map((i) => ({
-          code: 'SCHEMA_VIOLATION' as const,
-          path: `/${i.path.map(String).join('/')}`,
-          detail: `${i.message}; the body is { decision: approve | return, reason?: why, required to return }`,
-        })),
-        'ECOSYSTEM_REFUSED',
-      );
-    }
-  },
+  invalid(
+    'the body is { decision: approve | return, reason?: why, required to return }',
+    'SCHEMA_VIOLATION',
+  ),
 );
 
 contractRoutes.post(

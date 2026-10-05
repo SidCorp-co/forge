@@ -3,8 +3,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { readOwedComments } from './comment-inbox.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 
@@ -15,9 +14,7 @@ const querySchema = z.object({ projectId: z.uuid() });
 deviceCommentInboxRoutes.get(
   '/me/comments/unanswered',
   requireDevice(),
-  zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest('projectId is required and is a project uuid');
-  }),
+  zValidator('query', querySchema, invalid('projectId is required and is a project uuid')),
   async (c) => {
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(c.get('device').id, projectId);

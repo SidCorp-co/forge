@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../lib/env.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { consumeVerificationToken } from './verification-token.js';
 
 export const verifyRoutes = new Hono();
@@ -50,12 +50,8 @@ verifyRoutes.get(
 // tests). HTTPException → existing core error envelope.
 verifyRoutes.post(
   '/verify',
-  zValidator('query', tokenQuery, (result) => {
-    if (!result.success) throw invalidToken();
-  }),
-  zValidator('json', tokenBody, (result) => {
-    if (!result.success) throw invalidToken();
-  }),
+  zValidator('query', tokenQuery, invalid('invalid verification token', 'INVALID_TOKEN')),
+  zValidator('json', tokenBody, invalid('invalid verification token', 'INVALID_TOKEN')),
   async (c) => {
     const outcome = await runVerify(c.req.valid('query').token || c.req.valid('json').token);
     if (outcome === 'invalid') throw invalidToken();
