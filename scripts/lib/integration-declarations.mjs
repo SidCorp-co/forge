@@ -143,7 +143,7 @@ function deployReasons(decl, contractCanDeploy) {
 /**
  * What `canReceiveWebhook: true` commits a provider to declaring.
  *
- * `webhooks/inbound-routes.ts` derives BOTH the route and the signature header from these fields
+ * `integration-door/webhook-inbound-routes.ts` derives BOTH the route and the signature header from these fields
  * and holds no list of its own. A provider declaring an inbound surface without saying which header
  * identifies it is never routed; one that names the route and not the signature is routed and then
  * refused `PROVIDER_DECLARES_NO_SIGNATURE_HEADER` on every delivery. Both are a live integration

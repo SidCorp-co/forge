@@ -22,12 +22,9 @@ import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
+import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
-import {
-  refreshMainRunnerHead,
-  servesRunnerReleases,
-} from './integrations/published-releases/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,

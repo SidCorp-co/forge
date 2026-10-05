@@ -32,7 +32,7 @@ export async function setDeliveryRead(deliveryId: string, userId: string, read: 
   });
 }
 
-export type DeleteDeliveryOutcome =
+type DeleteDeliveryOutcome =
   | { ok: true }
   | { ok: false; code: 'NOT_FOUND' }
   | { ok: false; code: 'CONDITION_STILL_TRUE'; live: { title: string; type: string } };
@@ -65,8 +65,7 @@ export async function createNotification(input: {
   dedupeKey?: string | null;
   groupKey?: string | null;
   groupTitle?: string | null;
-}): Promise<{ id: string; delivered: number } | null> {
+}): Promise<{ id: string; delivered: number }> {
   const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
-  const result = await recordAndDeliver({ ...input, recipients });
-  return result;
+  return recordAndDeliver({ ...input, recipients });
 }

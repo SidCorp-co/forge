@@ -5,122 +5,52 @@ export interface RocketChatRestAuth {
   userId: string;
 }
 
-/** Simplified REST message (both history + thread endpoints map to this). */
-export interface RocketChatRestMessage {
-  id: string;
-  text: string;
-  userId: string;
-  username: string;
-  /** ISO timestamp. */
-  ts: string;
-  isSystem: boolean;
-  /** The room the server says this message is in; absent on a payload that named none (ISS-1087). */
-  rid?: string | undefined;
-  /** The thread it was posted inside, where it was. */
-  tmid?: string | undefined;
-}
+import {
+  mapMessage,
+  mapMessages,
+  type RawRestMessage,
+  type RocketChatRestMessage,
+} from './rest-message.js';
+
+export {
+  extractMessageImages,
+  extractMessageText,
+  type RocketChatImageRef,
+  type RocketChatRestMessage,
+} from './rest-message.js';
 
 const FETCH_TIMEOUT_MS = 8000;
 
-interface RawRestFile {
-  _id?: string;
-  name?: string;
-  type?: string;
-}
+const apiBase = (auth: RocketChatRestAuth) => `${auth.serverUrl.replace(/\/+$/, '')}/api/v1`;
 
-interface RawRestMessage {
-  _id?: string;
-  rid?: string;
-  tmid?: string;
-  msg?: string;
-  ts?: string;
-  t?: string;
-  u?: { _id?: string; username?: string };
-  file?: RawRestFile;
-  files?: RawRestFile[];
-  attachments?: Array<{
-    title?: string;
-    text?: string;
-    description?: string;
-    title_link?: string;
-    message_link?: string;
-    image_url?: string;
-    image_type?: string;
-  }>;
-}
-
-/** An image uploaded to a room, addressed by an absolute, credentialed URL. */
-export interface RocketChatImageRef {
-  name: string;
-  mime: string;
-  /** `<serverUrl>/file-upload/<id>/<name>` — reachable only with the bot's
-   *  `X-Auth-Token`/`X-User-Id`, and only by following one redirect. */
-  ref: string;
-}
-
-const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
-
-function normalizeMime(raw: string): string {
-  const mime = raw.toLowerCase();
-  return mime === 'image/jpg' ? 'image/jpeg' : mime;
-}
-
-function absolutize(link: string, baseUrl: string | undefined): string {
-  if (!link.startsWith('/') || !baseUrl) return link;
-  return `${baseUrl.replace(/\/+$/, '')}${link}`;
-}
-
-export function extractMessageText(
-  raw: Pick<RawRestMessage, 'msg' | 'attachments'>,
-  baseUrl?: string,
-): string {
-  const parts: string[] = [];
-  if (typeof raw.msg === 'string' && raw.msg.length > 0) parts.push(raw.msg);
-  for (const a of raw.attachments ?? []) {
-    const title = [a.title, a.title_link ? `(${absolutize(a.title_link, baseUrl)})` : null]
-      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-      .join(' ');
-    for (const field of [title, a.text, a.description, a.message_link]) {
-      if (typeof field === 'string' && field.trim().length > 0) {
-        parts.push(field === a.message_link ? absolutize(field, baseUrl) : field);
-      }
-    }
+/** POST JSON as the bot. `body` is undefined where the answer is not JSON. */
+async function rcPost(
+  auth: RocketChatRestAuth,
+  path: string,
+  payload: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> | null | undefined }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${apiBase(auth)}/${path}`, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok) return { ok: false, status: res.status, body: undefined };
+    const body = (await res.json().catch(() => undefined)) as
+      | Record<string, unknown>
+      | null
+      | undefined;
+    return { ok: true, status: res.status, body };
+  } finally {
+    clearTimeout(timer);
   }
-  return parts.join('\n');
-}
-
-export function extractMessageImages(
-  raw: Pick<RawRestMessage, 'file' | 'files' | 'attachments'>,
-  baseUrl: string,
-): RocketChatImageRef[] {
-  const out = new Map<string, RocketChatImageRef>();
-  for (const f of [raw.file, ...(raw.files ?? [])]) {
-    if (!f?._id || typeof f.name !== 'string' || !IMAGE_MIME_RE.test(f.type ?? '')) continue;
-    const ref = absolutize(`/file-upload/${f._id}/${encodeURIComponent(f.name)}`, baseUrl);
-    out.set(ref, { name: f.name, mime: normalizeMime(f.type as string), ref });
-  }
-  for (const a of raw.attachments ?? []) {
-    if (typeof a.image_url !== 'string' || !IMAGE_MIME_RE.test(a.image_type ?? '')) continue;
-    const ref = absolutize(a.image_url, baseUrl);
-    if (out.has(ref)) continue;
-    const name = a.title ?? ref.split('/').pop() ?? 'image';
-    out.set(ref, { name, mime: normalizeMime(a.image_type as string), ref });
-  }
-  return [...out.values()];
-}
-
-function mapMessage(raw: RawRestMessage, baseUrl?: string): RocketChatRestMessage | null {
-  if (!raw || typeof raw._id !== 'string' || !raw.u?._id) return null;
-  return {
-    id: raw._id,
-    text: extractMessageText(raw, baseUrl),
-    userId: raw.u._id,
-    username: raw.u.username ?? raw.u._id,
-    ts: typeof raw.ts === 'string' ? raw.ts : '',
-    isSystem: typeof raw.t === 'string' && raw.t.length > 0,
-    ...(typeof raw.rid === 'string' ? { rid: raw.rid } : {}),
-    ...(typeof raw.tmid === 'string' ? { tmid: raw.tmid } : {}),
-  };
 }
 
 async function rcGet(
@@ -128,12 +58,11 @@ async function rcGet(
   path: string,
   params: Record<string, string>,
 ): Promise<Record<string, unknown> | null> {
-  const base = auth.serverUrl.replace(/\/+$/, '');
   const qs = new URLSearchParams(params).toString();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/api/v1/${path}?${qs}`, {
+    const res = await fetch(`${apiBase(auth)}/${path}?${qs}`, {
       headers: {
         'X-Auth-Token': auth.authToken,
         'X-User-Id': auth.userId,
@@ -151,12 +80,32 @@ async function rcGet(
   }
 }
 
-const HISTORY_ENDPOINTS = ['channels.history', 'groups.history', 'im.history'] as const;
-/** rid → the history endpoint that worked last time. A room's type never
- *  changes, and probing costs a failed round-trip per fetch on private rooms
- *  (channels.history 404s), so remember the winner. Bounded by the rooms the
- *  bot is in. */
+type RoomEndpoints = readonly [string, string, string];
+const HISTORY_ENDPOINTS: RoomEndpoints = ['channels.history', 'groups.history', 'im.history'];
+const MESSAGES_ENDPOINTS: RoomEndpoints = ['channels.messages', 'groups.messages', 'im.messages'];
+/** endpoint family + rid → the endpoint that worked last time. A room's type never changes, and
+ *  probing costs a failed round-trip per fetch on private rooms (channels.* 404s), so remember the
+ *  winner. Bounded by the rooms the bot is in. */
 const endpointByRoom = new Map<string, string>();
+
+/** Read a room's messages from whichever of the channel/group/direct endpoints answers, oldest-first. */
+async function readRoomMessages(
+  auth: RocketChatRestAuth,
+  endpoints: RoomEndpoints,
+  params: Record<string, string> & { roomId: string },
+): Promise<RocketChatRestMessage[] | null> {
+  const key = `${endpoints[0]} ${params.roomId}`;
+  const cached = endpointByRoom.get(key);
+  const order = cached ? [cached, ...endpoints.filter((e) => e !== cached)] : endpoints;
+  for (const endpoint of order) {
+    const raw = (await rcGet(auth, endpoint, params))?.messages;
+    if (Array.isArray(raw)) {
+      endpointByRoom.set(key, endpoint);
+      return mapMessages(raw, auth.serverUrl);
+    }
+  }
+  return null;
+}
 
 /**
  * Fetch up to `count` most-recent messages in a room, optionally older than
@@ -169,32 +118,15 @@ export async function fetchRoomHistory(
   rid: string,
   opts: { count: number; before?: string | undefined },
 ): Promise<RocketChatRestMessage[]> {
-  const params: Record<string, string> = { roomId: rid, count: String(opts.count) };
-  if (opts.before) params.latest = opts.before;
-  const cached = endpointByRoom.get(rid);
-  const order = cached
-    ? [cached, ...HISTORY_ENDPOINTS.filter((e) => e !== cached)]
-    : [...HISTORY_ENDPOINTS];
-  for (const endpoint of order) {
-    const body = await rcGet(auth, endpoint, params);
-    const raw = body?.messages;
-    if (Array.isArray(raw)) {
-      endpointByRoom.set(rid, endpoint);
-      const mapped = raw
-        .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
-        .filter((m): m is RocketChatRestMessage => m !== null);
-      return mapped.sort((a, b) => a.ts.localeCompare(b.ts));
-    }
-  }
-  return [];
+  const params = {
+    roomId: rid,
+    count: String(opts.count),
+    ...(opts.before ? { latest: opts.before } : {}),
+  };
+  return (await readRoomMessages(auth, HISTORY_ENDPOINTS, params)) ?? [];
 }
 
-const MESSAGES_ENDPOINTS = ['channels.messages', 'groups.messages', 'im.messages'] as const;
-const messagesEndpointByRoom = new Map<string, string>();
-
-/**
- * The `count` messages nearest to `ts` on one side of it, oldest-first.
- */
+/** The `count` messages nearest to `ts` on one side of it, oldest-first. */
 export async function fetchMessagesBeside(
   auth: RocketChatRestAuth,
   rid: string,
@@ -202,28 +134,12 @@ export async function fetchMessagesBeside(
   side: 'before' | 'after',
   count: number,
 ): Promise<RocketChatRestMessage[] | null> {
-  const params: Record<string, string> = {
+  return readRoomMessages(auth, MESSAGES_ENDPOINTS, {
     roomId: rid,
     count: String(count),
     query: JSON.stringify({ ts: { [side === 'after' ? '$gt' : '$lt']: { $date: ts } } }),
     sort: JSON.stringify({ ts: side === 'after' ? 1 : -1 }),
-  };
-  const cached = messagesEndpointByRoom.get(rid);
-  const order = cached
-    ? [cached, ...MESSAGES_ENDPOINTS.filter((e) => e !== cached)]
-    : [...MESSAGES_ENDPOINTS];
-  for (const endpoint of order) {
-    const body = await rcGet(auth, endpoint, params);
-    const raw = body?.messages;
-    if (Array.isArray(raw)) {
-      messagesEndpointByRoom.set(rid, endpoint);
-      return raw
-        .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
-        .filter((m): m is RocketChatRestMessage => m !== null)
-        .sort((a, b) => a.ts.localeCompare(b.ts));
-    }
-  }
-  return null;
+  });
 }
 
 interface RocketChatRoomInfo {
@@ -253,49 +169,42 @@ export async function fetchBotRooms(auth: RocketChatRestAuth): Promise<RocketCha
   return rooms.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** installation+rid → {name, type}; a room's name/type never change in practice,
- *  and the permalink builder runs on every mention. Bounded by the rooms the bot
- *  is in. */
-const roomInfoByRid = new Map<string, { name: string; type: string }>();
+/** installation+rid → {name, type}; a room's name and type never change in practice, and the
+ *  permalink builder runs on every mention. Bounded by the rooms the bot is in. */
+const roomInfoByRid = new Map<string, { name: string | null; type: string }>();
 
-function roomCacheKey(auth: RocketChatRestAuth, rid: string): string {
-  return `${auth.serverUrl.replace(/\/+$/, '')} ${rid}`;
+async function roomInfo(auth: RocketChatRestAuth, rid: string) {
+  const key = `${auth.serverUrl.replace(/\/+$/, '')} ${rid}`;
+  const cached = roomInfoByRid.get(key);
+  if (cached) return cached;
+  const room = (
+    (await rcGet(auth, 'rooms.info', { roomId: rid })) as {
+      room?: { name?: string; t?: string };
+    } | null
+  )?.room;
+  if (typeof room?.t !== 'string' || room.t.length === 0) return null;
+  const info = { name: room.name || null, type: room.t };
+  roomInfoByRid.set(key, info);
+  return info;
 }
 
-/**
- * A room's own `t` — `d` direct, `p` private group, `c` channel. Separate from
- * {@link buildMessagePermalink}'s read of the same call because that one wants a
- * name too and gives up without one, which a direct room usually has none of.
- */
+/** A room's own `t` — `d` direct, `p` private group, `c` channel. A direct room usually has no name. */
 export async function fetchRoomType(auth: RocketChatRestAuth, rid: string): Promise<string | null> {
-  const cached = roomInfoByRid.get(roomCacheKey(auth, rid));
-  if (cached) return cached.type;
-  const body = await rcGet(auth, 'rooms.info', { roomId: rid });
-  const room = (body as { room?: { name?: string; t?: string } } | null)?.room;
-  if (typeof room?.t !== 'string' || room.t.length === 0) return null;
-  if (room.name) roomInfoByRid.set(roomCacheKey(auth, rid), { name: room.name, type: room.t });
-  return room.t;
+  return (await roomInfo(auth, rid))?.type ?? null;
 }
 
 /**
  * Build a web permalink to a message in a room (`…/channel/<name>?msg=<id>`
- * for public, `…/group/<name>?msg=<id>` for private). Room name comes from
- * `rooms.info` (cached per rid). Null when the room can't be resolved — the
- * caller just omits the permalink line.
+ * for public, `…/group/<name>?msg=<id>` for private). Null when the room or its name can't be
+ * resolved — the caller just omits the permalink line.
  */
 export async function buildMessagePermalink(
   auth: RocketChatRestAuth,
   rid: string,
   messageId: string,
 ): Promise<string | null> {
-  let info = roomInfoByRid.get(roomCacheKey(auth, rid));
-  if (!info) {
-    const body = await rcGet(auth, 'rooms.info', { roomId: rid });
-    const room = (body as { room?: { name?: string; t?: string } } | null)?.room;
-    if (!room?.name || typeof room.t !== 'string') return null;
-    info = { name: room.name, type: room.t };
-    roomInfoByRid.set(roomCacheKey(auth, rid), info);
-  }
+  const info = await roomInfo(auth, rid);
+  if (!info?.name) return null;
   const segment = info.type === 'p' ? 'group' : info.type === 'd' ? 'direct' : 'channel';
   return `${auth.serverUrl.replace(/\/+$/, '')}/${segment}/${info.name}?msg=${messageId}`;
 }
@@ -312,36 +221,18 @@ export async function fetchOwnIdentity(auth: RocketChatRestAuth): Promise<Rocket
   return { username: text(body?.username), displayName: text(body?.name) };
 }
 
-/**
- * Set or clear one reaction on a message, as the bot.
- */
+/** Set or clear one reaction on a message, as the bot. */
 export async function reactToMessage(
   auth: RocketChatRestAuth,
   messageId: string,
   emoji: string,
   on: boolean,
 ): Promise<boolean> {
-  const base = auth.serverUrl.replace(/\/+$/, '');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/api/v1/chat.react`, {
-      method: 'POST',
-      headers: {
-        'X-Auth-Token': auth.authToken,
-        'X-User-Id': auth.userId,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ messageId, emoji, shouldReact: on }),
-      signal: controller.signal,
-    });
-    if (!res.ok) return false;
-    const body = (await res.json().catch(() => null)) as { success?: unknown } | null;
-    return body?.success !== false;
+    const res = await rcPost(auth, 'chat.react', { messageId, emoji, shouldReact: on });
+    return res.ok && res.body?.success !== false;
   } catch {
     return false;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -395,19 +286,15 @@ export async function fetchMessage(
   return raw ? mapMessage(raw, auth.serverUrl) : null;
 }
 
-/** Fetch a thread's messages (oldest-first). Empty array on any failure. */
+/** Fetch a thread's messages (oldest-first). Null on any failure. */
 export async function fetchThreadMessages(
   auth: RocketChatRestAuth,
   tmid: string,
   count: number,
 ): Promise<RocketChatRestMessage[] | null> {
-  const body = await rcGet(auth, 'chat.getThreadMessages', { tmid, count: String(count) });
-  const raw = body?.messages;
-  if (!Array.isArray(raw)) return null;
-  return raw
-    .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
-    .filter((m): m is RocketChatRestMessage => m !== null)
-    .sort((a, b) => a.ts.localeCompare(b.ts));
+  const raw = (await rcGet(auth, 'chat.getThreadMessages', { tmid, count: String(count) }))
+    ?.messages;
+  return Array.isArray(raw) ? mapMessages(raw, auth.serverUrl) : null;
 }
 
 export async function postRoomMessage(
@@ -416,33 +303,16 @@ export async function postRoomMessage(
   text: string,
   tmid?: string,
 ): Promise<string | null> {
-  const base = auth.serverUrl.replace(/\/+$/, '');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${base}/api/v1/chat.postMessage`, {
-      method: 'POST',
-      headers: {
-        'X-Auth-Token': auth.authToken,
-        'X-User-Id': auth.userId,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ roomId, text, ...(tmid ? { tmid } : {}) }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`chat.postMessage failed with status ${res.status}`);
-    const body = (await res.json()) as {
-      success?: boolean;
-      error?: string;
-      message?: { _id?: unknown };
-    };
-    if (body?.success === false) {
-      throw new Error(`chat.postMessage rejected: ${body.error ?? 'unknown error'}`);
-    }
-    return typeof body?.message?._id === 'string' ? body.message._id : null;
-  } finally {
-    clearTimeout(timer);
+  const res = await rcPost(auth, 'chat.postMessage', { roomId, text, ...(tmid ? { tmid } : {}) });
+  if (!res.ok) throw new Error(`chat.postMessage failed with status ${res.status}`);
+  if (res.body === undefined) throw new Error('chat.postMessage answered a body that is not JSON');
+  if (res.body?.success === false) {
+    throw new Error(
+      `chat.postMessage rejected: ${(res.body.error as string | undefined) ?? 'unknown error'}`,
+    );
   }
+  const id = (res.body?.message as { _id?: unknown } | undefined)?._id;
+  return typeof id === 'string' ? id : null;
 }
 
 /** Uploads are big and slow next to a JSON read; give them their own budget. */

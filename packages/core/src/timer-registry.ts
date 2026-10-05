@@ -16,11 +16,8 @@ import {
   runDevicePrune,
   runDeviceStaleSweep,
 } from './devices/index.js';
+import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
-import {
-  refetchRunnerRelease,
-  servesRunnerReleases,
-} from './integrations/published-releases/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
 import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
 import { logger } from './observability/logger.js';

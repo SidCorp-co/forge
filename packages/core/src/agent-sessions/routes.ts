@@ -20,7 +20,7 @@ import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
-import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
+import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
@@ -109,9 +109,6 @@ agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInteractiveRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
-
-// Pipeline-session types for the retry endpoint. Mirrors the predicate
-// used by sweeper.ts and the migration backfill.
 
 // Idempotency on /retry comes from orchestrator.reEnqueueForIssue + the
 // unique-active-job index — re-firing while a job is queued/running is a
@@ -525,18 +522,7 @@ agentSessionRoutes.patch(
     });
     const updated = written;
 
-    if (sync) {
-      // First new turn fires immediately so the client learns the turn id.
-      // Subsequent appends (multi-block worker write) ride the tail-debouncer
-      // in broadcastTurnAppended to keep WS load manageable while the runner
-      // streams a long assistant reply.
-      sync.appended.forEach((t, i) => {
-        broadcastTurnAppended(updated, t, { isStreamingTail: i > 0 });
-      });
-      if (sync.truncatedFromTurnIndex !== null) {
-        broadcastTurnTruncated(updated, sync.truncatedFromTurnIndex);
-      }
-    }
+    if (sync) broadcastTurnSync(updated, sync);
 
     if (patch.status !== undefined && patch.status !== existing.status) {
       broadcastSession(updated, 'agent-session.status');

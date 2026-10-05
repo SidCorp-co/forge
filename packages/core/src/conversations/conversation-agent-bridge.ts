@@ -23,12 +23,12 @@ import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { logger } from '../observability/logger.js';
 import { resolveFailureCause } from '../pipeline/index.js';
+import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
   readConversationAgentMeta,
-} from './conversation-agent.js';
-import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
+} from './conversation-agent-meta.js';
 import { codeAuthored, conversationTransport, screened } from './ports.js';
 import { recordDeliveredReply } from './transcript.js';
 

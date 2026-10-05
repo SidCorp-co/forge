@@ -2,13 +2,12 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { baseRev } from './lib/baseline-ratchet.mjs';
+import { ROOT } from './lib/gate.mjs';
 import { CORRECTION_SPAN, ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RECORD = 'CHANGELOG.md';
 const AMNESTY = '.forge/changelog-amnesty.json';
 

@@ -3,7 +3,7 @@
  *
  * Slug→id resolution is shared by `projects/project-scope.ts` (behind
  * `X-Forge-Project-Slug`). The routes that select extra columns
- * (`webhooks/inbound-routes.ts`, `agent-sessions/lifecycle-routes.ts`) are
+ * (`integration-door/webhook-inbound-routes.ts`, `agent-sessions/lifecycle-routes.ts`) are
  * genuinely different queries and keep their own.
  */
 

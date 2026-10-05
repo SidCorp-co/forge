@@ -2,8 +2,12 @@ import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
-import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
+import {
+  callFastModel,
+  EmbeddingUnavailableError,
+  embed,
+  fastModelConfigured,
+} from '../integrations/llm/index.js';
 import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';

@@ -2,28 +2,24 @@ import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { deriveSessionFinal } from '../agent-sessions/index.js';
-import { publishPipelineHealthChanged } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { holds } from '../permissions/index.js';
-import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
-import { materializeJobUsage } from '../usage-records/index.js';
-import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
+import { SYNTHETIC_REAP_ERRORS } from './agent-session-link.js';
 import { cancelJob } from './cancel-job.js';
-import { finalizeFailedJob } from './finalize-failure.js';
-import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
-import { salvageSchema, salvageSet } from './prior-attempts.js';
+import { salvageSchema } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
-import type { RetryOutcome } from './retry.js';
-import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
+import {
+  completeJobFromRunner,
+  failJobFromRunner,
+  reconcileLateCompletion,
+} from './runner-finish.js';
+import { ackJob, confirmJobKill } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -141,14 +137,6 @@ jobLifecycleDeviceRoutes.post(
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
 
-    // ISS-378 — idempotent late completion. A runner that finished real work
-    // but whose /complete was lost to a core outage finds its job already
-    // reaped to `failed` by a timeout/orphan sweep (server-side, not a runner
-    // /fail). If it retries with success and no retry attempt has taken over,
-    // accept it: flip failed→done and run the success side-effects, instead of
-    // 409-discarding real work (ISS-360 lost a merged PR this way). Guarded so
-    // it can't double-advance: if any retry descendant is queued/dispatched/
-    // running/done, that attempt owns the outcome and we fall through to 409.
     if (
       !OCCUPYING_JOB_STATUSES.includes(job.status) &&
       input.exitCode === 0 &&
@@ -156,116 +144,13 @@ jobLifecycleDeviceRoutes.post(
       typeof job.error === 'string' &&
       SYNTHETIC_REAP_ERRORS.has(job.error)
     ) {
-      const reclaimed = await reclaimReapedJob({ ...job, error: job.error }, device.id);
-      if (reclaimed) {
-        logger.warn(
-          { jobId: reclaimed.id, reapedError: job.error },
-          'lifecycle: reconciled a late successful completion — job had been reaped (work would otherwise be lost)',
-        );
-        if (reclaimed.agentSessionId) {
-          void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
-        }
-        void materializeJobUsage(reclaimed);
-        await syncAgentSessionLifecycle(reclaimed, 'done');
-        roomManager.publish(projectRoom(reclaimed.projectId), {
-          event: 'job.completed',
-          data: { jobId: reclaimed.id, status: 'done', exitCode: 0 },
-        });
-        void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
-        void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
-        if (reclaimed.issueId) {
-          await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
-        }
-        return c.json({
-          jobId: reclaimed.id,
-          status: 'done',
-          exitCode: 0,
-          retry: null,
-          reconciled: true,
-        });
-      }
+      const reconciled = await reconcileLateCompletion({ ...job, error: job.error }, device.id);
+      if (reconciled) return c.json(reconciled);
     }
-
     if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
       throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
-
-    const status: 'done' | 'cancelled' | 'failed' =
-      input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
-    const effectiveError: string | null = input.error ?? null;
-
-    let updated = await finishJobFromRunner({
-      jobId: id,
-      from: job.status,
-      to: status,
-      set: {
-        exitCode: input.exitCode,
-        error: effectiveError,
-        finishedAt: new Date(),
-      },
-      reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
-      deviceId: device.id,
-    });
-
-    if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
-
-    // ISS-283 — final authoritative derive of the agent_sessions transcript
-    // from the streamed job_events (CLI runner never PATCHes the session row).
-    // Fire-and-forget + best-effort so it can never block or hang /complete;
-    // it never writes status, so it can't fight syncAgentSessionLifecycle below.
-    if (updated.agentSessionId) {
-      void deriveSessionFinal(updated.id, updated.agentSessionId);
-    }
-    // ISS-439 — materialize the usage_records row from the stored job_events.
-    void materializeJobUsage(updated);
-
-    if (status === 'failed') {
-      let precomputedRetry: RetryOutcome | undefined;
-      if (isResumeFailedError(input.error)) {
-        updated = await reclassifyAbortedResume(updated);
-      }
-      // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
-      // entry-status (or hold the job when exhausted) → session sync →
-      // broadcast → hooks → dispatch re-tick → health refresh.
-      const retry = await finalizeFailedJob(updated, {
-        error: effectiveError ?? 'exit nonzero',
-        exitCode: input.exitCode,
-        precomputedRetry,
-      });
-      return c.json({
-        jobId: updated.id,
-        status: updated.status,
-        exitCode: updated.exitCode,
-        retry,
-      });
-    }
-
-    // done / cancelled — mirror lifecycle to the linked agent_session row so
-    // /pipeline + issue detail tab reflect completion. Best-effort.
-    await syncAgentSessionLifecycle(updated, status);
-
-    roomManager.publish(projectRoom(updated.projectId), {
-      event: status === 'done' ? 'job.completed' : 'job.cancelled',
-      data: { jobId: updated.id, status, exitCode: updated.exitCode },
-    });
-
-    if (status === 'done') {
-      void clearRunnerLimit(updated.runnerId, updated.projectId);
-      void clearRunnerQuarantine(updated.runnerId, updated.projectId);
-    }
-
-    // ISS-164 — refresh pipelineHealth for the linked issue (activeSession
-    // clears, queued siblings may now classify differently).
-    if (updated.issueId) {
-      await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
-    }
-
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      exitCode: updated.exitCode,
-      retry: null,
-    });
+    return c.json(await completeJobFromRunner(job, input, device.id));
   },
 );
 
@@ -289,40 +174,7 @@ jobLifecycleDeviceRoutes.post(
       throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
 
-    let updated = await finishJobFromRunner({
-      jobId: id,
-      from: job.status,
-      to: 'failed',
-      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
-      reason: input.error,
-      deviceId: device.id,
-    });
-
-    if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
-
-    // ISS-283 — final transcript derive (see /complete). Fire-and-forget.
-    if (updated.agentSessionId) {
-      void deriveSessionFinal(updated.id, updated.agentSessionId);
-    }
-    void materializeJobUsage(updated);
-
-    const precomputedRetry: RetryOutcome | undefined = undefined;
-    if (isResumeFailedError(input.error)) {
-      updated = await reclassifyAbortedResume(updated);
-    }
-
-    // ISS-280 — shared finalize path (see /complete).
-    const retry = await finalizeFailedJob(updated, {
-      error: input.error,
-      precomputedRetry,
-    });
-
-    return c.json({
-      jobId: updated.id,
-      status: updated.status,
-      error: updated.error,
-      retry,
-    });
+    return c.json(await failJobFromRunner(job, input, device.id));
   },
 );
 

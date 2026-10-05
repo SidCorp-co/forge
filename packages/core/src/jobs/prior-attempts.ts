@@ -31,7 +31,7 @@ export const salvageSchema = z
 
 /** What the runner managed to preserve of a failed attempt's working copy. Inferred from the
  *  schema above so the wire contract and the type cannot drift apart. */
-type SalvageRecord = z.infer<typeof salvageSchema>;
+export type SalvageRecord = z.infer<typeof salvageSchema>;
 
 /** Merge a reported salvage into `jobs.failure_meta` without clobbering what is already there.
  *  Spreads to nothing when the runner reported none, so the caller can spread unconditionally. */

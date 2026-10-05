@@ -98,8 +98,7 @@ async function collectSkillFiles(skillDir: string): Promise<SkillFile[]> {
         continue;
       }
 
-      const isBinary = buf.includes(0);
-      if (isBinary) {
+      if (buf.includes(0)) {
         files.push({ path: relPath, content: buf.toString('base64'), encoding: 'base64' });
       } else {
         files.push({
@@ -159,8 +158,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
       );
     }
 
-    const toolsRaw = frontmatter.tools;
-    const tools = Array.isArray(toolsRaw) ? toolsRaw : [];
+    const tools = Array.isArray(frontmatter.tools) ? frontmatter.tools : [];
 
     // Walk references/, scripts/, … into files[] and hash over the full folder
     // (skillMd + files) using the SAME function the CRUD routes use, so seeded
@@ -168,9 +166,8 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     // identical content.
     const files = await collectSkillFiles(path.join(root, entry.name));
     const contentHash = hashSkillBody(rawText, files);
-    const prompt = body;
 
-    const existing = await db
+    const [current] = await db
       .select({
         id: skills.id,
         contentHash: skills.contentHash,
@@ -180,7 +177,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
       .from(skills)
       .where(and(eq(skills.name, name), eq(skills.scope, 'global')))
       .limit(1);
-    const current = existing[0];
 
     if (!current) {
       await db.insert(skills).values({
@@ -188,7 +184,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         description,
         scope: 'global',
         projectId: null,
-        prompt,
+        prompt: body,
         tools,
         manifest: frontmatter,
         source: 'builtin',
@@ -198,13 +194,7 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
         files: files as never,
       });
       result.inserted += 1;
-      result.changes.push({
-        name,
-        oldVersion: 0,
-        newVersion: 1,
-        contentHash,
-        reason: 'inserted',
-      });
+      result.changes.push({ name, oldVersion: 0, newVersion: 1, contentHash, reason: 'inserted' });
       continue;
     }
 
@@ -217,16 +207,15 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     }
 
     const versionChanged = !hashMatches;
-    const writeContentHash = skillMdMissing && !versionChanged ? saltedHash : contentHash;
     const newVersion = versionChanged ? current.version + 1 : current.version;
     await db
       .update(skills)
       .set({
         description,
-        prompt,
+        prompt: body,
         tools,
         manifest: frontmatter,
-        contentHash: writeContentHash,
+        contentHash: skillMdMissing && !versionChanged ? saltedHash : contentHash,
         skillMd: rawText,
         files: files as never,
         version: newVersion,

@@ -25,10 +25,13 @@ import {
 } from "@/design";
 import {
   deriveSessionDisplayStatus,
-  sessionStep,
-  statusToChip,
   failureReasonAction,
   failureReasonLabel,
+  formatCost,
+  formatDuration,
+  formatShortTime,
+  sessionStep,
+  statusToChip,
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
@@ -40,44 +43,10 @@ import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
 import { LoadedForRun } from "./loaded-for-run";
 
-const PLATFORM_LABEL: Record<string, string> = {
-  macos: "macOS",
-  linux: "Linux",
-  windows: "Windows",
-};
-
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
-
 function fmtNum(n: number | undefined): string {
   if (n == null) return "—";
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
   return String(n);
-}
-
-/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise. */
-function fmtCost(usd: number): string {
-  if (usd > 0 && usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
-}
-
-/** Short absolute timestamp, or "—" when absent/invalid (older rows). */
-function fmtTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const ms = new Date(iso).getTime();
-  if (Number.isNaN(ms)) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 const GATE_TONE: Record<RunGateNote["verdict"], "info" | "attention" | "success"> = {
@@ -185,7 +154,7 @@ export function ContextRail({
                 <HealthDot health={deviceHealth(device.status)} />
               </div>
               <span className="fg-caption">
-                {PLATFORM_LABEL[device.platform] ?? device.platform}
+                {enumLabel("platform", device.platform)}
                 {` · ${deviceVersionLabel(device.agentVersion)}`}
               </span>
               {session.repoPath && (
@@ -247,7 +216,7 @@ export function ContextRail({
             </Stat>
           )}
           <Stat icon="dollar" title="Estimated cost (usage_records)">
-            {cost ? fmtCost(cost.estimatedCost) : "—"} cost
+            {formatCost(cost?.estimatedCost)} cost
           </Stat>
           {modelLabel && (
             <Stat icon="cpu" title="Model(s) billed against this session">
@@ -301,11 +270,11 @@ export function ContextRail({
       <Section title="Timing">
         <div className="flex flex-col gap-2.5">
           <Stat icon="calendar" title="Dispatched to a runner">
-            {fmtTime(session.dispatchedAt)} dispatched
+            {formatShortTime(session.dispatchedAt)} dispatched
           </Stat>
-          <Stat icon="play" title="Agent started">{fmtTime(session.startedAt)} started</Stat>
+          <Stat icon="play" title="Agent started">{formatShortTime(session.startedAt)} started</Stat>
           <Stat icon="check" title="Ended (last update on a terminal session)">
-            {live ? "—" : fmtTime(session.updatedAt)} ended
+            {live ? "—" : formatShortTime(session.updatedAt)} ended
           </Stat>
         </div>
       </Section>

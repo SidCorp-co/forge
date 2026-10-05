@@ -20,12 +20,29 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useDeviceRunners, useRenameDevice } from "../hooks";
 import {
+	type DeviceBuildChip,
 	type DeviceRow,
 	type DeviceRunnerAssignment,
 	deviceBuildChip,
 	deviceGateBanner,
 	runnerHealth,
 } from "../types";
+
+/** The build chip beside a device's version: amber when an update is pending. */
+export function BuildChip({ chip, className = "" }: { chip: DeviceBuildChip; className?: string }) {
+	const tone =
+		chip.tone === "warning"
+			? "text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+			: "text-muted bg-sunken";
+	return (
+		<span
+			className={`${className}inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium ${tone}`}
+			title={chip.title}
+		>
+			{chip.label}
+		</span>
+	);
+}
 
 /** A label/value row in the device summary grid. */
 function MetaRow({
@@ -97,18 +114,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				<MetaRow label="Agent version">
 					<span className="inline-flex items-center gap-2">
 						{device.agentVersion ? `v${device.agentVersion}` : "Not reported"}
-						{buildChip && (
-							<span
-								className={
-									buildChip.tone === "warning"
-										? "inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-										: "inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken"
-								}
-								title={buildChip.title}
-							>
-								{buildChip.label}
-							</span>
-						)}
+						{buildChip && <BuildChip chip={buildChip} />}
 					</span>
 				</MetaRow>
 				{buildChip && (

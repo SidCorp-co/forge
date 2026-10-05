@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
 import { emitPipelineWedge } from '../pipeline/index.js';
 import { killGraceMs } from './kill-gate.js';
-import { RESULT_QUIET_MINUTES } from './loop-monitor.js';
+import { RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 
 /** Extra quiet time past the loop's threshold before this alarm fires —

@@ -32,7 +32,7 @@ export interface SpeakerProfile {
   email: string | null;
 }
 
-export type SpeakerLookup =
+type SpeakerLookup =
   | { found: true; profile: SpeakerProfile }
   | { found: false; refusal: SpeakerRefusal };
 

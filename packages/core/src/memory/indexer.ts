@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { bodyText } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { searchMemories } from './search.js';

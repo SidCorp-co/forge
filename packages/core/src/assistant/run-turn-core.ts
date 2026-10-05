@@ -1,16 +1,13 @@
 /**
  * ISS-604 (P2a) — transport-agnostic tool-calling turn loop: one assistant turn,
  * executing and feeding back tools for as long as the model asks for them, up to
- * {@link MAX_TOOL_ITERATIONS}. Shared so neither consumer owns a private copy —
- * `external-chat.ts`
- * (Rocket.Chat) drains them and sends the final text as one message. NO SSE and
- * NO DB writes here; the caller owns transport and persistence.
+ * {@link MAX_TOOL_ITERATIONS}. `external-chat.ts` drains the events and owns transport and
+ * persistence; nothing here writes.
  */
 
 import type {
   ChatMessage,
   ChatProvider,
-  ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamUsage,
 } from '../integrations/llm/index.js';
@@ -51,7 +48,6 @@ export interface TurnCoreArgs {
   requireInitialToolUse?: boolean | undefined;
   /** Estimated-token cap on each provider request; `context-budget.ts` elides to fit. */
   contextBudgetTokens?: number | undefined;
-  responseFormat?: ChatResponseFormat | undefined;
   reasoningEffort?: string | undefined;
   signal?: AbortSignal | undefined;
   /**
@@ -195,122 +191,139 @@ function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
 export async function* runTurnEvents(
   args: TurnCoreArgs,
 ): AsyncGenerator<ChatStreamEvent, TurnCoreResult> {
-  const { provider, model, tools, temperature, signal } = args;
   const budgetTokens = args.contextBudgetTokens ?? DEFAULT_CONTEXT_BUDGET_TOKENS;
-  let messages: ChatMessage[] = [...args.messages];
-  const usage: ChatStreamUsage = {};
-  const toolCalls: ToolCallRecord[] = [];
-  const elided = emptyElision();
-  let finalText = '';
-  let errorMessage: string | null = null;
-  let terminal: 'done' | 'error' | null = null;
-  let iterations = 0;
+  const turn: TurnState = {
+    messages: [...args.messages],
+    usage: {},
+    toolCalls: [],
+    elided: emptyElision(),
+    iterations: 0,
+  };
+  const result = (terminal: 'done' | 'error', finalText: string, errorMessage: string | null) => ({
+    finalText,
+    usage: turn.usage,
+    iterations: turn.iterations,
+    toolCalls: turn.toolCalls,
+    elided: turn.elided,
+    terminal,
+    errorMessage,
+  });
 
   try {
     for (;;) {
-      iterations++;
-      const offered = iterations < MAX_TOOL_ITERATIONS ? tools : undefined;
-      let turnText = '';
-      const turnToolCalls: CollectedToolCall[] = [];
-
-      const bounded = applyContextBudget(messages, {
+      turn.iterations++;
+      const offered = turn.iterations < MAX_TOOL_ITERATIONS ? args.tools : undefined;
+      const bounded = applyContextBudget(turn.messages, {
         budgetTokens,
         reservedTokens: Math.ceil(JSON.stringify(offered?.tools ?? []).length / 4),
       });
-      messages = bounded.messages;
-      addElision(elided, bounded.elided);
+      turn.messages = bounded.messages;
+      addElision(turn.elided, bounded.elided);
 
-      for await (const event of provider.stream({
-        model,
-        messages,
-        tools: offered?.tools,
-        temperature,
-        toolChoice:
-          args.requireInitialToolUse && iterations === 1 && offered ? 'required' : undefined,
-        responseFormat: offered ? undefined : args.responseFormat,
-        ...(args.reasoningEffort ? { reasoningEffort: args.reasoningEffort } : {}),
-        signal,
-      })) {
-        if (event.type === 'chunk') {
-          turnText += event.text;
-          yield event;
-        } else if (event.type === 'reasoning') {
-          yield event;
-        } else if (event.type === 'tool_call') {
-          if (!offered) continue;
-          turnToolCalls.push({
-            id: event.id,
-            name: event.name,
-            arguments: typeof event.arguments === 'string' ? event.arguments : '',
-          });
-          yield event;
-        } else if (event.type === 'usage') {
-          addUsage(usage, event.usage);
-          yield event;
-        } else if (event.type === 'error') {
-          errorMessage = event.message;
-          terminal = 'error';
-          yield event;
-          break;
-        }
-      }
-
-      if (terminal === 'error') break;
-
-      if (turnToolCalls.length === 0 || !offered) {
-        finalText = turnText;
-        terminal = 'done';
+      const round = yield* streamRound(args, turn, offered);
+      if (round.error !== null) return result('error', '', round.error);
+      if (round.calls.length === 0 || !offered) {
         yield { type: 'done' };
-        break;
+        return result('done', round.text, null);
       }
-
-      messages.push({
-        role: 'assistant',
-        content: turnText.length > 0 ? turnText : null,
-        tool_calls: turnToolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: { name: tc.name, arguments: tc.arguments },
-        })),
-      });
-
-      const gate = args.preCall
-        ? (tc: CollectedToolCall, completed: readonly ToolCallRecord[]) =>
-            (args.preCall as PreCall)(
-              { name: tc.name, arguments: tc.arguments },
-              { messages, toolCalls: [...toolCalls, ...completed] },
-            )
-        : undefined;
-      for (const { id, record, text } of await executeToolRound(
-        offered,
-        turnToolCalls,
-        iterations,
-        gate,
-      )) {
-        toolCalls.push(record);
-        yield {
-          type: 'tool_result',
-          id,
-          result: text,
-          isError: record.isError,
-          durationMs: record.durationMs,
-        };
-        messages.push({ role: 'tool', tool_call_id: id, content: text });
-      }
+      yield* feedToolRound(args, turn, offered, round);
     }
   } catch (err) {
-    errorMessage = err instanceof Error ? err.message : String(err);
-    terminal = 'error';
-    yield { type: 'error', message: errorMessage };
+    const message = err instanceof Error ? err.message : String(err);
+    yield { type: 'error', message };
+    return result('error', '', message);
   }
+}
 
-  return {
-    finalText,
-    usage,
-    iterations,
-    toolCalls,
-    elided,
-    terminal: terminal ?? 'done',
-    errorMessage,
-  };
+interface TurnState {
+  messages: ChatMessage[];
+  usage: ChatStreamUsage;
+  toolCalls: ToolCallRecord[];
+  elided: ElisionReport;
+  iterations: number;
+}
+
+interface Round {
+  text: string;
+  calls: CollectedToolCall[];
+  error: string | null;
+}
+
+/** One provider request, its events passed through; a tool call is kept only where tools were offered. */
+async function* streamRound(
+  args: TurnCoreArgs,
+  turn: TurnState,
+  offered: ChatToolset | undefined,
+): AsyncGenerator<ChatStreamEvent, Round> {
+  const round: Round = { text: '', calls: [], error: null };
+  for await (const event of args.provider.stream({
+    model: args.model,
+    messages: turn.messages,
+    tools: offered?.tools,
+    temperature: args.temperature,
+    toolChoice:
+      args.requireInitialToolUse && turn.iterations === 1 && offered ? 'required' : undefined,
+    ...(args.reasoningEffort ? { reasoningEffort: args.reasoningEffort } : {}),
+    signal: args.signal,
+  })) {
+    if (event.type === 'done' || event.type === 'tool_result') continue;
+    if (event.type === 'tool_call') {
+      if (!offered) continue;
+      round.calls.push({
+        id: event.id,
+        name: event.name,
+        arguments: typeof event.arguments === 'string' ? event.arguments : '',
+      });
+    }
+    if (event.type === 'chunk') round.text += event.text;
+    if (event.type === 'usage') addUsage(turn.usage, event.usage);
+    yield event;
+    if (event.type === 'error') {
+      round.error = event.message;
+      break;
+    }
+  }
+  return round;
+}
+
+/** The round's calls, run and fed back to the model as the next request's tool messages. */
+async function* feedToolRound(
+  args: TurnCoreArgs,
+  turn: TurnState,
+  offered: ChatToolset,
+  round: Round,
+): AsyncGenerator<ChatStreamEvent> {
+  turn.messages.push({
+    role: 'assistant',
+    content: round.text.length > 0 ? round.text : null,
+    tool_calls: round.calls.map((tc) => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: { name: tc.name, arguments: tc.arguments },
+    })),
+  });
+  const preCall = args.preCall;
+  const gate = preCall
+    ? (tc: CollectedToolCall, completed: readonly ToolCallRecord[]) =>
+        preCall(
+          { name: tc.name, arguments: tc.arguments },
+          { messages: turn.messages, toolCalls: [...turn.toolCalls, ...completed] },
+        )
+    : undefined;
+  for (const { id, record, text } of await executeToolRound(
+    offered,
+    round.calls,
+    turn.iterations,
+    gate,
+  )) {
+    turn.toolCalls.push(record);
+    yield {
+      type: 'tool_result',
+      id,
+      result: text,
+      isError: record.isError,
+      durationMs: record.durationMs,
+    };
+    turn.messages.push({ role: 'tool', tool_call_id: id, content: text });
+  }
 }

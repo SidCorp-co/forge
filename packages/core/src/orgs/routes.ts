@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { memberLenses, orgMemberRoles } from '../db/schema.js';
-import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
+import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

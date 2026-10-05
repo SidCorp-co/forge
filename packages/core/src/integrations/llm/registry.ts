@@ -30,7 +30,7 @@ function get(id: string): ChatProvider | undefined {
   return instance;
 }
 
-export const chatTurnKinds = ['agentic', 'relay'] as const;
+const chatTurnKinds = ['agentic', 'relay'] as const;
 export type ChatTurnKind = (typeof chatTurnKinds)[number];
 
 interface ResolvedChatProvider {

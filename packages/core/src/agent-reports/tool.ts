@@ -40,10 +40,10 @@ import {
   listReports,
   readReport,
   reportViews,
-  triageReports,
   visibleIssue,
   writableProjectIds,
 } from './service.js';
+import { triageReports } from './triage.js';
 
 const inputSchema = z
   .object({
@@ -152,125 +152,108 @@ const GRANT = {
   },
 } as const;
 
-async function handleAgentReport(ctx: McpContext, args: unknown) {
-  const input = inputSchema.parse(args);
-  const { principal } = ctx;
+type Input = z.infer<typeof inputSchema>;
 
-  switch (input.action) {
-    case 'submit': {
-      if (!input.projectId) {
-        throw new Error(
-          'BAD_REQUEST: projectId is required for submit — a report is filed against the project whose defect it describes, and the server will not guess which that is. ' +
-            'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `GET /api/projects` prints it beside each slug.',
-        );
-      }
-      const projectId = input.projectId;
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-
-      if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
-      if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
-      if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
-
-      const resolved = await resolvePipelineContext(principal);
-      const active = resolved.ok ? resolved.context : null;
-      const jobId = active?.jobId ?? null;
-      const runId = active?.runId ?? null;
-      const issueId = active?.issueId ?? null;
-      const stage = active?.stage ?? null;
-      const sessionId = active?.agentSessionId ?? null;
-      const scheduleRunId = await fireOfSession(sessionId);
-
-      // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
-      // have no pipeline run to cap by; skip the check.
-      if (jobId) {
-        const limit = env.FEEDBACK_MAX_PER_JOB;
-        const existing = await countReportsForJob(jobId);
-        if (existing >= limit) {
-          return { ok: false, reason: 'rate_limited', limit };
-        }
-      }
-
-      const signalKey = buildSignalKey(input.target, input.targetRef, input.kind);
-
-      const insertedId = await insertReport({
-        projectId,
-        issueId: issueId ?? undefined,
-        runId: runId ?? undefined,
-        jobId: jobId ?? undefined,
-        stage: stage ?? undefined,
-        kind: input.kind,
-        severity: input.severity ?? 'low',
-        target: input.target,
-        targetRef: input.targetRef ?? undefined,
-        summary: input.summary,
-        detail: input.detail ?? undefined,
-        suggestion: input.suggestion ?? undefined,
-        signalKey,
-        sessionId: sessionId ?? undefined,
-        scheduleRunId: scheduleRunId ?? undefined,
-      });
-
-      if (!insertedId) throw new Error('forge_agent_report: insert returned no row');
-      return { ok: true, id: insertedId, signalKey };
-    }
-
-    case 'list': {
-      const filters = input.filters ?? {};
-      const kindCondition = filters.kind ? eq(agentReports.kind, filters.kind) : undefined;
-      const targetCondition = filters.target ? eq(agentReports.target, filters.target) : undefined;
-      const severityCondition = filters.severity
-        ? eq(agentReports.severity, filters.severity)
-        : undefined;
-      const triageCondition = filters.triage ? eq(agentReports.triage, filters.triage) : undefined;
-
-      let scopeCondition: ReturnType<typeof eq> | ReturnType<typeof inArray>;
-      let limit: number;
-      if (input.scope === 'all') {
-        const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-        if (visibleIds.length === 0)
-          return { reports: [], returned: 0, limit: input.limit ?? 50, hasMore: false };
-        scopeCondition = inArray(agentReports.projectId, visibleIds);
-        limit = input.limit ?? 50;
-      } else {
-        const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-        scopeCondition = eq(agentReports.projectId, projectId);
-        limit = input.limit ?? 25;
-      }
-
-      const rows = await listReports(
-        [scopeCondition, kindCondition, targetCondition, severityCondition, triageCondition],
-        overfetch(limit),
-      );
-
-      return buildListEnvelope({
-        key: 'reports',
-        items: (await reportViews(rows)).map((r) => frameReport(r)),
-        limit,
-        hint: 'narrow with kind/target/severity/triage filters',
-      });
-    }
-
-    case 'get': {
-      if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for get');
-
-      const row = await readReport(input.reportId);
-      if (!row) throw new Error('NOT_FOUND: agent report not found');
-
-      // No caller-supplied project here — membership is checked against the
-      // row's own project, resolved only after the row is known.
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
-
-      const [view] = await reportViews([row]);
-      return { report: view ? frameReport(view) : null };
-    }
-
-    case 'triage':
-      return triage(ctx, input);
+async function submit(ctx: McpContext, input: Input) {
+  if (!input.projectId) {
+    throw new Error(
+      'BAD_REQUEST: projectId is required for submit — a report is filed against the project whose defect it describes, and the server will not guess which that is. ' +
+        'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `GET /api/projects` prints it beside each slug.',
+    );
   }
+  const projectId = input.projectId;
+  await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
+  if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
+  if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
+  if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
+
+  const resolved = await resolvePipelineContext(ctx.principal);
+  const active = resolved.ok ? resolved.context : null;
+  const jobId = active?.jobId ?? null;
+  const sessionId = active?.agentSessionId ?? null;
+  const scheduleRunId = await fireOfSession(sessionId);
+  // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
+  // have no pipeline run to cap by; skip the check.
+  if (jobId) {
+    const limit = env.FEEDBACK_MAX_PER_JOB;
+    if ((await countReportsForJob(jobId)) >= limit)
+      return { ok: false, reason: 'rate_limited', limit };
+  }
+  const signalKey = buildSignalKey(input.target, input.targetRef, input.kind);
+  const insertedId = await insertReport({
+    projectId,
+    issueId: active?.issueId ?? undefined,
+    runId: active?.runId ?? undefined,
+    jobId: jobId ?? undefined,
+    stage: active?.stage ?? undefined,
+    kind: input.kind,
+    severity: input.severity ?? 'low',
+    target: input.target,
+    targetRef: input.targetRef ?? undefined,
+    summary: input.summary,
+    detail: input.detail ?? undefined,
+    suggestion: input.suggestion ?? undefined,
+    signalKey,
+    sessionId: sessionId ?? undefined,
+    scheduleRunId: scheduleRunId ?? undefined,
+  });
+  if (!insertedId) throw new Error('forge_agent_report: insert returned no row');
+  return { ok: true, id: insertedId, signalKey };
 }
 
-function triageOf(input: z.infer<typeof inputSchema>): TriageAgentReportRequest {
+async function list(ctx: McpContext, input: Input) {
+  const f = input.filters ?? {};
+  let scopeCondition: SQL;
+  let limit: number;
+  if (input.scope === 'all') {
+    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+    if (visibleIds.length === 0)
+      return { reports: [], returned: 0, limit: input.limit ?? 50, hasMore: false };
+    scopeCondition = inArray(agentReports.projectId, visibleIds);
+    limit = input.limit ?? 50;
+  } else {
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
+    scopeCondition = eq(agentReports.projectId, projectId);
+    limit = input.limit ?? 25;
+  }
+  const rows = await listReports(
+    [
+      scopeCondition,
+      f.kind ? eq(agentReports.kind, f.kind) : undefined,
+      f.target ? eq(agentReports.target, f.target) : undefined,
+      f.severity ? eq(agentReports.severity, f.severity) : undefined,
+      f.triage ? eq(agentReports.triage, f.triage) : undefined,
+    ],
+    overfetch(limit),
+  );
+  return buildListEnvelope({
+    key: 'reports',
+    items: (await reportViews(rows)).map((r) => frameReport(r)),
+    limit,
+    hint: 'narrow with kind/target/severity/triage filters',
+  });
+}
+
+async function get(ctx: McpContext, input: Input) {
+  if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for get');
+  const row = await readReport(input.reportId);
+  if (!row) throw new Error('NOT_FOUND: agent report not found');
+  // No caller-supplied project here — membership is checked against the
+  // row's own project, resolved only after the row is known.
+  await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(row.projectId));
+  const [view] = await reportViews([row]);
+  return { report: view ? frameReport(view) : null };
+}
+
+const ACTIONS = { submit, list, get, triage } as const;
+
+async function handleAgentReport(ctx: McpContext, args: unknown) {
+  const input = inputSchema.parse(args);
+  return ACTIONS[input.action](ctx, input);
+}
+
+function triageOf(input: Input): TriageAgentReportRequest {
   const parsed = triageAgentReportRequestSchema.safeParse({
     act: input.act,
     ...(input.issue !== undefined ? { issue: input.issue } : {}),
@@ -286,7 +269,7 @@ function triageOf(input: z.infer<typeof inputSchema>): TriageAgentReportRequest 
   return parsed.data;
 }
 
-async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
+async function triage(ctx: McpContext, input: Input) {
   const { principal } = ctx;
   const act = triageOf(input);
   const actor = { userId: principal.userId, agency: principalAgency(principal) };

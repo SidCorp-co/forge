@@ -74,7 +74,6 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
   const { schedule } = input;
 
   if (schedule.prompt == null) return sessionFailed('this prompt-kind schedule has no prompt');
-  const effectivePrompt = schedule.prompt;
 
   let resolvedProjectId = schedule.projectId;
   if (schedule.targetProjectSlug) {
@@ -92,10 +91,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
   }
 
   const [project] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-    })
+    .select({ id: projects.id, slug: projects.slug })
     .from(projects)
     .where(eq(projects.id, resolvedProjectId))
     .limit(1);
@@ -105,7 +101,6 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
   const authorised = await authorizeScheduledRun({ projectId: resolvedProjectId, asker });
   if (authorised.kind === 'no-device') return skip('no-device');
 
-  const title = schedule.name?.trim() || 'Scheduled run';
   const metadata: Record<string, unknown> = {
     source: 'schedule.run',
     scheduleId: schedule.id,
@@ -119,7 +114,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
     session = await createChatSessionRow({
       projectId: resolvedProjectId,
       userId: asker?.userId ?? null,
-      title,
+      title: schedule.name?.trim() || 'Scheduled run',
       runKind: 'system',
       runMetadata: { source: 'schedule.run', scheduleId: schedule.id },
       metadata,
@@ -143,10 +138,10 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
   try {
     inserted = await dispatchInteractiveTurn({
       session,
-      project: { id: project.id, slug: project.slug },
+      project,
       client: { deviceId: authorised.authority.deviceId, isLocal: false, migrated: false },
       authority: authorised.authority,
-      message: effectivePrompt,
+      message: schedule.prompt,
       broadcastEvent: 'agent-session.created',
     });
   } catch (err) {
@@ -187,10 +182,3 @@ async function refuseRun(
     settle: null,
   };
 }
-
-export type {
-  DispatchScheduleInput,
-  DispatchScheduleResult,
-  ScheduleRowForDispatch,
-} from './dispatch-types.js';
-export { redispatchScheduleSessionOnFailover } from './failover.js';

@@ -12,7 +12,7 @@ export function optionToken(round: number, index: number, rounds: number): strin
   return rounds > 1 ? `${round}-${index + 1}` : String(index + 1);
 }
 
-export type ParsedChoice =
+type ParsedChoice =
   | { ok: true; round: number; index: number }
   | { ok: false; reason: 'no-token' | 'ambiguous' };
 

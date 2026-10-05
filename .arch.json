@@ -47,14 +47,8 @@
     "core-runs": [
       "packages/core/src/runs/**"
     ],
-    "core-embeddings": [
-      "packages/core/src/embeddings/**"
-    ],
     "core-feedback": [
       "packages/core/src/feedback/**"
-    ],
-    "core-git": [
-      "packages/core/src/git/**"
     ],
     "core-guides": [
       "packages/core/src/guides/**"
@@ -158,20 +152,11 @@
     "core-skills": [
       "packages/core/src/skills/**"
     ],
-    "core-storage": [
-      "packages/core/src/storage/**"
-    ],
     "core-tasks": [
       "packages/core/src/tasks/**"
     ],
     "core-uploads": [
       "packages/core/src/uploads/**"
-    ],
-    "core-usage-records": [
-      "packages/core/src/usage-records/**"
-    ],
-    "core-webhooks": [
-      "packages/core/src/webhooks/**"
     ],
     "core-ws": [
       "packages/core/src/ws/**"

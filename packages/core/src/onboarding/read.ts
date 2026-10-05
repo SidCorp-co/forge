@@ -24,7 +24,7 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import type { LiveJob } from './rules.js';
 
-export type Executor = typeof db | Tx;
+type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
 
 export async function onboardingOf(
@@ -39,7 +39,7 @@ export async function onboardingOf(
 
 // The status is read, never stored: done once a person closed it (until a re-analysis clears the
 // close), waiting on a person while one of its batches is open or skipped, else with the agent
-export const onboardingStatusOf = (
+const onboardingStatusOf = (
   row: Pick<OnboardingRow, 'doneAt'>,
   answerable: boolean,
 ): OnboardingStatus => (row.doneAt ? 'done' : answerable ? 'waiting_on_you' : 'in_progress');
@@ -218,38 +218,66 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
 
 const LIVE = new Set<string>(LIVE_JOB_STATUSES);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const OPEN = { action: 'open', actionLabel: 'Open onboarding' } as const;
+const START = { action: 'start', actionLabel: 'Start onboarding' } as const;
 
 /** The project's system-context design, by its template: none, drafted but not approved, or approved. */
-export type SystemContextState = 'none' | 'unapproved' | 'approved';
+type SystemContextState = 'none' | 'unapproved' | 'approved';
+
+function noOnboardingHint(systemContext: SystemContextState): OnboardingHint | null {
+  if (systemContext === 'approved') return null;
+  if (systemContext === 'unapproved') {
+    return {
+      tone: 'you',
+      lead: 'System context not approved yet.',
+      text: 'A system-context design is drafted; approve it in Workflows, or let the agent draft the rest.',
+      ...START,
+    };
+  }
+  return {
+    tone: 'you',
+    lead: 'No system context yet.',
+    text: 'The agent can read the code, draft the key designs and ask what it cannot tell.',
+    ...START,
+  };
+}
+
+function openBatchHint(
+  batch: NonNullable<OnboardingView['openBatch']>,
+  drafted: number,
+  now: Date,
+): OnboardingHint {
+  const ageDays = (now.getTime() - Date.parse(batch.postedAt)) / 86_400_000;
+  const late = ageDays >= QUESTIONNAIRE_DUE_DAYS;
+  const tone = late ? 'attention' : 'you';
+  const tail = `Open questions ${batch.open}${late ? ` · waiting ${Math.floor(ageDays)} days` : ''}`;
+  return batch.round === 1
+    ? {
+        tone,
+        lead: 'No system context yet.',
+        text: `The agent read the code and drafted ${plural(drafted, 'design')} · ${tail}`,
+        action: 'continue',
+        actionLabel: 'Start onboarding',
+      }
+    : {
+        tone,
+        lead: 'Onboarding:',
+        text: `follow-up round waits on you · ${tail}`,
+        action: 'continue',
+        actionLabel: 'Continue onboarding',
+      };
+}
 
 // cm:why the hint is derived, never stored: it says what the onboarding's own rows say now, and it
 // leaves the dashboard once every onboarding design is approved (state `onboarded`). With no
 // onboarding it reads the project's system-context design, so a project that has one approved is
 // never told it has no system context (e2e D9)
-export function hintOf(
+function hintOf(
   view: OnboardingView | null,
-  now: Date = new Date(),
-  systemContext: SystemContextState = 'none',
+  now: Date,
+  systemContext: SystemContextState,
 ): OnboardingHint | null {
-  if (!view) {
-    if (systemContext === 'approved') return null;
-    if (systemContext === 'unapproved') {
-      return {
-        tone: 'you',
-        lead: 'System context not approved yet.',
-        text: 'A system-context design is drafted; approve it in Workflows, or let the agent draft the rest.',
-        action: 'start',
-        actionLabel: 'Start onboarding',
-      };
-    }
-    return {
-      tone: 'you',
-      lead: 'No system context yet.',
-      text: 'The agent can read the code, draft the key designs and ask what it cannot tell.',
-      action: 'start',
-      actionLabel: 'Start onboarding',
-    };
-  }
+  if (!view) return noOnboardingHint(systemContext);
   const drafted = view.designs.length;
   const approved = view.designs.filter((d) => d.designStatus === 'approved').length;
   if (view.status === 'done') {
@@ -258,61 +286,37 @@ export function hintOf(
       tone: 'ready',
       lead: 'Onboarding done.',
       text: `${plural(drafted - approved, 'design')} wait on your approval.`,
-      action: 'open',
-      actionLabel: 'Open onboarding',
+      ...OPEN,
     };
   }
   if (view.job && LIVE.has(view.job.status)) {
-    const waiting = view.job.status === 'queued';
     return {
       tone: 'run',
       lead:
         view.job.phase === 'revise'
           ? 'Onboarding: updating designs.'
           : 'Onboarding: reading the code.',
-      text: waiting
-        ? 'Onboarding waits on a runner checkout; the project works meanwhile.'
-        : 'One analysis job is running; the project works meanwhile.',
-      action: 'open',
-      actionLabel: 'Open onboarding',
+      text:
+        view.job.status === 'queued'
+          ? 'Onboarding waits on a runner checkout; the project works meanwhile.'
+          : 'One analysis job is running; the project works meanwhile.',
+      ...OPEN,
     };
   }
-  if (view.openBatch) {
-    const ageDays = (now.getTime() - Date.parse(view.openBatch.postedAt)) / 86_400_000;
-    const late = ageDays >= QUESTIONNAIRE_DUE_DAYS;
-    const open = `Open questions ${view.openBatch.open}`;
-    if (view.openBatch.round === 1) {
-      return {
-        tone: late ? 'attention' : 'you',
-        lead: 'No system context yet.',
-        text: `The agent read the code and drafted ${plural(drafted, 'design')} · ${open}${late ? ` · waiting ${Math.floor(ageDays)} days` : ''}`,
-        action: 'continue',
-        actionLabel: 'Start onboarding',
-      };
-    }
-    return {
-      tone: late ? 'attention' : 'you',
-      lead: 'Onboarding:',
-      text: `follow-up round waits on you · ${open}${late ? ` · waiting ${Math.floor(ageDays)} days` : ''}`,
-      action: 'continue',
-      actionLabel: 'Continue onboarding',
-    };
-  }
-  if (view.job && view.job.status === 'failed') {
+  if (view.openBatch) return openBatchHint(view.openBatch, drafted, now);
+  if (view.job?.status === 'failed') {
     return {
       tone: 'err',
       lead: 'Onboarding analysis failed.',
       text: 'The last code map stays; ask for a re-analysis from the thread.',
-      action: 'open',
-      actionLabel: 'Open onboarding',
+      ...OPEN,
     };
   }
   return {
     tone: 'run',
     lead: 'Onboarding in progress.',
     text: drafted ? `${plural(drafted, 'design')} drafted.` : 'Waiting for the analysis.',
-    action: 'open',
-    actionLabel: 'Open onboarding',
+    ...OPEN,
   };
 }
 
@@ -330,7 +334,7 @@ export async function readOnboardingState(
 }
 
 /** Whether `projectId` holds a design drawn on the `system-context` template, and whether one is approved. */
-export async function systemContextOf(projectId: string): Promise<SystemContextState> {
+async function systemContextOf(projectId: string): Promise<SystemContextState> {
   const rows = await db
     .select({ designStatus: projectWorkflows.designStatus })
     .from(projectWorkflows)

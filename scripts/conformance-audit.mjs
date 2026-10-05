@@ -21,13 +21,14 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('conformance-audit');
+
 const at = (p) => join(ROOT, p);
 const has = (p) => existsSync(at(p));
 const read = (p) => {
@@ -57,11 +58,6 @@ const PROFILES = {
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
-
-function die(message) {
-  console.error(`conformance-audit: ${message}`);
-  process.exit(2);
-}
 
 let manifest;
 try {

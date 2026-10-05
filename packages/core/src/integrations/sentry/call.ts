@@ -19,6 +19,46 @@ type Attempt =
       refusal: SentryRefusalReason;
     };
 
+/**
+ * The one reading of a Sentry refusal, for dispatches and the healthcheck alike: Sentry answers a bad
+ * token with 401 and a token missing a scope with 403.
+ */
+function classifySentryStatus(status: number): {
+  health: HealthStatus;
+  reason: string;
+  refusal: SentryRefusalReason;
+} {
+  if (status === 401) {
+    return {
+      health: 'needs_reauth',
+      reason: 'the Sentry auth token was rejected',
+      refusal: 'credential_rejected',
+    };
+  }
+  if (status === 403) {
+    return {
+      health: 'needs_scope',
+      reason:
+        'the Sentry auth token lacks the scope this call needs (issue:read / issue:write, org:read for the healthcheck)',
+      refusal: 'scope_missing',
+    };
+  }
+  return {
+    health: 'error',
+    reason: `Sentry answered HTTP ${status}`,
+    refusal: 'sentry_http_error',
+  };
+}
+
+/** The connection health a refusal recorded; anything not about the token is an `error`. */
+export function sentryRefusalHealth(reason: SentryRefusalReason): HealthStatus {
+  return reason === 'credential_rejected'
+    ? 'needs_reauth'
+    : reason === 'scope_missing'
+      ? 'needs_scope'
+      : 'error';
+}
+
 async function attempt(
   url: string,
   token: string,
@@ -39,31 +79,7 @@ async function attempt(
       signal: controller.signal,
     });
     if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
-    if (res.status === 401) {
-      return {
-        kind: 'refused',
-        status: 401,
-        health: 'needs_reauth',
-        reason: 'the Sentry auth token was rejected',
-        refusal: 'credential_rejected',
-      };
-    }
-    if (res.status === 403) {
-      return {
-        kind: 'refused',
-        status: 403,
-        health: 'needs_scope',
-        reason: 'the Sentry auth token lacks the scope this call needs (issue:read / issue:write)',
-        refusal: 'scope_missing',
-      };
-    }
-    return {
-      kind: 'refused',
-      status: res.status,
-      health: 'error',
-      reason: `Sentry answered HTTP ${res.status}`,
-      refusal: 'sentry_http_error',
-    };
+    return { kind: 'refused', status: res.status, ...classifySentryStatus(res.status) };
   } finally {
     clearTimeout(timer);
   }

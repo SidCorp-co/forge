@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { baseRef as resolveBase } from './lib/base-branch.mjs';
+import { gitOut } from './lib/gate.mjs';
 import { checkSet, floorOf, newEntries, readJournal, readOpenSet } from './lib/migration-order.mjs';
 
 const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
@@ -24,10 +25,7 @@ function die(reason) {
   process.exit(2);
 }
 
-function git(args, cwd) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : null;
-}
+const git = (args, cwd) => gitOut(args, cwd)?.trim() ?? null;
 
 function entriesOf(text, where) {
   const read = readJournal(text, where);

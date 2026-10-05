@@ -1,18 +1,11 @@
 /**
- * Another box for a turn whose runner failed on infrastructure.
- *
- * Split out of `conversation-agent.ts` for the size budget (ISS-1039). The seam
- * is the one the code already had: everything here runs AFTER a turn has gone
- * terminal and the bridge has claimed its delivery, and nothing in the dispatch
- * path calls into it.
+ * Another box for a turn whose runner failed on infrastructure. Everything here runs AFTER a turn
+ * has gone terminal and the bridge has claimed its delivery; nothing in the dispatch path calls it.
  */
 
 import { eq } from 'drizzle-orm';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
   firstUserMessageText,
-  mintSessionCredential,
   pickTurnCredentialDevice,
   resolveSessionAuthority,
 } from '../agent-sessions/index.js';
@@ -20,13 +13,15 @@ import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import {
-  CONVERSATION_AGENT_MARKER,
-  type ConversationAgentMeta,
+  createAgentSession,
+  dispatchAgentTurn,
   markSessionFailed,
-  readConversationAgentMeta,
   TITLE_MAX,
 } from './conversation-agent.js';
-import { scheduleAck } from './conversation-agent-ack.js';
+import {
+  type ConversationAgentMeta,
+  readConversationAgentMeta,
+} from './conversation-agent-meta.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -46,12 +41,21 @@ export type ConversationAgentFailoverResult =
         | 'error';
     };
 
-export async function redispatchConversationAgentTurn(
-  session: SessionRow,
-): Promise<ConversationAgentFailoverResult> {
-  const meta = readConversationAgentMeta(session.metadata);
-  if (!meta) return { ok: false, status: 'not-a-conversation-turn' };
+type Refused = Extract<ConversationAgentFailoverResult, { ok: false }>;
+interface Target {
+  deviceId: string;
+  authorised: Parameters<typeof dispatchAgentTurn>[0]['authorised'];
+  project: { id: string; slug: string };
+  firstUser: string;
+  next: ConversationAgentMeta;
+  userId: string;
+}
 
+/** The box, the authority and the marker a retry runs under, or why there is none. */
+async function failoverTarget(
+  session: SessionRow,
+  meta: ConversationAgentMeta,
+): Promise<Target | Refused> {
   const prior = meta.failover ?? { attempt: 0, triedDeviceIds: [] };
   const tried = Array.from(
     new Set([...(prior.triedDeviceIds ?? []), session.deviceId].filter((d): d is string => !!d)),
@@ -84,8 +88,6 @@ export async function redispatchConversationAgentTurn(
     .where(eq(projects.id, session.projectId))
     .limit(1);
   if (!project) return { ok: false, status: 'error' };
-
-  const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
   const next: ConversationAgentMeta = {
     ...meta,
     claimedAt: null,
@@ -93,21 +95,30 @@ export async function redispatchConversationAgentTurn(
     failure: null,
     failover: { attempt, triedDeviceIds: tried },
   };
+  return { deviceId, authorised, project, firstUser, next, userId: meta.asker.userId };
+}
+
+export async function redispatchConversationAgentTurn(
+  session: SessionRow,
+): Promise<ConversationAgentFailoverResult> {
+  const meta = readConversationAgentMeta(session.metadata);
+  if (!meta) return { ok: false, status: 'not-a-conversation-turn' };
+  const target = await failoverTarget(session, meta);
+  if ('ok' in target) return target;
+  const { deviceId, authorised, project, firstUser, next, userId } = target;
+  const attempt = next.failover?.attempt;
+  const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
 
   let retry: SessionRow;
   try {
-    retry = await createChatSessionRow({
+    retry = await createAgentSession({
       projectId: session.projectId,
-      userId: meta.asker.userId,
+      userId,
       title: session.title ?? `Chat: ${meta.question.slice(0, TITLE_MAX)}`,
       parentSessionId: session.id,
-      runKind: 'system',
-      runMetadata: { source: 'conversation.agentTurn', conversationId: meta.conversationId },
-      metadata: {
-        [CONVERSATION_AGENT_MARKER]: next,
-        ...(priorMeta.lensOverride ? { lensOverride: priorMeta.lensOverride } : {}),
-        progressFacts: priorMeta.progressFacts ?? null,
-      },
+      marker: next,
+      lensOverride: priorMeta.lensOverride,
+      progressFacts: priorMeta.progressFacts,
     });
   } catch (err) {
     logger.error(
@@ -118,20 +129,16 @@ export async function redispatchConversationAgentTurn(
   }
 
   try {
-    const dispatched = await dispatchChatTurn({
+    const dispatched = await dispatchAgentTurn({
       session: retry,
       project,
-      client: { deviceId, isLocal: false, migrated: false },
-      credential: await mintSessionCredential({
-        sessionId: retry.id,
-        deviceId,
-        value: authorised.value,
-      }),
+      deviceId,
+      authorised,
+      marker: next,
       message: firstUser,
       ...(priorMeta.lensOverride
         ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }
         : {}),
-      broadcastEvent: 'agent-session.created',
     });
     logger.info(
       {
@@ -144,17 +151,17 @@ export async function redispatchConversationAgentTurn(
       },
       'conversation-agent failover: re-dispatched to another runner',
     );
-    scheduleAck(dispatched.id, next);
     return { ok: true, sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(
       { err, failedSessionId: session.id, retrySessionId: retry.id, attempt },
       'conversation-agent failover: re-dispatch failed',
     );
+    const at = new Date().toISOString();
     await markSessionFailed(retry, 'conversation-agent-failover', {
       ...next,
-      claimedAt: new Date().toISOString(),
-      deliveredAt: new Date().toISOString(),
+      claimedAt: at,
+      deliveredAt: at,
       failure: meta.replies.failed,
     });
     return { ok: false, status: 'error' };

@@ -134,45 +134,8 @@ function diff(
 	return patch;
 }
 
-/** One segment path back out of what {@link formatPath} wrote — the encoding's only reader. */
-export function parsePath(formatted: string): string[] {
-	const out: string[] = [];
-	let at = 0;
-	while (at <= formatted.length) {
-		if (formatted[at] === '"') {
-			const closed = closingQuote(formatted, at);
-			if (closed > 0) {
-				out.push(JSON.parse(formatted.slice(at, closed)) as string);
-				at = closed + 1;
-				if (formatted[at] === ".") at += 1;
-				continue;
-			}
-		}
-		const dot = formatted.indexOf(".", at);
-		if (dot < 0) {
-			out.push(formatted.slice(at));
-			return out;
-		}
-		out.push(formatted.slice(at, dot));
-		at = dot + 1;
-	}
-	return out;
-}
-
-/** The index just past a JSON string starting at `from`, or -1 where it does not close. */
-function closingQuote(text: string, from: number): number {
-	for (let at = from + 1; at < text.length; at += 1) {
-		if (text[at] === "\\") {
-			at += 1;
-			continue;
-		}
-		if (text[at] === '"') return at + 1;
-	}
-	return -1;
-}
-
 /** An edit of the person's that a rebase took the stored value over instead of keeping. */
-export interface ReplacedEdit {
+interface ReplacedEdit {
 	path: string;
 	/** What the person had there, and what replaced it. */
 	typed: unknown;

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, projects, runners } from '../db/schema.js';
+import { projects, runners } from '../db/schema.js';
 import {
   type BindingWithConnection,
   effectiveConfig,
@@ -74,11 +74,7 @@ interface ProviderRow {
   breakerOpenedAt: Date | null;
 }
 
-/**
- * Shared builder for the coolify/epodsystem status cards (ISS-431) —
- * the three blocks were ~95% identical; they differ only in env-keying, the
- * never-checked wording, and provider-specific meta fields.
- */
+/** One provider's cards; providers differ only in env-keying, the never-checked wording and their meta. */
 function buildProviderCards(opts: {
   rows: ProviderRow[];
   provider: IntegrationProvider;
@@ -156,55 +152,14 @@ function repositoryProvider(
   return first ? { provider: first.pair.binding.provider, label: first.factory.label } : null;
 }
 
-/** Build the full status-card set for a project (caller has already authz'd). */
-export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) throw notFound('project');
-
-  // One row per active binding, joined to its connection (health/breaker live on
-  // the connection). Flattened to the shape the cards below already consume.
-  const [pairs, deployMap, source] = await Promise.all([
-    listBindingsForProject(projectId),
-    readDeployMap(projectId),
-    readDeclaredSource(projectId),
-  ]);
-  const integrationRows = pairs.map((pair) => ({
-    id: pair.binding.id,
-    provider: pair.binding.provider,
-    role: pair.binding.role,
-    environment: deployMap.environments.get(pair.binding.id)?.name ?? null,
-    config: effectiveConfig(pair),
-    active: pair.binding.active && pair.connection.active,
-    lastHealthStatus: pair.connection.lastHealthStatus,
-    lastHealthDetail: pair.connection.lastHealthDetail,
-    lastHealthAt: pair.connection.lastHealthAt,
-    breakerOpenedAt: pair.connection.breakerOpenedAt,
-  }));
-
-  // Runners bound to this project.
-  const runnerRows = await db
-    .select({
-      runnerId: runners.id,
-      status: runners.status,
-      deviceId: runners.deviceId,
-      deviceName: devices.name,
-      lastSeenAt: runners.lastSeenAt,
-    })
-    .from(runners)
-    .leftJoin(devices, eq(devices.id, runners.deviceId))
-    .where(eq(runners.projectId, projectId));
-
-  const cards: StatusCard[] = [];
-
-  // --- The repository, keyed and labelled by the provider its host is ---
+/** The declared repository, keyed and labelled by the provider its host is. */
+function repositoryCard(
+  pairs: readonly BindingWithConnection[],
+  source: Awaited<ReturnType<typeof readDeclaredSource>>,
+): StatusCard {
   const { repository } = source;
   const host = repositoryProvider(pairs, repository);
-  const remoteUrl = repository ? webUrlOf(repository) : null;
-  cards.push({
+  return {
     key: host ? `${host.provider}:repository` : 'repository',
     label: host ? `${host.label} repository` : 'Repository',
     status: repository ? 'connected' : 'not_configured',
@@ -217,81 +172,112 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     configured: repository !== null,
     meta: {
       repository,
-      remoteUrl,
+      remoteUrl: repository ? webUrlOf(repository) : null,
       baseBranch: source.defaultBranch,
       provider: host?.provider ?? null,
     },
-  });
+  };
+}
 
-  // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every
-  // provider that declares a presentation, in registry order. Until ISS-1071 this was six
-  // hand-written blocks differing only in the four values a declaration now carries, so adding a
-  // provider meant editing a file with no other reason to know one existed.
-  for (const decl of listIntegrations()) {
+/**
+ * One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every
+ * provider that declares a presentation, in registry order (ISS-1071).
+ */
+function providerCards(
+  pairs: readonly BindingWithConnection[],
+  deployMap: Awaited<ReturnType<typeof readDeployMap>>,
+): StatusCard[] {
+  const rows: ProviderRow[] = pairs.map((pair) => ({
+    id: pair.binding.id,
+    provider: pair.binding.provider,
+    role: pair.binding.role,
+    environment: deployMap.environments.get(pair.binding.id)?.name ?? null,
+    config: effectiveConfig(pair),
+    active: pair.binding.active && pair.connection.active,
+    lastHealthStatus: pair.connection.lastHealthStatus,
+    lastHealthDetail: pair.connection.lastHealthDetail,
+    lastHealthAt: pair.connection.lastHealthAt,
+    breakerOpenedAt: pair.connection.breakerOpenedAt,
+  }));
+  return listIntegrations().flatMap((decl) => {
     const presentation = decl.presentation;
-    if (!presentation) continue;
-    cards.push(
-      ...buildProviderCards({
-        rows: integrationRows.filter((r) => r.provider === decl.provider),
-        provider: decl.provider,
-        label: presentation.label,
-        alwaysEnvKeyed: presentation.alwaysEnvironmentKeyed,
-        neverCheckedDetail: presentation.neverCheckedDetail,
-        ...(presentation.cardMeta
-          ? { extraMeta: (row: ProviderRow) => presentation.cardMeta?.(row.config ?? {}) ?? {} }
-          : {}),
-      }),
-    );
-  }
+    if (!presentation) return [];
+    return buildProviderCards({
+      rows: rows.filter((r) => r.provider === decl.provider),
+      provider: decl.provider,
+      label: presentation.label,
+      alwaysEnvKeyed: presentation.alwaysEnvironmentKeyed,
+      neverCheckedDetail: presentation.neverCheckedDetail,
+      ...(presentation.cardMeta
+        ? { extraMeta: (row: ProviderRow) => presentation.cardMeta?.(row.config ?? {}) ?? {} }
+        : {}),
+    });
+  });
+}
 
-  // --- Runners / devices online ---
-  const totalRunners = runnerRows.length;
-  const onlineRunners = runnerRows.filter((r) => r.status === 'online').length;
-  cards.push({
+async function runnersCard(projectId: string): Promise<StatusCard> {
+  const rows = await db
+    .select({ status: runners.status })
+    .from(runners)
+    .where(eq(runners.projectId, projectId));
+  const total = rows.length;
+  const online = rows.filter((r) => r.status === 'online').length;
+  return {
     key: 'runners',
     label: 'Runners',
-    status: totalRunners === 0 ? 'not_configured' : onlineRunners > 0 ? 'connected' : 'attention',
-    detail:
-      totalRunners === 0
-        ? 'no runners bound to this project'
-        : `${onlineRunners}/${totalRunners} online`,
+    status: total === 0 ? 'not_configured' : online > 0 ? 'connected' : 'attention',
+    detail: total === 0 ? 'no runners bound to this project' : `${online}/${total} online`,
     lastSyncAt: null,
-    configured: totalRunners > 0,
-    meta: { online: onlineRunners, total: totalRunners },
-  });
+    configured: total > 0,
+    meta: { online, total },
+  };
+}
 
-  // --- Postgres (the query above just succeeded → the DB is reachable) ---
-  cards.push({
+/** Cards with no backing data to read: the queries above succeeding is the Postgres signal. */
+const FIXED_CARDS: readonly StatusCard[] = [
+  {
     key: 'postgres',
     label: 'Postgres',
     status: 'connected',
     detail: 'core database reachable',
     lastSyncAt: null,
     configured: true,
-  });
-
-  // --- Forge MCP server (mounted at /mcp on this core) ---
-  cards.push({
+  },
+  {
     key: 'mcp',
     label: 'MCP server',
     status: 'connected',
     detail: 'Forge MCP server mounted at /mcp',
     lastSyncAt: null,
     configured: true,
-  });
-
-  // --- Sentry: now a per-project MCP-injection provider card (pushed above via
-  // buildProviderCards, ISS-524) — the old global env-DSN tile was removed. ---
-
-  // --- Claude (auth + quota are managed per-runner; no core-side backing data) ---
-  cards.push({
+  },
+  {
     key: 'claude',
     label: 'Claude',
     status: 'not_configured',
     detail: 'auth + quota managed per-runner (no core-side metric)',
     lastSyncAt: null,
     configured: false,
-  });
+  },
+];
 
-  return cards;
+/** Build the full status-card set for a project (caller has already authz'd). */
+export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) throw notFound('project');
+  const [pairs, deployMap, source] = await Promise.all([
+    listBindingsForProject(projectId),
+    readDeployMap(projectId),
+    readDeclaredSource(projectId),
+  ]);
+  return [
+    repositoryCard(pairs, source),
+    ...providerCards(pairs, deployMap),
+    await runnersCard(projectId),
+    ...FIXED_CARDS.map((card) => ({ ...card })),
+  ];
 }

@@ -12,3 +12,10 @@ export async function requireCoolifyRun(
 ): Promise<void> {
   await requireCan(actor, 'deploys.run', projectResource(projectId), `Coolify ${act}`);
 }
+
+/** The keys a caller set, so an absent option stays absent rather than an explicit undefined. */
+export function given<T extends object>(o: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
+}

@@ -207,14 +207,15 @@ excluded.
   `observability` to platform (every layer reads `packages/core/src/config/env.ts`, and middleware reads the
   credential helpers, so in a business context each was a false back edge); `git`,
   `integrations/coolify`, `integrations/deploy`, `integrations/published-releases` and `storage` to
-  adapters (the registry imports them); `uploads`, a domain, to work. The integration door joins
+  adapters (the registry imports them), since folded into the ports that own their concept
+  (`integrations/source-host`, `integrations/deploy`, `integrations/github`, `integrations`); `uploads`, a domain, to work. The integration door joins
   adapters. A door is exempt from context direction because it composes contexts; its kind still
   lets only a door import it.
 - **modules.json agrees with its own kinds.** `auth` owned `users` and the sign-in tokens as a
   door, and `orgs` and `conversations` imported it, which no non-door may: it is now a domain, and
   it reaches the identity adapter through the port as any domain may. `usage-records`, a read
   model, wrote `usage_records` when a job finished and four kernels read it: it is the job's cost
-  evidence, so it is a kernel module in execution. `admin`, a read model, wrote `admin_thresholds`:
+  evidence, so it is a kernel module in execution (since ISS-218, part of `agent-sessions`). `admin`, a read model, wrote `admin_thresholds`:
   the thresholds are now fixed defaults in code (`packages/core/src/lib/admin-thresholds.ts`, with
   no table), and `admin` keeps only derived views.
   `app-config`, declared platform, holds a project's assistant settings behind routes and a

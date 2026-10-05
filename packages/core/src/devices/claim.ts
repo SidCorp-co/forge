@@ -15,9 +15,8 @@
  * after it.
  */
 
-import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import type { DispatchState, PolicyRefusalCode } from '@forge/contracts/project-config';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import {
@@ -30,6 +29,7 @@ import {
 import {
   canNameItsAgent,
   checkoutUnboundMessage,
+  dispatchHeldJob,
   holdQueuedJob,
   type PreparedJob,
   poolPrompt,
@@ -41,11 +41,12 @@ import {
 } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { refusalCodeOf } from '../lib/refusal.js';
-import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { releaseLabelVerdict } from '../runners/index.js';
+import { releaseLabelAllows } from '../runners/index.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
+
+type JobRow = typeof jobs.$inferSelect;
 
 type PrepareResult =
   | {
@@ -100,30 +101,23 @@ export async function prepareJobForMaster(args: {
     return { ok: false, reason: admission.reason };
   }
 
-  const releaseLabel = await releaseLabelVerdict({ jobId: args.jobId, deviceId: args.deviceId });
-  if (!releaseLabel.allowed) {
-    logger.warn(
-      { jobId: args.jobId, deviceId: args.deviceId, ...releaseLabel },
-      'claim: release job refused, a box carrying the project release label is available',
-    );
-    return { ok: false, reason: 'release_label_missing' };
-  }
-  if (!releaseLabel.preferenceMet) {
-    logger.warn(
-      { jobId: args.jobId, deviceId: args.deviceId, releaseRunnerLabel: releaseLabel.label },
-      'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
-    );
+  if (!(await releaseLabelAllows(args))) return { ok: false, reason: 'release_label_missing' };
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
+  if (!job) return { ok: false, reason: 'not_found' };
+
+  const binding = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  if (!binding.repoPath) {
+    const detail = checkoutUnboundMessage(job.projectId, args.deviceId, binding.id);
+    return { ok: false, reason: 'checkout_unbound', detail };
   }
 
-  const unbound = await checkoutUnbound(args.jobId, args.deviceId);
-  if (unbound) return { ok: false, reason: 'checkout_unbound', detail: unbound };
+  if (await refusedForNoPrompt(job)) return { ok: false, reason: 'no_prompt' };
 
-  if (await refusedForNoPrompt(args.jobId)) return { ok: false, reason: 'no_prompt' };
-
-  const policy = await policyStateFor(args.jobId);
+  const policy = await policyStateFor(job);
   if (!policy.ok) return policy.refusal;
 
-  const design = await designGateFor(args.jobId);
+  const design = await designGateFor(job);
   if (design) return design;
 
   const claimed = await db.transaction(async (tx) => {
@@ -184,22 +178,16 @@ export async function prepareJobForMaster(args: {
  * place is refused by name and stays queued, so the refusal repeats until the policy says how.
  */
 async function policyStateFor(
-  jobId: string,
+  job: JobRow,
 ): Promise<
   { ok: true; state: DispatchState } | { ok: false; refusal: Extract<PrepareResult, { ok: false }> }
 > {
-  const [job] = await db
-    .select({ projectId: jobs.projectId, issueId: jobs.issueId, payload: jobs.payload })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  if (!job) return { ok: false, refusal: { ok: false, reason: 'not_found' } };
   try {
     return { ok: true, state: await resolveJobPolicy(job) };
   } catch (err) {
     const refused = devicesPorts().policyRefusalOf(err);
     if (!refused) throw err;
-    logger.warn({ jobId, projectId: job.projectId, code: refused.code }, refused.detail);
+    logger.warn({ jobId: job.id, projectId: job.projectId, code: refused.code }, refused.detail);
     return {
       ok: false,
       refusal: { ok: false, reason: 'policy_refused', code: refused.code, detail: refused.detail },
@@ -212,13 +200,8 @@ async function policyStateFor(
  * not approved, or one that waits on a contract version not yet published, is refused by the policy-refusal shape the box already reads, and stays
  * queued until the design is approved or the version is.
  */
-async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok: false }> | null> {
-  const [job] = await db
-    .select({ projectId: jobs.projectId, issueId: jobs.issueId })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  if (!job?.issueId) return null;
+async function designGateFor(job: JobRow): Promise<Extract<PrepareResult, { ok: false }> | null> {
+  if (!job.issueId) return null;
   try {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
     await assertDispatchGatesForIssue(job.projectId, job.issueId);
@@ -228,24 +211,9 @@ async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok
     if (!refused) throw err;
     const code = refusalCodeOf(refused) as DispatchGateCode | 'ISSUE_BLOCKED';
     const detail = refused.refusals.map((r) => r.detail).join(' ');
-    logger.warn({ jobId, projectId: job.projectId, code }, detail);
+    logger.warn({ jobId: job.id, projectId: job.projectId, code }, detail);
     return { ok: false, reason: 'policy_refused', code, detail };
   }
-}
-
-/**
- * The device binding is where a job runs: a binding that names no checkout is refused by name
- * before the job is held, so the box is told to bind one rather than handed work with no cwd.
- */
-async function checkoutUnbound(jobId: string, deviceId: string): Promise<string | null> {
-  const [job] = await db
-    .select({ projectId: jobs.projectId })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  if (!job) return null;
-  const binding = await resolveRunnerForDevice(job.projectId, deviceId);
-  return binding.repoPath ? null : checkoutUnboundMessage(job.projectId, deviceId, binding.id);
 }
 
 /**
@@ -253,13 +221,9 @@ async function checkoutUnbound(jobId: string, deviceId: string): Promise<string 
  * settled where it stands — given back instead, it would head its project's
  * pool on every pass and nothing behind it would be reached.
  */
-async function refusedForNoPrompt(jobId: string): Promise<boolean> {
-  const [job] = await db
-    .select({ id: jobs.id, type: jobs.type, payload: jobs.payload })
-    .from(jobs)
-    .where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued'), isNull(jobs.heldBy)))
-    .limit(1);
-  if (!job || poolPrompt(job.payload) !== null) return false;
+async function refusedForNoPrompt(job: JobRow): Promise<boolean> {
+  if (job.status !== 'queued' || job.heldBy !== null || poolPrompt(job.payload) !== null)
+    return false;
   return settleNoPromptJob(job);
 }
 
@@ -286,24 +250,8 @@ export async function startJobForMaster(args: {
   if (!job) return { ok: false, reason: 'hold_lost' };
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
-  const stamped = (
-    await transition(db, JOB_MACHINE, {
-      to: 'dispatched',
-      from: 'queued',
-      set: {
-        deviceId: args.deviceId,
-        runnerId: runner.id,
-        dispatchedAt: new Date(),
-        heldBy: null,
-        heldAt: null,
-      },
-      where: and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)),
-      actor: { type: 'runner', id: args.deviceId },
-      source: 'claim',
-      returning: ['id'],
-    })
-  ).rows;
-  if (!stamped.length) {
+  const stamped = await dispatchHeldJob({ ...args, runnerId: runner.id });
+  if (!stamped) {
     await releaseJobHold(args.jobId, args.sessionId);
     return { ok: false, reason: 'hold_lost' };
   }

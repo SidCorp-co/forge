@@ -11,7 +11,7 @@ import { gitlab } from "./gitlab";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
-export type ProjectSection = ComponentType<{ projectId: string }>;
+type ProjectSection = ComponentType<{ projectId: string }>;
 export type ConnectionSection = ComponentType<{
   connection: { id: string; config: Record<string, unknown> };
   canManage: boolean;

@@ -7,7 +7,7 @@ import { speakerLinkUrl } from './link-url.js';
 
 export type { SpeakerRefusal, SpeakerResolution };
 
-export interface SpeakerRef {
+interface SpeakerRef {
   source: string;
   /** The channel INSTANCE the id belongs to — for Rocket.Chat, the server's host. */
   namespace: string;

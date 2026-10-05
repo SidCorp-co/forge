@@ -39,12 +39,12 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import "next/link";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
 import { PoolReadBanner } from "./pool-read";
 import { ResidentMaster } from "./resident-master";
 import { RunnerLabels } from "./runner-labels";
+import { CopyButton } from "./runners-screen";
 import {
 	useActiveRunners,
 	useAssignDeviceToProject,
@@ -68,28 +68,6 @@ import {
 	runnerVersionLabel,
 } from "../types";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
-
-function CopyButton({
-	value,
-	label = "Copy",
-}: { value: string; label?: string }) {
-	const [copied, setCopied] = useState(false);
-	return (
-		<Button
-			variant="ghost"
-			size="sm"
-			icon={copied ? "check" : "link"}
-			onClick={() => {
-				void navigator.clipboard?.writeText(value).then(() => {
-					setCopied(true);
-					setTimeout(() => setCopied(false), 1500);
-				});
-			}}
-		>
-			{copied ? "Copied" : label}
-		</Button>
-	);
-}
 
 function repositoryOf(document: Record<string, unknown> | null | undefined): string | null {
 	const source = document?.source as { type?: unknown; git?: { repository?: unknown } } | undefined;
@@ -122,7 +100,7 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 				return (
 					<span key={step} className="inline-flex items-center gap-1.5">
 						<HealthDot
-							health={done ? "healthy" : active ? "idle" : "idle"}
+							health={done ? "healthy" : "idle"}
 							withLabel={false}
 						/>
 						<span
@@ -397,11 +375,7 @@ function RunnerRow({
 					<HealthDot health="healthy" withLabel={false} />
 					<span className="fg-body-sm text-fg">
 						Running{" "}
-						{current.issueRef ? (
-							<span className="font-semibold">{current.issueRef}</span>
-						) : (
-							<span className="font-semibold">a job</span>
-						)}
+						<span className="font-semibold">{current.issueRef || "a job"}</span>
 						{current.stage && (
 							<span className="text-subtle"> · {enumLabel("jobType", current.stage)}</span>
 						)}

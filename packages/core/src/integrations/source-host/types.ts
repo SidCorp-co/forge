@@ -108,7 +108,7 @@ export type HostMergeResult =
   | { kind: 'refused'; reason: string; detail: string };
 
 /** The host's own words, so a sentence about a change request says what a person sees there. */
-export interface SourceHostWords {
+interface SourceHostWords {
   changeRequest: string;
   sigil: string;
   /** The merge methods the host has. Anything else is refused by name, never defaulted. */

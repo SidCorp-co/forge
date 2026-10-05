@@ -2,10 +2,11 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-lazy-module-init');
+
 const SCAN_ROOT = join(ROOT, 'packages', 'core', 'src');
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo']);
 
@@ -21,11 +22,6 @@ function lazyExportFor(fileName, spec) {
   if (!spec.startsWith('.')) return undefined;
   const target = resolve(ROOT, dirname(fileName), spec).replace(/\.js$/, '.ts');
   return LAZY_EXPORTS.find((e) => target === join(SCAN_ROOT, e.file));
-}
-
-function die(message) {
-  console.error(`check-lazy-module-init: ${message}`);
-  process.exit(2);
 }
 
 function sourceFiles(dir, out = []) {

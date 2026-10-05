@@ -4,9 +4,9 @@ import type { MockupListResponse } from '@forge/contracts/mockups';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
+import { getStorage } from '../integrations/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { getStorage } from '../storage/index.js';
 import {
   type MockupActor,
   type MockupDoor,

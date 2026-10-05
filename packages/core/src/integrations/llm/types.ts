@@ -2,10 +2,10 @@
  * v1 EPIC 1 (ISS-270) — Chat provider adapter contract. The registry holds factories keyed by short id; `app_config.chat_provider_id` selects one and env supplies its credentials. Keep this file dependency-free — adapter modules import the types, never the reverse. ISS-604 — the contract is the OpenAI Chat Completions wire, so an adapter for any compatible endpoint maps 1:1 and does no translation; tool calling is a live path, where a request carries `tools`, the stream emits `tool_call`, and the caller feeds `role:'tool'` results back for the next round. TWO members of the event union are not events any endpoint's own wire defines, and each says so where it is declared: `tool_result`, which the loop yields after executing the call itself, and `reasoning` (ISS-1079), which both wires carry under different names — `thinking_delta` on the Messages wire, `delta.reasoning_content` on a Completions-compatible one. Neither is a translation: an adapter still maps what its endpoint sent, and what it sends for reasoning simply has no name in the base Completions schema.
  */
 
-export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 /** An assistant's request to invoke a tool (OpenAI shape). `arguments` is a JSON string exactly as the model emitted it — the executor parses it, and it is echoed verbatim into the follow-up assistant message. */
-export interface ChatToolCall {
+interface ChatToolCall {
   id: string;
   type: 'function';
   function: { name: string; arguments: string };

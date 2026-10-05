@@ -10,12 +10,15 @@ import {
 import {
   agentSessionEventsRetention,
   deriveSessionFinal,
+  EMPTY_USAGE_TOTALS,
   persistSessionAttachment,
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   steerIssue,
   transitionSessions,
+  usageSessionMatch,
+  usageTotalsSelection,
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
@@ -45,8 +48,8 @@ import {
 } from './ecosystem/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
-import { embedBatch } from './integrations/embeddings/index.js';
-import { readStorefrontDraft } from './integrations/index.js';
+import { getStorage, isEnoent, readStorefrontDraft } from './integrations/index.js';
+import { embedBatch } from './integrations/llm/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
 import {
@@ -108,13 +111,7 @@ import {
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
-import { getStorage, isEnoent } from './storage/index.js';
 import { provideUploadPorts } from './uploads/index.js';
-import {
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from './usage-records/index.js';
 import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,

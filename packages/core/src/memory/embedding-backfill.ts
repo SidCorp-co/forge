@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, memories } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
 import { MAX_EMBED_CHARS } from './indexer.js';

@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { RunnerType } from '../db/schema.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
 import {
   deviceNotDisabled,
@@ -23,14 +22,6 @@ function poolClause(deviceIds: string[] | null | undefined, column = sql`device_
     deviceIds.map((id) => sql`${id}`),
     sql`, `,
   )})`;
-}
-
-/** The initial `capabilities` jsonb for a freshly-created runner row: what the caller supplied, else none. */
-export function defaultRunnerCapabilities(
-  _type: RunnerType,
-  provided?: Record<string, unknown>,
-): Record<string, unknown> {
-  return provided ?? {};
 }
 
 /**

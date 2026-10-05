@@ -55,15 +55,14 @@ export async function applyRunLedgerSnapshot(args: {
             .where(and(eq(runners.deviceId, args.deviceId), inArray(runners.projectId, claimed)))
         ).map((r) => r.projectId),
   );
-  const entries = args.entries.filter((e) => bound.has(e.projectId));
-  for (const e of args.entries) {
-    if (!bound.has(e.projectId)) {
-      logger.warn(
-        { deviceId: args.deviceId, runId: e.runId, projectId: e.projectId },
-        'run-ledger: run named a project this device is not bound to — dropped',
-      );
-    }
-  }
+  const entries = args.entries.filter((e) => {
+    if (bound.has(e.projectId)) return true;
+    logger.warn(
+      { deviceId: args.deviceId, runId: e.runId, projectId: e.projectId },
+      'run-ledger: run named a project this device is not bound to — dropped',
+    );
+    return false;
+  });
 
   // A box reporting its parent is corroboration, never the record: the record
   // is `agent_sessions.parent_session_id`, which core writes when it opens the
@@ -115,27 +114,24 @@ export async function applyRunLedgerSnapshot(args: {
               notInArray(deviceRunLedger.runId, keep),
             ),
       );
-    for (const e of entries) {
+    for (const {
+      runId,
+      masterSessionId,
+      sessionTerminalAtEpochS,
+      worktreeGoneAtEpochS,
+      ...e
+    } of entries) {
       const values = {
-        projectId: e.projectId,
-        sessionId: e.sessionId,
+        ...e,
         masterSessionId:
-          e.masterSessionId != null && issued.has(e.masterSessionId) ? e.masterSessionId : null,
-        pid: e.pid,
-        worktreePath: e.worktreePath,
-        bootId: e.bootId,
-        incarnation: e.incarnation,
-        work: e.work,
-        blockerKind: e.blockerKind,
-        waitingOn: e.waitingOn,
-        sessionTerminalAt: fromEpochSeconds(e.sessionTerminalAtEpochS),
-        worktreeGoneAt: fromEpochSeconds(e.worktreeGoneAtEpochS),
-        issues: e.issues,
+          masterSessionId != null && issued.has(masterSessionId) ? masterSessionId : null,
+        sessionTerminalAt: fromEpochSeconds(sessionTerminalAtEpochS),
+        worktreeGoneAt: fromEpochSeconds(worktreeGoneAtEpochS),
         observedAt,
       };
       await tx
         .insert(deviceRunLedger)
-        .values({ deviceId: args.deviceId, runId: e.runId, ...values })
+        .values({ deviceId: args.deviceId, runId, ...values })
         .onConflictDoUpdate({
           target: [deviceRunLedger.deviceId, deviceRunLedger.runId],
           set: values,

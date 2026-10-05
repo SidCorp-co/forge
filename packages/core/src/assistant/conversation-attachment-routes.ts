@@ -6,7 +6,6 @@
 // three files to a reader.
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   listWindowsForConversation,
@@ -16,15 +15,14 @@ import {
   refuseConversation,
   writableConversation,
 } from '../conversations/index.js';
+import { getStorage } from '../integrations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { getStorage } from '../storage/index.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 /**
  * Why this core cannot stop this room's turn. The registry is this process's
@@ -67,12 +65,6 @@ const attachmentTicketSchema = z
   })
   .strict();
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 
 /**
@@ -85,12 +77,8 @@ export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
  */
 conversationAttachmentRoutes.post(
   '/:id/attachments',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', attachmentTicketSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', attachmentTicketSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { name, mime } = c.req.valid('json');
@@ -122,9 +110,7 @@ conversationAttachmentRoutes.post(
 /** The bytes behind one of this room's attachments, for whoever may read it. */
 conversationAttachmentRoutes.get(
   '/:id/attachments/:attachmentId/download',
-  zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() })),
   async (c) => {
     const { id, attachmentId } = c.req.valid('param');
     await readableConversation(id, c.get('userId'));
@@ -148,20 +134,14 @@ conversationAttachmentRoutes.get(
  * box is that session's to cancel, and a room running nothing is told so by
  * name rather than answered 200 over a stop that stopped nothing.
  */
-conversationAttachmentRoutes.post(
-  '/:id/stop',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    await writableConversation(id, c.get('userId'));
+conversationAttachmentRoutes.post('/:id/stop', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await writableConversation(id, c.get('userId'));
 
-    if (!isTurnRunning(id)) {
-      const refusal = await nothingHereToStop(id);
-      if (refusal) throw refusal;
-    }
+  if (!isTurnRunning(id)) {
+    const refusal = await nothingHereToStop(id);
+    if (refusal) throw refusal;
+  }
 
-    return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
-  },
-);
+  return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
+});

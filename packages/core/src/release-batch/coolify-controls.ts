@@ -23,7 +23,7 @@ import {
   type CoolifySecrets,
   type CoolifyTarget,
   summarizeApplication,
-} from '../integrations/coolify/index.js';
+} from '../integrations/deploy/index.js';
 import {
   buildContextFromBinding,
   findLastOutbound,

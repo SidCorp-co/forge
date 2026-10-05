@@ -9,7 +9,6 @@ import { residentMasterSql } from '../devices/index.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { insertRunnerEvent } from './runner-events.js';
-import { defaultRunnerCapabilities } from './select.js';
 import { upsertDeviceRunner } from './writes.js';
 
 /** The device pools serving the project, with device identity and provision status. */
@@ -93,7 +92,7 @@ export async function bindDeviceRunner(input: {
       projectId: input.projectId,
       deviceId: input.device.id,
       name: input.device.name,
-      capabilities: defaultRunnerCapabilities('claude-code', input.capabilities),
+      capabilities: input.capabilities ?? {},
       capabilitiesSent: input.capabilities,
       checkout: input.checkout,
       status,

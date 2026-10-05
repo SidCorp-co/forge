@@ -230,13 +230,15 @@ async function deriveCcStartupSignals(
 }
 
 /**
- * Backfill `failure_kind` / `failure_action` on a row that reached here without
- * them, and mirror the write onto the in-memory `job` the caller keeps using.
+ * Classify the failure, then backfill `failure_kind` / `failure_action` on a row
+ * that reached here without them, mirroring the write onto the in-memory `job`.
  */
-async function persistClassification(
-  job: JobRow,
-  classified: ReturnType<typeof classifyFailure>,
-): Promise<void> {
+async function classifyAndPersist(job: JobRow, reason: string) {
+  const classified = classifyFailure({
+    error: typeof job.error === 'string' && job.error.length > 0 ? job.error : reason,
+    meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
+    signals: await deriveCcStartupSignals(job),
+  });
   const needsKindPersist = job.failureKind === null || job.failureKind === undefined;
   const needsActionPersist = job.failureAction === null || job.failureAction === undefined;
   if (needsKindPersist || needsActionPersist) {
@@ -268,6 +270,73 @@ async function persistClassification(
       logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
     }
   }
+  return classified;
+}
+
+/** Best-effort session bookkeeping: a failure to count never stops the chain. */
+async function bumpSession(
+  job: JobRow,
+  what: string,
+  bump: (sessionId: string) => Promise<unknown>,
+): Promise<void> {
+  if (!job.agentSessionId) return;
+  try {
+    await bump(job.agentSessionId);
+    await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+  } catch (err) {
+    logger.warn(
+      { err, jobId: job.id, sessionId: job.agentSessionId },
+      `retry: failed to increment ${what}, continuing`,
+    );
+  }
+}
+
+/** Verify-first: an issue that already advanced or reverted takes no retry. */
+async function settleByVerdict(job: JobRow): Promise<RetryOutcome | null> {
+  if (!job.issueId) return null;
+  let verdict: 'advanced' | 'reverted' | 'pending';
+  try {
+    verdict = await verifyRecovery(job);
+  } catch (err) {
+    logger.warn(
+      { err, jobId: job.id, issueId: job.issueId },
+      'retry: verifyRecovery failed, failing safe — no retry scheduled',
+    );
+    return { scheduled: false, reason: 'verify_unavailable' };
+  }
+  if (verdict === 'pending') return null;
+  const terminal = verdict === 'advanced' ? 'completed_via_recovery' : 'cancelled_stale';
+  if (job.agentSessionId) {
+    await markSessionTerminal(job.agentSessionId, terminal);
+    await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
+  }
+  return { scheduled: false, reason: terminal };
+}
+
+async function insertRetryJob(
+  job: JobRow,
+  next: AutoRetryPayload,
+  retryAfterAt: Date,
+): Promise<string> {
+  const basePayload = (job.payload ?? {}) as Record<string, unknown>;
+  const [created] = await db
+    .insert(jobs)
+    .values({
+      projectId: job.projectId,
+      issueId: job.issueId,
+      pipelineRunId: job.pipelineRunId,
+      createdBy: job.createdBy,
+      type: job.type,
+      payload: { ...basePayload, [AUTO_RETRY_PAYLOAD_KEY]: next },
+      modelTier: job.modelTier,
+      status: 'queued',
+      attempts: job.attempts + 1,
+      retryOf: job.id,
+      retryAfterAt,
+    })
+    .returning({ id: jobs.id });
+  if (!created) throw new Error('retry: insert returned no row');
+  return created.id;
 }
 
 /**
@@ -281,56 +350,11 @@ export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
-  const inputError = typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
-  const classified = classifyFailure({
-    error: inputError,
-    meta: (job.failureMeta as Record<string, unknown> | null) ?? null,
-    signals: await deriveCcStartupSignals(job),
-  });
-  await persistClassification(job, classified);
-
-  if (job.cancellationRequested) {
-    return { scheduled: false, reason: 'cancellation_requested' };
-  }
-
-  if (job.agentSessionId) {
-    try {
-      await incrementRecoveryStats(job.agentSessionId, classified.kind);
-      await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, sessionId: job.agentSessionId },
-        'retry: failed to increment recoveryStats, continuing',
-      );
-    }
-  }
-
-  if (job.issueId) {
-    let verdict: 'advanced' | 'reverted' | 'pending';
-    try {
-      verdict = await verifyRecovery(job);
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, issueId: job.issueId },
-        'retry: verifyRecovery failed, failing safe — no retry scheduled',
-      );
-      return { scheduled: false, reason: 'verify_unavailable' };
-    }
-    if (verdict === 'advanced') {
-      if (job.agentSessionId) {
-        await markSessionTerminal(job.agentSessionId, 'completed_via_recovery');
-        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-      }
-      return { scheduled: false, reason: 'completed_via_recovery' };
-    }
-    if (verdict === 'reverted') {
-      if (job.agentSessionId) {
-        await markSessionTerminal(job.agentSessionId, 'cancelled_stale');
-        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-      }
-      return { scheduled: false, reason: 'cancelled_stale' };
-    }
-  }
+  const classified = await classifyAndPersist(job, reason);
+  if (job.cancellationRequested) return { scheduled: false, reason: 'cancellation_requested' };
+  await bumpSession(job, 'recoveryStats', (id) => incrementRecoveryStats(id, classified.kind));
+  const settled = await settleByVerdict(job);
+  if (settled) return settled;
 
   const effectiveAction =
     job.failureAction ?? deriveActionFromKind(job.failureKind ?? classified.kind);
@@ -346,7 +370,6 @@ export async function scheduleAutoRetryWithVerify(
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
   const healthyDevices = await onlineCapableDeviceIds(job.projectId, required);
-
   const state = readAutoRetryPayload(job.payload);
   const outcome = nextRotation(
     job,
@@ -356,9 +379,7 @@ export async function scheduleAutoRetryWithVerify(
     healthyDevices,
     new Date(),
   );
-
   const capacityEntityId = capacityWedgeEntityId(job.projectId, 'all');
-
   if (outcome.kind === 'give_up') {
     logger.info(
       { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason: outcome.reason },
@@ -366,54 +387,15 @@ export async function scheduleAutoRetryWithVerify(
     );
     return { scheduled: false, reason: outcome.reason };
   }
-
-  if (outcome.kind === 'defer') {
-    await notifyCapacityOutage(job, capacityEntityId, required);
-  } else {
-    await resolvePipelineWedge(capacityEntityId);
-  }
+  if (outcome.kind === 'defer') await notifyCapacityOutage(job, capacityEntityId, required);
+  else await resolvePipelineWedge(capacityEntityId);
   const next = outcome.state;
 
   const immediateFailover =
     isFailoverAction && next.target !== null && next.target !== job.deviceId;
   const cooldownMs = immediateFailover ? 0 : RETRY_COOLDOWN_MS;
-  const retryAfterAt = new Date(Date.now() + cooldownMs);
-  const basePayload = (job.payload ?? {}) as Record<string, unknown>;
-  const nextPayload: Record<string, unknown> = {
-    ...basePayload,
-    [AUTO_RETRY_PAYLOAD_KEY]: next,
-  };
-
-  const [created] = await db
-    .insert(jobs)
-    .values({
-      projectId: job.projectId,
-      issueId: job.issueId,
-      pipelineRunId: job.pipelineRunId,
-      createdBy: job.createdBy,
-      type: job.type,
-      payload: nextPayload,
-      modelTier: job.modelTier,
-      status: 'queued',
-      attempts: job.attempts + 1,
-      retryOf: job.id,
-      retryAfterAt,
-    })
-    .returning({ id: jobs.id });
-
-  if (!created) throw new Error('retry: insert returned no row');
-
-  if (job.agentSessionId) {
-    try {
-      await incrementAutoRetryCount(job.agentSessionId);
-      await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, sessionId: job.agentSessionId },
-        'retry: failed to increment autoRetries, continuing',
-      );
-    }
-  }
+  const newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
+  await bumpSession(job, 'autoRetries', incrementAutoRetryCount);
 
   traceStep({
     category: 'session.recovery_attempted',
@@ -425,11 +407,10 @@ export async function scheduleAutoRetryWithVerify(
       cooldownUsed: cooldownMs / 1000,
     },
   });
-
   logger.info(
     {
       originalJobId: job.id,
-      newJobId: created.id,
+      newJobId,
       round: next.round,
       target: next.target,
       tries: next.tries,
@@ -438,6 +419,5 @@ export async function scheduleAutoRetryWithVerify(
     },
     'retry: auto-retry scheduled',
   );
-
-  return { scheduled: true, newJobId: created.id };
+  return { scheduled: true, newJobId };
 }

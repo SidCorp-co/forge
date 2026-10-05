@@ -14,7 +14,7 @@ A domain imports a port's **index.ts**, never a file behind it.
 protocol and nothing else:
 
 - What a vendor delivers is reported, not acted on. `handleInbound` returns `facts` (`types.ts:InboundFact`),
-  the webhook door (`webhooks/inbound-routes.ts`) writes them to the outbox, and the module that owns
+  the webhook door (`integration-door/webhook-inbound-routes.ts`) writes them to the outbox, and the module that owns
   each effect consumes them: `source.pushed` (ecosystem, projects), `source.merged` (issues),
   `source.reviewed` (comments), `error.sighted` (error-intake).
 - What an adapter must know about Forge's own rows (a project's declared repository, the issue a branch
@@ -37,15 +37,15 @@ protocol and nothing else:
 | Port | Directory | Vendors | Bound to | Called from |
 |---|---|---|---|---|
 | source hosting | `source-host/` over `github/`, `gitlab/`; the change request projection (`repo_pull_requests`) is the port's | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `execution-ports.ts`, `integration-door/issue-merge-routes.ts`, `integration-door/source-tool.ts`, `integration-door/status-service.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts`, `work-ports.ts` |
-| deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
+| deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `deploy/coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
 | error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `error-intake/sightings.ts`, `integration-door/sentry-tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`) behind `ChatProvider` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn and its runner, BA tools, bench judge, catalog cost), `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts` |
-| embeddings | `embeddings/`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `knowledge/item-embeddings.ts`, `work-ports.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
-| mail | `mail/` | SMTP | deployment | `auth/register.ts`, `projects/invitation-email.ts`, `orgs/routes.ts` |
+| embeddings | `llm/embeddings.ts`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `knowledge/item-embeddings.ts`, `work-ports.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
+| mail | `identity/smtp.ts` | SMTP | deployment | `auth/register.ts`, `projects/invitation-email.ts`, `orgs/routes.ts` |
 | identity | `identity/` | GitHub OAuth, Google, generic OIDC | deployment | `auth/oauth/*` |
-| paired runner box, pinned downloads | `published-releases/` | GitHub releases | deployment | `devices/build-state.ts`, `ecosystem/contract/oasdiff.ts`, `timer-registry.ts`, `index.ts` |
+| paired runner box, pinned downloads | `github/published-releases/` | GitHub releases | deployment | `devices/build-state.ts`, `ecosystem/contract/oasdiff.ts`, `timer-registry.ts`, `index.ts` |
 
 The LLM and embedding ports gate every text through `lib/data-egress.ts:egressScoped` inside the
 adapter: their functions take an `EgressScope`, so no caller can send content without naming the

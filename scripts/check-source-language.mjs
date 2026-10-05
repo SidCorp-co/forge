@@ -2,11 +2,10 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { checkerConfig } from './lib/debt-ratchet.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs
 // × (U+00D7) and ÷ (U+00F7), Latin Extended-A (Ā–ſ), and Vietnamese
@@ -20,20 +19,7 @@ const DEFAULTS = {
   brandTokens: ['Pokémon', 'café', 'naïve', 'résumé', 'cliché', 'façade', 'jalapeño'],
 };
 
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
-
-function loadConfig() {
-  if (!existsSync(CONFIG_PATH)) return { ...DEFAULTS };
-  try {
-    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    return { ...DEFAULTS, ...(raw?.checkers?.['source-language'] ?? {}) };
-  } catch (err) {
-    console.error(`check-source-language: ${CONFIG_PATH} is unreadable — ${err.message}`);
-    process.exit(2);
-  }
-}
-
-const CFG = loadConfig();
+const CFG = checkerConfig(ROOT, 'source-language', DEFAULTS, dieAs('check-source-language'));
 
 const SCAN_ROOTS = CFG.scanRoots;
 const SCAN_EXTS = new Set(CFG.scanExts);

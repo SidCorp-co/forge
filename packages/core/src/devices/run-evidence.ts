@@ -23,7 +23,6 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { devicesPorts } from './ports.js';
 import { BOX_RUN_ID_METADATA_KEY } from './run-session.js';
@@ -250,74 +249,10 @@ interface RunIssueRow {
   next: string | null;
 }
 
-/** One device's run session, whatever status it has reached. */
-async function runSessionForDevice(
-  deviceId: string,
-  sessionId: string,
-): Promise<{ projectId: string; issueKeys: string[] | null; boxRunId: string | null } | undefined> {
-  const [row] = await db
-    .select({
-      projectId: agentSessions.projectId,
-      issueKeys: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
-      boxRunId: sql<string | null>`${pipelineRuns.metadata} ->> ${BOX_RUN_ID_METADATA_KEY}`,
-    })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(
-      and(
-        eq(agentSessions.id, sessionId),
-        eq(agentSessions.deviceId, deviceId),
-        eq(agentSessions.kind, RUN_SESSION_KIND),
-      ),
-    )
-    .limit(1);
-  return row;
-}
-
-/** The run's issues, and what each one's lease says the run said. */
-async function runIssuesWithTestimony(
-  projectId: string,
-  issueKeys: string[],
-): Promise<RunIssueRow[]> {
-  const seqs = issueKeys
-    .map((k) => Number.parseInt(k.replace(/^[A-Za-z]+-/, ''), 10))
-    .filter((n) => Number.isFinite(n));
-  if (seqs.length === 0) return [];
-  return db
-    .select({
-      id: issues.id,
-      next: sql<
-        string | null
-      >`(SELECT w.lease #>> '{next}' FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
-    })
-    .from(issues)
-    .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, seqs)));
-}
-
-/**
- * Post one comment onto an issue, once, however many callers race to post it.
- */
-async function insertCommentOnce(args: {
-  issueId: string;
-  marker: string;
-  body: string;
-  authorId: string;
-  deviceId: string;
-}): Promise<boolean> {
-  const posted = await devicesPorts().comments.postIssueNoticeOnce({
-    issueId: args.issueId,
-    marker: args.marker,
-    body: args.body,
-    authorId: args.authorId,
-    authorDeviceId: args.deviceId,
-  });
-  return posted !== null;
-}
-
 /**
  * Post a held report unless the latest one in its family already says this reading.
  *
- * `insertCommentOnce` asks whether ANY comment carries the marker, which let a
+ * `postOnceOnEach` asks whether ANY comment carries the marker, which let a
  * reading that went kept, then not, then kept again leave the middle one as the
  * last word. The lock is the family's, so two sweeps racing on different
  * readings are ordered rather than both reading "none yet".
@@ -361,6 +296,76 @@ interface RunEvidenceResult {
 }
 
 /**
+ * The issues of this device's run session (whatever status it has reached), each with what its
+ * lease says the run said; null when this device has no such run session.
+ */
+async function heldIssuesOf(
+  deviceId: string,
+  sessionId: string,
+): Promise<{ boxRunId: string | null; rows: RunIssueRow[] } | null> {
+  const [session] = await db
+    .select({
+      projectId: agentSessions.projectId,
+      issueKeys: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
+      boxRunId: sql<string | null>`${pipelineRuns.metadata} ->> ${BOX_RUN_ID_METADATA_KEY}`,
+    })
+    .from(agentSessions)
+    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
+    .where(
+      and(
+        eq(agentSessions.id, sessionId),
+        eq(agentSessions.deviceId, deviceId),
+        eq(agentSessions.kind, RUN_SESSION_KIND),
+      ),
+    )
+    .limit(1);
+  if (!session) return null;
+  const seqs = (session.issueKeys ?? [])
+    .map((k) => Number.parseInt(String(Number(k.split('-')[1])), 10))
+    .filter((n) => Number.isFinite(n));
+  if (seqs.length === 0) return { boxRunId: session.boxRunId, rows: [] };
+  const rows = await db
+    .select({
+      id: issues.id,
+      next: sql<
+        string | null
+      >`(SELECT w.lease #>> '{next}' FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
+    })
+    .from(issues)
+    .where(and(eq(issues.projectId, session.projectId), inArray(issues.issSeq, seqs)));
+  return { boxRunId: session.boxRunId, rows };
+}
+
+/** Post onto each issue in turn; the count is of the posts that landed. */
+async function postOnEach(
+  rows: RunIssueRow[],
+  post: (row: RunIssueRow) => Promise<boolean>,
+): Promise<number> {
+  let written = 0;
+  for (const row of rows) if (await post(row)) written += 1;
+  return written;
+}
+
+/** Post one comment onto each issue, once, however many callers race to post it. */
+function postOnceOnEach(
+  rows: RunIssueRow[],
+  by: { marker: string; authorId: string; deviceId: string },
+  bodyOf: (row: RunIssueRow) => string,
+): Promise<number> {
+  return postOnEach(
+    rows,
+    async (row) =>
+      (await devicesPorts().comments.postIssueNoticeOnce({
+        issueId: row.id,
+        marker: by.marker,
+        body: bodyOf(row),
+        authorId: by.authorId,
+        authorDeviceId: by.deviceId,
+      })) !== null,
+  );
+}
+
+/**
  * Write the two blocks onto every issue the run was holding.
  */
 export async function writeRunEvidence(args: {
@@ -373,44 +378,31 @@ export async function writeRunEvidence(args: {
       `writeRunEvidence: a checkpoint must declare itself as \`${RECONSTRUCTION_SOURCE}\`, got \`${args.checkpoint.source}\` — an undeclared payload cannot be printed as the box's half without this end guessing what it is`,
     );
   }
-  const session = await runSessionForDevice(args.deviceId, args.sessionId);
-  if (!session) return null;
-
-  const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
-  const rows = await runIssuesWithTestimony(session.projectId, keys);
+  const held = await heldIssuesOf(args.deviceId, args.sessionId);
+  if (!held) return null;
   const marker = runEvidenceMarker(args.sessionId);
-  let written = 0;
-
-  const authorId = await ownerOfDevice(args.deviceId);
-  for (const row of rows) {
-    const body = buildRunEvidenceBody({
-      sessionId: args.sessionId,
-      checkpoint: args.checkpoint,
-      next: row.next,
-    });
-    if (
-      await insertCommentOnce({
-        issueId: row.id,
-        marker,
-        body,
-        authorId,
-        deviceId: args.deviceId,
-      })
-    )
-      written += 1;
-  }
-
+  const authorId = (await deviceOf(args.deviceId)).ownerId;
+  const written = await postOnceOnEach(
+    held.rows,
+    { marker, authorId, deviceId: args.deviceId },
+    (row) =>
+      buildRunEvidenceBody({
+        sessionId: args.sessionId,
+        checkpoint: args.checkpoint,
+        next: row.next,
+      }),
+  );
   logger.info(
     {
       sessionId: args.sessionId,
       deviceId: args.deviceId,
-      boxRunId: session.boxRunId,
-      issues: rows.length,
+      boxRunId: held.boxRunId,
+      issues: held.rows.length,
       written,
     },
     'run-evidence: what the run left is on its issues',
   );
-  return { issues: rows.length, written };
+  return { issues: held.rows.length, written };
 }
 
 /**
@@ -421,10 +413,8 @@ export async function writeHeldWorktreeReport(args: {
   sessionId: string;
   held: HeldWorktree;
 }): Promise<RunEvidenceResult | null> {
-  const session = await runSessionForDevice(args.deviceId, args.sessionId);
-  if (!session) return null;
-  const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
-  const rows = await runIssuesWithTestimony(session.projectId, keys);
+  const held = await heldIssuesOf(args.deviceId, args.sessionId);
+  if (!held) return null;
   const family = heldWorktreeFamily(args.sessionId, args.held.head);
   const marker = heldWorktreeMarker(args.sessionId, args.held);
   const box = await deviceOf(args.deviceId);
@@ -433,20 +423,16 @@ export async function writeHeldWorktreeReport(args: {
     held: args.held,
     box: box.name,
   });
-  let written = 0;
-  for (const row of rows) {
-    if (
-      await insertHeldReportOnChange({
-        issueId: row.id,
-        family,
-        marker,
-        body,
-        authorId: box.ownerId,
-        deviceId: args.deviceId,
-      })
-    )
-      written += 1;
-  }
+  const written = await postOnEach(held.rows, (row) =>
+    insertHeldReportOnChange({
+      issueId: row.id,
+      family,
+      marker,
+      body,
+      authorId: box.ownerId,
+      deviceId: args.deviceId,
+    }),
+  );
   logger.warn(
     {
       sessionId: args.sessionId,
@@ -455,12 +441,12 @@ export async function writeHeldWorktreeReport(args: {
       head: args.held.head,
       commitsUnpushed: args.held.commitsUnpushed,
       kept: args.held.kept,
-      issues: rows.length,
+      issues: held.rows.length,
       written,
     },
     "run-evidence: a stopped run's checkout was reported, its work on no remote or not established",
   );
-  return { issues: rows.length, written };
+  return { issues: held.rows.length, written };
 }
 
 /**
@@ -471,46 +457,31 @@ export async function writeResumeChoice(args: {
   sessionId: string;
   choice: ResumeChoice;
 }): Promise<RunEvidenceResult | null> {
-  const session = await runSessionForDevice(args.deviceId, args.sessionId);
-  if (!session) return null;
-  const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
-  const rows = await runIssuesWithTestimony(session.projectId, keys);
+  const held = await heldIssuesOf(args.deviceId, args.sessionId);
+  if (!held) return null;
   const marker = resumeChoiceMarker(args.choice.runId);
   const body = buildResumeChoiceBody({ choice: args.choice });
-  const authorId = await ownerOfDevice(args.deviceId);
-  let written = 0;
-  for (const row of rows) {
-    if (
-      await insertCommentOnce({
-        issueId: row.id,
-        marker,
-        body,
-        authorId,
-        deviceId: args.deviceId,
-      })
-    )
-      written += 1;
-  }
+  const authorId = (await deviceOf(args.deviceId)).ownerId;
+  const written = await postOnceOnEach(
+    held.rows,
+    { marker, authorId, deviceId: args.deviceId },
+    () => body,
+  );
   logger.info(
     {
       sessionId: args.sessionId,
       deviceId: args.deviceId,
       runId: args.choice.runId,
       choice: args.choice.choice,
-      issues: rows.length,
+      issues: held.rows.length,
       written,
     },
     'run-evidence: a resumed master said what happens to a run it inherited',
   );
-  return { issues: rows.length, written };
+  return { issues: held.rows.length, written };
 }
 
-/** The person a box's credential belongs to, which is who a box's comment is authored as. */
-async function ownerOfDevice(deviceId: string): Promise<string> {
-  return (await deviceOf(deviceId)).ownerId;
-}
-
-/** A box's owner and the name it was paired under. */
+/** A box's owner (whom its comments are authored as) and the name it was paired under. */
 async function deviceOf(deviceId: string): Promise<{ ownerId: string; name: string }> {
   const [row] = await db
     .select({ ownerId: devices.ownerId, name: devices.name })

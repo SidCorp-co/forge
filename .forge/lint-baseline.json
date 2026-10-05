@@ -28,7 +28,7 @@
     "packages/core/src/improvement-messages/routes.ts": {
       "lint/style/noNonNullAssertion": 1
     },
-    "packages/core/src/integrations/coolify/circuit-breaker.ts": {
+    "packages/core/src/integrations/deploy/coolify/circuit-breaker.ts": {
       "lint/complexity/useOptionalChain": 1
     },
     "packages/core/src/integrations/queue.ts": {

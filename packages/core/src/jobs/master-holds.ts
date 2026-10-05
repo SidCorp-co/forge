@@ -1,6 +1,8 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs, terminalAgentSessionStatuses } from '../db/schema.js';
+import { transition } from '../lifecycle/index.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -33,6 +35,31 @@ export async function holdQueuedJob(
     )
     .returning();
   return row ?? null;
+}
+
+/** The stamp that ends a hold: the held job moves to `dispatched` on the box about to run it. */
+export async function dispatchHeldJob(args: {
+  jobId: string;
+  sessionId: string;
+  deviceId: string;
+  runnerId: string;
+}): Promise<boolean> {
+  const { rows } = await transition(db, JOB_MACHINE, {
+    to: 'dispatched',
+    from: 'queued',
+    set: {
+      deviceId: args.deviceId,
+      runnerId: args.runnerId,
+      dispatchedAt: new Date(),
+      heldBy: null,
+      heldAt: null,
+    },
+    where: and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)),
+    actor: { type: 'runner', id: args.deviceId },
+    source: 'claim',
+    returning: ['id'],
+  });
+  return rows.length > 0;
 }
 
 /** Give one held job back to the pool, if this session still holds it. */

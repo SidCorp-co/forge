@@ -51,10 +51,10 @@ import {
   scopeName,
   UNKNOWN_COUNT,
 } from "../scope";
-import { DeviceDetail } from "./device-detail";
+import { BuildChip, DeviceDetail } from "./device-detail";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
-function CopyButton({ value }: { value: string }) {
+export function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <Button
@@ -216,18 +216,7 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
           because a blank one reads as a device with nothing to say (ISS-1119). */}
       <span className="fg-body-sm text-subtle">
         {deviceVersionLabel(device.agentVersion)}
-        {chip ? (
-          <span
-            className={
-              chip.tone === "warning"
-                ? "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-                : "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken"
-            }
-            title={chip.title}
-          >
-            {chip.label}
-          </span>
-        ) : null}
+        {chip ? <BuildChip chip={chip} className="ml-1.5 " /> : null}
       </span>
       {projects && projects.length > 0 ? (
         <span className="fg-body-sm text-subtle">Serves {projects.join(", ")}</span>
@@ -372,33 +361,33 @@ export function RunnersScreen() {
                               Manage
                             </Button>
                             {!revoked && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                icon={disabled ? "play" : "pause"}
-                                loading={toggleDisabled.isPending && togglingId === d.id}
-                                title={
-                                  disabled
-                                    ? "Turn on — let every project dispatch to this device again"
-                                    : "Turn off — ignore this device across every project (reversible, keeps it paired)"
-                                }
-                                onClick={() => {
-                                  setTogglingId(d.id);
-                                  toggleDisabled.mutate({ id: d.id, disabled: !disabled });
-                                }}
-                              >
-                                {disabled ? "Turn on" : "Turn off"}
-                              </Button>
-                            )}
-                            {!revoked && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                icon="trash"
-                                onClick={() => setConfirmId(d.id)}
-                              >
-                                Revoke
-                              </Button>
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  icon={disabled ? "play" : "pause"}
+                                  loading={toggleDisabled.isPending && togglingId === d.id}
+                                  title={
+                                    disabled
+                                      ? "Turn on — let every project dispatch to this device again"
+                                      : "Turn off — ignore this device across every project (reversible, keeps it paired)"
+                                  }
+                                  onClick={() => {
+                                    setTogglingId(d.id);
+                                    toggleDisabled.mutate({ id: d.id, disabled: !disabled });
+                                  }}
+                                >
+                                  {disabled ? "Turn on" : "Turn off"}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  icon="trash"
+                                  onClick={() => setConfirmId(d.id)}
+                                >
+                                  Revoke
+                                </Button>
+                              </>
                             )}
                           </span>
                         )}

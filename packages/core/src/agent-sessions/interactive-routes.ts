@@ -69,6 +69,34 @@ agentSessionInteractiveRoutes.post(
   },
 );
 
+/** A started session is titled by its issues when it names any, else by its prompt. */
+async function startTitle(prompt: string, issueIds: string[] | undefined): Promise<string> {
+  if (!issueIds || issueIds.length === 0) {
+    return prompt
+      .replace(/^You are working on issue:\s*/i, '')
+      .replace(/^You are working on the following issues:\s*/i, '')
+      .replace(/^You are working on:\s*/i, '')
+      .slice(0, 120);
+  }
+  const rows = await issueRefsOf(issueIds);
+  const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
+  if (refs.length === 1) return `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
+  if (refs.length > 1) return refs.join(', ').slice(0, 120);
+  return prompt.slice(0, 120);
+}
+
+/**
+ * ISS-733 — a skillName must resolve to an install_only effective skill for
+ * THIS project before it can ride turn 1 as a slash-command; otherwise any
+ * caller could slash-inject an arbitrary command via /start.
+ */
+async function assertInstallOnlySkill(projectId: string, skillName: string): Promise<void> {
+  const effective = await agentSessionsPorts().resolveRegisteredEffectiveSkills(projectId);
+  if (!effective.some((s) => s.name === skillName && s.installOnly)) {
+    throw badRequest({ message: `skillName '${skillName}' is not install_only for this project` });
+  }
+}
+
 agentSessionInteractiveRoutes.post(
   '/start',
   zValidator('json', startBodySchema, (r) => {
@@ -105,32 +133,8 @@ agentSessionInteractiveRoutes.post(
 
     const rawPrompt = input.prompt;
 
-    let title: string;
-    if (input.issueIds && input.issueIds.length > 0) {
-      const rows = await issueRefsOf(input.issueIds);
-      const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
-      if (refs.length === 1) title = `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
-      else if (refs.length > 1) title = refs.join(', ').slice(0, 120);
-      else title = rawPrompt.slice(0, 120);
-    } else {
-      title = rawPrompt
-        .replace(/^You are working on issue:\s*/i, '')
-        .replace(/^You are working on the following issues:\s*/i, '')
-        .replace(/^You are working on:\s*/i, '')
-        .slice(0, 120);
-    }
-
-    // ISS-733 — a skillName must resolve to an install_only effective skill for
-    // THIS project before it can ride turn 1 as a slash-command; otherwise any
-    // caller could slash-inject an arbitrary command via /start.
-    if (input.skillName) {
-      const effective = await agentSessionsPorts().resolveRegisteredEffectiveSkills(project.id);
-      if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
-        throw badRequest({
-          message: `skillName '${input.skillName}' is not install_only for this project`,
-        });
-      }
-    }
+    const title = await startTitle(rawPrompt, input.issueIds);
+    if (input.skillName) await assertInstallOnlySkill(project.id, input.skillName);
 
     const metadata: Record<string, unknown> = {};
     if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];

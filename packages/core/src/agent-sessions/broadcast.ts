@@ -84,3 +84,20 @@ export function broadcastTurnEdited(session: SessionLite, turnId: string): void 
 export function broadcastTurnTruncated(session: SessionLite, fromTurnIndex: number): void {
   broadcastSession(session, 'agent-session.turn.truncated', { fromTurnIndex });
 }
+
+/**
+ * A turn-table sync, broadcast. The first new turn fires at once so the client
+ * learns its id; later appends (a multi-block worker write) ride the tail
+ * debouncer to keep WS load down while a runner streams a long reply.
+ */
+export function broadcastTurnSync(
+  session: SessionLite,
+  sync: { appended: readonly AppendedTurn[]; truncatedFromTurnIndex: number | null },
+): void {
+  for (const [i, t] of sync.appended.entries()) {
+    broadcastTurnAppended(session, t, { isStreamingTail: i > 0 });
+  }
+  if (sync.truncatedFromTurnIndex !== null) {
+    broadcastTurnTruncated(session, sync.truncatedFromTurnIndex);
+  }
+}
