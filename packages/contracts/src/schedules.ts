@@ -37,3 +37,11 @@ export const SCHEDULE_RUN_STREAK_SKIP_REASONS = [
 
 export const SCHEDULE_REFUSAL_CODES = ["SCHEDULE_REFUSED", "SCHEDULE_DISPATCH_FAILED"] as const;
 export type ScheduleRefusalCode = (typeof SCHEDULE_REFUSAL_CODES)[number];
+
+/** Who may change a schedule: its owner with write access; anyone else needs admin, and the save takes it over. */
+export function scheduleWritePermission(
+	ownerId: string | null,
+	actorUserId: string,
+): "project.write" | "project.admin" {
+	return ownerId !== null && ownerId === actorUserId ? "project.write" : "project.admin";
+}

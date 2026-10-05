@@ -13,7 +13,6 @@ import {
   HealthDot,
   HelpButton,
   Icon,
-  Input,
   EnumBadge,
   PageContainer,
   PageTitle,
@@ -30,7 +29,7 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useDevices, useInitPairing, useOrgDevices, useSetDeviceDisabled } from "../hooks";
+import { useDevices, useOrgDevices, useSetDeviceDisabled } from "../hooks";
 import { RevokeDeviceControl } from "./revoke-device-control";
 import {
   deviceBuildChip,
@@ -73,15 +72,8 @@ export function CopyButton({ value }: { value: string }) {
   );
 }
 
-/** Pairing panel — the CLI command + an optional generated code & verify link. */
+/** Pairing panel — the CLI command the runner machine runs; it prints the code approved at /pair. */
 function PairPanel() {
-  const init = useInitPairing();
-  const [label, setLabel] = useState("forge-runner");
-  const code = init.data;
-  const verifyUrl = code
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}${code.verify_url}`
-    : "";
-
   return (
     <Card>
       <CardHeader>
@@ -90,7 +82,6 @@ function PairPanel() {
           summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
             "Run `forge-runner setup` on the runner host (it prints the approval URL)",
-            "Or generate a code here and approve it at /pair",
             "Revoke a device below to cut off its access immediately",
           ]}
         />
@@ -98,7 +89,7 @@ function PairPanel() {
       <CardContent>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <span className="fg-label">Recommended — run on the runner machine</span>
+            <span className="fg-label">Run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
               <code className="font-mono text-13 text-fg">forge-runner setup</code>
               <CopyButton value="forge-runner setup" />
@@ -108,53 +99,6 @@ function PairPanel() {
               it a project, gets a checkout, installs the background service, and ends on a
               verdict. `forge-runner login` does the pairing step alone.
             </p>
-          </div>
-
-          <div className="border-t border-line-subtle pt-4">
-            <span className="fg-label">Or generate a pairing code to approve manually</span>
-            <div className="mt-2 flex items-end gap-2">
-              <div className="flex-1">
-                <Input
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Device label"
-                  aria-label="Device label"
-                />
-              </div>
-              <Button
-                variant="secondary"
-                icon="plus"
-                loading={init.isPending}
-                onClick={() => init.mutate(label.trim() || "forge-runner")}
-              >
-                Generate code
-              </Button>
-            </div>
-
-            {code && (
-              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-                <div className="flex items-center justify-center rounded-md border border-line bg-sunken py-3">
-                  <span className="font-mono text-xl font-semibold tracking-[0.25em] text-fg">
-                    {code.pairing_code}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="fg-body-sm text-muted">Approve at</span>
-                  <a
-                    href={code.verify_url}
-                    className="truncate font-mono text-12-5 text-accent hover:underline"
-                  >
-                    {verifyUrl || code.verify_url}
-                  </a>
-                  <CopyButton value={verifyUrl || code.verify_url} />
-                </div>
-                <p className="fg-body-sm text-subtle">
-                  Open the link (or scan it) on the device, approve, then the runner&apos;s poll
-                  loop receives the token. Expires{" "}
-                  {new Date(code.expires_at).toLocaleTimeString()}.
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </CardContent>

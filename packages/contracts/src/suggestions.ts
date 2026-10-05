@@ -1,4 +1,4 @@
-// cm:why one declaration of the suggestion vocabulary (workflow suggestion-lifecycle rev 2, ISS-58):
+// cm:why one declaration of the suggestion vocabulary (workflow suggestion-lifecycle rev 3, ISS-58):
 // core's table CHECKs, REST, MCP and the web all import these values, the request schemas and the
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
@@ -31,7 +31,7 @@ export const SUGGESTION_KINDS = [
 ] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
-/** proposed → accepted | rejected | stale (rev 2), and withdrawn (the producer retracts; not yet drawn in rev 2). */
+/** proposed → accepted | rejected | stale | withdrawn (rev 3; only the producer withdraws). */
 export const SUGGESTION_STATUSES = [
 	"proposed",
 	"accepted",

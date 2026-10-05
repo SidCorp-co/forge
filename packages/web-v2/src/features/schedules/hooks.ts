@@ -7,6 +7,7 @@ import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
 import { automationKey } from "@/features/automation/hooks";
 import { schedulesApi } from "./api";
+import type { ScheduleInput } from "./types";
 
 export function useSchedules(projectId: string | undefined) {
   return useQuery({
@@ -36,12 +37,25 @@ function useScheduleMutation<TArgs>(
   });
 }
 
-export function useSetScheduleEnabled(projectId: string | undefined) {
+export function useCreateSchedule(projectId: string | undefined) {
   return useScheduleMutation(
-    ({ id, enabled }: { id: string; enabled: boolean }) => schedulesApi.setEnabled(id, enabled),
+    (input: ScheduleInput) => schedulesApi.create(projectId as string, input),
     projectId,
-    "Schedule updated",
+    "Schedule created",
   );
+}
+
+/** Pause, resume, edit or take over: one PUT, which an owner may send for their own and an admin for any. */
+export function useUpdateSchedule(projectId: string | undefined, successMessage = "Schedule updated") {
+  return useScheduleMutation(
+    ({ id, patch }: { id: string; patch: Partial<ScheduleInput> }) => schedulesApi.update(id, patch),
+    projectId,
+    successMessage,
+  );
+}
+
+export function useDeleteSchedule(projectId: string | undefined) {
+  return useScheduleMutation((id: string) => schedulesApi.remove(id), projectId, "Schedule deleted");
 }
 
 export function useRunSchedule(projectId: string | undefined) {

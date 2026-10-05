@@ -63,14 +63,6 @@ export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
 	projectNames: string[];
 }
 
-/** `POST /api/devices/login/init` response — a fresh pairing code + verify URL. */
-export interface PairingCode {
-	pairing_code: string;
-	/** Relative verify URL, e.g. `/pair?code=XXX-XXXX`. */
-	verify_url: string;
-	expires_at: string;
-}
-
 export interface DeviceRunnerAssignment {
 	runnerId: string;
 	projectId: string;

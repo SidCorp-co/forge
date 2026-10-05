@@ -35,7 +35,7 @@
     "lint:fix": "biome check --write src tests",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "contracts:generate": "tsx src/api-contract/generate.ts",
+    "contracts:generate": "tsx src/contracts-generate.ts",
     "oasdiff:fetch": "tsx src/ecosystem/contract/oasdiff-fetch.ts node_modules/.cache/oasdiff",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

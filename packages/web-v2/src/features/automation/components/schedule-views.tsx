@@ -4,8 +4,11 @@
 // screen): its row, its facts rail, its peek and its full page read one ScheduleStanding, so the state,
 // next fire, owner and last result are never derived here
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   Button,
+  ConfirmDialog,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
@@ -32,20 +35,22 @@ import {
   WaitingOn,
 } from "@/design";
 import { statusReading } from "@/design/vocabulary";
-import { useRunSchedule, useSchedules, useSetScheduleEnabled } from "@/features/schedules/hooks";
+import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/schedules/hooks";
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useScheduleDetail } from "../hooks";
-import { fireHref } from "../routes";
+import { automationListHref, fireHref } from "../routes";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
 import { fmtTime } from "../view";
 import { FireLines } from "./fire-views";
 import { ReportLines } from "./report-views";
+import { ScheduleForm } from "./schedule-form";
 
 export interface AutomationAccess {
   projectId: string;
   slug: string;
   canWrite: boolean;
+  /** project admin: may declare a new schedule. */
   canManage: boolean;
 }
 
@@ -207,21 +212,82 @@ export function SchedulePeek({
 const SCHEDULE_TABS = ["overview", "fires", "reports"] as const;
 const useScheduleTab = () => useUrlTab(SCHEDULE_TABS);
 
+/** Pause, edit, take over or delete: its owner for their own, an admin for any (the read model says which). */
 function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess }) {
-  const setEnabled = useSetScheduleEnabled(access.projectId);
-  if (!access.canManage) return null;
+  const update = useUpdateSchedule(access.projectId);
+  const takeOver = useUpdateSchedule(access.projectId, "Schedule taken over");
+  const remove = useDeleteSchedule(access.projectId);
+  const router = useRouter();
+  const config = useSchedules(access.projectId).data?.find((r) => r.id === s.id);
+  const [editing, setEditing] = useState(false);
+  const [confirm, setConfirm] = useState<"take_over" | "delete" | null>(null);
+  if (!s.viewerMay.edit) return null;
   return (
-    <section>
+    <section data-testid="schedule-controls">
       <ViewHeading>Controls</ViewHeading>
-      <span className="inline-flex items-center gap-2 text-13">
-        <Toggle
-          checked={s.enabled}
-          disabled={setEnabled.isPending}
-          aria-label={`${s.enabled ? "Pause" : "Resume"} ${s.name}`}
-          onChange={(enabled) => setEnabled.mutate({ id: s.id, enabled })}
-        />
-        {s.enabled ? "On: the ticker claims it at each due time" : "Paused: never claimed until resumed"}
-      </span>
+      <div className="grid gap-3">
+        <span className="inline-flex items-center gap-2 text-13">
+          <Toggle
+            checked={s.enabled}
+            disabled={update.isPending}
+            aria-label={`${s.enabled ? "Pause" : "Resume"} ${s.name}`}
+            onChange={(enabled) => update.mutate({ id: s.id, patch: { enabled } })}
+          />
+          {s.enabled ? "On: the ticker claims it at each due time" : "Paused: never claimed until resumed"}
+        </span>
+        {s.viewerMay.takeOver ? (
+          <p className="text-12-5 text-muted">Saving any change takes it over: from then on it runs as you.</p>
+        ) : null}
+        {editing && config ? (
+          <ScheduleForm
+            initial={config}
+            submitLabel="Save"
+            pending={update.isPending}
+            error={update.error}
+            testId="schedule-edit"
+            onCancel={() => setEditing(false)}
+            onSubmit={(input) => update.mutate({ id: s.id, patch: input }, { onSuccess: () => setEditing(false) })}
+          />
+        ) : (
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" disabled={!config} onClick={() => setEditing(true)} data-testid="schedule-edit-open">
+              Edit
+            </Button>
+            {s.viewerMay.takeOver ? (
+              <Button type="button" size="sm" onClick={() => setConfirm("take_over")} data-testid="schedule-take-over">
+                Take over
+              </Button>
+            ) : null}
+            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirm("delete")} data-testid="schedule-delete">
+              Delete
+            </Button>
+          </span>
+        )}
+      </div>
+      <ConfirmDialog
+        open={confirm === "take_over"}
+        title={`Take over ${s.name}`}
+        message="It runs as you from its next fire, bounded by what you hold on this project."
+        confirmLabel="Take over"
+        loading={takeOver.isPending}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => takeOver.mutate({ id: s.id, patch: { enabled: s.enabled } }, { onSettled: () => setConfirm(null) })}
+      />
+      <ConfirmDialog
+        open={confirm === "delete"}
+        title={`Delete ${s.name}`}
+        message="It never fires again. Its past fires and reports stay readable."
+        confirmLabel="Delete"
+        tone="danger"
+        loading={remove.isPending}
+        onClose={() => setConfirm(null)}
+        onConfirm={() =>
+          remove.mutate(s.id, {
+            onSuccess: () => router.push(automationListHref(access.slug)),
+            onSettled: () => setConfirm(null),
+          })
+        }
+      />
     </section>
   );
 }

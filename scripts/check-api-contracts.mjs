@@ -33,7 +33,7 @@ const die = dieAs('check-api-contracts');
 
 const CORE = join(ROOT, 'packages', 'core');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
-const GENERATOR = join(CORE, 'src', 'api-contract', 'generate.ts');
+const GENERATOR = join(CORE, 'src', 'contracts-generate.ts');
 const REGENERATE = 'pnpm --filter @forge/core contracts:generate';
 const ARTIFACTS = [
   { spec: API, file: 'forge-api.openapi.json' },
@@ -44,7 +44,7 @@ if (process.argv.length > 2) die(`takes no arguments, got: ${process.argv.slice(
 
 const missing = absentPrerequisites(ROOT, ['deps', 'observability-build', 'contracts-build']);
 if (missing.length > 0) die(`could not run — ${remedyLines(missing)[0]}`);
-if (!existsSync(GENERATOR)) die('packages/core/src/api-contract/generate.ts not found');
+if (!existsSync(GENERATOR)) die('packages/core/src/contracts-generate.ts not found');
 
 function git(args) {
   const r = spawnSync('git', args, { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });

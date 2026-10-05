@@ -83,11 +83,11 @@ repeated per row.
 | REQ-1 job given design + requirement | issue-lifecycle r3, requirement-to-delivery r2 | |
 | REQ-2 status says who it waits on | issue-lifecycle r3 | |
 | REQ-3 narration apart from conversation | none | gap 2 |
-| REQ-4 versioned business intent | requirement-lifecycle r3, requirement-to-delivery r2, issue-lifecycle r3 | |
+| REQ-4 versioned business intent | requirement-lifecycle r4, requirement-to-delivery r2, issue-lifecycle r3 | |
 | REQ-5 in-project contract | requirement-to-delivery r2 | |
 | REQ-6 typed verdicts | requirement-to-delivery r2, issue-lifecycle r3 | |
 | REQ-7 feedback item | feedback-lifecycle r2, feedback-triage r3, requirement-to-delivery r2 | |
-| REQ-8 assistant proposals wait | suggestion-lifecycle r2, feedback-triage r3, requirement-to-delivery r2 | |
+| REQ-8 assistant proposals wait | suggestion-lifecycle r3, feedback-triage r3, requirement-to-delivery r2 | |
 | REQ-9 cross-project contract (draft) | none | no BCs yet |
 | REQ-10 onboarding | project-onboarding r1 | |
 | REQ-11 Development screens | requirement-to-delivery r2, issue-lifecycle r3 | ADR 0001–0005 (Releases) |

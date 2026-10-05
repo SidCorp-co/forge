@@ -29,7 +29,7 @@ const die = dieAs('pat-surface');
 
 const CORE = join(ROOT, 'packages', 'core');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
-const ROUTE_TABLE = join(CORE, 'src', 'api-contract', 'route-table.ts');
+const ROUTE_TABLE = join(CORE, 'src', 'route-table.ts');
 const FENCE = { file: 'credentials/pat-scope.ts', name: 'fencedProjectIds' };
 
 const EXEMPT = [

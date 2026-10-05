@@ -15,15 +15,28 @@ const gateLabel = (gate: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-function personWho(ctx: StandingContext, admin: boolean) {
-  const isViewer = admin ? !!ctx.viewer?.isAdmin : !!ctx.viewer?.canWrite;
-  return { who: isViewer ? 'You' : admin ? 'A project admin' : 'A project writer', isViewer };
+type Need = 'write' | 'admin' | 'approve';
+
+const NEEDED_BY: Record<Need, string> = {
+  write: 'A project writer',
+  admin: 'A project admin',
+  approve: 'A holder of releases.approve',
+};
+
+function personWho(ctx: StandingContext, need: Need) {
+  const v = ctx.viewer;
+  const isViewer = !!(need === 'approve'
+    ? v?.mayApprove
+    : need === 'admin'
+      ? v?.isAdmin
+      : v?.canWrite);
+  return { who: isViewer ? 'You' : NEEDED_BY[need], isViewer };
 }
 
 function person(
   ctx: StandingContext,
   w: {
-    admin: boolean;
+    need: Need;
     act: string;
     ref: string;
     issueKey?: string | null;
@@ -37,7 +50,7 @@ function person(
     rule: w.rule,
     outcome: null,
     waitingOn: (() => {
-      const p = personWho(ctx, w.admin);
+      const p = personWho(ctx, w.need);
       return runWait(p.isViewer ? 'you' : 'person', p.who, w.act, `${w.rule} (${w.ref})`, {
         ref: w.issueKey ?? null,
       });
@@ -70,7 +83,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   const key = f.issue?.key ?? null;
   if (f.question) {
     return person(ctx, {
-      admin: f.question.admin,
+      need: f.question.admin ? 'admin' : 'write',
       act: 'answer the question',
       ref: `question ${f.question.id}${f.question.issueKey ? ` on ${f.question.issueKey}` : ''} (blocker_kind human)`,
       issueKey: f.question.issueKey,
@@ -80,18 +93,18 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   }
   if (f.approval) {
     return person(ctx, {
-      admin: true,
+      need: 'approve',
       act: 'approve the release',
       ref: 'release_approvals: no decision (RELEASE_AWAITING_APPROVAL)',
       since: f.approval.requestedAt,
-      rule: 'the release waits on a pending approval, which takes a project admin person',
+      rule: 'the release waits on a pending approval, which a holder of releases.approve decides',
     });
   }
   if (f.run.status === 'paused') {
     const pause = describePause(f.run.pauseReason);
     if (pause.resumer === 'operator') {
       return person(ctx, {
-        admin: false,
+        need: 'write',
         act: 'resume the run',
         ref: f.run.pauseReason ? `pauseReason ${f.run.pauseReason}` : 'paused by a person',
         since: f.run.updatedAt,
@@ -108,7 +121,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   const job = f.job;
   if (job?.status === 'held' && job.hold && !holdReleasesItself(job.hold)) {
     return person(ctx, {
-      admin: false,
+      need: 'write',
       act: 'resume the job',
       ref: `job held: ${job.hold.reason}`,
       since: new Date(job.hold.heldAt),
@@ -117,7 +130,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind === 'human') {
     return person(ctx, {
-      admin: false,
+      need: 'write',
       act: f.ledger.waitingOn ?? 'answer the run',
       ref: 'run ledger: work blocked, blockerKind human',
       since: f.ledger.observedAt,
@@ -126,7 +139,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   }
   if (key && f.issue && (f.issue.status === 'needs_info' || f.issue.status === 'on_hold')) {
     return person(ctx, {
-      admin: false,
+      need: 'write',
       act: f.issue.status === 'needs_info' ? 'answer a question' : 'resume it',
       ref: `${key} at ${f.issue.status}`,
       issueKey: key,

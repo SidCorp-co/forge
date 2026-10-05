@@ -191,6 +191,8 @@ export interface ScheduleStanding
 	/** Trailing failed fires, a no-device skip counted and already-applied not (alert A5's rule). */
 	streak: number;
 	lastFire: ScheduleLastFire | null;
+	/** What the viewer may do: edit it (pause and fix included), and take it over when it is not theirs. */
+	viewerMay: { edit: boolean; takeOver: boolean };
 	createdAt: string;
 }
 

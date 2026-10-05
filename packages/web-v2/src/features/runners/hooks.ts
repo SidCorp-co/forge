@@ -91,19 +91,6 @@ export function useSetDeviceDisabled() {
 	});
 }
 
-export function useInitPairing() {
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (deviceLabel: string) => runnersApi.initPairing(deviceLabel),
-		onError: (err) =>
-			toast({
-				title: "Could not mint code",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
 export function useRenameDevice() {
 	const qc = useQueryClient();
 	const { toast } = useToast();

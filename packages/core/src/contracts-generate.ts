@@ -1,11 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalJson } from './canonical.js';
-import { enterHermeticEnv } from './hermetic-env.js';
+import { canonicalJson } from './api-contract/canonical.js';
+import { enterHermeticEnv } from './api-contract/hermetic-env.js';
 
-const GENERATOR = 'packages/core/src/api-contract/generate.ts';
-const DEFAULT_OUT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'contracts');
+const GENERATOR = 'packages/core/src/contracts-generate.ts';
+const DEFAULT_OUT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'contracts');
 const API_ARTIFACT = 'forge-api.openapi.json';
 const MCP_ARTIFACT = 'forge-mcp.tools.json';
 
@@ -23,11 +23,11 @@ function outDir(argv: string[]): string {
 enterHermeticEnv();
 
 const out = outDir(process.argv.slice(2));
-const { app } = await import('../index.js');
-const { mcpTools, toolListing } = await import('../mcp/index.js');
-const { buildApiContract, UNDECLARED_RESPONSE } = await import('./openapi.js');
-const { buildMcpContract } = await import('./mcp-tools.js');
-const { undeclaredSourceReads } = await import('./request-reads.js');
+const { app } = await import('./index.js');
+const { mcpTools, toolListing } = await import('./mcp/index.js');
+const { buildApiContract, UNDECLARED_RESPONSE } = await import('./api-contract/openapi.js');
+const { buildMcpContract } = await import('./api-contract/mcp-tools.js');
+const { undeclaredSourceReads } = await import('./api-contract/request-reads.js');
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const api = buildApiContract(app.routes, {

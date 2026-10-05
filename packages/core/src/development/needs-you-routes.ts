@@ -5,7 +5,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { needsYouViewerOf, readNeedsYou } from './needs-you.js';
+import { readNeedsYou } from './needs-you.js';
+import { needsYouViewerOf } from './needs-you-viewer.js';
 
 const noQuery = z.strictObject({});
 

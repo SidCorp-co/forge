@@ -497,7 +497,7 @@ export interface FeedbackView extends FeedbackSummary {
 	/** Proposed triage suggestions waiting on a person. */
 	openSuggestions: number;
 	/** What the viewer may do now; a refusal still names why when they try anyway. */
-	can: { triage: boolean; verify: boolean; redact: boolean };
+	can: { triage: boolean; verify: boolean; reopen: boolean; redact: boolean };
 	sensitive: boolean;
 }
 

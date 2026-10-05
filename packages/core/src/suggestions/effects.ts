@@ -11,17 +11,12 @@ import { requirementKey } from '@forge/contracts/requirements';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
-import { insertComment } from '../comments/index.js';
 import type { Tx } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn, triageIn } from '../feedback/index.js';
-import { activeIssuePrefix, emitIssueFieldUpdate, setIssueTriage } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/index.js';
-import { emitEvent } from '../outbox/index.js';
 import {
   createRequirementIn,
   newDraftRevisionIn,
@@ -29,6 +24,7 @@ import {
   rowIn,
 } from '../requirements/index.js';
 import { breakdownEffect } from './breakdown.js';
+import { authorOf, issueTriageEffect } from './issue-triage-effect.js';
 import { type Row, type SuggestionActor, suggestionKernelActor, targetOfRow } from './read.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
@@ -45,11 +41,6 @@ const undecided = (kind: string, path: string, what: string): Refusal => ({
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,
 });
 
-// A revision an accepted suggestion carries was written by its producer, not by the person
-// who accepted it; the accept is recorded on the suggestion row (decided_by)
-const authorOf = (row: Row, actor: SuggestionActor): SuggestionActor =>
-  row.producerId ? { userId: row.producerId, agency: actor.agency } : actor;
-
 // Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
 // of its own, so the accepted row at its base revision IS the readiness result an agree reads
 async function readinessEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
@@ -64,86 +55,6 @@ async function readinessEffect(tx: Tx, projectId: string, row: Row): Promise<Eff
       revision: row.baseRevision,
       ready: failed.length === 0,
       failed,
-    },
-  };
-}
-
-async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
-  const [issue] = await tx
-    .select()
-    .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
-    .for('update');
-  if (!issue) throw new Error(`suggestions: issue ${issueId} vanished under its suggestion`);
-  return issue;
-}
-
-type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['parse']>;
-
-// Decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
-// feedback-triage design names, priority, category and complexity; its free-text `route` is not an
-// effect, so it is kept as a note comment on the issue rather than refused or dropped
-function issueTriageOf(p: IssueTriage, suggestionId: string) {
-  const set: Partial<Pick<typeof issues.$inferInsert, 'priority' | 'category' | 'complexity'>> = {};
-  if (p.priority) set.priority = p.priority;
-  if (p.category !== undefined) set.category = p.category;
-  if (p.complexity) set.complexity = p.complexity;
-  const routeNote =
-    p.route === undefined
-      ? null
-      : `Triage route (suggestion ${suggestionId}): ${p.route}\n\n${p.note}`;
-  return { set, routeNote };
-}
-
-async function issueTriageEffect(
-  tx: Tx,
-  projectId: string,
-  row: Row,
-  actor: SuggestionActor,
-): Promise<EffectWritten> {
-  const { set, routeNote } = issueTriageOf(
-    SUGGESTION_PAYLOADS.triage.schema.parse(row.payload),
-    row.id,
-  );
-  const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
-  await setIssueTriage(tx, before.id, set);
-  const who = { type: 'user' as const, id: actor.userId, agency: actor.agency };
-  const after = await issueRowOf(tx, projectId, before.id);
-  await emitIssueFieldUpdate(tx, { before, after, written: Object.keys(set), actor: who });
-  const note = routeNote
-    ? await insertComment(
-        {
-          issueId: before.id,
-          authorId: authorOf(row, actor).userId,
-          authorDeviceId: null,
-          body: routeNote,
-          format: 'markdown',
-          parentId: null,
-          intent: 'note',
-        },
-        tx,
-      )
-    : null;
-  if (note) {
-    await emitEvent(tx, 'comment.created', {
-      issueId: before.id,
-      projectId,
-      actor: who,
-      authored: row.producerKind === 'person' ? 'human' : 'agent',
-      commentId: note.row.id,
-      body: note.row.body,
-      parentId: null,
-    });
-  }
-  return {
-    refusals: null,
-    effect: {
-      issueId: before.id,
-      issue: formatIssueRef(await activeIssuePrefix(projectId), before.issSeq),
-      priority: set.priority ?? null,
-      category: set.category ?? null,
-      complexity: set.complexity ?? null,
-      routeCommentId: note?.row.id ?? null,
     },
   };
 }

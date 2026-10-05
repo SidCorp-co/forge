@@ -83,7 +83,16 @@
       "kind": "domain",
       "context": "execution",
       "owns": ["agentReports"],
-      "serves": ["REQ-16", "automation#report", "automation#triage", "automation#promote", "REQ-7"]
+      "serves": [
+        "REQ-16",
+        "automation#report",
+        "automation#triage",
+        "automation#promote",
+        "REQ-7",
+        "automation#dismiss",
+        "automation#file",
+        "automation#reports_table"
+      ]
     },
     "agent-sessions": {
       "kind": "kernel",
@@ -101,11 +110,12 @@
         "agent-run-standing#handed_back",
         "issue-delivery#ev-run-ended",
         "personal-data-flow#ds-transcripts",
-        "REQ-24"
+        "REQ-24",
+        "issue-delivery#rule-return"
       ]
     },
     "api-contract": {
-      "kind": "door",
+      "kind": "platform",
       "context": "platform",
       "serves": ["core-components#plat-runtime"]
     },
@@ -145,7 +155,14 @@
         "scheduleRuns",
         "schedules"
       ],
-      "serves": ["REQ-16", "automation"]
+      "serves": [
+        "REQ-16",
+        "automation#wait_triage",
+        "automation#skipped",
+        "automation#streak",
+        "automation#settle",
+        "automation#screen"
+      ]
     },
     "body": {
       "kind": "platform",
@@ -159,7 +176,8 @@
       "serves": [
         "workflow-step-health#in-node-decisions",
         "design-reconciliation#decision",
-        "personal-data-flow#ds-issues"
+        "personal-data-flow#ds-issues",
+        "design-reconciliation#decide"
       ]
     },
     "conversations": {
@@ -277,7 +295,8 @@
         "agent-run-standing#master",
         "personal-data-flow#ds-box-creds",
         "personal-data-flow#pr-provision",
-        "REQ-25"
+        "REQ-25",
+        "issue-delivery#rule-return"
       ]
     },
     "ecosystem": {
@@ -320,7 +339,20 @@
         "REQ-7",
         "feedback-lifecycle",
         "feedback-triage#intake",
-        "requirement-to-delivery#fb-filed"
+        "requirement-to-delivery#fb-filed",
+        "feedback-triage#file",
+        "feedback-triage#decide",
+        "feedback-triage#issue",
+        "feedback-triage#upgrade",
+        "feedback-triage#revision",
+        "feedback-triage#draft",
+        "feedback-triage#duplicate",
+        "feedback-triage#answer",
+        "feedback-triage#decline",
+        "feedback-triage#resolve",
+        "feedback-triage#verify-ask",
+        "feedback-triage#verify",
+        "feedback-triage#dedup"
       ]
     },
     "guides": {
@@ -455,7 +487,8 @@
         "issue-lifecycle",
         "issue-delivery#issue",
         "issue-delivery#task-lease",
-        "github-merge-sequence#m-stamp"
+        "github-merge-sequence#m-stamp",
+        "workflow-step-health#in-builds"
       ]
     },
     "jobs": {
@@ -557,14 +590,7 @@
         "issue-lifecycle",
         "requirement-lifecycle#agreed",
         "requirement-lifecycle#deferred",
-        "requirement-lifecycle#delivered",
         "requirement-lifecycle#draft",
-        "requirement-lifecycle#in_delivery",
-        "requirement-lifecycle#rev_current",
-        "requirement-lifecycle#rev_draft",
-        "requirement-lifecycle#rev_proposed",
-        "requirement-lifecycle#rev_superseded",
-        "requirement-lifecycle#revisions",
         "requirement-lifecycle#start",
         "issue-delivery#rule-close"
       ]
@@ -630,6 +656,7 @@
     "middleware": {
       "kind": "platform",
       "context": "platform",
+      "owns": ["rateLimitPoints"],
       "serves": [
         "via:agent-reports",
         "via:agent-sessions",
@@ -692,7 +719,34 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["onboardings"],
-      "serves": ["REQ-10", "project-onboarding"]
+      "serves": [
+        "REQ-10",
+        "project-onboarding#core",
+        "project-onboarding#created",
+        "project-onboarding#reanalyze",
+        "project-onboarding#checkout",
+        "project-onboarding#code-map",
+        "project-onboarding#open-items",
+        "project-onboarding#designs",
+        "project-onboarding#may-start",
+        "project-onboarding#which-designs",
+        "project-onboarding#answer-lands",
+        "project-onboarding#what-next",
+        "project-onboarding#approve-guard",
+        "project-onboarding#running",
+        "project-onboarding#onboarded",
+        "project-onboarding#expect-answers",
+        "project-onboarding#unanswered",
+        "project-onboarding#case",
+        "project-onboarding#analyse",
+        "project-onboarding#draft",
+        "project-onboarding#ask",
+        "project-onboarding#revise",
+        "project-onboarding#mapped",
+        "project-onboarding#revised",
+        "project-onboarding#map-result",
+        "project-onboarding#draft-result"
+      ]
     },
     "orgs": {
       "kind": "domain",
@@ -729,7 +783,6 @@
       "serves": [
         "REQ-1",
         "issue-delivery#act-build",
-        "workflow-step-health#in-builds",
         "issue-delivery#rule-dispatch",
         "issue-delivery#rule-wedge"
       ]
@@ -756,7 +809,7 @@
       "kind": "domain",
       "context": "project-config",
       "owns": ["projectInvitations", "projectMasterCharters", "projects"],
-      "serves": ["issue-delivery#issue", "project-onboarding#created"]
+      "serves": ["project-onboarding#created"]
     },
     "prompt": {
       "kind": "domain",
@@ -771,7 +824,8 @@
         "REQ-10",
         "project-onboarding#ask",
         "project-onboarding#submitted",
-        "project-onboarding#card"
+        "project-onboarding#card",
+        "project-onboarding#batch-result"
       ]
     },
     "questions": {
@@ -874,7 +928,19 @@
       "kind": "domain",
       "context": "execution",
       "owns": ["scheduleRuns", "schedules"],
-      "serves": ["REQ-16", "automation#declare", "automation#tick", "automation#route"]
+      "serves": [
+        "REQ-16",
+        "automation#declare",
+        "automation#tick",
+        "automation#route",
+        "automation#run_now",
+        "automation#skipped",
+        "automation#agent_runs",
+        "automation#fix",
+        "automation#fires_table",
+        "automation#settle",
+        "automation#streak"
+      ]
     },
     "skills": {
       "kind": "domain",
@@ -917,8 +983,12 @@
         "design-reconciliation#observation",
         "design-reconciliation#cited",
         "design-reconciliation#decision",
-        "design-reconciliation#decide",
-        "design-reconciliation#revise-design"
+        "design-reconciliation#revise-design",
+        "project-onboarding#decided",
+        "project-onboarding#approve",
+        "project-onboarding#proposed",
+        "project-onboarding#revise-result",
+        "project-onboarding#decision-result"
       ]
     },
     "ws": {
@@ -968,7 +1038,14 @@
       "serves": ["REQ-5", "REQ-9"]
     },
     "feedback": {
-      "serves": ["REQ-7", "feedback-triage"]
+      "serves": [
+        "REQ-7",
+        "feedback-triage#file",
+        "feedback-triage#decide",
+        "feedback-triage#decline",
+        "feedback-triage#verify",
+        "feedback-triage#verify-ask"
+      ]
     },
     "guides": {
       "serves": ["REQ-23"]
@@ -992,7 +1069,12 @@
       "serves": ["REQ-11", "REQ-14"]
     },
     "onboarding": {
-      "serves": ["REQ-10", "project-onboarding#running"]
+      "serves": [
+        "REQ-10",
+        "project-onboarding#running",
+        "project-onboarding#card",
+        "project-onboarding#approved"
+      ]
     },
     "operator": {
       "serves": ["REQ-22"]
@@ -1004,7 +1086,7 @@
       "serves": ["REQ-11"]
     },
     "pairing": {
-      "serves": ["personal-data-flow#ds-box-creds", "issue-delivery#box"]
+      "serves": ["personal-data-flow#ds-box-creds"]
     },
     "pipeline": {
       "serves": ["REQ-1", "issue-delivery#act-build"]
@@ -1028,7 +1110,7 @@
       "serves": ["REQ-4", "REQ-12"]
     },
     "runners": {
-      "serves": ["REQ-15", "issue-delivery#box"]
+      "serves": ["REQ-15"]
     },
     "schedules": {
       "serves": ["REQ-16"]
@@ -1078,7 +1160,7 @@
       ]
     },
     "crates/runner-core": {
-      "serves": ["REQ-15", "agent-run-standing#handed_back", "issue-delivery#rule-return"]
+      "serves": ["REQ-15", "agent-run-standing#handed_back"]
     },
     "crates/runner-workspace": {
       "serves": ["project-onboarding#checkout", "personal-data-flow#ds-box-creds"]

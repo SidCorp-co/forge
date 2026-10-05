@@ -5,7 +5,6 @@ import {
 import {
   RUN_EVENTS_MAX,
   RUN_LIVE_STATES,
-  RUN_STUCK_AFTER_MS,
   type RunActorType,
   type RunAttemptRow,
   type RunEvent,
@@ -19,25 +18,12 @@ import {
 import { needsViewer } from '@forge/contracts/standing';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { SESSION_SILENCE_TIMEOUT_MS } from '../devices/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import {
-  gateReasonsForQueuedJobsIn,
-  getLoopThresholds,
-  killGraceMs,
-  RESULT_QUIET_MINUTES,
-} from '../jobs/index.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { readMasterStanding } from '../masters/read.js';
-import { holds } from '../permissions/index.js';
 import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
 import { runStandingOf, type StandingContext } from './standing.js';
-
-interface RunViewer {
-  userId: string;
-}
+import { contextFor, type RunViewer } from './viewer-context.js';
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 const inList = (values: readonly string[]) =>
@@ -54,46 +40,6 @@ const SCOPE_SQL: Record<RunStandingScope, SQL> = {
 
 const SCOPE_RULE =
   'scope reads the pipeline run status: live is running or paused, finished is completed, failed or cancelled; a run whose own status is still live while its root ended is served under live as stuck, rule disagreement (run-live-root-ended)';
-
-async function viewerOf(viewer: RunViewer | null, projectId: string) {
-  if (!viewer) return null;
-  const [access, people] = await Promise.all([
-    effectiveProjectRole(viewer.userId, projectId),
-    peopleOf([viewer.userId]),
-  ]);
-  // A person's wait addresses its viewer as "You" only when the viewer is a person.
-  const person = people.get(viewer.userId)?.kind !== 'agent';
-  return {
-    canWrite: person && access !== null && holds(access, 'project.write'),
-    isAdmin: person && access !== null && holds(access, 'project.admin'),
-  };
-}
-
-async function contextFor(projectId: string, viewer: RunViewer | null) {
-  const [master, who, queuedGates] = await Promise.all([
-    readMasterStanding(projectId),
-    viewerOf(viewer, projectId),
-    gateReasonsForQueuedJobsIn([projectId]),
-  ]);
-  const slots =
-    master.slots && master.slots.max !== null
-      ? { inUse: master.slots.inUse, max: master.slots.max }
-      : null;
-  const ctx: StandingContext = {
-    now: new Date(),
-    viewer: who,
-    slots,
-    stuckAfterMs: RUN_STUCK_AFTER_MS,
-    queuedGates,
-    silenceReapMs: SESSION_SILENCE_TIMEOUT_MS,
-    jobHeartbeatMs: getLoopThresholds().heartbeatMs,
-    jobAckMs: getLoopThresholds().ackMs,
-    jobQueueMs: getLoopThresholds().queueMs,
-    resultQuietMs: RESULT_QUIET_MINUTES * 60_000,
-    killGraceMs: killGraceMs(),
-  };
-  return { master, ctx };
-}
 
 async function baseRuns(
   projectId: string,

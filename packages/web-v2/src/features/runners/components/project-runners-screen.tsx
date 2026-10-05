@@ -50,7 +50,6 @@ import {
 	useAssignDeviceToProject,
 	useClearRunnerError,
 	useDevices,
-	useInitPairing,
 	useProjectRunners,
 	useReprovision,
 	useRunnerActivity,
@@ -487,7 +486,6 @@ function AssignDevice({
 }) {
 	const devices = useDevices();
 	const assign = useAssignDeviceToProject(projectId);
-	const initPairing = useInitPairing();
 	const [deviceId, setDeviceId] = useState("");
 	const [repoPath, setRepoPath] = useState("");
 
@@ -584,31 +582,7 @@ function AssignDevice({
 						<p className="fg-body-sm mt-1.5 text-subtle">
 							Run it on the device and approve the code it prints — the device
 							appears in the picker above. Assign it here while setup waits; it
-							then gets the checkout and installs the service on its own. Or{" "}
-							<button
-								type="button"
-								className="text-accent hover:underline"
-								onClick={() => initPairing.mutate("forge-runner")}
-							>
-								generate a pairing code
-							</button>
-							{initPairing.data && (
-								<>
-									{" "}
-									— code{" "}
-									<span className="font-mono font-semibold">
-										{initPairing.data.pairing_code}
-									</span>
-									, approve at{" "}
-									<a
-										href={initPairing.data.verify_url}
-										className="text-accent hover:underline"
-									>
-										{initPairing.data.verify_url}
-									</a>
-								</>
-							)}
-							.
+							then gets the checkout and installs the service on its own.
 						</p>
 					</div>
 				</div>

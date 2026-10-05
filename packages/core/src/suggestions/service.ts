@@ -1,6 +1,6 @@
 /**
- * Suggestions (workflow `suggestion-lifecycle` rev 2): what the BA assistant, or an agent proposing a
- * breakdown, writes instead of changing anything. A person accepts or rejects; the accept writes the
+ * Suggestions (workflow `suggestion-lifecycle` rev 3): what the BA assistant, a master or a member
+ * writes instead of changing anything. A holder of suggestions.approve accepts or rejects; the accept writes the
  * effect in the same transaction, compare-and-set on the target head, and the effect points back
  * (requirement_revisions.from_suggestion_id). A suggestion never makes anything current: a revision
  * it carries lands as a draft. Proposing and revising are `propose.ts`, the guards `rules.ts`, the

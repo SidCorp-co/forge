@@ -1,4 +1,4 @@
-import type { ScheduleRefusalCode } from '@forge/contracts/schedules';
+import { type ScheduleRefusalCode, scheduleWritePermission } from '@forge/contracts/schedules';
 import { and, asc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { SessionAsker } from '../agent-sessions/index.js';
@@ -155,7 +155,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  requireHeld(access, 'project.admin');
+  requireHeld(access, scheduleWritePermission(row.ownerId, actorUserId), 'changing a schedule');
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
@@ -210,14 +210,14 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
 
 export async function deleteSchedule(id: string, actorUserId: string): Promise<void> {
   const [row] = await db
-    .select({ id: schedules.id, projectId: schedules.projectId })
+    .select({ id: schedules.id, projectId: schedules.projectId, ownerId: schedules.ownerId })
     .from(schedules)
     .where(eq(schedules.id, id))
     .limit(1);
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  requireHeld(access, 'project.admin');
+  requireHeld(access, scheduleWritePermission(row.ownerId, actorUserId), 'deleting a schedule');
 
   await db.delete(schedules).where(eq(schedules.id, id));
 }

@@ -123,7 +123,8 @@ export interface RunFacts {
 
 export interface StandingContext {
   now: Date;
-  viewer: { canWrite: boolean; isAdmin: boolean } | null;
+  /** canWrite and isAdmin address a person-only wait; mayApprove follows releases.approve, agent tokens included. */
+  viewer: { canWrite: boolean; isAdmin: boolean; mayApprove: boolean } | null;
   slots: { inUse: number; max: number } | null;
   stuckAfterMs: number;
   /** Why dispatch skips each queued job of the project now (`jobs:gateReasonsForQueuedJobsIn`), by job id:
