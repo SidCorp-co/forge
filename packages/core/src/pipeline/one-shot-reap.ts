@@ -5,8 +5,8 @@ import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { afterCommit, db } from '../db/client.js';
+import { agentSessions, pipelineRuns } from '../db/schema.js';
 import { kindTuple } from '../db/session-vocabulary.js';
 import { logger } from '../lib/logger.js';
 import {
@@ -16,7 +16,7 @@ import {
   SWEEP_SESSION_COLUMNS,
   transitionSessions,
 } from './ports.js';
-import { closeRunIfOneShot } from './runs.js';
+import { closeRunIfOneShotInTx } from './runs.js';
 import type { SweepScope } from './sweeper.js';
 
 export interface OneShotRunReapResult {
@@ -74,42 +74,57 @@ export async function reapOrphanedOneShotRuns(
   let reaped = 0;
   for (const row of candidates) {
     try {
-      // A session already completed or failed is left as-is — the run still
-      // needs closing.
-      const flipped = (
-        await transitionSessions(db, {
-          returning: SWEEP_SESSION_COLUMNS,
-          to: 'failed',
-          set: { failureReason: 'heartbeat_timeout', updatedAt: now },
-          where: and(
-            eq(agentSessions.pipelineRunId, row.id),
-            inArray(agentSessions.status, LIVE_SESSION_STATUSES),
-          ),
-          reason: 'heartbeat_timeout',
-          actor: { type: 'sweeper' },
-          source: 'sweeper',
-        })
-      ).rows;
-      for (const s of flipped) {
-        broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
-          status: 'failed',
-          failureReason: 'heartbeat_timeout',
+      // The run is locked before its sessions move, and they and its close are one transaction:
+      // committed apart, a failed close left the sessions ended under a run still open (ISS-219).
+      const closed = await db.transaction(async (tx) => {
+        const [open] = await tx
+          .select({ id: pipelineRuns.id })
+          .from(pipelineRuns)
+          .where(
+            and(eq(pipelineRuns.id, row.id), inArray(pipelineRuns.status, ['running', 'paused'])),
+          )
+          .for('update');
+        if (!open) return false;
+        // A session already completed or failed is left as-is — the run still
+        // needs closing.
+        const flipped = (
+          await transitionSessions(tx, {
+            returning: SWEEP_SESSION_COLUMNS,
+            to: 'failed',
+            set: { failureReason: 'heartbeat_timeout', updatedAt: now },
+            where: and(
+              eq(agentSessions.pipelineRunId, row.id),
+              inArray(agentSessions.status, LIVE_SESSION_STATUSES),
+            ),
+            reason: 'heartbeat_timeout',
+            actor: { type: 'sweeper' },
+            source: 'sweeper',
+          })
+        ).rows;
+        afterCommit(() => {
+          for (const s of flipped) {
+            broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+              status: 'failed',
+              failureReason: 'heartbeat_timeout',
+            });
+          }
         });
-      }
 
-      const sessions = await db
-        .select({ status: agentSessions.status })
-        .from(agentSessions)
-        .where(eq(agentSessions.pipelineRunId, row.id));
-      const anyCompleted = sessions.some(
-        (s) => s.status === 'completed' || s.status === 'completed_via_recovery',
-      );
-      const anyFailed = sessions.some(
-        (s) => s.status === 'failed' || s.status === 'cancelled_stale',
-      );
-      const outcome = oneShotRunOutcome({ anyCompleted, anyFailed });
+        const sessions = await tx
+          .select({ status: agentSessions.status })
+          .from(agentSessions)
+          .where(eq(agentSessions.pipelineRunId, row.id));
+        const anyCompleted = sessions.some(
+          (s) => s.status === 'completed' || s.status === 'completed_via_recovery',
+        );
+        const anyFailed = sessions.some(
+          (s) => s.status === 'failed' || s.status === 'cancelled_stale',
+        );
+        const outcome = oneShotRunOutcome({ anyCompleted, anyFailed });
 
-      await closeRunIfOneShot(row.id, outcome);
+        return closeRunIfOneShotInTx(tx, row.id, outcome);
+      });
+      if (!closed) continue;
       reaped++;
     } catch (err) {
       logger.error(

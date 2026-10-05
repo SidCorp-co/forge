@@ -1,3 +1,22 @@
+/**
+ * The I1 trigger's refusal (0403): a job or session written active under a terminal run raises
+ * SQLSTATE 23514 with a message led by `ACTIVE_CHILD_UNDER_TERMINAL_RUN`. Its message, or null.
+ */
+export function activeChildUnderTerminalRun(err: unknown): string | null {
+  for (let e: unknown = err, depth = 0; e && typeof e === 'object' && depth < 3; depth++) {
+    const { code, message, cause } = e as { code?: unknown; message?: unknown; cause?: unknown };
+    if (
+      code === '23514' &&
+      typeof message === 'string' &&
+      message.startsWith('ACTIVE_CHILD_UNDER_TERMINAL_RUN')
+    ) {
+      return message;
+    }
+    e = cause;
+  }
+  return null;
+}
+
 export function isUniqueViolation(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const e = err as { code?: unknown; cause?: { code?: unknown } };

@@ -5,17 +5,24 @@ import { db, type Tx } from '../db/client.js';
 import { agentSessions, jobEvents, jobs, skills } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { transition } from '../lifecycle/index.js';
+import { assertRunAcceptsWork } from '../pipeline/index.js';
 import type { JobGateRow } from './job-queries.js';
 import { jobsPorts } from './ports.js';
 
-/** A job created by REST, queued on the given run; answers the whole row. */
+/**
+ * A job created by REST, queued on the given run; answers the whole row. A run that no longer
+ * takes work refuses it `RUN_NOT_ACCEPTING_WORK`.
+ */
 export async function createQueuedJob(
   values: Omit<typeof jobs.$inferInsert, 'status'>,
 ): Promise<typeof jobs.$inferSelect> {
-  const [inserted] = await db
-    .insert(jobs)
-    .values({ ...values, status: 'queued' })
-    .returning();
+  const [inserted] = await db.transaction(async (tx) => {
+    await assertRunAcceptsWork(tx, values.pipelineRunId);
+    return tx
+      .insert(jobs)
+      .values({ ...values, status: 'queued' })
+      .returning();
+  });
   if (!inserted) throw new Error('jobs: insert returned no row');
   return inserted;
 }

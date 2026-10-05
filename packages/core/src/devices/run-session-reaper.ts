@@ -13,7 +13,7 @@ import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { closeRunIfOneShot } from '../pipeline/index.js';
+import { closeRunIfOneShotInTx, lockRunForClose } from '../pipeline/index.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 interface ReapedRunSession {
@@ -43,22 +43,27 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     const sessionId = String(row.id);
     const runId = String(row.pipeline_run_id);
     const issueKeys = (row.issue_keys ?? []) as string[];
-    const flipped = (
-      await transitionSessions(db, {
-        to: 'failed',
-        set: {
-          failureReason: 'runner_unreachable',
-          failureDetail: 'run-session-reaper: heartbeat stopped',
-          updatedAt: new Date(),
-        },
-        where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
-        reason: 'run_session_box_silent',
-        actor: { type: 'system' },
-        source: 'run-session-reaper',
-      })
-    ).rows;
-    if (flipped.length === 0) continue;
-    await closeRunIfOneShot(runId, 'failed');
+    // The run is locked first and closed with the session's flip, in one transaction (ISS-219).
+    const flipped = await db.transaction(async (tx) => {
+      await lockRunForClose(tx, runId);
+      const rows = (
+        await transitionSessions(tx, {
+          to: 'failed',
+          set: {
+            failureReason: 'runner_unreachable',
+            failureDetail: 'run-session-reaper: heartbeat stopped',
+            updatedAt: new Date(),
+          },
+          where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
+          reason: 'run_session_box_silent',
+          actor: { type: 'system' },
+          source: 'run-session-reaper',
+        })
+      ).rows;
+      if (rows.length > 0) await closeRunIfOneShotInTx(tx, runId, 'failed');
+      return rows.length > 0;
+    });
+    if (!flipped) continue;
     logger.warn(
       { runSessionId: sessionId, runId, issues: issueKeys },
       'run-session-reaper: released a run whose box stopped answering',

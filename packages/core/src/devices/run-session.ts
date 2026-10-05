@@ -36,7 +36,13 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
-import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
+import {
+  closeRunIfOneShot,
+  closeRunIfOneShotInTx,
+  insertOneShotRun,
+  lockRunForClose,
+  type OneShotRunSpec,
+} from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
@@ -353,24 +359,31 @@ export async function closeRunSession(args: {
     return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
   }
 
-  const closed = await transitionSessions(db, {
-    to: failing ? 'failed' : 'completed',
-    set: {
-      failureReason: failing ? 'agent_exited_without_result' : null,
-      failureDetail: args.detail ?? null,
-      updatedAt: new Date(),
-    },
-    where: and(eq(agentSessions.id, args.sessionId), eq(agentSessions.status, row.status)),
-    reason: `run_session_${args.outcome}`,
-    actor: { type: 'system' },
-    source: 'run-session-close',
+  // The run is locked first and closed with the session's flip, in one transaction (ISS-219).
+  const closed = await db.transaction(async (tx) => {
+    if (row.runId) await lockRunForClose(tx, row.runId);
+    const flip = await transitionSessions(tx, {
+      to: failing ? 'failed' : 'completed',
+      set: {
+        failureReason: failing ? 'agent_exited_without_result' : null,
+        failureDetail: args.detail ?? null,
+        updatedAt: new Date(),
+      },
+      where: and(eq(agentSessions.id, args.sessionId), eq(agentSessions.status, row.status)),
+      reason: `run_session_${args.outcome}`,
+      actor: { type: 'system' },
+      source: 'run-session-close',
+    });
+    if (flip.rows.length > 0 && row.runId) {
+      await closeRunIfOneShotInTx(tx, row.runId, failing ? 'failed' : 'completed');
+    }
+    return flip;
   });
   if (closed.rows.length === 0) {
     return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
   }
 
   const { returned } = closed;
-  if (row.runId) await closeRunIfOneShot(row.runId, failing ? 'failed' : 'completed');
   logger.info(
     { runSessionId: args.sessionId, outcome: args.outcome },
     'run-session: closed by the box',

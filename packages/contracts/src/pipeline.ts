@@ -17,6 +17,8 @@ export const PIPELINE_REFUSAL_CODES = [
 	"PHASE_ATTEMPT_CONFLICT",
 	"PHASE_REF_NOT_IN_RUN",
 	"NO_MASTER_SERVING",
+	"RUN_NOT_ACCEPTING_WORK",
+	"ACTIVE_CHILD_UNDER_TERMINAL_RUN",
 ] as const;
 export type PipelineRefusalCode = (typeof PIPELINE_REFUSAL_CODES)[number];
 export const PIPELINE_REFUSAL_STATUSES = {
@@ -27,6 +29,8 @@ export const PIPELINE_REFUSAL_STATUSES = {
 	PHASE_NOT_OPEN: 409,
 	PHASE_ATTEMPT_CONFLICT: 409,
 	NO_MASTER_SERVING: 409,
+	RUN_NOT_ACCEPTING_WORK: 409,
+	ACTIVE_CHILD_UNDER_TERMINAL_RUN: 409,
 } as const satisfies RefusalStatuses<PipelineRefusalCode>;
 
 /** How long a dispatched deploy may run before its confirmation is overdue. */

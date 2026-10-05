@@ -84,6 +84,11 @@ pub enum Refusal {
     /// This device's binding to the project names no checkout; core's sentence says how to bind one.
     CheckoutUnbound(String),
     ReleaseLabelMissing,
+    /// The job's run is closed or paused, so the work it held is over: the
+    /// claim is skipped and a pane already started for it is stopped, never
+    /// retried. Carries the word core used (`run_paused`, `run_not_running`,
+    /// `run_not_accepting_work`) and core's sentence.
+    RunNotAccepting(&'static str, String),
     Unknown(String),
 }
 
@@ -101,6 +106,14 @@ impl Refusal {
             "runner_unbound" => Self::RunnerUnbound,
             "checkout_unbound" => Self::CheckoutUnbound(detail.unwrap_or_default().to_string()),
             "release_label_missing" => Self::ReleaseLabelMissing,
+            "run_paused" | "run_not_running" | "run_not_accepting_work" => {
+                let word = match raw {
+                    "run_paused" => "run_paused",
+                    "run_not_running" => "run_not_running",
+                    _ => "run_not_accepting_work",
+                };
+                Self::RunNotAccepting(word, detail.unwrap_or_default().to_string())
+            }
             other => Self::Unknown(other.to_string()),
         }
     }
@@ -119,6 +132,7 @@ impl Refusal {
             Self::RunnerUnbound => "runner_unbound",
             Self::CheckoutUnbound(_) => "checkout_unbound",
             Self::ReleaseLabelMissing => "release_label_missing",
+            Self::RunNotAccepting(word, _) => word,
             Self::Unknown(raw) => raw,
         }
     }
@@ -131,6 +145,9 @@ impl Refusal {
             }
             Self::CheckoutUnbound(detail) if !detail.is_empty() => {
                 format!("checkout_unbound: {detail}")
+            }
+            Self::RunNotAccepting(word, detail) if !detail.is_empty() => {
+                format!("{word}: {detail}")
             }
             other => other.as_str().to_string(),
         }
@@ -273,11 +290,20 @@ pub async fn release(client: &CoreClient, job_id: Option<&str>, session_id: &str
 }
 
 /// A claim core refused under a `POOL_*` code, read as the reason the code names
-/// (`POOL_ALREADY_HELD` → `already_held`); `None` for any other refusal.
+/// (`POOL_ALREADY_HELD` → `already_held`), or under one of the two codes that
+/// say the job's run takes no more work — the kernel guard's
+/// `RUN_NOT_ACCEPTING_WORK` and the database trigger's
+/// `ACTIVE_CHILD_UNDER_TERMINAL_RUN` — read as `run_not_accepting_work`, so the
+/// work stops rather than reading as a failure to retry. `None` for any other.
 fn refused_claim(text: &str) -> Option<ClaimResponse> {
     let body: serde_json::Value = serde_json::from_str(text).ok()?;
     let code = body.pointer("/error/code")?.as_str()?;
-    let reason = code.strip_prefix("POOL_")?.to_ascii_lowercase();
+    let reason = match code {
+        "RUN_NOT_ACCEPTING_WORK" | "ACTIVE_CHILD_UNDER_TERMINAL_RUN" => {
+            "run_not_accepting_work".to_string()
+        }
+        _ => code.strip_prefix("POOL_")?.to_ascii_lowercase(),
+    };
     Some(ClaimResponse {
         ok: false,
         reason: Some(reason),
@@ -349,5 +375,37 @@ mod refused_claim_tests {
             r#"{"status":404,"detail":"not yours","error":{"code":"MASTER_SESSION_NOT_HELD"}}"#;
         assert!(refused_claim(body).is_none());
         assert!(refused_claim("not json").is_none());
+    }
+
+    #[test]
+    fn a_run_that_takes_no_more_work_is_a_refusal_not_an_error() {
+        for code in ["RUN_NOT_ACCEPTING_WORK", "ACTIVE_CHILD_UNDER_TERMINAL_RUN"] {
+            let body = format!(
+                r#"{{"status":409,"detail":"pipeline run r is cancelled","error":{{"code":"{code}"}}}}"#
+            );
+            let refused = refused_claim(&body).expect("a closed run is a claim refusal");
+            let refusal = Refusal::of(
+                refused.reason.as_deref().unwrap(),
+                refused.detail.as_deref(),
+            );
+            assert_eq!(
+                refusal,
+                Refusal::RunNotAccepting(
+                    "run_not_accepting_work",
+                    "pipeline run r is cancelled".into()
+                )
+            );
+            assert_eq!(
+                refusal.describe(),
+                "run_not_accepting_work: pipeline run r is cancelled"
+            );
+        }
+        let paused =
+            r#"{"status":409,"detail":"run r is paused","error":{"code":"POOL_RUN_PAUSED"}}"#;
+        let refused = refused_claim(paused).unwrap();
+        assert_eq!(
+            Refusal::of(refused.reason.as_deref().unwrap(), None).as_str(),
+            "run_paused"
+        );
     }
 }

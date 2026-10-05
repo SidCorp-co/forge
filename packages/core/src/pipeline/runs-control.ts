@@ -1,5 +1,3 @@
-import { RUN_MACHINE } from '@forge/contracts/run-machine';
-
 /**
  * ISS-102 — pause / resume / cancel transitions for `pipeline_runs`.
  *
@@ -17,10 +15,10 @@ import type { TransitionActor } from '../issues/index.js';
 import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type KernelActor, transition } from '../lifecycle/index.js';
+import type { KernelActor } from '../lifecycle/index.js';
 import { refusePipeline } from './refuse.js';
 import { pauseRun, resumeRun } from './run-pause.js';
-import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
+import { closeRunsInTx, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
@@ -66,7 +64,7 @@ interface CancelPipelineRunOptions {
   parkIssue?: boolean;
 }
 
-const FAILURE_REASON_PIPELINE_CANCELLED = 'pipeline_cancelled';
+const FAILURE_REASON_PIPELINE_CANCELLED = 'pipeline_cancelled' as const;
 
 function notFound(runId: string): Error {
   return refusePipeline('PIPELINE_RUN_NOT_FOUND', `pipeline run ${runId} was not found`);
@@ -178,22 +176,23 @@ export async function cancelPipelineRun(
   const cancelNow = new Date();
 
   const result = await db.transaction(async (tx) => {
-    const [updatedRun] = (
-      await transition(tx, RUN_MACHINE, {
-        to: 'cancelled',
-        set: { finishedAt: cancelNow, updatedAt: cancelNow },
-        where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-        reason: FAILURE_REASON_PIPELINE_CANCELLED,
-        actor: {
-          type: 'user',
-          agency: opts.actorAgency,
-          ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
-        },
-        source: 'runs-control',
-      })
-    ).rows;
+    const {
+      rows: [updatedRun],
+      cascades: [closed],
+    } = await closeRunsInTx(tx, {
+      to: 'cancelled',
+      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+      set: { finishedAt: cancelNow, updatedAt: cancelNow },
+      reason: FAILURE_REASON_PIPELINE_CANCELLED,
+      actor: {
+        type: 'user',
+        agency: opts.actorAgency,
+        ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
+      },
+      source: 'runs-control',
+    });
 
-    if (!updatedRun) {
+    if (!updatedRun || !closed) {
       const [current] = await tx
         .select()
         .from(pipelineRuns)
@@ -213,7 +212,7 @@ export async function cancelPipelineRun(
       throw runTerminal(current.status);
     }
 
-    const cascade = await cascadeCancelChildJobs(tx, runId, FAILURE_REASON_PIPELINE_CANCELLED);
+    const cascade = closed.result;
 
     return {
       run: updatedRun,

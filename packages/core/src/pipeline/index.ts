@@ -61,6 +61,7 @@ export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
+export { assertRunAcceptsWork } from './run-guard.js';
 export type { PauseResumer } from './run-pause.js';
 export {
   describePause,
@@ -78,6 +79,7 @@ export {
   closeOpenRunForIssue,
   closeRun,
   closeRunIfOneShot,
+  closeRunIfOneShotInTx,
   insertOneShotRun,
   type OneShotRunSpec,
   openIssueRun,
@@ -86,6 +88,7 @@ export {
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   setCurrentStep,
 } from './runs.js';
+export { lockRunForClose } from './runs-cascade.js';
 export {
   type ConcludedRunReapResult,
   type JoblessRunReapResult,

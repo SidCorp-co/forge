@@ -15,8 +15,10 @@ import {
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { traceStep } from '../lib/sentry.js';
 import {
+  assertRunAcceptsWork,
   capacityWedgeEntityId,
   classifyFailure,
   deriveActionFromKind,
@@ -26,6 +28,7 @@ import {
 } from '../pipeline/index.js';
 import type { RequiredCapabilities } from '../runners/index.js';
 import { onlineCapableDeviceIds } from '../runners/index.js';
+import { RUN_CLOSED } from './hold.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -267,22 +270,25 @@ async function insertRetryJob(
   retryAfterAt: Date,
 ): Promise<string> {
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
-  const [created] = await db
-    .insert(jobs)
-    .values({
-      projectId: job.projectId,
-      issueId: job.issueId,
-      pipelineRunId: job.pipelineRunId,
-      createdBy: job.createdBy,
-      type: job.type,
-      payload: { ...basePayload, [AUTO_RETRY_PAYLOAD_KEY]: next },
-      modelTier: job.modelTier,
-      status: 'queued',
-      attempts: job.attempts + 1,
-      retryOf: job.id,
-      retryAfterAt,
-    })
-    .returning({ id: jobs.id });
+  const [created] = await db.transaction(async (tx) => {
+    await assertRunAcceptsWork(tx, job.pipelineRunId);
+    return tx
+      .insert(jobs)
+      .values({
+        projectId: job.projectId,
+        issueId: job.issueId,
+        pipelineRunId: job.pipelineRunId,
+        createdBy: job.createdBy,
+        type: job.type,
+        payload: { ...basePayload, [AUTO_RETRY_PAYLOAD_KEY]: next },
+        modelTier: job.modelTier,
+        status: 'queued',
+        attempts: job.attempts + 1,
+        retryOf: job.id,
+        retryAfterAt,
+      })
+      .returning({ id: jobs.id });
+  });
   if (!created) throw new Error('retry: insert returned no row');
   return created.id;
 }
@@ -338,7 +344,14 @@ export async function scheduleAutoRetryWithVerify(
 
   // A failover retries at once for whichever box claims it.
   const cooldownMs = isFailoverAction ? 0 : RETRY_COOLDOWN_MS;
-  const newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
+  let newJobId: string;
+  try {
+    newJobId = await insertRetryJob(job, next, new Date(Date.now() + cooldownMs));
+  } catch (err) {
+    if (!isRefusal(err, 'RUN_NOT_ACCEPTING_WORK')) throw err;
+    logger.info({ jobId: job.id, runId: job.pipelineRunId }, 'retry: run closed, no retry');
+    return { scheduled: false, reason: RUN_CLOSED };
+  }
   await bumpSession(job, 'autoRetries', incrementAutoRetryCount);
 
   traceStep({

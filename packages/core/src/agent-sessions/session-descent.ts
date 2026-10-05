@@ -1,6 +1,9 @@
 /**
  * Closing a session closes what it owns.
  *
+ * It runs on the executor the closing flip ran on: inside a run close's transaction, a walk on a
+ * connection of its own would wait on the very rows that transaction has locked.
+ *
  * Every flip this writes carries {@link DESCENT_SOURCE}, and
  * `session-transition.ts:transitionSessions` skips a flip that already came from one: one walk per
  * terminal flip, and a cycle in the parent edge cannot spin.
@@ -11,7 +14,7 @@
  */
 import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import type { KernelExecutor } from '../db/kernel-marker.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 
@@ -27,9 +30,11 @@ interface DescentResult {
 
 /**
  * Close every non-terminal session owned, transitively, by one of `parentIds`.
- * A run session's leases are returned and its one-shot run closed failed.
+ * A run session's leases are returned and its one-shot run closed failed, in one transaction with
+ * its flip and with the run locked first (ISS-219).
  */
 export async function closeSessionsOwnedBy(
+  exec: KernelExecutor,
   parentIds: readonly string[],
   cause: { reason: string; detail: string },
 ): Promise<DescentResult> {
@@ -40,7 +45,7 @@ export async function closeSessionsOwnedBy(
   let frontier = [...parentIds];
 
   for (let depth = 0; depth < MAX_DEPTH && frontier.length > 0; depth += 1) {
-    const children = await db
+    const children = await exec
       .select({
         id: agentSessions.id,
         kind: agentSessions.kind,
@@ -59,31 +64,38 @@ export async function closeSessionsOwnedBy(
       next.push(child.id);
 
       const { transitionSessions } = await import('./session-transition.js');
-      const flipped = (
-        await transitionSessions(db, {
-          to: 'failed',
-          set: {
-            failureReason: 'session_lost',
-            failureDetail: cause.detail,
-            updatedAt: new Date(),
-          },
-          where: and(
-            eq(agentSessions.id, child.id),
-            notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-          ),
-          returning: ['id'],
-          reason: cause.reason,
-          actor: { type: 'system' },
-          source: DESCENT_SOURCE,
-        })
-      ).rows;
-      if (flipped.length === 0) continue;
+      const { closeRunIfOneShotInTx, lockRunForClose } = await import('../pipeline/index.js');
+      const runSession = child.kind === RUN_SESSION_KIND;
+      const flipped = await exec.transaction(async (tx) => {
+        if (runSession) await lockRunForClose(tx, child.pipelineRunId);
+        const rows = (
+          await transitionSessions(tx, {
+            to: 'failed',
+            set: {
+              failureReason: 'session_lost',
+              failureDetail: cause.detail,
+              updatedAt: new Date(),
+            },
+            where: and(
+              eq(agentSessions.id, child.id),
+              notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+            ),
+            returning: ['id'],
+            reason: cause.reason,
+            actor: { type: 'system' },
+            source: DESCENT_SOURCE,
+          })
+        ).rows;
+        // The flip handed its issues back (`session-transition.ts:transitionSessions`).
+        if (rows.length > 0 && runSession) {
+          await closeRunIfOneShotInTx(tx, child.pipelineRunId, 'failed');
+        }
+        return rows.length > 0;
+      });
+      if (!flipped) continue;
       result.closed.push(child.id);
 
-      if (child.kind === RUN_SESSION_KIND) {
-        // The flip handed its issues back (`session-transition.ts:transitionSessions`).
-        const { closeRunIfOneShot } = await import('../pipeline/index.js');
-        await closeRunIfOneShot(child.pipelineRunId, 'failed');
+      if (runSession) {
         result.runsReturned.push(child.pipelineRunId);
         logger.warn(
           { sessionId: child.id, runId: child.pipelineRunId, reason: cause.reason },
