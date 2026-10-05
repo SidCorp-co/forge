@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   blockedByUnsettledSql,
+  contractWaitUnsettledSql,
   designUnapprovedSql,
   issueWorkInFlightSql,
 } from '../issues/index.js';
@@ -140,6 +141,7 @@ export async function readAdmissibleIssues(args: {
         -- an issue that builds a workflow whose design is not approved waits; the issue read names
         -- which (workflows/build-gate.ts). No contract-version wait is checked here.
         AND NOT ${designUnapprovedSql(sql`i.id`)}
+        AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
         -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).

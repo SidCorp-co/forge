@@ -2626,6 +2626,13 @@
       "when": 1818028800000,
       "tag": "0406_the_paste_code_pairing_table_is_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 407,
+      "version": "7",
+      "when": 1818115200000,
+      "tag": "0407_an_issue_waits_on_a_contract_version_not_on_another_issue",
+      "breakpoints": true
     }
   ]
 }

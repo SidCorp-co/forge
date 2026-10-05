@@ -20,6 +20,11 @@ export { createReleaseBatch } from './create.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export type { ReleaseHold } from './hold.js';
+export {
+  provideReleaseBatchPorts,
+  servedCarries,
+  servedProductionCommit,
+} from './provider-live.js';
 export { loadReleaseRoster } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';

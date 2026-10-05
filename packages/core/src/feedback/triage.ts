@@ -17,7 +17,12 @@ import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { activeIssuePrefix, insertIssueRow, writeRecordEvent } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  insertContractWaitIn,
+  insertIssueRow,
+  writeRecordEvent,
+} from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -315,6 +320,33 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
   return none;
 }
 
+/**
+ * The upgrade issue waits on the contract version the change names (contract >= version), never on
+ * the provider's issue (E1); written in the triage's own transaction, so it is never dispatched first.
+ */
+async function upgradeWaitIn(
+  tx: Tx,
+  row: RouteInput['row'],
+  issueId: string,
+  userId: string,
+): Promise<void> {
+  const { contractProviderProjectId, contractSlug, contractVersion } = row;
+  if (!contractProviderProjectId || !contractSlug || !contractVersion) {
+    throw new Error(
+      `${feedbackKey(row.fbSeq)} is a contract change naming no provider contract version, so its upgrade issue has nothing to wait on`,
+    );
+  }
+  await insertContractWaitIn(tx, {
+    projectId: row.projectId,
+    issueId,
+    providerProjectId: contractProviderProjectId,
+    contractSlug,
+    minVersion: contractVersion,
+    reason: `Upgrade carried by ${feedbackKey(row.fbSeq)}`,
+    createdBy: userId,
+  });
+}
+
 /** A bug's issue, or a contract change's upgrade issue due by the provider's commitment window. */
 async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key: string }> {
   const { row, write: w, target, actor } = input;
@@ -356,6 +388,7 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
     },
     { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
   );
+  if (row.kind === 'contract_change') await upgradeWaitIn(tx, row, issue.id, actor.userId);
   return {
     id: issue.id,
     key: formatIssueRef(await activeIssuePrefix(row.projectId), issue.issSeq),
