@@ -8,7 +8,6 @@ import { ROOT } from './lib/gate.mjs';
 import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
 import { CHECKS, CI_PARITY } from './lib/verify-checks.mjs';
-import { checksFor, entryEligibility, MODES, unlayered } from './lib/verify-layers.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
@@ -107,20 +106,6 @@ function assertEverySkipIsCovered() {
     '\nA check that skips locally is claiming CI measures it instead. Declare `coveredBy` with\n' +
       'the ci.yml step that does, word for word — or drop the `skipIf`, because a skip nobody\n' +
       'can trace to a step that runs is exit 0 over an assertion nothing asserted. Exit 2.\n',
-  );
-  process.exit(2);
-}
-
-function assertEveryCheckIsLayered() {
-  const missing = unlayered([...CHECKS, CI_PARITY]);
-  if (missing.length === 0) return;
-  console.error(
-    `verify: ${missing.length} check(s) declare no layer, or no reason for it:\n` +
-      missing.map((m) => `  ${m}`).join('\n') +
-      '\nA check belongs to `entry` when it judges each file from that file alone, or fixed files\n' +
-      'it names by path, and to\n' +
-      '`shared` when its verdict on one file depends on others or on other branches — by what it\n' +
-      'reads, never by its name or its cost (scripts/lib/verify-layers.mjs). Exit 2.\n',
   );
   process.exit(2);
 }
@@ -480,11 +465,11 @@ function report(results, { code: parityCode, said }) {
     const files = r.files === undefined ? '' : `${r.files} ${r.unit ?? 'files'}`;
     const aside = r.why ?? r.note;
     console.log(
-      `  ${mark}  ${r.axis.padEnd(10)} ${r.layer.padEnd(6)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,
+      `  ${mark}  ${r.axis.padEnd(10)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,
     );
   }
   console.log(
-    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label.padEnd(width)}${parityAside}`,
+    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.label.padEnd(width)}${parityAside}`,
   );
   console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
   reportBlocked(results);
@@ -502,15 +487,12 @@ function report(results, { code: parityCode, said }) {
 }
 
 const args = process.argv.slice(2);
-const bad = args.filter((a) => !['--ci-parity', '--entry', '--window'].includes(a));
-if (bad.length || (args.includes('--entry') && args.includes('--window'))) {
-  console.error(
-    `usage: verify.mjs [--ci-parity | --entry | --window]\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
-  );
+const bad = args.filter((a) => a !== '--ci-parity');
+if (bad.length) {
+  console.error(`usage: verify.mjs [--ci-parity]\nunknown: ${bad.join(' ')}`);
   process.exit(2);
 }
 
-assertEveryCheckIsLayered();
 assertEveryCheckProvesScan();
 assertEverySkipIsCovered();
 
@@ -523,31 +505,11 @@ if (scope.refusal) {
 }
 const base = scope.base;
 
-let mode = args.includes('--entry') ? 'entry' : args.includes('--window') ? 'window' : 'whole';
-if (mode === 'entry') {
-  const judged = entryEligibility(ROOT, base);
-  if (judged.refusal) {
-    console.error(`verify --entry: ${judged.refusal}`);
-    process.exit(2);
-  }
-  if (!judged.eligible) {
-    console.log(
-      'verify --entry: this change is not queue-eligible, so it takes the whole gate here:\n' +
-        judged.surfaces.map((s) => `  ${s}`).join('\n'),
-    );
-    mode = 'whole';
-  }
-}
-const checks = checksFor(mode, CHECKS);
 console.log(
-  `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${MODES[mode]}`,
+  `verify: ${CHECKS.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — every check, in the form the whole gate has always run it`,
 );
-if (mode === 'entry') {
-  const left = CHECKS.filter((c) => c.layer === 'shared').map((c) => c.label);
-  console.log(`  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`);
-}
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const results = await runAll(checks, base, WIDTH);
+const results = await runAll(CHECKS, base, WIDTH);
 
 const said = [];
 process.exit(report(results, { code: ciParity(true, said), said }));

@@ -22,6 +22,12 @@
   is only `skill_md`, transcripts no longer convert `contentBlocks`, `pipelineHealth.retryCount`
   is gone, and the heartbeat reaper and the run standing read one beat expression.
 
+### Removed
+
+- **The verify window is gone.** `pnpm verify` runs every check, and `--entry`, `--window`,
+  `scripts/verify-window.mjs` and `.forge/verify-queue.json` are removed: dev merges locally and
+  runs the whole gate on the merged tree.
+
 ## [0.4.0-dev.33] - 2026-10-05
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
