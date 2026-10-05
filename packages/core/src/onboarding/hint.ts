@@ -77,6 +77,7 @@ function openBatchHint(
 /** A live job's line: what the run read model says it waits on, else that it runs. */
 function liveJobText(job: NonNullable<OnboardingView['job']>): string {
   const w = job.waitingOn;
+  if (w?.kind === 'gate') return `Waits on the ${w.gate} gate; the project works meanwhile.`;
   if (w && w.kind !== 'none') {
     return `Waits on ${w.who}${w.act ? ` to ${w.act}` : ''}; the project works meanwhile.`;
   }

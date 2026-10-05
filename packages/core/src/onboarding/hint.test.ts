@@ -120,6 +120,7 @@ describe('project-onboarding checkout: a queued job names the run read model wai
     } as unknown as StandingContext;
     const d = liveOf(facts, ctx);
     expect(d.state).toBe('waiting_person');
+    if (d.waitingOn.kind === 'gate') throw new Error('checkout_unbound reads a person, not a gate');
     expect(d.waitingOn.act).toBe('bind a checkout on the box');
     expect(d.waitingOn.rule).toContain('POOL_CHECKOUT_UNBOUND');
   });

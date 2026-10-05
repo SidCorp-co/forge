@@ -10,7 +10,7 @@ import type {
 } from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { PermissionRefusalCode } from "./permissions.js";
-import type { WaitingOn } from "./standing.js";
+import type { RunWaitingOn } from "./run-standing.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
 export const ONBOARDING_STATUSES = [
@@ -304,7 +304,7 @@ export interface OnboardingJobView {
 	dispatchedAt: string | null;
 	finishedAt: string | null;
 	/** The job's run as the run read model reads it while it is live; null once it is over. */
-	waitingOn: WaitingOn | null;
+	waitingOn: RunWaitingOn | null;
 }
 
 export interface OnboardingView {
