@@ -9,7 +9,7 @@
 -- migrations have shipped everywhere.
 
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table touched by this file and the later files of its batch (0395-0402)
+-- the batch commits. Every table touched by this file and the later files of its batch (0395-0403)
 -- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
 -- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
 -- instead of deadlocking mid-file. A table this database never had is skipped.

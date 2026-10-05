@@ -6,7 +6,7 @@
 -- WHERE source = 'runner' AND artifact ->> 'kind' = 'verdict';
 
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table touched by this file and the later files of its batch (0401-0402)
+-- the batch commits. Every table touched by this file and the later files of its batch (0401-0403)
 -- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
 -- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
 -- instead of deadlocking mid-file. A table this database never had is skipped.
@@ -15,8 +15,8 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'device_skills', 'jobs', 'notifications', 'phase_journal', 'pipeline_outbox', 'reconcile_runs',
-    'skill_activity_events', 'skill_registrations', 'skills'
+    'agent_sessions', 'device_skills', 'jobs', 'notifications', 'phase_journal', 'pipeline_outbox',
+    'pipeline_runs', 'reconcile_runs', 'skill_activity_events', 'skill_registrations', 'skills'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));

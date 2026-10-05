@@ -10,7 +10,7 @@
 -- like every other machine's status it is written only by the kernel transition.
 
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table touched by this file and the later files of its batch (0398-0402)
+-- the batch commits. Every table touched by this file and the later files of its batch (0398-0403)
 -- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
 -- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
 -- instead of deadlocking mid-file. A table this database never had is skipped.
@@ -19,10 +19,11 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'app_config', 'device_skills', 'feedback', 'feedback_decisions', 'jobs', 'notifications',
-    'phase_journal', 'pipeline_outbox', 'project_config_revisions', 'project_workflows',
-    'projects', 'reconcile_runs', 'release_attempts', 'schedules', 'skill_activity_events',
-    'skill_registrations', 'skills', 'usage_records', 'users'
+    'agent_sessions', 'app_config', 'device_skills', 'feedback', 'feedback_decisions', 'jobs',
+    'notifications', 'phase_journal', 'pipeline_outbox', 'pipeline_runs',
+    'project_config_revisions', 'project_workflows', 'projects', 'reconcile_runs',
+    'release_attempts', 'schedules', 'skill_activity_events', 'skill_registrations', 'skills',
+    'usage_records', 'users'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
