@@ -155,6 +155,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
           commitSha: observed.commitSha,
@@ -170,6 +171,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
           commitSha: fromRepository.sha,
@@ -183,6 +185,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: { kind: 'landed', landing, at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? null,
@@ -192,6 +195,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),

@@ -21,6 +21,7 @@ export const OUTBOX_CONSUMERS = {
 		"master-wake",
 		"notify-transitions",
 		"memory-reconcile",
+		"issue-move-reactions",
 	],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
 	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims"],

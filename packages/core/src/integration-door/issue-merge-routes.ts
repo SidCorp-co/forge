@@ -24,15 +24,15 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import type { OutboxActor } from '@forge/contracts/outbox-events';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
 /** The stamp Forge's own merge writes, in the transaction that marks the projection row. */
-const stampKernelMerge: IssueMergeStamp = (tx, { issueId, commitSha, mergedAt }) =>
-  recordIssueMerge(tx, {
-    issueId,
-    evidence: { kind: 'observed', commitSha, mergedAt },
-  });
+const stampKernelMerge =
+  (actor: OutboxActor): IssueMergeStamp =>
+  (tx, { issueId, commitSha, mergedAt }) =>
+    recordIssueMerge(tx, { issueId, actor, evidence: { kind: 'observed', commitSha, mergedAt } });
 
 export const issueMergePullRequestRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -128,7 +128,7 @@ issueMergePullRequestRoutes.post(
           ...(body.headSha ? { expectedHeadSha: body.headSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
-        stampKernelMerge,
+        stampKernelMerge(actor),
       );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {

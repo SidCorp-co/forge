@@ -86,6 +86,7 @@ interface StoredFiles {
 }
 
 interface IssuePorts {
+  projectCreatorOf: (projectId: string) => Promise<string | null>;
   settleOpenQuestions: (
     tx: Tx,
     args: {
@@ -224,6 +225,8 @@ const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
 export const provideIssuePorts = slot.provide;
 const issuePorts = slot.get;
 const { port } = slot;
+
+export const projectCreatorOf = port('projectCreatorOf');
 
 export const settleOpenQuestions = port('settleOpenQuestions');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');

@@ -15,7 +15,7 @@ import { type KernelActor, transition } from '../lifecycle/index.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
-import { recordDropUnblock } from './drop-unblock.js';
+import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { closeOpenRunForIssue, settleOpenQuestions } from './ports.js';
@@ -203,16 +203,7 @@ export async function transitionIssueStatus(
   });
   const updated = txResult.row;
 
-  if (txResult.unblockedDependents.length > 0) {
-    await recordDropUnblock(issue, txResult.unblockedDependents, actor);
-  }
-
-  await publishPipelineHealthChanged(issue.projectId, [updated.id]);
-
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
-  if (ISSUE_TERMINAL_STATUSES.includes(toStatus)) {
-    await closeOpenRunForIssue(issue.id, 'completed');
-  }
 
   return {
     id: updated.id,
@@ -339,6 +330,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       await writeWorkStateOfMove(tx, input);
       if (toStatus === 'dropped') {
         unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
+        await postDropUnblockNotices(tx, issue, unblockedDependents, actor);
       }
     },
   });

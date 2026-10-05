@@ -113,7 +113,7 @@ export async function flushIssueRelationEffects(
 ): Promise<void> {
   const refreshHealthFor: string[] = [];
   for (const p of pending) {
-    await emitIssueDependencyEffects(p.input, p.written, writer, { deferHealthPublish: true });
+    await emitIssueDependencyEffects(p.input, p.written, { deferHealthPublish: true });
     if (p.applied.kind === 'blocks' && (p.applied.created || p.applied.updated)) {
       refreshHealthFor.push(p.applied.toIssueId);
     }

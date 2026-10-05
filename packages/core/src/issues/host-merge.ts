@@ -1,7 +1,8 @@
-import { db } from '../db/client.js';
+import type { Tx } from '../db/client.js';
 import { consume } from '../outbox/index.js';
 import { resolveIssueForHeadRef } from './head-ref-link.js';
-import { type MergeRecordExecutor, recordIssueMerge } from './merge-record.js';
+import { recordIssueMerge } from './merge-record.js';
+import { projectCreatorOf } from './ports.js';
 
 /**
  * The merge a source host reports, on the row the kernel's own merge writes: the one stamp for GitHub
@@ -17,7 +18,7 @@ async function stampHostMerge(
     commitSha: string;
     mergedAt: Date;
   },
-  executor: MergeRecordExecutor = db,
+  executor: Tx,
 ): Promise<boolean> {
   if (Number.isNaN(args.mergedAt.getTime())) {
     throw new Error(
@@ -29,8 +30,11 @@ async function stampHostMerge(
     headRef: args.headRef,
   });
   if (!issueId) return false;
+  const creator = await projectCreatorOf(args.projectId);
   const stamp = await recordIssueMerge(executor, {
     issueId,
+    // a host-reported merge is recorded on the project owner's behalf, as the review note is
+    actor: creator ? { type: 'user', id: creator, agency: 'agent' } : null,
     evidence: {
       kind: 'observed',
       commitSha: args.commitSha,

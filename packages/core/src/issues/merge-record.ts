@@ -1,5 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
+import type { OutboxActor } from '@forge/contracts/outbox-events';
+import type { Db, Tx } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
@@ -107,10 +109,20 @@ async function readBack(
  * rollback drops both together.
  */
 export async function recordIssueMerge(
-  executor: MergeRecordExecutor,
-  args: { issueId: string; evidence: MergeEvidence },
+  executor: Tx,
+  args: { issueId: string; evidence: MergeEvidence; actor: OutboxActor | null },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
+  const [prior] = await executor
+    .select({
+      projectId: issues.projectId,
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
   const stampExpr =
     evidence.kind === 'observed'
       ? sqlTimestamp(evidence.mergedAt)
@@ -137,6 +149,22 @@ export async function recordIssueMerge(
       mergedLanding: issues.mergedLanding,
     });
 
+  if (wrote && prior && args.actor) {
+    // every writer of the stamp tells its readers in the stamp's own transaction
+    const { projectId, ...before } = prior;
+    await emitEvent(executor, 'issue.updated', {
+      issueId,
+      projectId,
+      actor: args.actor,
+      fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      before,
+      after: {
+        mergedAt: wrote.mergedAt,
+        mergedCommitSha: wrote.mergedCommitSha,
+        mergedLanding: wrote.mergedLanding,
+      },
+    });
+  }
   if (wrote) {
     return {
       wrote: true,

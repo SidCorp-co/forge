@@ -11,7 +11,7 @@ import { issueDependencies, type issueDependencyKinds, issues } from '../db/sche
 import { refuser } from '../lib/refusal.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { notFound } from '../middleware/route-errors.js';
-import { type Actor, recordActivityTx, safeRecordActivity } from './activity.js';
+import { type Actor, recordActivityTx } from './activity.js';
 import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
 import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';
@@ -94,7 +94,7 @@ export async function setIssueDependency(
 ): Promise<SetIssueDependencyResult> {
   // One transaction, so the `FOR SHARE` read of both sides holds until the edge commits.
   const written = await db.transaction((tx) => writeIssueDependency(input, writer, tx));
-  await emitIssueDependencyEffects(input, written, writer, opts);
+  await emitIssueDependencyEffects(input, written, opts);
   const effects = describeDependencyKind(input.kind);
   if (written.created) return { id: written.id, created: true, effects };
   return { id: written.id, created: false, updated: written.updated, effects };
@@ -168,6 +168,9 @@ export async function writeIssueDependency(
   if (inserted.length > 0) {
     const id = inserted[0]?.id;
     if (!id) throw new Error('issue dependency insert returned no id');
+    await recordOnBothSides(ex, input, id, writer.actor, 'issue.dependency.added', {
+      ...(input.reason ? { reason: input.reason } : {}),
+    });
     return { id, created: true, updated: false, effect: 'added' };
   }
 
@@ -181,41 +184,29 @@ export async function writeIssueDependency(
 
   if (updated) {
     await ex.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
+    await recordOnBothSides(ex, input, existing.id, writer.actor, 'issue.dependency.updated', {
+      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+    });
   }
 
   return { id: existing.id, created: false, updated, effect: updated ? 'updated' : null };
 }
 
-/**
- * The EFFECTS half: the activity rows on both sides and the dependent's health. Runs after the
- * write has committed.
- */
+/** The EFFECTS half, after the edge committed: the room is told, and a blocks edge refreshes its
+ *  dependent's health. The activity lines are written with the edge. */
 export async function emitIssueDependencyEffects(
   input: SetIssueDependencyInput,
   written: IssueDependencyWrite,
-  writer: IssueDependencyWriter,
   opts?: { deferHealthPublish?: boolean },
 ): Promise<void> {
-  if (written.effect === 'added') {
-    await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
-      ...(input.reason ? { reason: input.reason } : {}),
-    });
-    announceEdge(input);
-    await refreshDependentHealth(input, opts);
-    return;
-  }
-
-  if (written.effect === 'updated') {
-    await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.updated', {
-      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
-      ...(input.reason ? { reason: input.reason } : {}),
-    });
-    announceEdge(input);
-    await refreshDependentHealth(input, opts);
-  }
+  if (written.effect === null) return;
+  announceEdge(input);
+  if (!opts?.deferHealthPublish) await refreshDependentHealth(input);
 }
 
 async function recordOnBothSides(
+  ex: IssueDependencyExecutor,
   input: SetIssueDependencyInput,
   edgeId: string,
   actor: Actor,
@@ -229,17 +220,16 @@ async function recordOnBothSides(
     kind: input.kind,
     ...extra,
   };
-  await Promise.all([
-    safeRecordActivity({ issueId: input.fromIssueId, actor, action, payload }),
-    safeRecordActivity({ issueId: input.toIssueId, actor, action, payload }),
-  ]);
+  for (const issueId of [input.fromIssueId, input.toIssueId]) {
+    await recordActivityTx(ex, { issueId, actor, action, payload });
+  }
 }
 
-async function refreshDependentHealth(
-  input: { projectId: string; toIssueId: string; kind: IssueDependencyKind },
-  opts?: { deferHealthPublish?: boolean },
-): Promise<void> {
-  if (opts?.deferHealthPublish) return;
+async function refreshDependentHealth(input: {
+  projectId: string;
+  toIssueId: string;
+  kind: IssueDependencyKind;
+}): Promise<void> {
   if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }

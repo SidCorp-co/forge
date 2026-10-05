@@ -5,7 +5,7 @@ export { type AssignPrefixResult, type PrefixWriter, provideProjectsPorts } from
 export type { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 export { unreservedProjectKeyRefusal } from './project-facts.js';
 export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
-export { listProjectHeads, projectHead } from './read.js';
+export { listProjectHeads, projectCreatorOf, projectHead } from './read.js';
 export {
   type CreateProjectInput,
   createProjectSchema,

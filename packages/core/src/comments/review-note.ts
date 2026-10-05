@@ -5,6 +5,7 @@ import { resolveIssueForHeadRef } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { insertComment } from './service.js';
+import { projectCreatorOf } from '../projects/index.js';
 
 /** One review, in the shape both doors already hold it in. */
 interface ReviewToNote {
@@ -78,16 +79,6 @@ function reviewNoteBody(args: {
   return `## GitHub review\n\n${head}\n\n${quoted}\n\n${reviewMarker(review.id)}`;
 }
 
-/** The user a system comment is attributed to: the project's creator. */
-async function projectCreator(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
-}
-
 /**
  * Write this review onto the issue its pull request's head branch names, once.
  *
@@ -114,7 +105,7 @@ export async function noteReviewOnIssue(args: {
   });
   if (!issueId) return { outcome: 'no-issue', issueId: null, commentId: null };
 
-  const authorId = await projectCreator(args.projectId);
+  const authorId = await projectCreatorOf(args.projectId);
   if (!authorId) {
     logger.warn(
       { projectId: args.projectId, issueId, reviewId: args.review.id },

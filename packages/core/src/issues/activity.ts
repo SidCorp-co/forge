@@ -40,7 +40,7 @@ function buildValues(input: RecordActivityInput) {
   };
 }
 
-export async function recordActivityTx(tx: Tx, input: RecordActivityInput): Promise<void> {
+export async function recordActivityTx(tx: Tx | Db, input: RecordActivityInput): Promise<void> {
   await insertActivityRow(buildValues(input), tx);
 }
 
