@@ -364,6 +364,24 @@ async function upgradeWaitIn(
   return null;
 }
 
+type CreateIssue = NonNullable<FeedbackTriage['createIssue']>;
+
+/** The filed issue's bands: what the triager named, else priority from severity and category from kind. */
+export function carrierBands(
+  row: { severity: Row['severity']; kind: Row['kind'] },
+  named: CreateIssue | undefined,
+): {
+  priority: NonNullable<CreateIssue['priority']>;
+  category: string;
+  complexity: CreateIssue['complexity'] | null;
+} {
+  return {
+    priority: named?.priority ?? row.severity,
+    category: named?.category ?? (row.kind === 'bug' ? 'bug' : 'feature'),
+    complexity: named?.complexity ?? null,
+  };
+}
+
 /** A bug's issue, or a contract change's upgrade issue due by the provider's commitment window. */
 async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key: string }> {
   const { row, write: w, target, actor } = input;
@@ -390,8 +408,7 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
       description: w.createIssue?.description ?? carried.filter(Boolean).join('\n\n'),
       descriptionFormat: 'markdown',
       status: 'draft',
-      priority: row.severity,
-      category: row.kind === 'bug' ? 'bug' : 'feature',
+      ...carrierBands(row, w.createIssue),
       createdById: actor.userId,
       createdByDeviceId: null,
       createdVia: input.channel,

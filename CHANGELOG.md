@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Masters are told what they owe and nudged only between passes.** Placement briefs name owed
+  feedback; rescues skip issues a declared run holds; feedback waits name who can act (master,
+  release approver); triage files carriers with complexity, category, priority.
+
 ## [0.4.0-dev.52] - 2026-10-06
 
 Every master turn counts as a pass, and boxes report missing pane binaries

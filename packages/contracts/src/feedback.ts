@@ -10,6 +10,10 @@ import type {
 } from "./agent-reports.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import {
+	REGISTRY_ISSUE_COMPLEXITIES,
+	REGISTRY_ISSUE_PRIORITIES,
+} from "./pipeline-registry.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -316,6 +320,10 @@ const carrierFields = {
 		.strictObject({
 			title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
 			description: z.string().max(FEEDBACK_LIMITS.body).optional(),
+			/** The filed issue's bands; absent, priority follows the severity and category the kind. */
+			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
+			category: z.string().trim().min(1).max(100).optional(),
+			priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),
 		})
 		.optional(),
 	suggestion: z.uuid().optional(),
@@ -340,7 +348,7 @@ export const feedbackTriageSchema = z.strictObject({
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { feedbackStandingOf, revisionStageOf } from './standing.js';
+import { feedbackStandingOf, revisionStageOf, type StandingViewer } from './standing.js';
+
+const reader: StandingViewer = {
+  isReporter: false,
+  canTriage: false,
+  canApproveRelease: false,
+  canWrite: false,
+};
 
 const planned = (stage: Parameters<typeof revisionStageOf>[0]) =>
-  feedbackStandingOf('planned', 'revision', null, 'Reporter', false, revisionStageOf(stage))
+  feedbackStandingOf('planned', 'revision', null, 'Reporter', reader, revisionStageOf(stage))
     .waitingOn;
 
 describe('a revision-routed item waits on whoever owes the next act of its revision', () => {
@@ -61,7 +68,7 @@ describe('a revision-routed item waits on whoever owes the next act of its revis
 
   it('names no stage it cannot read: a revision route with no suggestion read falls back to the proposal', () => {
     expect(revisionStageOf(null)).toBeNull();
-    const w = feedbackStandingOf('planned', 'revision', null, 'Reporter', false, null).waitingOn;
+    const w = feedbackStandingOf('planned', 'revision', null, 'Reporter', reader, null).waitingOn;
     expect(w.kind).toBe('person');
   });
 });

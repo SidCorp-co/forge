@@ -5,7 +5,7 @@ import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import { linkedOf, phaseIn, routeView, summaryOf } from './list-read.js';
+import { linkedOf, phaseIn, routeView, summaryOf, viewerCanIn } from './list-read.js';
 import type { FeedbackActor } from './read.js';
 
 // Feedback read from another entity's page (a requirement's rail) passes the same egress
@@ -23,10 +23,14 @@ export async function summariesAs(
     .from(feedback)
     .where(inArray(feedback.id, [...ids]));
   const mine = rows.filter((r) => r.projectId === projectId);
-  const [level, linked] = await Promise.all([dataPolicyOf(projectId), linkedOf(projectId, mine)]);
+  const [level, linked, can] = await Promise.all([
+    dataPolicyOf(projectId),
+    linkedOf(projectId, mine),
+    viewerCanIn(viewer.userId, projectId),
+  ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   return shown(
-    mine.map((r) => summaryOf(r, linked, viewer, withhold)),
+    mine.map((r) => summaryOf(r, linked, viewer, withhold, can)),
     'feedback about this requirement',
   );
 }

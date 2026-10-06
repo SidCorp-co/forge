@@ -106,67 +106,184 @@ const wait = (
   dueAt: extra.dueAt ?? null,
 });
 
-/** A member triages, the reporter verifies. */
-function groupOf(phase: FeedbackPhase, viewerIsReporter: boolean): FeedbackAttentionGroup {
-  if (phase === 'new' || phase === 'triaged' || phase === 'reopened') return 'needs_you';
-  if (phase === 'planned') return 'moving';
-  if (phase === 'resolved') return viewerIsReporter ? 'needs_you' : 'waiting';
-  return 'done';
+/** What the viewer's own permissions let them do to an item, by the checks its `can` reads. */
+export interface StandingViewer {
+  isReporter: boolean;
+  /** `feedback.approve`. */
+  canTriage: boolean;
+  /** `releases.approve`. */
+  canApproveRelease: boolean;
+  /** `project.write`. */
+  canWrite: boolean;
 }
 
-/** Who or what an item waits on, whoever reads it. */
+/**
+ * How the release a planned item's carrier issue waits at is made, read off the project document:
+ * no production environment (`none`), a release approval required (`approval`), production
+ * deploying on land (`automatic`), or a release a person cuts (`manual`).
+ */
+export type CarrierRelease = 'none' | 'approval' | 'manual' | 'automatic';
+
+export interface StandingFacts {
+  /** A high or critical item the project's master owes a triage (`owed-triage.ts:owedTriages`). */
+  masterOwesTriage: boolean;
+  /** Set only where the item is planned on an issue standing at `awaiting_release`. */
+  carrierRelease: CarrierRelease | null;
+}
+
+const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null };
+
+type Owed = { wait: FeedbackWaitingOn; yours: boolean };
+
+const TRIAGER = 'A holder of feedback.approve';
+
+/** Who or what an item waits on, and whether that act is one the viewer holds. */
 function waitingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
   revision: RevisionStage | null,
-): FeedbackWaitingOn {
+  viewer: StandingViewer,
+  facts: StandingFacts,
+): Owed {
+  const theirs = (w: FeedbackWaitingOn): Owed => ({ wait: w, yours: false });
   switch (phase) {
     case 'new':
     case 'reopened':
-      return wait('person', 'A person', 'triage it', `${phase}: a member triages it`);
+      if (facts.masterOwesTriage)
+        return theirs(
+          wait(
+            'agent',
+            "The project's master",
+            'triage it',
+            `${phase}: high or critical feedback owes the project's master a triage; a holder of feedback.approve may triage it first`,
+          ),
+        );
+      return {
+        wait: wait(
+          'person',
+          TRIAGER,
+          'triage it',
+          `${phase}: a holder of feedback.approve triages it`,
+        ),
+        yours: viewer.canTriage,
+      };
     case 'triaged':
-      return wait(
-        'person',
-        'A person',
-        'triage it again',
-        "triaged: the route's carrier is gone, so a member routes it anew",
-      );
+      return {
+        wait: wait(
+          'person',
+          TRIAGER,
+          'triage it again',
+          "triaged: the route's carrier is gone, so a holder of feedback.approve routes it anew",
+        ),
+        yours: viewer.canTriage,
+      };
     case 'planned':
-      if (route === 'issue')
-        return wait(
+      if (route === 'issue') return issueWait(carrier, viewer, facts.carrierRelease);
+      return theirs(plannedWait(route, carrier, revision));
+    case 'resolved':
+      return {
+        wait: wait('person', reporter, 'verify the fix', 'resolved: the reporter verifies the fix'),
+        yours: viewer.isReporter,
+      };
+    default:
+      return theirs(wait('none', 'Nothing', '', `${phase}: nothing is owed`));
+  }
+}
+
+// a carrier at the release gate waits on whoever makes that release: never a bare "ship" in a
+// project where nothing ships it (eco round 4, #45)
+function issueWait(
+  carrier: string | null,
+  viewer: StandingViewer,
+  release: CarrierRelease | null,
+): Owed {
+  const issue = carrier ?? 'the linked issue';
+  const ref = { ref: carrier };
+  switch (release) {
+    case 'none':
+      return {
+        wait: wait(
+          'person',
+          'A project writer',
+          `release ${issue} by hand and close it`,
+          `planned: ${issue} waits at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
+          ref,
+        ),
+        yours: viewer.canWrite,
+      };
+    case 'approval':
+      return {
+        wait: wait(
+          'person',
+          'A release approver',
+          `approve the release of ${issue}`,
+          `planned: ${issue} waits at awaiting_release and this project requires a holder of releases.approve to approve its release`,
+          ref,
+        ),
+        yours: viewer.canApproveRelease,
+      };
+    case 'manual':
+      return {
+        wait: wait(
+          'person',
+          'A project writer',
+          `cut the release that carries ${issue}`,
+          `planned: ${issue} waits at awaiting_release and this project's production does not deploy on land, so a person cuts its release`,
+          ref,
+        ),
+        yours: viewer.canWrite,
+      };
+    default:
+      return {
+        wait: wait(
           'issue',
           carrier ?? 'The linked issue',
           'ship',
           'planned: its issue carries it',
-          {
-            ref: carrier,
-          },
-        );
-      if (route === 'revision') return revisionWait(revision);
-      if (route === 'new_requirement')
-        return wait(
-          'issue',
-          carrier ?? 'The new requirement',
-          'be agreed and delivered',
-          'planned: a new requirement carries it',
-          { ref: carrier },
-        );
-      if (route === 'duplicate')
-        return wait(
-          'issue',
-          `Its root ${carrier ?? ''}`.trim(),
-          'be resolved',
-          'planned: the root item it duplicates carries it',
-          { ref: carrier },
-        );
-      return wait('issue', 'The linked work', '', 'planned: the linked work carries it');
-    case 'resolved':
-      return wait('person', reporter, 'verify the fix', 'resolved: the reporter verifies the fix');
-    default:
-      return wait('none', 'Nothing', '', `${phase}: nothing is owed`);
+          ref,
+        ),
+        yours: false,
+      };
   }
+}
+
+function plannedWait(
+  route: FeedbackRoute | null,
+  carrier: string | null,
+  revision: RevisionStage | null,
+): FeedbackWaitingOn {
+  switch (route) {
+    case 'revision':
+      return revisionWait(revision);
+    case 'new_requirement':
+      return wait(
+        'issue',
+        carrier ?? 'The new requirement',
+        'be agreed and delivered',
+        'planned: a new requirement carries it',
+        { ref: carrier },
+      );
+    case 'duplicate':
+      return wait(
+        'issue',
+        `Its root ${carrier ?? ''}`.trim(),
+        'be resolved',
+        'planned: the root item it duplicates carries it',
+        { ref: carrier },
+      );
+    default:
+      return wait('issue', 'The linked work', '', 'planned: the linked work carries it');
+  }
+}
+
+/** The list's group for an item, from whether the act it waits on is the viewer's own. */
+function groupOf(phase: FeedbackPhase, owed: Owed): FeedbackAttentionGroup {
+  if (owed.yours) return 'needs_you';
+  if (phase === 'planned' || owed.wait.kind === 'agent') return 'moving';
+  if (phase === 'verified' || phase === 'declined') return 'done';
+  return 'waiting';
 }
 
 // a revision-routed item waits on a person only while a person owes its revision an act; an accepted
@@ -217,13 +334,14 @@ export function feedbackStandingOf(
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
-  viewerIsReporter: boolean,
+  viewer: StandingViewer,
   revision: RevisionStage | null,
+  facts: StandingFacts = NO_FACTS,
 ): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
-  const attentionGroup = groupOf(phase, viewerIsReporter);
-  const w = waitingOf(phase, route, carrier, reporter, revision);
+  const owed = waitingOf(phase, route, carrier, reporter, revision, viewer, facts);
+  const attentionGroup = groupOf(phase, owed);
   return {
     attentionGroup,
-    waitingOn: attentionGroup === 'needs_you' ? { ...w, kind: 'you', who: 'You' } : w,
+    waitingOn: owed.yours ? { ...owed.wait, kind: 'you', who: 'You' } : owed.wait,
   };
 }

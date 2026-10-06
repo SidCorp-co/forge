@@ -18,7 +18,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import { linkedOf, summaryOf } from './list-read.js';
+import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
 
 export interface FeedbackActor {
@@ -114,9 +114,9 @@ export async function detailAs(
       sourceOf(row.id),
     ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
-  const summary = summaryOf(row, linked, viewer, withhold);
-  const deciders = await userNames(decisions.map((d) => d.decidedBy));
   const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
+  const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts));
+  const deciders = await userNames(decisions.map((d) => d.decidedBy));
   const q = questions[0];
   const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;

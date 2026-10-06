@@ -18739,8 +18739,33 @@
                   "createIssue": {
                     "additionalProperties": false,
                     "properties": {
+                      "category": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "complexity": {
+                        "enum": [
+                          "xs",
+                          "s",
+                          "m",
+                          "l",
+                          "xl"
+                        ],
+                        "type": "string"
+                      },
                       "description": {
                         "maxLength": 20000,
+                        "type": "string"
+                      },
+                      "priority": {
+                        "enum": [
+                          "critical",
+                          "high",
+                          "medium",
+                          "low",
+                          "none"
+                        ],
                         "type": "string"
                       },
                       "title": {
