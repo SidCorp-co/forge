@@ -401,9 +401,8 @@ function isEsbuildService(options) {
   );
 }
 
-/** The first startup module a worker's arguments name that the vitest worker was not itself
- * started with, or null: one of its own runs before the watch as it did there, and the preload is
- * the watch, which a worker started inside a watched one inherits; any other runs unseen. */
+/** The first startup module a worker's arguments name that is neither the preload nor one the
+ * vitest worker was itself started with, or null: any other runs before the watch, unseen. */
 function foreignStartup(execArgv, base) {
   const own = new Set((base?.execArgv ?? []).map((t) => startupModuleKey(t, null)));
   own.add(startupModuleKey(PRELOAD, null));
@@ -417,8 +416,7 @@ function foreignStartup(execArgv, base) {
   return null;
 }
 
-/** A worker's execArgv without the preload it inherited from a watched parent, which the watch
- * puts first again: each `--import` of it, inline or as the next word, is dropped. */
+/** A worker's execArgv without the preload a watched parent handed it, which the watch puts first. */
 function withoutOwnPreload(execArgv) {
   const isOwn = (mod) =>
     mod !== undefined && startupModuleKey(mod, process.cwd()) === startupModuleKey(PRELOAD, null);
