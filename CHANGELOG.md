@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.42] - 2026-10-06
+
+Release numbers stay spent, head reads honour the repository, building runs read as building
+
+
 ### Fixed
 
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
