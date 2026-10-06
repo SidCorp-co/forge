@@ -182,8 +182,10 @@ async function linkWorld(tx: Tx, doc: LinkWrite, selfId: string | null): Promise
             interface: declared ? heldInterface(declared, provider).document : null,
           }
         : null,
-    versions: new Set(
-      versions.filter((v) => v.contractSlug === doc.contract.slug).map((v) => v.version),
+    versions: new Map(
+      versions
+        .filter((v) => v.contractSlug === doc.contract.slug)
+        .map((v) => [v.version, v.approval]),
     ),
     duplicateOf: holding !== null && holding !== selfId ? holding : null,
   };
