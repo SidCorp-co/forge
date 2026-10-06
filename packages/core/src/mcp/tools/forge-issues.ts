@@ -25,7 +25,11 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
-import { mergedLandingSchema } from '../../issues/landing-evidence.js';
+import {
+  landingShapeInputSchema,
+  mergedLandingSchema,
+  readIssueLandingShape,
+} from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
 import {
   applyMergeMarker,
@@ -127,6 +131,7 @@ const dataObject = z
     target: z.enum(['feature', 'base', 'prod']).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
+    landingShape: landingShapeInputSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
@@ -341,12 +346,26 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
  * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
-  const [attachments, issueLabelsList, prefix] = await Promise.all([
+  const [attachments, issueLabelsList, prefix, landing] = await Promise.all([
     listIssueAttachments(row.id),
     listIssueLabels(row.id),
     activeIssuePrefix(row.projectId),
+    landingFields(row),
   ]);
-  return { ...serialize(row, prefix), attachments, labels: issueLabelsList };
+  return {
+    ...serialize(row, prefix),
+    ...landing,
+    attachments,
+    labels: issueLabelsList,
+  };
+}
+
+/** The issue's lane and its own declaration, as every whole-issue answer of this tool carries them. */
+async function landingFields(row: IssueRow): Promise<Record<string, unknown>> {
+  return {
+    landingShape: await readIssueLandingShape(row),
+    declaredLandingShape: row.declaredLandingShape,
+  };
 }
 
 /** Sum of char lengths across all non-null heavy fields for threshold gating. */
@@ -494,6 +513,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       );
     }
 
+    if (input.data?.landingShape !== undefined && input.action !== 'update') {
+      throw new Error(
+        `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
+      );
+    }
+
     switch (input.action) {
       case 'archive':
       case 'unarchive': {
@@ -638,10 +663,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } as Record<string, unknown>;
         }
 
-        const out: Record<string, unknown> = serialize(
-          result.issue as IssueRow,
-          await activeIssuePrefix(result.issue.projectId),
-        );
+        const created = result.issue as IssueRow;
+        const out: Record<string, unknown> = {
+          ...serialize(created, await activeIssuePrefix(created.projectId)),
+          ...(await landingFields(created)),
+        };
         out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
         if (result.relations.length > 0) out.relations = result.relations;
         if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {

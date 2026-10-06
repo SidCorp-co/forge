@@ -45,14 +45,19 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     projectId = (await createTestProject(harness.db, userId)).id;
   });
 
-  async function insertIssue(): Promise<{ id: string; projectId: string; mergedAt: null }> {
+  async function insertIssue(): Promise<{
+    id: string;
+    projectId: string;
+    mergedAt: null;
+    declaredLandingShape: null;
+  }> {
     const id = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, session_context)
       VALUES (${id}, ${projectId}, 1, 'marker specimen', 'open', ${userId},
               ${JSON.stringify({ branch: 'ISS-1' })}::jsonb)
     `);
-    return { id, projectId, mergedAt: null };
+    return { id, projectId, mergedAt: null, declaredLandingShape: null };
   }
 
   const actor = () => ({
@@ -62,7 +67,7 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
   });
 
   async function mark(
-    issue: { id: string; projectId: string; mergedAt: Date | null },
+    issue: { id: string; projectId: string; mergedAt: Date | null; declaredLandingShape: null },
     note: string,
   ) {
     const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');

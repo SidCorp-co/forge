@@ -98,7 +98,7 @@ export async function stored(id: string) {
 }
 
 export function rest(
-  method: 'POST' | 'DELETE' | 'GET',
+  method: 'POST' | 'DELETE' | 'GET' | 'PATCH',
   path: string,
   token: string,
   body?: unknown,

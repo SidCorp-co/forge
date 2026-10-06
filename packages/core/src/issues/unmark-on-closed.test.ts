@@ -83,7 +83,7 @@ const ACTOR = {
     agency: 'human' as const,
   },
 };
-const ISSUE = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: AT };
+const ISSUE = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: AT, declaredLandingShape: null };
 
 const unmark = () => applyMergeMarker({ issue: ISSUE, op: 'unmark', actor: ACTOR });
 
