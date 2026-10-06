@@ -307,6 +307,11 @@ pub struct MasterRow {
     /// read then, which leaves the build alone to judge the pane.
     pub placed_plugins: Option<String>,
     pub placed_at: Option<i64>,
+    /// What the pane was placed with that a rebuild can change, as
+    /// `master_build::Inputs` writes it: each input by name, with its digest.
+    /// `None` on a pane placed by a build that recorded none, which is then
+    /// judged by `placed_build` alone.
+    pub placed_inputs: Option<String>,
     /// The daemon's last verdict that this pane is outdated, in its own words,
     /// and `None` while it is current or has not been judged. Written for
     /// `forge-runner top`, which cannot know what build the daemon runs.
@@ -549,6 +554,7 @@ fn map_master(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterRow> {
         placed_at: row.get(9)?,
         outdated: row.get(10)?,
         unattributed: row.get(11)?,
+        placed_inputs: row.get(12)?,
     })
 }
 

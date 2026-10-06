@@ -20,6 +20,9 @@ pub(crate) struct Carryover<'a> {
     /// proves the one before it gone: a pane found already up is somebody's
     /// running process, and its subagents with it.
     pub(crate) started: &'a std::sync::atomic::AtomicBool,
+    /// Filled when this call started a pane: what it was handed, for the
+    /// ledger to judge it against later (`master_build::judge`).
+    pub(crate) placed_with: &'a Mutex<Option<master_build::Standing>>,
     /// The box's process table: where each inherited subagent runs, and what
     /// runs a conversation outside this box's panes.
     pub(crate) hosts: &'a dyn subagent_host::Hosts,
@@ -27,6 +30,18 @@ pub(crate) struct Carryover<'a> {
     /// nudge, so its brief is the only place the pass it is placed for can be
     /// told what it owes.
     pub(crate) owed: &'a str,
+}
+
+impl Carryover<'_> {
+    /// Say whether this call started a pane, and, where it did, what it was
+    /// handed.
+    fn note_started(&self, started: bool, with: master_build::Standing) {
+        self.started
+            .store(started, std::sync::atomic::Ordering::Relaxed);
+        if started {
+            *self.placed_with.lock().expect("placement sink poisoned") = Some(with);
+        }
+    }
 }
 
 /// The brief a placed pane is sent: the standing prompt, what a resumed
@@ -100,6 +115,8 @@ impl AuthoritySink {
 pub(crate) struct Prepared {
     env: Vec<(String, String)>,
     mcp_config: Option<std::path::PathBuf>,
+    /// What the pane is handed, read before its capability token is added.
+    standing: master_build::Standing,
 }
 
 /// Open the pane core placed, resuming `carry.conversation` or cold. The
@@ -126,6 +143,7 @@ pub(crate) async fn place_pane(
         }
     };
     let mut env = prepared.env;
+    let standing = prepared.standing;
     if let Err(why) = mint_into(
         &mut env,
         ports.tokens,
@@ -194,9 +212,7 @@ pub(crate) async fn place_pane(
         session,
         started.then(|| transcript.clone().zip(output_from)),
     );
-    carry
-        .started
-        .store(started, std::sync::atomic::Ordering::Relaxed);
+    carry.note_started(started, standing);
     // A pane is up. Where this call ended a deaf one on its way here, that is
     // the moment its account becomes a replacement rather than an ending.
     ports.deaf.placed();
@@ -239,6 +255,12 @@ fn prepare_pane(
     runner_workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
     let mut env = terminal::pane_env(project_id, &resolved.slug);
     env.extend(cli_borrow_env(&resolved.slug));
+    let standing = master_build::Standing::this_box(&master_build::Handed {
+        slug: &resolved.slug,
+        repo: &resolved.repo_path,
+        env: &env,
+        servers: Some(&declared.mcp_servers),
+    });
     let mcp_config = write_pane_mcp(&resolved.slug, declared)?;
     if let Some(path) = mcp_config.as_deref() {
         tracing::info!(
@@ -248,7 +270,11 @@ fn prepare_pane(
             path.display()
         );
     }
-    Ok(Prepared { env, mcp_config })
+    Ok(Prepared {
+        env,
+        mcp_config,
+        standing,
+    })
 }
 
 /// The MCP config a pane is started with, or why none may be: a project that

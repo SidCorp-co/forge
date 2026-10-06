@@ -277,11 +277,18 @@ Windows             ─▶ refused by name: no download is taken and a re-login 
   handover — admission was never closed, and the give-up line says so — and no
   handover is attempted again for 2h. The next attempt is the next update check,
   or the next re-login.
-- **Masters an update leaves behind are outdated.** A pane loads its hooks,
-  skill and plugins once, so the panes the new image adopts still run what they
-  were placed under. The daemon records the runner build and the installed
-  Claude Code plugin set at every placement; a pane placed under another build,
-  another plugin set, or before the build was recorded is outdated. An outdated
+- **A master is outdated when what it runs on changed, not when the runner was
+  rebuilt.** A pane loads its hooks, skill, environment, MCP config and plugins
+  once, so the panes a new image adopts still run what they were placed with.
+  The daemon records, at every placement, a digest of each: the forge-master
+  skill text, the hooks it writes, the pane environment (short of the
+  capability token), the MCP config, the launch line, the plugin set, and the
+  master wire version (`master_build::MASTER_WIRE`, bumped only when the
+  box-master protocol changes). A pane is outdated where one of them differs
+  from what the box would hand a pane now, and the verdict names it; a rebuild
+  that changes none of them leaves every pane current. A pane placed before
+  those were recorded is judged by the runner build it was placed under, and
+  one placed before that either is outdated. An outdated
   pane decides only its replacement: until then core keeps it and it is nudged
   as a current master is, so owed work still reaches it. It is
   ended and placed again — in the same sweep, resuming its conversation — only

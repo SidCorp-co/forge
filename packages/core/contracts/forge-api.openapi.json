@@ -5975,6 +5975,60 @@
                         ],
                         "type": "object"
                       },
+                      "inputs": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "now": {
+                                "additionalProperties": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "propertyNames": {
+                                  "pattern": "^[a-z][a-z_]{0,31}$",
+                                  "type": "string"
+                                },
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "at most 32 inputs"
+                                ]
+                              },
+                              "placed": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": {
+                                      "maxLength": 128,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "propertyNames": {
+                                      "pattern": "^[a-z][a-z_]{0,31}$",
+                                      "type": "string"
+                                    },
+                                    "type": "object",
+                                    "x-forge-refinements": [
+                                      "at most 32 inputs"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "placed",
+                              "now"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "limit": {
                         "additionalProperties": false,
                         "properties": {

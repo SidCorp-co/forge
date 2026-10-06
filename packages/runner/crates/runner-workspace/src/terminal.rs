@@ -23,7 +23,7 @@ pub mod deny;
 mod launch;
 mod pane_env;
 pub use launch::*;
-pub use pane_env::{missing_binaries, pane_env};
+pub use pane_env::{missing_binaries, pane_env, pane_env_read};
 use runner_platform::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";

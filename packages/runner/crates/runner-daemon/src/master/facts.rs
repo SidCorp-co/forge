@@ -113,17 +113,47 @@ fn elsewhere_wire(seen: &Seen) -> &'static str {
     }
 }
 
-/// What the pane's build, its runs and its turn say, read off the ledger and
+/// An outdated pane as the box reports it: why, the inputs behind that, and
+/// what it holds and whether its turn is over.
+pub(crate) struct OutdatedRead {
+    pub(crate) why: String,
+    pub(crate) inputs: wire::Inputs,
+    pub(crate) holding: wire::Holding,
+    pub(crate) turn: wire::Turn,
+}
+
+/// What a pane started for this project now would be handed, read without a
+/// word to the log: the environment [`prepare_pane`] gives one, short of its
+/// capability token, and the servers core declares for it this sweep.
+pub(crate) fn standing_now(
+    project_id: &str,
+    resolved: &crate::dispatch::Resolved,
+    servers: Option<&ServersRead>,
+) -> master_build::Standing {
+    let (mut env, _) = terminal::pane_env_read(project_id, &resolved.slug);
+    env.extend(cli_borrow_read(&resolved.slug));
+    master_build::Standing::this_box(&master_build::Handed {
+        slug: &resolved.slug,
+        repo: &resolved.repo_path,
+        env: &env,
+        servers: servers
+            .and_then(|s| s.as_ref().ok())
+            .map(|d| &d.mcp_servers),
+    })
+}
+
+/// What the pane's inputs, its runs and its turn say, read off the ledger and
 /// its hooks: `None` where the pane is current or cannot be judged. The
 /// ledger's `outdated` column is written to match either way.
 pub(crate) fn outdated_facts(
     led: &Ledger,
     masters: &Masters,
     activity: &agent_activity::Activities,
-    pane_name: &str,
+    sees: &Seen,
     resolved: &crate::dispatch::Resolved,
     project_id: &str,
-) -> Option<(String, wire::Holding, wire::Turn)> {
+) -> Option<OutdatedRead> {
+    let pane_name = sees.pane_name.as_str();
     let slug = &resolved.slug;
     let row = match led.master_for_project(project_id) {
         Ok(row) => row,
@@ -134,7 +164,7 @@ pub(crate) fn outdated_facts(
             return None;
         }
     };
-    let now = master_build::Standing::this_box(&resolved.repo_path);
+    let now = standing_now(project_id, resolved, sees.servers.as_ref());
     let why = match master_build::judge(row.as_ref(), &now) {
         Judged::Current => {
             if row.as_ref().is_some_and(|r| r.outdated.is_some()) {
@@ -174,11 +204,19 @@ pub(crate) fn outdated_facts(
                 .and_then(|r| r.conversation_id.as_deref())
                 .and_then(|c| conversation_transcript(&resolved.repo_path, c))
         });
-    Some((
+    let placed = row
+        .as_ref()
+        .and_then(|r| r.placed_inputs.as_deref())
+        .and_then(master_build::Inputs::from_record);
+    Some(OutdatedRead {
         why,
-        holding_wire(&holding),
-        turn_wire(turn_of(seen.as_ref(), transcript.as_deref())),
-    ))
+        inputs: wire::Inputs {
+            placed: placed.map(|p| p.0),
+            now: now.inputs.0,
+        },
+        holding: holding_wire(&holding),
+        turn: turn_wire(turn_of(seen.as_ref(), transcript.as_deref())),
+    })
 }
 
 fn holding_wire(holding: &Holding) -> wire::Holding {
@@ -311,15 +349,15 @@ pub(crate) fn limit_facts(
 pub(crate) fn facts_of(
     seen: &Seen,
     work: &Work,
-    judged: Option<(String, wire::Holding, wire::Turn)>,
+    judged: Option<OutdatedRead>,
     idle: wire::Idle,
     limit: wire::Limit,
     nudge: wire::NudgeFacts,
     repo: &std::path::Path,
 ) -> wire::Facts {
-    let (outdated, holding, turn) = match judged {
-        Some((why, holding, turn)) => (Some(why), holding, turn),
-        None => (None, wire::Holding::Nothing, wire::Turn::Unknown),
+    let (outdated, inputs, holding, turn) = match judged {
+        Some(read) => (Some(read.why), Some(read.inputs), read.holding, read.turn),
+        None => (None, None, wire::Holding::Nothing, wire::Turn::Unknown),
     };
     wire::Facts {
         restarting: seen.restarting.clone(),
@@ -338,6 +376,7 @@ pub(crate) fn facts_of(
             elsewhere: elsewhere_wire(seen),
         },
         outdated,
+        inputs,
         holding,
         turn,
         idle,

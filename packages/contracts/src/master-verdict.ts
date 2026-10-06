@@ -51,6 +51,15 @@ export const MASTER_ACCOUNT_REFUSALS = [
 	"auth",
 ] as const;
 
+const MASTER_INPUTS_MAX = 32;
+
+/** What a pane is handed that a rebuild can change, by name, each with its digest. */
+export const masterInputsSchema = z
+	.record(z.string().regex(/^[a-z][a-z_]{0,31}$/), z.string().trim().min(1).max(128))
+	.refine((inputs) => Object.keys(inputs).length <= MASTER_INPUTS_MAX, {
+		message: `at most ${MASTER_INPUTS_MAX} inputs`,
+	});
+
 export const masterFactsSchema = z.strictObject({
 	/** The cause of the handover window the daemon is in, or null outside one. */
 	restarting: text.nullable(),
@@ -76,6 +85,16 @@ export const masterFactsSchema = z.strictObject({
 	}),
 	/** Why the pane's build or plugins are not the ones this box would place now; null when current or unjudged. */
 	outdated: text.nullable(),
+	/**
+	 * What an outdated pane was placed with and what the box would hand one now, each input by name
+	 * (`wire`, `skill`, `hooks`, `env`, `mcp`, `launch`, `plugins`) with its digest. `placed` is null
+	 * for a pane placed by a build that recorded none. Absent from a box built before inputs were
+	 * reported; null where the pane is not judged outdated.
+	 */
+	inputs: z
+		.strictObject({ placed: masterInputsSchema.nullable(), now: masterInputsSchema })
+		.nullable()
+		.optional(),
 	/** The runs the pane holds, each with what its subagent's own evidence says; whether it is over is core's. */
 	holding: z.discriminatedUnion("kind", [
 		z.strictObject({ kind: z.literal("nothing") }),
@@ -140,7 +159,7 @@ export const masterVerdictRequestSchema = z.strictObject({
 	facts: masterFactsSchema,
 });
 export const MASTER_VERDICT_SHAPE =
-	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
+	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, inputs?, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
 
 /** Why no pane is placed, none ended and none nudged. */
 export const MASTER_WITHHOLD_REASONS = [
