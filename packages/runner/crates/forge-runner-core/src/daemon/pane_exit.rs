@@ -42,7 +42,8 @@ const TRUST_QUESTIONS: [&str; 2] = [
 /// An option only the trust dialog offers, which has to follow its question.
 const TRUST_OPTIONS: [&str; 2] = ["trust this folder", "Yes, proceed"];
 
-/// The dialog's footer: a pane stopped on the dialog prints nothing after it.
+/// The dialog's footer, its last line: after it, a pane stopped on the dialog
+/// prints only redraws of the dialog's own rows.
 const TRUST_FOOTERS: [&str; 2] = ["Esc to cancel", "Esc to exit"];
 
 /// What the dialog prints before the folder it is asking about.
@@ -223,15 +224,44 @@ fn elsewhere_in(text: &str) -> Option<(String, Option<String>)> {
 }
 
 /// Whether `text` ends on the trust dialog: its question, one of its options
-/// after the last question, and its footer as the final words. Output that
-/// goes on past the footer is a session that met the dialog and carried on, so
-/// it is not this exit.
+/// after the last question, its footer after that option, and after the
+/// footer only the dialog's own words. Moving the selection redraws just the
+/// option rows, so a dialog cancelled after a move ends on those. Any later
+/// screen prints a word the dialog never did, and that includes the Bypass
+/// Permissions warning, whose footer is this one's (ISS-1382 judging): a pane
+/// that answered the dialog and declined that warning passed the dialog.
 fn ends_on_trust_dialog(text: &str) -> bool {
     let Some(at) = TRUST_QUESTIONS.iter().filter_map(|q| text.rfind(q)).max() else {
         return false;
     };
-    TRUST_OPTIONS.iter().any(|o| text[at..].contains(o))
-        && TRUST_FOOTERS.iter().any(|f| text.trim_end().ends_with(f))
+    let dialog = &text[at..];
+    let Some(option) = TRUST_OPTIONS.iter().filter_map(|o| dialog.find(o)).min() else {
+        return false;
+    };
+    let Some(end) = TRUST_FOOTERS
+        .iter()
+        .filter_map(|f| dialog[option..].find(f).map(|i| option + i + f.len()))
+        .min()
+    else {
+        return false;
+    };
+    let own: std::collections::HashSet<&str> = dialog[..end].split_whitespace().collect();
+    dialog[end..].split_whitespace().all(|w| own.contains(w))
+}
+
+/// The trust exit for output `raw` that ends on the dialog.
+fn untrusted(raw: &str) -> Exit {
+    Exit::Untrusted {
+        workspace: trust_workspace(raw),
+        config: crate::workspace::trust::config_path().map(|p| p.display().to_string()),
+    }
+}
+
+/// What a pane whose visible `screen` ends on the trust dialog would exit as.
+/// Such a pane is alive and has no exit yet, so this is how `master status`
+/// and the send path name a pane still stopped on the dialog.
+pub fn on_trust_dialog(screen: &str) -> Option<Exit> {
+    ends_on_trust_dialog(&screen_words(screen)).then(|| untrusted(screen))
 }
 
 /// The folder the last trust dialog in `raw` names: the first line holding a
@@ -294,10 +324,7 @@ pub fn classify(path: &Path, from: u64, early: bool) -> Exit {
         };
     }
     if ends_on_trust_dialog(&text) {
-        return Exit::Untrusted {
-            workspace: trust_workspace(&String::from_utf8_lossy(&raw)),
-            config: crate::workspace::trust::config_path().map(|p| p.display().to_string()),
-        };
+        return untrusted(&String::from_utf8_lossy(&raw));
     }
     if text.is_empty() {
         return Exit::Silent;
@@ -1018,6 +1045,58 @@ mod tests {
             !matches!(classified(&short_error, true), Exit::Untrusted { .. }),
             "even one short line after the footer is not the dialog"
         );
+    }
+
+    /// Real Claude Code 2.1.291 in an untrusted folder, as `pipe-pane` kept
+    /// it: the dialog answered `Yes, I trust this folder` (the key was then
+    /// written true), and `No, exit` taken on the Bypass Permissions screen
+    /// that followed, whose footer is the trust dialog's own (ISS-1382 judging,
+    /// j4's T3, reproduced in `iss1382-r3-real-claude-raw-transcripts.txt`).
+    const TRUST_THEN_BYPASS_DECLINED: &str =
+        include_str!("../../assets/pane-exit-trust-then-bypass-declined.txt");
+
+    /// The same build's dialog with its selection moved down and back up,
+    /// then cancelled by Esc. Moving the selection redraws only the option
+    /// rows, so the output ends on them rather than on the footer.
+    const TRUST_MOVED_THEN_CANCELLED: &str =
+        include_str!("../../assets/pane-exit-trust-dialog-moved-then-cancelled.txt");
+
+    /// ISS-1382 criterion 9: a later screen ending on the same footer is not
+    /// the trust dialog, and that exit is reported by its own screen's words.
+    #[test]
+    fn a_pane_that_passed_the_dialog_and_declined_bypass_is_not_a_trust_exit() {
+        match classified(TRUST_THEN_BYPASS_DECLINED, true) {
+            Exit::Printed { last } => {
+                assert!(last.contains("Bypass Permissions mode"), "{last}");
+                assert!(
+                    last.ends_with("Yes, I accept Enter to confirm \u{b7} Esc to cancel"),
+                    "{last}"
+                );
+            }
+            other => panic!("the bypass decline is reported by its own screen: {other:?}"),
+        }
+        assert!(
+            matches!(
+                classified(TRUST_THEN_BYPASS_DECLINED, false),
+                Exit::NoReason { .. }
+            ),
+            "read gone late, it is still no trust exit"
+        );
+    }
+
+    /// ISS-1382 criterion 8: a dialog whose selection moved before it was
+    /// cancelled still ends on the dialog, its redrawn rows being its own words.
+    #[test]
+    fn a_dialog_moved_then_cancelled_is_still_a_trust_exit() {
+        match classified(TRUST_MOVED_THEN_CANCELLED, true) {
+            Exit::Untrusted { workspace, .. } => {
+                assert_eq!(
+                    workspace.as_deref(),
+                    Some("/home/dev/.cache/iss1382r3/repo")
+                );
+            }
+            other => panic!("a dialog cancelled after its selection moved: {other:?}"),
+        }
     }
 
     /// ISS-1385 criteria 16 and 17: an exit whose words change only in their
