@@ -8,7 +8,14 @@ import type {
 } from '@forge/contracts/run-standing';
 import { isPipelineSessionKind } from '../agent-sessions/index.js';
 import { classifyLease } from '../issues/index.js';
-import { after, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
+import {
+  after,
+  foreignClaimTree,
+  iso,
+  none,
+  type RunFacts,
+  type StandingContext,
+} from './standing-types.js';
 
 function verdictAt(at: Date, now: Date, lapsed: IssueLeaseVerdict): IssueLeaseVerdict {
   return at.getTime() > now.getTime() ? 'live' : lapsed;
@@ -19,6 +26,13 @@ function claimExpiry(f: RunFacts, now: Date): { expiry: RunExpiry | null; detail
   if (lease === null || lease === undefined) return { expiry: null, detail: null };
   const read = classifyLease({ lease, now, fanout: 1 });
   if (read.verdict === 'none') return { expiry: null, detail: null };
+  const foreign = foreignClaimTree(f);
+  if (foreign !== null) {
+    return {
+      expiry: null,
+      detail: `the claim on ${f.issue?.key} by ${read.holder ?? 'no holder'} was taken in ${foreign}, not in this run's worktree ${f.ledger?.worktreePath}, so it times nothing for this run`,
+    };
+  }
   if (!read.expiresAt) {
     return {
       expiry: null,

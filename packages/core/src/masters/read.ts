@@ -109,7 +109,7 @@ export function readClosedPass(
   );
 }
 
-async function slotsInUse(deviceId: string): Promise<number> {
+async function slotsHeld(deviceId: string): Promise<{ jobPanes: number; runs: number }> {
   const [row] = rowsOf<{ jobs: number; runs: number }>(
     await db.execute(sql`
       SELECT
@@ -122,7 +122,7 @@ async function slotsInUse(deviceId: string): Promise<number> {
             AND s.status IN (${list(LIVE_SESSION_STATUSES)})
             AND ${NOT_PARKED})::int AS runs`),
   );
-  return (row?.jobs ?? 0) + (row?.runs ?? 0);
+  return { jobPanes: row?.jobs ?? 0, runs: row?.runs ?? 0 };
 }
 
 interface MasterRow {
@@ -190,9 +190,9 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     master.device_id && master.device_name !== null
       ? { id: master.device_id, name: master.device_name }
       : null;
-  const [pass, inUse] = await Promise.all([
+  const [pass, held] = await Promise.all([
     readOpenPass(db, master.id),
-    device ? slotsInUse(device.id) : Promise.resolve(0),
+    device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
   ]);
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
   return {
@@ -204,7 +204,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     device,
     since: master.started_at ? iso(master.started_at) : null,
     pass,
-    slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, inUse) : null,
+    slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, held) : null,
     lastBeatAt: master.last_beat ? iso(master.last_beat) : null,
   };
 }

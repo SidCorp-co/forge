@@ -16,6 +16,9 @@
 - **A box's head read counts only for the declared repository.** Every connected bound box is asked
   for the checkout core names; another repository's origin is refused `CHECKOUT_HEAD_OTHER_REPOSITORY`.
   A revise whose accept is refused answers `acceptRefused`.
+- **A building run reads as building.** A claim taken in another checkout no longer makes it stuck;
+  slots count job panes, declared runs beside them; the issue page and per-issue run reads find group
+  runs; a landed handback says so.
 
 ## [0.4.0-dev.41] - 2026-10-06
 

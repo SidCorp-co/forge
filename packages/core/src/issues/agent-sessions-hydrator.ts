@@ -1,6 +1,8 @@
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { RUN_GROUP_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, devices } from '../db/schema.js';
+import { agentSessions, devices, issues } from '../db/schema.js';
+import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { getLoopThresholds } from './ports.js';
 
 type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
@@ -89,15 +91,36 @@ function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgentStatus
 }
 
 // Fetch non-`idle` agent_sessions for the given issues within a project, then
-// build a map of issueId → { agentSessions, agentStatus }. Sessions are linked
-// via `metadata->>'issueId'` (the canonical link written by
-// `jobs/agent-session-link.ts`).
+// build a map of issueId → { agentSessions, agentStatus }. A job's session names
+// its issue in `metadata->>'issueId'` (`jobs/agent-session-link.ts`); a run
+// session names none, its run carrying the issues as a group, so it is read
+// through that group and attached to every issue in it (epod 2026-10-06: an
+// issue a declared run was building read as nothing on its own page).
 export async function hydrateAgentSessionsForIssues(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, HydratedAgentAttachment>> {
   const map = new Map<string, HydratedAgentAttachment>();
   if (issueIds.length === 0) return map;
+
+  const keyed = await db
+    .select({ id: issues.id, seq: issues.issSeq })
+    .from(issues)
+    .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...issueIds])));
+  const idByKey = new Map(keyed.map((r) => [canonicalIssueKey(r.seq), r.id]));
+  const groupKeys = [...idByKey.keys()];
+  const runGroup = sql<unknown>`(SELECT pr.metadata -> ${RUN_GROUP_METADATA_KEY}
+      FROM pipeline_runs pr WHERE pr.id = ${agentSessions.pipelineRunId})`;
+  const byGroup =
+    groupKeys.length === 0
+      ? undefined
+      : and(
+          eq(agentSessions.kind, RUN_SESSION_KIND),
+          sql`${runGroup} ?| array[${sql.join(
+            groupKeys.map((k) => sql`${k}`),
+            sql`, `,
+          )}]::text[]`,
+        );
 
   const rows = await db
     .select({
@@ -112,14 +135,14 @@ export async function hydrateAgentSessionsForIssues(
       lastHeartbeatAt: agentSessions.lastHeartbeatAt,
       pipelineRunId: agentSessions.pipelineRunId,
       claudeSessionId: agentSessions.claudeSessionId,
+      runGroup,
     })
     .from(agentSessions)
     .where(
       and(
         eq(agentSessions.projectId, projectId),
         ne(agentSessions.status, 'idle'),
-        sql`${agentSessions.metadata}->>'issueId' IS NOT NULL`,
-        inArray(sql<string>`${agentSessions.metadata}->>'issueId'`, [...issueIds]),
+        or(inArray(sql<string>`${agentSessions.metadata}->>'issueId'`, [...issueIds]), byGroup),
       ),
     )
     .orderBy(desc(agentSessions.updatedAt));
@@ -138,32 +161,44 @@ export async function hydrateAgentSessionsForIssues(
 
   const now = Date.now();
   const { heartbeatMs } = getLoopThresholds();
+  const sessionOf = (
+    r: (typeof rows)[number],
+    meta: Record<string, unknown> | null,
+  ): HydratedAgentSession => ({
+    id: r.id,
+    status: r.status,
+    metadata: meta,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    title: r.title,
+    deviceId: r.deviceId,
+    startedAt: r.startedAt,
+    lastHeartbeatAt: r.lastHeartbeatAt,
+    pipelineRunId: r.pipelineRunId,
+    claudeSessionId: r.claudeSessionId,
+    deviceName: r.deviceId ? (deviceNameById.get(r.deviceId) ?? null) : null,
+    heartbeat: heartbeatOf(r.lastHeartbeatAt ?? r.updatedAt, now, heartbeatMs),
+    continuity: 'unknown',
+    freshReason: null,
+  });
   for (const r of rows) {
     const meta = (r.metadata as Record<string, unknown> | null) ?? null;
-    const issueId = typeof meta?.issueId === 'string' ? (meta.issueId as string) : null;
-    if (!issueId) continue;
-    let bucket = map.get(issueId);
-    if (!bucket) {
-      bucket = { agentSessions: [], agentStatus: null };
-      map.set(issueId, bucket);
+    const named = typeof meta?.issueId === 'string' ? [meta.issueId as string] : [];
+    const grouped = Array.isArray(r.runGroup)
+      ? r.runGroup.flatMap((k) => {
+          const id = typeof k === 'string' ? idByKey.get(k) : undefined;
+          return id ? [id] : [];
+        })
+      : [];
+    for (const issueId of new Set([...named, ...grouped])) {
+      if (!issueIds.includes(issueId)) continue;
+      let bucket = map.get(issueId);
+      if (!bucket) {
+        bucket = { agentSessions: [], agentStatus: null };
+        map.set(issueId, bucket);
+      }
+      bucket.agentSessions.push(sessionOf(r, meta));
     }
-    bucket.agentSessions.push({
-      id: r.id,
-      status: r.status,
-      metadata: meta,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-      title: r.title,
-      deviceId: r.deviceId,
-      startedAt: r.startedAt,
-      lastHeartbeatAt: r.lastHeartbeatAt,
-      pipelineRunId: r.pipelineRunId,
-      claudeSessionId: r.claudeSessionId,
-      deviceName: r.deviceId ? (deviceNameById.get(r.deviceId) ?? null) : null,
-      heartbeat: heartbeatOf(r.lastHeartbeatAt ?? r.updatedAt, now, heartbeatMs),
-      continuity: 'unknown',
-      freshReason: null,
-    });
   }
 
   for (const bucket of map.values()) {

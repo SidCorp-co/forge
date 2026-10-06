@@ -50,7 +50,9 @@ running again. A person wait is never stuck.
 
 ### The project master
 \`…/masters/standing\` answers the master's state (\`in_pass\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots. \`waiting_person\` is a pane
+pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots: \`inUse\` counts the job panes
+\`max\` (the box's max_job_panes) caps, and \`runs\` the runs the box declared beside them, which no cap holds. A run's
+claim times it only where the claim was taken in that run's own worktree. \`waiting_person\` is a pane
 stopped on a dialog the box reported; \`waitingOn\` names it, and every run that pane hosts reads waiting on a person too.
 \`…/masters/passes\` pages the stored passes newest first, each with its \`trigger\` (\`nudge\`, or \`unprompted\` for a
 turn the box saw start without asking) and, closed, \`refused\` when its turn was refused before it ran: a refused pass is

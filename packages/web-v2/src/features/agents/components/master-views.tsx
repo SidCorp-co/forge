@@ -45,7 +45,8 @@ export const masterName = (m: MasterStanding) => m.name ?? "Project master";
 
 function slotsText(m: MasterStanding): string {
   if (!m.slots) return "—";
-  return m.slots.max === null ? `${m.slots.inUse} of ?` : `${m.slots.inUse} of ${m.slots.max}`;
+  const slots = m.slots.max === null ? `${m.slots.inUse} of ?` : `${m.slots.inUse} of ${m.slots.max}`;
+  return m.slots.runs > 0 ? `${slots} · ${m.slots.runs} declared run${m.slots.runs === 1 ? "" : "s"} beside them` : slots;
 }
 
 function doing(m: MasterStanding): string {

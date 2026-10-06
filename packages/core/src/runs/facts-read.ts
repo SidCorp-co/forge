@@ -226,7 +226,7 @@ function runRows(projectId: string, ids: string[]) {
 function issueRowsOf(projectId: string, seqs: number[]) {
   return when(seqs.length > 0, () =>
     q(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease,
+      SELECT i.id, i.iss_seq, i.title, i.status, i.merged_at, w.step, w.step_started_at, w.lease,
              i.session_context -> 'strand' AS strand,
              (SELECT max(kt.created_at) FROM kernel_transitions kt
                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status)
@@ -247,7 +247,8 @@ function holderRows(
   return Promise.all([
     when(sessionIds.length > 0, () =>
       q(sql`
-        SELECT DISTINCT ON (session_id) session_id, incarnation, work, blocker_kind, waiting_on, observed_at
+        SELECT DISTINCT ON (session_id) session_id, incarnation, work, blocker_kind, waiting_on, observed_at,
+               worktree_path
           FROM device_run_ledger WHERE session_id IN (${uuids(sessionIds)})
          ORDER BY session_id, observed_at DESC`),
     ),

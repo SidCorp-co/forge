@@ -170,8 +170,12 @@ export interface MasterSessionResponse {
 }
 
 export interface MasterSlots {
+	/** Job panes the box holds for pool jobs: the count `max` (devices.max_job_panes) caps. */
 	inUse: number;
 	max: number | null;
+	/** Live run sessions the box declared (`forge-runner run declare`, a master's in-pane builders):
+	 *  max_job_panes does not cap them, so they are served beside the slots, never inside them. */
+	runs: number;
 	undeclared: MasterRefusal | null;
 }
 

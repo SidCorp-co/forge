@@ -1,3 +1,4 @@
+import { RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
@@ -179,27 +180,33 @@ async function eventsOf(run: RunStanding): Promise<{ events: RunEvent[]; hasMore
   return { events, hasMore: rows.length > RUN_EVENTS_MAX };
 }
 
-/** The latest run of each issue, read as `GET runs/standing` reads it (workflow-step-health `in-runs`). */
+/** The latest run of each issue, read as `GET runs/standing` reads it (workflow-step-health `in-runs`). A run
+ *  session's row names no issue and carries its issues as a group, so an issue's runs are read through the
+ *  group as well, by the canonical key (ISS-992). */
 export async function latestRunsOfIssues(
   projectId: string,
   issueIds: readonly string[],
   viewer: RunViewer | null,
 ): Promise<{ issueId: string; run: RunStanding }[]> {
   if (issueIds.length === 0) return [];
-  const base = await baseRuns(
-    projectId,
-    sql`r.issue_id::text IN (${inList(issueIds)}) AND r.id = (
-      SELECT r2.id FROM pipeline_runs r2 WHERE r2.issue_id = r.issue_id
-       ORDER BY r2.started_at DESC, r2.id LIMIT 1)`,
-    issueIds.length,
-    0,
+  const latest = rowsOf<{ issue_id: string; run_id: string }>(
+    await db.execute(sql`
+      SELECT DISTINCT ON (i.id) i.id AS issue_id, r.id AS run_id
+        FROM issues i
+        JOIN pipeline_runs r ON r.project_id = i.project_id
+         AND (r.issue_id = i.id OR r.metadata -> ${RUN_GROUP_METADATA_KEY} ? ('ISS-' || i.iss_seq))
+       WHERE i.project_id = ${projectId} AND i.id::text IN (${inList(issueIds)})
+         AND ${RUN_SCOPE_SQL}
+       ORDER BY i.id, r.started_at DESC, r.id`),
   );
+  if (latest.length === 0) return [];
+  const runIds = [...new Set(latest.map((l) => l.run_id))];
+  const base = await baseRuns(projectId, sql`r.id::text IN (${inList(runIds)})`, runIds.length, 0);
   const { ctx } = await contextFor(projectId, viewer);
-  const runs = await standingsOf(projectId, base, ctx);
-  const issueOf = new Map(base.map((b) => [b.id, b.issue_id]));
-  return runs.flatMap((run) => {
-    const issueId = issueOf.get(run.id);
-    return issueId ? [{ issueId, run }] : [];
+  const byId = new Map((await standingsOf(projectId, base, ctx)).map((run) => [run.id, run]));
+  return latest.flatMap((l) => {
+    const run = byId.get(l.run_id);
+    return run ? [{ issueId: l.issue_id, run }] : [];
   });
 }
 
