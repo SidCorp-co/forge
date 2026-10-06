@@ -1,5 +1,6 @@
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { missingElements } from './contract/upload-rules.js';
+import { pinRefusals, type VersionApprovals } from './pin-rules.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { CONTRACT_REF, type EcosystemDocument, type InterfaceDocument } from './schema.js';
 
@@ -19,7 +20,7 @@ export interface InterfaceWorld {
   project: { id: string; slug: string };
   activeEcosystems: ReadonlyMap<string, EcosystemDocument>;
   providers: ReadonlyMap<string, ProviderView>;
-  versions: ReadonlyMap<string, ReadonlySet<string>>;
+  versions: ReadonlyMap<string, VersionApprovals>;
   elements: ReadonlyMap<string, ReadonlySet<string> | null>;
   consumersOfMine: readonly ConsumerEdge[];
 }
@@ -73,17 +74,14 @@ function builtAgainstRefusals(
   world: InterfaceWorld,
   at: (...rest: PropertyKey[]) => string,
 ): EcosystemRefusal[] {
-  const versions = world.versions.get(versionKey(providerId, contract));
-  if (!versions?.has(c.builtAgainst)) {
-    const known = versions && versions.size > 0 ? [...versions].sort().join(', ') : 'none yet';
-    return [
-      {
-        code: 'VERSION_UNKNOWN',
-        path: at('builtAgainst'),
-        detail: `${c.contract} has no recorded version "${c.builtAgainst}" (recorded: ${known}); builtAgainst names a version core has recorded for that contract.`,
-      },
-    ];
-  }
+  const pinned = pinRefusals({
+    ref: c.contract,
+    version: c.builtAgainst,
+    versions: world.versions.get(versionKey(providerId, contract)),
+    path: at('builtAgainst'),
+    field: 'builtAgainst',
+  });
+  if (pinned.length > 0) return pinned;
   const known = world.elements.get(`${versionKey(providerId, contract)}@${c.builtAgainst}`);
   return missingElements(
     c.elements ?? [],

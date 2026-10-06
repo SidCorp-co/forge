@@ -1,17 +1,16 @@
 import type { LinkWorld } from './link-rules.js';
 import type { LinkWrite } from './link-schema.js';
+import { pinRefusals } from './pin-rules.js';
 import type { EcosystemRefusal } from './refusals.js';
 
 export function versionRefusals(doc: LinkWrite, world: LinkWorld, ref: string): EcosystemRefusal[] {
-  if (world.versions.has(doc.pinnedVersion)) return [];
-  const known = world.versions.size > 0 ? [...world.versions].sort().join(', ') : 'none yet';
-  return [
-    {
-      code: 'VERSION_UNKNOWN',
-      path: '/pinnedVersion',
-      detail: `${ref} has no recorded version "${doc.pinnedVersion}" (recorded: ${known}); pinnedVersion names a version core has recorded for that contract.`,
-    },
-  ];
+  return pinRefusals({
+    ref,
+    version: doc.pinnedVersion,
+    versions: world.versions,
+    path: '/pinnedVersion',
+    field: 'pinnedVersion',
+  });
 }
 
 // a module calling its own project's contract is the in-project link and names no ecosystem (Q11, 2026-10-03); naming one for it stays SELF_CONSUMPTION, since an ecosystem is where two projects meet

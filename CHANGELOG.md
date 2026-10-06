@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A consumer pins an approved contract version only.** A link's `pinnedVersion` or a
+  consumption's `builtAgainst` naming a proposed or returned version is refused
+  `CONTRACT_VERSION_NOT_APPROVED`, naming its state and the approved versions.
 - **The Agents run list refreshes live when a job or run moves.** Every job frame names its
   project; a job of a person's own chat, log lines included, reaches only its readers, never the
   project room.

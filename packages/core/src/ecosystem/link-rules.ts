@@ -18,6 +18,7 @@ import {
   linkWriteSchema,
   STEP_STATUSES,
 } from './link-schema.js';
+import type { VersionApprovals } from './pin-rules.js';
 import type { Checked, EcosystemRefusal, LinkRefusalCode } from './refusals.js';
 import type { InterfaceDocument } from './schema.js';
 
@@ -165,7 +166,7 @@ export interface LinkWorld {
   consumerSource: BuilderSource;
   consumerActiveIn: ReadonlySet<string>;
   provider: ProviderSide | null;
-  versions: ReadonlySet<string>;
+  versions: VersionApprovals;
   duplicateOf: string | null;
 }
 

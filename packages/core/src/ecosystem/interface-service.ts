@@ -104,10 +104,10 @@ async function buildWorld(
   const activeIn = (projectId: string) =>
     new Set(active.filter((a) => a.projectId === projectId).map((a) => a.ecosystemId));
   const ecos = await readEcosystems(tx, [...activeIn(self.id)]);
-  const versionSets = new Map<string, Set<string>>();
+  const versionSets = new Map<string, Map<string, string>>();
   for (const v of versions) {
     const key = versionKey(v.providerProjectId, v.contractSlug);
-    versionSets.set(key, (versionSets.get(key) ?? new Set()).add(v.version));
+    versionSets.set(key, (versionSets.get(key) ?? new Map()).set(v.version, v.approval));
   }
   return {
     project: { id: self.id, slug: self.slug },
