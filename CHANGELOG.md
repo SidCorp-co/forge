@@ -11,6 +11,7 @@
 ### Fixed
 
 - **Cancelling a running pool job now stops it.** The box closes its session, frees the runner slot once the close is confirmed, and the job reads cancelled, not failed. A box that missed the cancel learns at its next check-in.
+- **A reopened feedback item can no longer be marked verified by the machine**: verify follows a shipped fix, which a reopened item never has, so its only ways out are back to triage or declined (feedback machine v3).
 
 ## [0.4.0-dev.60] - 2026-10-06
 
