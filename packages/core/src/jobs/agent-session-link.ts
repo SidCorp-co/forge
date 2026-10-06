@@ -2,6 +2,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import {
   insertSessionRow,
   masterSessionIfOwned,
+  sessionAudienceById,
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -304,7 +305,15 @@ export async function broadcastSessionEvent(
   event: string,
   extra: Record<string, unknown>,
 ): Promise<void> {
-  await emitEvent(db, 'session.changed', { sessionId, projectId, deviceId, event, extra });
+  const audience = await sessionAudienceById(sessionId);
+  await emitEvent(db, 'session.changed', {
+    sessionId,
+    projectId,
+    deviceId,
+    event,
+    extra,
+    ...audience,
+  });
 }
 
 async function broadcastSessionStatus(

@@ -10,6 +10,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { extractTurnPreview } from './chat-preview.js';
+import { ownerPrivateChatSql } from './session-access.js';
 import { transcriptLength } from './turns-helpers.js';
 import {
   canonicalSessionId,
@@ -82,6 +83,8 @@ type AgentSessionQuery = {
   projectId: string;
   status?: AgentSessionStatus | undefined;
   issueId?: string | undefined;
+  /** Whose person-opened chats the rows hold besides project-wide sessions; null holds everyone's. */
+  privateChatsOf: string | null;
   limit: number;
 };
 
@@ -90,6 +93,9 @@ export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
   const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
   if (q.issueId) conds.push(sql`${agentSessions.metadata}->>'issueId' = ${q.issueId}`);
+  if (q.privateChatsOf !== null) {
+    conds.push(sql`(NOT ${ownerPrivateChatSql} OR ${agentSessions.userId} = ${q.privateChatsOf})`);
+  }
 
   return db
     .select(agentSessionMcpListColumns)
@@ -132,14 +138,15 @@ export async function readAgentSession(sessionId: string) {
 }
 
 /** Where a session lives and which device it was dispatched to, or null when it does not exist. */
-export async function sessionPlacement(
-  sessionId: string,
-): Promise<{ id: string; projectId: string; deviceId: string | null } | null> {
+export async function sessionPlacement(sessionId: string) {
   const [row] = await db
     .select({
       id: agentSessions.id,
       projectId: agentSessions.projectId,
       deviceId: agentSessions.deviceId,
+      userId: agentSessions.userId,
+      kind: agentSessions.kind,
+      metadata: agentSessions.metadata,
     })
     .from(agentSessions)
     .where(eq(agentSessions.id, sessionId))
@@ -206,6 +213,8 @@ export type AgentSessionListFilter = {
   status?: AgentSessionStatus | undefined;
   kind?: AgentSessionKind | undefined;
   issueId?: string | undefined;
+  /** Whose person-opened chats the page holds besides project-wide sessions; null holds everyone's. */
+  privateChatsOf: string | null;
   archived: boolean;
   page: number;
   pageSize: number;
@@ -226,6 +235,11 @@ export async function listAgentSessionsPage(f: AgentSessionListFilter) {
   if (f.status) conditions.push(eq(agentSessions.status, f.status));
   if (f.kind) conditions.push(eq(agentSessions.kind, f.kind));
   if (f.issueId) conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${f.issueId}`);
+  if (f.privateChatsOf !== null) {
+    conditions.push(
+      sql`(NOT ${ownerPrivateChatSql} OR ${agentSessions.userId} = ${f.privateChatsOf})`,
+    );
+  }
   // ISS-465 — `IS DISTINCT FROM` keeps rows whose metadata has no `archived` key.
   if (f.archived) {
     conditions.push(sql`${agentSessions.metadata}->>'archived' = 'true'`);

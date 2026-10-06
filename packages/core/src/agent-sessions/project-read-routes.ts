@@ -16,8 +16,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { listAgentSessionsForMcp, readAgentSession } from './read.js';
+import { assertAgentChatOwner } from './session-access.js';
 
 const paramSchema = z.object({ id: z.uuid() });
 const sessionParamSchema = z.object({ id: z.uuid(), sessionId: z.uuid() });
@@ -36,9 +37,10 @@ agentSessionProjectReadRoutes.use(
   assertEmailVerified(),
 );
 
-async function assertMember(projectId: string, userId: string): Promise<void> {
+async function assertMember(projectId: string, userId: string) {
   const access = await loadProjectAccess(projectId, userId);
   requireHeld(access, 'project.read');
+  return access;
 }
 
 agentSessionProjectReadRoutes.get(
@@ -48,12 +50,14 @@ agentSessionProjectReadRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const { issueId, status, limit } = c.req.valid('query');
-    await assertMember(id, c.get('userId'));
+    const userId = c.get('userId');
+    const access = await assertMember(id, userId);
 
     const rows = await listAgentSessionsForMcp({
       projectId: id,
       status,
       issueId,
+      privateChatsOf: holds(access, 'project.admin') ? null : userId,
       limit: overfetch(limit),
     });
 
@@ -73,7 +77,8 @@ agentSessionProjectReadRoutes.get(
   zValidator('param', sessionParamSchema),
   async (c) => {
     const { id, sessionId } = c.req.valid('param');
-    await assertMember(id, c.get('userId'));
+    const userId = c.get('userId');
+    const access = await assertMember(id, userId);
 
     const row = await readAgentSession(sessionId);
     if (!row || row.projectId !== id) {
@@ -82,6 +87,7 @@ agentSessionProjectReadRoutes.get(
         cause: { code: 'NOT_FOUND' },
       });
     }
+    assertAgentChatOwner(row, access, userId);
 
     return c.json({ session: row });
   },

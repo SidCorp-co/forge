@@ -37,6 +37,7 @@ agentSessionLifecycleRoutes.post('/abort', zValidator('json', abortBodySchema), 
     await pushSession({
       projectId: null,
       deviceId: targetDeviceId,
+      userIds: [],
       event: 'agent:abort',
       data: { sessionId: updated.id },
     });
@@ -76,6 +77,7 @@ agentSessionLifecycleRoutes.post('/:id/cancel', zValidator('param', idParamSchem
     await pushSession({
       projectId: null,
       deviceId: targetDeviceId,
+      userIds: [],
       event: 'agent:abort',
       data: { sessionId: updated.id, reason: 'user_cancelled' },
     });

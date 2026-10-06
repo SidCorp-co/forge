@@ -18,7 +18,7 @@ import {
 } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
@@ -160,11 +160,15 @@ agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     c.req.valid('query');
   const userId = c.get('userId');
 
+  // A person's own chat is listed to them and to holders of project.admin, the readers
+  // `assertAgentChatOwner` admits; a listing across projects holds only the caller's own.
   let scope: AgentSessionListFilter['scope'];
+  let privateChatsOf: string | null = userId;
   if (projectId) {
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
     scope = { projectId };
+    if (holds(access, 'project.admin')) privateChatsOf = null;
   } else {
     // A deviceId listing is scoped to caller-visible projects too, or any
     // authenticated user could dump a device's sessions across tenants (ISS-492).
@@ -180,6 +184,7 @@ agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     status,
     kind: metadataType ? kindFromQuery(metadataType, badRequest) : undefined,
     issueId,
+    privateChatsOf,
     archived: archived === 'true',
     page,
     pageSize,

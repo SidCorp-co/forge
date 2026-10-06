@@ -11,6 +11,7 @@ import { requireHeld } from '../permissions/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
 import { agentSessionsPorts } from './ports.js';
 import { sessionPlacement } from './read.js';
+import { assertAgentChatOwner } from './session-access.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -29,10 +30,7 @@ export const agentSessionAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionAttachmentRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
 /** Authorize the principal against a session; returns the session row. */
-async function authorizeSession(
-  c: Context<{ Variables: AuthVars }>,
-  sessionId: string,
-): Promise<{ id: string; projectId: string; deviceId: string | null }> {
+async function authorizeSession(c: Context<{ Variables: AuthVars }>, sessionId: string) {
   const session = await sessionPlacement(sessionId);
   if (!session) throw notFound('agent session not found');
 
@@ -43,6 +41,7 @@ async function authorizeSession(
   } else {
     const access = await loadProjectAccess(session.projectId, c.get('userId'));
     requireHeld(access, 'project.write');
+    assertAgentChatOwner(session, access, c.get('userId'));
   }
   return session;
 }

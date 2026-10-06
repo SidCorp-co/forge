@@ -24,6 +24,13 @@ function on<T extends ConsumedBy<'ws-broadcast'>>(
   consume(type, { name: 'ws-broadcast' as OutboxConsumerOf<T>, handle: publish });
 }
 
+/** A session frame written before its audience was recorded names no readers; refused by name rather than guessed project-wide. */
+function assertAudience(event: string, userIds: unknown): void {
+  if (!Array.isArray(userIds)) {
+    throw new Error(`SESSION_FRAME_AUDIENCE_MISSING: ${event} carries no userIds; it was written by a build older than the private-chat audience`);
+  }
+}
+
 export function registerWsBroadcastSubscribers(): void {
   // every open view of either side refetches the edge
   on('issue.dependency.changed', (p) => {
@@ -178,8 +185,10 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('session.pushed', (p) => {
+    assertAudience(p.event, p.userIds);
     if (p.projectId) pub(projectRoom(p.projectId), p.event, p.data);
     if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
+    for (const userId of p.userIds) pub(userRoom(userId), p.event, p.data);
   });
 
   on('issue.pushed', (p) => {
@@ -206,7 +215,11 @@ export function registerWsBroadcastSubscribers(): void {
       deviceId: p.deviceId,
       ...p.extra,
     };
-    pub(projectRoom(p.projectId), p.event, data);
-    if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, data);
+    assertAudience(p.event, p.userIds);
+    if (p.projectWide) {
+      pub(projectRoom(p.projectId), p.event, data);
+      if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, data);
+    }
+    for (const userId of p.userIds) pub(userRoom(userId), p.event, data);
   });
 }

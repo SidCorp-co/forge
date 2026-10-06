@@ -166,6 +166,7 @@ export async function requestSessionSend(
   await pushSession({
     projectId: null,
     deviceId: session.deviceId,
+    userIds: [],
     event: 'session.send',
     data: {
       sessionId: req.agentSessionId,

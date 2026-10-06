@@ -1,12 +1,12 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { type AgentSessionKind, agentSessions } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
-import { holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
+import { holdersOf, holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
 import { refuseSession } from './refusals.js';
 import { readTranscript } from './turns-helpers.js';
 
@@ -80,13 +80,65 @@ export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: strin
   return { session, access };
 }
 
+interface ChatSpecies {
+  kind: AgentSessionKind;
+  metadata: unknown;
+}
+
+/**
+ * A chat a person opened (ISS-522): read only by its owner or a holder of project.admin. A chat a
+ * schedule, an escalation or the conversation agent opened is written `unattended` by
+ * `createChatSessionRow` and stays project-wide like every pipeline, master and run session.
+ */
+export function isOwnerPrivateChat(session: ChatSpecies): boolean {
+  if (session.kind !== 'chat') return false;
+  return (session.metadata as { unattended?: unknown } | null)?.unattended !== true;
+}
+
+/** The same predicate as a WHERE clause over `agent_sessions`. */
+export const ownerPrivateChatSql = sql`(${agentSessions.kind} = 'chat' AND (${agentSessions.metadata}->>'unattended') IS DISTINCT FROM 'true')`;
+
+/**
+ * Who a session's live frames are for: a project-wide session's project room, or a person's own
+ * chat's readers by name — its owner and every holder of project.admin, the people
+ * `assertAgentChatOwner` admits — so a frame never reaches a socket the read would refuse.
+ */
+export interface SessionAudience {
+  projectWide: boolean;
+  userIds: string[];
+}
+
+export async function sessionAudience(
+  session: ChatSpecies & { projectId: string; userId: string | null },
+): Promise<SessionAudience> {
+  if (!isOwnerPrivateChat(session)) return { projectWide: true, userIds: [] };
+  const admins = (await holdersOf('project.admin', [session.projectId])).get(session.projectId);
+  const readers = new Set(admins ?? []);
+  if (session.userId) readers.add(session.userId);
+  return { projectWide: false, userIds: [...readers] };
+}
+
+/** `sessionAudience` for a caller holding only the id; a session that is gone has no audience. */
+export async function sessionAudienceById(sessionId: string): Promise<SessionAudience> {
+  const [row] = await db
+    .select({
+      projectId: agentSessions.projectId,
+      userId: agentSessions.userId,
+      kind: agentSessions.kind,
+      metadata: agentSessions.metadata,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return row ? sessionAudience(row) : { projectWide: false, userIds: [] };
+}
+
 export function assertAgentChatOwner(
-  session: { metadata: unknown; userId: string | null },
+  session: ChatSpecies & { userId: string | null },
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
-  const isAgentChat = (session.metadata as { type?: string } | null)?.type === 'agent';
-  if (!isAgentChat) return;
+  if (!isOwnerPrivateChat(session)) return;
   if (session.userId !== userId && !holds(access, 'project.admin')) {
     throw refuseSession(
       'AGENT_CHAT_OWNER_FORBIDDEN',
