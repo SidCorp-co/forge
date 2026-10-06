@@ -1,10 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues } from '../db/schema.js';
+import { issueLabels, issues, type LandingShape } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
+import { landingShapeMarkStandsDetail } from './landing-evidence.js';
+import { type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
 
@@ -35,6 +37,8 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
 async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const { issueId, updates, labelIds, expect, actor } = input;
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
+  const shape = updates.declaredLandingShape as LandingShape | null | undefined;
+  if (shape !== undefined) guard.push(shapeUnderNoMarkGuard(shape));
 
   return db.transaction(async (tx) => {
     if (updates.sessionContext !== undefined && !expect) {
@@ -46,6 +50,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(and(eq(issues.id, issueId), ...guard))
       .returning();
     if (!row) {
+      if (shape !== undefined) await refuseShapeOverMark(tx, issueId, shape);
       if (expect) await refuseMovedSessionContext(tx, issueId);
       throw new IssueUpdateNotFound(issueId);
     }
@@ -166,6 +171,48 @@ export class SessionContextExpectMismatch extends Error {
   constructor(readonly current: unknown) {
     super('SESSION_CONTEXT_MISMATCH');
     this.name = 'SessionContextExpectMismatch';
+  }
+}
+
+/**
+ * A mark is judged on the lane it was made under, so the lane may change only while no mark stands
+ * or to the value it already holds. The condition is the UPDATE's own WHERE, so no mark can land
+ * between the decision and the write.
+ */
+function shapeUnderNoMarkGuard(next: LandingShape | null) {
+  return sql`(${issues.mergedAt} IS NULL OR ${issues.declaredLandingShape} IS NOT DISTINCT FROM ${next}::text)`;
+}
+
+/** Zero rows under the lane guard: re-read, and where a mark stands, say so with what it holds. */
+async function refuseShapeOverMark(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  issueId: string,
+  sent: LandingShape | null,
+): Promise<void> {
+  const [current] = await tx
+    .select({
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+      declared: issues.declaredLandingShape,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!current || current.mergedAt === null || current.declared === sent) return;
+  throw new LandingShapeMarkStands(current.declared, sent, mergeMarkKindOf(current));
+}
+
+/** `landingShape` was sent while a merged mark stands on the issue; nothing was written. */
+export class LandingShapeMarkStands extends Error {
+  readonly code = 'LANDING_SHAPE_MARK_STANDS';
+  constructor(
+    readonly held: LandingShape | null,
+    readonly sent: LandingShape | null,
+    readonly mark: MergeMarkKind,
+  ) {
+    super(landingShapeMarkStandsDetail({ held, sent, mark }));
+    this.name = 'LandingShapeMarkStands';
   }
 }
 

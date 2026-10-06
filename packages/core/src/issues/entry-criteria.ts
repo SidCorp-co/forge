@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { landingShapeOf, landingShortfall } from './landing-evidence.js';
+import { landingShortfall, laneOf } from './landing-evidence.js';
 
 type CriterionExecutor = Pick<Db, 'select'>;
 
@@ -20,6 +20,7 @@ type IssueRecord = {
   mergedAt: Date | null;
   mergedCommitSha: string | null;
   mergedLanding: string | null;
+  declaredLandingShape: string | null;
   projectKind: string;
 };
 
@@ -48,9 +49,10 @@ const criteriaWith = (
         "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
       : null,
   work_evidence: (id, _record, executor) => workEvidence(id, executor),
-  // Which kinds count as landed on this project's shape: `landing-evidence.ts`, and nowhere else.
+  // Which kinds count as landed on this issue's lane: `landing-evidence.ts`, and nowhere else.
   merged_mark: (_id, record) => {
-    const short = landingShortfall(record, landingShapeOf(record.projectKind));
+    const lane = laneOf({ declared: record.declaredLandingShape, kind: record.projectKind });
+    const short = landingShortfall(record, lane);
     return short ? `${short} — mark it merged before this status` : null;
   },
 });
@@ -102,6 +104,7 @@ export async function findUnmetEntryCriteria(args: {
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      declaredLandingShape: issues.declaredLandingShape,
       projectKind: projects.kind,
     })
     .from(issues)
@@ -160,6 +163,7 @@ export async function readEntryCriteriaStrict(args: {
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      declaredLandingShape: issues.declaredLandingShape,
       projectKind: projects.kind,
     })
     .from(issues)

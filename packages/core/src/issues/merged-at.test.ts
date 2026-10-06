@@ -118,6 +118,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
     expect(refusal?.details).toEqual({
       requires: 'mergedLanding',
       shape: 'outside_git',
+      declared: false,
       held: 'asserted',
       useInstead: 'dropped',
     });

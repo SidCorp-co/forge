@@ -72,8 +72,14 @@ A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
 `developed` or `testing` one status later. The `NO_WORK_EVIDENCE` refusal
 (`packages/core/src/pipeline/work-evidence.ts:noWorkEvidenceDetail`) offers that commit route
-on the `git` shape only, and to an agent only. On `outside_git` it names the branch and handoff
-routes and a person's mark and move, which the agent-only gate does not hold.
+on the `git` lane only, and to an agent only, and tells that lane how an issue whose change lands
+no file in the repository declares itself `outside_git`.
+
+On an `outside_git` lane the landing a mark names is the work evidence (ISS-1384):
+`collectWorkEvidence` reads `merged_landing` where `merged_at` is set and the lane is
+`outside_git`, and an agent's `mark_merged` carrying `data.landing` is let through with nothing
+else behind it, because the landing IS the trace such work leaves. The refusal on that lane names
+the landing route and never `data.commit`. Its price is below.
 
 The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
 is read by `anyone` (`EvidenceReader`): it names the branch and handoff routes, says a person's mark
@@ -121,14 +127,39 @@ so no migration carries this rule backwards. The sha in such a mark's note is pr
 forge-plugin CLI reads; it sends the commit it marks at in the note and not as `data.commit`, so
 until it does, this check sees only what reaches `data.commit`.
 
-## What counts as landed depends on the project's shape
+## What counts as landed depends on the issue's lane
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
 whether a mark is enough calls it: the close gate (`refuseUnshippedClose`), the `merged_mark` entry
-criterion, the release-record door's `RELEASE_WORK_UNMERGED`, and the mark writer. The release
-batch's finish closes through the same transition, so it reads the same answer.
+criterion, the release-record door's `RELEASE_WORK_UNMERGED`, the work-evidence gate and the mark
+writer. The release batch's finish closes through the same transition, so it reads the same answer.
 
-`landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
+An issue's lane (`laneOf`) is its own declaration where it holds one, else its project's kind. The
+declaration is `issues.declared_landing_shape` (ISS-1384, migration `0320`): `git` or
+`outside_git`, the column's CHECK refusing anything else, and NULL — every issue until somebody
+writes one — answering the project's kind exactly as before. It exists for the git project's
+change that lands no file in its repository, such as environment variables set on a deployment
+and a redeploy: before it, that change reached `developed` only by a mark at the commit already
+served, which says the change landed at a commit holding none of it.
+
+- **Written** as `landingShape` on `PATCH /api/issues/:id` and on `forge_issues` `update`, by
+  whoever may update the issue, an agent included; `null` hands the answer back to the project.
+  It is never inferred from an empty diff, a missing branch or an absent handoff. A value outside
+  the two shapes is refused by name at both doors, and `forge_issues` refuses `data.landingShape`
+  on any action but `update` rather than dropping it.
+- **Not while a mark stands.** A mark was judged on the lane it was made under, so a change to the
+  declaration while `merged_at` is set is refused `LANDING_SHAPE_MARK_STANDS` (409), naming
+  `unmark` as the route, and writes nothing. The condition is the UPDATE's own WHERE
+  (`packages/core/src/issues/update-service.ts:shapeUnderNoMarkGuard`), so no mark lands between the decision and the
+  write; the same value re-sent passes. A `closed` issue cannot be unmarked, so its lane is fixed.
+- **Read** as `landingShape` — the lane, the one field a client reads — on the REST detail and
+  every `forge_issues` answer that serializes the issue whole, beside `declaredLandingShape`, the
+  issue's own value or null. Every refusal names who decided (`whereItLands`): *this issue's work
+  lands outside git (declared on the issue)*, or *this project's work lands outside git (kind
+  `website`)*. The release record can now hold both lanes in one roster, so
+  `RELEASE_WORK_UNMERGED` is raised once per lane, each in its own words.
+
+Where no issue declares one, `landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
 optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name
 (`UnknownProjectKindError`), and the mark writer answers it `PROJECT_KIND_UNKNOWN`, naming the
 kind, the known kinds and the route that sets one, with nothing written. Every route that writes
@@ -160,6 +191,20 @@ on a project whose work never lands in git, no commit and no `merged_at` is its 
 the owner has ruled those rows correctly closed (ISS-1327). The rule governs the next close, not
 the ones already made. Outside git a mark is short of a *landing*, never of a commit, and every
 sentence the shortfall prints says so.
+
+## Why a landing counts as work evidence outside git
+
+On an `outside_git` lane `collectWorkEvidence` takes the landing a mark names as work evidence, and
+the mark writer takes an agent's landing with nothing else behind it. The landing is free text
+Forge does not read back from the resource it names: a claim, of the same weight as the branch
+name an agent records in `sessionContext.branch`, which the gate has always taken unchecked. The
+alternative left every agent-driven change on that lane with no route of its own to `developed`,
+refused once at the mark and again at the status, and a git project's change that lands no file
+borrowing a commit it did not make.
+
+**What ends it:** a reader per landing kind — the deployment binding, the storefront, the URL —
+that reads the landing back from where it names, the analogue of `readCommitLanding`; the mark
+then counts only once that read agrees.
 
 ## Why the git shape accepts a claim
 

@@ -2066,6 +2066,13 @@
       "when": 1810598400000,
       "tag": "0319_a_token_reach_is_fixed_at_mint",
       "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1810684800000,
+      "tag": "0320_an_issue_declares_where_it_lands",
+      "breakpoints": true
     }
   ]
 }

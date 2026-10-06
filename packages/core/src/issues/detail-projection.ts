@@ -12,12 +12,15 @@ export interface IssueBodyColumns {
   descriptionFormat?: string | null;
 }
 
-/** `landingShape` is `landing-evidence.ts`'s answer for the issue's project, so a client offering
- *  a mark asks for what this project's close will accept rather than re-deriving it from `kind`. */
-export function serializeIssue<T extends { issSeq: number } & IssueBodyColumns & MergeMarkColumns>(
+/** `landingShape` is the issue's lane (`landing-evidence.ts`): its declaration, else `projectShape`,
+ *  so a client reads one field for what its close accepts and never combines two. */
+export function serializeIssue<
+  T extends { issSeq: number; declaredLandingShape: LandingShape | null } & IssueBodyColumns &
+    MergeMarkColumns,
+>(
   row: T,
   prefix: string | null,
-  landingShape: LandingShape,
+  projectShape: LandingShape,
 ): T & {
   displayId: string;
   descriptionNodes: BodyNode[] | null;
@@ -29,6 +32,6 @@ export function serializeIssue<T extends { issSeq: number } & IssueBodyColumns &
     displayId: formatIssueRef(prefix, row.issSeq),
     descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
     mergeMark: mergeMarkKindOf(row),
-    landingShape,
+    landingShape: row.declaredLandingShape ?? projectShape,
   };
 }

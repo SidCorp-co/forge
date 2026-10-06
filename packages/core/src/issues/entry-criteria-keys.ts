@@ -14,4 +14,5 @@ export const CONTRACT_INPUT_FIELDS = [
   'releaseNotes',
   'mergedAt',
   'sessionContext',
+  'declaredLandingShape',
 ] as const;

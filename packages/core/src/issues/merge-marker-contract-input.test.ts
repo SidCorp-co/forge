@@ -74,7 +74,7 @@ const ACTOR = {
   },
 };
 
-const issue = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: null };
+const issue = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: null, declaredLandingShape: null };
 
 beforeEach(() => {
   heard.length = 0;

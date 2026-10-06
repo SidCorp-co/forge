@@ -8,7 +8,9 @@ import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
   type LandingShape,
+  type Lane,
   landingMarkRefusal,
+  laneOf,
   markTargetRequired,
   readLandingShape,
   standingMarkRefusal,
@@ -125,15 +127,22 @@ export class MergeMarkerError extends Error {
   }
 }
 
-/** The shape a mark is judged against; a kind Forge does not know is the caller's refusal, never
- *  a 500, because the mark cannot be judged and nothing is written. */
-async function markShape(projectId: string): Promise<LandingShape> {
+/** The lane a mark is judged against: the issue's own declaration, else its project's kind. A kind
+ *  Forge does not know is the caller's refusal, never a 500, because the mark cannot be judged and
+ *  nothing is written. */
+async function markLane(issue: {
+  projectId: string;
+  declaredLandingShape: LandingShape | null;
+}): Promise<Lane> {
+  if (issue.declaredLandingShape != null) {
+    return laneOf({ declared: issue.declaredLandingShape, kind: '' });
+  }
   try {
-    return await readLandingShape(db, projectId);
+    return { shape: await readLandingShape(db, issue.projectId), declared: false };
   } catch (err) {
     if (!(err instanceof UnknownProjectKindError)) throw err;
     throw new MergeMarkerError('PROJECT_KIND_UNKNOWN', err.message, {
-      projectId,
+      projectId: issue.projectId,
       kind: err.kind,
       kinds: [...projectKinds],
     });
@@ -149,7 +158,13 @@ export type MergeMarkerActor = {
 
 export async function applyMergeMarker(args: {
   /** Already loaded AND authorised by the caller — this function does neither. */
-  issue: { id: string; projectId: string; mergedAt: Date | null };
+  issue: {
+    id: string;
+    projectId: string;
+    mergedAt: Date | null;
+    /** `issues.declared_landing_shape`, read with the row: the lane is the issue's before the project's. */
+    declaredLandingShape: LandingShape | null;
+  };
   op: 'mark' | 'unmark';
   target?: string;
   note?: string | undefined;
@@ -187,17 +202,20 @@ export async function applyMergeMarker(args: {
   let claimHeldBy: string | null = null;
   let leftOut: LeftOut | null = null;
   if (args.op === 'mark') {
-    const shape = await markShape(before.projectId);
-    // A landing on a git project is refused below whatever the target, and that refusal names the
+    const lane = await markLane(before);
+    const shape = lane.shape;
+    // A landing on a git lane is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
-    // An agent with nothing else behind it may still have landed on the base branch itself, where
-    // the commit is the only trace: it counts once the repository says it is this issue's landing.
+    // An agent with nothing else behind it may still have landed: on a git lane on the base branch
+    // itself, where the commit is the only trace and counts once the repository says it is this
+    // issue's landing; outside git where the landing it names is, which is that lane's evidence.
     if (args.actor.agency === 'agent') {
       const missing = await findMissingWorkEvidence(before.id);
-      if (missing) {
+      const landsHere = shape === 'outside_git' && Boolean(args.landing);
+      if (missing && !landsHere) {
         if (!args.commit || shape !== 'git')
           throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
         const read = await readCommitLanding({ issueId: before.id, commit: args.commit });
@@ -207,7 +225,7 @@ export async function applyMergeMarker(args: {
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
-    const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
+    const refused = landingMarkRefusal({ lane, landing, observed: observed !== null });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =
@@ -256,7 +274,7 @@ export async function applyMergeMarker(args: {
         issueId: before.id,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
       });
-      // Only a `git` project reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
+      // Only a `git` lane reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
       claimedCommit = recorded?.claim ?? null;
       claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
       leftOut = recorded?.leftOut ?? null;

@@ -57,7 +57,8 @@ describe('collectWorkEvidence', () => {
       handoffFilesModified: 1,
       branch: 'ISS-1-foo',
       mergedCommitSha: null,
-      lane: 'git',
+      mergedLanding: null,
+      lane: { shape: 'git', declared: false },
     });
   });
 
@@ -128,6 +129,7 @@ describe('collectWorkEvidence', () => {
       handoffFilesModified: 0,
       branch: null,
       mergedCommitSha: null,
+      mergedLanding: null,
       lane: null,
     });
   });
@@ -180,7 +182,8 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: 'ISS-1-foo',
         mergedCommitSha: null,
-        lane: 'git',
+        mergedLanding: null,
+        lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
   });
@@ -193,7 +196,8 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: null,
         mergedCommitSha: null,
-        lane: 'git',
+        mergedLanding: null,
+        lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
   });
@@ -206,7 +210,8 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 3,
         branch: null,
         mergedCommitSha: null,
-        lane: 'git',
+        mergedLanding: null,
+        lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
   });
@@ -219,7 +224,8 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: null,
         mergedCommitSha: null,
-        lane: 'git',
+        mergedLanding: null,
+        lane: { shape: 'git', declared: false },
       }),
     ).toBe(false);
   });
@@ -298,7 +304,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
     expect(detail).toContain('commitSha/filesModified');
   });
 
-  it('offers no commit route on a project whose work lands outside git, and names who clears it', async () => {
+  it('offers the landing route and no commit route on a project whose work lands outside git', async () => {
     setup(
       [],
       [],
@@ -306,10 +312,10 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
       [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'website' }],
     );
     const detail = await findMissingWorkEvidence('iss-1');
-    expect(detail).toContain('no branch or code handoff is recorded');
-    expect(detail).not.toContain('`mark_merged` carrying `data.commit`');
-    expect(detail).toContain("This project's work lands outside git");
-    expect(detail).toContain('a person may mark it merged and move it');
+    expect(detail).toContain('no landing, branch or code handoff is recorded');
+    expect(detail).toContain('`mark_merged` carrying `data.landing`');
+    expect(detail).not.toContain('data.commit');
+    expect(detail).toContain("This project's work lands outside git (kind `website`)");
     expect(detail).toContain('commitSha/filesModified');
   });
 
@@ -330,7 +336,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
       'standard',
       "a person's mark naming a commit is checked only for the repository holding it, not read as this issue's landing, so it does not clear this",
     ],
-    ['website', 'a landing it names is not evidence, whoever marks it'],
+    ['website', '`mark_merged` carrying `data.landing`'],
     ['kiosk', 'none of `standard`, `website`'],
   ])(
     'tells anyone a declared criterion holds which routes clear it on a %s project, never that it does not hold them',

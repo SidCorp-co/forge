@@ -31,6 +31,11 @@ export function collectIssueFieldUpdates(
     updates[field] = next;
     if (field !== 'description') onChange?.(field, next);
   }
+  // `landingShape` is written as the issue's own declaration; null hands it back to the project.
+  if (patch.landingShape !== undefined) {
+    updates.declaredLandingShape = patch.landingShape;
+    onChange?.('declaredLandingShape', patch.landingShape);
+  }
   if (updates.description === undefined) return { updates, warnings: [] };
 
   const raw = updates.description;

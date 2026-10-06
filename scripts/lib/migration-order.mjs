@@ -181,6 +181,8 @@ export function checkSet({ base, baseRef, self, siblings }) {
  * is why absence is read off `ls-tree` and not `cat-file -e`. `afterFetch` re-reads the base.
  * `baseRef` is the ref skipped as the base itself; `baseCommit` is what a branch already landed is
  * judged against, which a replay pins to the window's base rather than wherever the ref has moved.
+ * `landsOn(ref)`: the other gated line a branch lands on (`null` none, `undefined` unreadable);
+ * such a branch goes to `elsewhere`, since that line renumbers above this base when it merges it.
  */
 export function readOpenSet({
   git,
@@ -191,6 +193,7 @@ export function readOpenSet({
   isOurs,
   parse,
   afterFetch,
+  landsOn = () => null,
   fetch = true,
 }) {
   if (!baseCommit)
@@ -211,6 +214,7 @@ export function readOpenSet({
   if (refs === null) return null;
   const base = afterFetch();
   const open = [];
+  const elsewhere = [];
   for (const ref of refs.split('\n').filter(Boolean)) {
     if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
     const landed = isAncestor(ref, baseCommit);
@@ -222,7 +226,11 @@ export function readOpenSet({
     const text = git(['show', `${ref}:${journal}`]);
     if (text === null) return { hole: { ref, kind: 'journal' } };
     const entries = newEntries(parse(text, `${ref}:${journal}`), base);
-    if (entries.length > 0) open.push({ branch: ref, entries });
+    if (entries.length === 0) continue;
+    const line = landsOn(ref);
+    if (line === undefined) return { hole: { ref, kind: 'line' } };
+    if (line === null) open.push({ branch: ref, entries });
+    else elsewhere.push({ branch: ref, line, entries });
   }
-  return { open };
+  return { open, elsewhere };
 }

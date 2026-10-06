@@ -25,7 +25,11 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
-import { mergedLandingSchema } from '../../issues/landing-evidence.js';
+import {
+  landingShapeInputSchema,
+  mergedLandingSchema,
+  readIssueLandingShape,
+} from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
 import {
   applyMergeMarker,
@@ -127,6 +131,7 @@ const dataObject = z
     target: z.enum(['feature', 'base', 'prod']).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
+    landingShape: landingShapeInputSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
@@ -341,12 +346,19 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
  * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
-  const [attachments, issueLabelsList, prefix] = await Promise.all([
+  const [attachments, issueLabelsList, prefix, landingShape] = await Promise.all([
     listIssueAttachments(row.id),
     listIssueLabels(row.id),
     activeIssuePrefix(row.projectId),
+    readIssueLandingShape(row),
   ]);
-  return { ...serialize(row, prefix), attachments, labels: issueLabelsList };
+  return {
+    ...serialize(row, prefix),
+    landingShape,
+    declaredLandingShape: row.declaredLandingShape,
+    attachments,
+    labels: issueLabelsList,
+  };
 }
 
 /** Sum of char lengths across all non-null heavy fields for threshold gating. */
@@ -491,6 +503,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     ) {
       throw new Error(
         `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
+      );
+    }
+
+    if (input.data?.landingShape !== undefined && input.action !== 'update') {
+      throw new Error(
+        `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
       );
     }
 

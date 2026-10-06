@@ -47,7 +47,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
-import { readLandingShape } from './landing-evidence.js';
+import { landingShapeInputSchema, readLandingShape } from './landing-evidence.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
@@ -58,12 +58,8 @@ import { issueRelationInputSchema } from './relations-service.js';
 import { jobHistoryForStep } from './search.js';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
-import {
-  IssueUpdateNotFound,
-  SessionContextDropsUnreadKeys,
-  SessionContextExpectMismatch,
-  updateIssueFields,
-} from './update-service.js';
+import { toHttpUpdateError } from './update-http-errors.js';
+import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
 
 export {
   branchConfigOverrideSchema,
@@ -111,6 +107,7 @@ export const issuePatchSchema = z
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
     sessionContext: sessionContextSchema,
     detectorKey: z.string().trim().min(1).max(120).optional(),
+    landingShape: landingShapeInputSchema.optional(),
     expect: sessionContextExpectSchema.optional(),
   })
   .strict()
@@ -156,23 +153,6 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
-  new HTTPException(409, {
-    message:
-      `this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, ` +
-      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
-      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
-    cause: { code: 'SESSION_CONTEXT_DROPS_UNREAD_KEYS', dropped: err.dropped },
-  });
-
-const sessionContextMoved = (err: SessionContextExpectMismatch) =>
-  new HTTPException(409, {
-    message:
-      '`sessionContext` no longer holds the value this write expected — another writer moved it. ' +
-      'Re-read it from `details.current`, decide whether your claim still stands, and send the write again with the new `expect`.',
-    cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
-  });
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
   const [row] = await db
@@ -552,9 +532,7 @@ issueRoutes.patch(
       });
     } catch (err) {
       if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
-      if (err instanceof SessionContextDropsUnreadKeys) throw sessionContextDrops(err);
-      if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
-      throw err;
+      throw toHttpUpdateError(err);
     }
 
     if (changedFields.length > 0) {

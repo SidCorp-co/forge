@@ -227,6 +227,67 @@ describe('check-migration-order, against real repositories', () => {
 });
 
 /**
+ * ISS-1384 — a second gated line (`dev`) that merges `main` in and renumbers its own migrations
+ * above it. Its branches land on `dev`, so counting them against a `main` tree refused every
+ * migration `main` took while `dev` held any of its own: 93 refusals on 2026-10-07, none of them a
+ * real collision.
+ */
+describe('check-migration-order, beside another gated line', () => {
+  const CI = '.github/workflows/ci.yml';
+  const GATED =
+    'name: CI\non:\n  push:\n    branches: [main, dev]\n  pull_request:\n    branches: [main, dev]\n';
+
+  function twoLines({ declareDev }) {
+    const w = world(journal([288, 1000, '0288_main']));
+    // `dev` and a branch cut from it both hold the number this `main` tree is about to take.
+    const devWork = pushBranch(
+      w,
+      'dev',
+      journal([288, 1000, '0288_main'], [289, 2000, '0289_dev']),
+    );
+    git(devWork, 'checkout', '-b', 'dev-iss-7');
+    writeFileSync(join(devWork, 'what-dev-iss-7-changes.txt'), 'x');
+    git(devWork, 'add', '-A');
+    git(devWork, 'commit', '-m', 'dev-iss-7');
+    git(devWork, 'push', 'origin', 'dev-iss-7');
+    const work = pushBranch(
+      w,
+      'iss-main',
+      journal([288, 1000, '0288_main'], [289, 2000, '0289_main']),
+    );
+    mkdirSync(join(work, dirname(CI)), { recursive: true });
+    writeFileSync(join(work, CI), declareDev ? GATED : GATED.replaceAll(', dev', ''));
+    return { w, work };
+  }
+
+  it('sets the other line aside, naming it, and orders this tree first', () => {
+    const { work } = twoLines({ declareDev: true });
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(out).toContain('On another gated line, and not counted against origin/main');
+    expect(out).toContain('dev: origin/dev, origin/dev-iss-7');
+    expect(out).not.toContain('duplicate-when');
+    expect(out).toContain('1. iss-main: 0289_main  <- this tree');
+    expect(code).toBe(0);
+  });
+
+  it('still counts the same branches where CI gates no such line, which is the set before it', () => {
+    const { work } = twoLines({ declareDev: false });
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(out).toContain('[duplicate-when]');
+    expect(out).toContain('origin/dev');
+    expect(code).toBe(1);
+  });
+
+  it('still refuses a sibling on its own line holding the same number', () => {
+    const { w, work } = twoLines({ declareDev: true });
+    pushBranch(w, 'iss-other', journal([288, 1000, '0288_main'], [290, 2000, '0290_other']));
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(out).toContain('[duplicate-when] iss-main and origin/iss-other both hold when 2000');
+    expect(code).toBe(1);
+  });
+});
+
+/**
  * The failure the whole issue is about, built rather than argued: `main` lags the branch the work
  * is cut from, so a floor read off `main` clears a `when` the merge target has already spent, and
  * drizzle skips that migration silently and for ever once both land.

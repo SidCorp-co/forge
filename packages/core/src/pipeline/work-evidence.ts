@@ -9,7 +9,12 @@ import {
   projects,
 } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
-import { type LandingShape, landingShapeOf } from '../issues/landing-evidence.js';
+import {
+  DECLARE_OUTSIDE_GIT,
+  type Lane,
+  laneOrNull,
+  whereItLands,
+} from '../issues/landing-evidence.js';
 import { logger } from '../logger.js';
 import { chainLiveBranch } from '../projects/release-chain.js';
 
@@ -27,15 +32,12 @@ export interface WorkEvidence {
   branch: string | null;
   /** `issues.merged_commit_sha`: a merge Forge read for itself, from a pull request or the repository. */
   mergedCommitSha: string | null;
-  /** Where this project's work lands, which decides the routes a refusal may offer; null where
-   *  the project's kind is none Forge knows. */
-  lane: LandingShape | null;
-}
-
-function laneOf(kind: string | undefined): LandingShape | null {
-  return kind !== undefined && (projectKinds as readonly string[]).includes(kind)
-    ? landingShapeOf(kind)
-    : null;
+  /** `issues.merged_landing` where a mark stands on an `outside_git` lane: where the work now is,
+   *  that lane's own record of having landed. Null on a `git` lane, which records a commit. */
+  mergedLanding: string | null;
+  /** Where this issue's work lands, which decides the routes a refusal may offer; null where the
+   *  issue declares nothing and the project's kind is none Forge knows. */
+  lane: Lane | null;
 }
 
 export async function collectWorkEvidence(
@@ -64,6 +66,8 @@ export async function collectWorkEvidence(
         sessionContext: issues.sessionContext,
         mergedAt: issues.mergedAt,
         mergedCommitSha: issues.mergedCommitSha,
+        mergedLanding: issues.mergedLanding,
+        declaredLandingShape: issues.declaredLandingShape,
         baseBranch: projects.baseBranch,
         releaseChain: projects.releaseChain,
         projectKind: projects.kind,
@@ -101,23 +105,29 @@ export async function collectWorkEvidence(
   const branch =
     named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
 
+  const lane = laneOrNull(projectRow?.declaredLandingShape, projectRow?.projectKind);
+  const marked = projectRow?.mergedAt != null;
   return {
     implementationJobCount: jobRows.length,
     handoffCommitSha,
     handoffFilesModified,
     branch,
-    mergedCommitSha:
-      projectRow?.mergedAt != null ? projectRow.mergedCommitSha?.trim() || null : null,
-    lane: laneOf(projectRow?.projectKind),
+    mergedCommitSha: marked ? projectRow?.mergedCommitSha?.trim() || null : null,
+    mergedLanding:
+      marked && lane?.shape === 'outside_git' ? projectRow?.mergedLanding?.trim() || null : null,
+    lane,
   };
 }
 
+/** Whether anything shows work happened: a branch, a handoff, a merge Forge read, or — on an
+ *  `outside_git` lane — the landing its mark names. */
 export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.handoffCommitSha) ||
     evidence.handoffFilesModified > 0 ||
     Boolean(evidence.branch) ||
-    Boolean(evidence.mergedCommitSha)
+    Boolean(evidence.mergedCommitSha) ||
+    Boolean(evidence.mergedLanding)
   );
 }
 
@@ -158,17 +168,7 @@ const DECLARED =
   "`statusEntryCriteria`; where this project's work leaves none of these, that declaration is " +
   'what to change.';
 
-function laneWhy(lane: LandingShape | null, reader: EvidenceReader): string {
-  if (lane === 'outside_git') {
-    return reader === 'agent'
-      ? "This project's work lands outside git (kind `website`), so a commit sent with " +
-          '`mark_merged` is not read here, and a landing it names is not evidence for an agent: ' +
-          'where neither route above is open, a person may mark it merged and move it, which ' +
-          'this check does not hold them to.'
-      : "This project's work lands outside git (kind `website`), so a mark counts only over a " +
-          'merged pull request Forge holds for this issue; a landing it names is not evidence, ' +
-          `whoever marks it. ${DECLARED}`;
-  }
+function unknownLaneWhy(reader: EvidenceReader): string {
   const unknown =
     "This project's kind is none of " +
     projectKinds.map((k) => `\`${k}\``).join(', ') +
@@ -177,37 +177,45 @@ function laneWhy(lane: LandingShape | null, reader: EvidenceReader): string {
 }
 
 /**
- * The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this project's lane for
- * this reader: the commit route is read on a `git` project alone, and for an agent alone
+ * The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this issue's lane for
+ * this reader: the commit route is read on a `git` lane alone, and for an agent alone
  * (`merge-marker.ts:applyMergeMarker`), so a sentence offering it to anyone else sends them into
- * the same refusal again.
+ * the same refusal again; outside git the landing a mark names is the route, for anyone.
  */
-export function noWorkEvidenceDetail(
-  lane: LandingShape | null,
-  reader: EvidenceReader = 'agent',
-): string {
-  if (lane === 'git' && reader === 'agent') {
+export function noWorkEvidenceDetail(lane: Lane | null, reader: EvidenceReader = 'agent'): string {
+  if (lane?.shape === 'git' && reader === 'agent') {
     return (
       'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
       'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
       'handoff with commitSha/filesModified, or, where the work landed on the base branch ' +
       'itself, mark it merged with `mark_merged` carrying `data.commit`, the commit it landed ' +
-      `at, which Forge checks against the project's repository, before advancing. ${NOT_A_BRANCH}`
+      `at, which Forge checks against the project's repository, before advancing. ` +
+      `${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
     );
   }
-  if (lane === 'git') {
+  if (lane?.shape === 'git') {
     return (
       `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
       'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
       "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
       "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
       "landing; a person's mark naming a commit is checked only for the repository holding it, " +
-      `not read as this issue's landing, so it does not clear this. ${DECLARED} ${NOT_A_BRANCH}`
+      `not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
+      `${DECLARED} ${NOT_A_BRANCH}`
+    );
+  }
+  if (lane?.shape === 'outside_git') {
+    return (
+      'no landing, branch or code handoff is recorded for this issue — mark it merged with ' +
+      '`mark_merged` carrying `data.landing`, where the work now is (the live URL, the ' +
+      `deployment, the CMS entry or storefront resource), or ${BRANCH_OR_HANDOFF}, before ` +
+      `advancing. ${whereItLands(lane, true)}, so a commit is not read here.` +
+      `${reader === 'anyone' ? ` ${DECLARED}` : ''} ${NOT_A_BRANCH}`
     );
   }
   return (
     `no branch or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, before ` +
-    `advancing. ${laneWhy(lane, reader)} ${NOT_A_BRANCH}`
+    `advancing. ${unknownLaneWhy(reader)} ${NOT_A_BRANCH}`
   );
 }
 
