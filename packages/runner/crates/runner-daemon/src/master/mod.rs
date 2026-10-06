@@ -75,6 +75,7 @@ use runner_platform::subagent_host;
 use runner_transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use runner_transport::channel_inbox::{self, UnansweredDocument};
 use runner_transport::comment_inbox;
+use runner_transport::design_inbox;
 use runner_transport::feedback_inbox;
 use runner_transport::requirement_inbox;
 use runner_transport::{master as master_api, mcp_servers, runners, CoreClient};

@@ -63,6 +63,14 @@ describe('Issues > Stuck names the refusal the admissible list withholds a row b
     expect(s.withheld).toBeNull();
   });
 
+  // F38: an admitted open row is owed a run by the master, not a free slot nor somebody's triage
+  it('an admitted open issue waits on the master to dispatch a run, not on a slot', () => {
+    const s = deriveIssueStanding(input('open', null));
+    expect(s.waitingOn).toMatchObject({ kind: 'master', who: 'Master', act: 'dispatch a run' });
+    expect(s.waitingOn.rule).toMatch(/owes it a run/);
+    expect(s.waitingOn.rule).not.toMatch(/slot/);
+  });
+
   it('a withholding gate does not reach a status that is not takeable', () => {
     const s = deriveIssueStanding(input('in_progress', contract));
     expect(s.withheld).toBeNull();

@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Returned designs and requirement revisions now reach the project's master**, on every pass until revised. Admitted open issues wait on a run, not a slot. A master with runs out reads `runs_out`, and each closed pass says why it closed.
+
 ## [0.4.0-dev.58] - 2026-10-06
 
 Low and medium feedback now wakes the master for triage

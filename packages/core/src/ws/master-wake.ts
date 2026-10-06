@@ -72,7 +72,7 @@ async function wakeMastersForBuild(
   return publishWake(projectId, { projectId, source: 'ecosystem_build' });
 }
 
-/** The approver decided a design this project proposed: an approve unblocks its builds, a return owes a revision. */
+/** The approver decided a design this project proposed: an approve unblocks its builds, a return owes a revision (`workflows/owed-designs.ts`). */
 async function wakeMastersForDesign(args: {
   projectId: string;
   workflowId: string;
@@ -102,7 +102,7 @@ async function wakeMastersForComment(args: {
   });
 }
 
-/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. */
+/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown; or an agent's revision was returned, and its master owes the revise. */
 async function wakeMastersForRequirement(args: {
   projectId: string;
   requirementId: string;
@@ -232,6 +232,16 @@ export function registerMasterWakeSubscribers(): void {
   consume('requirement.agreed', {
     name: 'master-wake',
     handle: async (p) => {
+      await wakeMastersForRequirement(p);
+    },
+  });
+
+  // an agent's returned revision is its master's to revise, so it wakes the same door an agree does
+  // and the sweep reads it from `requirements/owed-revisions.ts`; a person's own draft waits on them
+  consume('requirement.returned', {
+    name: 'master-wake',
+    handle: async (p) => {
+      if (p.authorAgency !== 'agent') return;
       await wakeMastersForRequirement(p);
     },
   });

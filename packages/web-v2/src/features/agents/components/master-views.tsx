@@ -51,6 +51,7 @@ function slotsText(m: MasterStanding): string {
 
 function doing(m: MasterStanding): string {
   if (m.state === "in_pass" && m.pass) return `working a ${enumLabel("masterVerb", m.pass.verb).toLowerCase()} pass`;
+  if (m.state === "runs_out") return `between passes, ${m.runsOut} declared run${m.runsOut === 1 ? "" : "s"} out`;
   if (m.state === "idle") return "between passes";
   if (m.state === "waiting_person" && m.waitingOn) return m.waitingOn.act.toLowerCase();
   if (m.state === "silent") return `silent since ${m.lastBeatAt ? formatRelativeTime(m.lastBeatAt) : "its start"}`;
@@ -61,7 +62,8 @@ function lastPassText(m: MasterStanding): string | null {
   const l = m.lastPass;
   if (!l) return null;
   if (l.refused) return `Last pass ${formatRelativeTime(l.endedAt)}: refused before it ran (${enumLabel("masterPassRefusal", l.refused.reason).toLowerCase()})`;
-  return `Last pass ${formatRelativeTime(l.endedAt)}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}`;
+  const ended = l.closeReason && l.closeReason !== "turn_ended" ? ` (${enumLabel("masterPassClose", l.closeReason).toLowerCase()})` : "";
+  return `Last pass ${formatRelativeTime(l.endedAt)}${ended}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}`;
 }
 
 export const masterRow =
@@ -79,7 +81,7 @@ export const masterRow =
   });
 
 export function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
-  const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" ? "run" : "calm";
+  const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" || m.state === "runs_out" ? "run" : "calm";
   const head = `${statusReading("masterState", m.state).label} ·`;
   const body =
     m.state === "in_pass" && m.pass

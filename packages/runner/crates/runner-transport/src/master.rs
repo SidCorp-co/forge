@@ -95,14 +95,22 @@ pub async fn open_pass(
     pass_call(client, body).await
 }
 
+/// `reason` is how this box judged the pass ended, one of core's
+/// `MASTER_PASS_CLOSE_REASONS` (`turn_ended`, `abandoned_quiet`, …), stored on
+/// the pass so an abandoned one never reads like one whose turn ended.
 pub async fn close_pass(
     client: &CoreClient,
     session_id: &str,
     pass_id: &str,
     dispatched: &[String],
     refused: Option<(&str, &str)>,
+    reason: &str,
 ) -> std::result::Result<String, PassError> {
-    pass_call(client, close_body(session_id, pass_id, dispatched, refused)).await
+    pass_call(
+        client,
+        close_body(session_id, pass_id, dispatched, refused, reason),
+    )
+    .await
 }
 
 /// The close as sent: `dispatched` is the caller's list exactly, never blanked
@@ -113,6 +121,7 @@ pub(crate) fn close_body(
     pass_id: &str,
     dispatched: &[String],
     refused: Option<(&str, &str)>,
+    close_reason: &str,
 ) -> serde_json::Value {
     serde_json::json!({
         "op": "close",
@@ -122,6 +131,7 @@ pub(crate) fn close_body(
         "skipped": [],
         "parked": [],
         "refused": refused.map(|(reason, detail)| serde_json::json!({ "reason": reason, "detail": detail })),
+        "closeReason": close_reason,
     })
 }
 
@@ -221,7 +231,13 @@ mod tests {
     #[test]
     fn a_refused_close_carries_the_dispatched_list_it_was_given() {
         let dispatched = vec!["ISS-1".to_string(), "ISS-2".to_string()];
-        let body = close_body("s", "p", &dispatched, Some(("usage_limit", "limit")));
+        let body = close_body(
+            "s",
+            "p",
+            &dispatched,
+            Some(("usage_limit", "limit")),
+            "turn_ended",
+        );
         assert_eq!(
             body["dispatched"],
             serde_json::json!(["ISS-1", "ISS-2"]),
@@ -232,8 +248,14 @@ mod tests {
 
     #[test]
     fn a_close_that_ran_sends_no_refusal() {
-        let body = close_body("s", "p", &[], None);
+        let body = close_body("s", "p", &[], None, "turn_ended");
         assert_eq!(body["dispatched"], serde_json::json!([]));
         assert!(body["refused"].is_null());
+    }
+
+    #[test]
+    fn a_close_names_how_the_box_judged_it_ended() {
+        let body = close_body("s", "p", &[], None, "abandoned_quiet");
+        assert_eq!(body["closeReason"], "abandoned_quiet");
     }
 }

@@ -1,4 +1,5 @@
 import {
+  MASTER_PASS_CLOSE_REASONS,
   MASTER_PASS_TRIGGERS,
   MASTER_VERBS,
   type MasterPassRefusal,
@@ -39,6 +40,7 @@ export const masterPasses = pgTable(
     skipped: jsonb('skipped').$type<MasterPassSkip[]>().notNull().default(sql`'[]'::jsonb`),
     parked: text('parked').array().notNull().default(sql`ARRAY[]::text[]`),
     refusal: jsonb('refusal').$type<MasterPassRefusal>(),
+    closeReason: text('close_reason', { enum: MASTER_PASS_CLOSE_REASONS }),
   },
   (t) => ({
     oneOpenPerSessionUq: uniqueIndex('master_passes_one_open_uq')
@@ -57,6 +59,10 @@ export const masterPasses = pgTable(
     refusalShapeChk: check(
       'master_passes_refusal_shape_chk',
       sql`${t.refusal} IS NULL OR (${t.endedAt} IS NOT NULL AND jsonb_typeof(${t.refusal}) = 'object' AND cardinality(${t.dispatched}) = 0 AND cardinality(${t.parked}) = 0 AND ${t.skipped} = '[]'::jsonb)`,
+    ),
+    closeReasonChk: check(
+      'master_passes_close_reason_chk',
+      sql`${t.closeReason} IS NULL OR (${t.endedAt} IS NOT NULL AND ${t.closeReason} IN (${sql.raw(MASTER_PASS_CLOSE_REASONS.map((v) => `'${v}'`).join(', '))}))`,
     ),
     endedAfterStartChk: check(
       'master_passes_ended_after_start_chk',

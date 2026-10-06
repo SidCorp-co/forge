@@ -137,7 +137,11 @@ import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
-import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
+import {
+  deviceDesignInboxRoutes,
+  workflowRoutes,
+  workflowTemplateCatalogueRoutes,
+} from './workflows/routes.js';
 
 // The issue router serves its comments too; the comments module adds them here, once, at load.
 registerIssueCommentRoutes(issueRoutes);
@@ -309,6 +313,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceChannelInboxRoutes);
   app.route('/api/devices', deviceRequirementInboxRoutes);
   app.route('/api/devices', deviceFeedbackInboxRoutes);
+  app.route('/api/devices', deviceDesignInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
 }

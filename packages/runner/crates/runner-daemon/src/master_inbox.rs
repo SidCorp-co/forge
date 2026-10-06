@@ -9,8 +9,9 @@
 
 use runner_transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
 use runner_transport::comment_inbox::ISSUE_COMMENT_TYPE;
+use runner_transport::design_inbox::DESIGN_REVISION_TYPE;
 use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
-use runner_transport::requirement_inbox::REQUIREMENT_BREAKDOWN_TYPE;
+use runner_transport::requirement_inbox::{REQUIREMENT_BREAKDOWN_TYPE, REQUIREMENT_REVISION_TYPE};
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,11 +25,13 @@ pub enum WakeSource {
     /// A builder run was opened for the project, by a join or a push (ISS-39).
     EcosystemBuild,
     /// The approver decided a workflow design the project proposed: an approve unblocks its builds,
-    /// a return hands the drawing back to the issue it was drawn under.
+    /// a return hands the drawing back to the issue it was drawn under, or, with no live issue, to
+    /// the master, whose sweep reads it from `/me/designs/owed`.
     WorkflowDesign,
     /// A person commented on one of the project's issues, at whatever status it stands.
     Comment,
-    /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown.
+    /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown; or
+    /// an agent-written revision was returned, and the master owes its revise.
     Requirement,
     /// Feedback was filed, at whatever severity.
     Feedback,
@@ -94,7 +97,42 @@ pub fn inbox_digest(inbox: &[UnansweredDocument]) -> u64 {
     h.finish()
 }
 
-/// The sentence a nudge carries when the channel, a builder run, an issue thread, a requirement or feedback owes something, empty when nothing is owed.
+/// The sentence for returned work the master owes a revision: designs no issue
+/// carries, and agent-written requirement revisions a signer sent back.
+fn returned_line(designs: &[&UnansweredDocument], revisions: &[&UnansweredDocument]) -> String {
+    let mut line = String::new();
+    if !designs.is_empty() {
+        // the design read takes the workflow's id, so each is named with it beside its flow
+        let keys: Vec<String> = designs
+            .iter()
+            .map(|d| match d.number.as_deref() {
+                Some(name) => format!("{name}, workflow {}", d.id),
+                None => d.id.clone(),
+            })
+            .collect();
+        line.push_str(&format!(
+            " {} returned design{} a revision no issue carries ({}): read each return's reason (`forge-runner api projects/<projectId>/workflows/<workflowId>/design`), then get the next revision written and proposed in a declared run, or record why it waits; the forge-master skill's returned-work section is the method.",
+            designs.len(),
+            if designs.len() == 1 { " owes" } else { "s owe" },
+            keys.join("; ")
+        ));
+    }
+    if !revisions.is_empty() {
+        let keys: Vec<&str> = revisions
+            .iter()
+            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
+            .collect();
+        line.push_str(&format!(
+            " {} returned requirement revision{} a revise ({}): read each (`forge-runner api projects/<projectId>/requirements/<key>`, its revision's `returnReason`), then write and propose it again, or drop it; the forge-master skill's returned-work section is the method.",
+            revisions.len(),
+            if revisions.len() == 1 { " owes" } else { "s owe" },
+            keys.join(", ")
+        ));
+    }
+    line
+}
+
+/// The sentence a nudge carries when the channel, a builder run, an issue thread, a requirement, a returned design or revision, or feedback owes something, empty when nothing is owed.
 pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     let (comments, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .iter()
@@ -105,10 +143,17 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     let (triages, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(FEEDBACK_TRIAGE_TYPE));
+    let (designs, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+        .into_iter()
+        .partition(|d| d.r#type.as_deref() == Some(DESIGN_REVISION_TYPE));
+    let (revisions, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+        .into_iter()
+        .partition(|d| d.r#type.as_deref() == Some(REQUIREMENT_REVISION_TYPE));
     let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
     let mut line = String::new();
+    line.push_str(&returned_line(&designs, &revisions));
     if !breakdowns.is_empty() {
         let keys: Vec<String> = breakdowns
             .iter()
@@ -220,6 +265,32 @@ mod tests {
             line.contains("2 feedback items owe a triage (FB-2, FB-5)"),
             "{line}"
         );
+    }
+
+    #[test]
+    fn a_returned_design_and_a_returned_revision_are_named_on_the_pass() {
+        let doc = |id: &str, number: &str, kind: &str| UnansweredDocument {
+            id: id.into(),
+            number: Some(number.into()),
+            r#type: Some(kind.into()),
+            from: None,
+            overdue: false,
+        };
+        let line = inbox_line(&[
+            doc("w1", "catalog-context r1", DESIGN_REVISION_TYPE),
+            doc("w2", "catalog-design-deploy r1", DESIGN_REVISION_TYPE),
+            doc("r1#r2", "REQ-2 r2", REQUIREMENT_REVISION_TYPE),
+        ]);
+        assert!(
+            line.contains("2 returned designs owe a revision no issue carries (catalog-context r1, workflow w1; catalog-design-deploy r1, workflow w2)"),
+            "{line}"
+        );
+        assert!(
+            line.contains("1 returned requirement revision owes a revise (REQ-2 r2)"),
+            "{line}"
+        );
+        assert!(!line.contains("ecosystem channel"), "{line}");
+        assert!(!line.contains("builder run"), "{line}");
     }
 
     #[test]

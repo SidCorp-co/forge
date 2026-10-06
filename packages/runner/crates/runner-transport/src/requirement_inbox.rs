@@ -1,4 +1,5 @@
-//! Which of a project's agreed requirements owe its master a breakdown.
+//! Which of a project's agreed requirements owe its master a breakdown, and
+//! which returned revisions owe it a revise.
 //!
 //! A `master.wake` with `source: "requirement"` says only that a requirement
 //! was agreed; core's room has no buffer, so the sweep reads this state on
@@ -50,6 +51,47 @@ pub async fn owed(client: &CoreClient, project_id: &str) -> Result<Vec<Unanswere
     Ok(parsed.into_work())
 }
 
+/// The type a returned revision owed a revise is carried under.
+pub const REQUIREMENT_REVISION_TYPE: &str = "requirement-revision";
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReturnedRevision {
+    requirement_id: String,
+    key: String,
+    revision: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReturnedResponse {
+    items: Vec<ReturnedRevision>,
+}
+
+impl ReturnedResponse {
+    fn into_work(self) -> Vec<UnansweredDocument> {
+        self.items
+            .into_iter()
+            .map(|r| UnansweredDocument {
+                id: format!("{}#r{}", r.requirement_id, r.revision),
+                number: Some(format!("{} r{}", r.key, r.revision)),
+                r#type: Some(REQUIREMENT_REVISION_TYPE.into()),
+                from: None,
+                overdue: false,
+            })
+            .collect()
+    }
+}
+
+/// Which agent-written revisions a signer returned, owed a revise by this
+/// project's master; `requirement.returned` wakes it, and core answers it from
+/// `requirements/owed-revisions.ts`.
+pub async fn returned(client: &CoreClient, project_id: &str) -> Result<Vec<UnansweredDocument>> {
+    let path = format!("/api/devices/me/requirements/returned?projectId={project_id}");
+    let parsed: ReturnedResponse =
+        crate::status::fetch(client.get(&path), "returned requirement inbox").await?;
+    Ok(parsed.into_work())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,5 +107,18 @@ mod tests {
         assert_eq!(work[0].number.as_deref(), Some("REQ-3"));
         assert_eq!(work[0].r#type.as_deref(), Some(REQUIREMENT_BREAKDOWN_TYPE));
         assert!(work[0].overdue);
+    }
+
+    #[test]
+    fn a_returned_revision_is_carried_under_its_key_and_revision() {
+        let parsed: ReturnedResponse = serde_json::from_str(
+            r#"{"projectId":"p","items":[{"requirementId":"r1","key":"REQ-2","title":"t","revision":3,"reason":"why"}],"count":1}"#,
+        )
+        .unwrap();
+        let work = parsed.into_work();
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].id, "r1#r3");
+        assert_eq!(work[0].number.as_deref(), Some("REQ-2 r3"));
+        assert_eq!(work[0].r#type.as_deref(), Some(REQUIREMENT_REVISION_TYPE));
     }
 }

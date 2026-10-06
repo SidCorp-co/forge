@@ -52,6 +52,16 @@ pub(crate) enum Abandoned {
 }
 
 impl Abandoned {
+    /// The close reason core stores for this abandonment (`MASTER_PASS_CLOSE_REASONS`).
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            Self::Restarted => "abandoned_restart",
+            Self::Orphaned => "abandoned_orphan",
+            Self::SessionGone => "session_gone",
+            Self::Quiet => "abandoned_quiet",
+        }
+    }
+
     fn why(self) -> &'static str {
         match self {
             Self::Restarted => "opened by the daemon process before this one, so the hook counts its turn was measured against are gone and the turn can no longer be judged; closed as abandoned at the restart",
@@ -220,11 +230,17 @@ fn turn_of(seen: Option<&Activity>, opened_at: i64) -> TurnRecord {
     turn_since(&tail, opened_at, crate::master_limit::now_unix())
 }
 
+/// The close reason core stores for a pass whose turn ran and ended.
+pub(crate) const TURN_ENDED: &str = "turn_ended";
+
+/// The close reason for a pass core opened and this box could not record, closed at once.
+pub(crate) const UNRECORDED: &str = "unrecorded";
+
 async fn settle(
     client: &CoreClient,
     led: &mut Ledger,
     pass: &MasterPass,
-    why: &str,
+    (close_reason, why): (&str, &str),
     turn: &TurnRecord,
 ) -> bool {
     let dispatched = match led.issues_declared_since(&pass.session_id, pass.opened_at) {
@@ -246,6 +262,7 @@ async fn settle(
         &pass.pass_id,
         &dispatched,
         refused_ref,
+        close_reason,
     )
     .await
     {
@@ -349,7 +366,14 @@ pub(crate) async fn reconcile(
             Judged::Open => false,
             Judged::TurnEnded => {
                 let turn = turn_of(seen.as_ref(), pass.opened_at);
-                settle(client, led, pass, "the turn it covers has ended", &turn).await
+                settle(
+                    client,
+                    led,
+                    pass,
+                    (TURN_ENDED, "the turn it covers has ended"),
+                    &turn,
+                )
+                .await
             }
             Judged::Abandoned(a) => {
                 if a == Abandoned::Quiet {
@@ -361,7 +385,14 @@ pub(crate) async fn reconcile(
                         QUIET_BOUND_MS / 1000
                     );
                 }
-                settle(client, led, pass, a.why(), &TurnRecord::default()).await
+                settle(
+                    client,
+                    led,
+                    pass,
+                    (a.wire(), a.why()),
+                    &TurnRecord::default(),
+                )
+                .await
             }
         };
         if settled {
@@ -446,7 +477,15 @@ async fn open_unprompted(
                     "[master] {project_id}: core opened unprompted pass {} and this box could not record it ({e}); closing it now",
                     row.pass_id
                 );
-                let _ = master_api::close_pass(client, session_id, &row.pass_id, &[], None).await;
+                let _ = master_api::close_pass(
+                    client,
+                    session_id,
+                    &row.pass_id,
+                    &[],
+                    None,
+                    UNRECORDED,
+                )
+                .await;
                 return;
             }
             tracing::info!(
@@ -571,7 +610,15 @@ pub(crate) async fn open_for_nudge(
                     row.pass_id
                 );
                 if let Err(e) =
-                    master_api::close_pass(client, &row.session_id, &row.pass_id, &[], None).await
+                    master_api::close_pass(
+                        client,
+                        &row.session_id,
+                        &row.pass_id,
+                        &[],
+                        None,
+                        UNRECORDED,
+                    )
+                    .await
                 {
                     tracing::error!(
                         "[master] {}: pass {} could not be closed either: {e} — the next open is refused MASTER_PASS_ALREADY_OPEN and adopted from there",
@@ -639,6 +686,29 @@ fn adopt_orphan(led: &mut Ledger, nudged: &Nudged<'_>, detail: &str) {
 mod tests {
     use super::*;
     use runner_core::agent_activity::{Event, Report};
+
+    #[test]
+    fn each_way_a_pass_ends_is_told_to_core_by_its_own_name() {
+        let names = [
+            TURN_ENDED,
+            UNRECORDED,
+            Abandoned::Quiet.wire(),
+            Abandoned::Restarted.wire(),
+            Abandoned::Orphaned.wire(),
+            Abandoned::SessionGone.wire(),
+        ];
+        assert_eq!(
+            names,
+            [
+                "turn_ended",
+                "unrecorded",
+                "abandoned_quiet",
+                "abandoned_restart",
+                "abandoned_orphan",
+                "session_gone"
+            ]
+        );
+    }
 
     // 2026-10-06T10:00:00Z
     const T0: i64 = 1_791_280_800;

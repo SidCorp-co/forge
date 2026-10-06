@@ -53,6 +53,7 @@ export const OUTBOX_CONSUMERS = {
 	"contract.requested": ["master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
 	"requirement.agreed": ["master-wake"],
+	"requirement.returned": ["master-wake"],
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
 	"feedback.filed": ["master-wake"],
