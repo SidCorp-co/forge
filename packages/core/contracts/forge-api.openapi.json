@@ -32402,6 +32402,23 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "stillWaits": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "blockedBy": {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
                   "text": {
                     "type": "string"
                   }

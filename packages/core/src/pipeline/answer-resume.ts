@@ -1,3 +1,5 @@
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import type { AnswerOutcome } from '@forge/contracts/questions';
 import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -11,13 +13,20 @@ import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { accountActor, readWorkState, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal } from '../lib/refusal.js';
+import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
-import { type LoopScope, requestSessionSend, resolveSessionSend } from './ports.js';
+import {
+  answeredHoldOf,
+  type LoopScope,
+  recordAnswerResume,
+  requestSessionSend,
+  resolveSessionSend,
+} from './ports.js';
 
-async function resumableIssue(issueId: string) {
+/** The issue this answer stopped, while it is still parked for it; null once anything moved it. */
+async function parkedIssue(issueId: string) {
   const [issue] = await db
     .select({
       id: issues.id,
@@ -29,9 +38,10 @@ async function resumableIssue(issueId: string) {
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue || issue.status !== AUTONOMOUS_QUESTION_STATUS) return null;
-  if (!(await isAutonomousProject(issue.projectId))) return null;
   return issue;
 }
+
+type ParkedIssue = NonNullable<Awaited<ReturnType<typeof parkedIssue>>>;
 
 /**
  * Where an answered park goes: back to the status it left (`issue_work_state.left_status`), never
@@ -42,31 +52,34 @@ async function answeredTarget(issueId: string): Promise<IssueStatus | null> {
   return (work?.leftStatus ?? null) as IssueStatus | null;
 }
 
-/** Resume, unless a question on the issue is still open once the transition has the row locked. */
+/**
+ * Return the park to the status it left, unless a question on the issue is still open once the
+ * transition has the row locked. Any refusal is the outcome, named, never a dead delivery: under
+ * `key_strict_fifo` a dead one would hold every later answer on this issue (ISS-258).
+ */
 async function resumeUnasked(
-  issue: NonNullable<Awaited<ReturnType<typeof resumableIssue>>>,
+  issue: ParkedIssue,
+  target: IssueStatus | null,
   answeredBy: string,
-): Promise<boolean> {
-  const target = await answeredTarget(issue.id);
-  if (target === null) {
-    logger.info(
-      { issueId: issue.id },
-      'answer-resume: this park recorded no status it left, so a person moves it on',
-    );
-    return false;
-  }
+): Promise<AnswerOutcome> {
+  if (target === null) return { kind: 'no_left_status' };
   try {
     await transitionIssueStatus(issue, target, await accountActor(answeredBy), {
       requireNoOpenQuestions: true,
     });
-    return true;
+    return { kind: 'resumed', to: target };
   } catch (err) {
-    if (!isRefusal(err, 'OPEN_QUESTIONS')) throw err;
-    logger.info(
-      { issueId: issue.id },
-      'answer-resume: another question on this issue is still open, so it waits on that one',
-    );
-    return false;
+    if (!isRefusal(err)) throw err;
+    const lead = err.refusals[0] as (Refusal & { openQuestionIds?: unknown }) | undefined;
+    if (err.refusals.some((r) => r.code === 'OPEN_QUESTIONS')) {
+      const ids = Array.isArray(lead?.openQuestionIds) ? lead.openQuestionIds.map(String) : [];
+      return { kind: 'other_question', questionIds: ids };
+    }
+    return {
+      kind: 'refused',
+      code: lead?.code ?? err.fallbackCode,
+      detail: lead?.detail ?? err.message,
+    };
   }
 }
 
@@ -90,22 +103,23 @@ async function parkedSessionFor(issueId: string): Promise<string | null> {
 }
 
 /**
- * Deliver the answer to the session that asked, if there is one.
- *
- * Returns whether the durable path is now armed — i.e. whether core has handed
- * this answer to a runner and must wait for the episode to resolve rather than
- * dispatch.
+ * Deliver the answer to the session that asked, if there is one: the session it went to when core
+ * has handed it to a runner and must wait for the episode to resolve rather than dispatch.
  */
-async function deliverToPark(issueId: string, commentId: string, body: string): Promise<boolean> {
+async function deliverToPark(
+  issueId: string,
+  commentId: string,
+  body: string,
+): Promise<string | null> {
   const agentSessionId = await parkedSessionFor(issueId);
-  if (!agentSessionId) return false;
+  if (!agentSessionId) return null;
   const { published } = await requestSessionSend({
     agentSessionId,
     kind: 'answer',
     intentId: commentId,
     body,
   });
-  return published;
+  return published ? agentSessionId : null;
 }
 
 /**
@@ -121,9 +135,31 @@ async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
 }
 
 /**
- * Register the answer-resume subscriber. Called once at boot from
- * `src/index.ts`, and only meaningful for projects running the autonomous
- * driver — a staged project takes the early return and pays one issue read.
+ * What one answer does to the park it stopped. An answer that says the issue still waits holds it
+ * where it is, unless it named a blocker whose `blocks` edge withholds the status the park returns
+ * to (ISS-257); otherwise the answer goes to whoever asked, or the park returns where it left.
+ */
+async function answerThePark(
+  issue: ParkedIssue,
+  p: { questionId: string; body: string; answeredBy: string },
+): Promise<AnswerOutcome> {
+  if (!(await isAutonomousProject(issue.projectId))) return { kind: 'staged' };
+  const target = await answeredTarget(issue.id);
+  const hold = await answeredHoldOf(p.questionId);
+  if (hold) {
+    const edgeHolds =
+      hold.blockedBy !== undefined && target !== null && TAKEABLE_STATUSES.includes(target);
+    return edgeHolds ? resumeUnasked(issue, target, p.answeredBy) : { kind: 'held' };
+  }
+  const sessionId = await deliverToPark(issue.id, p.questionId, p.body);
+  if (sessionId) return { kind: 'sent_to_run', sessionId };
+  if (await aBoxWillReadThisAnswer(p.questionId)) return { kind: 'box_reads' };
+  return resumeUnasked(issue, target, p.answeredBy);
+}
+
+/**
+ * Register the answer-resume subscriber. Called once at boot from `src/index.ts`. A staged
+ * project's answer moves nothing, and that too is recorded on the answer.
  */
 export function registerAnswerResume(): void {
   consume('question.answered', {
@@ -132,26 +168,13 @@ export function registerAnswerResume(): void {
       if (!p.issueId) return;
       const issueId = p.issueId;
       try {
-        const issue = await resumableIssue(issueId);
+        const issue = await parkedIssue(issueId);
         if (!issue) return;
-        if (await deliverToPark(issueId, p.questionId, p.body)) {
-          logger.info(
-            { issueId, questionId: p.questionId },
-            'answer-resume: question answered, sent to the session that asked',
-          );
-          return;
-        }
-        if (await aBoxWillReadThisAnswer(p.questionId)) {
-          logger.info(
-            { issueId, questionId: p.questionId },
-            'answer-resume: a box is registered to read this answer back, dispatching nothing',
-          );
-          return;
-        }
-        if (!(await resumeUnasked(issue, p.answeredBy))) return;
+        const outcome = await answerThePark(issue, p);
+        await recordAnswerResume(p.questionId, { ...outcome, at: new Date().toISOString() });
         logger.info(
-          { issueId, questionId: p.questionId },
-          'answer-resume: the last open question was answered, and the park went back to the status it left',
+          { issueId, questionId: p.questionId, outcome: outcome.kind },
+          'answer-resume: recorded what the answer did to its park',
         );
       } catch (err) {
         logger.error({ err, issueId }, 'answer-resume: resuming on an answer failed');
@@ -197,9 +220,11 @@ export async function resumeLapsedAnswers(
   for (const { inbox, issueId, authorId } of rows) {
     const { outcome } = await resolveSessionSend(inbox, now.getTime());
     if (outcome !== 'gone' || !issueId || !authorId) continue;
-    const issue = await resumableIssue(issueId);
-    if (!issue) continue;
-    if (!(await resumeUnasked(issue, authorId))) continue;
+    const issue = await parkedIssue(issueId);
+    if (!issue || !(await isAutonomousProject(issue.projectId))) continue;
+    const resume = await resumeUnasked(issue, await answeredTarget(issue.id), authorId);
+    await recordAnswerResume(inbox.intentId, { ...resume, at: now.toISOString() });
+    if (resume.kind !== 'resumed') continue;
     resumed += 1;
     logger.info(
       { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq },

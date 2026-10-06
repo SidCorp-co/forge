@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
@@ -21,11 +22,12 @@ import {
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
+import { resolveIssueKeyInProject } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
-import { answerQuestion, type GivenAnswer, mayAnswerFreeText } from './answer.js';
+import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
 import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
@@ -284,6 +286,8 @@ export async function answerAs(args: {
   agency?: ActorAgency;
   note?: string;
   via: PersonVia;
+  /** `blockedBy` as the answerer typed it: an issue key such as `ISS-12`, or its uuid. */
+  stillWaits?: { reason: string; blockedBy?: string | undefined };
 }) {
   const [row] = await db
     .select({ projectId: agentQuestions.projectId })
@@ -295,7 +299,9 @@ export async function answerAs(args: {
   }
   const access = await accessOn(row.projectId, args.userId);
   if (!access) throw notFound(`no question ${args.questionId}`);
+  const stillWaits = args.stillWaits && (await resolvedWait(args.stillWaits, row.projectId));
   return answerQuestion({
+    ...(stillWaits ? { stillWaits } : {}),
     questionId: args.questionId,
     answer: args.answer,
     round: args.round,
@@ -305,6 +311,27 @@ export async function answerAs(args: {
     facts: access,
     ...(args.note === undefined ? {} : { note: args.note }),
   });
+}
+
+/**
+ * `blockedBy` as an issue uuid of the project: a key resolves against the project's prefixes, and
+ * one that names nothing there is refused by name rather than dropped.
+ */
+async function resolvedWait(
+  wait: { reason: string; blockedBy?: string | undefined },
+  projectId: string,
+): Promise<StillWaits> {
+  const named = wait.blockedBy?.trim();
+  if (!named) return { reason: wait.reason };
+  try {
+    return { reason: wait.reason, blockedBy: await resolveIssueKeyInProject(named, projectId) };
+  } catch (err) {
+    if (!(err instanceof HTTPException)) throw err;
+    throw refuseQuestion(
+      'QUESTION_HOLD_BLOCKER_UNKNOWN',
+      `\`stillWaits.blockedBy\` is \`${named}\`, which names no issue of this question's project (${err.message}) — name one by its key, such as ISS-12, or its id`,
+    );
+  }
 }
 
 /** The open approve-gate question on each of these channel documents, asked of the project that sent it, keyed by document id. */
@@ -362,6 +389,8 @@ export async function answerOf(questionId: string) {
     answeredAt: answered.answeredAt,
     answeredBy: answered.answeredBy,
     round: answered.round,
+    /** The answer says the issue still waits on this, so a run reading it does not carry on (ISS-257). */
+    stillWaits: answered.hold ?? null,
   };
 }
 

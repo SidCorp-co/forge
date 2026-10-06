@@ -3,9 +3,12 @@
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { eq } from 'drizzle-orm';
+import type { AnswerHold } from '@forge/contracts/questions';
+import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
 import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
+import { issueDisplayIds, writeIssueRelations } from '../issues/index.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
@@ -14,6 +17,9 @@ import { decideChannelGate } from './ports.js';
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
 
 export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
+
+/** What the answerer says the issue still waits on; `blockedBy` is an issue uuid of the question's project. */
+export type StillWaits = { reason: string; blockedBy?: string };
 
 export type AnswerInput = {
   questionId: string;
@@ -27,6 +33,8 @@ export type AnswerInput = {
   note?: string;
   /** The door the answerer came through, which a channel gate records as the decider's via. */
   via: PersonVia;
+  /** The answer does not release the issue: it still waits on this (ISS-257). */
+  stillWaits?: StillWaits;
 };
 
 export function mayAnswerFreeText(facts: PermissionFacts | null): boolean {
@@ -80,6 +88,55 @@ function refuseAnswerTo(row: QuestionRow, args: AnswerInput, now: Date): Questio
     );
   }
   return current;
+}
+
+/**
+ * The hold an answer carries, refused by name where it cannot be carried, and its `blocks` edge
+ * written in the answer's transaction: the answer and what it says the issue waits on commit
+ * together or not at all.
+ */
+async function holdOf(
+  tx: Tx,
+  row: QuestionRow,
+  args: AnswerInput,
+): Promise<AnswerHold | undefined> {
+  const wait = args.stillWaits;
+  if (!wait) return undefined;
+  const issueId = row.issueId;
+  if (!issueId) {
+    throw refuseQuestion(
+      'QUESTION_HOLD_NO_ISSUE',
+      'this question stops no issue, so there is nothing for `stillWaits` to keep waiting — answer it without `stillWaits`',
+    );
+  }
+  const reason = wait.reason.trim();
+  if (!reason) {
+    throw refuseQuestion(
+      'QUESTION_HOLD_REASON_REQUIRED',
+      '`stillWaits.reason` is blank — say what the issue still waits on after this answer, in words a person can check',
+    );
+  }
+  if (!wait.blockedBy) return { reason };
+  const [blocker] = await tx
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.id, wait.blockedBy), eq(issues.projectId, row.projectId)))
+    .limit(1);
+  if (!blocker) {
+    throw refuseQuestion(
+      'QUESTION_HOLD_BLOCKER_UNKNOWN',
+      `\`stillWaits.blockedBy\` names ${wait.blockedBy}, which is no issue of this question's project — name an issue of the same project by its key or id`,
+    );
+  }
+  await writeIssueRelations(
+    { actor: { type: 'user', id: args.by, agency: args.agency }, createdById: args.by },
+    row.projectId,
+    issueId,
+    [{ kind: 'blocks', dependsOnId: blocker.id, reason }],
+    tx,
+  );
+  const key = (await issueDisplayIds([blocker.id], tx)).get(blocker.id) ?? blocker.id;
+  return { reason, blockedBy: { id: blocker.id, key } };
 }
 
 /** The answered round; a channel gate's question decides its gate in the answer's transaction. */
@@ -155,7 +212,9 @@ export async function answerQuestion(args: AnswerInput) {
     if (!row) throw notFound(`no question ${args.questionId}`);
     const now = new Date();
     const current = refuseAnswerTo(row, args, now);
-    const answered = await answerRound(tx, row, current, args, now);
+    const hold = await holdOf(tx, row, args);
+    const round = await answerRound(tx, row, current, args, now);
+    const answered = hold ? { ...round, hold } : round;
     const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
     await transition(tx, QUESTION_MACHINE, {
       to: 'answered',

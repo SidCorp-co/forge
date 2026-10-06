@@ -7,6 +7,7 @@
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
+import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -82,6 +83,14 @@ interface StoredFiles {
   delete(path: string): Promise<void>;
 }
 
+/** A question answered on an issue, with what the answer said and did (`questions/answer-outcome.ts`). */
+export interface AnsweredQuestion {
+  questionId: string;
+  answeredAt: string;
+  hold: AnswerHold | null;
+  resume: AnswerResume | null;
+}
+
 interface IssuePorts {
   projectCreatorOf: (projectId: string) => Promise<string | null>;
   settleOpenQuestions: (
@@ -114,6 +123,14 @@ interface IssuePorts {
     },
   ) => Promise<unknown>;
   openHumanQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
+  /** The question answered most recently on this issue after `after`, with what its answer did (ISS-258). */
+  answeredSince: (
+    executor: Tx,
+    issueId: string,
+    after: Date | null,
+  ) => Promise<AnsweredQuestion | null>;
+  /** `answeredSince` as SQL over a page of issues: a jsonb of the same shape, or null. */
+  answeredSinceSql: (issueId: SQLWrapper, after: SQLWrapper) => SQL;
   postIssueNotice: (
     notice: { issueId: string; authorId: string; body: string; intent?: 'note' | 'question' },
     tx?: Tx,
@@ -259,6 +276,8 @@ export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');
 export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
+export const answeredSince = port('answeredSince');
+export const answeredSinceSql = port('answeredSinceSql');
 export const postIssueNotice = port('postIssueNotice');
 export const messageRefusalHttp = port('messageRefusalHttp');
 

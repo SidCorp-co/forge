@@ -18,6 +18,7 @@ import type {
   IssueWithheld,
 } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -35,6 +36,7 @@ import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
+  answeredSinceSql,
   approvalRequired,
   changedTracedOf,
   designUnapprovedSql,
@@ -98,6 +100,7 @@ interface IssueRowRaw {
   owes_answer: boolean;
   holds_dependents: boolean;
   park_entry: { reason: string | null; agency: string; actorType: string } | null;
+  answered_park: { hold: AnswerHold | null; resume: AnswerResume | null } | null;
   design_returned: { flow: string; revision: number } | null;
   design_unapproved: boolean;
   contract_unsettled: boolean;
@@ -136,6 +139,11 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
                  FROM kernel_transitions kt
                 WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = 'on_hold'
                 ORDER BY kt.created_at DESC LIMIT 1) END AS park_entry,
+             CASE WHEN i.status = 'needs_info' THEN ${answeredSinceSql(
+               sql`i.id`,
+               sql`(SELECT max(kt.created_at) FROM kernel_transitions kt
+                     WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = 'needs_info')`,
+             )} END AS answered_park,
              ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
              ${issueWorkMovingSql({
@@ -256,6 +264,9 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     inFlight: r.moving,
     runLive: r.run_live,
     owesAnswer: r.owes_answer,
+    answered: r.answered_park
+      ? { hold: r.answered_park.hold ?? null, resume: r.answered_park.resume ?? null }
+      : null,
     park: r.park_entry
       ? {
           reason: r.park_entry.reason,

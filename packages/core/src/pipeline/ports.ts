@@ -5,6 +5,7 @@
 // declares each need here and the composition root fills it at boot (`provideProjectOrg` is the
 // pattern).
 
+import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { RetentionStatements } from '../db/retention-shape.js';
@@ -147,6 +148,10 @@ interface PipelinePorts {
     },
   ) => Promise<string[]>;
   personOwesAnAnswer: (executor: Tx, issueId: string) => Promise<boolean>;
+  /** What an answered question's last round says the issue still waits on (ISS-257). */
+  answeredHoldOf: (questionId: string) => Promise<AnswerHold | null>;
+  /** Record on the answered round what the answer did to its issue (ISS-258). */
+  recordAnswerResume: (questionId: string, resume: AnswerResume, executor?: Tx) => Promise<void>;
   refreshModuleKnowledgeForIssue: (input: {
     issueId: string;
     projectId: string;
@@ -207,6 +212,8 @@ export const postIssueNotice = port('postIssueNotice');
 export const postIssueNoticeOnce = port('postIssueNoticeOnce');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
+export const answeredHoldOf = port('answeredHoldOf');
+export const recordAnswerResume = port('recordAnswerResume');
 export const refreshModuleKnowledgeForIssue = port('refreshModuleKnowledgeForIssue');
 
 export const readEffectivePolicy = port('readEffectivePolicy');

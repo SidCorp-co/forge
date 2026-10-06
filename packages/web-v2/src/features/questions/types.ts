@@ -1,3 +1,5 @@
+import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
+
 
 export type OptionAuthority = "writer" | "admin";
 export type OptionBinding = "this_call" | "session" | "project";
@@ -27,6 +29,10 @@ interface StepCommon {
   askedAt: string;
   answeredAt?: string;
   answeredBy?: string;
+  /** What the answer said the issue still waits on. */
+  hold?: AnswerHold;
+  /** What the answer did to the issue it stopped, once core recorded it. */
+  resume?: AnswerResume;
 }
 
 export interface ChoiceStep extends StepCommon {
@@ -94,8 +100,15 @@ export function roundCountOf(question: AgentQuestion): number {
 
 export type GivenAnswer = { optionId: string; text?: never } | { text: string; optionId?: never };
 
+/** The answer does not release its issue: what it still waits on, and the issue key that blocks it. */
+export interface StillWaits {
+  reason: string;
+  blockedBy?: string;
+}
+
 export type AnswerInput = GivenAnswer & {
   questionId: string;
   round: number;
   note?: string;
+  stillWaits?: StillWaits;
 };
