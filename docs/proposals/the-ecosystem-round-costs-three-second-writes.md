@@ -1,9 +1,8 @@
 # Three steps of requirement-to-delivery cost a person a second write the design never counted
 
 **Removed when:** each gap below is either taken (its change lands and deletes its section) or
-refused by name in the design text, which the issue ISS-0 carries (a placeholder: the key is owed
-by whoever files the work, and replaces this one), and the last section leaves this file empty. The change that
-removes the final section deletes the file.
+refused by name in the design text, which ISS-246 carries, and the last section leaves this file
+empty. The change that removes the final section deletes the file.
 
 The third round of the ePOD and Catalog ecosystem exercise ran a breakdown, a revision route and a
 provider version through two live masters. Each gap was a step the design draws as one act and the
