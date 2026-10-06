@@ -67,9 +67,9 @@ both blankets have been written into it and both were false.
 A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged_commit_sha`
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
 `developed` or `testing` one status later. The `NO_WORK_EVIDENCE` refusal
-(`work-evidence.ts:noWorkEvidenceDetail`) offers that commit route on the `git` shape only. On
-`outside_git` it names the branch and handoff routes and a person's mark, which the check does
-not hold.
+(`packages/core/src/pipeline/work-evidence.ts:noWorkEvidenceDetail`) offers that commit route
+on the `git` shape only. On `outside_git` it names the branch and handoff routes and a person's
+mark, which the check does not hold.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
