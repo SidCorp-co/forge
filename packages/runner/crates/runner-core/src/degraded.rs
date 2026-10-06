@@ -123,7 +123,7 @@ impl<'a> Mark<'a> {
     }
 }
 
-const MAX_LINES: usize = 500;
+pub(crate) const MAX_LINES: usize = 500;
 
 /// `<config dir>/gate-marks.jsonl`.
 pub fn marks_path(config_dir: &Path) -> PathBuf {
@@ -151,19 +151,25 @@ pub fn mark(config_dir: &Path, m: &Mark<'_>) {
             line[key] = serde_json::Value::String(v.to_string());
         }
     }
-    let line = line.to_string();
+    append_bounded(&path, &line.to_string());
+}
+
+/// Append one line to a record beside `config.toml`, kept to `MAX_LINES`. A
+/// write that fails is dropped: every writer is a process whose failure must
+/// not reach the agent it runs for.
+pub(crate) fn append_bounded(path: &Path, line: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let appended = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
+        .open(path)
         .and_then(|mut f| writeln!(f, "{line}"));
     if appended.is_err() {
         return;
     }
-    trim(&path);
+    trim(path);
 }
 
 fn trim(path: &Path) {

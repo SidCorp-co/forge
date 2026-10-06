@@ -188,6 +188,10 @@ ends a run: a subagent quiet for an hour is named in the journal and nothing mor
 That row is why your work survives you. Without it, issues stay marked as being worked on with
 nobody working on them.
 
+**A permission dialog in this pane is denied by the box, never left for a person**: a run told "The
+Forge runner answered this permission dialog for you: denied" rephrases (plain commands, literal
+absolute paths, no `bash -c`) and carries on, and a run that cannot is reported, not re-dispatched.
+
 ## When the project is not yours to drive
 
 A pass that dispatches nothing does not by itself make the project stood down. Such a pass still

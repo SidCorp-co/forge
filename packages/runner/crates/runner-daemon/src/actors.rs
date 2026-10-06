@@ -716,7 +716,7 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
     runner_workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
 }
 
-/// The gate and pool conditions off the files beside `config.toml`, none where
+/// The gate, answered-dialog and pool conditions off the files beside `config.toml`, none where
 /// there is no such directory to read, and the pane binaries this box cannot
 /// resolve, read every beat: a binary installed or removed since the last one
 /// reaches core within a beat, not at the next pane start.
@@ -735,6 +735,7 @@ fn heartbeat_conditions(
         gate: Some(degraded::report(dir, now_ms).degraded),
         pool: pool_reads::report(dir, now_ms).ok(),
         binaries,
+        dialogs: runner_core::dialog_answer::report(dir),
     }
 }
 

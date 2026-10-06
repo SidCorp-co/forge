@@ -66,6 +66,15 @@ function lastPassText(m: MasterStanding): string | null {
   return `Last pass ${formatRelativeTime(l.endedAt)}${ended}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}`;
 }
 
+// the box denies every permission dialog in a pane it placed and the run rephrases; how often is read here
+function dialogsText(m: MasterStanding): string {
+  const d = m.dialogsAnswered;
+  if (!d) return "—";
+  const count = `${d.count}${d.countIsFloor ? "+" : ""}`;
+  const when = d.lastAt ? `, last ${formatRelativeTime(d.lastAt)}` : "";
+  return `${count}${when}${d.last ? `: ${d.last}` : ""}`;
+}
+
 export const masterRow =
   (href: string) =>
   (m: MasterStanding): ListRowView => ({
@@ -151,6 +160,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
         </Fact>
         <Fact label="Last beat">{m.lastBeatAt ? <span title={formatStamp(m.lastBeatAt)}>{formatRelativeTime(m.lastBeatAt)}</span> : "—"}</Fact>
         <Fact label="Since">{fmtTime(m.since)}</Fact>
+        <Fact label="Dialogs answered">{dialogsText(m)}</Fact>
       </FactsGroup>
       <FactsGroup title="Properties">
         <Fact label="Session">

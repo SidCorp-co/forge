@@ -3,6 +3,7 @@
  * `daemon/degraded.rs` holds the one definition of a sustained rate (ISS-1192).
  */
 
+import type { MasterDialogsAnswered } from '@forge/contracts/master-standing';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { utf16String } from '../lib/utf16-string.js';
@@ -49,7 +50,29 @@ const conditionSchema = z
   })
   .strict();
 
-const gateReportSchema = z.object({ degraded: conditionSchema }).strict();
+/** The most projects one report names; the box's matching ceiling is
+ *  `runner_proto::dialogs::WIRE_PROJECTS`. */
+export const WIRE_DIALOG_PROJECTS = 32;
+
+/** One project's permission dialogs the box's hook answered (`runner_core::dialog_answer`). */
+const dialogsAnsweredSchema = z
+  .object({
+    projectId: wire().nullable(),
+    count: z.number().int().nonnegative().max(1_000_000),
+    countIsFloor: z.boolean(),
+    firstAt: z.number().int().nullable(),
+    lastAt: z.number().int().nullable(),
+    last: wire().nullable(),
+    lastAgent: wire().nullable(),
+  })
+  .strict();
+
+const gateReportSchema = z
+  .object({
+    degraded: conditionSchema,
+    dialogs: z.array(dialogsAnsweredSchema).max(WIRE_DIALOG_PROJECTS).optional(),
+  })
+  .strict();
 
 export const gateConditionSchema = conditionSchema;
 
@@ -133,4 +156,38 @@ function readDeviceGate(stored: unknown): DeviceGate | null {
   const parsed = conditionSchema.safeParse(degraded);
   if (!parsed.success) return null;
   return { ...parsed.data, receivedAt: typeof receivedAt === 'string' ? receivedAt : '' };
+}
+
+const isoOf = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+
+/**
+ * What the box's hook answered for `projectId`, off the stored gate report. `null` where the box
+ * reported none for it; a stored entry core cannot read is `null` too, and logged, since the report
+ * was validated on the way in.
+ */
+export function readDialogsAnswered(
+  stored: unknown,
+  projectId: string,
+): MasterDialogsAnswered | null {
+  if (stored === null || typeof stored !== 'object') return null;
+  const dialogs = (stored as { dialogs?: unknown }).dialogs;
+  if (dialogs === undefined) return null;
+  const parsed = z.array(dialogsAnsweredSchema).safeParse(dialogs);
+  if (!parsed.success) {
+    logger.warn(
+      { projectId, reason: parsed.error.issues[0]?.message },
+      'gate report: stored answered dialogs core cannot read',
+    );
+    return null;
+  }
+  const mine = parsed.data.find((d) => d.projectId === projectId);
+  if (!mine) return null;
+  return {
+    count: mine.count,
+    countIsFloor: mine.countIsFloor,
+    firstAt: isoOf(mine.firstAt),
+    lastAt: isoOf(mine.lastAt),
+    last: mine.last,
+    lastAgent: mine.lastAgent,
+  };
 }

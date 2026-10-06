@@ -21,6 +21,7 @@ import {
   masterLastBeatSql,
   masterSilentSql,
   OCCUPYING,
+  readDialogsAnswered,
   SESSION_SILENCE_TIMEOUT_S,
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
@@ -154,6 +155,7 @@ interface MasterRow {
   last_beat: string | Date | null;
   silent: boolean;
   pane_dialog: MasterPaneDialog | null;
+  gate_report: unknown;
 }
 
 async function liveMaster(projectId: string): Promise<MasterRow | null> {
@@ -165,7 +167,8 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
                  COALESCE(s.started_at, s.created_at) AS started_at,
                  ${masterLastBeatSql('s')} AS last_beat,
                  ${masterSilentSql('s')} AS silent,
-                 s.metadata -> 'paneDialog' AS pane_dialog
+                 s.metadata -> 'paneDialog' AS pane_dialog,
+                 d.gate_report
             FROM agent_sessions s
             LEFT JOIN devices d ON d.id = s.device_id
            WHERE s.project_id = ${projectId}
@@ -204,6 +207,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       runsOut: 0,
       lastBeatAt: null,
       waitingOn: null,
+      dialogsAnswered: null,
     };
   }
   const device =
@@ -229,6 +233,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
             : 'idle',
     runsOut,
     waitingOn,
+    dialogsAnswered: readDialogsAnswered(master.gate_report, projectId),
     sessionId: master.id,
     name: master.title,
     device,

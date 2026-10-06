@@ -221,6 +221,22 @@ export interface MasterStanding {
 	silentAfterSeconds: number;
 	/** Set while state is waiting_person: the pane is stopped on a dialog only a person answers. */
 	waitingOn: MasterWaitingOn | null;
+	/** Permission dialogs the box answered (denied) for this project's panes, as its last heartbeat
+	 *  counted them; null where it reported none. */
+	dialogsAnswered: MasterDialogsAnswered | null;
+}
+
+/** What the box's `PermissionRequest` hook answered for a project, read off the device's gate report. */
+export interface MasterDialogsAnswered {
+	/** A floor where `countIsFloor`: the box keeps a bounded record, never a lifetime total. */
+	count: number;
+	countIsFloor: boolean;
+	firstAt: string | null;
+	lastAt: string | null;
+	/** The newest answer as the person reads it: `denied Bash: <command>`. */
+	last: string | null;
+	/** The subagent that asked last; null where the pane's lead asked. */
+	lastAgent: string | null;
 }
 
 export interface MasterPassList {
