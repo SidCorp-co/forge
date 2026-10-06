@@ -30102,12 +30102,12 @@
                     ],
                     "type": "string"
                   },
+                  "pushed": {
+                    "type": "boolean"
+                  },
                   "reason": {
                     "maxLength": 2000,
                     "type": "string"
-                  },
-                  "tagged": {
-                    "type": "boolean"
                   }
                 },
                 "type": "object"

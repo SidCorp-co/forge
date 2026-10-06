@@ -7,6 +7,7 @@ import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
 import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { notFound } from '../middleware/route-errors.js';
+import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
@@ -23,7 +24,7 @@ import {
   RELEASE_VERSION_SHAPE,
 } from './version.js';
 import { currentReleaseVersion, highestSpentVersion, releaseLineOf } from './version-store.js';
-import { attemptsOf, issueIdsOf, type RunRow, versionRuns, versionStatus } from './versions.js';
+import { attemptsOf, issueIdsOf, versionRuns, versionStatus } from './versions.js';
 
 async function draftPart(projectId: string): Promise<Part | null> {
   const ids = await waitingIssueIds(projectId);
@@ -47,7 +48,7 @@ async function draftPart(projectId: string): Promise<Part | null> {
 }
 
 function runPart(
-  run: RunRow,
+  run: ReleaseRunRow,
   attempts: ReleaseAttemptRow[],
   approvals: ApprovalView[],
   required: boolean,

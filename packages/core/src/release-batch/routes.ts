@@ -135,8 +135,11 @@ const abortBodySchema = z
       })
       .strict()
       .optional(),
-    /** Whether this run pushed its release tag before it aborted, which spends its version. */
-    tagged: z.boolean().optional(),
+    /**
+     * Whether this run pushed anything for this release (the release commit to any branch, or its
+     * tag). Only `false` hands the version back to the next batch; absent keeps it spent.
+     */
+    pushed: z.boolean().optional(),
   })
   .strict();
 
@@ -197,14 +200,14 @@ releaseBatchRoutes.post(
   zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const { reason, promotedRoster, blocker, tagged } = c.req.valid('json');
+    const { reason, promotedRoster, blocker, pushed } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
       promotedRoster,
       blocker,
-      tagged,
+      pushed,
     });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },

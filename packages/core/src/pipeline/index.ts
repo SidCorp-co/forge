@@ -54,6 +54,7 @@ export { providePipelinePorts } from './ports.js';
 export { pipelineRunProjectId, stepDurationsForProject } from './read.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { verifyRecovery } from './recovery-verifier.js';
+export { type ReleaseRunRow, releaseRunsByVersion, runWearingVersion } from './release-runs.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';

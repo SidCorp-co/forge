@@ -25,8 +25,11 @@ interface AbortStamp {
   closed: string[] | null;
   /** Who the run said must act before the roster can release, when it said. */
   blocker?: AbortBlocker;
-  /** The run said it pushed its release tag, so its version is spent (`highestSpentVersion`). */
-  tagged?: boolean;
+  /**
+   * What the run said it pushed (release commit or tag). Only `false` hands the version back
+   * (`highestSpentVersion`); absent reads as unknown, which keeps it spent.
+   */
+  pushed?: boolean;
 }
 
 export interface AbortBlocker {
@@ -61,7 +64,8 @@ export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${
 /**
  * Stamp the abort before anything else it does. A later abort rewrites the stamp, because the
  * last abort is the one that decided where the roster went — keeping the closed issues an earlier
- * one recorded, whose claims it released, and a tag an earlier one said it pushed.
+ * one recorded, whose claims it released. `pushed:false` is kept only while every abort said it:
+ * a later abort cannot take back a push an earlier one reported or left unsaid.
  */
 export async function stampAbort(
   runId: string,
@@ -70,7 +74,7 @@ export async function stampAbort(
     by: string;
     holdPromotedRoster: boolean;
     blocker?: AbortBlocker | undefined;
-    tagged?: boolean | undefined;
+    pushed?: boolean | undefined;
   },
 ): Promise<string> {
   const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
@@ -82,14 +86,16 @@ export async function stampAbort(
     roster: held ? 'held' : 'returning',
     closed: null,
     ...(stamp.blocker ? { blocker: stamp.blocker } : {}),
-    ...(stamp.tagged !== undefined ? { tagged: stamp.tagged } : {}),
+    ...(stamp.pushed !== undefined ? { pushed: stamp.pushed } : {}),
   };
   await writeRunMetadata(runId, {
     value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
-      ${JSON.stringify(record)}::jsonb
-      || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb))
-      || CASE WHEN metadata -> 'abort' ->> 'tagged' = 'true'
-              THEN jsonb_build_object('tagged', true) ELSE '{}'::jsonb END)`,
+      CASE WHEN metadata -> 'abort' IS NOT NULL
+                AND metadata -> 'abort' ->> 'pushed' IS DISTINCT FROM 'false'
+           THEN (${JSON.stringify(record)}::jsonb - 'pushed')
+                || jsonb_strip_nulls(jsonb_build_object('pushed', metadata -> 'abort' -> 'pushed'))
+           ELSE ${JSON.stringify(record)}::jsonb END
+      || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb)))`,
     touch: true,
   });
   return record.id;
