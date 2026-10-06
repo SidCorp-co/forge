@@ -13,6 +13,8 @@ import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { contractWaitUnsettledSql, issueContractWaits } from '../db/schema-contract-waits.js';
+import { lockXact } from '../lib/advisory-lock.js';
+import { contractLockKey } from '../lib/contract-versions.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -139,10 +141,25 @@ export async function liveWaitOn(
 }
 
 /**
+ * Takes the locks an approval settles waits under, one per contract, in key order, so writers of
+ * several waits never take two of them in opposite orders.
+ */
+export async function lockContractsIn(
+  tx: Tx,
+  contracts: readonly { providerProjectId: string; contractSlug: string }[],
+): Promise<void> {
+  const keys = new Set(contracts.map((c) => contractLockKey(c.providerProjectId, c.contractSlug)));
+  for (const key of [...keys].sort()) await lockXact(tx, 'ecosystem', key);
+}
+
+/**
  * Writes the wait and, where an approved version already reaches it, settles it in the same
- * transaction, so a wait on a version that already exists never holds its issue.
+ * transaction, so a wait on a version that already exists never holds its issue. It holds the
+ * contract's lock, the one an approval settles waits under, so neither misses the other; a writer of
+ * several waits takes them all first through `lockContractsIn`.
  */
 export async function insertContractWaitIn(tx: Tx, w: NewContractWait): Promise<ContractWaitRow> {
+  await lockContractsIn(tx, [w]);
   const settled = await settlingContractVersion(
     tx,
     w.providerProjectId,

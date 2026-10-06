@@ -18,11 +18,14 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import {
   activeIssuePrefix,
   heldIssuePrefixes,
+  insertContractWaitIn,
   insertIssueRow,
   isUuid,
+  lockContractsIn,
   putCriteria,
   writeIssueRelations,
 } from '../issues/index.js';
+import { contractVersionReads, type WaitTargetResolved } from '../lib/contract-versions.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn, linkIssueRefusal, rowIn } from '../requirements/index.js';
@@ -33,6 +36,7 @@ import {
   blockerRefusal,
   breakdownBuilds,
   breakdownFaults,
+  breakdownWaitTargets,
   type PinnedDesign,
   payloadRefusal,
 } from './rules.js';
@@ -122,6 +126,7 @@ export async function breakdownGuardIn(
   codes: ReadonlyMap<string, string>;
   blockers: ReadonlyMap<string, string>;
   builds: (PinnedDesign | null)[];
+  waits: WaitTargetResolved[][];
 }> {
   const req = await rowIn(tx, projectId, requirementId);
   const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
@@ -137,6 +142,7 @@ export async function breakdownGuardIn(
       codes: new Map(),
       blockers: new Map(),
       builds: [],
+      waits: [],
     };
   }
   const codes = await liveCodes(tx, req.id, head);
@@ -148,16 +154,22 @@ export async function breakdownGuardIn(
   );
   const planned = breakdownBuilds(p, designs);
   const steps = await buildStepRefusals(tx, projectId, p, planned.builds);
+  const now = new Date();
+  const waits = await breakdownWaitTargets(p, (w) =>
+    contractVersionReads().waitTargetIn(tx, { projectId, ...w }, now),
+  );
   return {
     refusals: [
       ...breakdownFaults(p, codes, head),
       ...named.refusals,
       ...planned.refusals,
       ...steps,
+      ...waits.refusals,
     ],
     codes,
     blockers: named.ids,
     builds: planned.builds,
+    waits: waits.waits,
   };
 }
 
@@ -220,9 +232,11 @@ function storedBreakdownRefusal(row: Row): Refusal | null {
 }
 
 // Workflow requirement-to-delivery step `approve`: core creates every issue with
-// requirement_id, planned_revision, issue_criteria and blocks edges in one transaction; they are
-// filed at draft, so nothing dispatches before a person promotes them. Each is sized as its item
-// says and linked as the build of the pinned design it builds, so the build gate holds it (ISS-117)
+// requirement_id, planned_revision, issue_criteria, blocks edges and contract waits in one
+// transaction; they are filed at draft, so nothing dispatches before a person promotes them. Each is
+// sized as its item says and linked as the build of the pinned design it builds, so the build gate
+// holds it (ISS-117), and waits on each provider version its item names, so what the person accepted
+// is what holds it
 export async function breakdownEffect(
   tx: Tx,
   projectId: string,
@@ -237,7 +251,8 @@ export async function breakdownEffect(
   const p = SUGGESTION_PAYLOADS.breakdown.schema.parse(row.payload);
   const guard = await breakdownGuardIn(tx, projectId, target.id, head, p);
   if (guard.refusals.length || head === null) return { refusals: guard.refusals };
-  const { codes, blockers, builds } = guard;
+  const { codes, blockers, builds, waits } = guard;
+  await lockContractsIn(tx, waits.flat());
   const req = await rowIn(tx, projectId, target.id);
   const ids: string[] = [];
   const seqOf = new Map<string, number>();
@@ -278,6 +293,26 @@ export async function breakdownEffect(
         observedStepIds: item.observedSteps ? [...new Set(item.observedSteps)] : null,
       });
     }
+    const written = [];
+    for (const w of waits[i] ?? []) {
+      const wait = await insertContractWaitIn(tx, {
+        projectId,
+        issueId: issue.id,
+        providerProjectId: w.providerProjectId,
+        contractSlug: w.contractSlug,
+        minVersion: w.minVersion,
+        reason: `breakdown of ${requirementKey(req.reqSeq)} (suggestion ${row.id})`,
+        createdBy: actor.userId,
+        dueAt: w.dueAt,
+      });
+      written.push({
+        waitId: wait.id,
+        contract: w.contract,
+        minVersion: w.minVersion,
+        dueAt: w.dueAt?.toISOString() ?? null,
+        settledVersion: wait.settledVersion,
+      });
+    }
     filed.push({
       issueId: issue.id,
       priority,
@@ -288,6 +323,7 @@ export async function breakdownEffect(
         ...(item.priority === undefined ? (['priority'] as const) : []),
         ...(item.category === undefined ? (['category'] as const) : []),
       ],
+      contractWaits: written,
     });
     const criteria = item.criteria.map((c, j) => ({
       n: j + 1,

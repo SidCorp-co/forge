@@ -1,4 +1,5 @@
 import { db } from '../../db/client.js';
+import { contractLockKey } from '../../lib/contract-versions.js';
 import { isRefusal } from '../../lib/refusal.js';
 import type { Publication } from '../schema.js';
 import { lockKeys } from '../store.js';
@@ -141,7 +142,7 @@ export async function recordVersion(input: RecordInput): Promise<RecordOutcome> 
     return { outcome: 'refused', problem: { code: 'ARTIFACT_UNREADABLE', detail } };
   }
   return db.transaction(async (tx) => {
-    await lockKeys(tx, [`contract:${input.providerProjectId}/${slug}`]);
+    await lockKeys(tx, [contractLockKey(input.providerProjectId, slug)]);
     const latest = await latestVersion(tx, input.providerProjectId, slug);
     if (input.semantic && !latest) {
       return {

@@ -59,18 +59,23 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
 }
 
 /**
- * Which act a revision-routed item's revision owes next: a person deciding the proposal, a person
- * making the accepted revision current, or the work that delivers the current revision.
+ * Which act a revision-routed item's revision owes next: a person deciding the proposal, a signer
+ * accepting the proposed revision the accept wrote, its author proposing a revision that is a draft
+ * (a signer returned it), or the work that delivers the current revision.
  */
 export type RevisionStage =
   | { stage: 'proposal' }
-  | { stage: 'adoption' | 'delivery'; revision: string | null; requirement: string | null };
+  | {
+      stage: 'acceptance' | 'drafted' | 'delivery';
+      revision: number | null;
+      requirement: string | null;
+    };
 
 /** The stage read off the routed suggestion and its revision; null where none was read. */
 export function revisionStageOf(
   s: {
     status: string;
-    revisionLive: boolean;
+    revisionState: string | null;
     delivered: boolean;
     requirement: string | null;
     revision: number | null;
@@ -78,10 +83,10 @@ export function revisionStageOf(
 ): RevisionStage | null {
   if (!s) return null;
   if (s.status !== 'accepted') return { stage: 'proposal' };
-  const revision = s.requirement && s.revision !== null ? `${s.requirement} r${s.revision}` : null;
+  const live = s.revisionState === 'current' || s.revisionState === 'superseded';
   return {
-    stage: s.revisionLive ? 'delivery' : 'adoption',
-    revision,
+    stage: live ? 'delivery' : s.revisionState === 'draft' ? 'drafted' : 'acceptance',
+    revision: s.revision,
     requirement: s.requirement,
   };
 }
@@ -164,8 +169,9 @@ function waitingOf(
   }
 }
 
-// a revision-routed item waits on a person only while a person owes its revision an act; once the
-// revision is current, what remains is the work that delivers it
+// a revision-routed item waits on a person only while a person owes its revision an act; an accepted
+// revision_diff lands its revision proposed, so the act owed is the accept that re-baselines it, and a
+// draft is one a signer returned to its author; once the revision is current, the work delivers it
 function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
   if (!revision || revision.stage === 'proposal') {
     return wait(
@@ -175,18 +181,31 @@ function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
       'planned: a requirement revision proposal carries it, and a person decides it',
     );
   }
-  if (revision.stage === 'adoption') {
+  const n = revision.revision === null ? 'the revision' : `revision ${revision.revision}`;
+  const of = revision.requirement ? ` of ${revision.requirement}` : '';
+  if (revision.stage === 'acceptance') {
     return wait(
       'person',
-      revision.revision ?? 'The accepted revision',
-      'be made current',
-      'planned: the proposal was accepted, and a person makes its revision current',
+      'BA or owner',
+      `accept ${n}${of}`,
+      'planned: the accepted suggestion proposed its revision, and a holder of requirements.approve accepts it',
+      { ref: revision.requirement },
+    );
+  }
+  if (revision.stage === 'drafted') {
+    return wait(
+      'person',
+      'Its author',
+      `propose ${n}${of}`,
+      'planned: its revision is a draft, returned by a signer, and its author proposes it',
       { ref: revision.requirement },
     );
   }
   return wait(
     'issue',
-    revision.revision ?? 'The current revision',
+    revision.requirement && revision.revision !== null
+      ? `${revision.requirement} r${revision.revision}`
+      : 'The current revision',
     'be delivered',
     'planned: its requirement revision is current, and the work delivering it carries it',
     { ref: revision.requirement },

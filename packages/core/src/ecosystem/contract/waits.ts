@@ -21,13 +21,18 @@ import {
   liveWaitOn,
   retractContractWaitIn,
 } from '../../issues/index.js';
+import {
+  contractLockKey,
+  type WaitTargetInput,
+  type WaitTargetOutcome,
+} from '../../lib/contract-versions.js';
 import { interfaceContractsOf } from '../interface-contracts.js';
 import { heldInterface } from '../interface-service.js';
 import { readInterfaces } from '../interface-store.js';
 import { lockKeys, projectsWhere } from '../store.js';
-import { compareVersions, parseVersion, SCHEME_SHAPE, type Versioning } from './naming.js';
+import { compareVersions, parseVersion, type Versioning } from './naming.js';
 import { versionsOf } from './store.js';
-import { dueAtOf } from './wait-due.js';
+import { waitTargetOf } from './wait-target.js';
 import { providerLiveOf } from './waits-live.js';
 
 type Reader = Tx;
@@ -72,51 +77,27 @@ export interface WaitTarget {
   minVersion: string;
 }
 
-type Resolved = {
-  provider: { id: string; slug: string };
-  contractSlug: string;
-};
-
-// A wait names a contract its issue's project publishes (written first, inside it) or consumes, at a
-// version in the provider's own scheme, once per contract per live wait; a finished issue waits on nothing.
-async function addRefusals(t: WaitTarget): Promise<ContractWaitRefusal[] | Resolved> {
-  if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(t.issue.status)) {
-    return [
-      {
-        code: 'CONTRACT_WAIT_ISSUE_FINISHED',
-        path: '',
-        detail: `the issue is ${t.issue.status}; a finished issue is dispatched no more, so it waits on no contract version.`,
-      },
-    ];
-  }
-  const own = (await interfaceContractsOf(t.issue.projectId)) ?? { publishes: [], consumes: [] };
+/** One wait's fields checked through `executor`, so a caller's transaction reads what it writes. */
+export async function contractWaitTargetIn(
+  executor: Reader,
+  t: WaitTargetInput,
+  now: Date,
+): Promise<WaitTargetOutcome> {
+  const own = (await interfaceContractsOf(t.projectId, executor)) ?? {
+    publishes: [],
+    consumes: [],
+  };
   const known = [...own.publishes, ...own.consumes];
-  const [providerSlug, contractSlug] = t.contract.split('/') as [string, string];
+  const [providerSlug] = t.contract.split('/') as [string];
   const [provider] = known.includes(t.contract)
-    ? await projectsWhere(db, { slugs: [providerSlug] })
+    ? await projectsWhere(executor, { slugs: [providerSlug] })
     : [];
-  if (!provider) {
-    return [
-      {
-        code: 'CONTRACT_WAIT_CONTRACT_UNKNOWN',
-        path: '/contract',
-        detail: `${t.contract} is neither published nor consumed by this project's interface (it names ${known.join(', ') || 'no contract'}); a wait names <provider slug>/<contract slug> as that interface lists it.`,
-      },
-    ];
-  }
-  const versioning = await versioningOf(db, provider.id);
-  if (!versioning || !parseVersion(versioning, t.minVersion)) {
-    return [
-      {
-        code: 'CONTRACT_WAIT_VERSION_NOT_IN_SCHEME',
-        path: '/minVersion',
-        detail: versioning
-          ? `"${t.minVersion}" is not a ${versioning} version; ${provider.slug} names its versions ${SCHEME_SHAPE[versioning]}.`
-          : `${provider.slug} declares no versioning scheme, so "${t.minVersion}" cannot be compared with any version it records.`,
-      },
-    ];
-  }
-  return { provider: { id: provider.id, slug: provider.slug }, contractSlug };
+  const versioning = provider ? await versioningOf(executor, provider.id) : null;
+  return waitTargetOf(
+    t,
+    { known, provider: provider ? { id: provider.id, slug: provider.slug } : null, versioning },
+    now,
+  );
 }
 
 type Outcome<T> = { ok: true; value: T } | { ok: false; refusals: ContractWaitRefusal[] };
@@ -124,15 +105,35 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; refusals: ContractWaitRe
 export async function addContractWait(
   t: WaitTarget & { reason: string | null; dueAt?: string | undefined; userId: string },
 ): Promise<Outcome<ContractWaitRow>> {
-  const due = dueAtOf(t.dueAt, new Date());
-  if (!due.ok) return { ok: false, refusals: [due.refusal] };
-  const resolved = await addRefusals(t);
-  if (Array.isArray(resolved)) return { ok: false, refusals: resolved };
+  if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(t.issue.status)) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'CONTRACT_WAIT_ISSUE_FINISHED',
+          path: '',
+          detail: `the issue is ${t.issue.status}; a finished issue is dispatched no more, so it waits on no contract version.`,
+        },
+      ],
+    };
+  }
+  const target = await contractWaitTargetIn(
+    db,
+    {
+      projectId: t.issue.projectId,
+      contract: t.contract,
+      minVersion: t.minVersion,
+      dueAt: t.dueAt,
+    },
+    new Date(),
+  );
+  if (!target.ok) return target;
+  const resolved = target.value;
   return db.transaction(async (tx): Promise<Outcome<ContractWaitRow>> => {
-    await lockKeys(tx, [`contract:${resolved.provider.id}/${resolved.contractSlug}`]);
+    await lockKeys(tx, [contractLockKey(resolved.providerProjectId, resolved.contractSlug)]);
     const held = await liveWaitOn(tx, {
       issueId: t.issue.id,
-      providerProjectId: resolved.provider.id,
+      providerProjectId: resolved.providerProjectId,
       contractSlug: resolved.contractSlug,
     });
     if (held) {
@@ -150,12 +151,12 @@ export async function addContractWait(
     const row = await insertContractWaitIn(tx, {
       projectId: t.issue.projectId,
       issueId: t.issue.id,
-      providerProjectId: resolved.provider.id,
+      providerProjectId: resolved.providerProjectId,
       contractSlug: resolved.contractSlug,
       minVersion: t.minVersion,
       reason: t.reason,
       createdBy: t.userId,
-      dueAt: due.value,
+      dueAt: resolved.dueAt,
     });
     return { ok: true, value: row };
   });

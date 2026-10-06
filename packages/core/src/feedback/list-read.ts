@@ -44,6 +44,7 @@ export interface Linked {
     {
       status: string;
       revisionLive: boolean;
+      revisionState: string | null;
       delivered: boolean;
       requirement: string | null;
       revision: number | null;
@@ -172,6 +173,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
         {
           status: s.status,
           revisionLive: s.revisionState === 'current' || s.revisionState === 'superseded',
+          revisionState: s.revisionState,
           delivered: s.requirementId !== null && delivered.has(s.requirementId),
           requirement: s.requirementSeq === null ? null : requirementKey(s.requirementSeq),
           revision: s.revision,

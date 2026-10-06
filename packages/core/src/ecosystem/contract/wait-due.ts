@@ -1,4 +1,4 @@
-import type { ContractWaitRefusal } from '@forge/contracts/contract-waits';
+import type { ContractWaitTargetRefusal } from '@forge/contracts/contract-waits';
 
 // An instant with its zone: a date alone or a local time would be a guess at which midnight is meant
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -7,7 +7,7 @@ const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}
 export function dueAtOf(
   raw: string | undefined,
   now: Date,
-): { ok: true; value: Date | null } | { ok: false; refusal: ContractWaitRefusal } {
+): { ok: true; value: Date | null } | { ok: false; refusal: ContractWaitTargetRefusal } {
   if (raw === undefined) return { ok: true, value: null };
   const at = INSTANT.test(raw) ? new Date(raw) : null;
   if (!at || Number.isNaN(at.getTime())) {

@@ -2,6 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../../db/client.js';
 import { embedFeedbackLater } from '../../feedback/index.js';
 import { settleContractWaitsIn } from '../../issues/index.js';
+import { contractLockKey } from '../../lib/contract-versions.js';
 import { permissionFactsOf } from '../../permissions/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
@@ -41,7 +42,7 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   const denied = approverRefusal(facts, { ref });
   if (denied) return { ok: false, refusals: [denied] };
   const outcome = await db.transaction(async (tx): Promise<DecideOutcome> => {
-    await lockKeys(tx, [`contract:${projectId}/${contract}`]);
+    await lockKeys(tx, [contractLockKey(projectId, contract)]);
     const now = (await versionsOf(tx, [projectId], contract)).find((v) => v.version === version);
     if (!now) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
     const refusals = decisionRefusals({ ref, approval: now.approval, decision, reason });

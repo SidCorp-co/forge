@@ -15,7 +15,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
   createRequirementIn,
-  newDraftRevisionIn,
+  newRevisionIn,
   type RevisionWrite,
   resetDraftCriteria,
   specOf,
@@ -73,12 +73,13 @@ export async function writeRevision(input: {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
     if (input.revision === undefined) {
-      return newDraftRevisionIn(tx, {
+      return newRevisionIn(tx, {
         requirementId: row.id,
         head: current.currentRevision,
         baseRevision: input.baseRevision ?? null,
         actor,
         write,
+        landing: { state: 'draft' },
       });
     }
     const target = await revisionIn(tx, current, input.revision);

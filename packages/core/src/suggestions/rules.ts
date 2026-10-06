@@ -6,6 +6,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import type {
+  ContractWaitTarget,
+  ContractWaitTargetRefusal,
+} from '@forge/contracts/contract-waits';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUGGESTION_MAX_OPEN_PER_TARGET,
@@ -308,4 +312,42 @@ export function blockerRefusal(
     };
   }
   return null;
+}
+
+type WaitCheck<T> = (
+  wait: ContractWaitTarget,
+) => Promise<
+  { ok: true; value: T } | { ok: false; refusals: readonly ContractWaitTargetRefusal[] }
+>;
+
+// A breakdown issue's contract waits are refused by the names the wait door uses, each at its own
+// path, at propose and again at accept; two on one contract are CONTRACT_WAIT_DUPLICATE, since an
+// issue holds one live wait per contract (requirement-to-delivery `breakdown`)
+export async function breakdownWaitTargets<T>(
+  p: Breakdown,
+  check: WaitCheck<T>,
+): Promise<{ refusals: SuggestionRefusal[]; waits: T[][] }> {
+  const refusals: SuggestionRefusal[] = [];
+  const waits: T[][] = [];
+  for (const [i, issue] of p.issues.entries()) {
+    const held: T[] = [];
+    const named = new Set<string>();
+    for (const [j, wait] of (issue.contractWaits ?? []).entries()) {
+      const path = `/payload/issues/${i}/contractWaits/${j}`;
+      if (named.has(wait.contract)) {
+        refusals.push({
+          code: 'CONTRACT_WAIT_DUPLICATE',
+          path: `${path}/contract`,
+          detail: `issue ${i} already waits on ${wait.contract}; an issue waits on one version of a contract, so name the highest it needs once.`,
+        });
+        continue;
+      }
+      named.add(wait.contract);
+      const out = await check(wait);
+      if (out.ok) held.push(out.value);
+      else refusals.push(...out.refusals.map((r) => ({ ...r, path: `${path}${r.path}` })));
+    }
+    waits.push(held);
+  }
+  return { refusals, waits };
 }

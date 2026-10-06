@@ -11,14 +11,19 @@ export const CONTRACT_REF_PATTERN =
 
 export const CONTRACT_WAIT_LIMITS = { version: 40, reason: 1000 } as const;
 
-export const CONTRACT_WAIT_REFUSAL_CODES = [
+/** What a wait's own fields are refused by, wherever it is written: the REST door and a breakdown item. */
+export const CONTRACT_WAIT_TARGET_REFUSAL_CODES = [
 	"CONTRACT_WAIT_CONTRACT_UNKNOWN",
 	"CONTRACT_WAIT_VERSION_NOT_IN_SCHEME",
 	"CONTRACT_WAIT_DUPLICATE",
-	"CONTRACT_WAIT_RETRACTED",
-	"CONTRACT_WAIT_ISSUE_FINISHED",
 	"CONTRACT_WAIT_DUE_MALFORMED",
 	"CONTRACT_WAIT_DUE_PAST",
+] as const;
+
+export const CONTRACT_WAIT_REFUSAL_CODES = [
+	...CONTRACT_WAIT_TARGET_REFUSAL_CODES,
+	"CONTRACT_WAIT_RETRACTED",
+	"CONTRACT_WAIT_ISSUE_FINISHED",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type ContractWaitRefusalCode =
@@ -39,6 +44,20 @@ export interface ContractWaitRefusal {
 	path: string;
 	detail: string;
 }
+
+/** A refusal of a wait's own fields, which every door that writes a wait answers alike. */
+export interface ContractWaitTargetRefusal extends ContractWaitRefusal {
+	code: (typeof CONTRACT_WAIT_TARGET_REFUSAL_CODES)[number];
+}
+
+/** A wait an issue is filed with, as a breakdown item names it (requirement-to-delivery `breakdown`):
+ *  checked by the same refusals as the REST door, at propose and again at accept. */
+export const contractWaitTargetSchema = z.strictObject({
+	contract: z.string().trim().regex(CONTRACT_REF_PATTERN),
+	minVersion: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.version),
+	dueAt: z.string().trim().min(1).max(40).optional(),
+});
+export type ContractWaitTarget = z.infer<typeof contractWaitTargetSchema>;
 
 export const addContractWaitRequestSchema = z.strictObject({
 	contract: z.string().trim().regex(CONTRACT_REF_PATTERN),
