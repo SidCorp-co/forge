@@ -1,1 +1,0 @@
-**An outdated master that holds runs is now kept and nudged**, so owed triage no longer starves behind it. It drains, declaring no new run, until core can replace it; the master's standing says since when and why.
