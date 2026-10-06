@@ -7,13 +7,13 @@ import {
   type Doc,
   type EcosystemWorld,
   formEcosystem,
-  issueAtStatus,
   ok,
   openWorld,
   seedContractVersion,
   sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
+import { seedIssueStatus } from '../helpers/factories.js';
 
 let w: EcosystemWorld;
 let say: ReturnType<typeof sender>;
@@ -184,7 +184,7 @@ describe('a breaking version names every issue building the flow it reaches', ()
         { decision: 'approve' },
       ),
     );
-    await issueAtStatus(ids.dropped as string, 'dropped');
+    await seedIssueStatus(ids.dropped as string, 'dropped');
     const read = ok(await say('plugin', 'GET', at(`/requirements/${req}`)));
     expect(read.bindings[0]).toMatchObject({ brokenBy: '2026-10-25', pinnedVersion: '2026-09-20' });
     // the build of the design, and the issue only tracing the requirement's BC; the dropped one builds nothing

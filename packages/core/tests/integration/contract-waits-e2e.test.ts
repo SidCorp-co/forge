@@ -61,7 +61,7 @@ async function issueWakes(): Promise<Doc[]> {
     .map((e) => e.data);
 }
 
-const ids: Record<string, string> = {};
+const ids = { held: '', wait: '', free: '' };
 
 describe('an issue waits on a provider version no approval has reached', () => {
   it('writes the wait unsettled, and the issue read says it is held by name', async () => {

@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it, type MockInstance, vi } from
 import {
   closeWorld,
   type Doc,
-  issueAtStatus,
   ok,
   type Reply,
   requester,
@@ -16,6 +15,7 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
+  seedIssueStatus,
 } from '../helpers/factories.js';
 
 type Who = 'owner' | 'member' | 'viewer';
@@ -23,7 +23,7 @@ let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Rep
 let projectId = '';
 let box = '';
 let publish: MockInstance;
-const ids: Record<string, string> = {};
+const ids = { target: '', low: '', high: '', carrierKey: '', carrier: '' };
 
 beforeAll(async () => {
   testEnv();
@@ -76,7 +76,7 @@ async function standingAs(who: Who, key: string): Promise<Doc> {
 async function feedbackWakes(): Promise<Doc[]> {
   await settleOutbox();
   return publish.mock.calls
-    .map((c) => ({ room: c[0], ...(c[1] as Doc) }))
+    .map((c): Doc => ({ room: c[0], ...(c[1] as Doc) }))
     .filter((e) => e.event === 'master.wake' && e.data.source === 'feedback')
     .map((e) => ({ room: e.room, ...e.data }));
 }
@@ -154,7 +154,7 @@ describe('a high item is owed to the project master', () => {
 
 describe('a carrier at the release gate waits on whoever makes that release', () => {
   it('names a project writer to release it by hand where no release model is declared', async () => {
-    await issueAtStatus(ids.carrier, 'awaiting_release');
+    await seedIssueStatus(ids.carrier, 'awaiting_release');
     const act = `release ${ids.carrierKey} by hand and close it`;
     expect(await standingAs('member', ids.high)).toEqual({
       attentionGroup: 'needs_you',

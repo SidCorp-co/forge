@@ -103,7 +103,7 @@ const admittedIds = async () => (await admitted()).map((a) => a.issueId);
 async function designWakes(): Promise<Doc[]> {
   await settleOutbox();
   return publish.mock.calls
-    .map((c) => ({ room: c[0] as string, ...(c[1] as Doc) }))
+    .map((c): Doc => ({ room: c[0] as string, ...(c[1] as Doc) }))
     .filter((e) => e.event === 'master.wake' && e.data.source === 'workflow_design')
     .map((e) => ({ room: e.room, ...e.data }));
 }
