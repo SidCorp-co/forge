@@ -43,7 +43,7 @@ vi.mock('../db/client.js', () => {
 const current = vi.hoisted(() => () => base);
 vi.mock('../lib/device-pool.js', () => ({
   resolveSessionRepoPathForDevice: vi.fn(async () => {
-    state.calls.push('resolveRepoPath');
+    state.calls.push('bindingCheckout');
     return state.boundPath;
   }),
   findAvailableDeviceForProject: vi.fn(),
@@ -218,7 +218,7 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
     expect(out.status).toBe('running');
     expect(broadcastSession).toHaveBeenCalledWith(out, 'agent-session.updated');
     expect(applyAutoTitleAsync).not.toHaveBeenCalled();
-    expect(state.calls).not.toContain('resolveRepoPath');
+    expect(state.calls).not.toContain('bindingCheckout');
   });
 
   it('a session already running is not moved again, and the client claudeSessionId wins', async () => {
@@ -399,7 +399,7 @@ describe('dispatchChatTurn: refusals write nothing', () => {
         message: 'x',
       }),
     ).rejects.toMatchObject(refused('CHECKOUT_UNBOUND'));
-    expect(state.calls).toEqual(['resolveRepoPath']);
+    expect(state.calls).toEqual(['bindingCheckout']);
     nothingWritten();
   });
 
