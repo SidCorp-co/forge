@@ -14,7 +14,7 @@
 
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, type PipelineRunStatus } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -29,22 +29,9 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
-import {
-  abortedError,
-  batchAborted,
-  closedBeforeAbort,
-  settleAbortStamp,
-  stampAbort,
-} from './abort-stamp.js';
+import { closedBeforeAbort, settleAbortStamp, stampAbort } from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import {
-  type CloseVerification,
-  closeVerification,
-  finishVerification,
-  type ReleaseVerification,
-  resolveReleaseChannels,
-  resolveReleasePlan,
-} from './channel.js';
+import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
@@ -52,12 +39,14 @@ import {
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
-  ReleaseVersionMissingError,
 } from './errors.js';
+import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import {
+  type CloseRefusal,
+  closeRefusalOf,
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
@@ -298,47 +287,6 @@ export interface FinishReleaseBatchOptions {
   onClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
 }
 
-export type ReleaseRunRow = {
-  projectId: string;
-  metadata: unknown;
-  status: PipelineRunStatus;
-  releaseVersion: string | null;
-};
-
-/** The run a finish is about, or `undefined` when there is no row under that id. */
-export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | undefined> {
-  const [run] = await db
-    .select({
-      projectId: pipelineRuns.projectId,
-      metadata: pipelineRuns.metadata,
-      status: pipelineRuns.status,
-      releaseVersion: pipelineRuns.releaseVersion,
-    })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  return run;
-}
-
-/**
- * Every refusal a finish can decide from the database alone, and how the release will be proved.
- * Nothing here makes an outbound request, so a door may call it inline.
- */
-export async function assertFinishable(
-  runId: string,
-  run: ReleaseRunRow,
-): Promise<CloseVerification> {
-  if (batchAborted(run)) throw await abortedError(runId);
-  // A release closes its roster claiming a ship. Without a version nothing afterwards can name
-  // WHICH release carried these issues, which is the one thing this path exists to make true, so
-  // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
-  // the transaction that inserts the row, so a release row reaching here without one was not
-  // opened by it.
-  if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
-
-  return finishVerification(await resolveReleaseChannels(run.projectId));
-}
-
 export async function finishReleaseBatch(
   runId: string,
   actor: TransitionActor,
@@ -394,6 +342,7 @@ export async function finishReleaseBatch(
 
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
+  const refusals = new Map<string, CloseRefusal>();
 
   const { fence } = options;
   for (const issue of claimed) {
@@ -417,6 +366,7 @@ export async function finishReleaseBatch(
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
         failed.push({ id: issue.id, reason: err instanceof Error ? err.message : String(err) });
+        refusals.set(issue.id, closeRefusalOf(err));
       }
     }
   }
@@ -425,7 +375,10 @@ export async function finishReleaseBatch(
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
+    commentAuthorId: actor.type === 'device' ? actor.ownerId : undefined,
     comment: true,
+    refusals,
+    version: run?.releaseVersion ?? null,
     fence,
   });
 

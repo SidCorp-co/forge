@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **A release that cannot close an issue says why on it.** The comment names the refusal, each
+  open question holding it and what clears it, and how to close the issue once it is cleared
+  (ISS-1381).
+
 - **A runner update that waits says truly how long, and on whom.** Its two-hour limit is clock
   time, each chat or master-pane message it waits on is named, and it no longer announces a
   handover that does not begin (ISS-1223).

@@ -48,13 +48,82 @@ export async function closedOnRoster(runId: string, executor: Tx = db): Promise<
   return rows.map((r) => r.id);
 }
 
+/** Why a finish could not close one issue: a refusal the transition named, or a failure that never
+ *  reached a decision (ISS-1381). */
+export type CloseRefusal =
+  | { kind: 'refused'; code: string; detail: string; blocking: string[] }
+  | { kind: 'failed'; message: string };
+
+/** `openQuestionIds` → `open question`: the label each id in that collection is named by. */
+function blockerLabel(key: string): string {
+  return key
+    .replace(/Ids$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase();
+}
+
+/** Every id a refusal's details name, in key order, so a second collection needs no new case. */
+function blockingObjects(details: Record<string, unknown>): string[] {
+  return Object.keys(details)
+    .filter((key) => key.endsWith('Ids') && Array.isArray(details[key]))
+    .sort()
+    .flatMap((key) =>
+      (details[key] as unknown[])
+        .filter((id): id is string => typeof id === 'string')
+        .map((id) => `${blockerLabel(key)} ${id}`),
+    );
+}
+
+export function closeRefusalOf(err: unknown): CloseRefusal {
+  if (err instanceof TransitionError) {
+    return {
+      kind: 'refused',
+      code: err.code,
+      detail: err.detail,
+      blocking: blockingObjects(err.details),
+    };
+  }
+  return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+}
+
+/** What a finish that shipped tells an issue it could not close, and how that issue closes later. */
+export function refusedCloseComment(args: {
+  refusal: CloseRefusal;
+  projectId: string;
+  version: string | null;
+  destination: IssueStatus;
+}): string {
+  const { refusal, projectId, version, destination } = args;
+  const shipped = version ? `as version ${version}` : 'with this batch';
+  const why =
+    refusal.kind === 'refused'
+      ? `The close was refused with \`${refusal.code}\`. ${
+          refusal.blocking.length > 0
+            ? `Blocking it: ${refusal.blocking.join(', ')}.`
+            : 'The refusal named no blocking object.'
+        } What clears it: ${refusal.detail}`
+      : `The close failed before it reached a decision, with: ${refusal.message}. Nothing refused it and no object blocks it; send the close again once that error is gone.`;
+  return (
+    `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n` +
+    `The issue is at \`${destination}\` and its code is live with that release. Once the reason above ` +
+    `is cleared, close it against what production serves with POST /api/projects/${projectId}/release-records, ` +
+    'naming the commit production is serving, or put it in the next batch.'
+  );
+}
+
 export interface RecoverStrandedReleasingOptions {
   /** Written onto the issue as the reason, and into a comment when an author is known. */
   reason: string;
   /** The person who caused this, when there is one. Absent for a machine sweep. */
   actorUserId?: string | undefined;
+  /** Who the comments are written as where no person caused this, such as a device's owner. */
+  commentAuthorId?: string | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
+  /** Why the finish could not close each issue, by id; such an issue's comment names it. */
+  refusals?: ReadonlyMap<string, CloseRefusal> | undefined;
+  /** The version the finish shipped, named in a refused issue's comment. */
+  version?: string | null | undefined;
   /** Settle a roster whose run promoted instead of holding it — a person's word and never a
    *  sweep's, buying a batch that promoted and cannot verify a status some door closes from
    *  (ISS-1199). */
@@ -110,14 +179,23 @@ export async function recoverStrandedReleasing(
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
 
-    if (options.comment && options.actorUserId) {
+    const author = options.actorUserId ?? options.commentAuthorId;
+    if (options.comment && author) {
+      const refusal = options.refusals?.get(issue.id);
       try {
         await db.insert(comments).values({
           issueId: issue.id,
-          authorId: options.actorUserId,
-          body: promoted
-            ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
-            : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
+          authorId: author,
+          body: refusal
+            ? refusedCloseComment({
+                refusal,
+                projectId: issue.projectId,
+                version: options.version ?? null,
+                destination,
+              })
+            : promoted
+              ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
+              : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
         });
       } catch (err) {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
@@ -231,13 +309,14 @@ async function noteOnRoster(
   options: RecoverStrandedReleasingOptions,
   note: (projectId: string) => string,
 ): Promise<void> {
-  if (!options.comment || !options.actorUserId) return;
+  const author = options.actorUserId ?? options.commentAuthorId;
+  if (!options.comment || !author) return;
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
     try {
       await db.insert(comments).values({
         issueId: issue.id,
-        authorId: options.actorUserId,
+        authorId: author,
         body: `${options.reason}. ${note(issue.projectId)}`,
       });
     } catch (err) {
