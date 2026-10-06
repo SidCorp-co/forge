@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **An OpenAPI artifact oasdiff cannot load is refused, not stored "unknown".** `ARTIFACT_UNREADABLE`
+  names the loader error and the misplaced schema; an unmeasured semver change takes the uploader's
+  named version (`VERSION_NOT_MEASURED`), never a guessed MAJOR.
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
   project admins, never the project room; reads gate on the `kind` column, not a `metadata.type`
   nothing has written since ISS-1136.

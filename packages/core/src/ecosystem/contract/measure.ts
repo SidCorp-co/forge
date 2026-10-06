@@ -5,8 +5,9 @@ import { elementsOf, isIndexed } from './elements.js';
 import { diffGraphql, GRAPHQL_RULES_VERSION } from './graphql-diff.js';
 import { parseSdl, type SdlSchema } from './graphql-sdl.js';
 import { diffMcpTools, toolsOf } from './mcp-tools-diff.js';
-import { requireOasdiff } from './oasdiff.js';
+import { OASDIFF_VERSION, oasdiffLoadError, requireOasdiff } from './oasdiff.js';
 import { diffOpenApi } from './openapi-diff.js';
+import { misplacedSchema } from './openapi-schema-slots.js';
 import { diffJsonSchema, SCHEMA_RULES_VERSION } from './schema-diff.js';
 
 export const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
@@ -44,6 +45,18 @@ export function parseArtifact(type: string, text: string): unknown {
   return doc;
 }
 
+// an openapi artifact the pinned oasdiff cannot load is one no later version can be measured against, so it is refused here, naming oasdiff's error and, where it can be found, the place holding a non-schema where a schema belongs
+export async function loadArtifact(type: string, text: string): Promise<unknown> {
+  const doc = parseArtifact(type, text);
+  if (type !== 'openapi') return doc;
+  const error = await oasdiffLoadError(text);
+  if (error === null) return doc;
+  const at = misplacedSchema(doc);
+  throw unreadable(
+    `oasdiff ${OASDIFF_VERSION} cannot load this openapi artifact, so no later version could be measured against it: ${error.slice(0, 600)}${at ? `; ${at} holds no Schema Object where the OpenAPI document requires one (an empty schema is {}, not [])` : ''}`,
+  );
+}
+
 export const elementList = (type: string, doc: unknown): string[] | null =>
   isIndexed(type) ? elementsOf(type, doc).sort() : null;
 
@@ -55,7 +68,7 @@ const undecided = (type: string, why: string): MeasuredChange => ({
   check: `${type}-not-measured`,
 });
 
-// a type with no differ, and a differ that ran and failed, are both measurements that could not decide, so they record unknown rather than refuse the land; only a differ that is absent refuses, because then nothing was measured at all
+// a type with no differ, and a differ that ran and failed, record unknown with a not-measured check, and core then derives no version from it (naming.ts:unmeasuredProblem); only a differ that is absent refuses here, because then nothing could be measured at all
 export async function measureChange(
   type: string,
   previous: string,

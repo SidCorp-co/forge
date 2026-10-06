@@ -146,7 +146,11 @@ publishes and the versions of its contracts, and a person is not handed that wor
    (\`<tool>/properties/<input>\`).
    Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
-   parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
+   parse, the detail naming the line and column; or an openapi artifact the pinned oasdiff cannot load,
+   the detail naming its error and the place holding a non-schema where a schema belongs),
+   \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`, \`VERSION_NOT_MEASURED\` (a semver change no differ
+   measured — an opaque contract, or a previous artifact the differ cannot read — is recorded only at the
+   \`version\` you name, never at a MAJOR core guessed),
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
    A recorded version is proposed; it is current only once approved:
    \`POST /api/projects/:id/contracts/:contract/versions/:version/decision { decision: approve | return, reason? }\`. Whoever holds

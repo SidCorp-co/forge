@@ -1,4 +1,4 @@
-import type { MeasuredDiff } from './diff.js';
+import { type MeasuredDiff, notMeasured } from './diff.js';
 
 export type Versioning = 'dated' | 'semver';
 
@@ -35,8 +35,9 @@ export function compareVersions(versioning: Versioning, a: string, b: string): n
 
 type Bump = 'major' | 'minor' | 'patch';
 
-// unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing an unknown measurement did not show
-function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump {
+// a measured unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing the differ could not show; a change no differ measured owes nothing it could derive, so its number is the uploader's (unmeasuredProblem)
+function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump | null {
+  if (notMeasured(diff).length > 0) return null;
   if (diff.classification === 'breaking' || diff.classification === 'unknown') return 'major';
   return diff.changes.some((c) => c.kind === 'added') ? 'minor' : 'patch';
 }
@@ -56,14 +57,40 @@ export function proposeVersion(
   const p = previous ? parseVersion('semver', previous) : null;
   if (!p) return '1.0.0';
   const bump = bumpOwed(diff);
+  if (bump === null) {
+    throw new Error(
+      'ecosystem: a semver version was asked of a change no differ measured; unmeasuredProblem refuses that upload first',
+    );
+  }
   if (bump === 'major') return `${p[0] + 1}.0.0`;
   if (bump === 'minor') return `${p[0]}.${p[1] + 1}.0`;
   return `${p[0]}.${p[1]}.${p[2] + 1}`;
 }
 
 export interface NamingProblem {
-  code: 'VERSION_NOT_IN_SCHEME' | 'VERSION_BUMP_TOO_SMALL';
+  code: 'VERSION_NOT_IN_SCHEME' | 'VERSION_BUMP_TOO_SMALL' | 'VERSION_NOT_MEASURED';
   detail: string;
+}
+
+// a semver number says how compatible a change is, so core proposes one only from a measurement; a change no differ measured is recorded at the version its uploader names, never at a MAJOR core guessed
+export function unmeasuredProblem(
+  versioning: Versioning,
+  previous: string | null,
+  diff: Pick<MeasuredDiff, 'classification' | 'changes'>,
+): NamingProblem | null {
+  if (versioning !== 'semver' || previous === null) return null;
+  const why = notMeasured(diff);
+  if (why.length === 0) return null;
+  return {
+    code: 'VERSION_NOT_MEASURED',
+    detail: `no differ measured this change (${why
+      .map((c) => c.text)
+      .join('; ')
+      .slice(
+        0,
+        600,
+      )}), so core derives no version from it; name the version after ${previous} that says what the change is.`,
+  };
 }
 
 export function namingProblem(input: {
@@ -90,6 +117,7 @@ export function namingProblem(input: {
   const p = parseVersion(versioning, previous);
   if (versioning !== 'semver' || !p) return null;
   const owed = bumpOwed(diff);
+  if (owed === null) return null;
   const short =
     (owed === 'major' && r[0] <= p[0]) || (owed === 'minor' && r[0] === p[0] && r[1] <= p[1]);
   if (!short) return null;

@@ -3,8 +3,14 @@ import { isRefusal } from '../../lib/refusal.js';
 import type { Publication } from '../schema.js';
 import { lockKeys } from '../store.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
-import { elementList, INITIAL, measureChange, parseArtifact, sha256 } from './measure.js';
-import { type NamingProblem, namingProblem, proposeVersion, type Versioning } from './naming.js';
+import { elementList, INITIAL, loadArtifact, measureChange, sha256 } from './measure.js';
+import {
+  type NamingProblem,
+  namingProblem,
+  proposeVersion,
+  unmeasuredProblem,
+  type Versioning,
+} from './naming.js';
 import { insertVersion, latestVersion, readArtifact, type StoredVersion } from './store.js';
 import {
   CONTRACT_VERSION_SCHEMA_ID,
@@ -128,7 +134,7 @@ export async function recordVersion(input: RecordInput): Promise<RecordOutcome> 
   const slug = slugOf(input.contractRef);
   let doc: unknown = null;
   try {
-    doc = input.artifact ? parseArtifact(input.publication.type, input.artifact.text) : null;
+    doc = input.artifact ? await loadArtifact(input.publication.type, input.artifact.text) : null;
   } catch (err) {
     if (!isRefusal(err, 'ARTIFACT_UNREADABLE')) throw err;
     const detail = err.refusals[0]?.detail ?? 'the artifact does not parse';
@@ -163,6 +169,9 @@ export async function recordVersion(input: RecordInput): Promise<RecordOutcome> 
         requested: input.requestedVersion,
         diff,
       });
+      if (problem) return { outcome: 'refused', problem };
+    } else {
+      const problem = unmeasuredProblem(input.versioning, previous, diff);
       if (problem) return { outcome: 'refused', problem };
     }
     const name = input.requestedVersion ?? proposeVersion(input.versioning, previous, diff, today);
