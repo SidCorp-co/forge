@@ -36,14 +36,19 @@ const REFUSAL_SCHEMA: JsonSchema = {
 const PROBLEM_SCHEMA: JsonSchema = {
   type: 'object',
   description:
-    'RFC 9457 problem details. A refusal carries `error`, its `refusals` ordered most relevant first; ' +
-    'any other error carries `code`, `message` and `details` instead.',
-  required: ['type', 'title', 'status', 'detail'],
+    'RFC 9457 problem details, one body for every refusal and error. `code` and `message` are ' +
+    'extension members (RFC 9457 section 3.2) equal to `error.code` and `error.message`: a client ' +
+    'reads either. `error.refusals` is ordered most relevant first; an error that is not a rule ' +
+    'refusal carries one row at the request naming its sentence, and may carry `details`.',
+  required: ['type', 'title', 'status', 'detail', 'code', 'message', 'error'],
   properties: {
     type: { type: 'string', description: 'urn:forge:refusal:<code>' },
     title: { type: 'string' },
     status: { type: 'integer' },
     detail: { type: 'string' },
+    code: { type: 'string', description: 'Equal to error.code.' },
+    message: { type: 'string', description: 'Equal to error.message.' },
+    details: {},
     error: {
       type: 'object',
       required: ['code', 'message', 'refusals'],
@@ -53,9 +58,6 @@ const PROBLEM_SCHEMA: JsonSchema = {
         refusals: { type: 'array', minItems: 1, items: { $ref: '#/components/schemas/Refusal' } },
       },
     },
-    code: { type: 'string' },
-    message: { type: 'string' },
-    details: {},
   },
 };
 

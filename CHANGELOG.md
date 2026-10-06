@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every refusal names its code where any forge client reads it.** One problem body carries
+  `code` and `message` at the top level and under `error`, at every door; a master pane's
+  `forge-runner api` sends its project's checkout credential.
+
 ## [0.4.0-dev.39] - 2026-10-06
 
 Every lint rule blocks, transcripts are stored once, and realtime frames are typed

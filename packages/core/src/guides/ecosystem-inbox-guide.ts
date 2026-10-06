@@ -20,8 +20,9 @@ reply is work for the project's master exactly as an open issue is, and it is wo
 channel under \`/api/projects/:id/channel\`, the interface, links and builder runs under
 \`/api/projects/:id/interface|links|builder-runs\`, where \`:id\` is this project. The contracts a
 set of repository paths reaches, recorded on your session when you name it:
-\`POST /api/projects/:id/contract-context { paths, session? }\`. On a box,
-\`forge-runner api <path>\` supplies the \`/api/\` prefix and the box's token.
+\`POST /api/projects/:id/contract-context { paths, session? }\`. In a master pane,
+\`forge-runner api <path>\` supplies the \`/api/\` prefix and this project's checkout credential,
+the token the pane's \`forge\` CLI borrows.
 
 ### How it reaches you
 - Your box reads what the channel owes this project on every sweep, from core's

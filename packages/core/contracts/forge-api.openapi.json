@@ -14,9 +14,10 @@
     },
     "schemas": {
       "Problem": {
-        "description": "RFC 9457 problem details. A refusal carries `error`, its `refusals` ordered most relevant first; any other error carries `code`, `message` and `details` instead.",
+        "description": "RFC 9457 problem details, one body for every refusal and error. `code` and `message` are extension members (RFC 9457 section 3.2) equal to `error.code` and `error.message`: a client reads either. `error.refusals` is ordered most relevant first; an error that is not a rule refusal carries one row at the request naming its sentence, and may carry `details`.",
         "properties": {
           "code": {
+            "description": "Equal to error.code.",
             "type": "string"
           },
           "detail": {
@@ -47,6 +48,7 @@
             "type": "object"
           },
           "message": {
+            "description": "Equal to error.message.",
             "type": "string"
           },
           "status": {
@@ -64,7 +66,10 @@
           "type",
           "title",
           "status",
-          "detail"
+          "detail",
+          "code",
+          "message",
+          "error"
         ],
         "type": "object"
       },

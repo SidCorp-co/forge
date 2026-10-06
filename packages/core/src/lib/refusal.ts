@@ -1,5 +1,6 @@
 import {
   PROBLEM_CONTENT_TYPE,
+  type ProblemBody,
   REFUSAL_STATUS_ORDER,
   type Refusal,
   type RefusalEnvelope,
@@ -9,8 +10,9 @@ import {
 } from '@forge/contracts/refusal';
 import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import type { Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
-export type { Refusal, RefusalEnvelope };
+export type { ProblemBody, Refusal, RefusalEnvelope };
 
 export class RefusalError extends Error {
   constructor(
@@ -54,6 +56,7 @@ export function refusalEnvelope(
   const list = ordered.map((o) => o.refusal);
   const codes = [...new Set(list.map((r) => r.code))];
   const code = codes.length === 1 && codes[0] ? codes[0] : fallbackCode;
+  const message = `refused, nothing written: ${list.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join('; ')}`;
   return {
     type: refusalType(code),
     title: refusalTitle(code),
@@ -63,17 +66,39 @@ export function refusalEnvelope(
       (list.length === 1
         ? lead.refusal.detail
         : `${lead.refusal.detail} (${list.length - 1} more under error.refusals)`),
-    error: {
-      code,
-      message: `refused, nothing written: ${list.map((r) => `${r.code} at ${r.path || '/'}`).join('; ')}`,
-      refusals: list,
-    },
+    code,
+    message,
+    error: { code, message, refusals: list },
   };
 }
 
-/** An envelope served as `application/problem+json` under its own status. */
-export function problem(c: Context, envelope: RefusalEnvelope) {
-  return c.json(envelope, envelope.status, { 'Content-Type': PROBLEM_CONTENT_TYPE });
+/**
+ * An error that is not a rule refusal (401, a 404 from `rowIn`, a 5xx) in the same body: one row
+ * at the request naming its sentence, so a client reading either place reads it.
+ */
+export function problemBody(
+  status: number,
+  code: string,
+  message: string,
+  details?: unknown,
+): ProblemBody {
+  return {
+    type: refusalType(code),
+    title: refusalTitle(code),
+    status,
+    detail: message,
+    code,
+    message,
+    ...(details === undefined ? {} : { details }),
+    error: { code, message, refusals: [{ code, path: '', detail: message }] },
+  };
+}
+
+/** A problem body served as `application/problem+json` under its own status. */
+export function problem(c: Context, body: ProblemBody) {
+  return c.json(body, body.status as ContentfulStatusCode, {
+    'Content-Type': PROBLEM_CONTENT_TYPE,
+  });
 }
 
 /**

@@ -3,7 +3,7 @@ import { CHANNEL_ACTIONS, CHANNEL_WRITES, type ChannelAction } from '@forge/cont
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
-import type { ContextScopedMcpToolFactory, McpContext } from '../lib/tool.js';
+import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
 import { ecosystemReadFence } from './access.js';
 import { readApiPage } from './api-page.js';
 import type { ChannelOutcome } from './channel-act.js';
@@ -39,14 +39,8 @@ const DESCRIPTION = [
 
 type Answer = Record<string, unknown>;
 
-const refusedWith = (refusals: readonly NamedRefusal[]): Answer => ({
-  _mcpIsError: true,
-  error: {
-    code: refusals.length === 1 ? refusals[0]?.code : 'CHANNEL_REFUSED',
-    message: `refused, nothing written: ${refusals.map((r) => `${r.code} at ${r.path}`).join('; ')}`,
-    refusals,
-  },
-});
+const refusedWith = (refusals: readonly NamedRefusal[]): Answer =>
+  refusedAnswer(refusals, 'CHANNEL_REFUSED');
 
 const one = (code: string, path: string, detail: string): Answer =>
   refusedWith([{ code, path, detail }]);
