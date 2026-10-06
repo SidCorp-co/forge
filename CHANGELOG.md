@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.45] - 2026-10-06
+
+Dev panes run their own runner, upgraded checkouts convert, unreadable contracts refused
+
+
 ### Fixed
 
 - **runner:** a pane's `forge-runner` resolves to the binary serving its daemon, ahead of any other on the inherited PATH, so a dev runner's panes stop reaching the prod build; a hook naming a relative runner path is refused.
