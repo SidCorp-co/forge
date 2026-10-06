@@ -63,7 +63,7 @@ function loggedError(first: unknown): Error | null {
  */
 function redactCall(args: unknown[], err: Error): unknown[] {
   let [first, ...rest] = args;
-  rest = rest.map((a) => (typeof a === 'string' ? redactQueryParams(a, err) : a));
+  rest = rest.map((a) => redactQueryParams(a, err));
   const named = first as { msg?: unknown };
   if (!(first instanceof Error)) {
     first = Object.fromEntries(
