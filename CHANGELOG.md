@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A release no longer reads lost when its master pane is replaced.** A pool job's session opens
+  as its own root, not under the master it was held by, so ending that master leaves the running
+  release untouched.
 - **The tmux pane test can no longer pass without running.** Where tmux is missing it fails naming
   tmux, unless `FORGE_TEST_SKIP_TMUX=1` skips it out loud; CI installs tmux on Linux and macOS.
 

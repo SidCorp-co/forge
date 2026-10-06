@@ -1,7 +1,6 @@
 import { and, eq, ne } from 'drizzle-orm';
 import {
   insertSessionRow,
-  masterSessionIfOwned,
   sessionAudienceById,
   transitionSessions,
 } from '../agent-sessions/index.js';
@@ -33,29 +32,6 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
   const head = skillName ?? jobType;
   const tail = issueTitle && issueTitle.length > 0 ? `: ${issueTitle}` : '';
   return `${head}${tail}`.slice(0, TITLE_MAX);
-}
-
-/**
- * The master session holding this job, where it holds one core can stand behind.
- *
- * `jobs.held_by` is core's own record, not the box's report, and is still
- * checked: a released hold, or one naming a session that is not a master of
- * this project, leaves the child a root rather than a wrong parent.
- */
-async function resolveHoldingMaster(job: JobRow): Promise<string | null> {
-  if (!job.heldBy) return null;
-  const owned = await masterSessionIfOwned({
-    sessionId: job.heldBy,
-    projectId: job.projectId,
-    deviceId: job.deviceId,
-  });
-  if (!owned) {
-    logger.warn(
-      { jobId: job.id, heldBy: job.heldBy, projectId: job.projectId },
-      'agent-session-link: held_by does not name a master of this project, so the session opens as a root',
-    );
-  }
-  return owned;
 }
 
 type ParentSession = { id: string; metadata: unknown; pipelineHealth: unknown };
@@ -134,6 +110,11 @@ function sessionMetadata(
  * The job's pipeline session, created `queued` and linked in one transaction under the run's
  * guard: a run that no longer takes work refuses it `RUN_NOT_ACCEPTING_WORK`, and every failure
  * reaches the caller.
+ *
+ * It opens as a root. The master in `jobs.held_by` is the session the box held the job under, not
+ * the process it runs in: the box starts a pool job in a pane of its own and supervises it there,
+ * so the job outlives that master, and an owner edge to it failed every release running when its
+ * master was replaced (`session-descent.ts:closeSessionsOwnedBy`).
  */
 export async function ensureAgentSessionForJob(
   job: JobRow,
@@ -150,7 +131,6 @@ export async function ensureAgentSessionForJob(
   // first write (routes.ts PATCH/send). Separates "waiting for worker"
   // from "actually streaming" so the sweeper can distinguish zombies.
   // ISS-101 — inherit the parent job's pipeline_run so the session shares its job's run lifecycle.
-  const parentSessionId = await resolveHoldingMaster(job);
   const inserted = await db.transaction(async (tx) => {
     await assertRunAcceptsWork(tx, job.pipelineRunId);
     const row = await insertSessionRow(tx, {
@@ -160,7 +140,6 @@ export async function ensureAgentSessionForJob(
       pipelineRunId: job.pipelineRunId,
       title,
       kind: 'pipeline',
-      parentSessionId,
       status: 'queued',
       dispatchedAt: new Date(),
       repoPath: context.repoPath,
