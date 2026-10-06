@@ -29,7 +29,7 @@ export function AwaitingReleaseBanner({
 		: "Merged";
 
 	if (entry.claimedByRunId) {
-		return <Banner tone="info">{`${merged} — a release is shipping it now`}</Banner>;
+		return <Banner tone="info">{`${merged} — it is in a release, whose run says whether a box has started it`}</Banner>;
 	}
 
 	// A release would hand this issue straight back, so it offers none and says what clears it (ISS-1337).

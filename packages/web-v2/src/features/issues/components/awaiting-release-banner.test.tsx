@@ -83,7 +83,8 @@ describe("AwaitingReleaseBanner", () => {
   it("says a batch already owns the issue instead of offering to release it again", () => {
     state({}, "run-9");
     renderBanner();
-    expect(screen.getByText(/a release is shipping it now/)).toBeInTheDocument();
+    expect(screen.getByText(/it is in a release, whose run says whether a box has started it/)).toBeInTheDocument();
+    expect(screen.queryByText(/shipping/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
   });
 
