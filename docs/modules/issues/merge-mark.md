@@ -152,7 +152,7 @@ served, which says the change landed at a commit holding none of it.
   `unmark` as the route, and writes nothing. The condition is the UPDATE's own WHERE
   (`packages/core/src/issues/update-service.ts:shapeUnderNoMarkGuard`), so no mark lands between the decision and the
   write; the same value re-sent passes and writes nothing, `updated_at` included
-  (`update-service.ts:declarationOnly`). On an issue that declared nothing the refusal says the
+  (`packages/core/src/issues/update-service.ts:declarationOnly`). On an issue that declared nothing the refusal says the
   project's shape applied, never that the issue declared null. A `closed` issue cannot be unmarked, so its lane is fixed.
   The other order is held too: the mark writer reads the declaration off the row its caller
   loaded, and `recordIssueMerge` stamps only while the issue still declares that value, so a

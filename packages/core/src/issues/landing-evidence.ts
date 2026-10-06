@@ -149,11 +149,7 @@ export const mergedLandingSchema = z
 /** How work that did land is claimed on this lane, written once for every refusal naming it.
  *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first.
  *  `then` is the act the refused caller takes once the claim stands: the close, or the status. */
-export function landingRoute(
-  lane: Lane,
-  held: MergeMarkKind = 'unmarked',
-  then = 'close',
-): string {
+export function landingRoute(lane: Lane, held: MergeMarkKind = 'unmarked', then = 'close'): string {
   if (lane.shape === 'git') {
     return (
       'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
@@ -253,20 +249,22 @@ export function standingMarkRefusal(args: {
 
 /** Why `landingShape` was not changed: a mark stands, and it was judged on the lane it was made
  *  under, so changing the lane would re-judge it in silence. `unmark` is the way through. `held`
- *  null is an issue that declared nothing, whose lane was `project`, its project's shape. */
+ *  null is an issue that declared nothing, whose lane was `project`, its project's shape — null
+ *  where the project's kind is none Forge knows, which never stops this refusal being given. */
 export function landingShapeMarkStandsDetail(args: {
   held: LandingShape | null;
   sent: LandingShape | null;
-  project: LandingShape;
+  project: LandingShape | null;
   mark: MergeMarkKind;
 }): string {
+  const projectShape = `its project's shape${args.project ? ` (\`${args.project}\`)` : ''}`;
   const madeUnder =
     args.held === null
-      ? `while the issue declared nothing and its project's shape (\`${args.project}\`) applied`
+      ? `while the issue declared nothing and ${projectShape} applied`
       : `while the issue declared \`${args.held}\``;
   const refused =
     args.sent === null
-      ? `\`landingShape\` was not cleared back to the project's shape (\`${args.project}\`)`
+      ? `\`landingShape\` was not cleared back to ${projectShape}`
       : `\`landingShape\` was not changed to \`${args.sent}\``;
   return (
     `this issue carries a merged mark (\`${args.mark}\`), made ${madeUnder}, and a mark is judged ` +

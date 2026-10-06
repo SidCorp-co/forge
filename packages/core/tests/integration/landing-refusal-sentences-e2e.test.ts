@@ -174,6 +174,17 @@ describe('LANDING_SHAPE_MARK_STANDS names what decided the lane the mark was mad
     expect(body).toContain("its project's shape (`git`) applied");
     expect(body).not.toContain('declared null');
   });
+
+  it("still refuses by that code where the issue declared its lane and the project's kind is unknown", async () => {
+    const w = await world('standard');
+    await harness.db.execute(sql`UPDATE projects SET kind = 'kiosk' WHERE id = ${w.projectId}`);
+    const id = await issueAt(w, 'awaiting_release', 'outside_git', { landing: ENV_LANDING });
+    const res = await rest('PATCH', `/api/issues/${id}`, w.token, { landingShape: 'git' });
+    expect(res.status, await res.clone().text()).toBe(409);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('LANDING_SHAPE_MARK_STANDS');
+    expect(body).toContain('declared `outside_git`');
+  });
 });
 
 describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
@@ -197,7 +208,13 @@ describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
     const key = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
     const gitFirst = await issueAt(w, 'awaiting_release', null, {}, key(1));
     const gitSecond = await issueAt(w, 'awaiting_release', null, {}, key(2));
-    const declared = await issueAt(w, 'awaiting_release', 'outside_git', { mergedAt: true }, key(3));
+    const declared = await issueAt(
+      w,
+      'awaiting_release',
+      'outside_git',
+      { mergedAt: true },
+      key(3),
+    );
     const report = await harness.mods.collectReleaseBlockers(w.projectId, {
       issueIds: [gitSecond, declared, gitFirst],
       door: 'record',

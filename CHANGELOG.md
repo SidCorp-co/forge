@@ -3141,11 +3141,9 @@
 
 ### Fixed
 
-- **A refused close, mark or status move on the landing route now names a route that works.** A
-  git project's close refusal names a commit, or declaring the issue outside git, rather than a
-  landing that project refuses; a mark naming no landing is told to be cleared before it is
-  replaced; and a refusal outside git no longer ends on branch rules that do not apply there.
-  Re-sending an issue's own landing declaration no longer counts as an edit (ISS-1384).
+- **Refusals on the landing route name a route that works.** A git project's close names a
+  commit or declaring the issue outside git, never a landing; re-sending an issue's own landing
+  declaration no longer counts as an edit (ISS-1384).
 
 - **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
   names each such box, and the notification clears once the box recovers (ISS-1324).

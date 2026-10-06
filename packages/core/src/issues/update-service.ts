@@ -5,7 +5,7 @@ import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
-import { landingShapeMarkStandsDetail, landingShapeOf } from './landing-evidence.js';
+import { landingShapeMarkStandsDetail, laneOrNull } from './landing-evidence.js';
 import { type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -224,7 +224,6 @@ async function refuseShapeOverMark(
       mergedLanding: issues.mergedLanding,
       declared: issues.declaredLandingShape,
       kind: projects.kind,
-      projectId: projects.id,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -234,7 +233,7 @@ async function refuseShapeOverMark(
   throw new LandingShapeMarkStands({
     held: current.declared,
     sent,
-    project: landingShapeOf(current.kind, current.projectId),
+    project: laneOrNull(null, current.kind)?.shape ?? null,
     mark: mergeMarkKindOf(current),
   });
 }
