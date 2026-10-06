@@ -176,6 +176,22 @@ fn screen_words(raw: &str) -> String {
                 Some('(' | ')') => {
                     chars.next();
                 }
+                // OSC, DCS, SOS, PM and APC carry a string a terminal acts on
+                // and never shows, ended by BEL or by ST (`ESC \`). Claude
+                // Code's exit writes `ESC ] 0 ; BEL` after everything it
+                // printed, so its body kept as a word put `0;` after the trust
+                // dialog's footer (ISS-1382 judging). Any other ESC ends the
+                // string too and is read as the sequence it starts, so one
+                // left open does not swallow the output after it.
+                Some(']' | 'P' | 'X' | '^' | '_') => {
+                    while chars.next_if(|&b| b != '\x07' && b != '\x1b').is_some() {}
+                    if chars.next_if_eq(&'\x07').is_none() {
+                        let mut ahead = chars.clone();
+                        if ahead.next() == Some('\x1b') && ahead.next() == Some('\\') {
+                            chars = ahead;
+                        }
+                    }
+                }
                 _ => {}
             }
             out.push(' ');
@@ -515,7 +531,7 @@ pub fn read(master_dir: &Path) -> Found {
     }
 }
 
-fn ago(secs: i64) -> String {
+pub(crate) fn ago(secs: i64) -> String {
     let secs = secs.max(0);
     match secs {
         s if s < 120 => format!("{s}s ago"),
@@ -921,6 +937,41 @@ mod tests {
                 Exit::Untrusted { workspace: Some(w), .. } if w == "/srv/team project"
             ),
             "a folder with a space in its name is named whole"
+        );
+    }
+
+    /// A real Claude Code 2.1.291 pane, placed in an untrusted folder, that
+    /// answered its own trust dialog with `No, exit` and exited: its output as
+    /// `pipe-pane` kept it, the exit's terminal resets included (ISS-1382
+    /// judging, `iss1382-real-dialog-exit-transcript-catv.txt`).
+    const TRUST_DIALOG_ANSWERED: &str =
+        include_str!("../../assets/pane-exit-trust-dialog-answered.txt");
+
+    /// ISS-1382 criterion 8, at a pane that exited by its own answer: the
+    /// resets it writes on the way out end on `ESC ] 0 ; BEL`, and an OSC body
+    /// is no word a person read on the pane.
+    #[test]
+    fn a_pane_that_answered_the_dialog_and_exited_is_a_trust_exit() {
+        match classified(TRUST_DIALOG_ANSWERED, true) {
+            Exit::Untrusted { workspace, .. } => {
+                assert_eq!(workspace.as_deref(), Some("/tmp/j1382/ws/team project"));
+            }
+            other => panic!("a pane that exited from the dialog is a trust exit: {other:?}"),
+        }
+        let titled = format!("{TRUST_DIALOG}\x1b]0;forge\x1b\\\x1b]8;;\x07");
+        assert!(
+            matches!(classified(&titled, true), Exit::Untrusted { .. }),
+            "an OSC ended by ST, and one ended by BEL, are both unprinted"
+        );
+        assert_eq!(
+            screen_words("a\x1b]8;id=x;https://e.test/p\x07link\x1b]8;;\x07 b\x1bPq#0\x1b\\ c"),
+            "a link b c",
+            "a hyperlink's target and a DCS body are not words on the screen"
+        );
+        assert_eq!(
+            screen_words("a\x1b]0;never ended\x1b[1mb c"),
+            "a b c",
+            "a string left open ends at the next ESC rather than taking the rest"
         );
     }
 

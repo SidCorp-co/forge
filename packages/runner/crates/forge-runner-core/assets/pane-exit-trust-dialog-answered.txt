@@ -1,0 +1,17 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/tmp/j1382/ws/team[21Gproject[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject[40Gyou[44Gcreated[52Gor[55Gone[59Gyou[63Gtrust?[70G(Like[76Gyour[81Gown[85Gcode,[91Ga[93Gwell-known[104Gopen[109Gsource[116Gproject,[125Gor[128Gwork[133Gfrom[138Gyour[143Gteam).[150GIf[153Gnot,[158Gtake[163Ga[165Gmoment[172Gto[175Greview[182Gwhat's[189Gin[192Gthis[197Gfolder[204Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,[40Gand[44Gexecute[52Gfiles[58Ghere.
+
+[2G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mSecurity guide[39m]8;;
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u[c[?2026$p[c(B[?2004h[<u[>5u[>4;2m[?1006l[?1003l[?1002l[?1000l[1D[4B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;
