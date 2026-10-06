@@ -73,6 +73,7 @@ describe('owedTrigger: the head a joined builder run reads', () => {
     const t = await owedTrigger({ projectId: P, kind: 'joined', source: git });
     expect(t.ok && t.value.head?.via).toBe('runner-checkout');
     expect(resolveSourceHost).not.toHaveBeenCalled();
+    expect(readCheckoutHead).toHaveBeenLastCalledWith(P, 'dev', '/srv/git/epodsystem-core.git');
   });
 
   it('refuses by name when neither a binding nor a bound runner can answer, naming both ways out', async () => {

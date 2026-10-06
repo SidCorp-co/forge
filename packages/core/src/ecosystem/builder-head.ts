@@ -47,7 +47,7 @@ export const projectHead = {
         unbound = err.message;
       }
     }
-    const read = await readCheckoutHead(projectId, defaultBranch);
+    const read = await readCheckoutHead(projectId, defaultBranch, repository);
     if (!read.ok) return { ok: false, why: `${unbound}, and ${read.detail}` };
     const { sha, readAt, via } = read.head;
     return { ok: true, value: { sha, ref: read.head.ref, readAt, via } };

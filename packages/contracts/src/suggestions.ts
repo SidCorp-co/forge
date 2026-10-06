@@ -15,7 +15,7 @@ import {
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
-import type { RefusalStatuses } from "./refusal.js";
+import type { ProblemBody, RefusalStatuses } from "./refusal.js";
 import {
 	designChangePayloadSchema,
 	WORKFLOW_STEP_ID,
@@ -444,6 +444,9 @@ export type SuggestionEffect =
 export interface SuggestionResponse {
 	suggestion: SuggestionView;
 	effect?: SuggestionEffect | FeedbackTriageEffect;
+	/** A revise whose accept in the same act was refused: the revision stands at `proposed`, and
+	 *  this names why it was not accepted, as a refusal's `error` reads. */
+	acceptRefused?: ProblemBody["error"];
 }
 
 /** The answer to the list: the rows asked for, and how many are open on the target. */

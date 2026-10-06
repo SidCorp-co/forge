@@ -331,6 +331,9 @@ deviceAuthRoutes.post(
         `no head read ${requestId} is waiting on this box: it was never asked, it was asked of another box or project, or the wait ended`,
       );
     }
+    if (outcome.code === 'CHECKOUT_HEAD_OTHER_REPOSITORY') {
+      throw refuseDevice(outcome.code, `the head read ${requestId} was refused: ${outcome.detail}`);
+    }
     throw refuseDevice(
       outcome.code,
       `the head read ${requestId} was answered with what names no head: ${outcome.detail}`,

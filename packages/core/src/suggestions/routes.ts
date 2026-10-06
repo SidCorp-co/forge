@@ -59,6 +59,7 @@ function answer(c: Context, outcome: SuggestionOutcome) {
   const body: SuggestionResponse = {
     suggestion: outcome.suggestion,
     ...(outcome.effect ? { effect: outcome.effect } : {}),
+    ...(outcome.acceptRefused ? { acceptRefused: outcome.acceptRefused } : {}),
   };
   return c.json(body, outcome.created ? 201 : 200);
 }

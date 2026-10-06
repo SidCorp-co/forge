@@ -22,8 +22,7 @@ import {
   writeIssueRelations,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../lib/logger.js';
-import { RefusalError } from '../lib/refusal.js';
+import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import {
   actorFor,
@@ -83,13 +82,12 @@ export async function reviseSuggestion(
     }`,
   });
   if (accepted.ok) return { ...accepted, created: true };
-  // The revise committed: answer with the revision as it stands (proposed), never with a refusal
-  // that would read as though nothing was written. Accepting it again names the refusal.
-  logger.warn(
-    { suggestionId: revised.suggestion.id, refusals: accepted.refusals.map((r) => r.code) },
-    'suggestions: a revised feedback triage was written and its acceptance in the same act was refused',
-  );
-  return revised;
+  // The revise committed, so the answer is the revision as it stands (proposed), never a refusal
+  // that would read as though nothing was written; the refused accept is named beside it.
+  return {
+    ...revised,
+    acceptRefused: refusalEnvelope(accepted.refusals, 'SUGGESTION_REFUSED').error,
+  };
 }
 export type { SuggestionOutcome } from './write.js';
 

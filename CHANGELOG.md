@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A box's head read counts only for the declared repository.** Every connected bound box is asked
+  for the checkout core names; another repository's origin is refused `CHECKOUT_HEAD_OTHER_REPOSITORY`.
+  A revise whose accept is refused answers `acceptRefused`.
 - **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
   registered event type; a test fails when schema and migrations disagree; an undelivered reply is
   kept and shown with its reason.
