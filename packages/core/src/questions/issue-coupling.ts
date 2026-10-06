@@ -66,6 +66,19 @@ export type TerminalQuestionFault = {
   details: Record<string, unknown>;
 };
 
+/** The refusal a terminal move meets while these questions are open; a release reads it before its press. */
+export function openQuestionsFault(
+  ids: readonly string[],
+  toStatus: IssueStatus,
+): TerminalQuestionFault {
+  const noun = ids.length === 1 ? 'open question' : 'open questions';
+  return {
+    code: 'OPEN_QUESTIONS',
+    detail: `this issue holds ${ids.length} ${noun} (${ids.join(', ')}), and \`${toStatus}\` would leave ${ids.length === 1 ? 'it' : 'them'} asking a person for a decision nothing can act on. Answer ${ids.length === 1 ? 'it' : 'them'} first, or send this move again with \`voidQuestions: "<why they died with the work>"\`, which voids each one with that reason in the same write.`,
+    details: { to: toStatus, openQuestionIds: [...ids] },
+  };
+}
+
 /**
  * Refuse a terminal move while the issue holds an open question, or void those
  * questions with the reason the caller gave — on any move that sends one; and,
@@ -109,14 +122,7 @@ export async function settleOpenQuestions(
   const ids = await openQuestionIdsOn(tx, args.issueId);
   if (ids.length === 0) return null;
   const reason = args.voidQuestions?.trim();
-  if (!reason) {
-    const noun = ids.length === 1 ? 'open question' : 'open questions';
-    return {
-      code: 'OPEN_QUESTIONS',
-      detail: `this issue holds ${ids.length} ${noun} (${ids.join(', ')}), and \`${args.toStatus}\` would leave ${ids.length === 1 ? 'it' : 'them'} asking a person for a decision nothing can act on. Answer ${ids.length === 1 ? 'it' : 'them'} first, or send this move again with \`voidQuestions: "<why they died with the work>"\`, which voids each one with that reason in the same write.`,
-      details: { to: args.toStatus, openQuestionIds: ids },
-    };
-  }
+  if (!reason) return openQuestionsFault(ids, args.toStatus);
   await tx
     .update(agentQuestions)
     .set({

@@ -10,6 +10,7 @@ const ENTRY = {
   mergedAt: "2026-08-26T09:00:00.000Z",
   waitingDays: 2,
   claimedByRunId: null,
+  closeRefusals: [],
 };
 
 function body(over: Record<string, unknown> = {}) {
@@ -116,5 +117,27 @@ describe("parseReleaseRoster", () => {
     expect(() => parseReleaseRoster([body()], ENDPOINT)).toThrow(
       /the response should be an object/,
     );
+  });
+});
+
+// ISS-1337: the row says before the press what the release could not close it for.
+describe("parseReleaseRoster — what a release could not close a row for", () => {
+  const REFUSAL = { code: "OPEN_QUESTIONS", reason: "holds 1 open question", clears: "Answer it." };
+
+  it("reads each refusal a row carries", () => {
+    const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, closeRefusals: [REFUSAL] }] }), ENDPOINT);
+    expect(parsed.issues[0]?.closeRefusals).toEqual([REFUSAL]);
+  });
+
+  it("refuses a row with no closeRefusals rather than reading it as closable", () => {
+    const { closeRefusals: _dropped, ...entry } = ENTRY;
+    expect(() => parseReleaseRoster(body({ issues: [entry] }), ENDPOINT)).toThrow(
+      /issues\[0\]\.closeRefusals should be an array/,
+    );
+  });
+
+  it("refuses a refusal missing what clears it", () => {
+    const issues = [{ ...ENTRY, closeRefusals: [{ code: "OPEN_QUESTIONS", reason: "x" }] }];
+    expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.clears/);
   });
 });

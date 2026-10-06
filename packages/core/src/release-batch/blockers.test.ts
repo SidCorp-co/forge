@@ -49,6 +49,9 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
   return { ...actual, issuesMissingReleaseRecord: () => missingNotes() };
 });
 
+// What the finish's close would refuse is `blockers-landing.test.ts`'s subject; here it refuses nothing.
+vi.mock('./close-shortfall.js', () => ({ rosterCloseShortfalls: async () => new Map() }));
+
 const { alsoBlocking, collectReleaseBlockers, releaseBlockerError } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
@@ -303,38 +306,6 @@ describe('collectReleaseBlockers', () => {
 
     expect(report.blockers.map((b) => b.code)).toContain('RELEASE_POOL_EMPTY');
     expect(report.warnings.map((w) => w.code)).toContain('RELEASE_RUNNER_PREFERENCE_UNMET');
-  });
-
-  it('asks the record door for a merge and never for a runner', async () => {
-    ready();
-    execRows.mockResolvedValue([]);
-    onlineIds.mockResolvedValue([]);
-    selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null, ...GIT },
-    ]);
-
-    const codes = (
-      await collectReleaseBlockers(PROJECT_ID, { issueIds: [ISSUE_A], door: 'record' })
-    ).blockers.map((b) => b.code);
-
-    expect(codes).toContain('RELEASE_WORK_UNMERGED');
-    expect(codes).not.toContain('RELEASE_POOL_EMPTY');
-    expect(codes).not.toContain('NO_RUNNER_ONLINE');
-  });
-
-  it('names the note and the merge together, which the record door met minutes apart', async () => {
-    ready();
-    missingNotes.mockResolvedValue([ISSUE_A]);
-    selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null, ...GIT },
-    ]);
-
-    const err = releaseBlockerError(
-      await collectReleaseBlockers(PROJECT_ID, { issueIds: [ISSUE_A], door: 'record' }),
-    );
-
-    expect(err?.name).toBe('ReleaseRecordMissingError');
-    expect(err?.releaseBlockers?.map((b) => b.code)).toContain('RELEASE_WORK_UNMERGED');
   });
 
   it('refuses an issue that is not at the gate by the name the door already used', async () => {

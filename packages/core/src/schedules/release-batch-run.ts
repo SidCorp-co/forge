@@ -10,6 +10,7 @@
 
 import { logger } from '../logger.js';
 import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
+import { shortfallLine } from '../release-batch/close-shortfall.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
 import {
   BatchInFlightError,
@@ -31,6 +32,8 @@ export interface ScheduledCutOutcome {
   code?: string;
   /** Every reason standing when the cut was refused or failed, the thrown one first. */
   reasons?: string[];
+  /** Each waiting issue left off because the finish would refuse its close, and why (ISS-1337). */
+  leftOff?: string[];
 }
 
 // Carrying a readiness blocker makes an error a refusal; these classes name one thrown without.
@@ -103,6 +106,24 @@ export async function runScheduledReleaseCut(args: {
     return { status: 'skipped', output: 'this project has no release gate', named: [] };
   }
 
-  const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
-  return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
+  const unclaimed = roster.issues.filter((i) => i.claimedByRunId === null);
+  // A row the finish could not close would be released and handed straight back: it is left off
+  // and named, and the rest still ship (ISS-1337).
+  const leftOff = unclaimed
+    .filter((i) => i.closeRefusals.length > 0)
+    .map((i) => shortfallLine(i.displayId, i.closeRefusals));
+  const waiting = unclaimed.filter((i) => i.closeRefusals.length === 0).map((i) => i.id);
+  if (leftOff.length === 0) {
+    return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
+  }
+  const said = `left off ${leftOff.length} issue(s) whose close a release would refuse — ${leftOff.join(' ')}`;
+  if (waiting.length === 0) {
+    return { status: 'skipped', output: `nothing this cut can close: ${said}`, named: [], leftOff };
+  }
+  const outcome = await cutWaitingRelease({
+    projectId: args.projectId,
+    userId: args.userId,
+    issueIds: waiting,
+  });
+  return { ...outcome, output: `${outcome.output}; ${said}`, leftOff };
 }

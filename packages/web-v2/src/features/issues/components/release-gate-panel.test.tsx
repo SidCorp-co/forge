@@ -39,6 +39,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     mergedAt: "2026-08-26T09:00:00.000Z",
     waitingDays: 0,
     claimedByRunId: null,
+    closeRefusals: [],
   },
   {
     id: "iss-2",
@@ -47,6 +48,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     mergedAt: "2026-08-24T12:00:00.000Z",
     waitingDays: 2,
     claimedByRunId: null,
+    closeRefusals: [],
   },
   {
     id: "iss-3",
@@ -55,6 +57,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     mergedAt: "2026-08-26T11:00:00.000Z",
     waitingDays: 0,
     claimedByRunId: "run-9",
+    closeRefusals: [],
   },
 ];
 
@@ -209,6 +212,53 @@ describe("ReleaseGatePanel — releasing", () => {
     expect(screen.getByText(/1 in a release/)).toBeInTheDocument();
   });
 
+});
+
+// ISS-1337: a row the release could not close is named before the press, never offered for one.
+describe("ReleaseGatePanel — a row a release could not close", () => {
+  const REFUSED: ReleaseRoster["issues"][number] = {
+    id: "iss-4",
+    displayId: "ISS-4",
+    title: "Seven jerseys back in the store",
+    mergedAt: "2026-08-26T10:00:00.000Z",
+    waitingDays: 0,
+    claimedByRunId: null,
+    closeRefusals: [
+      {
+        code: "CLOSE_REQUIRES_SHIPPED",
+        reason: "no mark naming where its work landed",
+        clears: "Mark it merged with its landing.",
+      },
+    ],
+  };
+
+  it("cannot be selected, and says on its row what the close is refused for and what clears it", () => {
+    state({ issues: [...ISSUES, REFUSED] });
+    renderPanel();
+    expect(screen.getByRole("checkbox", { name: "Select ISS-4 for release" })).toBeDisabled();
+    expect(screen.getByText("can't close")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "A release could not close this: no mark naming where its work landed. Mark it merged with its landing.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("is left out of select-all, the ready count and the dialog", () => {
+    state({ issues: [...ISSUES, REFUSED] });
+    renderPanel();
+    expect(screen.getByText(/2 ready · 1 in a release · 1 a release can't close/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select every issue that can be released" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Release 2 now$/ }));
+    expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
+  });
+
+  it("offers no release at all when every waiting row is one a release could not close", () => {
+    state({ issues: [REFUSED] });
+    renderPanel();
+    expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Release now$/ })).toBeDisabled();
+  });
 });
 
 // An empty state costs what it is worth: a gate holding nothing is one line

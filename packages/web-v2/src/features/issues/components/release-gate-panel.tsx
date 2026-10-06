@@ -40,10 +40,12 @@ function emptyGateDetail(nextCutAt: string | null): string {
 }
 
 /**
- * Everything waiting to ship, and when it will. The two honest-degradation
- * rules live here: with no schedule this says so in words instead of counting
- * toward a cut nothing will perform, and an issue already claimed by a running
- * batch is shown as shipping rather than as selectable.
+ * Everything waiting to ship, and when it will. The honest-degradation rules
+ * live here: with no schedule this says so in words instead of counting toward
+ * a cut nothing will perform; an issue already claimed by a running batch is
+ * shown as in a release rather than as selectable; and an issue the release
+ * could not close is shown with what clears it rather than as selectable, so
+ * a press never hands it straight back (ISS-1337).
  */
 export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug: string }) {
   const { data, isLoading, isError, error, refetch } = useReleaseRoster(projectId);
@@ -81,10 +83,12 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
     );
   }
 
-  const selectable = issues.filter((i) => i.claimedByRunId === null);
+  const unclaimed = issues.filter((i) => i.claimedByRunId === null);
+  const selectable = unclaimed.filter((i) => i.closeRefusals.length === 0);
   const chosen = selectable.filter((i) => selected.has(i.id));
   const allSelected = selectable.length > 0 && chosen.length === selectable.length;
-  const claimed = issues.length - selectable.length;
+  const claimed = issues.length - unclaimed.length;
+  const unclosable = unclaimed.length - selectable.length;
   const visible = expanded ? issues : issues.slice(0, VISIBLE_LIMIT);
   const oldest = oldestMergedAt(issues);
 
@@ -158,6 +162,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
           <span className="fg-caption text-muted">
             {chosen.length > 0 ? `${chosen.length} selected` : `${selectable.length} ready`}
             {claimed > 0 ? ` · ${claimed} in a release` : ""}
+            {unclosable > 0 ? ` · ${unclosable} a release can't close` : ""}
           </span>
         </div>
 
@@ -206,33 +211,44 @@ function RosterRow({
 }) {
   const runId = issue.claimedByRunId;
   const claimed = runId !== null;
+  const refused = !claimed && issue.closeRefusals.length > 0;
   return (
-    <li className="flex items-center gap-2 py-1.5">
-      <Checkbox
-        checked={checked}
-        disabled={claimed}
-        onChange={onToggle}
-        ariaLabel={`Select ${issue.displayId} for release`}
-      />
-      <MonoTag>{issue.displayId}</MonoTag>
-      <span className="fg-body-sm text-fg min-w-0 flex-1 truncate" title={issue.title}>
-        {issue.title}
-      </span>
-      <span className="fg-caption text-muted shrink-0 whitespace-nowrap">
-        {runId !== null ? (
-          <Link
-            href={`/projects/${slug}/releases/${runId}`}
-            className="text-accent-text underline-offset-2 hover:underline"
-            title="Open the release run: it says whether a box has started it, and what it has done"
-          >
-            in a release
-          </Link>
-        ) : issue.mergedAt ? (
-          `merged ${formatRelativeTime(issue.mergedAt)}`
-        ) : (
-          "merge time unknown"
-        )}
-      </span>
+    <li className="flex flex-col gap-0.5 py-1.5">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={checked && !refused}
+          disabled={claimed || refused}
+          onChange={onToggle}
+          ariaLabel={`Select ${issue.displayId} for release`}
+        />
+        <MonoTag>{issue.displayId}</MonoTag>
+        <span className="fg-body-sm text-fg min-w-0 flex-1 truncate" title={issue.title}>
+          {issue.title}
+        </span>
+        <span className="fg-caption text-muted shrink-0 whitespace-nowrap">
+          {refused ? (
+            <span className="text-amber">can&apos;t close</span>
+          ) : runId !== null ? (
+            <Link
+              href={`/projects/${slug}/releases/${runId}`}
+              className="text-accent-text underline-offset-2 hover:underline"
+              title="Open the release run: it says whether a box has started it, and what it has done"
+            >
+              in a release
+            </Link>
+          ) : issue.mergedAt ? (
+            `merged ${formatRelativeTime(issue.mergedAt)}`
+          ) : (
+            "merge time unknown"
+          )}
+        </span>
+      </div>
+      {refused ? (
+        <p className="fg-caption text-muted pl-6">
+          A release could not close this:{" "}
+          {issue.closeRefusals.map((r) => `${r.reason}. ${r.clears}`).join(" ")}
+        </p>
+      ) : null}
     </li>
   );
 }

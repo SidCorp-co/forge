@@ -3141,6 +3141,10 @@
 
 ### Fixed
 
+- **A release says, before you press it, which issues it could not close.** Each shows why and
+  what clears it, cannot be selected, and is left off automatic and scheduled releases instead of
+  being shipped and handed back (ISS-1337).
+
 - **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
   names each such box, and the notification clears once the box recovers (ISS-1324).
 

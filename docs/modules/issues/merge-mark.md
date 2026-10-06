@@ -131,8 +131,10 @@ until it does, this check sees only what reaches `data.commit`.
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
 whether a mark is enough calls it: the close gate (`refuseUnshippedClose`), the `merged_mark` entry
-criterion, the release-record door's `RELEASE_WORK_UNMERGED`, the work-evidence gate and the mark
-writer. The release batch's finish closes through the same transition, so it reads the same answer.
+criterion, `RELEASE_WORK_UNMERGED` at both release doors (the record and, since ISS-1337, the batch
+create, through `packages/core/src/release-batch/close-shortfall.ts`), the work-evidence gate and the
+mark writer. The release batch's finish closes through the same transition, so it reads the same
+answer.
 
 An issue's lane (`laneOf`) is its own declaration where it holds one, else its project's kind. The
 declaration is `issues.declared_landing_shape` (ISS-1384, migration `0320`): `git` or
@@ -159,8 +161,8 @@ served, which says the change landed at a commit holding none of it.
   every `forge_issues` answer that serializes the issue whole, beside `declaredLandingShape`, the
   issue's own value or null. Every refusal names who decided (`whereItLands`): *this issue's work
   lands outside git (declared on the issue)*, or *this project's work lands outside git (kind
-  `website`)*. The release record can now hold both lanes in one roster, so
-  `RELEASE_WORK_UNMERGED` is raised once per lane, each in its own words.
+  `website`)*. A release roster can now hold both lanes, so `RELEASE_WORK_UNMERGED` is raised
+  once per lane, each in its own words.
 
 Where no issue declares one, `landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
 optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name

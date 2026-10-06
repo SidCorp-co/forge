@@ -7,9 +7,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { issues, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { landingShortfall, laneOf } from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
@@ -36,6 +35,7 @@ import {
   resolveReleaseDeviceIds,
 } from './channel.js';
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
+import { rosterCloseShortfalls } from './close-shortfall.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
@@ -187,9 +187,9 @@ async function namedAs(ids: string[]): Promise<string[]> {
   }
 }
 
-/** What the roster owes before it may be closed: a note, and a merge. */
+/** What the roster owes before it may be closed: a note, and whatever the finish's close would refuse. */
 async function rosterBlockers(
-  door: ReleaseDoor,
+  projectId: string,
   issueIds: string[],
   out: ReleaseBlocker[],
 ): Promise<void> {
@@ -203,38 +203,40 @@ async function rosterBlockers(
     const displayIds = await namedAs(unrecorded);
     out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded, displayIds }));
   }
-  if (door !== 'record') return;
-  // Unmerged means what the close would refuse, on each issue's lane: `landing-evidence.ts`.
-  // Judged inside the read, so a kind the reader cannot place is this check unevaluated, by name.
-  const unmerged = await evaluate(
-    'merged',
-    async () => {
-      const rows = await db
-        .select({
-          id: issues.id,
-          mergedAt: issues.mergedAt,
-          mergedCommitSha: issues.mergedCommitSha,
-          mergedLanding: issues.mergedLanding,
-          declared: issues.declaredLandingShape,
-          kind: projects.kind,
-        })
-        .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(inArray(issues.id, issueIds));
-      return rows
-        .map((r) => ({ id: r.id, lane: laneOf({ declared: r.declared, kind: r.kind }), row: r }))
-        .filter((r) => landingShortfall(r.row, r.lane) !== null);
-    },
+  // The close's own refusals, read at both doors before anything is claimed (ISS-1337): a batch
+  // that claimed such a row would release it and hand it back to the gate, said only afterwards.
+  const shortfalls = await evaluate(
+    'close',
+    async () => await rosterCloseShortfalls(projectId, issueIds),
     out,
   );
-  if (!unmerged) return;
+  if (!shortfalls) return;
+  const ordered = issueIds.filter((id) => shortfalls.has(id));
+  const landing = ordered.flatMap((id) =>
+    (shortfalls.get(id) ?? [])
+      .filter((s) => s.code === 'CLOSE_REQUIRES_SHIPPED')
+      .map((s) => ({ id, shape: String(s.details.shape) })),
+  );
   // An issue may declare its own lane, so one roster can hold both shapes, and each is owed the
   // sentence naming its own route: one blocker per shape, in roster order.
-  for (const shape of [...new Set(unmerged.map((r) => r.lane.shape))]) {
-    const ids = unmerged.filter((r) => r.lane.shape === shape).map((r) => r.id);
+  for (const shape of [...new Set(landing.map((r) => r.shape))]) {
+    const ids = landing.filter((r) => r.shape === shape).map((r) => r.id);
     const displayIds = await namedAs(ids);
     out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds }));
   }
+  const rest = ordered.filter((id) =>
+    (shortfalls.get(id) ?? []).some((s) => s.code !== 'CLOSE_REQUIRES_SHIPPED'),
+  );
+  if (rest.length === 0) return;
+  const displayIds = await namedAs(rest);
+  const refused = rest.map((id, i) => ({
+    issueId: id,
+    displayId: displayIds[i] ?? id,
+    shortfalls: (shortfalls.get(id) ?? [])
+      .filter((s) => s.code !== 'CLOSE_REQUIRES_SHIPPED')
+      .map(({ code, reason, clears }) => ({ code, reason, clears })),
+  }));
+  out.push(blocker('RELEASE_ISSUES_UNCLOSABLE', { issueIds: rest, displayIds, refused }));
 }
 
 /** The label, and how many live bindings one reading would answer for. A channel declaring no
@@ -416,7 +418,7 @@ async function gatedBlockers(
   if (issueIds && issueIds.length > 0) {
     await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }
-  await rosterBlockers(door, found?.ids ?? [], roster);
+  await rosterBlockers(projectId, found?.ids ?? [], roster);
   let carried: CarriedCheck | undefined;
   if (door === 'batch' && options.carried) {
     const rosterIds = issueIds && issueIds.length > 0 ? issueIds : (found?.ids ?? []);

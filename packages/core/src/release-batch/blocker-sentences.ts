@@ -24,6 +24,7 @@ export type ReleaseBlockerCode =
   | 'RELEASE_ROSTER_OVERSIZE'
   | 'RELEASE_RECORD_MISSING'
   | 'RELEASE_WORK_UNMERGED'
+  | 'RELEASE_ISSUES_UNCLOSABLE'
   | 'RELEASE_RUNNER_AMBIGUOUS'
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
@@ -134,6 +135,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
+  RELEASE_ISSUES_UNCLOSABLE:
+    '{n} issue(s) named here would be refused their close when this release finishes, so it would release them and hand them back to the gate. Clear what each one is refused for, or leave it off this release.',
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
@@ -181,6 +184,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_ROSTER_OVERSIZE: [],
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
+  RELEASE_ISSUES_UNCLOSABLE: [],
   RELEASE_RUNNER_AMBIGUOUS: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
@@ -344,6 +348,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     return `${namedHere(details)} have no mark saying where their work landed. Their work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
+  if (code === 'RELEASE_ISSUES_UNCLOSABLE' && Array.isArray(details?.refused)) {
+    return unclosableSentence(details.refused as UnclosableIssueRef[]);
+  }
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];
     const last = chain[chain.length - 1]?.branch;
@@ -404,6 +411,24 @@ export function carriedUnreadWarningSentence(why: string): string {
 }
 
 /** How many issues a refusal is about, and which, by the id a screen shows (ISS-1346). */
+/** One issue the finish's close would refuse, as `RELEASE_ISSUES_UNCLOSABLE` carries it. */
+export interface UnclosableIssueRef {
+  issueId: string;
+  displayId: string;
+  shortfalls: Array<{ code: string; reason: string; clears: string }>;
+}
+
+function unclosableSentence(refused: readonly UnclosableIssueRef[]): string {
+  const each = refused
+    .map(
+      (r) =>
+        `\`${r.displayId}\` ${r.shortfalls.map((s) => `${s.reason} (${s.code}): ${s.clears}`).join(' ')}`,
+    )
+    .join(' ');
+  const n = refused.length;
+  return `${n} issue${n === 1 ? '' : 's'} named here would be refused ${n === 1 ? 'its' : 'their'} close when this release finishes, so it would release ${n === 1 ? 'it' : 'them'} and hand ${n === 1 ? 'it' : 'them'} back to the gate. ${each} Clear each reason, or leave the issue off this release.`;
+}
+
 function namedHere(details: Record<string, unknown>): string {
   const ids = Array.isArray(details.issueIds) ? details.issueIds : [];
   const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];

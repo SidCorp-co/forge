@@ -53,6 +53,32 @@ decision for as many issues as the range can hold commits, which is more than a 
 
 A refused create claims no issue and leaves no open run.
 
+### What the finish could not close, said before the press (ISS-1337)
+
+The batch closes its roster only at the finish, so a roster issue whose close would be refused
+used to be claimed, released and handed back to the gate, said only afterwards.
+`packages/core/src/release-batch/close-shortfall.ts:rosterCloseShortfalls` reads, for each issue,
+the refusals that close would make, by calling the close's own predicates:
+
+| the close would refuse | because | reported as |
+|---|---|---|
+| `CLOSE_REQUIRES_SHIPPED` | no mark, or outside git no mark naming a landing (`packages/core/src/issues/merged-at.ts:refuseUnshippedClose`) | `RELEASE_WORK_UNMERGED`, worded for the issue's shape |
+| `OPEN_QUESTIONS` | an open question on the issue | `RELEASE_ISSUES_UNCLOSABLE` |
+| `ENTRY_CRITERIA_UNMET` | a record the project declares for `closed` is missing (`packages/core/src/issues/transition-evidence.ts:checkTransitionEvidence`) | `RELEASE_ISSUES_UNCLOSABLE` |
+
+Both are 409 blockers at the create door and at the release-record door alike, each naming the
+issue, its reason and what clears it; a refused create claims nothing and opens no run. Readiness
+reads the same enumerator, so it lists them before anyone presses. The roster answer carries each
+issue's `closeRefusals` (`code`, `reason`, `clears`), and the release gate panel and the issue's
+awaiting-release banner offer no release for such an issue and print why. The unattended sweep
+leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it; a
+scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
+question asked mid-run, is still met at the finish below.
+
+On a project whose deploy is a person's, the finish does close every issue whose close stands. With
+no verify probe it is recorded unverified, written on each issue as whoever finished the release
+(`packages/core/src/release-batch/unverified-close.ts:noteUnverifiedCloses`), and claims no deploy.
+
 ## 2. From the claim to a box: the start (ISS-1323)
 
 A create that passes moves the roster to `releasing` and enqueues one `release_batch` job.
