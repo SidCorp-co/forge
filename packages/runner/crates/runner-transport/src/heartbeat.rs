@@ -65,6 +65,10 @@ pub struct Conditions {
     /// no `binaries` key, which core reads as "changes nothing"; a list, even an
     /// empty one, is the box's whole picture.
     pub binaries: Option<Vec<runner_proto::binaries::Missing>>,
+    /// The permission dialogs this box answered for its panes, per project.
+    /// Rides inside `gate`, and only when there is one to name: a core that
+    /// predates it refuses the gate report by name rather than the heartbeat.
+    pub dialogs: Vec<runner_proto::dialogs::Answered>,
 }
 
 /// Core's reasons for refusing either condition while taking the heartbeat.
@@ -113,8 +117,15 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
 
 /// The gate object exactly as it rides on the heartbeat body, separated from
 /// the request so the shape can be asserted without a server.
-pub fn gate_body(gate: &runner_proto::gate::Condition) -> serde_json::Value {
-    serde_json::json!({ "degraded": gate })
+pub fn gate_body(
+    gate: &runner_proto::gate::Condition,
+    dialogs: &[runner_proto::dialogs::Answered],
+) -> serde_json::Value {
+    let mut body = serde_json::json!({ "degraded": gate });
+    if !dialogs.is_empty() {
+        body["dialogs"] = serde_json::json!(dialogs);
+    }
+    body
 }
 
 /// The whole body, built where it can be read without a server. Only the
@@ -137,7 +148,7 @@ pub(crate) fn heartbeat_body(
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
     }
     if let Some(gate) = &conditions.gate {
-        body["gate"] = gate_body(gate);
+        body["gate"] = gate_body(gate, &conditions.dialogs);
     }
     if let Some(pool) = &conditions.pool {
         body["pool"] = pool_body(pool);
@@ -183,6 +194,51 @@ mod tests {
         assert!(heartbeat_body("1.0.0", None, &Conditions::default())
             .get("binaries")
             .is_none());
+    }
+
+    #[test]
+    fn an_answered_dialog_rides_inside_the_gate_only_when_there_is_one() {
+        let gate = clear_gate();
+        let quiet = Conditions {
+            gate: Some(gate.clone()),
+            ..Conditions::default()
+        };
+        assert!(heartbeat_body("1.0.0", None, &quiet)["gate"]
+            .get("dialogs")
+            .is_none());
+        let answered = Conditions {
+            gate: Some(gate),
+            dialogs: vec![runner_proto::dialogs::Answered {
+                project_id: Some("p".into()),
+                count: 2,
+                count_is_floor: false,
+                first_at: Some(1),
+                last_at: Some(2),
+                last: Some("denied Bash: rm -rf x".into()),
+                last_agent: None,
+            }],
+            ..Conditions::default()
+        };
+        assert_eq!(
+            heartbeat_body("1.0.0", None, &answered)["gate"]["dialogs"],
+            serde_json::json!([{ "projectId": "p", "count": 2, "countIsFloor": false,
+                "firstAt": 1, "lastAt": 2, "last": "denied Bash: rm -rf x", "lastAgent": null }])
+        );
+    }
+
+    fn clear_gate() -> runner_proto::gate::Condition {
+        runner_proto::gate::Condition {
+            verdict: runner_proto::gate::Verdict::Clear,
+            count: 0,
+            trimmed: false,
+            first_at: None,
+            last_at: None,
+            window_ms: None,
+            per_day: None,
+            since_last_ms: None,
+            last: None,
+            by_reason: Vec::new(),
+        }
     }
 
     #[test]

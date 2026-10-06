@@ -1,11 +1,10 @@
 //! `gate` — the pane's own `PreToolUse` hook, asking whether the work its
 //! master is about to hand out has been declared.
 //!
-//! Sibling of `hook`, and deliberately not part of it. That verb reports and
-//! must never answer anything, so it prints `{}` the moment stdin is drained;
-//! this one has to read the payload, ask the daemon and then print a decision.
-//! Folding them together would put a decision path inside the one verb whose
-//! whole contract is that it has none.
+//! Sibling of `hook`, and deliberately not part of it. That verb reports, and
+//! answers only a permission dialog, which it does without asking the daemon;
+//! this one has to read the payload, ask the daemon and then print a decision
+//! in front of every tool call.
 //!
 //! What it shares with `hook` is the rule that matters: no path through it may
 //! fail the agent that ran it. A deliberate deny is not a failure — it is the
@@ -220,7 +219,7 @@ async fn session_of_this_pane(socket: &Path) -> Result<String, String> {
 }
 
 /// What the hook can establish about the process it ran in, holding no token.
-async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
+pub(crate) async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
     let tmux = std::env::var("TMUX").ok();
     let socket = runner_workspace::terminal::socket_path();
     let named = match (tmux.as_deref(), socket.as_deref()) {

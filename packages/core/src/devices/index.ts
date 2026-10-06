@@ -1,5 +1,5 @@
 export { assertDeviceBoundToProject } from './device-project.js';
-export { readRunGate } from './gate-report.js';
+export { readDialogsAnswered, readRunGate } from './gate-report.js';
 export { OCCUPYING } from './load.js';
 export { reapDeadMasterHolds, reapSilentMasters } from './master-reaper.js';
 export { ensureMasterSession, projectHasLiveMaster, residentMasterSql } from './master-session.js';

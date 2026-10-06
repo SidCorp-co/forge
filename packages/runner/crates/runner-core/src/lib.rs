@@ -1,6 +1,7 @@
 pub mod agent_activity;
 pub mod checkpoint;
 pub mod degraded;
+pub mod dialog_answer;
 pub mod dispatch_gate;
 pub mod inflight;
 pub mod job_exit;
