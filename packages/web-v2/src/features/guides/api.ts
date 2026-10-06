@@ -6,7 +6,7 @@ import { GUIDE_SLUG } from "./requested-path";
  *  `body` is the guide markdown core serves. */
 export interface Guide {
   slug: string;
-  audience?: string;
+  audience: string;
   title: string;
   summary: string;
   version: number;

@@ -65,12 +65,10 @@ export function fromGuide(guide: Guide, order: number): PublicDoc {
 }
 
 function coreAudience(guide: Guide): Audience {
-  // Priced amnesty, ended once live core serves the field: docs/proposals/documentation-home-residuals.md.
   if (guide.audience === undefined) {
-    console.warn(
-      `public docs: core served the guide '${guide.slug}' with no audience, so it is placed behind the agent door — a core older than ISS-1178; this ends when that core is redeployed`,
+    throw new Error(
+      `public docs: core served the guide '${guide.slug}' with no audience; every core guide declares one, and it must be '${CORE_AUDIENCE}'`,
     );
-    return CORE_AUDIENCE;
   }
   if (guide.audience !== CORE_AUDIENCE) {
     throw new Error(

@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Every lint rule blocks.** Biome warnings are errors; the empty lint, boundary and trace
+  baselines are deleted; web-v2 length is ratcheted; the unused code-quality linter is gone;
+  dependencies take their patches.
+
 ### Fixed
 
 - **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every

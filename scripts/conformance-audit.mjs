@@ -24,8 +24,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
-import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
+import { SIZE_RULES } from './lib/size-budget.mjs';
 import { CHECKS, CI_PARITY } from './lib/verify-checks.mjs';
 
 const die = dieAs('conformance-audit');
@@ -210,7 +210,6 @@ function biomeConfigs(dir = '', depth = 0, acc = []) {
 function uncountedWarnRules() {
   const scopesOf = (key) =>
     (manifest?.checkers?.[key]?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
-  const lint = scopesOf('lint-budget');
   const size = scopesOf('size-budget');
   const gaps = [];
   for (const cfg of biomeConfigs()) {
@@ -223,7 +222,7 @@ function uncountedWarnRules() {
       continue;
     }
     for (const rule of nonBlockingRules(doc)) {
-      if (!(SIZE_RULES.has(rule) ? size : lint).includes(dir)) gaps.push(`${dir || '.'} ${rule}`);
+      if (!(SIZE_RULES.has(rule) && size.includes(dir))) gaps.push(`${dir || '.'} ${rule}`);
     }
   }
   return gaps;
@@ -357,12 +356,12 @@ const RULES = [
   },
   {
     id: 'R9',
-    text: 'every DECLARED non-blocking lint severity is counted by a baselined checker',
+    text: 'every DECLARED non-blocking lint severity is a length rule counted by the size budget',
     pass: uncounted.length === 0,
     detail: uncounted.length
       ? `uncounted: ${uncounted.join(' · ')}`
-      : 'every declared warn/info/on rule is frozen somewhere; rules left non-blocking by preset default are not read',
-    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis. The bound is real: this reads the config, so a package whose biome.json is only `{"recommended": true}` passes it while carrying preset-default warn/info debt — caught only where a lint-budget scope already measures that directory',
+      : 'every declared warn/info/on rule is a length rule frozen by check-size-budget; rules left non-blocking by preset default are not read',
+    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis. Only the two length rules have a baseline (check-size-budget); every other rule is declared `error` or it fails here. The bound is real: this reads the config, so a package whose biome.json is only `{"recommended": true}` passes it while carrying preset-default warn/info debt',
   },
   {
     id: 'R10',

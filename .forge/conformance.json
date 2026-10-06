@@ -14,15 +14,10 @@
   "axes": {
     "form": {
       "level": 2,
-      "gate": "check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations",
+      "gate": "check-size-budget + biome + check-provider-literals + check-integration-declarations",
       "owns": "file & function length; whitespace, import order, recommended rules; where an integration provider's name may be written, and whether every provider's declaration carries the fields the generic paths read",
       "baseline": {
         "path": ".forge/size-baseline.json",
-        "keyBy": "path",
-        "improves": "down"
-      },
-      "alsoBaseline": {
-        "path": ".forge/lint-baseline.json",
         "keyBy": "path",
         "improves": "down"
       }
@@ -35,7 +30,7 @@
     "relations": {
       "level": 2,
       "gate": "archmap check + check-module-boundaries + check-module-shape",
-      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, its shrink-only baseline in .forge/module-boundaries-baseline.json enforced by the checker itself against the base revision); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision)",
+      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, at zero with nothing frozen, so any violation fails); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision)",
       "baseline": {
         "path": ".arch.json",
         "keyBy": "contract",
@@ -112,10 +107,6 @@
         {
           "glob": ".forge/archmap/**",
           "why": "A vendored third-party plugin's own documents, shipped with its source. Its citations are about its own tree and land here only because `pnpm install` needs no path outside the repo."
-        },
-        {
-          "glob": ".forge/code-quality/**",
-          "why": "The same: `eslint-plugin-code-quality` vendored at a path inside the repo so installation needs no path outside it. Its documents are its author's."
         },
         {
           "glob": ".forge/backups/**",
@@ -298,38 +289,20 @@
       "entrypoint": "packages/core/src/integration-registry.ts",
       "registerFn": "registerAllIntegrations"
     },
-    "lint-budget": {
-      "$comment": "Registering a class is this list plus one `--update-baseline` run \u2014 no second script, no second baseline file. That is the whole claim ISS-833 made for a shared ratchet, and `packages/core` is the proof of it: its `warn`-severity rules produced 280 diagnostics that nothing counted, because biome exits 0 on a warning. A scope with no `drain` block is freeze-only.",
-      "$drain": "Freezing does not reduce \u2014 an earlier comment baseline sat frozen for months at 3% drained. `drain` adds the rule that does: a file in the branch delta matching `include` and not `exclude`, whose baseline count is above zero, must come back STRICTLY lower. web-v2 declares none on purpose: 98 debt-carrying files with the formatter deliberately off is a separate decision from turning the linter on.",
+    "size-budget": {
+      "$comment": "packages/core holds the two length rules at biome `error`, so biome blocks them there and this ratchet measures packages/web-v2 alone, where they sit at `warn` over the offenders frozen in .forge/size-baseline.json.",
+      "$drain": "A priced amnesty for web-v2's frozen files. What is traded: eleven files keep a function over 150 lines or a file over 500. The drain is what reduces them: a frozen file in the branch delta must come back strictly shorter. Ends when web-v2 freezes nothing; then its length rules move to `error` and this checker and its baseline are deleted.",
       "scopes": [
         {
           "cwd": "packages/web-v2",
           "args": [
             "check",
             "src"
-          ]
-        },
-        {
-          "cwd": "packages/core",
-          "args": [
-            "check",
-            "src"
           ],
           "drain": {
-            "include": "^packages/core/src/",
+            "include": "^packages/web-v2/src/",
             "exclude": "\\.test\\.tsx?$"
           }
-        }
-      ]
-    },
-    "size-budget": {
-      "scopes": [
-        {
-          "cwd": "packages/core",
-          "args": [
-            "check",
-            "src"
-          ]
         }
       ]
     },

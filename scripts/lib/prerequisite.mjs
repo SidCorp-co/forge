@@ -20,7 +20,7 @@ export const PREREQUISITES = {
     remedy:
       'read `ls packages/*/node_modules/dependency-cruiser/bin` first — a dependency-cruise.mjs ' +
       'there means the root is simply not hoisting, and .npmrc is what to read, not the version. ' +
-      'Otherwise the installed version is not the 18.2.0 that packages/core/package.json pins ' +
+      'Otherwise the installed version is not the 18.2.0 that the root package.json pins ' +
       'exactly: pnpm install --frozen-lockfile restores it. The pin holds until archmap releases ' +
       'its resolver fix (archmap ISS-10); then archmap install --force re-vendors it, and the pin ' +
       'and the dependency-cruiser ignore in .github/dependabot.yml go (ISS-1354)',

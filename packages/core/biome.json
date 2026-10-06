@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -32,10 +32,10 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "noNonNullAssertion": "warn",
+        "noNonNullAssertion": "error",
         "useImportType": "error",
         "noExcessiveLinesPerFile": {
-          "level": "warn",
+          "level": "error",
           "options": {
             "maxLines": 500
           }
@@ -50,11 +50,11 @@
         }
       },
       "suspicious": {
-        "noExplicitAny": "warn"
+        "noExplicitAny": "error"
       },
       "complexity": {
         "noExcessiveLinesPerFunction": {
-          "level": "warn",
+          "level": "error",
           "options": {
             "maxLines": 150,
             "skipBlankLines": true,
@@ -85,9 +85,6 @@
         "rules": {
           "suspicious": {
             "noThenProperty": "off"
-          },
-          "correctness": {
-            "noUnsafeOptionalChaining": "warn"
           }
         }
       }

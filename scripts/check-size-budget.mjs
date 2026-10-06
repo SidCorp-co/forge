@@ -9,8 +9,8 @@ import {
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
-import { biomeReport } from './lib/lint-budget.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
+import { biomeReport, branchDelta, drainFaults, drainMatcher } from './lib/size-budget.mjs';
 
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
 
@@ -95,7 +95,7 @@ for (const kind of ['fileLines', 'maxFunctionLines']) {
   if (expected && !seen) {
     console.error(
       `check-size-budget: the baseline records ${kind} violations but this run found none.\n` +
-        'Either the rule stopped firing (check its category in packages/core/biome.json)\n' +
+        "Either the rule stopped firing (check its category in the scope's biome.json)\n" +
         'or they were genuinely cleaned up — in which case re-freeze with --update-baseline.',
     );
     process.exit(2);
@@ -112,6 +112,13 @@ if (mode === '--staged') {
   scope = staged.files;
 }
 const failures = [];
+let matchers;
+try {
+  matchers = cfg.scopes.map(drainMatcher).filter(Boolean);
+} catch (err) {
+  console.error(`check-size-budget: ${err.message}`);
+  process.exit(2);
+}
 for (const [file, now] of measured) {
   if (scope && !scope.has(file)) continue;
   const was = baseline[file] ?? { fileLines: 0, maxFunctionLines: 0 };
@@ -127,9 +134,38 @@ for (const [file, now] of measured) {
   if (reasons.length) failures.push({ file, reasons });
 }
 
+let drainNote = null;
+let drainFailed = false;
+if (mode === '--all' && matchers.length > 0) {
+  const delta = branchDelta(ROOT);
+  if (delta.error) {
+    console.error(`check-size-budget: ${delta.error}`);
+    process.exit(2);
+  }
+  if (delta.skip) {
+    drainNote = `drain skipped — ${delta.skip}; freeze-only this run`;
+  } else {
+    drainNote = `drain judged over ${delta.changed.size} changed file(s) since ${delta.base.slice(0, 8)}`;
+    const unpaid = drainFaults({
+      measured: Object.fromEntries(measured),
+      baseline,
+      changed: delta.changed,
+      renamed: delta.renamed,
+      matchers,
+    });
+    drainFailed = unpaid.length > 0;
+    for (const u of unpaid) {
+      const same = failures.find((f) => f.file === u.file);
+      if (same) same.reasons.push(...u.reasons);
+      else failures.push(u);
+    }
+  }
+}
+
 console.log(
   `size-budget: ${scanned} file(s) scanned, ${measured.size} over budget, frozen against the baseline`,
 );
+if (drainNote) console.log(`  ${drainNote}`);
 if (failures.length === 0) process.exit(0);
 
 for (const f of failures) {
@@ -139,8 +175,11 @@ for (const f of failures) {
 console.error(
   `\n${failures.length} file(s) exceeded their frozen size budget.\n` +
     'Split the function or the file — the budget is 150 lines per function, 500 per file.\n' +
-    'A file already over budget may stay over, but it may not get worse.\n' +
-    'If the growth is legitimate, re-freeze it:\n' +
-    '  node scripts/check-size-budget.mjs --update-baseline\n',
+    'A file already over budget may stay over, but it may not get worse, and a frozen file you\n' +
+    'touched in a draining scope must come back strictly shorter.\n' +
+    (drainFailed
+      ? 'A drain has no re-freeze escape: --update-baseline writes the same count back.\n'
+      : 'If the growth is legitimate, re-freeze it:\n' +
+        '  node scripts/check-size-budget.mjs --update-baseline\n'),
 );
 process.exit(1);

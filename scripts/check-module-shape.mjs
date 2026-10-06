@@ -11,17 +11,17 @@
 // It also judges the requirement trace (ISS-221, lib/module-trace.mjs): every core module, web-v2
 // feature directory and runner crate names in `serves` the requirements and workflow steps it
 // exists for, checked against the committed snapshot .forge/design-index.json
-// (scripts/refresh-design-index.mjs writes it; verify makes no network call). Untraced units are
-// frozen in the shrink-only .forge/module-trace-baseline.json; --update-trace-baseline rewrites it
-// and refuses to let any rule's count rise.
+// (scripts/refresh-design-index.mjs writes it; verify makes no network call). Nothing is frozen:
+// an untraced unit fails.
 //
 // Today's lint violations are frozen in .forge/module-shape-suppressions.json (ESLint bulk
 // suppressions). Exits 1 on a refused declaration, a violation the file does not hold, an entry that
-// no longer occurs, or a rule whose frozen count rose over the base revision; 2 when it cannot run.
+// no longer occurs, a rule whose frozen count rose over the base revision, or an untraced unit; 2
+// when it cannot run.
 // --prune drops the entries that no longer occur; --markers writes every finding, frozen or not,
 // as the reconciliation Wrong markers.
 //
-//   node scripts/check-module-shape.mjs [--prune] [--markers <file>] [--update-trace-baseline]
+//   node scripts/check-module-shape.mjs [--prune] [--markers <file>]
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -37,13 +37,7 @@ import {
   tally,
   totals,
 } from './lib/module-shape.mjs';
-import {
-  judgeTrace,
-  TRACE_RULE_SAYS,
-  TRACE_RULES,
-  TRACE_SCOPES,
-  traceFindings,
-} from './lib/module-trace.mjs';
+import { TRACE_RULE_SAYS, TRACE_RULES, TRACE_SCOPES, traceFindings } from './lib/module-trace.mjs';
 
 const die = dieAs('module-shape');
 
@@ -55,10 +49,9 @@ const ESLINT = join(ROOT, 'node_modules/eslint/bin/eslint.js');
 const PREFIX = 'module-shape/';
 const LINT_RULES = RULES.filter((r) => r !== 'kind');
 const DESIGN_INDEX = '.forge/design-index.json';
-const TRACE_BASELINE = '.forge/module-trace-baseline.json';
 
 const args = process.argv.slice(2);
-const known = new Set(['--markers', '--prune', '--update-trace-baseline']);
+const known = new Set(['--markers', '--prune']);
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !known.has(a))
     die(`unknown flag ${a} — one of ${[...known].join(', ')}`);
@@ -69,7 +62,6 @@ const markersPath = markersAt === -1 ? null : args[markersAt + 1];
 if (markersAt !== -1 && (!markersPath || markersPath.startsWith('--')))
   die('--markers needs a path');
 const prune = args.includes('--prune');
-const updateTrace = args.includes('--update-trace-baseline');
 
 let declaration;
 try {
@@ -118,7 +110,7 @@ if (faults.length) {
 
 const { rev, refusal } = baseRevision(ROOT);
 if (refusal) die(`no base revision can be taken: ${refusal}`);
-if (!rev) die('no base revision to compare the baselines against; fetch history and re-run');
+if (!rev) die('no base revision to compare the suppressions against; fetch history and re-run');
 const atBase = (path) => {
   try {
     const text = execFileSync('git', ['show', `${rev}:${path}`], {
@@ -133,28 +125,7 @@ const atBase = (path) => {
 };
 const traceCounts = (rules) =>
   TRACE_RULES.map((r) => `${r} ${rules?.[r]?.length ?? 0}`).join(' · ');
-const traceFrozen = existsSync(join(ROOT, TRACE_BASELINE)) ? readJson(TRACE_BASELINE).rules : null;
-if (updateTrace) {
-  const rose = traceFrozen
-    ? TRACE_RULES.filter((r) => trace.findings[r].length > (traceFrozen[r]?.length ?? 0))
-    : [];
-  if (rose.length) {
-    console.error(
-      `module-shape: refused — ${rose.map((r) => `${r} ${traceFrozen[r]?.length ?? 0} -> ${trace.findings[r].length}`).join(', ')}; the trace baseline only shrinks, so declare what the new units serve instead`,
-    );
-    process.exit(1);
-  }
-  const doc = {
-    $comment:
-      'Units packages/core/src/modules.json does not yet trace to a requirement or workflow step, under the rule they break (scripts/lib/module-trace.mjs). Shrink-only: a new entry fails, an entry that no longer occurs fails, and a rule whose count rose over the base revision fails. Rewrite with node scripts/check-module-shape.mjs --update-trace-baseline after tracing or deleting a unit, never to admit one.',
-    rules: trace.findings,
-  };
-  writeFileSync(join(ROOT, TRACE_BASELINE), `${JSON.stringify(doc, null, 1)}\n`);
-  console.log(`module-shape: wrote ${TRACE_BASELINE} (${traceCounts(trace.findings)})`);
-  process.exit(0);
-}
-if (!traceFrozen) die(`${TRACE_BASELINE} is absent; --update-trace-baseline writes it`);
-const traceJudged = judgeTrace(trace.findings, traceFrozen, atBase(TRACE_BASELINE)?.rules);
+const untraced = TRACE_RULES.flatMap((r) => trace.findings[r].map((k) => `${r}: ${k}`));
 
 if (!existsSync(ESLINT)) die(`${relative(ROOT, ESLINT)} is absent; run pnpm install`);
 if (!existsSync(join(ROOT, SUPPRESSIONS))) die(`${SUPPRESSIONS} is absent`);
@@ -261,8 +232,7 @@ const traced = Object.values(TRACE_SCOPES).map(({ section }) => {
   return `${section} ${units.filter((u) => u.serves?.length).length}/${units.length}`;
 });
 console.log(`module-shape: traced ${traced.join(' · ')}`);
-console.log(`module-shape: untraced now    ${traceCounts(trace.findings)}`);
-console.log(`module-shape: untraced frozen ${traceCounts(traceFrozen)}`);
+console.log(`module-shape: untraced ${traceCounts(trace.findings)}`);
 
 const show = (title, list) => {
   if (!list.length) return;
@@ -276,16 +246,10 @@ show(
 show(`stale entr(y/ies), no longer violated — run with --prune to drop them`, stale);
 show(`rule(s) whose frozen count rose over ${rev.slice(0, 9)}`, grown);
 show(
-  `untraced unit(s) ${TRACE_BASELINE} does not hold — declare what each serves, or delete it`,
-  traceJudged.fresh.map((f) => `${f}  (${TRACE_RULE_SAYS[f.split(':')[0]]})`),
+  'untraced unit(s) — declare what each serves, or delete it; nothing can freeze one',
+  untraced.map((f) => `${f}  (${TRACE_RULE_SAYS[f.split(':')[0]]})`),
 );
-show(
-  `stale trace baseline entr(y/ies) — run --update-trace-baseline to drop them`,
-  traceJudged.stale,
-);
-show(`trace rule(s) whose frozen count rose over ${rev.slice(0, 9)}`, traceJudged.grown);
-const traceRed = traceJudged.fresh.length || traceJudged.stale.length || traceJudged.grown.length;
-if (fresh.length || stale.length || grown.length || traceRed) process.exit(1);
+if (fresh.length || stale.length || grown.length || untraced.length) process.exit(1);
 console.log(
-  'module-shape: every violation and untraced unit is frozen and every frozen entry still occurs',
+  'module-shape: every unit is traced, every violation is frozen and every frozen entry still occurs',
 );
