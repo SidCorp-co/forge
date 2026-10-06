@@ -496,9 +496,15 @@ pub(super) fn project_detail(s: &Snapshot, p: &Project) -> Vec<String> {
         }
     }
     out.push(String::new());
+    // By place: two rows may share a display key, never a reading.
+    let index = s
+        .projects
+        .iter()
+        .position(|x| std::ptr::eq(x, p))
+        .unwrap_or(usize::MAX);
     out.extend(super::spend::lines::project(
         &s.spend,
-        &p.key,
+        index,
         s.now_ms,
         &s.config_path,
     ));
@@ -1669,20 +1675,10 @@ pub(super) mod tests {
     /// Spend read whole from transcripts: alpha's master and a subagent of
     /// it priced, where `busy`; nothing anywhere, where not.
     fn fine_spend(s: &Snapshot, busy: bool) -> crate::cmd::top::spend::Spend {
-        use crate::cmd::top::spend::{read::Response, sum, Spend};
-        use std::sync::Arc;
-        let root = std::path::Path::new("/h/.claude/projects");
-        let at = |file: &str, cwd: &str, tokens| Response {
-            at_ms: NOW - 3_600_000,
-            model: Arc::from("model-a"),
-            cwd: Some(Arc::from(cwd)),
-            file: Arc::from(root.join(file)),
-            tokens,
-        };
         let responses = if busy {
             vec![
-                at("-repo-a/conv-alpha.jsonl", "/repo/a", [1_000_000, 0, 0, 0]),
-                at(
+                spent("-repo-a/conv-alpha.jsonl", "/repo/a", [1_000_000, 0, 0, 0]),
+                spent(
                     "-repo-a/conv-alpha/subagents/x.jsonl",
                     "/repo/a/wt",
                     [0, 100_000, 0, 0],
@@ -1691,6 +1687,30 @@ pub(super) mod tests {
         } else {
             vec![]
         };
+        spend_of(s, &responses)
+    }
+
+    /// An hour-old response of model-a, written to `file` under the
+    /// transcript root from `cwd`.
+    fn spent(file: &str, cwd: &str, tokens: [u64; 4]) -> crate::cmd::top::spend::read::Response {
+        use std::sync::Arc;
+        crate::cmd::top::spend::read::Response {
+            at_ms: NOW - 3_600_000,
+            model: Arc::from("model-a"),
+            cwd: Some(Arc::from(cwd)),
+            file: Arc::from(std::path::Path::new("/h/.claude/projects").join(file)),
+            tokens,
+        }
+    }
+
+    /// `responses` summed over `s`'s projects at model-a's rate, alpha's
+    /// master conversation `conv-alpha`.
+    fn spend_of(
+        s: &Snapshot,
+        responses: &[crate::cmd::top::spend::read::Response],
+    ) -> crate::cmd::top::spend::Spend {
+        use crate::cmd::top::spend::{sum, Spend};
+        let root = std::path::Path::new("/h/.claude/projects");
         let rates = sum::rates(
             &"[model-a]\ninput = 3\noutput = 15\ncache_write = 3.75\ncache_read = 0.3\n"
                 .parse()
@@ -1719,6 +1739,36 @@ pub(super) mod tests {
                 unkeyed: 0,
             },
         )))
+    }
+
+    /// ISS-1375, whole-set read at 07832d1f4, F3: two rows sharing a display
+    /// key each show their own checkout's spend, in the detail and the table.
+    #[test]
+    fn two_rows_sharing_a_key_each_show_their_own_spend() {
+        let mut s = snap(vec![
+            row("alpha", "aaaaaaaa-1111", "/repo/a"),
+            row("alpha", "bbbbbbbb-2222", "/repo/b"),
+        ]);
+        s.spend = spend_of(
+            &s,
+            &[
+                spent("-repo-a/s.jsonl", "/repo/a", [1_000_000, 0, 0, 0]),
+                spent("-repo-b/s.jsonl", "/repo/b", [2_000_000, 0, 0, 0]),
+            ],
+        );
+        let detail = |i: usize| project_detail(&s, &s.projects[i]).join("\n");
+        assert!(
+            detail(0).contains("$3.00") && !detail(0).contains("$6.00"),
+            "{}",
+            detail(0)
+        );
+        assert!(
+            detail(1).contains("$6.00") && !detail(1).contains("$3.00"),
+            "{}",
+            detail(1)
+        );
+        let cell = |i| crate::cmd::top::spend::lines::cell(&s.spend, Some(i));
+        assert_eq!((cell(0), cell(1)), ("$3.00".into(), "$6.00".into()));
     }
 
     /// Criterion 21, over the whole frame rather than two of its lines: on a

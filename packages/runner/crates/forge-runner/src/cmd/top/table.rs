@@ -155,7 +155,12 @@ impl Cells {
 
 pub fn build(s: &Snapshot, o: &Opts) -> Table {
     let boxed = box_cells(s);
-    let rows: Vec<(Cells, Assessment)> = s.projects.iter().map(|p| project_cells(s, p)).collect();
+    let rows: Vec<(Cells, Assessment)> = s
+        .projects
+        .iter()
+        .enumerate()
+        .map(|(i, p)| project_cells(s, i, p))
+        .collect();
     let w = widths(
         o.cols,
         std::iter::once(&boxed.0).chain(rows.iter().map(|(c, _)| c)),
@@ -337,7 +342,7 @@ pub fn lanes_before<'a>(s: &'a Snapshot, p: &Project) -> Option<(i64, &'a Counts
     Some((*at, c))
 }
 
-fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
+fn project_cells(s: &Snapshot, index: usize, p: &Project) -> (Cells, Assessment) {
     let a = attention::project(s, p);
     let runs = attention::runs_of(s, p);
     let parked = attention::parked_of(s, p);
@@ -389,7 +394,7 @@ fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
         pane: pane.cell().into(),
         runs: runs_cell,
         lanes,
-        spend: spend::lines::cell(&s.spend, Some(&p.key)),
+        spend: spend::lines::cell(&s.spend, Some(index)),
         verdict: a.verdict(idle),
         now,
         change,

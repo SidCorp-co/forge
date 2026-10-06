@@ -52,11 +52,13 @@ pub fn section(spend: &Spend, now_ms: i64, config_path: &str) -> Vec<String> {
     out
 }
 
-/// A project's own spend, for its detail: the section as the frame draws
-/// it, its own rows alone.
-pub fn project(spend: &Spend, key: &str, now_ms: i64, config_path: &str) -> Vec<String> {
+/// The spend of the snapshot's `index`th project, for its detail: the
+/// section as the frame draws it, its own rows alone. Looked up by place,
+/// never by name: two rows can share a display key (whole-set read at
+/// 07832d1f4, F3).
+pub fn project(spend: &Spend, index: usize, now_ms: i64, config_path: &str) -> Vec<String> {
     match spend {
-        Spend::Read(t) => match t.projects.iter().find(|p| p.key == key) {
+        Spend::Read(t) => match t.projects.get(index) {
             None => vec![format!(
                 "SPEND  this project was not bound when the transcripts were summed ← {}",
                 t.root.display()
@@ -193,18 +195,22 @@ fn notes(t: &Totals, config_path: &str) -> Vec<String> {
     out
 }
 
-/// The table's 24-hour cost: `?` where the transcripts were not read, `…`
-/// while the first read is under way, `·` for none, and a trailing `+`
-/// where a model in it has no rate.
-pub fn cell(spend: &Spend, key: Option<&str>) -> String {
+/// The table's 24-hour cost of the snapshot's `index`th project, or the
+/// whole box's: `?` where the transcripts were not all read, `…` while the
+/// first read is under way, `·` for none, and a trailing `+` where a model
+/// in it has no rate. A transcript that could not be read could be any
+/// project's, so it makes every cell `?` rather than a total that leaves it
+/// out (whole-set read at 07832d1f4, F4); the detail says which.
+pub fn cell(spend: &Spend, index: Option<usize>) -> String {
     let t = match spend {
         Spend::Unreadable(_) => return "?".into(),
         Spend::Reading { .. } => return "…".into(),
+        Spend::Read(t) if !t.unreadable.is_empty() => return "?".into(),
         Spend::Read(t) => t,
     };
-    let day = match key {
+    let day = match index {
         None => &t.whole.day,
-        Some(k) => match t.projects.iter().find(|p| p.key == k) {
+        Some(i) => match t.projects.get(i) {
             Some(p) if p.repo.is_some() => &p.total.day,
             _ => return "?".into(),
         },
@@ -313,7 +319,7 @@ mod tests {
     fn the_table_cell_says_unread_reading_none_and_unpriced() {
         use crate::cmd::top::source::Unreadable;
         let unread = Spend::Unreadable(Unreadable::new("/h/.claude/projects", "denied"));
-        assert_eq!(cell(&unread, Some("alpha")), "?");
+        assert_eq!(cell(&unread, Some(0)), "?");
         let reading = Spend::Reading {
             root: "/h/.claude/projects".into(),
             read: 1 << 30,
@@ -326,28 +332,40 @@ mod tests {
             cost: 3.0,
             unpriced: BTreeMap::new(),
         };
-        assert_eq!(
-            cell(&totals(priced.clone(), Some("/r")), Some("alpha")),
-            "$3.00"
-        );
+        assert_eq!(cell(&totals(priced.clone(), Some("/r")), Some(0)), "$3.00");
         let partial = Window {
             unpriced: BTreeMap::from([("model-b".to_string(), 5)]),
             ..priced
         };
         assert_eq!(
-            cell(&totals(partial.clone(), Some("/r")), Some("alpha")),
+            cell(&totals(partial.clone(), Some("/r")), Some(0)),
             "$3.00+"
         );
         assert_eq!(cell(&totals(partial, Some("/r")), None), "$3.00+");
-        assert_eq!(
-            cell(&totals(Window::default(), Some("/r")), Some("alpha")),
-            "·"
-        );
-        assert_eq!(cell(&totals(Window::default(), None), Some("alpha")), "?");
-        assert_eq!(
-            cell(&totals(Window::default(), Some("/r")), Some("beta")),
-            "?"
-        );
+        assert_eq!(cell(&totals(Window::default(), Some("/r")), Some(0)), "·");
+        assert_eq!(cell(&totals(Window::default(), None), Some(0)), "?");
+        assert_eq!(cell(&totals(Window::default(), Some("/r")), Some(1)), "?");
+        // Whole-set read at 07832d1f4, F4: one transcript unread is no
+        // project's "none", and no project's whole amount.
+        use crate::cmd::top::source::Unreadable as U;
+        for day in [Window::default(), priced_window()] {
+            let Spend::Read(mut t) = totals(day, Some("/r")) else {
+                unreachable!()
+            };
+            t.unreadable
+                .push(U::new("/h/.claude/projects/-x/s.jsonl", "denied"));
+            let spend = Spend::Read(t);
+            assert_eq!(cell(&spend, Some(0)), "?");
+            assert_eq!(cell(&spend, None), "?");
+        }
+    }
+
+    fn priced_window() -> Window {
+        Window {
+            tokens: [1_000_000, 0, 0, 0],
+            cost: 3.0,
+            unpriced: BTreeMap::new(),
+        }
     }
 
     /// ISS-1375, criterion 12: until the window is read whole the section

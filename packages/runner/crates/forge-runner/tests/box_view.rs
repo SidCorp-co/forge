@@ -1618,6 +1618,19 @@ impl Pty {
         }
     }
 
+    /// When the first screen after the first `after` whose page row opens
+    /// with `what` was drawn.
+    fn drawn_at(&self, after: usize, what: &str) -> Option<std::time::Instant> {
+        let text = self.text();
+        let stamps = self.cleared.lock().unwrap().clone();
+        text.split("\x1b[H\x1b[2J")
+            .skip(1)
+            .enumerate()
+            .skip(after)
+            .find(|(_, screen)| screen.split("\r\n").any(|r| r.starts_with(what)))
+            .and_then(|(k, _)| stamps.get(k).copied())
+    }
+
     fn type_keys(&mut self, keys: &str) {
         self.keyboard.write_all(keys.as_bytes()).unwrap();
         self.keyboard.flush().unwrap();
@@ -2009,14 +2022,19 @@ fn n_just_before_a_redraw_is_not_turned_by_it() {
             .all(|r| r.starts_with(&format!("page 3 of {pages} "))),
         "the redraw due when n was pressed turned its page: {since:?}"
     );
+    let next = format!("page 4 of {pages} ");
     assert!(
-        pty.draws_page(
-            at,
-            &format!("page 4 of {pages} "),
-            std::time::Duration::from_secs(6)
-        ),
+        pty.draws_page(at, &next, std::time::Duration::from_secs(6)),
         "the page never turned again: {:?}",
         pty.page_rows_after(at)
+    );
+    // Whole-set read at 07832d1f4 (box_view, F1): the page turns no sooner
+    // than a whole interval after the key, give or take a frame's write.
+    let turned = pty.drawn_at(at, &next).expect("its screen was drawn");
+    let held = turned.duration_since(keyed).as_secs_f64();
+    assert!(
+        held >= interval - 0.15,
+        "n's page was turned {held:.2}s after the key"
     );
 }
 

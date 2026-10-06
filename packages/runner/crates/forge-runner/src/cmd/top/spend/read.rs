@@ -127,8 +127,13 @@ impl Reader {
             }
         }
         pass.complete = !stopped;
-        let since = now_ms - WEEK_MS;
-        self.responses.retain(|_, r| r.at_ms >= since);
+        // A response is forgotten only once the transcript it was first read
+        // from has left the window: forgotten by its time, a later line of
+        // it read in a later pass would be counted again as new, at a time
+        // after its own (whole-set read at 07832d1f4, F1). The window itself
+        // is applied when the responses are summed.
+        let kept: HashSet<&Path> = listed.iter().map(|(p, _)| p.as_path()).collect();
+        self.responses.retain(|_, r| kept.contains(&*r.file));
         Ok(pass)
     }
 
@@ -209,7 +214,8 @@ fn consider(
 /// Read `file` from its cursor, a whole line at a time, starting no line once
 /// `left` bytes are read. Returns the bytes read and whether the budget
 /// stopped it. A last line with no newline is still being written, and is
-/// left for a later pass.
+/// left for a later pass; its bytes were read all the same, so they count
+/// toward the budget (whole-set read at 07832d1f4, F2).
 fn read_from(
     file: &mut File,
     responses: &mut HashMap<String, Response>,
@@ -228,7 +234,7 @@ fn read_from(
         line.clear();
         let n = r.read_until(b'\n', &mut line)?;
         if n == 0 || line.last() != Some(&b'\n') {
-            return Ok((read, false));
+            return Ok((read + n as u64, false));
         }
         let at = file.cursor;
         file.cursor += n as u64;
@@ -495,6 +501,54 @@ mod tests {
         let pass = r.pass(dir.path(), NOW + 60_000, None).unwrap();
         assert_eq!(pass.read, two.len() as u64);
         assert_eq!(r.responses().count(), 2);
+    }
+
+    /// Whole-set read at 07832d1f4, F2: a line still being written is read
+    /// and counts toward the budget, so several large unfinished tails stop
+    /// the pass after the first rather than each being read in full.
+    #[test]
+    fn an_unfinished_tail_counts_toward_the_budget() {
+        let dir = Scratch::new("spend-read");
+        let tail = format!("{{\"pad\":\"{}", "x".repeat(5_000));
+        for name in ["a", "b", "c"] {
+            write(dir.path(), &format!("p/{name}.jsonl"), &tail);
+        }
+        let mut r = Reader::default();
+        let pass = r.pass(dir.path(), NOW + 60_000, Some(2_000)).unwrap();
+        assert_eq!(
+            pass.read,
+            tail.len() as u64,
+            "the first tail, and no other: {pass:?}"
+        );
+        assert!(!pass.complete);
+        let ended = line(&at(NOW + 1_000), "/r", ("m1", "q1"), "a", [1, 0, 0, 0]);
+        write(dir.path(), "p/a.jsonl", &ended);
+        let mut r = Reader::default();
+        r.pass(dir.path(), NOW + 60_000, Some(2_000)).unwrap();
+        assert_eq!(r.responses().count(), 1);
+    }
+
+    /// Whole-set read at 07832d1f4, F1: a response whose lines straddle the
+    /// 7-day line, read in two passes, keeps its earliest time, so it stays
+    /// out of the 7-day window as it does when read in one pass.
+    #[test]
+    fn a_response_straddling_the_window_read_in_two_passes_keeps_its_earliest_time() {
+        let dir = Scratch::new("spend-read");
+        let now = NOW + WEEK_MS;
+        let before = line(&at(NOW + 1_000), "/r", ("m1", "q1"), "a", [1, 5, 0, 0]);
+        let after = line(&at(NOW + 120_000), "/r", ("m1", "q1"), "a", [1, 50, 0, 0]);
+        write(dir.path(), "p/s.jsonl", &format!("{before}{after}"));
+        let mut r = Reader::default();
+        let first = r
+            .pass(dir.path(), now + 60_000, Some(before.len() as u64))
+            .unwrap();
+        assert!(!first.complete, "{first:?}");
+        r.pass(dir.path(), now + 60_000, Some(before.len() as u64))
+            .unwrap();
+        let all: Vec<&Response> = r.responses().collect();
+        assert_eq!(all.len(), 1);
+        assert_eq!((all[0].at_ms, all[0].tokens[1]), (NOW + 1_000, 50));
+        assert!(all[0].at_ms < now + 60_000 - WEEK_MS, "outside the window");
     }
 
     /// Criterion 3's places, and criterion 14: a subagent's transcript is
