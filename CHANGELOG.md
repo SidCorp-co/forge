@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A master pass is refused only when nothing ran in it.** A usage limit after work closes it as
+  ran, keeping the ledger's dispatched list. An unprompted pass opens at its prompt; a turn shorter
+  than one tick gets one.
+
 - **An undelivered reply shows a reason, not a driver error.** The window keeps a coded sentence; the
   raw error goes to logs only. A session transcript past 20,000 entries says so and loads the rest.
 

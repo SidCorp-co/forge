@@ -122,6 +122,9 @@ pub struct Activity {
     pub last_event_at: i64,
     /// When the running turn began. `None` once it has ended.
     pub turn_started_at: Option<i64>,
+    /// When the newest prompt was submitted, kept after its turn ends: the one
+    /// start a reader that arrives after a short turn can still date it by.
+    pub prompted_at: Option<i64>,
     pub children: std::collections::BTreeSet<String>,
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
@@ -194,6 +197,7 @@ impl Activities {
             last_event: event,
             last_event_at: at,
             turn_started_at: None,
+            prompted_at: None,
             children: std::collections::BTreeSet::new(),
             conversation: None,
             transcript: None,
@@ -237,6 +241,7 @@ impl Activities {
         match event {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
+                a.prompted_at = Some(at);
                 a.awaiting_permission = false;
                 a.lead_ended = false;
                 a.prompts += 1;
