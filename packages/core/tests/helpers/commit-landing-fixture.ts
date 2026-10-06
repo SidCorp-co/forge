@@ -112,7 +112,12 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
   };
 }
 
-export type Issue = { id: string; projectId: string; mergedAt: Date | null };
+export type Issue = {
+  id: string;
+  projectId: string;
+  mergedAt: Date | null;
+  declaredLandingShape: null;
+};
 type Agency = 'agent' | 'human';
 
 /** One database, user and project per suite, each test starting from an empty one and `repo` as
@@ -198,7 +203,7 @@ export function useCommitLandingWorld() {
         VALUES (${id}, ${projectId}, ${opts.seq ?? SEQ}, 'base-branch landing', ${opts.status ?? 'in_progress'},
                 ${userId}, ${JSON.stringify(opts.sessionContext ?? { worklog: { branch: 'main' } })}::jsonb)
       `);
-      return { id, projectId, mergedAt: null };
+      return { id, projectId, mergedAt: null, declaredLandingShape: null };
     },
 
     /** An implementation handoff recording `commitSha`, the commit a mark naming none falls back to. */

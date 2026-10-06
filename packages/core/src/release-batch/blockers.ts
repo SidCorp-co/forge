@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, projects } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { landingShapeOf, landingShortfall } from '../issues/landing-evidence.js';
+import { landingShortfall, laneOf } from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
@@ -163,7 +163,7 @@ async function rosterBlockers(
     out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded, displayIds }));
   }
   if (door !== 'record') return;
-  // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
+  // Unmerged means what the close would refuse, on each issue's lane: `landing-evidence.ts`.
   // Judged inside the read, so a kind the reader cannot place is this check unevaluated, by name.
   const unmerged = await evaluate(
     'merged',
@@ -174,22 +174,23 @@ async function rosterBlockers(
           mergedAt: issues.mergedAt,
           mergedCommitSha: issues.mergedCommitSha,
           mergedLanding: issues.mergedLanding,
+          declared: issues.declaredLandingShape,
           kind: projects.kind,
         })
         .from(issues)
         .innerJoin(projects, eq(projects.id, issues.projectId))
         .where(inArray(issues.id, issueIds));
       return rows
-        .map((r) => ({ id: r.id, shape: landingShapeOf(r.kind), row: r }))
-        .filter((r) => landingShortfall(r.row, r.shape) !== null);
+        .map((r) => ({ id: r.id, lane: laneOf({ declared: r.declared, kind: r.kind }), row: r }))
+        .filter((r) => landingShortfall(r.row, r.lane) !== null);
     },
     out,
   );
   if (!unmerged) return;
-  if (unmerged.length > 0) {
-    // One roster is one project, so one shape; it chooses which sentence the reader is owed.
-    const shape = unmerged[0]?.shape;
-    const ids = unmerged.map((r) => r.id);
+  // An issue may declare its own lane, so one roster can hold both shapes, and each is owed the
+  // sentence naming its own route: one blocker per shape, in roster order.
+  for (const shape of [...new Set(unmerged.map((r) => r.lane.shape))]) {
+    const ids = unmerged.filter((r) => r.lane.shape === shape).map((r) => r.id);
     const displayIds = await namedAs(ids);
     out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds }));
   }

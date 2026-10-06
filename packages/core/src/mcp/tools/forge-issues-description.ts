@@ -51,23 +51,31 @@ export function forgeIssuesDescription(refClause: string): string {
     'passed and it no longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
-    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
-    'project whose work lands outside git (kind website) the close also needs the mark to name ' +
-    'where it landed, and a bare merged_at is refused the same way.\n' +
-    'MERGE MARK. mark_merged (data.issueId, data.target - required except on a website project - ' +
+    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On an ' +
+    'issue whose landingShape is outside_git the close also needs the mark to name where it ' +
+    'landed, and a bare merged_at is refused the same way.\n' +
+    "LANDING SHAPE. get and every write's answer carry landingShape (git | outside_git), the one " +
+    "field saying where THIS issue's work lands and so what its mark and close accept, and " +
+    "declaredLandingShape, the issue's own declaration, null where its project's kind answers " +
+    '(website = outside_git). update takes data.landingShape - git, outside_git, or null to hand ' +
+    "it back to the project - for a change that lands no file in a git project's repository, " +
+    "such as a deployment's settings and a redeploy; mark it with data.landing then, and that " +
+    'mark is its work evidence for developed and testing. Refused LANDING_SHAPE_MARK_STANDS ' +
+    'while a mark stands, since the mark was judged on the lane it was made under: unmark first.\n' +
+    'MERGE MARK. mark_merged (data.issueId, data.target - required except on an outside_git issue - ' +
     'optional data.commit / data.landing / data.mergedAt ISO / data.note) stamps merged_at. The ' +
     'first mark stands: a landing sent over a standing mark is refused MARK_ALREADY_STANDS naming ' +
     'what stands, and unmark then mark is the correction. data.landing is the live URL, CMS entry or ' +
-    'storefront resource the work now is, required on a website project unless Forge observed a ' +
+    'storefront resource the work now is, required on an outside_git issue unless Forge observed a ' +
     'merged pull request (LANDING_REQUIRED) and refused on any other (LANDING_NOT_THIS_SHAPE); ' +
     'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY from a ' +
-    'record Forge holds itself: a pull request it saw merged, or - for an agent on a git project ' +
+    'record Forge holds itself: a pull request it saw merged, or - for an agent on a git issue ' +
     'whose issue holds no branch, handoff or merged commit, i.e. work landed on the base branch ' +
     "itself - the data.commit it checked against the project's repository: resolved there, " +
     'declaring this issue in its subject, and contained in the base or live branch, else refused ' +
     'COMMIT_NOT_IN_REPOSITORY, COMMIT_NOT_THIS_ISSUE, COMMIT_NOT_LANDED or COMMIT_UNVERIFIED. ' +
     'Anywhere else your commit never reaches the column: it ' +
-    'reaches the audit trail as YOUR CLAIM, and on a git project only once the repository ' +
+    'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
     'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read, ' +
     'in which case mark naming no commit. The answer, and every row this tool returns, ' +

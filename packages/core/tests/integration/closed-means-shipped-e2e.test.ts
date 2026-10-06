@@ -266,7 +266,7 @@ describe('withdrawing the claim from under a closed issue (ISS-1108)', () => {
     // The caller reads the row, and it is closed before the unmark reaches the database. Passing
     // the row it read IS that race: the guard the statement carries is the only thing standing
     // between this call and the trigger's own message, which names a close nobody attempted.
-    const asRead = { id, projectId, mergedAt: new Date() };
+    const asRead = { id, projectId, mergedAt: new Date(), declaredLandingShape: null };
     await harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${id}`);
 
     const err = await applyMergeMarker({ issue: asRead, op: 'unmark', actor }).catch(
@@ -293,7 +293,7 @@ describe('withdrawing the claim from under a closed issue (ISS-1108)', () => {
     const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
 
     const res = await applyMergeMarker({
-      issue: { id, projectId, mergedAt: new Date() },
+      issue: { id, projectId, mergedAt: new Date(), declaredLandingShape: null },
       op: 'unmark',
       actor: {
         agency: 'human' as const,

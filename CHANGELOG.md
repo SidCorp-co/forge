@@ -121,6 +121,10 @@
 
 ### Added
 
+- **An issue can say its work lands outside git, even in a git project.** A change that touches
+  no file, such as a deployment's settings, is marked with where it lands instead of a commit it
+  never made.
+
 - **Finished changes wait as branches and land together on one validation, each its own merge
   commit.** `pnpm verify --entry` runs the checks one change can fail; a window runs the rest once
   and names whose failure it is.

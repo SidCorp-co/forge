@@ -151,7 +151,7 @@ export const issuesApi = {
   /**
    * `POST /api/issues/:id/merge` — claim that this issue's work shipped, for work finished outside
    * the pipeline. `target` is the audit label and is required; `landing` is where the work landed
-   * outside git, which a project whose `landingShape` is `outside_git` must send; `note` is free
+   * outside git, which an issue whose `landingShape` is `outside_git` must send; `note` is free
    * text kept on the audit comment the server writes.
    */
   markMerged: (id: string, body: MarkMergedBody) =>
