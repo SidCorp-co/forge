@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every untriaged feedback item now reaches the project's master.** Low and medium items wake it and join its triage list, most severe first. Where no master is running, an item waits on whoever can triage it.
+
 ## [0.4.0-dev.57] - 2026-10-06
 
 Core integration suites run on dev again; release-hold and session-write races fixed
