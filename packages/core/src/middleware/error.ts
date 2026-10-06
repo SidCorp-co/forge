@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getLogger } from '../logger.js';
@@ -76,7 +77,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
       c.header('WWW-Authenticate', wwwAuthenticate);
     }
 
-    return c.json(body, status);
+    return c.json(redactQueryParams(body, err), status);
   }
 
   const body: ErrorBody = {
@@ -91,7 +92,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
   if (isSentryEnabled()) {
     captureToSentry(err, c, 'INTERNAL_ERROR');
   }
-  return c.json(body, 500);
+  return c.json(redactQueryParams(body, err), 500);
 };
 
 function captureToSentry(

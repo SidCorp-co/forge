@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { emailVerificationTokens, users } from '../db/schema.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 
 export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -9,15 +10,6 @@ const MAX_INSERT_RETRIES = 3;
 
 export function generateToken(): string {
   return randomBytes(32).toString('base64url');
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === '23505'
-  );
 }
 
 export async function issueVerificationToken(userId: string): Promise<string> {

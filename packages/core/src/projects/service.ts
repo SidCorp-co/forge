@@ -21,7 +21,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
-import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 import type { ReleaseChain } from './release-chain.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -124,7 +124,7 @@ export async function createProject(input: NewProject) {
       return project;
     });
   } catch (err) {
-    if (isUniqueViolation(err) && uniqueViolationConstraint(err) === 'projects_slug_unique') {
+    if (isUniqueViolation(err) && pgConstraintName(err) === 'projects_slug_unique') {
       throw new ProjectSlugTakenError();
     }
     throw err;

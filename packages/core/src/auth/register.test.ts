@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -103,9 +104,11 @@ describe('POST /api/auth/register', () => {
     expect(sendVerificationEmail).toHaveBeenCalled();
   });
 
-  it('returns 409 when email already exists (pg unique_violation)', async () => {
+  it('returns 409 when email already exists (pg unique_violation, as drizzle wraps it)', async () => {
     const pgError = Object.assign(new Error('duplicate key'), { code: '23505' });
-    insertReturning.mockRejectedValueOnce(pgError);
+    insertReturning.mockRejectedValueOnce(
+      new DrizzleQueryError('insert into "users" values ($1, $2)', ['dup@b.co', 'hashed'], pgError),
+    );
 
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',

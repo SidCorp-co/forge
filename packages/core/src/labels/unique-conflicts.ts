@@ -1,4 +1,4 @@
-import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 
 const BY_CONSTRAINT: Record<string, { code: string; message: string }> = {
   labels_project_id_name_uq: {
@@ -17,5 +17,5 @@ const BY_CONSTRAINT: Record<string, { code: string; message: string }> = {
 
 export function labelUniqueConflict(err: unknown): { code: string; message: string } | undefined {
   if (!isUniqueViolation(err)) return undefined;
-  return BY_CONSTRAINT[uniqueViolationConstraint(err) ?? ''];
+  return BY_CONSTRAINT[pgConstraintName(err) ?? ''];
 }

@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -88,8 +89,8 @@ import { forgeUploadsTool } from './tools/forge-uploads.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
-function classifyError(err: unknown): { code: AuditResultCode; message: string } {
-  const message = err instanceof Error ? err.message : String(err);
+export function classifyError(err: unknown): { code: AuditResultCode; message: string } {
+  const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
   return { code: 'error', message };

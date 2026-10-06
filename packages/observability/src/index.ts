@@ -1,3 +1,6 @@
+import { redactQueryParams } from './query-params.js';
+
+export { errorsWithin, REDACTED, redactQueryParams } from './query-params.js';
 
 /** Header names whose values must be replaced before send. Compared case-insensitively. */
 export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
@@ -157,12 +160,15 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
 }
 
 /**
- * Scrub a Sentry event in place. Covers request headers, request URL,
- * request body (string-JSON or object), and breadcrumb fetch URLs.
+ * Scrub a Sentry event: request headers, URL, body and breadcrumbs in place, then a failed
+ * query's bound params anywhere in it, the hint's exception naming them (a copy where it changed).
  * Generic over the event shape so this works across @sentry/react,
  * @sentry/node, and @sentry/nextjs.
  */
-export function scrubSentryEvent<E extends SentryLikeEvent>(event: E): E {
+export function scrubSentryEvent<E extends SentryLikeEvent>(
+  event: E,
+  hint?: { originalException?: unknown },
+): E {
   const req = event.request;
   if (req?.headers) scrubHeaders(req.headers);
   if (req?.url) req.url = scrubPatInString(scrubUrl(req.url));
@@ -194,7 +200,7 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(event: E): E {
       }
     }
   }
-  return event;
+  return redactQueryParams(event, hint?.originalException);
 }
 
 interface SentryLikeEvent {

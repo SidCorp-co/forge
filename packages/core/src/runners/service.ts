@@ -8,7 +8,7 @@
 import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runners } from '../db/schema.js';
-import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 
 export type RunnerQuery = {
   visibleProjectIds: string[];
@@ -77,7 +77,7 @@ export class RunnerAlreadyBoundError extends Error {
 const PROJECT_DEVICE_TYPE_UQ = 'runners_project_device_type_uq';
 
 const isBindingCollision = (err: unknown) =>
-  isUniqueViolation(err) && uniqueViolationConstraint(err) === PROJECT_DEVICE_TYPE_UQ;
+  isUniqueViolation(err) && pgConstraintName(err) === PROJECT_DEVICE_TYPE_UQ;
 
 async function insertRunnerRow(input: NewRunner) {
   const [row] = await db
