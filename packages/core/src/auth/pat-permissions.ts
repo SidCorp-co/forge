@@ -215,6 +215,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, PatExclusion>> = Object.fr
   'POST /api/jobs/:id/complete': DEVICE,
   'POST /api/jobs/:id/fail': DEVICE,
   'POST /api/jobs/:id/kill-ack': DEVICE,
+  'POST /api/projects/:projectId/skills/sync': DEVICE,
 });
 
 export type PatPermissionResource = keyof typeof PAT_PERMISSION_RESOURCES;
@@ -315,13 +316,13 @@ function patternMatches(pattern: string, path: string): boolean {
 export function patUngrantableFor(
   path: string,
   method: string,
-): { pattern: string; reason: string; instead: string } | null {
+): { pattern: string; admits: PatExclusionDoor; reason: string; instead: string } | null {
   for (const [pattern, { admits, reason }] of Object.entries(PAT_UNGRANTABLE)) {
     const space = pattern.indexOf(' ');
     const only = space === -1 ? null : pattern.slice(0, space);
     if (only !== null && only !== method.toUpperCase()) continue;
     if (patternMatches(pattern.slice(space + 1), path)) {
-      return { pattern, reason, instead: PAT_EXCLUSION_DOORS[admits].instead };
+      return { pattern, admits, reason, instead: PAT_EXCLUSION_DOORS[admits].instead };
     }
   }
   return null;

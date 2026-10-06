@@ -99,6 +99,7 @@ fn a_master_refused_for_its_path_is_said_on_status_naming_each_binary_and_the_pa
     let detail = Unresolved {
         missing: vec!["forge-runner".into(), "node".into()],
         path: "/usr/local/bin:/usr/bin".into(),
+        claude: Some("/usr/local/bin/claude".into()),
     }
     .to_string();
     unplaced_record::write(

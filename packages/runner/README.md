@@ -208,9 +208,10 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   directory; the image that starts takes it only under its own pid and boot and
   within two minutes, and removes it either way, so a master's declaration is
   answered from the first second rather than from its first sweep.
-- **What it waits on is this process's own work**: chat turns running inside
-  the daemon, and parked chat sessions, which are checkpointed and closed
-  (bounded by their 120s checkpoint budget). Runs in the ledger, bound or not,
+- **What it waits on is this process's own work**: chat turns and messages
+  into master panes running inside the daemon, each named by its session or
+  pane, and parked chat sessions, which are checkpointed and closed once per
+  attempt (bounded by their 120s checkpoint budget). Runs in the ledger, bound or not,
   are not holders: they live in their panes, which the new image adopts, and
   their masters bind, answer for and close them across the handover.
 - **Admission stays open while it waits.** Runs are declared, pool jobs taken,
@@ -218,12 +219,21 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   most 10s per attempt — with a reason that says the box is handing over and
   that nothing was recorded.
 - **It speaks while it waits**: a line at the start and every 10 minutes naming
-  what it waits on. `forge-runner status` says a waiting handover keeps
-  admission open.
-- **It is bounded at 2h.** In-process work that outlasts that defers the
-  handover — admission was never closed, and the give-up line says so — and no
-  handover is attempted again for 2h. The next attempt is the next update check,
-  or the next re-login.
+  each turn it waits on and how long it has run. `forge-runner status` says a
+  waiting handover keeps admission open.
+- **It is bounded at 2h of clock time** from the moment it began. A step under
+  way when the bound passes — a closing window, or the close of parked
+  sessions, followed where it leaves the box idle by the one closing window
+  that would hand over — runs to its end, and the give-up comes at the look
+  after it, so `status` says a waiting handover gives up at its first look
+  past 2h rather than that it waits at most 2h. In-process work that outlasts that defers the
+  handover — admission was never closed, and the give-up line says so and how
+  long it really waited — and no handover is attempted again for 2h. The next
+  attempt is the next update check, or the next re-login.
+- **Nothing is announced before it begins.** The update loop's line says the
+  new release stands on disk and which build this process serves; the
+  re-login line says the token changed. Whether a handover then waits, begins
+  or is refused is said by the handover's own lines.
 - **Masters an update leaves behind are outdated.** A pane loads its hooks,
   skill and plugins once, so the panes the new image adopts still run what they
   were placed under. The daemon records the runner build and the installed

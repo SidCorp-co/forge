@@ -3729,14 +3729,15 @@ mod tests {
             };
             assert!(open_runs() >= 4, "the fleet is busy when the update lands");
 
-            let inflight = Arc::new(AtomicUsize::new(1));
+            let inflight = drain::Turns::new();
             let turn_ended = Arc::new(std::sync::Mutex::new(None::<Instant>));
             {
-                let (inflight, turn_ended) = (inflight.clone(), turn_ended.clone());
+                let turn = inflight.enter("a chat turn in session chat-1");
+                let turn_ended = turn_ended.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(TURN).await;
                     *turn_ended.lock().unwrap() = Some(Instant::now());
-                    inflight.fetch_sub(1, Ordering::AcqRel);
+                    drop(turn);
                 });
             }
             let first = {

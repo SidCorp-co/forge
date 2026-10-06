@@ -3140,6 +3140,10 @@
   it, the commit is looked up first, a short one is recorded in full, and an unreadable repository
   is said rather than trusted (ISS-1350).
 
+- **A runner update that waits says truly how long, and on whom.** Its two-hour limit is clock
+  time, each chat or master-pane message it waits on is named, and it no longer announces a
+  handover that does not begin (ISS-1223).
+
 - **A master pane can no longer stop on a question dialog.** The box refuses it and names how to
   put the question on the issue at each status (ISS-1385).
 
