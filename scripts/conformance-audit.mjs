@@ -25,7 +25,6 @@ import { dirname, join } from 'node:path';
 import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
-import { SIZE_RULES } from './lib/size-budget.mjs';
 import { CHECKS, CI_PARITY } from './lib/verify-checks.mjs';
 
 const die = dieAs('conformance-audit');
@@ -207,10 +206,7 @@ function biomeConfigs(dir = '', depth = 0, acc = []) {
   return acc;
 }
 
-function uncountedWarnRules() {
-  const scopesOf = (key) =>
-    (manifest?.checkers?.[key]?.scopes ?? []).map((s) => s.cwd).filter(Boolean);
-  const size = scopesOf('size-budget');
+function nonBlockingDeclared() {
   const gaps = [];
   for (const cfg of biomeConfigs()) {
     const dir = dirname(cfg) === '.' ? '' : dirname(cfg);
@@ -221,14 +217,12 @@ function uncountedWarnRules() {
       gaps.push(`${cfg} is unreadable`);
       continue;
     }
-    for (const rule of nonBlockingRules(doc)) {
-      if (!(SIZE_RULES.has(rule) && size.includes(dir))) gaps.push(`${dir || '.'} ${rule}`);
-    }
+    for (const rule of nonBlockingRules(doc)) gaps.push(`${dir || '.'} ${rule}`);
   }
   return gaps;
 }
 
-const uncounted = uncountedWarnRules();
+const uncounted = nonBlockingDeclared();
 
 const notBlocking = Object.entries(axes)
   .filter(([, s]) => !(typeof s?.level === 'number' && s.level >= 2))
@@ -356,12 +350,12 @@ const RULES = [
   },
   {
     id: 'R9',
-    text: 'every DECLARED non-blocking lint severity is a length rule counted by the size budget',
+    text: 'no biome config declares a rule at a severity biome exits 0 on',
     pass: uncounted.length === 0,
     detail: uncounted.length
-      ? `uncounted: ${uncounted.join(' · ')}`
-      : 'every declared warn/info/on rule is a length rule frozen by check-size-budget; rules left non-blocking by preset default are not read',
-    why: 'biome exits 0 on a warning and on an info, so such a rule with no baseline counting it is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis. Only the two length rules have a baseline (check-size-budget); every other rule is declared `error` or it fails here. The bound is real: this reads the config, so a package whose biome.json is only `{"recommended": true}` passes it while carrying preset-default warn/info debt',
+      ? `non-blocking: ${uncounted.join(' · ')}`
+      : 'every declared rule is `error`; rules left non-blocking by preset default are not read',
+    why: 'biome exits 0 on a warning and on an info, so such a rule is a signal produced and discarded — packages/core carried 280 of them through a hardened profile with ten gates over it, invisible to all seven rules above because every one judges a DECLARED axis. No rule has a baseline counting it since the size ratchet was retired, so every declared rule is `error` or it fails here. The bound is real: this reads the config, so a package whose biome.json is only `{"recommended": true}` passes it while carrying preset-default warn/info debt',
   },
   {
     id: 'R10',

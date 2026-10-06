@@ -35,9 +35,9 @@ Every gate that drifted did so while documented and non-blocking — biome to 36
 to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.
 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
-a sibling that stopped blocking, which is the whole failure mode here. `form` is gated six times
-(biome for `core`'s rules · biome for `web-v2`'s rules · `check-size-budget` for `web-v2`'s length
-baseline biome cannot hold · a bare `biome check scripts` for the checkers themselves ·
+a sibling that stopped blocking, which is the whole failure mode here. `form` is gated five times
+(biome for `core`'s rules · biome for `web-v2`'s rules, the two length rules among them · a bare
+`biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named and where core may call out · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
 `behaviour` twice (reachability · signal) and `knowledge` five (honest
@@ -53,7 +53,7 @@ passed, because the external record of what shipped belonged to none of them.
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
 | format + lint | `biome check src` — `core` and `web` | whitespace, import order, recommended rules, every one at `error` with nothing frozen | comment content |
-| size | `check-size-budget` — `conformance` | file & function length in `web-v2`, frozen per file and drained on touch (`core` holds both length rules at `error`) | which rules exist — biome declares them |
+| size | `biome check src` — `core` and `web` | file & function length: both packages hold biome's two length rules at `error`, nothing frozen | anything else biome checks — that is the row above |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | lazy init | `check-lazy-module-init` — `conformance` | whether a read of `env` or `db` runs when a core module is merely IMPORTED | what the value is once read, or whether a caller should be reading it at all |
 | provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `sentry`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core imports a vendor SDK `egress.vendorSdks` lists outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and the global `fetch`, which is `check-module-shape`'s |
@@ -79,13 +79,10 @@ simply not printed. Measured 2026-08-31: a planted format error in `packages/cor
 `Found 2 errors.` and **zero** mentions of that file, while the visible diagnostics all pointed at
 a test file that was clean and untouched.
 
-`lib/size-budget.mjs:biomeReport` invokes biome with `--max-diagnostics=5000` for the same reason:
-truncation would silently empty its input.
-
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
-block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
+block · `2` baseline the old, block the new · `3` zero violations. Today: form 3 · knowledge 3 ·
 relations 2 · behaviour 2 · language 3 · record 3. `conformance-status.mjs` prints
 them beside what it measured, so this line is a convenience and that command is the answer.
 
@@ -94,9 +91,7 @@ its debt is frozen and which direction improves it — `baseline: {path, keyBy, 
 `improves` is `down` (a per-key number may only fall), `shrink` (a set may only lose members) or
 `tighten` (a status may only get stricter). The direction lives in the manifest, not in the
 baseline file, because `--update-baseline` rewrites those files and a rule a re-freeze can silently
-drop is not a rule. A baseline whose checker's scopes can grow also names that checker in
-`scopesFrom` (`form` names `size-budget`): a scope the checker did not measure at the base revision
-is that scope's first freeze, not a total that rose (`lib/baseline-ratchet.mjs:ratchetFault`).
+drop is not a rule.
 
 The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
 `baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
@@ -132,17 +127,12 @@ native code, and a listing delegated to a process the test did not start. All th
 
 ### Why size is its own row
 
-biome **declares** the two length rules but cannot gate them where debt exists: it has no baseline,
-so the only choices were `warn` (nothing held) and `error` (every build red). `packages/core` drained
-to zero and holds both at `error`, so biome blocks them there. `packages/web-v2` holds them at `warn`,
-and `check-size-budget.mjs` reads biome's own JSON, freezes today's offenders per file in
-`.forge/size-baseline.json`, and fails on growth. It adds no rule — each package's `biome.json` owns
-the thresholds. Every other biome rule in both packages is `error`, so nothing else needs a baseline.
-
-**The drain.** A frozen `web-v2` file in the branch delta must come back strictly shorter. The scope
-is the branch delta, and on a gated branch the merge-base IS `HEAD`, so a direct push prints
-`drain skipped — no branch delta; freeze-only` and only growth is checked. `--update-baseline`
-cannot pay a drain: it re-measures and writes the same count back.
+biome **declares** the two length rules (a file over 500 lines, a function over 150) but has no
+baseline, so while debt existed the only choices were `warn` (nothing held) and `error` (every build
+red). `packages/core` drained to zero first; `packages/web-v2` held them at `warn` over a frozen
+per-file ratchet until its last offender was split, and now holds them at `error` too. Size is its
+own row because it is the one biome rule this repo ever had to freeze; today it has no checker of
+its own, and a new over-long function fails the package's `lint` like any other rule.
 
 The `web-v2` formatter stays **off** on purpose: enabling it is a 313-file, 22k-line diff that would
 bury every real change under it.
@@ -432,8 +422,8 @@ drift out of the other's sight.
 again at `HEAD` — so a
 baseline file corrected in the working tree is invisible to it, and `pnpm verify` goes on reporting
 the committed number until the fix is committed. The other checkers read the tree, which is why the
-two can disagree inside one run: `check-size-budget` can pass on a file the working tree has already
-brought back under budget while this one still faults on the number `HEAD` holds. Commit the
+two can disagree inside one run: a checker can pass on a file the working tree has already
+brought back under its number while this one still faults on the number `HEAD` holds. Commit the
 baseline, then re-measure.
 
 An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
@@ -501,38 +491,6 @@ newline, paths sorted by code unit and methods in OpenAPI's order. `info.version
 on purpose: `package.json`'s version moves at every release cut, and a contract version is the
 differ's to assign, not the build's.
 
-## check-size-budget.mjs — file and function length
-
-`packages/web-v2/biome.json` owns both length rules, at `warn`; this owns only the baseline biome
-lacks. `packages/core` holds them at `error`, so it is not a scope. The files frozen in
-`.forge/size-baseline.json` may stay over budget, they may not get worse. Frozen per file (its
-length and its longest function), so a reflow or a moved function is not a violation.
-
-**A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
-already at its number trips this, and re-freezing above it is then refused by `conformance-status`:
-the form axis declares `improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs`
-faults on ANY per-key rise and on any per-area total rise, except the total of a scope
-`size-budget` did not measure at the base revision, which is that scope's first freeze. The way through is to make the file come
-in under the number it already holds. `--update-baseline` is for a baseline moving DOWN, which is
-the only direction the manifest allows.
-
-**Drain.** A scope that declares `drain` (`lib/size-budget.mjs:drainFaults`) also refuses a frozen
-file in the branch delta that does not come back strictly shorter, its file and longest-function
-counts summed. Equal fails, a new file must be under budget, and a rename carries its count through
-unpaid — the baseline is path-keyed, so charging a move would fire on every rename. Drain needs a
-branch delta: on a push straight to a gated branch the merge-base *is* HEAD, so it is skipped,
-freeze still runs, and the skip is **printed**.
-
-```json
-{ "cwd": "packages/<pkg>", "args": ["check", "src"],
-  "drain": { "include": "^packages/<pkg>/src/", "exclude": "\\.test\\.tsx?$" } }
-```
-
-Exit `0` clean · `1` a file grew, landed over budget, or skipped its payment · `2` could not run:
-biome scanned zero files, or the baseline records a kind of violation this run found none of (the
-rule stopped firing, or it was cleaned up and wants a re-freeze). Modes: `--all` (CI, in the
-always-on `conformance` job) · `--staged` (freeze-only; no hook runs it today) · `--update-baseline`.
-
 ### Adding a check
 
 Append to `CHECKS` with a `scanned` regex matching that checker's own success line. Without one the
@@ -547,7 +505,7 @@ is frozen at level 2 that same day — never merged at level 1 behind a comment 
 `continue-on-error: true` is the same shape written in YAML.
 
 **R8** fails on a CI step that cannot fail. **R9** fails on a biome rule left at a severity biome
-exits 0 on, unless it is a length rule a `check-size-budget` scope counts. **R10** fails on an axis that does not declare a
+exits 0 on, with no exception: nothing counts such a rule since the size ratchet was retired. **R10** fails on an axis that does not declare a
 numeric level of at least 2 — including by omitting the key or quoting the digit. None of the three
 is a number to read; each is a build that goes red.
 
@@ -1013,25 +971,24 @@ Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the othe
 baselines.
 
 The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
-`lib/debt-ratchet.mjs`, shared with the size budget; what lives in this script is the
+`lib/debt-ratchet.mjs`; what lives in this script is the
 analyzer — which files to read and what to count in them. Thresholds and regexes are
 `checkers.test-signal` in `.forge/conformance.json`, and deleting that block degrades to the
 built-in defaults rather than to an empty scope.
 
-## lib/debt-ratchet.mjs — the ratchet the baselined checkers share
+## lib/debt-ratchet.mjs — the per-file ratchet
 
-`check-test-signal` and `check-size-budget` both freeze `{path: {metric: n}}` and fail when a metric
-rises, and each carried its own copy of that until ISS-848. The copies did not agree, which is the
+`check-test-signal` freezes `{path: {metric: n}}` and fails when a metric rises. It and the retired
+size budget each carried their own copy of that until ISS-848. The copies did not agree, which is the
 point: `check-test-signal` fell back to
 built-in defaults on an absent registry and read a failed `git diff --cached` as an empty stage —
 a hook reporting clean because git broke.
 
-What is shared is `freezeFaults` (a metric absent from the baseline reads as 0, so a new offender
+What it holds is `freezeFaults` (a metric absent from the baseline reads as 0, so a new offender
 fails), `readManifest` / `scopeConfig` / `tunedConfig`, `loadBaseline` / `writeBaseline`
 (`null` for unreadable, `{}` for absent — a caller must be able to refuse rather than report
-clean), `parseMode`, `stagedFiles` and `sortDeep`. What is not shared is the analyzer: biome for
-the size budget, regex scoring for test-signal, and `drain` stays in `lib/size-budget.mjs` because
-only a biome scope declares one.
+clean), `parseMode`, `stagedFiles` and `sortDeep`. What stays in the checker is the analyzer:
+regex scoring for test-signal.
 
 `scopeConfig` refuses an absent manifest and `tunedConfig` degrades to defaults, which is not an
 inconsistency: a scope list has no meaningful default, so inventing one measures directories the
