@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.47] - 2026-10-06
+
+Approved-only contract pins, instant claim visibility, and 36 wrappers inlined
+
+
 ### Fixed
 
 - **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
