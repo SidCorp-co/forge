@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
+  version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
+  reference resolves to the shipped run.
+
 ## [0.4.0-dev.41] - 2026-10-06
 
 Outbox admits every event type; refusals name their code to every forge client
@@ -21,9 +27,6 @@ Outbox admits every event type; refusals name their code to every forge client
 - **Every refusal names its code where any forge client reads it.** One problem body carries
   `code` and `message` at the top level and under `error`, at every door; a master pane's
   `forge-runner api` sends its project's checkout credential.
-- **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
-  version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
-  reference resolves to the shipped run.
 
 ## [0.4.0-dev.40] - 2026-10-06
 
