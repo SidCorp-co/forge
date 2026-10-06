@@ -157,22 +157,25 @@ The steps by hand, when you want them one at a time:
 
 ## What provisioning writes into a checkout
 
-Provisioning writes `.forge/orientation.md`, which names one Forge instance (its project id and slug).
-It also makes sure a `@.forge/orientation.md` import reaches Claude Code. Nothing it writes can be
-committed by accident (`crates/runner-workspace/src/orientation.rs`):
+Provisioning writes the checkout's Forge orientation, which names one Forge instance (its project id
+and slug), and changes no tracked file (`crates/runner-workspace/src/orientation.rs`):
 
-- **An untracked orientation** is written, and `/.forge/orientation.md` is added to the checkout's
-  `.git/info/exclude`.
-- **A committed orientation with other bytes** is marked `skip-worktree` in this checkout's index and
-  then overwritten with this instance's copy. This is the case of a repository worked from two Forge
-  instances, such as forge-core on dev and on prod. `git status` and `git add -A` do not see the
-  file, and a workspace refresh keeps the mark. `git ls-files -v .forge/orientation.md` shows it as
-  `S`. **To commit an edit to the file**, first run
-  `git update-index --no-skip-worktree .forge/orientation.md`.
-- **The import** is added nowhere if `CLAUDE.md` or `CLAUDE.local.md` already imports the
-  orientation. Otherwise it goes into an excluded `CLAUDE.local.md`. A committed `CLAUDE.md` is never
-  edited. A committed `CLAUDE.local.md` without the import is refused
-  `PROVISION_WOULD_REWRITE_TRACKED`, because it is not Forge's file to change.
+- **The orientation** is written inline, in a Forge block, at the top of the main checkout's
+  `CLAUDE.local.md`, which `.git/info/exclude` covers. Claude Code reads it in the checkout and in
+  every worktree under `.claude/worktrees/`, which reads `CLAUDE.local.md` from the directories above.
+  Anything a person wrote in the file stays below the block.
+- **A committed `.forge/orientation.md`** is the repository's own and is left as committed, so pull,
+  merge, rebase and checkout move it. `claudeMdExcludes` in the main checkout's
+  `.claude/settings.local.json` keeps it, and every worktree's copy, from loading beside this
+  instance's. This is the case of a repository worked from two Forge instances, such as forge-core on
+  dev and on prod. A committed orientation this instance would write byte for byte, imported by the
+  committed `CLAUDE.md`, gets nothing added.
+- **A checkout an older runner held under `skip-worktree`** is converted by the next provision or
+  workspace refresh: the mark is lifted and the committed file restored. An untracked
+  `.forge/orientation.md` an older runner generated is removed.
+- A committed `CLAUDE.local.md` or `.claude/settings.local.json` is refused
+  `PROVISION_WOULD_REWRITE_TRACKED`, and local settings that are not a JSON object
+  `PROVISION_ORIENTATION_NOT_EXCLUDED`. Neither file is written then.
 
 ## Multiple instances on one machine (ISS-467)
 

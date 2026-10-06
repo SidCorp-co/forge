@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A dev checkout's orientation reaches its worktrees and never blocks a pull.** It is written into
+  the excluded `CLAUDE.local.md`, the committed orientation is excluded from loading, and an older
+  runner's skip-worktree mark is lifted.
+
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
   version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
   reference resolves to the shipped run.

@@ -72,8 +72,9 @@ async fn foreign_dirty_paths(repo: &Path) -> Vec<String> {
 /// What the working tree holds at one Forge-owned path.
 enum Change {
     Clean,
-    /// Only what an older runner wrote there: reverting it loses nothing of anyone's.
-    Forges,
+    /// Only what an older runner wrote there, which it holds: reverting it
+    /// loses nothing of anyone's.
+    Forges(String),
     /// Somebody's own change, or one this cannot tell from it; why, for the log.
     Kept(String),
 }
@@ -111,7 +112,7 @@ async fn forge_own_change(repo: &Path, path: &str) -> Change {
         _ => false,
     };
     if forges {
-        Change::Forges
+        Change::Forges(work)
     } else {
         Change::Kept(match path {
             "CLAUDE.md" => "it differs from HEAD by more than the forge:orientation block an older runner prepended".into(),
@@ -122,33 +123,48 @@ async fn forge_own_change(repo: &Path, path: &str) -> Change {
     }
 }
 
-/// A committed orientation this checkout holds under skip-worktree, put back to
-/// the committed bytes so the fast-forward does not refuse over it; answers
-/// this instance's copy, to hold again after.
-async fn release_held_orientation(repo: &Path) -> Option<String> {
-    use crate::orientation::{mark_skip_worktree, skip_worktree, ORIENTATION};
-    if !skip_worktree(repo, ORIENTATION) {
-        return None;
+/// What reverting an older runner's orientation, or its import, took away:
+/// this instance's orientation, to write back where it now lives.
+fn orientation_reverted(path: &str, work: String, repo: &Path) -> Option<String> {
+    match path {
+        crate::orientation::ORIENTATION => Some(work),
+        "CLAUDE.md" => crate::orientation::untracked_generated(repo),
+        _ => None,
     }
-    let held = std::fs::read_to_string(repo.join(ORIENTATION)).ok()?;
-    if let Err(e) = mark_skip_worktree(repo, ORIENTATION, false) {
-        tracing::warn!(
-            "[refresh] {}: {ORIENTATION} stays under skip-worktree, so the fast-forward may refuse over it: {e}",
-            repo.display()
-        );
-        return None;
-    }
-    let _ = git(repo, &["checkout", "--", ORIENTATION]).await;
-    Some(held)
 }
 
-/// Hold this instance's orientation again, mark and bytes, after the fast-forward.
-fn rehold_orientation(repo: &Path, body: &str) {
-    if let Err(e) = crate::orientation::hold_orientation(repo, body) {
-        tracing::warn!(
-            "[refresh] {}: this instance's orientation was not held again after the fast-forward: {e}",
-            repo.display()
-        );
+/// Put back what older runners wrote over Forge-owned paths (a skip-worktree
+/// mark included) so the fast-forward does not refuse over it, and write this
+/// instance's orientation back where it now lives.
+async fn revert_forge_changes(repo_path: &Path) {
+    let mut ours = match crate::orientation::lift_skip_worktree(repo_path) {
+        Ok(held) => held.filter(|b| crate::orientation::is_generated(b)),
+        Err(e) => {
+            tracing::warn!("[refresh] {}: {e}", repo_path.display());
+            None
+        }
+    };
+    for path in FORGE_OWNED_PATHS {
+        match forge_own_change(repo_path, path).await {
+            Change::Clean => {}
+            Change::Forges(work) => {
+                ours = ours.or_else(|| orientation_reverted(path, work, repo_path));
+                let _ = git(repo_path, &["checkout", "--", path]).await;
+            }
+            Change::Kept(why) => tracing::warn!(
+                "[refresh] {}: kept {path} as it stands, not reverted: {why}",
+                repo_path.display()
+            ),
+        }
+    }
+
+    if let Some(body) = ours {
+        if let Err(e) = crate::orientation::hold(repo_path, &body) {
+            tracing::warn!(
+                "[refresh] {}: this instance's orientation was not written back after reverting an older runner's: {e}",
+                repo_path.display()
+            );
+        }
     }
 }
 
@@ -233,19 +249,7 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
         ));
         return state;
     }
-    let held = release_held_orientation(repo_path).await;
-    for path in FORGE_OWNED_PATHS {
-        match forge_own_change(repo_path, path).await {
-            Change::Clean => {}
-            Change::Forges => {
-                let _ = git(repo_path, &["checkout", "--", path]).await;
-            }
-            Change::Kept(why) => tracing::warn!(
-                "[refresh] {}: kept {path} as it stands, not reverted: {why}",
-                repo_path.display()
-            ),
-        }
-    }
+    revert_forge_changes(repo_path).await;
 
     match git(
         repo_path,
@@ -263,9 +267,6 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
         None => {
             state.detail = Some("fast-forward could not run".into());
         }
-    }
-    if let Some(body) = held {
-        rehold_orientation(repo_path, &body);
     }
     state
 }
@@ -410,32 +411,87 @@ mod tests {
         );
     }
 
+    fn loads_only(repo: &Path, ours: &str, theirs: &str) {
+        let seen = crate::orientation::claude_load::loaded(repo, repo);
+        assert!(
+            seen.contains(ours),
+            "this instance's orientation does not load:\n{seen}"
+        );
+        assert!(
+            !seen.contains(theirs),
+            "the other instance's orientation loads:\n{seen}"
+        );
+    }
+
     #[tokio::test]
-    async fn an_orientation_held_under_skip_worktree_keeps_its_mark_and_its_bytes_across_a_refresh()
+    async fn an_older_runners_orientation_over_the_committed_one_is_reverted_and_this_instances_written_back(
+    ) {
+        let committed = crate::orientation::orientation_body("prod-project", "forge");
+        let repo = checkout_with(&[
+            (".forge/orientation.md", &committed),
+            ("CLAUDE.md", "@.forge/orientation.md\n"),
+        ]);
+        std::fs::write(
+            repo.join(".forge/orientation.md"),
+            crate::orientation::orientation_body("dev-project", "forge"),
+        )
+        .unwrap();
+        let state = refresh(&repo, Some("dev")).await;
+        assert!(state.refreshed, "{state:?}");
+        assert_eq!(read(&repo, ".forge/orientation.md"), committed);
+        loads_only(&repo, "dev-project", "prod-project");
+        assert_eq!(run(&repo, &["status", "--porcelain"]), "");
+    }
+
+    #[tokio::test]
+    async fn an_older_runners_import_block_is_reverted_and_this_instances_orientation_written_back()
+    {
+        let claude = "# Catalog API\n";
+        let repo = checkout_with(&[("CLAUDE.md", claude)]);
+        std::fs::write(repo.join("CLAUDE.md"), format!("{OLD_BLOCK}\n{claude}")).unwrap();
+        std::fs::create_dir_all(repo.join(".forge")).unwrap();
+        std::fs::write(
+            repo.join(".forge/orientation.md"),
+            crate::orientation::orientation_body("dev-project", "catalog"),
+        )
+        .unwrap();
+        std::fs::write(repo.join(".git/info/exclude"), "/.forge/orientation.md\n").unwrap();
+        let state = refresh(&repo, Some("dev")).await;
+        assert!(state.refreshed, "{state:?}");
+        assert_eq!(read(&repo, "CLAUDE.md"), claude);
+        loads_only(&repo, "dev-project", "prod-project");
+        assert_eq!(run(&repo, &["status", "--porcelain"]), "");
+    }
+
+    #[tokio::test]
+    async fn an_orientation_an_older_runner_held_under_skip_worktree_is_converted_across_a_refresh()
     {
         let prod = crate::orientation::orientation_body("prod-project", "forge");
         let ours = crate::orientation::orientation_body("dev-project", "forge");
-        let repo = checkout_with(&[(".forge/orientation.md", &prod)]);
+        let repo = checkout_with(&[
+            (".forge/orientation.md", &prod),
+            ("CLAUDE.md", "@.forge/orientation.md\n"),
+        ]);
         run(
             &repo,
             &["update-index", "--skip-worktree", ".forge/orientation.md"],
         );
         std::fs::write(repo.join(".forge/orientation.md"), &ours).unwrap();
-        // upstream moves the committed orientation too: the fast-forward must still land
         let seed = repo.parent().unwrap().join("seed");
-        std::fs::write(
-            seed.join(".forge/orientation.md"),
-            crate::orientation::orientation_body("prod-project-2", "forge"),
-        )
-        .unwrap();
+        let moved = crate::orientation::orientation_body("prod-project-2", "forge");
+        std::fs::write(seed.join(".forge/orientation.md"), &moved).unwrap();
         run(&seed, &["commit", "-q", "-am", "three"]);
         let bare = repo.parent().unwrap().join("origin.git");
         run(&seed, &["push", "-q", bare.to_str().unwrap(), "dev"]);
 
         let state = refresh(&repo, Some("dev")).await;
         assert!(state.refreshed, "{state:?}");
-        assert_eq!(read(&repo, ".forge/orientation.md"), ours);
-        assert!(run(&repo, &["ls-files", "-v", ".forge/orientation.md"]).starts_with("S "));
+        assert!(
+            run(&repo, &["ls-files", "-v", ".forge/orientation.md"]).starts_with("H "),
+            "the skip-worktree mark is lifted"
+        );
+        assert_eq!(read(&repo, ".forge/orientation.md"), moved);
+        loads_only(&repo, "dev-project", "prod-project");
         assert_eq!(run(&repo, &["status", "--porcelain"]), "");
     }
 
