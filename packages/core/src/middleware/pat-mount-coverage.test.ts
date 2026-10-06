@@ -8,26 +8,39 @@
  *
  * Being under a menu prefix is not the same as being grantable: a route there
  * behind a JWT-only or device-only gate lists a permission no token can use.
- * So each is sent a `*` token, with the real `beginPatRequest` letting it on:
- * a guard mounted ahead of the route must not answer for the route's own.
+ * So each is sent a `*` token, with the real `beginPatRequest` admitting it,
+ * and has to get through every handler ahead of its own to its own handler.
  *
- * A route that never reaches that door, or answers 401 past it, is named; a
- * 403 past it is the route deciding about a caller it authenticated.
+ * Only what a gate reads is stood in for: the token row, the email check, the
+ * admin list and the request body's validator pass; every database read
+ * answers 418. A guard mounted ahead of the route cannot answer for it.
  */
 import { readFileSync } from 'node:fs';
-import type { Hono, MiddlewareHandler } from 'hono';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Device } from '../db/schema.js';
 import type { PatPrincipal } from './require-pat.js';
 
-const { PAST_THE_GATES, ZERO, TOKEN, DEVICE_TOKEN, door } = vi.hoisted(() => ({
-  PAST_THE_GATES: 418 as const,
-  ZERO: '00000000-0000-4000-8000-000000000000',
-  TOKEN: `forge_pat_dev_${'a'.repeat(64)}`,
-  DEVICE_TOKEN: `forge_pat_dev_${'d'.repeat(64)}`,
-  door: { reached: 0 },
-}));
+const { PAST_THE_GATES, ZERO, TOKEN, DEVICE_TOKEN, probe } = vi.hoisted(() => {
+  const state = { reached: 0, deepest: -1, chain: [] as { method: string; path: string }[] };
+  return {
+    PAST_THE_GATES: 418 as const,
+    ZERO: '00000000-0000-4000-8000-000000000000',
+    TOKEN: `forge_pat_dev_${'a'.repeat(64)}`,
+    DEVICE_TOKEN: `forge_pat_dev_${'d'.repeat(64)}`,
+    probe: {
+      state,
+      /** Which handler of the matched chain answered, read once the chain has unwound. */
+      recordChain: (): MiddlewareHandler => async (c, next) => {
+        await next();
+        const { matchedRoutes } = await import('hono/route');
+        state.deepest = c.req.routeIndex;
+        state.chain = matchedRoutes(c).map((m) => ({ method: m.method, path: m.path }));
+      },
+    },
+  };
+});
 
 /** Every read answers {@link PAST_THE_GATES}: a request that reads state got past every gate. */
 function unreachableDatabase(): unknown {
@@ -41,6 +54,10 @@ function unreachableDatabase(): unknown {
     get: (_target, prop) => (prop === 'then' ? undefined : unreachableDatabase()),
     apply: read,
   });
+}
+
+function passThrough(): MiddlewareHandler {
+  return async (_c, next) => next();
 }
 
 vi.mock('../db/client.js', async (importOriginal) => ({
@@ -57,7 +74,7 @@ vi.mock('./require-pat.js', async (importOriginal) => {
       _level: unknown,
       onVerified?: () => void,
     ): Promise<PatPrincipal | null> => {
-      door.reached += 1;
+      probe.state.reached += 1;
       if (token !== TOKEN && token !== DEVICE_TOKEN) return null;
       onVerified?.();
       return {
@@ -78,7 +95,16 @@ vi.mock('./require-pat.js', async (importOriginal) => {
 });
 vi.mock('./auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./auth.js')>()),
-  assertEmailVerified: (): MiddlewareHandler => async (_c, next) => next(),
+  assertEmailVerified: passThrough,
+}));
+vi.mock('./require-admin.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./require-admin.js')>()),
+  requireAdmin: passThrough,
+}));
+vi.mock('@hono/zod-validator', () => ({ zValidator: passThrough }));
+vi.mock('./logger.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./logger.js')>()),
+  requestLogger: probe.recordChain,
 }));
 vi.mock('../auth/device-credential.js', () => ({
   verifyDeviceCredential: async (token: unknown) =>
@@ -128,9 +154,11 @@ function concrete(path: string): string {
   return path.replace(/:[A-Za-z0-9_]+(\{[^}]*\})?\??/g, ZERO).replace(/\*/g, 'x');
 }
 
-async function send(r: Route, token: string | null) {
-  door.reached = 0;
-  const res = await app.request(concrete(r.path), {
+async function send(on: Hono, r: Route, token: string | null) {
+  probe.state.reached = 0;
+  probe.state.deepest = -1;
+  probe.state.chain = [];
+  const res = await on.request(concrete(r.path), {
     method: r.method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -138,7 +166,7 @@ async function send(r: Route, token: string | null) {
     },
     ...(r.method === 'GET' || r.method === 'HEAD' ? {} : { body: '{}' }),
   });
-  return { status: res.status, reached: door.reached, body: (await res.text()).slice(0, 160) };
+  return { status: res.status, body: (await res.text()).slice(0, 160) };
 }
 
 const REFUSED = [401, 403];
@@ -146,9 +174,29 @@ const REFUSED = [401, 403];
 /** A gate that does not recognise a credential answers 401; a 403 is a decision about one it did. */
 const UNRECOGNISED = 401;
 
+/**
+ * Why a `*` token does not get through to this route's own handler, or null
+ * where it does. A 403 there is the route deciding about a caller it
+ * authenticated, which is not this test's question.
+ */
+async function shutTo(on: Hono, r: Route): Promise<string | null> {
+  const res = await send(on, r, TOKEN);
+  const { reached, deepest, chain } = probe.state;
+  let own = -1;
+  chain.forEach((step, i) => {
+    if (step.method === r.method && step.path === r.path) own = i;
+  });
+  const answered = `answered ${res.status} ${res.body}`;
+  if (reached === 0) return `${answered} without reaching the PAT door`;
+  if (own === -1 || deepest < own) {
+    const at = chain[deepest];
+    return `${answered} at ${at?.method} ${at?.path}, ahead of its own handler`;
+  }
+  return res.status === UNRECOGNISED ? `${answered} past the PAT door` : null;
+}
+
 function doorOf(r: Route) {
-  const hit = patUngrantableFor(r.path, r.method);
-  return hit ? PAT_UNGRANTABLE[hit.pattern]?.admits : undefined;
+  return patUngrantableFor(r.path, r.method)?.admits;
 }
 
 beforeAll(async () => {
@@ -230,33 +278,65 @@ describe('no router guards the routes mounted after it', () => {
   });
 });
 
+describe('the probe names a route a token cannot get through to', () => {
+  async function planted() {
+    const { Hono } = await import('hono');
+    const { authUserRow, requireAuth } = await import('./auth.js');
+    const { requireDevice } = await import('./require-device.js');
+    const jwtOnly = (c: Context) =>
+      (c.req.header('Authorization') ?? '').startsWith('Bearer eyJ')
+        ? c.json({})
+        : c.json({ error: 'jwt only' }, 401);
+    const readsState: MiddlewareHandler = async (c, next) => {
+      await authUserRow(c, ZERO);
+      await next();
+    };
+    const on = new Hono();
+    on.use('*', probe.recordChain());
+    on.get('/api/runners/jwt-only', jwtOnly);
+    on.use('/api/runners/*', requireAuth());
+    on.get('/api/runners/behind-a-guard', jwtOnly);
+    on.get('/api/runners/after-a-read', requireAuth(), readsState, requireDevice(), (c) =>
+      c.json({}),
+    );
+    on.get('/api/runners/fine', requireAuth(), (c) => c.json({}));
+    return on;
+  }
+
+  it.each([
+    ['/api/runners/jwt-only', 'without reaching the PAT door'],
+    ['/api/runners/behind-a-guard', 'past the PAT door'],
+    ['/api/runners/after-a-read', 'ahead of its own handler'],
+  ])('%s', async (path, why) => {
+    expect(await shutTo(await planted(), { method: 'GET', path })).toContain(why);
+  });
+
+  it('passes a route whose own gate admits the token', async () => {
+    expect(await shutTo(await planted(), { method: 'GET', path: '/api/runners/fine' })).toBeNull();
+  });
+});
+
 describe('every door a route declares admits what it names', () => {
   it('lists as public only live routes that answer with no credential', async () => {
     for (const entry of PUBLIC_UNDER_MENU) {
       const [method = '', path = ''] = entry.split(' ');
       expect(routes, entry).toContainEqual({ method, path });
-      const res = await send({ method, path }, null);
+      const res = await send(app, { method, path }, null);
       expect(REFUSED, `${entry} answered ${res.status} ${res.body}`).not.toContain(res.status);
     }
   });
 
-  it('reaches the PAT door and then the route from every route under a menu prefix', async () => {
+  it('gets a token through to the handler of every route under a menu prefix', async () => {
     const shut: string[] = [];
     for (const r of routes) {
       if (patUngrantableFor(r.path, r.method) || !patPrefixForPath(r.path)) continue;
       if (PUBLIC_UNDER_MENU.includes(`${r.method} ${r.path}`)) continue;
-      const res = await send(r, TOKEN);
-      if (res.reached > 0 && res.status !== UNRECOGNISED) continue;
-      const where = res.reached > 0 ? 'past the PAT door' : 'without reaching the PAT door';
-      shut.push(
-        `${r.method} ${r.path} answered ${res.status} ${where}: ${res.body}, ` +
-          `mounted at ${mountOf(r.path)}`,
-      );
+      const why = await shutTo(app, r);
+      if (why) shut.push(`${r.method} ${r.path} ${why}, mounted at ${mountOf(r.path)}`);
     }
     expect(
       shut,
-      'these routes sit under a menu prefix and a token either never reaches beginPatRequest ' +
-        'there or is not recognised past it — ' +
+      'these routes sit under a menu prefix and a token does not get through to them — ' +
         'give them a PAT-capable gate, or name them in PAT_UNGRANTABLE',
     ).toEqual([]);
   }, 120_000);
@@ -265,7 +345,7 @@ describe('every door a route declares admits what it names', () => {
     const shut: string[] = [];
     for (const r of routes) {
       if (doorOf(r) !== 'public') continue;
-      const res = await send(r, null);
+      const res = await send(app, r, null);
       if (!REFUSED.includes(res.status)) continue;
       shut.push(`${r.method} ${r.path} answered ${res.status}: ${res.body}`);
     }
@@ -280,7 +360,7 @@ describe('every door a route declares admits what it names', () => {
     const shut: string[] = [];
     for (const r of routes) {
       if (doorOf(r) !== 'device') continue;
-      const res = await send(r, DEVICE_TOKEN);
+      const res = await send(app, r, DEVICE_TOKEN);
       if (!REFUSED.includes(res.status)) continue;
       shut.push(`${r.method} ${r.path} answered ${res.status}: ${res.body}`);
     }
