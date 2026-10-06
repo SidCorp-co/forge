@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A consumer adopts an additive contract version in one act.** `POST /api/projects/:id/interface/adopt`
+  moves its interface and every link to the version, refusing by name a breaking or unmeasured
+  step or a missing field, and names requirements left to re-pin.
+
 ### Fixed
 
 - **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler

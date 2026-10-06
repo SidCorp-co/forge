@@ -62,6 +62,9 @@ export function change(c: MeasuredChange): MeasuredChange {
   };
 }
 
+/** The check on the one change that stands for the ones the 500-change list could not hold. */
+export const TRUNCATED_CHECK = 'changes-truncated';
+
 // the schema holds 500 changes; the classification is taken over all of them first, and the cut keeps breaking before warning before info and says how many it dropped
 export function measured(
   tool: DiffTool,
@@ -80,7 +83,7 @@ export function measured(
             kind: 'changed',
             level: sorted[MAX_CHANGES - 1]?.level ?? 'info',
             text: `${sorted.length - (MAX_CHANGES - 1)} further change(s) measured and not listed; the list holds ${MAX_CHANGES}.`,
-            check: 'changes-truncated',
+            check: TRUNCATED_CHECK,
           }),
         ];
   return { tool, toolVersion, classification, changes: changes.map(change) };

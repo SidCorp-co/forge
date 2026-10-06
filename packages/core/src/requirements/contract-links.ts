@@ -4,15 +4,17 @@
  * agree or re-pin pins whichever version is current then (step `pins`).
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { requirementContracts } from '../db/schema-requirements.js';
+import { requirementContracts, requirements } from '../db/schema-requirements.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
-import { linkedContracts } from './baselines.js';
+import { linkedContracts, linkedContractsOf } from './baselines.js';
 import { type RequirementActor, rowIn } from './read.js';
-import { contractLinkRefusal } from './rules.js';
+import { contractLinkRefusal, staleContractPinsOf } from './rules.js';
+import { latestContractPinsOf } from './standing-facts.js';
 import { answer, type RequirementOutcome } from './write-tx.js';
 
 /** The contracts a project's interface publishes and consumes, as `<project>/<contract>` refs; null when it holds none. */
@@ -89,4 +91,51 @@ export async function unlinkContract(input: {
       ),
     );
   return answer(projectId, row.id, actor, null);
+}
+
+/** An agreed requirement whose latest baseline pins a contract at a version other than its current one. */
+export interface StaleContractPin {
+  requirement: string;
+  id: string;
+  contract: string;
+  pinned: string | null;
+  current: string;
+}
+
+/**
+ * The agreed requirements of `projectId` built on one contract whose latest baseline does not pin its
+ * current version: each owes a re-pin, which is a baseline and so a requirements.approve act.
+ */
+export async function staleOnContract(input: {
+  projectId: string;
+  providerProjectId: string;
+  contractSlug: string;
+}): Promise<StaleContractPin[]> {
+  const rows = await db
+    .select({ id: requirements.id, reqSeq: requirements.reqSeq })
+    .from(requirements)
+    .innerJoin(requirementContracts, eq(requirementContracts.requirementId, requirements.id))
+    .where(
+      and(
+        eq(requirements.projectId, input.projectId),
+        eq(requirements.status, 'agreed'),
+        eq(requirementContracts.providerProjectId, input.providerProjectId),
+        eq(requirementContracts.contractSlug, input.contractSlug),
+      ),
+    )
+    .orderBy(requirements.reqSeq);
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const [contracts, pins] = await Promise.all([
+    linkedContractsOf(db, ids),
+    latestContractPinsOf(ids),
+  ]);
+  const onIt = <T extends { providerProjectId: string; contractSlug: string | null }>(x: T) =>
+    x.providerProjectId === input.providerProjectId && x.contractSlug === input.contractSlug;
+  return rows.flatMap((r) =>
+    staleContractPinsOf(
+      contracts.filter((c) => c.requirementId === r.id && onIt(c)),
+      pins.filter((p) => p.requirementId === r.id && onIt(p)),
+    ).map((s) => ({ requirement: requirementKey(r.reqSeq), id: r.id, ...s })),
+  );
 }

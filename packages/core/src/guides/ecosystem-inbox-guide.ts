@@ -11,7 +11,7 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
-  version: 7,
+  version: 8,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -62,6 +62,18 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    with the \`baseRevision\` you read. A link takes
    \`ecosystem-links.write\` on the consuming project (member or above); without it the write is
    \`PERMISSION_FORBIDDEN\`.
+5. When a provider approves a version that is not breaking, the bell names the one act that adopts it:
+   \`POST /api/projects/:id/interface/adopt { contract: "<provider>/<contract>", version }\`. In one
+   transaction it writes the interface revision that names the version as \`builtAgainst\` and moves
+   the \`pinnedVersion\` of each of this project's links to that contract. The answer carries what
+   moved and \`staleRequirements\`, the agreed requirements whose baseline still pins the old version.
+   Their re-pin (\`POST /api/projects/:id/requirements/<REQ>/repin\`) is a baseline, so it stays a
+   \`requirements.approve\` act and adopt never does it. Adopt takes \`project.write\` on this project.
+   Refused by name, nothing written: \`ADOPT_CONTRACT_NOT_CONSUMED\` (the interface consumes no such
+   contract), \`VERSION_UNKNOWN\` / \`CONTRACT_VERSION_NOT_APPROVED\`, \`ADOPT_VERSION_BEHIND_PIN\` (a pin is
+   already past it), \`ADOPT_VERSION_BREAKING\` or \`ADOPT_VERSION_UNMEASURED\` (some version between a pin
+   and it is not measured non-breaking), and \`ADOPT_FIELD_MISSING\`, which names each link and field the
+   version no longer holds. That link is checked against the code and written by hand.
 
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
