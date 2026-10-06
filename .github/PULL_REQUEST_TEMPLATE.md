@@ -11,7 +11,7 @@
 - [ ] screen change — a person can see a difference
 - [ ] schema coupling — a migration rides with this (read the migration-order rule in CONTRIBUTING.md)
 - [ ] deploy coupling — this must land before or after something else to be safe
-- [ ] user-facing outcome — a CHANGELOG entry is owed
+- [ ] user-facing outcome — a changelog fragment (`changelog.d/<branch>.<section>.md`) is owed
 
 <!-- The release version is NOT decided here: it is allocated when a release is cut, and a pull
      request does not bump anything. See docs/adr/0001-a-release-version-is-a-counter.md -->
@@ -33,7 +33,7 @@ Closes #
 - [ ] Code follows the project style guide
 - [ ] Self-reviewed the diff
 - [ ] Updated docs where relevant
-- [ ] Added a [CHANGELOG.md](../CHANGELOG.md) entry for meaningful changes
+- [ ] Added a `changelog.d/<branch>.<section>.md` fragment for meaningful changes (never a line in [CHANGELOG.md](../CHANGELOG.md))
 - [ ] Commit messages follow Conventional Commits
 
 ## What this replaces

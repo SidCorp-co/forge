@@ -5,8 +5,9 @@
 > than being revisited each time someone notices the gap. They are readable at
 > `git show 3df9a8e9^:CHANGELOG.md`. Later cuts trim the same way: git is the record of what
 > shipped, and this file is the short reader-facing view of the recent end of it.
-
-## [Unreleased]
+>
+> What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
+> those files into its version section here.
 
 ## [0.4.0-dev.63] - 2026-10-06
 

@@ -1,0 +1,1 @@
+**An unreleased changelog entry is now a file of its own**, `changelog.d/<branch>.<section>.md`, so a release and a branch landing at once no longer misplace or conflict it. The release folds the files in; CHANGELOG.md holds released sections only.
