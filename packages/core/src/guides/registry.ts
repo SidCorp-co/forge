@@ -19,8 +19,10 @@ import {
 } from '@forge/contracts/knowledge';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
+import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
 import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
+import { ISSUE_FLOW_GUIDE } from './issue-flow-guide.js';
 import {
   PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE,
   WHAT_IS_AN_ISSUE_GUIDE,
@@ -314,6 +316,8 @@ section, which is why this migration is what turns the feature on.`,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
   RUNS_AND_MASTERS_GUIDE,
+  ISSUE_FLOW_GUIDE,
+  DISPATCH_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

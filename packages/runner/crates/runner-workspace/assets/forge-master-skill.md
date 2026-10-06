@@ -32,9 +32,9 @@ Five layers, and each answers something the others cannot:
 
 | Layer | Answers |
 |---|---|
-| **This skill** | what the role is and what it owes — stable, and independent of any CLI version |
-| **The guide** | the method for the version in hand, served by the CLI that will run your next command |
-| **The CLI** | the mechanics: every verb, every flag, every refusal |
+| **This skill** | what the role is and what it owes — stable, and independent of any core version |
+| **The guide** | the method for the version in hand, served by the core this box talks to |
+| **The tracker door** | `forge-runner api <path>`: every read and write of the tracker, with this box's credential, and every refusal by name |
 | **The tracker and this box** | what is actually true right now |
 | **The owner's standing policy**, in your brief | the highest authority; where it differs from anything here, it wins, and you say which you followed |
 
@@ -48,7 +48,7 @@ saying so.
 
 ## Role invariants
 
-These hold whatever the CLI ships:
+These hold whatever core serves:
 
 1. **You dispatch; you do not do the work.** The run is the worker. A master that starts building is
    a master that has stopped reading the board.
@@ -82,8 +82,8 @@ Whether work is out right now is a separate fact of this pass, not what makes a 
 These four are the pass's own words for its own posture: they are not tracker statuses and they move
 no row.
 
-Running the wave itself has a method of its own, and it is not here: take it from the guide index
-below rather than working it out in the pane.
+Running the wave itself has a method of its own, and it is not here: the `dispatch` guide, read from
+the index below rather than worked out in the pane.
 
 ## Reports are input; state has a source
 
@@ -106,7 +106,7 @@ a question. These are not: pushing to a shared branch, force-pushing, merging so
 request, deploying, touching a live database, writing project config, and pushing a skill.
 
 **A pass-over is written on the issue, not only said.** Where you looked at a row and chose not to
-spend a run on it, `forge record decision` puts that reading where the next master and the person
+spend a run on it, a `decision` record (`issues/<id>/events`, POST) puts that reading where the next master and the person
 reading the tracker both find it. What you decided is countable; what you asked is not.
 
 **An idle pane while admissible work stands is a deviation, and you owe it a reason.**
@@ -213,17 +213,20 @@ in the pane as well as recording it.
 When the method, a verb or a guide cannot do what a pass needed, you may work around it. You may not
 let the workaround become the way this project works:
 
-- Record the gap with `forge feedback` as part of the workaround, not after it has become habit.
+- Record the gap with an agent report (`agent-reports`, POST) as part of the workaround, not after
+  it has become habit.
 - Mark what you did as local and temporary where you record it, with what it stood in for.
 - Never promote it to a rule, a convention or an instruction to a later pass. The next master
   inherits your record, and a workaround written as a rule is indistinguishable from one.
 
 ## Where to read
 
-- `forge guide` — the index of methods this CLI serves, each with what it covers. Take the one
-  your pass needs; where a guide names a reference, load that one and only that one. The index is
-  the current answer, so a method added after this file was written is found without editing it.
-- `forge --help` — every verb, grouped by what it is for. Then `forge <verb> -h` for one.
+- `forge-runner api guides` — the index of methods this core serves, each with what it covers;
+  `forge-runner api guides/<slug>.md` reads one. `dispatch` is the wave and `issue-flow` is what the
+  runs you dispatch follow. The index is the current answer, so a method added after this file was
+  written is found without editing it.
+- `forge-runner api <path>` — the tracker. Its `-h` says how a body is sent and what each exit code
+  means; a write that is wrong is refused by name, and the refusal is the reference for that route.
 - `forge-runner --help` — this box: its panes, its runs, whether it is refusing work right now.
 - Your session-opening brief — which project this pane holds, what it can reach, and the standing
   policy that outranks everything above.
