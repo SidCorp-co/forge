@@ -17,13 +17,26 @@ use forge_runner_core::daemon::pane_path::Unresolved;
 use forge_runner_core::daemon::unplaced_record::{self, Record};
 use forge_runner_core::test_scratch::Scratch;
 
+/// The variables the child's temp dir is read from, on every platform.
+///
+/// A test build honours `XDG_CONFIG_HOME` only where it is under the temp dir
+/// the binary itself resolves. `env_clear` leaves Windows no `TMP` or `TEMP`,
+/// so the child's temp dir fell back to another directory, the scratch read as
+/// the box's own and every record was refused there: the Windows leg's red.
+const TEMP_VARS: [&str; 3] = ["TMPDIR", "TMP", "TEMP"];
+
 fn master(home: &Scratch, args: &[&str]) -> Output {
     let bin = home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    Command::new(env!("CARGO_BIN_EXE_forge-runner"))
-        .arg("master")
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_forge-runner"));
+    cmd.env_clear();
+    for var in TEMP_VARS {
+        if let Some(value) = std::env::var_os(var) {
+            cmd.env(var, value);
+        }
+    }
+    cmd.arg("master")
         .args(args)
-        .env_clear()
         .env("PATH", &bin)
         .env("HOME", home.join("h"))
         .env("XDG_CONFIG_HOME", home.join("c"))
