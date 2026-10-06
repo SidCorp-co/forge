@@ -132,13 +132,12 @@ jobs:
       # anything. Lives here because lang-check is always-on and needs no install.
       - run: node scripts/verify.mjs --ci-parity
 
-  # The two checks that need node_modules. They are NOT in lang-check because
+  # The checks that need node_modules. They are NOT in lang-check because
   # that job deliberately installs nothing, so it keeps gating language and
-  # test-signal even on a PR that breaks the install. Putting these there made
-  # check-size-budget exit 2 with "biome output was not JSON" — the checker
-  # behaving correctly (a checker that cannot run must never report clean) in a
-  # job that could not give it biome. Always-on: a PR touching only
-  # .forge/conformance.json must still be measured, so no paths filter.
+  # test-signal even on a PR that breaks the install; a checker given no
+  # node_modules there exits 2, correctly, since a checker that cannot run must
+  # never report clean. Always-on: a PR touching only .forge/conformance.json
+  # must still be measured, so no paths filter.
   conformance:
     runs-on: ubuntu-latest
     steps:
@@ -164,15 +163,6 @@ jobs:
       # Spawns `vitest list` per project, hence this job rather than lang-check.
       - run: node scripts/check-test-reachability.mjs
       - run: pnpm exec biome check scripts
-      # Size budget: biome OWNS the two length rules; what it lacks is a
-      # baseline. packages/core holds them at `error`, so its `core` lint step
-      # blocks them. packages/web-v2 holds them at `warn` over the offenders
-      # frozen in .forge/size-baseline.json: this fails when a frozen file grows,
-      # a new one lands over budget, or a frozen file this branch touched does
-      # not come back shorter (the drain; fetch-depth: 0 above resolves its
-      # merge-base). Every other biome rule in both packages is `error`, so the
-      # `core` and `web` lint steps block it outright.
-      - run: node scripts/check-size-budget.mjs --all
       # Provider literals (ISS-1071): an integration provider is named where a provider is
       # described — its own directory, the registry, the union, the schema vocabulary, the
       # contracts enums, the two login-identity surfaces — and nowhere else. No type can hold

@@ -65,6 +65,115 @@ function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeD
   };
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/** The band rows drawn behind the cards: each band's row runs from midway to the band above to midway to the band below. */
+function bandRows(
+  c: Canvas,
+  positions: ReadonlyMap<string, Box>,
+  bandOfKey: (key: string) => string | null,
+  size: { width: number; height: number },
+  openBands: ReadonlySet<string>,
+  onToggle: (band: string) => void,
+): Node[] {
+  const { width, height } = size;
+  const rows: Node[] = [];
+  const ext = new Map<string, { a: number; z: number }>();
+  for (const [k, p] of positions) {
+    const b = bandOfKey(k);
+    if (!b) continue;
+    const e = ext.get(b) ?? { a: Number.POSITIVE_INFINITY, z: Number.NEGATIVE_INFINITY };
+    ext.set(b, { a: Math.min(e.a, p.y), z: Math.max(e.z, p.y + p.height) });
+  }
+  const shown = c.bands.filter((b) => ext.has(b.id));
+  shown.forEach((b, i) => {
+    const e = ext.get(b.id) as { a: number; z: number };
+    const prev = shown[i - 1];
+    const next = shown[i + 1];
+    const top = prev ? ((ext.get(prev.id)?.z ?? e.a) + e.a) / 2 : 0;
+    const bottom = next ? (e.z + (ext.get(next.id)?.a ?? e.z)) / 2 : height;
+    const colour = c.typeOf(b.steps[0] ?? "").colour;
+    const data: BandRowData = {
+      label: b.label,
+      tooltip: b.tooltip,
+      colour,
+      odd: i % 2 === 1,
+      open: openBands.has(b.id),
+      onToggle: () => onToggle(b.id),
+    };
+    rows.push({
+      id: `row:${b.id}`,
+      type: "bandRow",
+      position: { x: 0, y: top },
+      data,
+      style: { width, height: bottom - top },
+      zIndex: -1,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    });
+  });
+  return rows;
+}
+
+type PlacedLayout = { at: Placed; positions: ReadonlyMap<string, Box>; width: number };
+
+/** The view's lines as routed by ELK, return lines drawn round the right of the graph, each decorated for what the eye is on. */
+function wfEdges(placed: PlacedLayout, view: View, d: Decoration, c: Canvas): Edge[] {
+  const { at, positions, width } = placed;
+  const left = c.bands.length > 0 ? GUT : 24;
+  let returns = 0;
+  return view.edges.flatMap((e): Edge[] => {
+    const first = e.src[0];
+    if (!first) return [];
+    const isReturn = first.kind.direction === "return";
+    const lit = Boolean(d.relEdges && e.src.some((s) => d.relEdges?.has(s.id)));
+    const mark = e.merged ? null : (d.diff?.edges.get(edgeKey(first.from, first.to)) ?? d.diff?.steps.get(first.to) ?? null);
+    let path: string;
+    let labelAt: { x: number; y: number } | null;
+    if (isReturn) {
+      const a = positions.get(e.from);
+      const b = positions.get(e.to);
+      if (!a || !b) return [];
+      const r = returnPath(a, b, width - 80 + 14 * returns++);
+      path = r.d;
+      labelAt = r.label;
+    } else {
+      const routed = at.edges.get(e.key);
+      if (!routed || routed.points.length < 2) return [];
+      path = rounded(routed.points.map((p) => ({ x: p.x + left, y: p.y + TOP })));
+      labelAt = routed.label ? { x: routed.label.x + left, y: routed.label.y + TOP } : null;
+    }
+    const k = first.contract;
+    const data: WfEdgeData = {
+      d: path,
+      kind: first.kind,
+      label: e.merged ? mergedLabel(e, c).text : lineLabel(first).text,
+      full: e.merged ? mergedLabel(e, c).full : lineLabel(first).full,
+      detail: d.contract && !e.merged && k ? [k.action, k.idempotency ? `idem: ${k.idempotency}` : null].filter(Boolean).join(" · ") || null : null,
+      labelAt,
+      merged: e.merged,
+      isReturn,
+      lit,
+      dim: Boolean(d.relEdges) && !lit,
+      on: d.selectedEdge === e.key,
+      mark,
+      health: e.merged || !d.health?.on ? [] : (d.health.edges.get(edgeKey(first.from, first.to)) ?? []),
+    };
+    return [
+      {
+        id: e.key,
+        source: e.from,
+        target: e.to,
+        type: "wf",
+        data,
+        selectable: false,
+        markerEnd: { type: MarkerType.ArrowClosed, color: edgeHue(first.kind), width: 14, height: 14 },
+      },
+    ];
+  });
+}
+
 /**
  * The canvas's nodes and edges: the view's cards, measured by React Flow, laid out by ELK, with band
  * rows behind them and return lines drawn round the right of the graph.
@@ -166,44 +275,7 @@ export function useCanvasLayout(input: {
       const positions = new Map([...at.nodes].map(([k, p]) => [k, { ...p, x: p.x + left, y: p.y + TOP }]));
       const width = Math.max(at.width + left + 150, 720);
       const height = at.height + TOP + 36;
-      const rows: Node[] = [];
-      if (banded) {
-        const ext = new Map<string, { a: number; z: number }>();
-        for (const [k, p] of positions) {
-          const b = bandOfKey(k);
-          if (!b) continue;
-          const e = ext.get(b) ?? { a: Number.POSITIVE_INFINITY, z: Number.NEGATIVE_INFINITY };
-          ext.set(b, { a: Math.min(e.a, p.y), z: Math.max(e.z, p.y + p.height) });
-        }
-        const shown = c.bands.filter((b) => ext.has(b.id));
-        shown.forEach((b, i) => {
-          const e = ext.get(b.id) as { a: number; z: number };
-          const prev = shown[i - 1];
-          const next = shown[i + 1];
-          const top = prev ? ((ext.get(prev.id)?.z ?? e.a) + e.a) / 2 : 0;
-          const bottom = next ? (e.z + (ext.get(next.id)?.a ?? e.z)) / 2 : height;
-          const colour = c.typeOf(b.steps[0] ?? "").colour;
-          const data: BandRowData = {
-            label: b.label,
-            tooltip: b.tooltip,
-            colour,
-            odd: i % 2 === 1,
-            open: input.openBands.has(b.id),
-            onToggle: () => toggle.current(b.id),
-          };
-          rows.push({
-            id: `row:${b.id}`,
-            type: "bandRow",
-            position: { x: 0, y: top },
-            data,
-            style: { width, height: bottom - top },
-            zIndex: -1,
-            draggable: false,
-            selectable: false,
-            focusable: false,
-          });
-        });
-      }
+      const rows = banded ? bandRows(c, positions, bandOfKey, { width, height }, input.openBands, (b) => toggle.current(b)) : [];
       setNodes((prev) => [
         ...rows,
         ...prev.filter((n) => n.type !== "bandRow").map((n) => {
@@ -236,59 +308,7 @@ export function useCanvasLayout(input: {
 
   const edges = useMemo((): Edge[] => {
     if (!placed || placed.structure !== structure) return [];
-    const { at, positions, width } = placed;
-    const d = decoration;
-    const left = c.bands.length > 0 ? GUT : 24;
-    let returns = 0;
-    return view.edges.flatMap((e): Edge[] => {
-      const first = e.src[0];
-      if (!first) return [];
-      const isReturn = first.kind.direction === "return";
-      const lit = Boolean(d.relEdges && e.src.some((s) => d.relEdges?.has(s.id)));
-      const mark = e.merged ? null : (d.diff?.edges.get(edgeKey(first.from, first.to)) ?? d.diff?.steps.get(first.to) ?? null);
-      let path: string;
-      let labelAt: { x: number; y: number } | null;
-      if (isReturn) {
-        const a = positions.get(e.from);
-        const b = positions.get(e.to);
-        if (!a || !b) return [];
-        const r = returnPath(a, b, width - 80 + 14 * returns++);
-        path = r.d;
-        labelAt = r.label;
-      } else {
-        const routed = at.edges.get(e.key);
-        if (!routed || routed.points.length < 2) return [];
-        path = rounded(routed.points.map((p) => ({ x: p.x + left, y: p.y + TOP })));
-        labelAt = routed.label ? { x: routed.label.x + left, y: routed.label.y + TOP } : null;
-      }
-      const k = first.contract;
-      const data: WfEdgeData = {
-        d: path,
-        kind: first.kind,
-        label: e.merged ? mergedLabel(e, c).text : lineLabel(first).text,
-        full: e.merged ? mergedLabel(e, c).full : lineLabel(first).full,
-        detail: d.contract && !e.merged && k ? [k.action, k.idempotency ? `idem: ${k.idempotency}` : null].filter(Boolean).join(" · ") || null : null,
-        labelAt,
-        merged: e.merged,
-        isReturn,
-        lit,
-        dim: Boolean(d.relEdges) && !lit,
-        on: d.selectedEdge === e.key,
-        mark,
-        health: e.merged || !d.health?.on ? [] : (d.health.edges.get(edgeKey(first.from, first.to)) ?? []),
-      };
-      return [
-        {
-          id: e.key,
-          source: e.from,
-          target: e.to,
-          type: "wf",
-          data,
-          selectable: false,
-          markerEnd: { type: MarkerType.ArrowClosed, color: edgeHue(first.kind), width: 14, height: 14 },
-        },
-      ];
-    });
+    return wfEdges(placed, view, decoration, c);
   }, [placed, structure, view, decoration, c]);
 
   return {

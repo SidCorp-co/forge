@@ -59,7 +59,7 @@ export { HelpButton } from "./primitives/help-button";
 export { KanbanCard } from "./patterns/kanban-card";
 export { KanbanBoard } from "./patterns/kanban-board";
 export { KanbanColumn } from "./patterns/kanban-column";
-export { NavRail, type NavItem } from "./patterns/nav-rail";
+export { NavRail, isNavGroup, type NavEntry, type NavItem, type NavItemGroup } from "./patterns/nav-rail";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { CommandPalette, type Command } from "./patterns/command-palette";
 export { PinnedTabBar } from "./patterns/pinned-tab-bar";

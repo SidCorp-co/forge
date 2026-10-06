@@ -66,11 +66,6 @@ export function writeBaseline(path, doc) {
   writeFileSync(path, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
-/** Diagnostics in one file, summed across metrics. */
-export function fileTotal(metrics) {
-  return Object.values(metrics ?? {}).reduce((a, n) => a + (typeof n === 'number' ? n : 0), 0);
-}
-
 /**
  * Freeze: no file may hold more of a metric than its baseline allows.
  *

@@ -1,10 +1,9 @@
-import type { BottomTabItem, NavItem } from "@/design";
+import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
 import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { WorkspaceRead } from "@/features/ecosystem/types";
 import { needsYouHint } from "@/features/needs-you/hint";
 import { NEEDS_YOU_AREA_LABELS, type NeedsYouAreaKey, type NeedsYouResponse } from "@/features/needs-you/types";
-import type { RailEntry, RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
@@ -29,16 +28,11 @@ export interface ProjItem extends NavItem {
   sub: string;
 }
 
-interface ProjGroup {
-  key: string;
-  label: string;
-  icon: NavItem["icon"];
+interface ProjGroup extends NavItemGroup {
   items: ProjItem[];
 }
 
 type ProjEntry = ProjItem | ProjGroup;
-
-export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
 const DEVELOPMENT_GROUP_KEY = "development";
 
@@ -65,7 +59,7 @@ const PROJECT_MENU: ProjEntry[] = [
   },
 ];
 
-export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
+export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup(e) ? e.items : [e]));
 
 // the waiting-on-you counts come from core's one needs-you read, each the size of its list's
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
@@ -98,7 +92,7 @@ function badgeOf(key: string, badges: ProjectBadges): Pick<NavItem, "badge" | "b
 
 export function projectMenu(badges: ProjectBadges): ProjEntry[] {
   const withBadge = (it: ProjItem): ProjItem => ({ ...it, ...badgeOf(it.key, badges) });
-  return PROJECT_MENU.map((e) => (isProjGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
+  return PROJECT_MENU.map((e) => (isNavGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 
 const ECO_THREADS_KEY = "eco-threads";
@@ -118,6 +112,10 @@ export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
     })),
     { key: ECO_NEW_KEY, label: "New ecosystem", icon: "plus" },
   ];
+}
+
+export function ecosystemGroup(read: WorkspaceRead | undefined): NavItemGroup {
+  return { key: "ecosystem", label: "Ecosystem", icon: "ecosystem", items: ecosystemMenu(read), badge: read ? needsMe(read) : undefined, defaultOpen: true };
 }
 
 /** Where an Ecosystem-group key leads, or null when the key is not one of the group's. */
@@ -196,25 +194,12 @@ export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOp
   return "home";
 }
 
-export function workspaceNavItems(attentionCount: number): NavItem[] {
-  return WORKSPACE_ITEMS.map((it) =>
-    it.key === "overview" ? { ...it, badge: attentionCount } : it,
-  );
-}
-
-export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
-  return WORKSPACE_ITEMS.map((it) => ({
-    key: it.key,
-    label: it.label,
-    icon: it.icon,
-    ...(it.key === "overview" ? { badge: attentionCount } : {}),
-  }));
-}
-
-/** The compact rail's project tier: the same menu, Development folded under its head. */
-export function projectRailItems(badges: ProjectBadges): RailEntry[] {
-  const row = (it: ProjItem): RailItem => ({ key: it.key, label: it.label, icon: it.icon, ...badgeOf(it.key, badges) });
-  return PROJECT_MENU.map((e) => (isProjGroup(e) ? { key: e.key, label: e.label, icon: e.icon, items: e.items.map(row) } : row(e)));
+/** The rail's workspace tier: Overview carries the attention count, then the Ecosystem group. */
+export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceRead | undefined): NavEntry[] {
+  return [
+    ...WORKSPACE_ITEMS.map((it) => (it.key === "overview" ? { ...it, badge: attentionCount } : it)),
+    ecosystemGroup(ecosystems),
+  ];
 }
 
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {

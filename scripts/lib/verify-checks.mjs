@@ -120,13 +120,6 @@ export const CHECKS = [
   },
   {
     axis: 'form',
-    label: 'size-budget',
-    cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
-    scanned: /^size-budget: (\d+) file/m,
-    needs: ['deps'],
-  },
-  {
-    axis: 'form',
     label: 'provider-literals',
     cmd: ['node', 'scripts/check-provider-literals.mjs', '--all'],
     scanned: /^provider-literals: (\d+) file\(s\) scanned/m,

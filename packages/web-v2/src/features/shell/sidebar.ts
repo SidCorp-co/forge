@@ -10,9 +10,9 @@ export interface SidebarState {
   /** Idempotent collapse-to-icon-rail (ISS-714 focus mode) — never expands,
    *  so it's safe to call on every pane-open without fighting a manual toggle. */
   collapse: () => void;
-  /** Per-cluster open map keyed by cluster key. Missing key ⇒ open. */
+  /** The reader's open/closed choice per rail group; a group with no entry takes its own default. */
   groupOpen: Record<string, boolean>;
-  toggleGroup: (key: string, open?: boolean) => void;
+  toggleGroup: (key: string, open: boolean) => void;
 }
 
 interface Persisted {
@@ -21,8 +21,7 @@ interface Persisted {
 }
 
 // Compact 88px Rail is the default (Concept C); expand opens the labeled rail.
-// Config cluster starts collapsed; other clusters open.
-const DEFAULT: Persisted = { collapsed: true, groupOpen: { config: false } };
+const DEFAULT: Persisted = { collapsed: true, groupOpen: {} };
 
 export function useSidebar(): SidebarState {
   const [state, setState] = usePersistedState<Persisted>('web-v2:sidebar', DEFAULT);
@@ -38,11 +37,7 @@ export function useSidebar(): SidebarState {
   );
 
   const toggleGroup = useCallback(
-    (key: string, open?: boolean) =>
-      setState((s) => ({
-        ...s,
-        groupOpen: { ...s.groupOpen, [key]: open ?? s.groupOpen[key] === false },
-      })),
+    (key: string, open: boolean) => setState((s) => ({ ...s, groupOpen: { ...s.groupOpen, [key]: open } })),
     [setState],
   );
 

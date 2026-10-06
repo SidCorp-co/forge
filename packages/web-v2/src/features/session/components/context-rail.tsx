@@ -42,7 +42,8 @@ import { formatRefusal } from "@/lib/api/error";
 import { useRun } from "@/features/pipeline/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
-import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
+import { deriveAgentTasks, deriveFilesChanged } from "../derive";
+import type { ConversationItem } from "../types";
 import { LoadedForRun } from "./loaded-for-run";
 
 function fmtNum(n: number | undefined): string {

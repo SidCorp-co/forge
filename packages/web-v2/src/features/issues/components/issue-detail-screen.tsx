@@ -28,6 +28,7 @@ import { useRecents } from "@/lib/navigation/recents";
 import { useIssueProject } from "./use-issue-project";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
+import type { MockupTarget } from "@/features/mockups/types";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -90,11 +91,8 @@ export function IssueDetailScreen({
   slug,
   id,
 }: IssueDetailScreenProps) {
-  const { push: pushRecent } = useRecents();
   const [tab, setTab] = useUrlTab(ISSUE_TABS);
-  const [thread, setThread] = useState<ActivityThread>("comments");
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
-  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
 
@@ -109,11 +107,8 @@ export function IssueDetailScreen({
   const mockupsQ = useMockups(projectId, mockupTarget);
   const canonicalId = canonicalIssueId(id, issueQ.data?.id);
   const commentsQ = useComments(canonicalId, projectId);
-  const activityQ = useActivity(canonicalId, projectId);
-  const attachmentsQ = useAttachments(canonicalId, projectId);
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
-  const membersQ = useProjectMembers(projectId);
 
   const patch = usePatchIssue();
   const {
@@ -141,50 +136,12 @@ export function IssueDetailScreen({
   const park = useIssuePark(issue?.id, issue?.status);
   const stickyHeader = useRef<HTMLDivElement>(null);
   const answerInThread = useCreateComment(issue?.id ?? "");
-  const checklist = useMemo(() => {
-    const criteria = parseChecklist(issue?.acceptanceCriteria);
-    const counts = new Map<string, number>();
-
-    return criteria.map((item) => {
-      const count = counts.get(item.text) ?? 0;
-      counts.set(item.text, count + 1);
-      return { ...item, key: `${item.text}-${count}` };
-    });
-  }, [issue?.acceptanceCriteria]);
+  const checklist = useMemo(() => keyedChecklist(issue?.acceptanceCriteria), [issue?.acceptanceCriteria]);
   const criteriaQ = useCriteria(issue?.id);
   const hasCriteriaRows = (criteriaQ.data?.criteria.length ?? 0) > 0;
-  const issueDisplayId = issue?.displayId;
-  const issueTitle = issue?.title;
+  useRememberIssue(id, slug, issue?.displayId, issue?.title);
 
-  useEffect(() => {
-    if (!issueDisplayId || !issueTitle) return;
-    pushRecent({
-      kind: "issue",
-      id,
-      label: `${issueDisplayId} · ${issueTitle}`,
-      href: `/projects/${slug}/issues/${id}`,
-      icon: "list",
-    });
-  }, [issueDisplayId, issueTitle, id, slug, pushRecent]);
-
-  if (issueQ.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading issue…" />
-      </div>
-    );
-  }
-  if (issueQ.isError || !issue) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
-          title="Couldn't load issue"
-          message={formatApiError(issueQ.error)}
-          onRetry={isRetryableApiError(issueQ.error) ? () => issueQ.refetch() : undefined}
-        />
-      </div>
-    );
-  }
+  if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
 
   const onTransition = (toStatus: IssueStatus) =>
     requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
@@ -194,13 +151,7 @@ export function IssueDetailScreen({
   const blocker = standingQ.data?.blocker ?? null;
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = standingQ.data?.stepOutcomes ?? [];
-  const liveSession = pickActiveSession(issue.agentSessions);
-  const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
-  const agentState: LiveAgentState | null = liveSession
-    ? { kind: "live", session: liveSession }
-    : queuedStep
-      ? { kind: "queued", step: queuedStep }
-      : null;
+  const agentState = liveAgentState(issue.agentSessions, issue.pipelineHealth);
 
   const focusDecisions = () => {
     if (typeof window !== "undefined") {
@@ -324,33 +275,17 @@ export function IssueDetailScreen({
         </div>
         <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="issue-tabs" />
         <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
-          {tab === "overview" ? (
-            <OverviewTab issue={issue} attachmentsQ={attachmentsQ} canWrite={canWrite} />
-          ) : null}
-          {tab === "criteria" ? (
-            <CriteriaTab issueId={issue.id} hasCriteriaRows={hasCriteriaRows} checklist={checklist} />
-          ) : null}
-          {tab === "runs" ? (
-            <RunsTab
-              sessions={issue.agentSessions ?? []}
-              standingQ={standingQ}
-              stepOutcomes={stepOutcomes}
-              expandedStep={expandedStep}
-              onToggleStep={(step) => setExpandedStep((cur) => (cur === step ? null : step))}
-            />
-          ) : null}
-          {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
-          {tab === "activity" ? (
-            <ActivityTab
-              issueId={issue.id}
-              thread={thread}
-              onThread={setThread}
-              commentsQ={commentsQ}
-              activityQ={activityQ}
-              members={membersQ.data}
-              canWrite={canWrite}
-            />
-          ) : null}
+          <IssueTabBody
+            tab={tab}
+            issue={issue}
+            canonicalId={canonicalId}
+            projectId={projectId}
+            canWrite={canWrite}
+            criteria={{ hasCriteriaRows, checklist }}
+            standingQ={standingQ}
+            commentsQ={commentsQ}
+            mockupTarget={mockupTarget}
+          />
         </DetailPane>
       </DetailLayout>
 
@@ -365,6 +300,108 @@ export function IssueDetailScreen({
     </div>
     </ReleaseApprovalProvider>
   );
+}
+
+function IssueTabBody({
+  tab,
+  issue,
+  canonicalId,
+  projectId,
+  canWrite,
+  criteria,
+  standingQ,
+  commentsQ,
+  mockupTarget,
+}: {
+  tab: (typeof ISSUE_TABS)[number];
+  issue: NonNullable<ReturnType<typeof useIssue>["data"]>;
+  canonicalId: string | undefined;
+  projectId: string;
+  canWrite: boolean;
+  criteria: { hasCriteriaRows: boolean; checklist: ReturnType<typeof keyedChecklist> };
+  standingQ: ReturnType<typeof useIssueStandingOf>;
+  commentsQ: ReturnType<typeof useComments>;
+  mockupTarget: MockupTarget;
+}) {
+  const [thread, setThread] = useState<ActivityThread>("comments");
+  const [expandedStep, setExpandedStep] = useState<string | null>(null);
+  const activityQ = useActivity(canonicalId, projectId);
+  const attachmentsQ = useAttachments(canonicalId, projectId);
+  const membersQ = useProjectMembers(projectId);
+  return (
+    <>
+      {tab === "overview" ? (
+        <OverviewTab issue={issue} attachmentsQ={attachmentsQ} canWrite={canWrite} />
+      ) : null}
+      {tab === "criteria" ? (
+        <CriteriaTab issueId={issue.id} hasCriteriaRows={criteria.hasCriteriaRows} checklist={criteria.checklist} />
+      ) : null}
+      {tab === "runs" ? (
+        <RunsTab
+          sessions={issue.agentSessions ?? []}
+          standingQ={standingQ}
+          stepOutcomes={standingQ.data?.stepOutcomes ?? []}
+          expandedStep={expandedStep}
+          onToggleStep={(step) => setExpandedStep((cur) => (cur === step ? null : step))}
+        />
+      ) : null}
+      {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+      {tab === "activity" ? (
+        <ActivityTab
+          issueId={issue.id}
+          thread={thread}
+          onThread={setThread}
+          commentsQ={commentsQ}
+          activityQ={activityQ}
+          members={membersQ.data}
+          canWrite={canWrite}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function keyedChecklist(acceptanceCriteria: string | null | undefined) {
+  const counts = new Map<string, number>();
+  return parseChecklist(acceptanceCriteria).map((item) => {
+    const count = counts.get(item.text) ?? 0;
+    counts.set(item.text, count + 1);
+    return { ...item, key: `${item.text}-${count}` };
+  });
+}
+
+function useRememberIssue(id: string, slug: string, displayId: string | undefined, title: string | undefined) {
+  const { push } = useRecents();
+  useEffect(() => {
+    if (!displayId || !title) return;
+    push({ kind: "issue", id, label: `${displayId} · ${title}`, href: `/projects/${slug}/issues/${id}`, icon: "list" });
+  }, [displayId, title, id, slug, push]);
+}
+
+function IssueUnread({ query }: { query: ReturnType<typeof useIssue> }) {
+  return (
+    <div className="grid min-h-[60vh] place-items-center">
+      {query.isLoading ? (
+        <ProjectLoader label="loading issue…" />
+      ) : (
+        <ErrorState
+          title="Couldn't load issue"
+          message={formatApiError(query.error)}
+          onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+function liveAgentState(
+  sessions: IssueAgentSession[] | undefined,
+  health: Parameters<typeof deriveQueuedStep>[0],
+): LiveAgentState | null {
+  const live = pickActiveSession(sessions);
+  if (live) return { kind: "live", session: live };
+  const queued = deriveQueuedStep(health, false);
+  return queued ? { kind: "queued", step: queued } : null;
 }
 
 /** Pick the agent session to surface in the live-agent panel: a running one

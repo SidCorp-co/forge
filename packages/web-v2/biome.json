@@ -31,7 +31,7 @@
       "style": {
         "noNonNullAssertion": "error",
         "noExcessiveLinesPerFile": {
-          "level": "warn",
+          "level": "error",
           "options": {
             "maxLines": 500
           }
@@ -70,7 +70,7 @@
       },
       "complexity": {
         "noExcessiveLinesPerFunction": {
-          "level": "warn",
+          "level": "error",
           "options": {
             "maxLines": 150,
             "skipBlankLines": true,

@@ -10,7 +10,7 @@
 
 import { EmptyState } from "@/design";
 import { shortenPath } from "../../run-report";
-import type { FileDiff } from "../../types";
+import type { FileDiff } from "../../derive";
 import { InlineDiff } from "../tool-card";
 
 export function DiffLens({

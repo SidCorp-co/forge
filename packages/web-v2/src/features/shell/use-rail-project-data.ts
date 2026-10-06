@@ -1,81 +1,44 @@
 "use client";
 
-// Rail project-context data: the glyph mark for the rail's switcher button and
-// the compact-rail rollup (per-project liveRuns/openIssues from the projects
-// console — the "{N} live" label, the switcher pulse dots, the Issues badge).
 import { useMemo } from "react";
 import { inActiveOrg } from "@/features/projects/derive";
 import { useProjectsConsole } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
-import type { SwitcherProject } from "./nav-rail-compact";
+import type { RailProject, SwitcherProject } from "./components/project-switcher";
 
+/** The rail's project mark and the switcher's list, both from the projects console and scoped to the active org (ISS-480). */
 export function useRailProjectData(opts: {
   /** The project the rail renders (active, else last-visited, else first). */
   railSlug: string | null;
   railProject: ProjectListItem | null;
-  /** Active org id — scopes the rail switcher list (ISS-480). */
   activeOrgId: string | null;
 }) {
   const { railSlug, railProject, activeOrgId } = opts;
-
-  // Project-tier glyph for the rail's switcher button — follows the rail project.
-  const projectMark = useMemo(() => {
-    if (!railProject) return undefined;
-    const g = projectGlyph(railProject.id);
-    return {
-      name: railProject.name,
-      initials: projectInitials(railProject.name),
-      tint: g.tint,
-      ink: g.ink,
-    };
-  }, [railProject]);
-
   const projectsConsole = useProjectsConsole();
+
   const switcherProjects = useMemo<SwitcherProject[]>(
     () =>
       projectsConsole.items
-        // Scope the rail switcher to the active org (ISS-480).
         .filter((p) => inActiveOrg(p, activeOrgId))
-        .map((p) => {
-          const g = projectGlyph(p.id);
-          return {
-            id: p.id,
-            slug: p.slug,
-            name: p.name,
-            initials: projectInitials(p.name),
-            tint: g.tint,
-            ink: g.ink,
-            liveRuns: p.liveRuns,
-            pinned: p.pinned,
-          };
-        }),
+        .map((p) => ({
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          initials: projectInitials(p.name),
+          ...projectGlyph(p.id),
+          liveRuns: p.liveRuns,
+          pinned: p.pinned,
+        })),
     [projectsConsole.items, activeOrgId],
   );
-  const railConsole = useMemo(
-    () => (railSlug ? projectsConsole.items.find((p) => p.slug === railSlug) ?? null : null),
-    [projectsConsole.items, railSlug],
-  );
-  const compactActiveProject = useMemo(
-    () =>
-      railProject && projectMark
-        ? {
-            name: projectMark.name,
-            initials: projectMark.initials,
-            tint: projectMark.tint,
-            ink: projectMark.ink,
-            liveRuns: railConsole?.liveRuns ?? 0,
-          }
-        : null,
-    [railProject, projectMark, railConsole],
-  );
 
-  return {
-    projectMark,
-    switcherProjects,
-    railConsole,
-    compactActiveProject,
-    /** Pin/unpin passthrough for the compact rail's switcher flyout. */
-    togglePin: projectsConsole.toggle,
-  };
+  const projectMark = useMemo<RailProject | null>(() => {
+    if (!railProject) return null;
+    const live = railSlug ? projectsConsole.items.find((p) => p.slug === railSlug)?.liveRuns : undefined;
+    const { tint, ink } = projectGlyph(railProject.id);
+    return { name: railProject.name, initials: projectInitials(railProject.name), tint, ink, liveRuns: live ?? 0 };
+  }, [railProject, railSlug, projectsConsole.items]);
+
+  return { projectMark, switcherProjects, togglePin: projectsConsole.toggle };
 }

@@ -77,23 +77,10 @@ export function ConversationChat({
   const canWrite = canWriteProject(projectRow?.role);
 
   const roomQ = useConversation(resolvedId);
-  const accepted = useAcceptedMessages(resolvedId);
   const progress = useConversationProgress(resolvedId);
   const withdrawn = useWithdrawnDrafts(resolvedId);
   const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
-  const open = useOpenConversation();
-  const send = useSendMessage();
-  const upload = useUploadAttachment();
   const stop = useStopConversation();
-
-  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
-  const sending = useRef(false);
-  /**
-   * What a queued message has already put in storage, kept so a retry after a
-   * failed send does not upload the same picture twice and leave the first copy
-   * stored and cited by nothing.
-   */
-  const stored = useRef(new Map<string, string[]>());
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
@@ -107,29 +94,27 @@ export function ConversationChat({
     messages,
     progress,
   });
-
-  useEffect(() => {
-    const seen = new Set(messages.map((m) => m.id));
-    setOutbox((o) => {
-      let moved = false;
-      const next = o.flatMap((m) => {
-        const ack = accepted[m.id];
-        if (ack && seen.has(ack.messageId)) {
-          moved = true;
-          return [];
-        }
-        if (ack && m.state !== "sent") {
-          moved = true;
-          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
-        }
-        return [m];
-      });
-      return moved ? next : o;
-    });
-  }, [accepted, messages]);
+  const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
+  const onOpened = useCallback(
+    (id: string) => {
+      setActiveId(id);
+      onConversationActive?.(id);
+    },
+    [onConversationActive],
+  );
+  const snapshot = useCallback(() => pageRef.current, []);
+  const { outbox, enqueue: handleSend, retry, busy } = useOutbox({
+    resolvedId,
+    projectId,
+    ecosystemId,
+    onOpened,
+    messages,
+    settled,
+    pick,
+    snapshot,
+  });
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
-  const busy = send.isPending || open.isPending;
   const streaming = busy || progress != null;
 
   const stage = turnStageOf({
@@ -138,7 +123,6 @@ export function ConversationChat({
     ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
   });
 
-  const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
   const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
   const agentOffer =
@@ -155,73 +139,6 @@ export function ConversationChat({
     streaming,
     streamedChars,
   });
-
-  const handleSend = async (message: string, files: File[]) => {
-    setOutbox((o) => [
-      ...o,
-      { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) },
-    ]);
-  };
-
-  const retry = useCallback((id: string) => {
-    setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
-  }, []);
-
-  useEffect(() => {
-    if (sending.current) return;
-    if (outbox.some((m) => m.state === "failed")) return;
-    const next = outbox.find((m) => m.state === "queued");
-    if (!next) return;
-    sending.current = true;
-    setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
-    void (async () => {
-      try {
-        let id = resolvedId;
-        if (!id) {
-          id = (await open.mutateAsync({ projectId, ecosystemId: ecosystemId ?? null })).id;
-          setActiveId(id);
-          onConversationActive?.(id);
-        }
-        const fresh = !settled && messages.length === 0;
-        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
-        for (const file of (next.files ?? []).slice(attachmentIds.length)) {
-          const put = await upload.mutateAsync({ conversationId: id, file });
-          attachmentIds.push(put.id);
-          stored.current.set(next.id, [...attachmentIds]);
-        }
-        await send.mutateAsync({
-          conversationId: id,
-          content: next.content,
-          ...(fresh ? { mode: pick } : {}),
-          clientToken: next.id,
-          ...(attachmentIds.length ? { attachmentIds } : {}),
-          ...(pageRef.current.sees ? { uiSnapshot: pageRef.current.snapshot } : {}),
-        });
-        stored.current.delete(next.id);
-        setOutbox((o) => o.filter((m) => m.id !== next.id));
-      } catch (err) {
-        setOutbox((o) =>
-          o.map((m) =>
-            m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
-          ),
-        );
-      } finally {
-        sending.current = false;
-      }
-    })();
-  }, [
-    outbox,
-    resolvedId,
-    projectId,
-    open,
-    send,
-    upload,
-    onConversationActive,
-    ecosystemId,
-    settled,
-    messages.length,
-    pick,
-  ]);
 
   const onboardingRoom = roomQ.data?.kind === "onboarding";
   const header = (
@@ -398,4 +315,119 @@ function ModeFooter({
       )}
     </div>
   );
+}
+
+/** The messages typed but not yet in the thread: queued, sent one at a time (opening the room on a draft's first), and retried on failure. */
+function useOutbox(o: {
+  resolvedId: string | undefined;
+  projectId: string;
+  ecosystemId: string | null | undefined;
+  onOpened: (id: string) => void;
+  messages: ReadonlyArray<{ id: string }>;
+  settled: boolean;
+  pick: ConversationMode;
+  snapshot: () => ReturnType<typeof useUiSnapshot>;
+}) {
+  const { resolvedId, projectId, ecosystemId, onOpened, messages, settled, pick, snapshot } = o;
+  const accepted = useAcceptedMessages(resolvedId);
+  const open = useOpenConversation();
+  const send = useSendMessage();
+  const upload = useUploadAttachment();
+  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
+  const sending = useRef(false);
+  /**
+   * What a queued message has already put in storage, kept so a retry after a
+   * failed send does not upload the same picture twice and leave the first copy
+   * stored and cited by nothing.
+   */
+  const stored = useRef(new Map<string, string[]>());
+
+  useEffect(() => {
+    const seen = new Set(messages.map((m) => m.id));
+    setOutbox((o) => {
+      let moved = false;
+      const next = o.flatMap((m) => {
+        const ack = accepted[m.id];
+        if (ack && seen.has(ack.messageId)) {
+          moved = true;
+          return [];
+        }
+        if (ack && m.state !== "sent") {
+          moved = true;
+          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
+        }
+        return [m];
+      });
+      return moved ? next : o;
+    });
+  }, [accepted, messages]);
+
+  const enqueue = async (message: string, files: File[]) => {
+    setOutbox((o) => [
+      ...o,
+      { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) },
+    ]);
+  };
+
+  const retry = useCallback((id: string) => {
+    setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
+  }, []);
+
+  useEffect(() => {
+    if (sending.current) return;
+    if (outbox.some((m) => m.state === "failed")) return;
+    const next = outbox.find((m) => m.state === "queued");
+    if (!next) return;
+    sending.current = true;
+    setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
+    void (async () => {
+      try {
+        let id = resolvedId;
+        if (!id) {
+          id = (await open.mutateAsync({ projectId, ecosystemId: ecosystemId ?? null })).id;
+          onOpened(id);
+        }
+        const fresh = !settled && messages.length === 0;
+        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
+        for (const file of (next.files ?? []).slice(attachmentIds.length)) {
+          const put = await upload.mutateAsync({ conversationId: id, file });
+          attachmentIds.push(put.id);
+          stored.current.set(next.id, [...attachmentIds]);
+        }
+        await send.mutateAsync({
+          conversationId: id,
+          content: next.content,
+          ...(fresh ? { mode: pick } : {}),
+          clientToken: next.id,
+          ...(attachmentIds.length ? { attachmentIds } : {}),
+          ...(snapshot().sees ? { uiSnapshot: snapshot().snapshot } : {}),
+        });
+        stored.current.delete(next.id);
+        setOutbox((o) => o.filter((m) => m.id !== next.id));
+      } catch (err) {
+        setOutbox((o) =>
+          o.map((m) =>
+            m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
+          ),
+        );
+      } finally {
+        sending.current = false;
+      }
+    })();
+  }, [
+    outbox,
+    resolvedId,
+    projectId,
+    open,
+    send,
+    upload,
+    onOpened,
+    ecosystemId,
+    settled,
+    messages.length,
+    pick,
+    snapshot,
+  ]);
+
+  return { outbox, enqueue, retry, busy: send.isPending || open.isPending };
 }
