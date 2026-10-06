@@ -104,6 +104,14 @@ export async function closeWorld(): Promise<void> {
   await stopBoss();
 }
 
+/** Moves an issue to `status` under the kernel's flag: for a case whose subject is what a reader does at that status. */
+export async function issueAtStatus(issueId: string, status: string): Promise<void> {
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  await withKernelMarker(db, (tx) =>
+    tx.execute(sql`UPDATE issues SET status = ${status} WHERE id = ${issueId}`),
+  );
+}
+
 /** A project at a slug of the test's choosing: a contract is named `<provider slug>/<contract slug>`. */
 export async function projectAt(createdBy: string, slug: string, orgId?: string): Promise<string> {
   const { id } = await createTestProject(createdBy, orgId ? { orgId } : {});
