@@ -1,9 +1,9 @@
 // ISS-764 — prompt assembly for the release_batch job.
-// Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import { markUntrusted } from '../prompt/sanitize.js';
+import type { CarriedRecord } from './carried.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {
@@ -22,6 +22,7 @@ interface BuildReleaseBatchPromptArgs {
   plan: ReleasePlan;
   /** False where no box eligible to release carries the declared label. */
   releaseRunnerPreferenceMet: boolean;
+  carried?: CarriedRecord | null | undefined;
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
@@ -58,9 +59,24 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
+${renderCarried(args.carried ?? null)}${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`${RELEASE_BATCH_TOOL}\` action \`get\` with runId \`${runId}\`.
 `;
+}
+
+function renderCarried(carried: CarriedRecord | null): string {
+  if (!carried) return '';
+  if (carried.kind !== 'read') {
+    return `\n### What this release carries beyond its roster\nNot read: ${carried.why}.\n`;
+  }
+  const decided = [...carried.issues, ...carried.cutBelow].map(
+    (i) =>
+      `- ${i.displayId} (at \`${i.status}\`, landing ${i.landing.slice(0, 12)}) — \`${i.decision}\`${i.why ? `: ${markUntrusted(i.why, { source: 'release.decision' })}` : ''}`,
+  );
+  return `
+### The cut
+Promote exactly \`${carried.cut}\` from \`${carried.start}\` onto \`${carried.live}\` — not the branch head, which may have moved since this batch was cut. Everything that commit carries was named when the batch opened, and nothing else was.
+${decided.length > 0 ? `\nIssues this range carries off the roster, each with the decision recorded for it:\n${decided.join('\n')}\n` : ''}`;
 }
 
 /**
@@ -79,12 +95,8 @@ If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first cal
 }
 
 /**
- * The line that points at the method, off the SAME constant the job's `skillName` carries.
- *
- * `skillName` named `release-flow` and nothing invoked it: the runner reads no such column, and this
- * prompt never mentioned it, so the field selected nothing while reading like a designation
- * (ISS-1042). The name reaching the agent is what makes it true. It points; it no longer gates
- * (ISS-1276) — the procedure above is the method, and this is a way of loading one shape of it.
+ * The line that points at the method, off the SAME constant the job's `skillName` carries: the
+ * name reaching the agent is what makes the field true (ISS-1042). It points; it does not gate.
  */
 function renderMethod(): string {
   return `
@@ -100,11 +112,7 @@ If it will not load, announce THAT — \`loaded: false\` with a detail saying wh
  * NOT wrapped as untrusted: an operator writing their release steps is giving
  * an instruction, which is the opposite of an issue title arriving from a
  * stranger.
- *
- * ISS-1276 — where the project declares none, Forge says so and names where the method is instead.
- * It composed one until then, out of a registry of per-provider deploy steps exactly one provider
- * ever declared, refused the release for every provider that declared none, and threw the whole
- * composition away for every project that HAD declared a procedure.
+ * Where the project declares none, Forge says so and names where the method is instead (ISS-1276).
  */
 function renderProcedure(plan: ReleasePlan): string {
   const blocks: string[] = [

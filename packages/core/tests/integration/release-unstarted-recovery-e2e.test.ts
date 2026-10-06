@@ -41,9 +41,10 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   await registerIntegrationsForTest();
   const m = await import('../../src/release-batch/unstarted-recovery.js');
+  const start = await import('../../src/release-batch/job-start.js');
   mods = {
     recoverUnstartedReleaseBatches: m.recoverUnstartedReleaseBatches,
-    RELEASE_UNSTARTED_DEADLINE_MS: m.RELEASE_UNSTARTED_DEADLINE_MS,
+    RELEASE_UNSTARTED_DEADLINE_MS: start.RELEASE_UNSTARTED_DEADLINE_MS,
   };
 }, 60_000);
 

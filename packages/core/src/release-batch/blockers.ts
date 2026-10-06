@@ -17,6 +17,7 @@ import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type CollectReleaseBlockersOptions,
+  carriedUnreadWarningSentence,
   RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
   type ReleaseBlockerReport,
@@ -24,6 +25,7 @@ import {
   type ReleaseWarning,
   runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
+import { type CarriedCheck, judgeCarried } from './carried.js';
 import {
   projectRunnerDeviceIds,
   type ReleaseChannel,
@@ -113,6 +115,45 @@ async function resolveRoster(
   }
   if (issueIds) return { ids: [], unclaimed: [] };
   return { ids, unclaimed: rows.filter((r) => r.claimed === null).map((r) => r.id) };
+}
+
+/** What the range carries beyond the roster, judged into the reasons and the warning it raises. */
+function carriedBlockers(
+  check: CarriedCheck,
+  out: ReleaseBlocker[],
+  warnings: ReleaseWarning[],
+): void {
+  if (check.kind !== 'read') {
+    if (check.kind === 'unbound') {
+      warnings.push({
+        code: 'RELEASE_CARRIED_UNREAD',
+        message: carriedUnreadWarningSentence(check.why),
+        details: { why: check.why },
+      });
+    }
+    if (check.kind === 'unread') {
+      out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'carried', detail: check.why }));
+    }
+    return;
+  }
+  const range = { live: check.live, start: check.start, cut: check.cut };
+  if (check.refused.length > 0) {
+    out.push(blocker('RELEASE_CARRIED_DECISION_REFUSED', { ...range, refused: check.refused }));
+  }
+  if (check.droppedRoster.length > 0) {
+    const issueIds = check.droppedRoster.map((i) => i.issueId);
+    const displayIds = check.droppedRoster.map((i) => i.displayId);
+    out.push(blocker('RELEASE_CUT_DROPS_ROSTER', { ...range, issueIds, displayIds }));
+  }
+  if (check.undecided.length > 0) {
+    const carried = check.undecided.map(({ issueId, displayId, status, landing }) => ({
+      issueId,
+      displayId,
+      status,
+      landing,
+    }));
+    out.push(blocker('RELEASE_CARRIES_UNDECIDED', { ...range, carried }));
+  }
 }
 
 function oversize(waiting: number): ReleaseBlocker {
@@ -342,14 +383,15 @@ export async function collectReleaseBlockers(
   // and for the judgement that the rest are moot, which cannot be made where it
   // cannot be read. Returning here instead reported one reason, and it was the
   // one reason the operator could not act on (ISS-1127).
-  const channels = await gatedBlockers(projectId, door, options, blockers, warnings);
+  const gated = await gatedBlockers(projectId, door, options, blockers, warnings);
   return {
     projectId,
     projectExists: true,
     declaration: read ?? null,
-    channels,
+    channels: gated.channels,
     blockers,
     warnings,
+    ...(gated.carried ? { carried: gated.carried } : {}),
   };
 }
 
@@ -361,7 +403,7 @@ async function gatedBlockers(
   options: CollectReleaseBlockersOptions,
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
-): Promise<ReleaseChannel[] | null> {
+): Promise<{ channels: ReleaseChannel[] | null; carried: CarriedCheck | undefined }> {
   const { issueIds } = options;
   // Both groups are READ here and REPORTED in the order the door refuses in.
   // A channel read that failed must not outrank a roster reason the batch door
@@ -375,6 +417,12 @@ async function gatedBlockers(
     await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }
   await rosterBlockers(door, found?.ids ?? [], roster);
+  let carried: CarriedCheck | undefined;
+  if (door === 'batch' && options.carried) {
+    const rosterIds = issueIds && issueIds.length > 0 ? issueIds : (found?.ids ?? []);
+    carried = judgeCarried(options.carried, rosterIds, options.decisions ?? []);
+    carriedBlockers(carried, roster, warnings);
+  }
 
   const machinery: ReleaseBlocker[] = [];
   if (ch.failure) machinery.push(ch.failure);
@@ -412,7 +460,7 @@ async function gatedBlockers(
       );
     }
   }
-  return channels;
+  return { channels, carried };
 }
 
 export * from './blocker-errors.js';

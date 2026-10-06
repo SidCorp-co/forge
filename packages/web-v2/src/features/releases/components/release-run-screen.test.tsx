@@ -37,6 +37,7 @@ function state(over: Partial<ReleaseRunState>) {
 			bounds: { holding: true, crossedNames: [], bounds: [] },
 			method: null,
 			methodUnloaded: false,
+			start: { kind: "taken", at: "2026-09-26T11:59:00.000Z", device: "box-1" },
 			...over,
 		} satisfies ReleaseRunState,
 		isLoading: false,
@@ -170,5 +171,82 @@ describe("the unverified close, in the tense of the run's own status", () => {
 		const card = screen.getByTestId("live-none").textContent ?? "";
 		expect(card).toMatch(/no verification probe/i);
 		expect(card).not.toMatch(/close/i);
+	});
+});
+
+describe("the start line (ISS-1323)", () => {
+	it("says no box has started a waiting release, why, and when it is handed back", () => {
+		state({
+			start: {
+				kind: "waiting",
+				since: "2026-09-26T11:50:00.000Z",
+				handedBackAt: "2026-09-26T12:20:00.000Z",
+				reason: "no-eligible-box",
+				why: "`box-1` is `draining` and so takes nothing from the pool.",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line");
+		expect(line).toHaveTextContent("No box has started this release");
+		expect(line).toHaveTextContent("`box-1` is `draining`");
+		expect(line).toHaveTextContent("handed back at 2026-09-26T12:20:00.000Z");
+	});
+
+	it("says a handed-back release never started, without the waiting copy", () => {
+		state({ start: { kind: "handed-back", at: "2026-09-26T12:20:00.000Z", why: "no box took it." } });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line");
+		expect(line).toHaveTextContent("This release never started");
+		expect(line).toHaveTextContent("no box took it.");
+		expect(line.textContent).not.toMatch(/handed back at|No box has started/);
+	});
+
+	it("says a release whose job ended unstarted never started", () => {
+		state({ start: { kind: "ended", status: "failed", at: null, why: "its job ended `failed`." } });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("start-line")).toHaveTextContent("This release never started");
+	});
+
+	it("says plainly when the run holds no release job", () => {
+		state({ start: { kind: "none", why: "no box was ever asked to start it." } });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line");
+		expect(line).toHaveTextContent("This run holds no release job");
+		expect(line.textContent).not.toMatch(/handed back at/);
+	});
+
+	it("prints nothing once a box has taken the job", () => {
+		state({});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.queryByTestId("start-line")).not.toBeInTheDocument();
+	});
+});
+
+describe("an empty timeline, in the tense of the run's own status", () => {
+	it("a completed run with no acts says it took none, not that it has not started one", () => {
+		state({ runStatus: "completed", attempts: [] });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByText(/before it ended/)).toBeInTheDocument();
+		expect(screen.queryByText(/has not started one/)).not.toBeInTheDocument();
+	});
+
+	it("a running run with no acts says it has not started one yet", () => {
+		state({ runStatus: "running", attempts: [] });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByText(/has not started one/)).toBeInTheDocument();
 	});
 });

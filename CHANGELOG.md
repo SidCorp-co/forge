@@ -3141,6 +3141,17 @@
 
 ### Fixed
 
+- **A release names every issue it would ship unnamed.** An issue landed in a promotion's range
+  but left off the batch holds the release until someone decides: ship it unverified, with why;
+  reverted; or cut below it (ISS-1386).
+
+- **A release no box has started says so.** Its run screen says why and when it is handed back, and
+  a claimed issue on the release gate reads "in a release", not "shipping now" (ISS-1323).
+
+- **A release that cannot close an issue says why on it.** The comment names the refusal, each
+  open question holding it and what clears it, and how to close the issue once it is cleared
+  (ISS-1381).
+
 - **Marking an issue merged at a commit its repository does not hold is refused.** Whoever marks
   it, the commit is looked up first, a short one is recorded in full, and an unreadable repository
   is said rather than trusted (ISS-1350).

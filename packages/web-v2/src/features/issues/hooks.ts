@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -341,20 +341,28 @@ export function useReleaseRoster(projectId: string | undefined) {
 export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefusal?: () => boolean } = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
-    mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
+  return useMutation<
+    CreateReleaseBatchResult,
+    unknown,
+    { issueIds: string[]; carried?: CarriedDecisionBody[] }
+  >({
+    mutationFn: ({ issueIds, carried }) => releaseBatchApi.create(projectId, issueIds, carried),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["release-roster"] });
+      const said = [
+        ...(result.carried?.kind === "read" ? [`It promotes ${result.carried.cut.slice(0, 12)}.`] : []),
+        ...(result.verification === "unverified"
+          ? [
+              "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
+            ]
+          : []),
+        ...result.warnings.map((w) => w.message),
+      ];
       toast({
         title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
-        ...(result.verification === "unverified"
-          ? {
-              description:
-                "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
-            }
-          : {}),
+        ...(said.length > 0 ? { description: said.join(" ") } : {}),
         tone: "success",
       });
     },

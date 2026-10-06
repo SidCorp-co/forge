@@ -5,15 +5,13 @@ import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
+import {
+  RELEASE_JOB_TYPE,
+  RELEASE_UNSTARTED_DEADLINE_MS,
+  UNSTARTED_HANDBACK_REASON,
+  unpickedJobSql,
+} from './job-start.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
-
-/**
- * How long a release batch may wait for a box to take its job.
- */
-export const RELEASE_UNSTARTED_DEADLINE_MS = (() => {
-  const raw = Number(process.env.FORGE_RELEASE_UNSTARTED_DEADLINE_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60_000;
-})();
 
 export interface ReleaseUnstartedRecoveryResult {
   /** Batches whose job was fenced and whose roster was handed back. */
@@ -26,7 +24,7 @@ interface UnstartedRow extends Record<string, unknown> {
   project_id: string;
 }
 
-const REASON = 'no box took this release batch before its deadline, so it never started';
+const REASON = UNSTARTED_HANDBACK_REASON;
 
 /**
  * Every release batch whose job is still waiting, past the deadline.
@@ -36,10 +34,9 @@ async function unstartedBatches(cutoffIso: string): Promise<UnstartedRow[]> {
     SELECT j.id AS job_id, j.pipeline_run_id AS run_id, j.project_id
     FROM jobs j
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-    WHERE j.type = 'release_batch'
+    WHERE j.type = ${RELEASE_JOB_TYPE}
       AND (j.status = 'queued' OR (j.status = 'cancelled' AND j.error = ${REASON}))
-      AND j.held_by IS NULL
-      AND j.dispatched_at IS NULL
+      AND ${unpickedJobSql('j')}
       AND pr.status = 'running'
       AND j.queued_at < ${cutoffIso}
   `)) as unknown as UnstartedRow[];

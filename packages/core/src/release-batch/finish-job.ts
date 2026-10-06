@@ -25,6 +25,7 @@ import {
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
 } from './errors.js';
+import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import {
   compareAndSet,
   type FinishRefusal,
@@ -35,7 +36,7 @@ import {
   stamp,
 } from './finish-record.js';
 import { finishRefusal } from './refusals.js';
-import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
+import { finishReleaseBatch } from './service.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */

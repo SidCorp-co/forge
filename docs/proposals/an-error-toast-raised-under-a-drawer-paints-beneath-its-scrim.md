@@ -41,13 +41,11 @@ Not one: `features/issues/components/new-issue-dialog.tsx` puts a failure in its
 `errors.form` banner and closes before it toasts. `features/issues/components/batch-release-dialog.tsx`
 now says its refusal inline and raises no toast while open (ISS-1322).
 
-Not walked: every other file rendering a `SlideOver` — `conversations-screen.tsx`,
-`skill-studio-drawer.tsx`, `add-agent-dialog.tsx`, `conversation-members.tsx`,
-`conversation-sidebar.tsx`, `add-person-dialog.tsx`, `new-project-dialog.tsx`,
-`issue-quick-actions.tsx`, `transition-reason-dialog.tsx`, `issues-list-view.tsx`,
-`module-picker.tsx`, `context-rail.tsx`, `merge-marker-control.tsx`, `device-detail.tsx`,
-`project-runners-screen.tsx`, `connection-detail-drawer.tsx`, `integrations-screen.tsx`,
-`graph-tab.tsx`, `private-key-create-slideover.tsx`, and the mobile chat drawer in `app/(workspace)/layout.tsx`.
+Not walked: every other file that renders a `SlideOver`, and every caller of
+`design/primitives/confirm-dialog.tsx`, which renders one too. The list is
+`grep -rlE '<SlideOver|ConfirmDialog' packages/web-v2/src`, read at the time it is wanted rather than
+copied here, where it went stale: it missed `confirm-dialog.tsx` and its callers and
+`app/kit/page.tsx`, and named `new-project-dialog.tsx`, which the choice below cites as a model.
 
 ## The choice nobody has made
 
@@ -62,6 +60,6 @@ Not walked: every other file rendering a `SlideOver` — `conversations-screen.t
 
 | Choice | Cost |
 |---|---|
-| 1, inline per drawer | six drawers found and twenty not walked, and every new drawer has to remember it; nothing enforces it |
+| 1, inline per drawer | six drawers found and the rest not walked, and every new drawer has to remember it; nothing enforces it |
 | 2, lane above the scrim | a toast covers the bottom of a drawer, including a chat composer's input, for four seconds |
 | leaving it | a failure raised under any open drawer stays invisible, and the next report looks like ISS-1322's |

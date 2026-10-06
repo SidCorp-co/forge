@@ -163,18 +163,20 @@ describe("ReleaseGatePanel — merge age", () => {
   });
 });
 
-describe("ReleaseGatePanel — the way in to a run that is shipping", () => {
-  it("opens the run a claimed issue is shipping under", () => {
+describe("ReleaseGatePanel — the way in to the release a claimed issue is in", () => {
+  // ISS-1323: "shipping now" was false for a batch no box had started; the run screen says which.
+  it("opens the run a claimed issue is in, without claiming it is shipping", () => {
     state({ issues: ISSUES });
     renderPanel();
-    const link = screen.getByRole("link", { name: "shipping now" });
+    expect(screen.queryByText(/shipping now/)).not.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "in a release" });
     expect(link).toHaveAttribute("href", "/projects/forge-dev/releases/run-9");
   });
 
   it("leaves an unclaimed row as text, with no run to open", () => {
     state({ issues: [ISSUES[0]] });
     renderPanel();
-    expect(screen.queryByRole("link", { name: "shipping now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "in a release" })).not.toBeInTheDocument();
   });
 });
 
@@ -204,7 +206,7 @@ describe("ReleaseGatePanel — releasing", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Release 2 now$/ }));
     expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
     expect(screen.getByRole("checkbox", { name: "Select ISS-3 for release" })).toBeDisabled();
-    expect(screen.getByText(/1 shipping now/)).toBeInTheDocument();
+    expect(screen.getByText(/1 in a release/)).toBeInTheDocument();
   });
 
 });
