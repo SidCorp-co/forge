@@ -42,27 +42,105 @@ impl LineEvent {
     }
 }
 
-pub const REFUSED: &str = "TRANSCRIPT_REFUSED";
+/// The codes by which core says a session has ended, so nothing more of the
+/// turn is wanted: `events-routes.ts` answers `SESSION_TERMINATED` for a write
+/// into a terminal session, and `routes.ts` answers `SESSION_CANCELLED` for a
+/// late write into one the user cancelled. Every other refusal is a fault in
+/// this turn's delivery and is recorded on the session as one.
+const SESSION_ENDED_CODES: [&str; 2] = ["SESSION_TERMINATED", "SESSION_CANCELLED"];
 
-/// True when core has refused this batch rather than failed to take it.
-pub fn is_refused(e: &Error) -> bool {
-    e.to_string().contains(REFUSED)
+/// Why a write to a session did not land, read from the code core named and
+/// never from the status alone: core answers `SEQ_TAKEN_BY_CORE`,
+/// `SESSION_STALE` and `SEND_ALREADY_SETTLED` with the same 409 as
+/// `SESSION_CANCELLED`, and every agent-session code with no declared status
+/// with 422 (`contracts/src/agent-sessions.ts`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteFailure {
+    /// Core has ended the session; `code` is one of [`SESSION_ENDED_CODES`].
+    Ended { code: String, said: String },
+    /// Core refused the write, naming `code` where its body carried one. The
+    /// same bytes are refused again, so it is not retried.
+    Refused { code: Option<String>, said: String },
+    /// No answer, or a 5xx, after every attempt.
+    Unreached(String),
 }
 
-async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
+impl WriteFailure {
+    /// What happened, as a line a log or a session's `turnError` carries.
+    pub fn said(&self) -> &str {
+        match self {
+            WriteFailure::Ended { said, .. }
+            | WriteFailure::Refused { said, .. }
+            | WriteFailure::Unreached(said) => said,
+        }
+    }
+
+    fn prefixed(self, prefix: &str) -> Self {
+        match self {
+            WriteFailure::Ended { code, said } => WriteFailure::Ended {
+                code,
+                said: format!("{prefix}{said}"),
+            },
+            WriteFailure::Refused { code, said } => WriteFailure::Refused {
+                code,
+                said: format!("{prefix}{said}"),
+            },
+            WriteFailure::Unreached(said) => WriteFailure::Unreached(format!("{prefix}{said}")),
+        }
+    }
+}
+
+impl std::fmt::Display for WriteFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.said())
+    }
+}
+
+impl From<WriteFailure> for Error {
+    fn from(failure: WriteFailure) -> Self {
+        Error::Other(failure.said().to_string())
+    }
+}
+
+/// A 4xx answer as the failure it is, by the code its body names. `None` for
+/// anything that is not a client error, which the caller retries.
+fn refusal_of(name: &str, status: u16, text: &str) -> Option<WriteFailure> {
+    if !(400..500).contains(&status) {
+        return None;
+    }
+    let code = status::refusal_code(text);
+    let said = status::refused(name, status, text);
+    Some(match code {
+        Some(code) if SESSION_ENDED_CODES.contains(&code.as_str()) => {
+            WriteFailure::Ended { code, said }
+        }
+        code => {
+            let said = match &code {
+                Some(c) => format!("[{c}] {said}"),
+                None => said,
+            };
+            WriteFailure::Refused { code, said }
+        }
+    })
+}
+
+async fn post_chunk(
+    client: &CoreClient,
+    session_id: &str,
+    events: &[LineEvent],
+) -> std::result::Result<(), WriteFailure> {
     let path = format!("/api/agent-sessions/{session_id}/events");
     let body = serde_json::json!({ "events": events });
-    send_with_backoff("post_events", REFUSED, || client.post(&path).json(&body)).await
+    send_with_backoff("post_events", || client.post(&path).json(&body)).await
 }
 
-/// Send `request` up to [`MAX_ATTEMPTS`] times with exponential backoff. A 409
-/// (422 from ISS-162 on) is `SESSION_TERMINATED`; any other 4xx is refused at
-/// once, named by `refusal`; `name` heads the error once the attempts run out.
+/// Send `request` up to [`MAX_ATTEMPTS`] times with exponential backoff. A 4xx
+/// is answered at once, by the code core named ([`refusal_of`]); `name` heads
+/// every failure.
 async fn send_with_backoff(
     name: &str,
-    refusal: &str,
     request: impl Fn() -> reqwest::RequestBuilder,
-) -> Result<()> {
+) -> std::result::Result<(), WriteFailure> {
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {
         match request().send().await {
@@ -71,16 +149,14 @@ async fn send_with_backoff(
                 if status.is_success() {
                     return Ok(());
                 }
-                if matches!(status.as_u16(), 409 | 422) {
-                    return Err(Error::Other("SESSION_TERMINATED".into()));
-                }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    let said = status::refused(refusal, status.as_u16(), &text);
-                    return Err(Error::Other(said));
+                    if let Some(failure) = refusal_of(name, status.as_u16(), &text) {
+                        return Err(failure);
+                    }
                 }
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!(
+                    return Err(WriteFailure::Unreached(format!(
                         "{name} failed after {attempt} attempts: {}",
                         status::named(status.as_u16())
                     )));
@@ -88,14 +164,16 @@ async fn send_with_backoff(
             }
             Err(e) => {
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("{name} transport: {e}")));
+                    return Err(WriteFailure::Unreached(format!("{name} transport: {e}")));
                 }
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         delay_ms = delay_ms.saturating_mul(2);
     }
-    Err(Error::Other(format!("{name}: exhausted retries")))
+    Err(WriteFailure::Unreached(format!(
+        "{name}: exhausted retries"
+    )))
 }
 
 /// How many lines one request may carry; core's own schema caps the batch here.
@@ -105,13 +183,13 @@ pub async fn post_events(
     client: &CoreClient,
     session_id: &str,
     events: &[LineEvent],
-) -> Result<()> {
+) -> std::result::Result<(), WriteFailure> {
     let total = events.len();
     let mut delivered = 0usize;
     for chunk in events.chunks(MAX_BATCH) {
-        if let Err(e) = post_chunk(client, session_id, chunk).await {
-            return Err(Error::Other(format!(
-                "post_events: {delivered} of {total} line(s) were stored before this failed: {e}"
+        if let Err(failure) = post_chunk(client, session_id, chunk).await {
+            return Err(failure.prefixed(&format!(
+                "{delivered} of {total} line(s) were stored before this failed: "
             )));
         }
         delivered += chunk.len();
@@ -181,17 +259,83 @@ pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
     Err(Error::Other("ack_session: exhausted retries".into()))
 }
 
-/// `PATCH /api/agent-sessions/:id` with the same exponential backoff as
-/// `post_job_events`. A 409 (422 from ISS-162 on) means the session is terminal (e.g. user cancelled)
-/// — surfaced as a distinct error so the caller can stop streaming.
+/// `PATCH /api/agent-sessions/:id` with the same backoff as the lines, its
+/// failure read by code ([`WriteFailure`]) so a caller can tell a session core
+/// has ended from a write core refused.
+pub async fn write_session(
+    client: &CoreClient,
+    session_id: &str,
+    patch: &SessionPatch,
+) -> std::result::Result<(), WriteFailure> {
+    let path = format!("/api/agent-sessions/{session_id}");
+    send_with_backoff("patch_session", || client.patch(&path).json(patch)).await
+}
+
+/// [`write_session`] for a caller that only says what went wrong.
 pub async fn patch_session(
     client: &CoreClient,
     session_id: &str,
     patch: &SessionPatch,
 ) -> Result<()> {
-    let path = format!("/api/agent-sessions/{session_id}");
-    send_with_backoff("patch_session", "patch session", || {
-        client.patch(&path).json(patch)
-    })
-    .await
+    Ok(write_session(client, session_id, patch).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_two_ending_codes_read_as_an_ended_session() {
+        for (status, code) in [(422, "SESSION_TERMINATED"), (409, "SESSION_CANCELLED")] {
+            let body = format!(r#"{{"code":"{code}","error":{{"code":"{code}"}}}}"#);
+            assert!(
+                matches!(refusal_of("w", status, &body), Some(WriteFailure::Ended { code: c, .. }) if c == code),
+                "{status} {code} did not read as an ended session"
+            );
+        }
+        for (status, code) in [
+            (409, "SEQ_TAKEN_BY_CORE"),
+            (409, "SESSION_STALE"),
+            (409, "SEND_ALREADY_SETTLED"),
+            (422, "TURN_NOT_USER"),
+        ] {
+            let body = format!(r#"{{"code":"{code}","error":{{"code":"{code}"}}}}"#);
+            match refusal_of("w", status, &body) {
+                Some(WriteFailure::Refused {
+                    code: Some(c),
+                    said,
+                }) => {
+                    assert_eq!(c, code);
+                    assert!(said.starts_with(&format!("[{code}] w {status}")), "{said}");
+                }
+                other => panic!("{status} {code} read as {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_code_is_read_under_error_alone_and_a_bare_status_is_refused_without_one() {
+        let nested = r#"{"error":{"code":"SESSION_CANCELLED"}}"#;
+        assert!(matches!(
+            refusal_of("w", 409, nested),
+            Some(WriteFailure::Ended { .. })
+        ));
+        assert!(matches!(
+            refusal_of("w", 409, ""),
+            Some(WriteFailure::Refused { code: None, .. })
+        ));
+        assert!(matches!(
+            refusal_of("w", 422, "<html><title>Bad</title></html>"),
+            Some(WriteFailure::Refused { code: None, .. })
+        ));
+    }
+
+    #[test]
+    fn a_server_fault_is_not_a_refusal() {
+        assert_eq!(
+            refusal_of("w", 503, r#"{"code":"SESSION_TERMINATED"}"#),
+            None
+        );
+        assert_eq!(refusal_of("w", 302, ""), None);
+    }
 }

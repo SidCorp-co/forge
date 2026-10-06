@@ -105,6 +105,20 @@ fn one_line(text: &str) -> String {
     }
 }
 
+/// The code a refusal names. Core's problem body carries it at the top level
+/// and under `error.code`, the two always equal
+/// (`contracts/src/refusal.ts:ProblemBody`); either is read, so a core from
+/// before or after that envelope answers. Anything else (a proxy's HTML 502,
+/// an empty body) yields `None` and the caller decides by status alone.
+pub(crate) fn refusal_code(body: &str) -> Option<String> {
+    let parsed = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    parsed
+        .get("code")
+        .or_else(|| parsed.pointer("/error/code"))?
+        .as_str()
+        .map(str::to_string)
+}
+
 /// `<what> <status named>: <body>`, the shape every refused call to core prints.
 pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
     let named = named(status);

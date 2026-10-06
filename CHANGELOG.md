@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A chat turn core refuses is failed by its code.** Only `SESSION_TERMINATED` or `SESSION_CANCELLED`
+  stops a turn quietly; `SEQ_TAKEN_BY_CORE` and every other 4xx mark the session failed, naming the
+  code, instead of dropping the rest of the turn.
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
   version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
   reference resolves to the shipped run.
