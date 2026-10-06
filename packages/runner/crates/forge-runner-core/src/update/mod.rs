@@ -282,6 +282,19 @@ impl ServedBuild {
             return Ok(());
         }
         let at = kept_path(exe);
+        // A build still on probation is no fallback: it has not stayed up.
+        // Where one stands at `exe` and a kept build stands beside it, that
+        // kept build is the one a failure goes back to, so it stays — a hand
+        // update run from a build the daemon installed and has not yet
+        // confirmed would otherwise replace the build the box last served
+        // with one nothing has shown to start.
+        if probation::path(exe).is_file() && at.is_file() {
+            *kept = Some(Kept {
+                exe: exe.to_path_buf(),
+                at,
+            });
+            return Ok(());
+        }
         let mut beside = at.as_os_str().to_os_string();
         beside.push(".tmp");
         let beside = std::path::PathBuf::from(beside);
@@ -558,24 +571,6 @@ mod tests {
         );
     }
 
-    /// ISS-1378 criterion 15: every route that installs reads the hold
-    /// before it downloads anything.
-    #[test]
-    fn apply_reads_the_hold_before_it_downloads() {
-        let source = crate::test_scratch::lf(include_str!("mod.rs"));
-        let body = source
-            .split("pub async fn apply(")
-            .nth(1)
-            .and_then(|s| s.split("\n}\n").next())
-            .expect("apply's body");
-        let hold = body.find("held_back(").expect("apply reads the hold");
-        let download = body.find("reqwest::").expect("apply downloads");
-        assert!(
-            hold < download,
-            "the held-back build is downloaded before the hold is read"
-        );
-    }
-
     #[test]
     fn manifest_url_prefers_config() {
         assert_eq!(
@@ -825,6 +820,41 @@ mod tests {
                 .expect_err("unreadable refuses")
                 .to_string();
             assert!(why.contains("not installed"), "{why}");
+            drop(dir);
+        }
+
+        /// A build installed and not yet confirmed is no fallback: a later
+        /// install in another process keeps the build kept before it.
+        #[tokio::test]
+        async fn an_install_over_a_build_still_on_probation_keeps_the_build_before_it() {
+            let (dir, exe) = a_box("pre-unconfirmed");
+            install(&exe, GOOD.as_bytes(), &claim(), Some(&ServedBuild::new()))
+                .await
+                .expect("first, by the daemon");
+            let later = Claim {
+                version: "0.3.0".into(),
+                commit: None,
+            };
+            let by_hand = ServedBuild::new();
+            install(
+                &exe,
+                b"#!/bin/sh\necho 'forge-runner 0.3.0 (later00)'\n",
+                &later,
+                Some(&by_hand),
+            )
+            .await
+            .expect("second, by hand, while 0.2.0 is on probation");
+            assert_eq!(
+                runs_as(&kept_path(&exe)),
+                "rc=0 forge-runner 0.1.0 (served0)",
+                "the build the box last served stays kept, not the unconfirmed 0.2.0"
+            );
+            assert_eq!(
+                probation::enter(&exe, "0.3.0"),
+                probation::Entered::Counted { starts: 1 }
+            );
+            by_hand.restore().unwrap();
+            assert_eq!(runs_as(&exe), "rc=0 forge-runner 0.1.0 (served0)");
             drop(dir);
         }
 

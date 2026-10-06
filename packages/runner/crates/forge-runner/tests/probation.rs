@@ -274,6 +274,35 @@ fn an_update_skips_the_build_a_probation_put_back_until_another_release_is_offer
         "and nothing is on probation"
     );
 
+    std::fs::write(probation::rejected_path(&exe), "{").unwrap();
+    let said = update_by_hand(&exe, &home);
+    assert!(
+        said.contains("not installed") && said.contains(".rejected"),
+        "an unreadable hold refuses rather than reading as absent: {said}"
+    );
+    assert_eq!(
+        std::fs::read(&exe).unwrap(),
+        served,
+        "nothing installed: {said}"
+    );
+    assert_eq!(
+        releases
+            .asset_fetches
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "nor downloaded"
+    );
+    probation::reject(
+        &exe,
+        &probation::Rejected {
+            version: rejected_version.clone(),
+            commit: Some("badbad0".into()),
+            starts: probation::LIMIT,
+            at_ms: 1,
+        },
+    )
+    .unwrap();
+
     let other = newer(2);
     let next = serve_release(&other, "c0ffee0");
     let elsewhere = Scratch::new("probation-held-next");
