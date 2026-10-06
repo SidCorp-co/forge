@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **Standing tells the truth about refused runs, parks and designs.** A refused declaration reads
+  queued behind its refusal; a new run restarts the step; agent parks, returned designs and stale
+  bases name what they wait on; question records ask.
+
 - **`forge-runner bind --path` provisions the checkout.** A re-bound checkout used to keep the
   orientation of whichever instance last wrote it; it now carries this instance's, under
   skip-worktree where the file is committed.
@@ -20,10 +24,6 @@ Simpler core and web, and projects that live only on a runner's checkout
 
 
 ### Changed
-
-- **Standing tells the truth about refused runs, parks and designs.** A refused declaration reads
-  queued behind its refusal; a new run restarts the step; agent parks, returned designs and stale
-  bases name what they wait on; question records ask.
 
 - **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
   rewritten to `agent-reports:*`, every notification carries a severity, and seven unset env
