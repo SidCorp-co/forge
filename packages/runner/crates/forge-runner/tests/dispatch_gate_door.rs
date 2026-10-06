@@ -288,12 +288,64 @@ fn status_prints_what_the_gate_could_not_do() {
     );
     assert!(printed.contains("child-9"), "{printed}");
     assert!(
-        printed.contains("/day over"),
-        "the count has to arrive as a rate over a window or it reads as history: {printed}"
+        !printed.contains("/day"),
+        "forty marks written in one instant carry no rate, and extrapolating one from them is \
+         how two marks in five minutes read as 494 a day (ISS-1324): {printed}"
+    );
+    assert!(
+        printed.contains("under the 1h a rate needs"),
+        "a window too short for a rate says so and names the minimum: {printed}"
     );
     assert!(
         !printed.contains("epoch+"),
         "a window stated in epoch seconds is one nobody reads: {printed}"
+    );
+}
+
+/// ISS-1324. A file holding at least what a trim keeps prints its count as a
+/// floor, over a window long enough to carry a rate, and never claims the file
+/// is at its cap when it is not.
+#[test]
+fn status_prints_a_count_that_may_be_a_floor_as_one() {
+    let scratch = Scratch::new("floor");
+    let config_dir = config_dir_at(scratch.path());
+    let now = forge_runner_core::daemon::agent_activity::now_ms();
+    let lines: Vec<String> = (0..260)
+        .map(|i| {
+            serde_json::json!({
+                "at": now - 2 * 3_600_000 + i * 20_000,
+                "kind": "degraded",
+                "source": "hook",
+                "detail": "the daemon did not answer within the bound",
+                "run_unknown": "the hook holds no registry of declared runs",
+            })
+            .to_string()
+        })
+        .collect();
+    std::fs::write(
+        forge_runner_core::daemon::degraded::marks_path(&config_dir),
+        lines.join("\n") + "\n",
+    )
+    .expect("plant the marks");
+
+    let out = scoped(env!("CARGO_BIN_EXE_forge-runner"), scratch.path())
+        .arg("status")
+        .output()
+        .expect("status runs");
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        printed.contains("degraded   at least 260 dispatch(es)"),
+        "a count that may have lost its oldest marks is a floor and says so where it is \
+         stated: {printed}"
+    );
+    assert!(printed.contains("/day over"), "{printed}");
+    assert!(
+        printed.contains("at least the 250 lines a trim keeps"),
+        "{printed}"
+    );
+    assert!(
+        !printed.contains("at its cap"),
+        "260 lines of a 500-line file is not its cap: {printed}"
     );
 }
 
@@ -334,12 +386,26 @@ fn a_payload_this_box_cannot_read_is_allowed_and_marked() {
 /// The registered command run with no capability and no tmux around it: a
 /// Claude Code session the daemon never placed, standing in a Forge checkout.
 fn run_gate_tokenless(command: &str, config_home: &Path, payload: &str) -> String {
-    let mut child = scoped("sh", config_home)
-        .arg("-c")
+    run_gate_tokenless_in(command, config_home, payload, &[])
+}
+
+/// As [`run_gate_tokenless`], with `tmux` set in the child's environment.
+fn run_gate_tokenless_in(
+    command: &str,
+    config_home: &Path,
+    payload: &str,
+    tmux: &[(&str, &str)],
+) -> String {
+    let mut cmd = scoped("sh", config_home);
+    cmd.arg("-c")
         .arg(command)
         .env_remove("FORGE_CONTROL_TOKEN")
         .env_remove("TMUX")
-        .env_remove("TMUX_PANE")
+        .env_remove("TMUX_PANE");
+    for (k, v) in tmux {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -368,6 +434,37 @@ fn a_session_the_daemon_never_placed_is_let_through_unmarked() {
     assert!(
         !config_dir.join("gate-marks.jsonl").exists(),
         "a session that was never the gate's subject is not counted as one it failed to decide"
+    );
+}
+
+/// The dispatch that wrote 120 of the 128 tokenless marks on sid-xeon-1
+/// (ISS-1324): a `forge:qa` hand-off from a dispatcher session an operator
+/// opened by hand, inside a tmux of their own rather than the runner's. It is
+/// let through, and it leaves no mark saying the gate failed to decide.
+#[test]
+fn a_dispatcher_in_an_operators_own_tmux_is_let_through_unmarked() {
+    let scratch = Scratch::new("own-tmux");
+    let config_dir = config_dir_at(scratch.path());
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    let operators = scratch.path().join("operator-tmux.sock");
+    let tmux = format!("{},4242,0", operators.display());
+    let payload = DISPATCH_PAYLOAD
+        .replace("forge:runner", "forge:qa")
+        .replace(
+            "toolu_01WFynvjwEmYFcgyKTMn4J91",
+            "toolu_019jNBi5r24A5qSegdsbABYP",
+        );
+    let printed = run_gate_tokenless_in(
+        &command,
+        scratch.path(),
+        &payload,
+        &[("TMUX", &tmux), ("TMUX_PANE", "%3")],
+    );
+    assert_eq!(printed, "{}");
+    assert!(
+        !config_dir.join("gate-marks.jsonl").exists(),
+        "an operator's own session was never the gate's subject, and counting it as a gate that \
+         could not decide is what put 409 marks on a box whose gate was deciding"
     );
 }
 

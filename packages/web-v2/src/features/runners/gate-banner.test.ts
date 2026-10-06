@@ -18,7 +18,13 @@ const gate = (over: Partial<DeviceGate> = {}): DeviceGate => ({
 describe("deviceGateBanner", () => {
 	it("names the count, the rate and the window for a gate failing open", () => {
 		const banner = deviceGateBanner(gate(), NOW);
-		expect(banner).toMatchObject({ count: 279, rate: "74/day", window: "4d" });
+		expect(banner).toMatchObject({ count: "at least 279", rate: "74/day", window: "4d" });
+	});
+
+	// ISS-1324: a box whose marks file holds fewer lines than a trim keeps
+	// sends its count whole; one that may have dropped marks sends a floor.
+	it("states the count whole where the box says nothing was trimmed", () => {
+		expect(deviceGateBanner(gate({ trimmed: false }), NOW)?.count).toBe("279");
 	});
 
 	it("says when one reason accounts for the whole count", () => {

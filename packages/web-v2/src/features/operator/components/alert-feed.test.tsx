@@ -75,6 +75,25 @@ describe("sortAlerts", () => {
   });
 });
 
+describe("the gate alert (ISS-1324)", () => {
+  it("titles A6 by what it reports and names the box, with no reap", () => {
+    renderFeed([
+      alert("A6", "warn", [
+        {
+          ref: "0f1e2d3c-4b5a-4968-8776-655443322110",
+          kind: "device",
+          label: "sid-xeon-1 · at least 409 undecided, 45/day over 9d",
+        },
+      ]),
+    ]);
+    expect(screen.getByText("Declaration gate failing open")).toBeInTheDocument();
+    expect(
+      screen.getByText("sid-xeon-1 · at least 409 undecided, 45/day over 9d"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reap/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("the reap control", () => {
   it("is offered on an A2 job entity", () => {
     renderFeed([alert("A2", "warn", [stuckJob])]);

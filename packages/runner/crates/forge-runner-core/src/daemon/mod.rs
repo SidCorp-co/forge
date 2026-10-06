@@ -142,20 +142,30 @@ fn warn_refused(refused: &heartbeat::Refused) {
 fn announce_gate(gate: &degraded::Condition, shouted: &mut Option<degraded::Verdict>) -> bool {
     let speak = gate.verdict == degraded::Verdict::FailingOpen && *shouted != Some(gate.verdict);
     if speak {
-        tracing::warn!(
-            "[gate] this box's declaration gate is FAILING OPEN: {} dispatch(es) admitted without \
-             a decision at {}/day, newest {}s ago. Every one of them ran with the declaration \
-             instruction as advice. Last reason: {}",
-            gate.count,
-            gate.per_day.unwrap_or_default().round(),
-            gate.since_last_ms.unwrap_or_default() / 1000,
-            gate.last
-                .as_ref()
-                .map_or("none recorded", |l| l.detail.as_str()),
-        );
+        tracing::warn!("{}", gate_announcement(gate));
     }
     *shouted = Some(gate.verdict);
     speak
+}
+
+/// The line [`announce_gate`] writes. A count the marks file may have trimmed
+/// is a floor, and says so (ISS-1324).
+fn gate_announcement(gate: &degraded::Condition) -> String {
+    let count = if gate.trimmed {
+        format!("at least {}", gate.count)
+    } else {
+        gate.count.to_string()
+    };
+    format!(
+        "[gate] this box's declaration gate is FAILING OPEN: {count} dispatch(es) admitted \
+         without a decision at {}/day, newest {}s ago. Every one of them ran with the \
+         declaration instruction as advice. Last reason: {}",
+        gate.per_day.unwrap_or_default().round(),
+        gate.since_last_ms.unwrap_or_default() / 1000,
+        gate.last
+            .as_ref()
+            .map_or("none recorded", |l| l.detail.as_str()),
+    )
 }
 
 /// What the update loop writes once a release is on disk. It says what is
@@ -1564,6 +1574,20 @@ mod tests {
             &gate_at(degraded::Verdict::FailingOpen),
             &mut shouted
         ));
+    }
+
+    /// ISS-1324. The journal states a count the file may have trimmed as a
+    /// floor, and a whole count as it is.
+    #[test]
+    fn the_announcement_states_a_trimmed_count_as_a_floor() {
+        let mut gate = gate_at(degraded::Verdict::FailingOpen);
+        assert!(gate_announcement(&gate).contains("FAILING OPEN: 278 dispatch(es)"));
+        gate.trimmed = true;
+        let line = gate_announcement(&gate);
+        assert!(
+            line.contains("FAILING OPEN: at least 278 dispatch(es)"),
+            "{line}"
+        );
     }
 
     #[test]

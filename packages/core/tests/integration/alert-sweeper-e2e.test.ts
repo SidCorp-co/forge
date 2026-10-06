@@ -271,7 +271,7 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     await seedOrphan();
     await expect(mods.runAlertSweep(nextNow())).resolves.toMatchObject({
       notified: 0,
-      evaluated: 5,
+      evaluated: 6,
     });
   });
 

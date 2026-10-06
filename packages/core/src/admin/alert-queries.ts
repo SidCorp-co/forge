@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { alertGateFailingOpen } from './gate-alert.js';
 import { readThresholds } from './thresholds.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
 import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
@@ -534,17 +535,18 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
   };
 }
 
-/** Always returns exactly 5 items, ordered A1..A5. Shared by the pull route and the push sweeper. */
+/** Always returns exactly 6 items, ordered A1..A6. Shared by the pull route and the push sweeper. */
 export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
   const thresholds = opts.thresholds ?? (await readThresholds());
   const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();
-  const [a1, a2, a3, a4, a5] = await Promise.all([
+  const [a1, a2, a3, a4, a5, a6] = await Promise.all([
     alertOrphanJobs(),
     alertStuckJobs(staleSeconds),
     alertRunnerStarved(thresholds.runnerStarvedSeconds),
     alertSpendSpike(now, thresholds),
     alertAutomationFailing(thresholds),
+    alertGateFailingOpen(now),
   ]);
-  return [a1, a2, a3, a4, a5];
+  return [a1, a2, a3, a4, a5, a6];
 }

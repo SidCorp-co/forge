@@ -3141,6 +3141,12 @@
 
 ### Fixed
 
+- **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
+  names each such box, and the notification clears once the box recovers (ISS-1324).
+
+- **Gate counts say only what they know.** A count that may have lost older marks reads
+  "at least N", and no per-day rate is given from under an hour of marks (ISS-1324).
+
 - **A release names every issue it would ship unnamed.** An issue landed in a promotion's range
   but left off the batch holds the release until someone decides: ship it unverified, with why;
   reverted; or cut below it (ISS-1386).

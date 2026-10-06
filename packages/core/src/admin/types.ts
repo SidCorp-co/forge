@@ -70,18 +70,18 @@ export interface AdminWorkspaceRow {
   openIssues: number;
 }
 
-export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
+export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6';
 export type AdminAlertStatus = 'ok' | 'warn' | 'crit';
 
 /** One contributor to an alert. `ref` is the id of the row named by `kind`, so
  *  an A2 entity's `ref` is the job id the reap action cancels. */
 export interface AdminAlertEntity {
   ref: string;
-  kind: 'job' | 'project' | 'runner' | 'schedule' | 'integration_binding';
+  kind: 'job' | 'project' | 'runner' | 'device' | 'schedule' | 'integration_binding';
   label: string;
 }
 
-/** One of the five Tier 1 alerts, from `GET /api/admin/alerts`. */
+/** One of the six Tier 1 alerts, from `GET /api/admin/alerts`. */
 export interface AdminAlert {
   id: AdminAlertId;
   key: string;
