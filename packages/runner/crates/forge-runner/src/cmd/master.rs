@@ -44,6 +44,7 @@ use forge_runner_core::daemon::recovery::MasterPresence;
 use forge_runner_core::daemon::recovery_ports;
 use forge_runner_core::daemon::subagent_host::ProcHosts;
 use forge_runner_core::daemon::terminal;
+use forge_runner_core::daemon::unplaced_record;
 use forge_runner_core::runner::ledger::{Ledger, MasterAuthority};
 use forge_runner_core::transport::{runners, CoreClient};
 
@@ -483,6 +484,9 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
         if let Some(line) = presence_detail(presence, &name, || last_exit_line(&s)) {
             println!("{:<20} {line}", "");
         }
+        if let Some(line) = unplaced_line(&s) {
+            println!("{:<20} unplaced  {line}", "");
+        }
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         if slug.is_some() {
             for line in standing_history_lines(led.as_ref(), &s, now_unix()) {
@@ -549,6 +553,20 @@ fn last_exit_line(slug: &str) -> String {
         )),
     };
     pane_exit::status_line(&found, now_unix(), &ProcHosts::system())
+}
+
+/// Why this box's daemon placed no pane for `slug`, off the record its sweep
+/// keeps beside the transcript: a master refused for its PATH, or for any
+/// other reason, has no pane and so nothing else here that could say it
+/// (ISS-1390 criterion 6).
+fn unplaced_line(slug: &str) -> Option<String> {
+    let found = match pane_exit::master_dir(slug) {
+        Ok(dir) => unplaced_record::read(&dir),
+        Err(e) => unplaced_record::Found::Unavailable(format!(
+            "this box's config directory cannot be resolved: {e}"
+        )),
+    };
+    unplaced_record::status_line(&found, now_unix())
 }
 
 /// Which projects a bare `status` answers for.

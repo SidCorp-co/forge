@@ -53,6 +53,7 @@ pub mod subagent_host;
 pub mod terminal;
 pub mod transcript_age;
 pub mod turn_evidence;
+pub mod unplaced_record;
 
 /// Make this test binary's `tracing` events survive long enough to be captured.
 ///
