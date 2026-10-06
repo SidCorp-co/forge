@@ -17,9 +17,15 @@
 //!
 //! Interactive turns are not gated here. A chat turn and a message into a
 //! master pane have no refusal path that reaches the person waiting on them,
-//! so refusing one would drop it without a word; they are counted as holders
-//! instead, and each lasts a turn.
+//! so refusing one would drop it without a word; they are held in [`Turns`]
+//! instead, each named by the session or pane it serves, and each lasts a
+//! turn.
+//!
+//! The bound is time since the attempt began, read off the clock at every
+//! look: a closing window or a close of parked sessions spends that time as
+//! surely as a poll does (ISS-1223).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -72,6 +78,78 @@ impl std::fmt::Display for NotNow {
                 serving::span_secs(remaining.as_secs())
             ),
         }
+    }
+}
+
+/// The interactive turns running in this process, each by what it is and
+/// when it began, so a handover can say which session or pane it waits on.
+#[derive(Default)]
+pub struct Turns {
+    held: Mutex<BTreeMap<u64, (String, Instant)>>,
+    next: AtomicU64,
+}
+
+/// One turn, from its frame until it ends.
+#[must_use = "a turn dropped at once is held by nothing"]
+pub struct Turn {
+    turns: Arc<Turns>,
+    id: u64,
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        self.turns.lock().remove(&self.id);
+    }
+}
+
+impl Turns {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, (String, Instant)>> {
+        self.held.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Hold `what` until the returned turn drops.
+    pub fn enter(self: &Arc<Self>, what: impl Into<String>) -> Turn {
+        let id = self.next.fetch_add(1, Ordering::AcqRel);
+        self.lock().insert(id, (what.into(), Instant::now()));
+        Turn {
+            turns: self.clone(),
+            id,
+        }
+    }
+
+    /// Each turn, oldest first, with how long it has run.
+    fn named(&self) -> Vec<String> {
+        self.lock()
+            .values()
+            .map(|(what, since)| {
+                format!(
+                    "{what}, running {}",
+                    serving::span_secs(since.elapsed().as_secs())
+                )
+            })
+            .collect()
+    }
+}
+
+/// How a chat turn is named while it holds a handover.
+pub(crate) fn chat_turn(starting: bool, session: Option<&str>) -> String {
+    match (starting, session) {
+        (true, Some(s)) => format!("a chat turn starting session {s}"),
+        (false, Some(s)) => format!("a chat turn in session {s}"),
+        (_, None) => "a chat turn whose frame named no session".to_string(),
+    }
+}
+
+/// How a message into a master pane is named while it holds a handover.
+pub(crate) fn pane_message(session: Option<&str>, pane: Option<&str>) -> String {
+    match (session, pane) {
+        (Some(s), Some(p)) => format!("a message into master pane {p} (session {s})"),
+        (Some(s), None) => format!("a message for session {s}, which no master pane here holds"),
+        (None, _) => "a message whose frame named no session".to_string(),
     }
 }
 
@@ -568,7 +646,7 @@ pub(crate) enum Drained {
 /// What in this process a handover waits for with admission open. Control
 /// requests are not among them: each lasts a moment and another follows, so
 /// they are waited for inside the closing window, where none can begin.
-fn holders(drain: &Drain, inflight: &Arc<AtomicUsize>) -> Vec<String> {
+fn holders(drain: &Drain, turns: &Turns) -> Vec<String> {
     let mut out = Vec::new();
     let admitting = drain.admitting();
     if admitting > 0 {
@@ -576,19 +654,14 @@ fn holders(drain: &Drain, inflight: &Arc<AtomicUsize>) -> Vec<String> {
             "{admitting} admission(s) between the gate and their ledger write"
         ));
     }
-    let turns = inflight.load(Ordering::Acquire);
-    if turns > 0 {
-        out.push(format!(
-            "{turns} interactive turn(s) — a chat turn or a message into a master pane"
-        ));
-    }
+    out.extend(turns.named());
     out
 }
 
 /// What the closing window waits for: the holders, and the control requests
 /// accepted before the server stopped accepting.
-fn window_holders(drain: &Drain, inflight: &Arc<AtomicUsize>) -> Vec<String> {
-    let mut out = holders(drain, inflight);
+fn window_holders(drain: &Drain, turns: &Turns) -> Vec<String> {
+    let mut out = holders(drain, turns);
     let requests = drain.socket.in_flight();
     if requests > 0 {
         out.push(format!(
@@ -598,10 +671,10 @@ fn window_holders(drain: &Drain, inflight: &Arc<AtomicUsize>) -> Vec<String> {
     out
 }
 
-fn waiting_line(what: &str, cause: &str, waited: u64, holding: &[String]) -> String {
+fn waiting_line(what: &str, cause: &str, waited: Duration, holding: &[String]) -> String {
     format!(
         "[{what}] handing over for {cause} once this process's own work ends: {} of {} waited, {} outstanding — {}. Admission stays open meanwhile, and the runs in the ledger hold nothing: they live in their panes, which the next build adopts",
-        serving::span_secs(waited),
+        serving::span_secs(waited.as_secs()),
         serving::span_secs(DRAIN_TIMEOUT_SECS),
         holding.len(),
         holding.join("; ")
@@ -610,11 +683,17 @@ fn waiting_line(what: &str, cause: &str, waited: u64, holding: &[String]) -> Str
 
 /// The give-up, and what it costs: time on the build this process started
 /// with, and nothing else — admission was open throughout.
-fn give_up_line(what: &str, cause: &str, holding: &[String], next: &NextAttempt) -> String {
+fn give_up_line(
+    what: &str,
+    cause: &str,
+    waited: Duration,
+    holding: &[String],
+    next: &NextAttempt,
+) -> String {
     let due_in = next.due_in.max(Duration::from_secs(DRAIN_REOPEN_SECS));
     format!(
         "[{what}] gave up handing over for {cause} after {} with {} outstanding — {}. Admission was never closed while it waited, and nothing was stopped; this process goes on serving the build it started with. The next attempt is {}, in {}",
-        serving::span_secs(DRAIN_TIMEOUT_SECS),
+        serving::span_secs(waited.as_secs()),
         holding.len(),
         holding.join("; "),
         next.by,
@@ -626,11 +705,15 @@ fn give_up_line(what: &str, cause: &str, holding: &[String], next: &NextAttempt)
 /// replacing its image; then close admission for the window in which the
 /// requests in flight are answered. `Idle` leaves that window closed for the
 /// caller's exec.
+///
+/// The bound is read off the clock since the attempt began. A step under way
+/// when it passes — a closing window, or the one close of parked sessions —
+/// runs to its own end, and the give-up comes at the look after it.
 pub(crate) async fn drain_to_idle<F, Fut>(
     drain: &Drain,
     what: &str,
     cause: &str,
-    inflight: &Arc<AtomicUsize>,
+    turns: &Turns,
     close_parked: F,
     next: impl FnOnce() -> NextAttempt,
 ) -> Drained
@@ -642,11 +725,13 @@ where
         Ok(a) => a,
         Err(not_now) => return Drained::NotNow(not_now),
     };
-    let mut waited = 0u64;
-    let mut report_at = 0u64;
+    let started = Instant::now();
+    let bound = Duration::from_secs(DRAIN_TIMEOUT_SECS);
+    let every = Duration::from_secs(DRAIN_REPORT_SECS);
+    let mut report_at = Duration::ZERO;
     let mut close_parked = Some(close_parked);
     loop {
-        let mut holding = holders(drain, inflight);
+        let mut holding = holders(drain, turns);
         if holding.is_empty() {
             if let Some(close) = close_parked.take() {
                 let closed = close().await;
@@ -657,10 +742,10 @@ where
                 }
                 // Closing takes up to the checkpoint budget with admission
                 // open, so the box is read again before the window closes.
-                holding = holders(drain, inflight);
+                holding = holders(drain, turns);
             }
             if holding.is_empty() {
-                match closing_window(drain, &attempt, inflight).await {
+                match closing_window(drain, &attempt, turns).await {
                     Ok(()) => return Drained::Idle,
                     Err(left) => {
                         tracing::warn!(
@@ -672,19 +757,29 @@ where
                 }
             }
         }
-        if waited >= DRAIN_TIMEOUT_SECS {
+        let waited = started.elapsed();
+        if waited >= bound {
             let next = next();
-            tracing::warn!("{}", give_up_line(what, cause, &holding, &next));
+            tracing::warn!("{}", give_up_line(what, cause, waited, &holding, &next));
             drain.give_up(attempt, holding, &next);
             return Drained::GaveUp;
         }
         if waited >= report_at && !holding.is_empty() {
             tracing::warn!("{}", waiting_line(what, cause, waited, &holding));
             drain.report(&attempt, &holding);
-            report_at += DRAIN_REPORT_SECS;
+            while report_at <= waited {
+                report_at += every;
+            }
         }
-        tokio::time::sleep(Duration::from_secs(DRAIN_POLL_SECS)).await;
-        waited += DRAIN_POLL_SECS;
+        // The next look is the next poll, the next report or the bound,
+        // whichever comes first, so neither a line nor the give-up is late
+        // by up to a poll.
+        let now = Instant::now();
+        let mut wake = (started + bound).min(now + Duration::from_secs(DRAIN_POLL_SECS));
+        if started + report_at > now {
+            wake = wake.min(started + report_at);
+        }
+        tokio::time::sleep_until(wake).await;
     }
 }
 
@@ -694,7 +789,7 @@ where
 async fn closing_window(
     drain: &Drain,
     attempt: &Attempt,
-    inflight: &Arc<AtomicUsize>,
+    turns: &Turns,
 ) -> Result<(), Vec<String>> {
     let stop = drain.close_window(attempt);
     let bound = Duration::from_secs(HANDOVER_QUIET_SECS);
@@ -705,7 +800,7 @@ async fn closing_window(
         // read after an acknowledgement sees them all; read the other way
         // round, a request counted in between is missed (review F1, recheck).
         let still = stop.is_some_and(|stop| !drain.socket.stood_for(stop));
-        let mut holding = window_holders(drain, inflight);
+        let mut holding = window_holders(drain, turns);
         if still {
             holding.push(
                 "the control server, which has not yet said it stopped accepting".to_string(),
@@ -742,7 +837,7 @@ mod tests {
         })
     }
 
-    async fn drain_with(drain: &Drain, inflight: &Arc<AtomicUsize>) -> Drained {
+    async fn drain_with(drain: &Drain, inflight: &Turns) -> Drained {
         drain_to_idle(
             drain,
             "test",
@@ -796,7 +891,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn idle_hands_over_at_once() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let started = Instant::now();
         let (_calls, close) = spy(0);
         let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
@@ -811,7 +906,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn an_idle_handover_still_closes_the_parked_sessions() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let (calls, close) = spy(2);
         let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
         assert_eq!(out, Drained::Idle);
@@ -823,7 +918,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn parked_sessions_close_with_admission_open() {
         let drain = Arc::new(Drain::unrecorded());
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let during = drain.clone();
         let admitted = Arc::new(Mutex::new(None));
         let seen = admitted.clone();
@@ -843,7 +938,7 @@ mod tests {
     async fn an_idle_handover_leaves_admission_closed_for_the_exec() {
         let drain = Drain::unrecorded();
         let accepting = drain.socket().accepting();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         assert_eq!(drain_with(&drain, &inflight).await, Drained::Idle);
         assert!(drain.refusal().is_some());
         assert!(!*accepting.borrow());
@@ -854,7 +949,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_waiting_handover_admits_work_until_it_gives_up() {
         let drain = Arc::new(Drain::unrecorded());
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         let watcher = drain.clone();
         let seen = tokio::spawn(async move {
             let mut admitted = 0;
@@ -878,7 +974,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_refused_handover_closes_nothing() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         let (calls, close) = spy(1);
         let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
         assert_eq!(out, Drained::GaveUp);
@@ -888,14 +985,14 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn the_close_waits_for_the_turn_to_finish() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let finisher = inflight.clone();
+        let inflight = Turns::new();
+        let finisher = inflight.enter("a chat turn in session s1");
         let (calls, close) = spy(1);
         let observed = calls.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
             assert_eq!(observed.load(Ordering::Acquire), 0, "closed mid-turn");
-            finisher.fetch_sub(1, Ordering::AcqRel);
+            drop(finisher);
         });
         let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
         assert_eq!(out, Drained::Idle);
@@ -905,11 +1002,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn work_that_finishes_inside_the_ceiling_allows_the_handover() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let finisher = inflight.clone();
+        let inflight = Turns::new();
+        let finisher = inflight.enter("a chat turn in session s1");
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
-            finisher.fetch_sub(1, Ordering::AcqRel);
+            drop(finisher);
         });
         assert_eq!(drain_with(&drain, &inflight).await, Drained::Idle);
     }
@@ -917,10 +1014,82 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn the_ceiling_is_a_ceiling_and_not_a_wait_forever() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         let started = Instant::now();
         let _ = drain_with(&drain, &inflight).await;
         assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
+    }
+
+    /// ISS-1223 criterion 20: a control request that never ends releases
+    /// every closing window at its 10s bound, and the time those windows took
+    /// counts against the handover's bound. Counted in polls, the same box
+    /// reached "2h" after 2h40m.
+    #[tokio::test(start_paused = true)]
+    async fn windows_that_keep_failing_count_against_the_bound() {
+        let drain = Drain::unrecorded();
+        let inflight = Turns::new();
+        let _stuck = drain.socket().serving();
+        let started = Instant::now();
+        assert_eq!(drain_with(&drain, &inflight).await, Drained::GaveUp);
+        let took = started.elapsed();
+        assert!(
+            took <= Duration::from_secs(DRAIN_TIMEOUT_SECS + HANDOVER_QUIET_SECS),
+            "gave up {}s after it began, against a bound of {DRAIN_TIMEOUT_SECS}s",
+            took.as_secs()
+        );
+    }
+
+    /// ISS-1223 criteria 20 and 21: the close of parked sessions under way
+    /// when the bound passes runs to its end, the give-up comes at the look
+    /// after it, nothing is closed a second time, and the line says how long
+    /// the handover really waited.
+    #[tokio::test(start_paused = true)]
+    async fn a_parked_close_across_the_bound_is_the_last_step_and_the_line_says_so() {
+        const CLOSE: Duration = Duration::from_secs(120);
+        let (buf, _guard) = capture();
+        let drain = Drain::unrecorded();
+        let inflight = Turns::new();
+        let ending = inflight.enter("a chat turn in session s1");
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(DRAIN_TIMEOUT_SECS - 100)).await;
+            drop(ending);
+        });
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (seen, arriving) = (calls.clone(), inflight.clone());
+        let close_ended = Arc::new(Mutex::new(None::<Instant>));
+        let ended = close_ended.clone();
+        let arrived = Arc::new(Mutex::new(None::<Turn>));
+        let keep = arrived.clone();
+        let close = move || async move {
+            seen.fetch_add(1, Ordering::AcqRel);
+            tokio::time::sleep(CLOSE).await;
+            *keep.lock().unwrap() = Some(arriving.enter("a chat turn in session s2"));
+            *ended.lock().unwrap() = Some(Instant::now());
+            1
+        };
+        let started = Instant::now();
+        let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
+        let took = started.elapsed();
+        assert_eq!(out, Drained::GaveUp);
+        assert_eq!(
+            calls.load(Ordering::Acquire),
+            1,
+            "parked sessions closed once"
+        );
+        let close_ended = close_ended.lock().unwrap().expect("the close ran");
+        assert!(
+            Instant::now().duration_since(close_ended) < Duration::from_secs(1),
+            "gave up {:?} after the close that crossed the bound ended",
+            Instant::now().duration_since(close_ended)
+        );
+        let gave_up = text(&buf)
+            .lines()
+            .find(|l| l.contains("gave up handing over"))
+            .map(str::to_string)
+            .expect("a give-up line");
+        let waited = format!("after {} with", serving::span_secs(took.as_secs()));
+        assert!(gave_up.contains(&waited), "`{waited}` missing: {gave_up}");
     }
 
     /// Criterion 5: the closing window refuses a declaration naming its cause,
@@ -928,7 +1097,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn the_closing_window_refuses_by_cause_and_is_bounded() {
         let drain = Arc::new(Drain::unrecorded());
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let stuck = drain.socket().serving();
         let watcher = drain.clone();
         let during = tokio::spawn(async move {
@@ -955,7 +1124,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_request_in_flight_is_answered_before_the_handover() {
         let drain = Arc::new(Drain::unrecorded());
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let request = drain.socket().serving();
         let d = drain.clone();
         let handing = tokio::spawn(async move { drain_with(&d, &inflight).await });
@@ -977,7 +1146,7 @@ mod tests {
     async fn the_window_counts_requests_only_once_the_server_stands_still() {
         let drain = Arc::new(Drain::unrecorded());
         drain.socket().publish_listener(3);
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let d = drain.clone();
         let handing = tokio::spawn(async move { drain_with(&d, &inflight).await });
         let mut accepting = drain.socket().accepting();
@@ -1075,7 +1244,7 @@ mod tests {
         let drain = Arc::new(Drain::unrecorded());
         drain.socket().publish_listener(3);
         let attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let held = closing_window(&drain, &attempt, &inflight)
             .await
             .expect_err("released at the bound");
@@ -1100,7 +1269,8 @@ mod tests {
     async fn the_handover_speaks_while_it_waits_and_names_what_holds_it() {
         let (buf, _guard) = capture();
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         let out = drain_with(&drain, &inflight).await;
         assert_eq!(out, Drained::GaveUp);
         let log = text(&buf);
@@ -1113,14 +1283,28 @@ mod tests {
         assert!(waiting[0].contains("0s of 2h waited"), "{}", waiting[0]);
         assert!(waiting[1].contains("10m of 2h waited"), "{}", waiting[1]);
         for line in &waiting {
-            assert!(line.contains("1 interactive turn(s)"), "{line}");
+            assert!(line.contains("1 outstanding"), "{line}");
             assert!(line.contains("Admission stays open"), "{line}");
         }
+        assert!(
+            waiting[0].contains("— a chat turn in session s1, running 0s."),
+            "criterion 6: the holder is named by its kind and session: {}",
+            waiting[0]
+        );
+        assert!(
+            waiting[1].contains("— a chat turn in session s1, running 10m."),
+            "{}",
+            waiting[1]
+        );
         let gave_up = log
             .lines()
             .find(|l| l.contains("gave up handing over"))
             .expect("a give-up line");
-        assert!(gave_up.contains("1 interactive turn(s)"), "{gave_up}");
+        assert!(
+            gave_up.contains("— a chat turn in session s1, running 2h."),
+            "criterion 7: {gave_up}"
+        );
+        assert!(gave_up.contains("after 2h with 1 outstanding"), "{gave_up}");
         assert!(
             gave_up.contains("the next update check, in 4h"),
             "{gave_up}"
@@ -1128,12 +1312,121 @@ mod tests {
         assert!(gave_up.contains("Admission was never closed"), "{gave_up}");
     }
 
+    /// ISS-1223 criterion 24: the credential loop gives up stating its next
+    /// attempt as the reopen interval, and the refusal it writes at any
+    /// moment in the thirty seconds after names the same remaining time.
+    #[tokio::test(start_paused = true)]
+    async fn a_refusal_after_a_give_up_names_the_minutes_the_give_up_named() {
+        let (buf, _guard) = capture();
+        let drain = Drain::unrecorded();
+        let turns = Turns::new();
+        let _turn = turns.enter("a chat turn in session s1");
+        let reopen = || NextAttempt {
+            by: "this loop's next handover".into(),
+            due_in: Duration::from_secs(DRAIN_REOPEN_SECS),
+        };
+        let out = drain_to_idle(
+            &drain,
+            "cred",
+            "a new device token",
+            &turns,
+            || std::future::ready(0),
+            reopen,
+        )
+        .await;
+        assert_eq!(out, Drained::GaveUp);
+        let gave_up = text(&buf);
+        let named = serving::span_secs(DRAIN_REOPEN_SECS);
+        assert!(
+            gave_up.contains(&format!("this loop's next handover, in {named}")),
+            "{gave_up}"
+        );
+        let mut at = 0;
+        for after in [0u64, 1, 29, 30] {
+            tokio::time::advance(Duration::from_secs(after - at)).await;
+            at = after;
+            match drain.begin("a new device token") {
+                Err(why @ NotNow::Reopened { .. }) => assert!(
+                    why.to_string().contains(&format!("for another {named};")),
+                    "{after}s after the give-up: {why}"
+                ),
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// ISS-1223 criteria 22 and 23: a handover that does not begin writes no
+    /// line saying it is handing over — only why it did not begin.
+    #[tokio::test(start_paused = true)]
+    async fn a_handover_that_does_not_begin_says_nothing_of_handing_over() {
+        let (buf, _guard) = capture();
+        let drain = Drain::unrecorded();
+        let _first = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let turns = Turns::new();
+        let _turn = turns.enter("a chat turn in session s1");
+        let out = drain_to_idle(
+            &drain,
+            "cred",
+            "a new device token",
+            &turns,
+            || std::future::ready(0),
+            next,
+        )
+        .await;
+        assert!(
+            matches!(out, Drained::NotNow(NotNow::UnderWay { .. })),
+            "{out:?}"
+        );
+        let log = text(&buf);
+        assert!(!log.contains("handing over for"), "{log}");
+    }
+
+    /// ISS-1223 criteria 6 and 7: each kind of turn is named by the session
+    /// or pane it serves, and one whose frame named none says so.
+    #[test]
+    fn each_turn_is_named_by_its_kind_and_what_it_serves() {
+        assert_eq!(
+            chat_turn(true, Some("s1")),
+            "a chat turn starting session s1"
+        );
+        assert_eq!(chat_turn(false, Some("s1")), "a chat turn in session s1");
+        assert_eq!(
+            chat_turn(false, None),
+            "a chat turn whose frame named no session"
+        );
+        assert_eq!(
+            pane_message(Some("s2"), Some("forge-master-p")),
+            "a message into master pane forge-master-p (session s2)"
+        );
+        assert_eq!(
+            pane_message(Some("s2"), None),
+            "a message for session s2, which no master pane here holds"
+        );
+        assert_eq!(
+            pane_message(None, None),
+            "a message whose frame named no session"
+        );
+        let turns = Turns::new();
+        let one = turns.enter(chat_turn(false, Some("s1")));
+        let two = turns.enter(pane_message(Some("s2"), Some("forge-master-p")));
+        assert_eq!(turns.named().len(), 2);
+        drop(one);
+        assert_eq!(
+            turns.named(),
+            ["a message into master pane forge-master-p (session s2), running 0s"],
+            "a turn leaves when it ends"
+        );
+        drop(two);
+        assert!(turns.named().is_empty());
+    }
+
     /// After a give-up no handover begins for the reopen interval, whichever
     /// loop asks — and one may once it has passed. Admission is open all along.
     #[tokio::test(start_paused = true)]
     async fn a_give_up_spaces_the_next_attempt_by_the_reopen_interval() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         assert_eq!(drain_with(&drain, &inflight).await, Drained::GaveUp);
         tokio::time::advance(Duration::from_secs(30)).await;
         let again = drain_to_idle(
@@ -1161,7 +1454,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_second_request_joins_nothing_and_moves_no_deadline() {
         let drain = Arc::new(Drain::unrecorded());
-        let inflight = Arc::new(AtomicUsize::new(1));
+        let inflight = Turns::new();
+        let _turn = inflight.enter("a chat turn in session s1");
         let second = drain.clone();
         let asked = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(DRAIN_TIMEOUT_SECS - 60)).await;
@@ -1194,7 +1488,7 @@ mod tests {
         });
         tokio::task::yield_now().await;
         let d = drain.clone();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let handing = tokio::spawn(async move { drain_with(&d, &inflight).await });
         tokio::time::sleep(Duration::from_secs(5 * 60)).await;
         assert!(
@@ -1216,10 +1510,12 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_turn_that_arrives_while_parked_sessions_close_is_not_handed_over() {
         let drain = Drain::unrecorded();
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         let arriving = inflight.clone();
+        let arrived = Arc::new(Mutex::new(None::<Turn>));
+        let keep = arrived.clone();
         let close = move || {
-            arriving.fetch_add(1, Ordering::AcqRel);
+            *keep.lock().unwrap() = Some(arriving.enter("a chat turn in session s2"));
             std::future::ready(0)
         };
         let out = drain_to_idle(&drain, "test", "c", &inflight, close, next).await;
@@ -1236,7 +1532,7 @@ mod tests {
     async fn a_failed_handover_reopens_everything() {
         let dir = crate::test_scratch::Scratch::new("drain-failed");
         let drain = Drain::new(Some(dir.to_path_buf()));
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = Turns::new();
         assert_eq!(drain_with(&drain, &inflight).await, Drained::Idle);
         drain.handover_failed("could not exec /x/forge-runner: not found", &next());
         assert!(drain.refusal().is_none());

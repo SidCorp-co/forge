@@ -95,7 +95,6 @@ pub(crate) fn keep_tracing_capturable() {
     });
 }
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
@@ -159,25 +158,16 @@ fn announce_gate(gate: &degraded::Condition, shouted: &mut Option<degraded::Verd
     speak
 }
 
-/// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
-/// Incremented when a unit of work is spawned, decremented on drop — so the
-/// auto-update loop can drain to idle before restarting the service (ISS-392),
-/// rather than killing a job or chat session mid-flight. Drop fires on both the
-/// success and error paths, so a panicking task still releases its slot.
-pub(crate) struct InflightGuard(Arc<AtomicUsize>);
-
-impl InflightGuard {
-    pub(crate) fn enter(counter: &Arc<AtomicUsize>) -> Self {
-        counter.fetch_add(1, Ordering::AcqRel);
-        Self(counter.clone())
-    }
+/// What the update loop writes once a release is on disk. It says what is
+/// true whether or not a handover can begin: the drain's own lines say which
+/// (ISS-1223).
+fn applied_line(from: &str, to: &str) -> String {
+    format!("[update] applied {from} → {to} — {to} stands on disk and this process serves {from}")
 }
 
-impl Drop for InflightGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
-    }
-}
+/// What the credential loop writes once it reads a new device token. As with
+/// [`applied_line`], whether a handover begins is the drain's to say.
+const TOKEN_CHANGED_LINE: &str = "[cred] device token changed (re-login detected) — this process holds the token it started with; a fresh image of this build reads the new one";
 
 const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
@@ -699,10 +689,10 @@ pub async fn run(
         });
     }
 
-    // In-flight work counter (pipeline jobs + chat turns). The update loop
-    // drains this to zero before restarting so auto-update never kills running
-    // work (ISS-392). Created before any spawn so every worker can register.
-    let inflight = Arc::new(AtomicUsize::new(0));
+    // The interactive turns in this process, each named. A handover waits
+    // for them to end so it never cuts one (ISS-392), and names them while it
+    // waits (ISS-1223). Created before any spawn so every turn can register.
+    let inflight = drain::Turns::new();
 
     // Whether this daemon admits long work, shared by everything that admits
     // it, and the record `forge-runner status` reads of the build it serves.
@@ -776,11 +766,7 @@ pub async fn run(
                                     // The new binary is already swapped on disk;
                                     // this process hands over to it once its
                                     // own in-process work has ended.
-                                    tracing::warn!(
-                                        "[update] applied {} → {} — handing over to it once this process's own work ends",
-                                        o.from,
-                                        o.to
-                                    );
+                                    tracing::warn!("{}", applied_line(&o.from, &o.to));
                                     // From this instant `current_exe()` in this
                                     // process reads `<path> (deleted)`, and the
                                     // handover that ends that may wait on a
@@ -892,9 +878,7 @@ pub async fn run(
                 if let Ok(Some(current)) = crate::auth::cred_store::load_device_token() {
                     if current != startup_token {
                         if said.is_none() {
-                            tracing::warn!(
-                                "[cred] device token changed (re-login detected) — handing over to a fresh image of this build once this process's own work ends, which reads the new token"
-                            );
+                            tracing::warn!("{TOKEN_CHANGED_LINE}");
                         }
                         let next = || drain::NextAttempt {
                             by: "this loop's next handover".into(),
@@ -1326,7 +1310,10 @@ pub async fn run(
                     "agent:start" => {
                         let (client, runner, cfg) =
                             (client.clone(), runner.clone(), cfg.clone());
-                        let guard = InflightGuard::enter(&inflight);
+                        let guard = inflight.enter(drain::chat_turn(
+                            true,
+                            session_id_of(&frame.data).as_deref(),
+                        ));
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
                             if let Err(e) = chat::handle_start(&client, runner, &cfg, frame.data).await {
@@ -1337,7 +1324,10 @@ pub async fn run(
                     "agent:send" => {
                         let (client, runner, cfg) =
                             (client.clone(), runner.clone(), cfg.clone());
-                        let guard = InflightGuard::enter(&inflight);
+                        let guard = inflight.enter(drain::chat_turn(
+                            false,
+                            session_id_of(&frame.data).as_deref(),
+                        ));
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
                             if let Err(e) = chat::handle_send(&client, runner, &cfg, frame.data).await {
@@ -1348,7 +1338,12 @@ pub async fn run(
                     "session.send" => {
                         let (client, runner, masters) =
                             (client.clone(), runner.clone(), masters.clone());
-                        let guard = InflightGuard::enter(&inflight);
+                        let session = session_id_of(&frame.data);
+                        let pane = session.as_deref().and_then(|s| masters.pane_for_session(s));
+                        let guard = inflight.enter(drain::pane_message(
+                            session.as_deref(),
+                            pane.as_deref(),
+                        ));
                         tokio::spawn(async move {
                             let _guard = guard;
                             inbox::handle_session_send(&client, runner, masters, frame.data).await;
@@ -1455,6 +1450,40 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// ISS-1223 criteria 22 and 23: what either loop writes before its
+    /// handover is asked for says what is on disk or in the store, and never
+    /// that a handover is under way — the drain answers that, and may answer
+    /// that none begins.
+    #[test]
+    fn neither_loop_announces_a_handover_before_one_begins() {
+        let applied = applied_line("0.1.0", "0.1.1");
+        assert!(
+            applied.contains("0.1.1 stands on disk and this process serves 0.1.0"),
+            "{applied}"
+        );
+        for line in [applied.as_str(), TOKEN_CHANGED_LINE] {
+            assert!(!line.contains("handing over"), "{line}");
+            assert!(
+                !line.contains("once this process's own work ends"),
+                "{line}"
+            );
+        }
+        let whole = crate::test_scratch::lf(include_str!("mod.rs"));
+        let src = whole.split("\nmod tests {").next().unwrap();
+        for (arm, line) in [
+            ("[update] applied", "applied_line("),
+            ("[cred] device token changed", "TOKEN_CHANGED_LINE"),
+        ] {
+            assert_eq!(
+                src.matches(arm).count(),
+                1,
+                "`{arm}` is written only by its helper"
+            );
+            assert!(src.contains(line), "{line}");
+        }
+    }
 
     /// ISS-1234 criterion 25. The tick sends what `Conditions::read` builds,
     /// which is where the box's pool reads join the beat; a tick that built its
@@ -2051,7 +2080,7 @@ mod hook_repair_tests {
         );
 
         let applied = src
-            .find("— handing over to it once this process's own work ends")
+            .find("applied_line(&o.from, &o.to)")
             .expect("the line the update writes once it has replaced the binary");
         let after_applied = &src[applied..];
         let next_sweep = after_applied
@@ -2239,7 +2268,7 @@ mod master_skill_sweep_tests {
     fn the_skill_is_not_written_by_the_process_an_update_replaced() {
         let src = production();
         let applied = src
-            .find("— handing over to it once this process's own work ends")
+            .find("applied_line(&o.from, &o.to)")
             .expect("the line the update writes once it has replaced the binary");
         let arm = &src[applied..src[applied..].find("hand_over(").unwrap() + applied];
         assert!(!arm.contains("install_master_skills("), "{arm}");
@@ -2289,7 +2318,7 @@ mod handover_failure_tests {
             by: "the next update check".into(),
             due_in: std::time::Duration::from_secs(60),
         };
-        let inflight = Arc::new(AtomicUsize::new(0));
+        let inflight = drain::Turns::new();
         let out = drain::drain_to_idle(
             &drain,
             "update",

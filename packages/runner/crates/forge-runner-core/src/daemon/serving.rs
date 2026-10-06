@@ -648,7 +648,9 @@ pub fn span_secs(secs: u64) -> String {
     if secs < 60 {
         return format!("{secs}s");
     }
-    let mins = secs / 60;
+    // Rounded once, to the nearest minute, and only then split: truncating
+    // put "in 7m" and "for another 6m" one line apart about one wait.
+    let mins = (secs + 30) / 60;
     if mins < 60 {
         return format!("{mins}m");
     }
@@ -674,11 +676,11 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             bound_secs,
             outstanding,
         } => vec![format!(
-            "{INDENT}handing over for {cause} once its in-process work ends: {} of at most {} waited, {} outstanding{}. Admission is open meanwhile, and the runs in the ledger hold nothing — they live in their panes",
+            "{INDENT}handing over for {cause} once its in-process work ends: {} waited, {} outstanding{}; it gives up at its first look past {}. Admission is open meanwhile, and the runs in the ledger hold nothing — they live in their panes",
             ago(now_ms, *since_ms),
-            span_secs(*bound_secs),
             outstanding.len(),
-            listed(outstanding)
+            listed(outstanding),
+            span_secs(*bound_secs)
         )],
         DrainState::Draining {
             cause,
@@ -1108,6 +1110,27 @@ mod tests {
         assert!(out.contains("no restart is under way"), "{out}");
     }
 
+    /// ISS-1223 criterion 24: a span is rounded once, to the nearest minute,
+    /// so a wait read thirty seconds apart from a whole-minute reading names
+    /// the same minutes, and the hour carries rather than reading "59m".
+    #[test]
+    fn a_span_is_rounded_once_to_the_nearest_minute() {
+        for (secs, said) in [
+            (59, "59s"),
+            (60, "1m"),
+            (389, "6m"),
+            (390, "7m"),
+            (420, "7m"),
+            (3569, "59m"),
+            (3570, "1h"),
+            (7170, "2h"),
+            (7200, "2h"),
+            (7230, "2h 1m"),
+        ] {
+            assert_eq!(span_secs(secs), said, "{secs}s");
+        }
+    }
+
     /// ISS-1379 criterion 39: a handover waiting on in-process work says
     /// admission is open and names what it waits on.
     #[test]
@@ -1116,18 +1139,16 @@ mod tests {
             cause: "update 0.17.8 → 0.17.9".into(),
             since_ms: NOW - 7 * 60_000,
             bound_secs: 7200,
-            outstanding: vec![
-                "1 interactive turn(s) — a chat turn or a message into a master pane".into(),
-            ],
+            outstanding: vec!["a chat turn in session s1, running 7m".into()],
         };
         let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
         assert!(
-            out.contains("handing over for update 0.17.8 → 0.17.9 once its in-process work ends: 7m of at most 2h waited"),
+            out.contains("handing over for update 0.17.8 → 0.17.9 once its in-process work ends: 7m waited, 1 outstanding — a chat turn in session s1, running 7m; it gives up at its first look past 2h."),
             "{out}"
         );
         assert!(
-            out.contains("1 outstanding — 1 interactive turn(s)"),
-            "{out}"
+            !out.contains("at most 2h"),
+            "ISS-1223 criterion 25: a step under way at the bound runs to its end, so the bound is not a ceiling on the wait: {out}"
         );
         assert!(out.contains("Admission is open meanwhile"), "{out}");
         assert!(!out.contains("no restart is under way"), "{out}");
