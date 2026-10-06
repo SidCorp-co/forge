@@ -92,10 +92,9 @@ export const PAT_PERMISSION_RESOURCES = {
 } as const satisfies Record<string, PatResourceDeclaration>;
 
 /**
- * What a path kept out of the grant grammar does admit, which is what its
- * refusal tells a token holder to send instead. `names` is the word every
- * reason under the door has to carry, so a reason and the advice beside it
- * cannot describe two different credentials.
+ * The doors an exclusion can name. `instead` is the advice its refusal ends
+ * in; `names` is the word every reason under that door has to carry, so a
+ * reason and its advice cannot describe two different credentials.
  */
 export const PAT_EXCLUSION_DOORS = Object.freeze({
   public: { names: 'public', instead: 'Send it with no credential at all.' },
@@ -145,8 +144,8 @@ const DEVICE: PatExclusion = {
 };
 
 /**
- * Every path kept out of the grant grammar, what it admits instead, and why.
- * An entry is a path prefix whose `:name` segments match any one segment,
+ * Every path kept out of the grant grammar, the door it names, and why. An
+ * entry is a path prefix whose `:name` segments match any one segment,
  * optionally led by one method (`POST /api/...`) where only that method is
  * kept out, and it wins over a menu prefix it sits inside. Being here is not
  * the same as refusing every credential: a public route stays public and a
