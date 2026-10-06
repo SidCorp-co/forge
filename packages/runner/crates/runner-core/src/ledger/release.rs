@@ -25,6 +25,20 @@ impl Ledger {
         Ok(())
     }
 
+    /// Record that core refused this run's close as malformed and will refuse
+    /// it again unchanged, so the sweep stops sending it. A mark of its own: it
+    /// is not `session_terminal_at`, which says core closed the session.
+    pub fn mark_close_refused(&self, run_id: &str, refusal: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET close_refused_at = ?2, close_refusal = ?3
+                 WHERE run_id = ?1 AND close_refused_at IS NULL",
+                params![run_id, now(), refusal],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub(crate) fn stamp(&self, column: &str, run_id: &str) -> Result<()> {
         debug_assert!(matches!(column, "session_terminal_at" | "worktree_gone_at"));
         self.conn
