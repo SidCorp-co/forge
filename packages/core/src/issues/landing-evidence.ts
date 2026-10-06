@@ -249,8 +249,8 @@ export function standingMarkRefusal(args: {
 
 /** Why `landingShape` was not changed: a mark stands, and it was judged on the lane it was made
  *  under, so changing the lane would re-judge it in silence. `unmark` is the way through. `held`
- *  null is an issue that declared nothing, whose lane was `project`, its project's shape — null
- *  where the project's kind is none Forge knows, which never stops this refusal being given. */
+ *  null means the issue declared nothing and `project` decided; an unplaceable `project` is
+ *  omitted from the sentence rather than allowed to turn this refusal into a different error. */
 export function landingShapeMarkStandsDetail(args: {
   held: LandingShape | null;
   sent: LandingShape | null;
