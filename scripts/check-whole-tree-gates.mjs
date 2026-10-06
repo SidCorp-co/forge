@@ -39,6 +39,20 @@ function die(msg) {
   process.exit(2);
 }
 
+/** Where `id` resolves from the package at `dir`, or exit 2: a checkout with no dependencies
+ * installed cannot run this check, which is not a refusal of anything in the tree. */
+function resolveFrom(dir, id) {
+  try {
+    return createRequire(join(dir, 'package.json')).resolve(id);
+  } catch (e) {
+    if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+    return die(
+      `\`${id}\` does not resolve from ${relative(ROOT, dir) || '.'}, so this check cannot run here — ` +
+        'run `pnpm install` first. Exit 2: an uninstalled checkout is not a refused tree.',
+    );
+  }
+}
+
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
 if (ls.status !== 0) die('could not list tracked files — not a git repository?');
 const tracked = ls.stdout.split('\n').filter(Boolean);
@@ -61,15 +75,17 @@ const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
   ? judgeGlobs({
       files,
       root: ROOT,
-      ts: createRequire(join(ROOT, 'packages/core/package.json'))('typescript'),
+      ts: createRequire(import.meta.url)(resolveFrom(join(ROOT, 'packages/core'), 'typescript')),
     })
   : [];
 /** The root and `test.setupFiles` vitest resolves for a config, loaded by the vitest its package
  * declares and started from the directory the config is run from. */
 function setupFilesOf(path) {
   const dir = runDirOf(join(ROOT, path), ROOT);
+  // vitest absent is an uninstalled checkout (exit 2); vitest present and failing to load the
+  // configuration is that configuration's refusal.
+  const vitestNode = resolveFrom(dir, 'vitest/node');
   try {
-    const vitestNode = createRequire(join(dir, 'package.json')).resolve('vitest/node');
     return { path, ...vitestSetup(join(ROOT, path), vitestNode, dir) };
   } catch (e) {
     return { path, error: suiteMessage(e?.message ?? e) ?? 'vitest gave no message' };
