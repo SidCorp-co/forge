@@ -17,6 +17,8 @@ mod ports;
 pub use ports::*;
 mod panes;
 pub use panes::*;
+mod cancel;
+pub use cancel::*;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -540,8 +542,12 @@ pub async fn supervise(
             .progress(&live.job_id, evidence.runtime_state())
             .await
         {
-            Ok(true) => {}
-            Ok(false) => {
+            Ok(Standing::Ours) => {}
+            // The `job.cancel` frame may never have reached this box; the heartbeat always does.
+            Ok(Standing::CancelRequested) => {
+                cancel(panes, report, records, registry, &live.job_id).await;
+            }
+            Ok(Standing::Over) => {
                 if let Err(e) = panes.kill(&live.pane).await {
                     tracing::warn!(
                         "[pool] job {} is terminal but {} would not close: {e} — keeping it under supervision, and the next tick closes it",

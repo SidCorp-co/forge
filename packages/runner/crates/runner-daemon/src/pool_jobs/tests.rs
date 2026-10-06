@@ -73,10 +73,13 @@ impl Report for NoReport {
     async fn ack(&self, _job_id: &str) -> Result<()> {
         unreachable!()
     }
-    async fn progress(&self, _job_id: &str, _runtime_state: Option<&str>) -> Result<bool> {
+    async fn progress(&self, _job_id: &str, _runtime_state: Option<&str>) -> Result<Standing> {
         unreachable!()
     }
     async fn fail(&self, _job_id: &str, _error: &str) -> Result<bool> {
+        unreachable!()
+    }
+    async fn kill_ack(&self, _job_id: &str, _outcome: &str) -> Result<()> {
         unreachable!()
     }
 }

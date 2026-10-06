@@ -51,7 +51,7 @@ use runner_platform::error::Result;
 use runner_proto::frames::{job_id_of, session_id_of, Frame};
 use runner_transport::runners::{self, MeRunner};
 use runner_transport::ws::{self, WsConfig};
-use runner_transport::{heartbeat, lifecycle, CoreClient};
+use runner_transport::{heartbeat, CoreClient};
 
 use dispatch::resolve_repo;
 
@@ -553,7 +553,8 @@ fn job_records() -> Arc<dyn pool_jobs::Records> {
     }
 }
 
-/// The pool's job panes and the master loop that reads them; answers the sender that wakes the master.
+/// The pool's job panes and the master loop that reads them; answers the sender that wakes the
+/// master, and the job panes a `job.cancel` frame closes.
 fn spawn_panes_and_master(
     client: &Arc<CoreClient>,
     cfg: &Arc<Config>,
@@ -561,7 +562,10 @@ fn spawn_panes_and_master(
     drain: Arc<drain::Drain>,
     activity: &Arc<agent_activity::Activities>,
     cancel_rx: &watch::Receiver<bool>,
-) -> Result<tokio::sync::mpsc::Sender<master::Wake>> {
+) -> Result<(
+    tokio::sync::mpsc::Sender<master::Wake>,
+    pool_jobs::PoolPanes,
+)> {
     let job_panes = Arc::new(pool_jobs::JobPanes::new());
     let job_records = job_records();
     let (adopted_tx, adopted_rx) = watch::channel(false);
@@ -575,6 +579,11 @@ fn spawn_panes_and_master(
     ));
     #[cfg(unix)]
     actors::control(activity, masters, &drain, cancel_rx.clone())?;
+    let pool = pool_jobs::PoolPanes {
+        panes: Arc::new(pool_jobs::TmuxPanes),
+        records: job_records.clone(),
+        registry: job_panes.clone(),
+    };
     let (wake_tx, wake_rx) = master::wake_channel();
     tokio::spawn(master::run(
         (**client).clone(),
@@ -590,7 +599,7 @@ fn spawn_panes_and_master(
         cancel_rx.clone(),
         wake_rx,
     ));
-    Ok(wake_tx)
+    Ok((wake_tx, pool))
 }
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
@@ -705,7 +714,8 @@ pub async fn run(
 
     let activity = Arc::new(agent_activity::Activities::new());
 
-    let wake_tx = spawn_panes_and_master(&client, &cfg, &masters, drain, &activity, &cancel_rx)?;
+    let (wake_tx, pool) =
+        spawn_panes_and_master(&client, &cfg, &masters, drain, &activity, &cancel_rx)?;
 
     let ctx = actors::FrameCtx {
         client,
@@ -714,6 +724,7 @@ pub async fn run(
         inflight,
         cfg,
         wake_tx,
+        pool,
     };
     let mut cancel_rx = cancel_rx.clone();
     loop {

@@ -478,6 +478,8 @@ pub(crate) struct FrameCtx {
     pub(crate) inflight: Arc<AtomicUsize>,
     pub(crate) cfg: Arc<Config>,
     pub(crate) wake_tx: tokio::sync::mpsc::Sender<master::Wake>,
+    /// The job panes the supervisor works, which a `job.cancel` closes first (ISS-252).
+    pub(crate) pool: pool_jobs::PoolPanes,
 }
 
 /// Route one frame from core. Nothing here blocks the frame loop.
@@ -489,6 +491,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
         inflight,
         cfg,
         wake_tx,
+        pool,
     } = ctx;
     match frame.event.as_str() {
         "job.cancel" => {
@@ -496,21 +499,24 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tracing::info!("[cancel] job={jid}");
                 // ISS-785 — core's kill-before-reap gate waits on this ack
                 // (or a runner_gone/terminal-report fallback) before it
-                // allows a retry; report the real outcome instead of
-                // silently discarding it, but never block the frame loop
-                // on the ack POST.
-                let (client, runner) = (client.clone(), runner.clone());
+                // allows a retry, and a person's cancel settles on it
+                // (ISS-252); report the real outcome instead of silently
+                // discarding it, but never block the frame loop on the ack
+                // POST. A pool pane is this box's to close first: neither
+                // the CLI abort nor the orphan reap can see one.
+                let (client, runner, pool) = (client.clone(), runner.clone(), pool.clone());
                 tokio::spawn(async move {
-                    let outcome = match runner.abort(&jid).await {
-                        Ok(_) => {
-                            inflight::forget(&jid);
-                            "killed"
+                    let report = pool_jobs::CoreReport { client: &client };
+                    pool_jobs::answer_cancel(&pool, &report, &jid, || async {
+                        match runner.abort(&jid).await {
+                            Ok(_) => {
+                                inflight::forget(&jid);
+                                "killed"
+                            }
+                            Err(_) => inflight::reap_orphan(&jid).await.wire(),
                         }
-                        Err(_) => inflight::reap_orphan(&jid).await.wire(),
-                    };
-                    if let Err(e) = lifecycle::kill_ack(&client, &jid, outcome).await {
-                        tracing::warn!("[cancel] kill-ack job={jid}: {e}");
-                    }
+                    })
+                    .await;
                 });
             }
         }
@@ -731,3 +737,6 @@ fn heartbeat_conditions(
         binaries,
     }
 }
+
+#[cfg(all(test, unix))]
+mod cancel_tests;
