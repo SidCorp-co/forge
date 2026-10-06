@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 const reported: unknown[] = [];
 const recorded: unknown[] = [];
 const OUTBOX_REFUSAL =
-  'Failed query: insert into "pipeline_outbox" ("type") values ($1) — violates check constraint "pipeline_outbox_type_chk"';
+  'Failed query: insert into "pipeline_outbox" ("type", "payload") values ($1, $2)\nparams: conversation.pushed,{"userIds":["u-reader-1","u-reader-2"],"content":"REQ-1 reads as agreed at revision 1."} — violates check constraint "pipeline_outbox_type_chk"';
 
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, authored: 'code' }),
@@ -40,7 +40,7 @@ vi.mock('../lib/error-tracking.js', () => ({
 const { runConversationTurn } = await import('./turn-runner.js');
 
 describe('a reply whose delivery fails is kept and reported, not dropped', () => {
-  it('the outcome carries the composed reply and the refusal, and the failure reaches error tracking', async () => {
+  it('the outcome carries the composed reply and a reader-facing reason; the raw error reaches error tracking only', async () => {
     const outcome = await runConversationTurn({
       door: 'web',
       venue: { adapter: 'web', externalId: 'room-1', shape: 'dm', projectId: 'p-1' },
@@ -49,9 +49,14 @@ describe('a reply whose delivery fails is kept and reported, not dropped', () =>
     } as never);
     expect(outcome).toEqual({
       kind: 'undeliverable',
-      reason: OUTBOX_REFUSAL,
+      code: 'REPLY_NOT_DELIVERED',
+      reason: 'the reply could not be pushed to this conversation',
       reply: 'REQ-1 reads as agreed at revision 1.',
     });
+    const readerFacing = JSON.stringify(outcome);
+    expect(readerFacing).not.toContain('Failed query');
+    expect(readerFacing).not.toContain('params:');
+    expect(readerFacing).not.toContain('u-reader-1');
     expect(reported).toHaveLength(1);
     expect(String(reported[0])).toContain('pipeline_outbox_type_chk');
     expect(recorded).toEqual([]);

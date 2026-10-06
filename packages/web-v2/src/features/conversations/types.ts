@@ -210,13 +210,20 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
 
 /**
  * A reply core composed and could not deliver (`assistant/window-decision.ts:routedOutcome`): the
- * window keeps the text and the refusal, so the thread shows both instead of the generic sentence.
+ * window keeps the text and a coded reader-facing reason, so the thread shows both instead of the
+ * generic sentence. A reason with no `code` was written before reasons were coded and may hold a
+ * driver error with other readers' ids, so it is never shown.
  */
 export function undeliveredReplyOf(detail: unknown): { reason: string; reply: string } | null {
   if (!detail || typeof detail !== "object") return null;
-  const { reason, undeliveredReply } = detail as { reason?: unknown; undeliveredReply?: unknown };
+  const { code, reason, undeliveredReply } = detail as {
+    code?: unknown;
+    reason?: unknown;
+    undeliveredReply?: unknown;
+  };
   if (typeof undeliveredReply !== "string") return null;
-  return { reason: typeof reason === "string" ? reason : "no reason was recorded", reply: undeliveredReply };
+  const coded = typeof code === "string" && typeof reason === "string";
+  return { reason: coded ? reason : "no reason was recorded", reply: undeliveredReply };
 }
 
 /**

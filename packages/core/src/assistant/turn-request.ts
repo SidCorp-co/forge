@@ -134,5 +134,12 @@ export type TurnOutcome =
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
   | { kind: 'not-dispatched'; reason: string }
-  /** The composed reply rides along, so a failed delivery does not lose what was written. */
-  | { kind: 'undeliverable'; reason: string; reply: string };
+  /**
+   * The composed reply rides along, so a failed delivery does not lose what was written. `reason`
+   * is read by every reader of the conversation, so it is a fixed sentence keyed by `code`; the
+   * transport's own error goes to logs and error tracking only.
+   */
+  | { kind: 'undeliverable'; code: typeof REPLY_NOT_DELIVERED; reason: string; reply: string };
+
+export const REPLY_NOT_DELIVERED = 'REPLY_NOT_DELIVERED';
+export const REPLY_NOT_DELIVERED_REASON = 'the reply could not be pushed to this conversation';
