@@ -184,10 +184,8 @@ fn a_verb_that_drives_a_pane_is_still_refused_without_tmux() {
 /// is the first test's: a migrated ledger reopened read-write changes no byte,
 /// so only a ledger that was not there can show a write.
 ///
-/// Linux only because only there does the ledger's data dir follow
-/// `XDG_DATA_HOME`, so only there can a test plant one where the binary looks
-/// without touching the box's own. The open is the same on every platform.
-#[cfg(target_os = "linux")]
+/// On every platform: a test build resolves the ledger's data dir from a
+/// scratch `XDG_DATA_HOME` wherever `dirs_next` ignores it (ISS-1344).
 #[test]
 fn status_reads_a_stand_down_through_a_read_only_ledger() {
     use forge_runner_core::runner::ledger::Ledger;
