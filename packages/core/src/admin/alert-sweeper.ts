@@ -1,6 +1,6 @@
 /**
  * ISS-652 — the push half of the Tier 1 alert engine. Runs as one pass inside
- * `pipeline/sweeper.ts`'s `runPipelineSweep`, computing the same 5 alerts the
+ * `pipeline/sweeper.ts`'s `runPipelineSweep`, computing the same 6 alerts the
  * GET route serves (`alert-queries.ts` is the shared source) and writing
  * `notifications` rows when one crosses into warn/crit.
  */
@@ -34,6 +34,7 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
   A3: 'Runner starvation detected',
   A4: 'Spend spike detected',
   A5: 'Automation failing',
+  A6: 'Declaration gate failing open',
 };
 
 async function claimOrEscalate(input: {

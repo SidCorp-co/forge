@@ -224,7 +224,8 @@ export interface DeviceGate {
 }
 
 export interface DeviceGateBanner {
-	count: number;
+	/** "at least N" where the box's marks file may have dropped older marks (ISS-1324). */
+	count: string;
 	rate: string;
 	window: string;
 	reason: string | null;
@@ -282,7 +283,7 @@ export function deviceGateBanner(
 	if (gate?.verdict !== "failing_open") return null;
 	const age = now - Date.parse(gate.receivedAt);
 	return {
-		count: gate.count,
+		count: gate.trimmed ? `at least ${gate.count}` : `${gate.count}`,
 		rate: gate.perDay === null ? "at an unstated rate" : `${Math.round(gate.perDay)}/day`,
 		window: asSpan(gate.windowMs),
 		reason: gateReasonLine(gate.byReason, gate.count),

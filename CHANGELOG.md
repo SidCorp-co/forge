@@ -3136,6 +3136,12 @@
 
 ### Fixed
 
+- **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
+  names each such box, and the notification clears once the box recovers (ISS-1324).
+
+- **Gate counts say only what they know.** A count that may have lost older marks reads
+  "at least N", and no per-day rate is given from under an hour of marks (ISS-1324).
+
 - **Marking an issue merged at a commit its repository does not hold is refused.** Whoever marks
   it, the commit is looked up first, a short one is recorded in full, and an unreadable repository
   is said rather than trusted (ISS-1350).

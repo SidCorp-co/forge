@@ -25,6 +25,7 @@ const ALERT_TITLE: Record<string, string> = {
   A3: "Runner-starved projects",
   A4: "Spend spike",
   A5: "Automation failing",
+  A6: "Declaration gate failing open",
 };
 
 const STATUS_TONE: Record<AdminAlertStatus, "green" | "amber" | "red"> = {
