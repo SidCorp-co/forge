@@ -145,8 +145,8 @@ saw and judges none of it:
   box today. Until core takes the first, the runner suppresses core's own job timeouts by acking a
   pool job as soon as its pane opens and posting progress every tick. Two more read only what the
   box itself holds: withdrawing a pane stood down while it was being placed obeys the owner's act in
-  the box ledger (`master/obey.rs:withdrawn_if_stood_down`), and whether an account record is fresh
-  enough to report the account's limit to core is judged against `master_limit.rs:FRESH_WITHIN`,
+  the box ledger (`packages/runner/crates/runner-daemon/src/master/obey.rs:withdrawn_if_stood_down`), and whether an account record is fresh
+  enough to report the account's limit to core is judged against `packages/runner/crates/runner-daemon/src/master_limit.rs:FRESH_WITHIN`,
   which still derives from a hand copy of core's `MASTER_NUDGE_REFRESH_SECONDS` until
   `/api/devices/me/limit` takes the raw record.
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
