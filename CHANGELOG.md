@@ -3136,6 +3136,9 @@
 
 ### Fixed
 
+- **A pane placed after a reboot finds `forge-runner`, `forge`, `claude` and `node`.** The runner
+  builds the pane's PATH, and places no pane that would lack one (ISS-1390).
+
 - **A run's checkout is no longer taken while its agent works in it.** A master's helper no
   longer takes a declared run. An update that will not start is rolled back, and `status` names a
   refused one.

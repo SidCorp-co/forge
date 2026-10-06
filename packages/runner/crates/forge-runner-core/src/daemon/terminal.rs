@@ -111,10 +111,16 @@ fn tmux_command() -> Command {
 }
 
 async fn tmux(args: &[&str]) -> Result<std::process::Output> {
+    tmux_with_path(args, None).await
+}
+
+/// `tmux`, run as a client whose own `PATH` is `path` where one is given.
+async fn tmux_with_path(args: &[&str], path: Option<&str>) -> Result<std::process::Output> {
     let mut all = socket_args();
     all.extend(args.iter().map(|a| (*a).to_string()));
     tmux_command()
         .args(&all)
+        .envs(path.map(|p| ("PATH", p)))
         .stdin(Stdio::null())
         .output()
         .await
@@ -508,8 +514,16 @@ pub async fn ensure(
     args.push("--".into());
     args.extend(argv.iter().cloned());
 
+    // tmux takes a new pane's PATH from the client that asks for the session,
+    // not from `-e` and not from the server: measured on tmux 3.6, a pane
+    // started with `-e PATH=<dirs>` still held the client's own PATH. So a
+    // PATH the caller built is handed to that client too (ISS-1390).
+    let path = env
+        .iter()
+        .find(|(k, _)| k == "PATH")
+        .map(|(_, v)| v.as_str());
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-    let out = tmux(&borrowed).await?;
+    let out = tmux_with_path(&borrowed, path).await?;
     if !out.status.success() {
         return Err(Error::Other(format!(
             "tmux new-session {name}: {}",
@@ -2148,6 +2162,82 @@ done
             after, None,
             "with the transcript gone the next spawn must be cold, not a --resume this box cannot reach"
         );
+    }
+
+    /// ISS-1390 criterion 2: a pane whose daemon runs on a PATH without the
+    /// runner's directory resolves `forge-runner` only when handed the PATH
+    /// this box builds, which `-e` alone does not deliver.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_pane_handed_a_built_path_resolves_the_runner_its_daemon_cannot() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("panepath");
+        if !available() {
+            testing::cannot_run("tmux is not installed here");
+            return;
+        }
+        if !iso.took() {
+            testing::cannot_run("this box does not resolve its tmux socket from the config dir");
+            return;
+        }
+        let home = crate::test_scratch::Scratch::new("panepath-home");
+        let bin = home.join(".local").join("bin");
+        std::fs::create_dir_all(&bin).expect("bin");
+        std::fs::write(bin.join("forge-runner"), "#!/bin/sh\nexit 0\n")
+            .expect("the planted runner");
+        testing::executable(&bin.join("forge-runner"));
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        assert!(
+            which::which_in("forge-runner", Some(&inherited), "/")
+                .map_or(true, |p| !p.starts_with(home.path())),
+            "this process's own PATH does not reach the planted HOME"
+        );
+        let built =
+            crate::daemon::pane_path::build(None, None, Some(home.path()), Some(&inherited));
+        let out = home.join("probe.out");
+        let probe = |label: &str| {
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "command -v forge-runner > '{0}.{1}.part'; echo rc=$? >> '{0}.{1}.part'; mv '{0}.{1}.part' '{0}.{1}'",
+                    out.display(),
+                    label
+                ),
+            ]
+        };
+        let read = |label: &str| {
+            let path = std::path::PathBuf::from(format!("{}.{label}", out.display()));
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            loop {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    return text;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the pane wrote nothing"
+                );
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        };
+        let pair = vec![("PATH".to_string(), built.to_string_lossy().into_owned())];
+        ensure(
+            "forge-job-panepath-built",
+            home.path(),
+            &probe("built"),
+            &pair,
+            None,
+        )
+        .await
+        .expect("the pane starts");
+        let handed = read("built");
+        assert!(
+            handed.contains(&bin.join("forge-runner").display().to_string())
+                && handed.contains("rc=0"),
+            "the pane handed the built PATH resolves the runner: {handed}"
+        );
+        let _ = kill("forge-job-panepath-built").await;
     }
 
     #[test]

@@ -1128,8 +1128,12 @@ impl Panes for TmuxPanes {
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
+        let path = crate::daemon::pane_path::for_pane()
+            .map_err(|u| Error::Other(format!("{name} was not placed: {u}")))?;
+        let mut env = env.to_vec();
+        env.push(path);
         let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, servers)?;
-        terminal::ensure(name, cwd, &argv, env, None).await?;
+        terminal::ensure(name, cwd, &argv, &env, None).await?;
         terminal::brief_new_pane(name, prompt).await
     }
 
@@ -3984,6 +3988,49 @@ mod own_exe_reporting_tests {
         assert!(
             !hook_install::settings_path(&cwd).exists(),
             "commands that die at every call were written anyway"
+        );
+    }
+
+    /// ISS-1390 criteria 1 and 8: a job pane is started with the built PATH,
+    /// and one that cannot be is refused naming what is missing.
+    #[tokio::test]
+    async fn a_job_pane_whose_path_cannot_supply_a_binary_is_refused_by_name() {
+        if !terminal::available() {
+            return;
+        }
+        let _req = crate::daemon::pane_path::testing::Requiring::installed(&[
+            "forge-runner-iss1390-absent",
+        ]);
+        let cwd = crate::test_scratch::Scratch::new("job-path");
+        let err = TmuxPanes
+            .open(
+                "forge-job-iss1390",
+                cwd.path(),
+                "prompt",
+                &[],
+                &serde_json::Map::new(),
+            )
+            .await
+            .expect_err("a pane whose PATH lacks a binary is not placed");
+        let said = err.to_string();
+        assert!(
+            said.contains("forge-job-iss1390 was not placed")
+                && said.contains("`forge-runner-iss1390-absent` resolves in none"),
+            "{said}"
+        );
+        assert!(
+            !terminal::alive("forge-job-iss1390").await,
+            "no pane was started"
+        );
+        let src = crate::test_scratch::lf(include_str!("pool_jobs.rs"));
+        let open = src
+            .split("impl Panes for TmuxPanes {")
+            .nth(1)
+            .expect("open");
+        assert!(
+            open.find("pane_path::for_pane()").expect("the PATH")
+                < open.find("terminal::ensure(").expect("the start"),
+            "the job pane is handed the built PATH"
         );
     }
 }

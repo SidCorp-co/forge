@@ -276,6 +276,12 @@ pub(crate) enum Unplaced {
     PaneUnstarted {
         detail: String,
     },
+    /// The PATH this box builds for a pane cannot supply a binary the pane
+    /// execs, so none was started rather than one whose hooks all fail
+    /// "non-blocking" (ISS-1390).
+    PathUnresolved {
+        detail: String,
+    },
     /// The pane last placed for this project resumed its conversation and
     /// exited, printing that Claude Code runs that conversation as a
     /// background session under the id `short`; `pid` is a process on this
@@ -371,6 +377,7 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "the control capability its pane would carry could not be minted ({detail}), so this box started no master rather than one whose every declaration is refused"
             ),
+            Self::PathUnresolved { detail } => write!(f, "{detail}"),
             Self::PaneUnstarted { detail } => write!(
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
@@ -452,6 +459,7 @@ impl Unplaced {
                 | Self::ServersUnwritable { .. }
                 | Self::CapabilityUnminted { .. }
                 | Self::PaneUnstarted { .. }
+                | Self::PathUnresolved { .. }
                 | Self::ConversationElsewhere { .. }
                 | Self::ConversationUnaskable { .. }
         )
@@ -3512,6 +3520,20 @@ async fn ensure_master(
 
     let transcript = transcript_path(&resolved.slug);
     let mut env = terminal::pane_env();
+    match crate::daemon::pane_path::for_pane() {
+        Ok(path) => env.push(path),
+        Err(unresolved) => {
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::PathUnresolved {
+                    detail: unresolved.to_string(),
+                },
+            );
+            return PaneState::Absent;
+        }
+    }
     let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
     {
         Ok(path) => path,
@@ -13632,6 +13654,57 @@ mod outdated_tests {
         assert!(
             !sweep_source().contains("carried_across("),
             "criterion 29: no carry in the sweep leaves the row naming another session"
+        );
+    }
+}
+
+/// ISS-1390: a master pane is started with the PATH this box builds, or not
+/// at all.
+#[cfg(test)]
+mod pane_path_tests {
+    use super::*;
+
+    /// Criterion 6, as `master status` reads it.
+    #[test]
+    fn a_pane_refused_for_its_path_names_each_binary_and_the_path_on_status() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        let detail = crate::daemon::pane_path::Unresolved {
+            missing: vec!["forge-runner".into(), "node".into()],
+            path: "/usr/local/bin:/usr/bin".into(),
+        }
+        .to_string();
+        masters.note_unplaced("proj-1", Unplaced::PathUnresolved { detail });
+        let why = masters.why_unplaced("proj-1");
+        for said in ["`forge-runner`, `node`", "(/usr/local/bin:/usr/bin)"] {
+            assert!(why.contains(said), "`{said}` missing: {why}");
+        }
+        assert!(Unplaced::PathUnresolved {
+            detail: String::new()
+        }
+        .is_error());
+    }
+
+    /// Criteria 1 and 3: the placement asks for the PATH before it mints the
+    /// capability or starts the pane, and hands the pane what it built.
+    #[test]
+    fn the_placement_builds_the_path_before_the_pane_and_hands_it_over() {
+        let src = crate::test_scratch::lf(include_str!("master.rs"));
+        let body = src
+            .split("\nasync fn ensure_master(")
+            .nth(1)
+            .expect("ensure_master");
+        let path = body
+            .find("crate::daemon::pane_path::for_pane()")
+            .expect("ensure_master builds the pane's PATH");
+        let pushed = body
+            .find("Ok(path) => env.push(path)")
+            .expect("and puts it in the pane's env");
+        let mint = body.find("store.mint(").expect("the mint");
+        let start = body.find("terminal::ensure(").expect("the start");
+        assert!(
+            path < mint && pushed < start,
+            "the PATH is settled before anything is minted or started"
         );
     }
 }
