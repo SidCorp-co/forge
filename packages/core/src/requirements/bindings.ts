@@ -279,9 +279,14 @@ async function tracingIssuesOf(
       status: issues.status,
     })
     .from(issueCriteria)
-    .innerJoin(requirementCriteria, eq(requirementCriteria.id, issueCriteria.requirementCriterionId))
+    .innerJoin(
+      requirementCriteria,
+      eq(requirementCriteria.id, issueCriteria.requirementCriterionId),
+    )
     .innerJoin(issues, eq(issues.id, issueCriteria.issueId))
-    .where(and(eq(requirementCriteria.requirementId, requirementId), isNull(issueCriteria.retiredAt)));
+    .where(
+      and(eq(requirementCriteria.requirementId, requirementId), isNull(issueCriteria.retiredAt)),
+    );
 }
 
 /** The bindings with the issues building each broken one's flow, read only when one is broken. */

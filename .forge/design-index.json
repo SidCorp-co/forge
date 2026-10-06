@@ -252,6 +252,7 @@
     "declined",
     "new",
     "planned",
+    "redaction",
     "reopened",
     "resolved",
     "start",
@@ -489,6 +490,7 @@
     "similar",
     "stalled",
     "triage",
+    "turn",
     "verdict-result"
    ]
   },

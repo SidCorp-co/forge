@@ -1,5 +1,5 @@
 /**
- * Suggestions (workflow `suggestion-lifecycle` rev 8): what the BA assistant, a master or a member
+ * Suggestions (workflow `suggestion-lifecycle` rev 9): what the BA assistant, a master or a member
  * writes instead of changing anything. A holder of suggestions.approve accepts or rejects; the accept writes the
  * effect in the same transaction, compare-and-set on the target head, and the effect points back
  * (requirement_revisions.from_suggestion_id). A suggestion never makes anything current: a revision

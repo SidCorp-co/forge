@@ -302,7 +302,8 @@
         "personal-data-flow#pr-provision",
         "REQ-25",
         "issue-delivery#rule-return",
-        "core-kernel#k-devices"
+        "core-kernel#k-devices",
+        "core-kernel#k-runners"
       ]
     },
     "ecosystem": {
@@ -787,7 +788,12 @@
       "kind": "kernel",
       "context": "platform",
       "owns": ["pipelineOutbox"],
-      "serves": ["issue-delivery#core", "issue-delivery#ev-transition", "automation#file", "core-kernel#k-lifecycle"]
+      "serves": [
+        "issue-delivery#core",
+        "issue-delivery#ev-transition",
+        "automation#file",
+        "core-kernel#k-lifecycle"
+      ]
     },
     "permissions": {
       "kind": "kernel",
