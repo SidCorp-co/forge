@@ -123,7 +123,7 @@ export function BatchReleaseDialog({
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-fg">
           The following {selectedIssues.length === 1 ? "issue" : `${selectedIssues.length} issues`} will
-          be merged, deployed, and closed in one batch release. This cannot be undone.
+          be released together and closed in one batch. This cannot be undone.
         </p>
 
         <ul className="flex flex-col gap-1.5 rounded-lg border border-line bg-canvas p-3">

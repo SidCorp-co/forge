@@ -317,7 +317,10 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 					<CardTitle>What this run did</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<ReleaseTimeline attempts={data.attempts} />
+					<ReleaseTimeline
+						attempts={data.attempts}
+						ended={data.runStatus !== "running" && data.runStatus !== "paused"}
+					/>
 				</CardContent>
 			</Card>
 

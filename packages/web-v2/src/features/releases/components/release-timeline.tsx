@@ -20,14 +20,20 @@ export function orderAttempts(attempts: ReleaseAttempt[]): ReleaseAttempt[] {
 
 export interface ReleaseTimelineProps {
 	attempts: ReleaseAttempt[];
+	/** The run has ended, so an empty timeline is what it did rather than what it has not done yet. */
+	ended: boolean;
 }
 
-export function ReleaseTimeline({ attempts }: ReleaseTimelineProps) {
+export function ReleaseTimeline({ attempts, ended }: ReleaseTimelineProps) {
 	if (attempts.length === 0) {
 		return (
 			<EmptyState
-				title="This run has recorded no acts"
-				message="Nothing has been promoted, deployed or verified under this release run yet. An act is written down before it happens, so an empty timeline means the run has not started one."
+				title={ended ? "This run recorded no acts" : "This run has recorded no acts"}
+				message={
+					ended
+						? "Nothing was promoted, deployed or verified under this release run before it ended. An act is written down before it happens, so the run took none."
+						: "Nothing has been promoted, deployed or verified under this release run yet. An act is written down before it happens, so an empty timeline means the run has not started one."
+				}
 			/>
 		);
 	}

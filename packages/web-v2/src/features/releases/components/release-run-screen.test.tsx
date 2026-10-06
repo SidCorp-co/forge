@@ -231,3 +231,22 @@ describe("the start line (ISS-1323)", () => {
 		expect(screen.queryByTestId("start-line")).not.toBeInTheDocument();
 	});
 });
+
+describe("an empty timeline, in the tense of the run's own status", () => {
+	it("a completed run with no acts says it took none, not that it has not started one", () => {
+		state({ runStatus: "completed", attempts: [] });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByText(/before it ended/)).toBeInTheDocument();
+		expect(screen.queryByText(/has not started one/)).not.toBeInTheDocument();
+	});
+
+	it("a running run with no acts says it has not started one yet", () => {
+		state({ runStatus: "running", attempts: [] });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByText(/has not started one/)).toBeInTheDocument();
+	});
+});

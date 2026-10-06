@@ -151,6 +151,16 @@ describe("a batch release the server refuses", () => {
   });
 });
 
+describe("what the dialog promises before the press", () => {
+  it("promises a release and a close, not a deploy some projects never take", () => {
+    draw();
+
+    const drawer = screen.getByRole("dialog");
+    expect(drawer).toHaveTextContent(/will be released together and closed in one batch/);
+    expect(drawer.textContent).not.toMatch(/deployed/);
+  });
+});
+
 describe("a batch release the server accepts", () => {
   it("closes the dialog and hands the parent its success", async () => {
     accepted("probed");
