@@ -156,13 +156,13 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     expect((await comments(issue.id)).at(-1)).not.toContain(`read from ${repo.fullName} itself`);
   });
 
-  it('takes no commit route on an outside_git project (criterion 15)', async () => {
+  it('takes no commit route on an outside_git project, naming the landing route (criterion 15, ISS-1384)', async () => {
     const issue = await seed({ kind: 'website' });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
     expect(refused.message).toContain("This project's work lands outside git");
-    expect(refused.message).toContain('a person may mark it merged');
-    expect(refused.message).not.toContain('`mark_merged` carrying `data.commit`');
+    expect(refused.message).toContain('`mark_merged` carrying `data.landing`');
+    expect(refused.message).not.toContain('data.commit');
     expect(repo.reads).toEqual([]);
   });
 });
@@ -267,15 +267,18 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
     expect(refused.message).not.toContain('the commit it landed at, which Forge checks');
   });
 
-  it('never tells a person held by the declared work_evidence criterion that it does not hold them (website)', async () => {
+  it('tells a person held by the declared work_evidence criterion the landing route, which clears it (website, ISS-1384)', async () => {
     await declareWorkEvidence();
     const issue = await seed({ kind: 'website' });
-    await mark(issue, undefined, 'human', { landing: 'https://shop.example/p/1318' });
     const refused = await refusal(() => advance(issue.id, 'in_progress', 'developed', 'human'));
     expect(refused.code).toBe('ENTRY_CRITERIA_UNMET');
     expect(refused.message).not.toContain('does not hold them to');
-    expect(refused.message).toContain('a landing it names is not evidence');
+    expect(refused.message).toContain('`mark_merged` carrying `data.landing`');
     expect(refused.message).toContain('`statusEntryCriteria`');
+
+    await mark(issue, undefined, 'human', { landing: 'https://shop.example/p/1318' });
+    await advance(issue.id, 'in_progress', 'developed', 'human');
+    expect((await row(issue.id)).status).toBe('developed');
   });
 
   it.each(['agent', 'human'] as const)(

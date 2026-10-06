@@ -109,20 +109,31 @@ const otherLines = existsSync(ciPath)
   ? (ciBranches(readFileSync(ciPath, 'utf8')).push ?? []).filter((b) => b !== base.branch)
   : [];
 
-/** The other gated line `ref` lands on, `null` for none, `undefined` where git could not say. */
+/** A line's own commits: its first-parent chain the base does not hold. `undefined` unreadable. */
+const spines = new Map();
+function spineOf(ref) {
+  if (!spines.has(ref)) {
+    const out = git(['rev-list', '--first-parent', ref, `^${baseRef}`], root);
+    spines.set(ref, out === null ? undefined : new Set(out.split('\n').filter(Boolean)));
+  }
+  return spines.get(ref);
+}
+
+/**
+ * The other gated line `ref` lands on, `null` for none, `undefined` where git could not say. A
+ * branch is cut FROM a line when its own first-parent chain runs into that line's; a base branch
+ * the line merely merged in sits on the line's second parent and stays this base's sibling.
+ */
 function landsOn(ref) {
+  const own = spineOf(ref);
+  if (own === undefined) return undefined;
   for (const line of otherLines) {
     const lineRef = `origin/${line}`;
     if (git(['rev-parse', '--verify', '--quiet', `${lineRef}^{commit}`], root) === null) continue;
     if (ref === lineRef) return line;
-    const fork = spawnSync('git', ['merge-base', ref, lineRef], { cwd: root, encoding: 'utf8' });
-    if (fork.status === 1) continue;
-    if (fork.status !== 0) return undefined;
-    const held = spawnSync('git', ['merge-base', '--is-ancestor', fork.stdout.trim(), baseRef], {
-      cwd: root,
-    });
-    if (held.status === 1) return line;
-    if (held.status !== 0) return undefined;
+    const spine = spineOf(lineRef);
+    if (spine === undefined) return undefined;
+    for (const commit of own) if (spine.has(commit)) return line;
   }
   return null;
 }

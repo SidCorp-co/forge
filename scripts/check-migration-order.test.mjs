@@ -278,6 +278,27 @@ describe('check-migration-order, beside another gated line', () => {
     expect(code).toBe(1);
   });
 
+  it('still refuses a base-line sibling the other line merged in, holding the same number', () => {
+    const { w, work } = twoLines({ declareDev: true });
+    const sibling = pushBranch(
+      w,
+      'iss-integrated',
+      journal([288, 1000, '0288_main'], [290, 2000, '0290_integrated']),
+    );
+    // `dev` takes the main-bound branch in for integration, with a merge commit of its own.
+    const devWork = join(w.box, 'w-dev');
+    git(devWork, 'checkout', 'dev');
+    git(devWork, 'fetch', 'origin', 'iss-integrated');
+    git(devWork, 'merge', '--no-ff', '-X', 'ours', '-m', 'dev takes iss-integrated', 'FETCH_HEAD');
+    git(devWork, 'push', 'origin', 'dev');
+    expect(sibling).toBeTruthy();
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(out).toContain(
+      '[duplicate-when] iss-main and origin/iss-integrated both hold when 2000',
+    );
+    expect(code).toBe(1);
+  });
+
   it('still refuses a sibling on its own line holding the same number', () => {
     const { w, work } = twoLines({ declareDev: true });
     pushBranch(w, 'iss-other', journal([288, 1000, '0288_main'], [290, 2000, '0290_other']));

@@ -121,6 +121,20 @@ describe('the declaration is written and read on the issue itself', () => {
     expect(await declaredOf(id)).toBeNull();
   });
 
+  it('answers the lane on the issue forge_issues create returns', async () => {
+    const w = await world('website');
+    const created = await tool(w.pat, {
+      action: 'create',
+      projectId: w.projectId,
+      data: { title: 'storefront copy', description: 'x', priority: 'low', category: 'chore' },
+    });
+    expect(created.isError, created.text).toBe(false);
+    expect(created.json()).toMatchObject({
+      landingShape: 'outside_git',
+      declaredLandingShape: null,
+    });
+  });
+
   it('leaves the sibling issues of the project on the project shape', async () => {
     const w = await world('standard');
     const declared = await issueAt(w, 'in_progress', 'outside_git');

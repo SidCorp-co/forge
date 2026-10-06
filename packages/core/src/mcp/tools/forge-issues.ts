@@ -346,18 +346,25 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
  * NOT used by `list` (summary/browse) to avoid an attachment query per row.
  */
 export async function serializeWithAttachments(row: IssueRow): Promise<Record<string, unknown>> {
-  const [attachments, issueLabelsList, prefix, landingShape] = await Promise.all([
+  const [attachments, issueLabelsList, prefix, landing] = await Promise.all([
     listIssueAttachments(row.id),
     listIssueLabels(row.id),
     activeIssuePrefix(row.projectId),
-    readIssueLandingShape(row),
+    landingFields(row),
   ]);
   return {
     ...serialize(row, prefix),
-    landingShape,
-    declaredLandingShape: row.declaredLandingShape,
+    ...landing,
     attachments,
     labels: issueLabelsList,
+  };
+}
+
+/** The issue's lane and its own declaration, as every whole-issue answer of this tool carries them. */
+async function landingFields(row: IssueRow): Promise<Record<string, unknown>> {
+  return {
+    landingShape: await readIssueLandingShape(row),
+    declaredLandingShape: row.declaredLandingShape,
   };
 }
 
@@ -656,10 +663,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } as Record<string, unknown>;
         }
 
-        const out: Record<string, unknown> = serialize(
-          result.issue as IssueRow,
-          await activeIssuePrefix(result.issue.projectId),
-        );
+        const created = result.issue as IssueRow;
+        const out: Record<string, unknown> = {
+          ...serialize(created, await activeIssuePrefix(created.projectId)),
+          ...(await landingFields(created)),
+        };
         out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
         if (result.relations.length > 0) out.relations = result.relations;
         if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {

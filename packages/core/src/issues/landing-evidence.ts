@@ -73,24 +73,29 @@ export const landingShapeInputSchema = z
   })
   .nullable();
 
-/** The issue's declaration where it holds one, else the project's kind. The column's CHECK holds the
- *  two shapes, so a value outside them is a write that went around it, refused rather than guessed. */
+/** The one precedence: the issue's declaration where it holds one, else `projectShape()`. The
+ *  column's CHECK holds the two shapes, so a value outside them is refused rather than guessed. */
+export function laneFrom(
+  declared: string | null | undefined,
+  projectShape: () => LandingShape,
+): Lane {
+  if (declared == null) return { shape: projectShape(), declared: false };
+  if (!(landingShapes as readonly string[]).includes(declared)) {
+    throw new Error(
+      `issue declares landing shape \`${declared}\`, which is neither \`git\` nor \`outside_git\`; ` +
+        'the column CHECK refuses it, so a write went around it. Clear it or set one of the two',
+    );
+  }
+  return { shape: declared as LandingShape, declared: true };
+}
+
+/** `laneFrom`, the project's shape read off its kind. */
 export function laneOf(args: {
   declared: string | null | undefined;
   kind: string;
   projectId?: string;
 }): Lane {
-  const { declared } = args;
-  if (declared != null) {
-    if (!(landingShapes as readonly string[]).includes(declared)) {
-      throw new Error(
-        `issue declares landing shape \`${declared}\`, which is neither \`git\` nor \`outside_git\`; ` +
-          'the column CHECK refuses it, so a write went around it. Clear it or set one of the two',
-      );
-    }
-    return { shape: declared as LandingShape, declared: true };
-  }
-  return { shape: landingShapeOf(args.kind, args.projectId), declared: false };
+  return laneFrom(args.declared, () => landingShapeOf(args.kind, args.projectId));
 }
 
 /** `laneOf`, or `null` where nothing is declared and the project's kind is none Forge knows. */
@@ -302,13 +307,15 @@ export async function readIssueLandingShape(
   issue: { projectId: string; declaredLandingShape: LandingShape | null },
   executor: ShapeExecutor = db,
 ): Promise<LandingShape | null> {
-  if (issue.declaredLandingShape != null) return issue.declaredLandingShape;
-  const [row] = await executor
-    .select({ kind: projects.kind })
-    .from(projects)
-    .where(eq(projects.id, issue.projectId))
-    .limit(1);
-  return laneOrNull(null, row?.kind)?.shape ?? null;
+  const [row] =
+    issue.declaredLandingShape == null
+      ? await executor
+          .select({ kind: projects.kind })
+          .from(projects)
+          .where(eq(projects.id, issue.projectId))
+          .limit(1)
+      : [];
+  return laneOrNull(issue.declaredLandingShape, row?.kind)?.shape ?? null;
 }
 
 /** What the issue declares now, read back where a stamp wrote nothing; `null` for no such row. */

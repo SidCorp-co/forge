@@ -4,7 +4,7 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import type { LandingShape } from './landing-evidence.js';
+import { type LandingShape, laneFrom } from './landing-evidence.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 
 export interface IssueBodyColumns {
@@ -32,6 +32,6 @@ export function serializeIssue<
     displayId: formatIssueRef(prefix, row.issSeq),
     descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
     mergeMark: mergeMarkKindOf(row),
-    landingShape: row.declaredLandingShape ?? projectShape,
+    landingShape: laneFrom(row.declaredLandingShape, () => projectShape).shape,
   };
 }

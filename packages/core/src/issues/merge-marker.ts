@@ -1,7 +1,6 @@
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments, issues, projectKinds } from '../db/schema.js';
+import { comments, projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -11,7 +10,7 @@ import {
   type LandingShape,
   type Lane,
   landingMarkRefusal,
-  laneOf,
+  laneFrom,
   markTargetRequired,
   readDeclaredLandingShape,
   readLandingShape,
@@ -137,15 +136,18 @@ async function markLane(issue: {
   projectId: string;
   declaredLandingShape: LandingShape | null;
 }): Promise<Lane> {
-  if (issue.declaredLandingShape != null) {
-    return laneOf({ declared: issue.declaredLandingShape, kind: '' });
-  }
+  const project = issue.declaredLandingShape == null ? await projectShapeOf(issue.projectId) : null;
+  // The thunk is read only where nothing is declared, which is where `project` was read.
+  return laneFrom(issue.declaredLandingShape, () => project as LandingShape);
+}
+
+async function projectShapeOf(projectId: string): Promise<LandingShape> {
   try {
-    return { shape: await readLandingShape(db, issue.projectId), declared: false };
+    return await readLandingShape(db, projectId);
   } catch (err) {
     if (!(err instanceof UnknownProjectKindError)) throw err;
     throw new MergeMarkerError('PROJECT_KIND_UNKNOWN', err.message, {
-      projectId: issue.projectId,
+      projectId,
       kind: err.kind,
       kinds: [...projectKinds],
     });
@@ -168,6 +170,24 @@ async function refuseMovedLane(issue: {
       'lane the issue holds now.',
     { judged, holds: row.declared },
   );
+}
+
+/**
+ * An agent with nothing else behind it may still have landed: on a git lane on the base branch
+ * itself, where the commit is the only trace and counts once the repository says it is this
+ * issue's landing (returned); outside git where the landing it names is, that lane's evidence.
+ */
+async function agentEvidence(
+  issueId: string,
+  shape: LandingShape,
+  sent: { commit?: string | undefined; landing?: string | undefined },
+): Promise<Extract<CommitLanding, { ok: true }> | null> {
+  const missing = await findMissingWorkEvidence(issueId);
+  if (!missing || (shape === 'outside_git' && sent.landing)) return null;
+  if (!sent.commit || shape !== 'git') throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
+  const read = await readCommitLanding({ issueId, commit: sent.commit });
+  if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+  return read;
 }
 
 export type MergeMarkerActor = {
@@ -230,20 +250,7 @@ export async function applyMergeMarker(args: {
     if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
-    // An agent with nothing else behind it may still have landed: on a git lane on the base branch
-    // itself, where the commit is the only trace and counts once the repository says it is this
-    // issue's landing; outside git where the landing it names is, which is that lane's evidence.
-    if (args.actor.agency === 'agent') {
-      const missing = await findMissingWorkEvidence(before.id);
-      const landsHere = shape === 'outside_git' && Boolean(args.landing);
-      if (missing && !landsHere) {
-        if (!args.commit || shape !== 'git')
-          throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
-        const read = await readCommitLanding({ issueId: before.id, commit: args.commit });
-        if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
-        fromRepository = read;
-      }
-    }
+    if (args.actor.agency === 'agent') fromRepository = await agentEvidence(before.id, shape, args);
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ lane, landing, observed: observed !== null });
