@@ -372,14 +372,17 @@ written:
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
   one durable outbox (`packages/core/src/db/schema-outbox.ts:pipelineOutbox`) by
   `packages/core/src/outbox/emit.ts:emitEvent`, its types in
-  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus.
+  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus. A type
+  added there owes the migration that rebuilds `pipeline_outbox_type_chk`: the table refuses it
+  until then, and `packages/core/src/db/schema-checks.test.ts` fails while the two disagree.
 - **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
   and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
   `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The workers refuse to start
   while the two disagree.
 - **One pg-boss job per event and consumer**, sent in the act's transaction through pg-boss's
   Drizzle executor (`packages/core/src/outbox/emit.ts:emitEvents`) onto that consumer's own queue
-  (`packages/core/src/outbox/queues.ts:queueOf`). Consumers are independent: one failing never
+  (`packages/core/src/outbox/queues.ts:queueOf`); an emit on the pool opens its own transaction, so
+  the row and its jobs still land together. Consumers are independent: one failing never
   retries or holds back another. The job carries the event whole, so it outlives the event's row.
 - **Completing the job is the consumer's inbox.** A consumer whose effect is rows writes them inside
   `Delivery.inbox(tx => …)`, which completes the job in the same transaction, fenced to the attempt
