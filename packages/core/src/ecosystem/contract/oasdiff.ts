@@ -110,6 +110,17 @@ const MAX_OUTPUT = 64 * 1024 * 1024;
 // the specs are another project's bytes, so external $refs are never followed: a ref to a URL would be a request core makes on the provider's say-so
 const SAFE = ['--allow-external-refs=false', '-f', 'json'];
 
+// execFile's own message leads with the command line and the temporary paths; what a reader needs is oasdiff's stderr, with each file named for its role
+function oasdiffFailure(err: unknown, files: Readonly<Record<string, string>>): Error {
+  const e = err as { stderr?: unknown; message?: unknown };
+  let text = typeof e.stderr === 'string' && e.stderr.trim() ? e.stderr : String(e.message ?? err);
+  for (const [path, role] of Object.entries(files))
+    text = text.split(`"${path}"`).join(role).split(path).join(role);
+  // oasdiff tries JSON and then YAML; on a JSON artifact the YAML attempt repeats the JSON error
+  if (text.includes('json error:')) text = text.replace(/, yaml error: [\s\S]*$/, '');
+  return new Error(text.replace(/^Error:\s*/, '').trim());
+}
+
 export async function runOasdiff(
   base: string,
   revision: string,
@@ -124,10 +135,32 @@ export async function runOasdiff(
     const [log, diff] = await Promise.all([
       run(bin, ['changelog', a, b, ...SAFE], opts),
       run(bin, ['diff', a, b, ...SAFE], opts),
-    ]);
+    ]).catch((err: unknown) => {
+      throw oasdiffFailure(err, { [a]: 'the previous version', [b]: 'this version' });
+    });
     const changelog = JSON.parse(log.stdout || '[]') as OasdiffEntry[];
     if (!Array.isArray(changelog)) throw new Error('oasdiff changelog printed no JSON array');
     return { changelog, structural: JSON.parse(diff.stdout || '{}') };
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
+// a spec diffed against itself goes through the loader changelog uses, so an artifact that passes here is one a later version can be measured against; the answer is oasdiff's own words, null when it loads, and a differ that was killed or never ran is thrown rather than blamed on the artifact
+export async function oasdiffLoadError(text: string): Promise<string | null> {
+  const bin = await requireOasdiff();
+  const work = await mkdtemp(join(tmpdir(), 'oasdiff-load-'));
+  const file = join(work, 'artifact.json');
+  try {
+    await writeFile(file, text);
+    try {
+      await run(bin, ['diff', file, file, ...SAFE], { timeout: 120_000, maxBuffer: MAX_OUTPUT });
+      return null;
+    } catch (err) {
+      const failure = oasdiffFailure(err, { [file]: 'the artifact' });
+      if (typeof (err as { code?: unknown }).code !== 'number') throw failure;
+      return failure.message;
+    }
   } finally {
     await rm(work, { recursive: true, force: true });
   }

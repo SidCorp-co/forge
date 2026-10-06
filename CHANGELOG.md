@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **An OpenAPI artifact oasdiff cannot load is refused, not stored "unknown".** `ARTIFACT_UNREADABLE`
+  names the loader error and the misplaced schema; an unmeasured semver change takes the uploader's
+  named version (`VERSION_NOT_MEASURED`), never a guessed MAJOR.
 - **Live updates reach the lists they name.** Tokens and Settings notifications refresh live; every
   runner frame names its project, so a created, deleted or stale runner updates Runners at once.
   Copy link without a clipboard shows the link.

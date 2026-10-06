@@ -34,6 +34,13 @@ export interface MeasuredDiff {
 
 export const MAX_CHANGES = 500;
 
+// the checks a diff carries when no differ measured the change: none exists for the type, it failed, or there was nothing to compare; a declared semantic change is the uploader's word and is not among them
+export const NOT_MEASURED_CHECK =
+  /^(.+-not-measured|opaque|contract-type-changed|no-previous-artifact)$/;
+
+export const notMeasured = (diff: Pick<MeasuredDiff, 'changes'>): MeasuredChange[] =>
+  diff.changes.filter((c) => c.check !== undefined && NOT_MEASURED_CHECK.test(c.check));
+
 const RANK: Record<ChangeLevel, number> = { breaking: 0, warning: 1, info: 2 };
 
 export function classify(
