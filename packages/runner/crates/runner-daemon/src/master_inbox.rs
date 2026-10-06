@@ -35,20 +35,13 @@ pub enum WakeSource {
     Requirement,
     /// Feedback was filed, at whatever severity.
     Feedback,
-    /// A frame naming no source.
-    ///
-    /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
-    /// answer wakes, so absence is read as the backlog wake it was then. It
-    /// ends once every core this runner pairs with sends a source; a channel
-    /// wake has carried one since it was introduced.
-    Unstated,
 }
 
 impl WakeSource {
     /// The source `data` names, or why it is refused.
     pub fn of_frame(data: &serde_json::Value) -> Result<Self, String> {
         match data.get("source") {
-            None => Ok(WakeSource::Unstated),
+            None => Err("it names no source (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback)".to_string()),
             Some(serde_json::Value::String(s)) => match s.as_str() {
                 "issue" => Ok(WakeSource::Issue),
                 "answer" => Ok(WakeSource::Answer),
@@ -76,7 +69,6 @@ impl WakeSource {
             WakeSource::Comment => "comment",
             WakeSource::Requirement => "requirement",
             WakeSource::Feedback => "feedback",
-            WakeSource::Unstated => "source unstated",
         }
     }
 }
@@ -235,6 +227,13 @@ mod tests {
         let source = WakeSource::of_frame(&serde_json::json!({ "source": "requirement" })).unwrap();
         assert_eq!(source, WakeSource::Requirement);
         assert_eq!(source.label(), "requirement");
+    }
+
+    #[test]
+    fn a_wake_naming_no_source_is_refused_by_name() {
+        let refused = WakeSource::of_frame(&serde_json::json!({ "projectId": "p" }))
+            .expect_err("a frame with no source was read as a wake");
+        assert!(refused.contains("names no source"), "{refused}");
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub(crate) async fn obey(
     match verdict {
         Verdict::Withhold { reason, because } => withhold(t, &reason, &because),
         Verdict::Leave { reason, because } => {
-            leave(t, ledger, &reason, &because, &authority, &deaf, found).await
+            leave(t, &reason, &because, &authority, &deaf, found).await
         }
         Verdict::Retire { because } => retire(t, &because).await,
         Verdict::Keep {
@@ -179,7 +179,6 @@ fn withhold(t: &Turn<'_>, reason: &str, because: &str) {
 
 async fn leave(
     t: &Turn<'_>,
-    ledger: &mut Option<Ledger>,
     reason: &str,
     because: &str,
     authority: &AuthoritySink,
@@ -204,18 +203,6 @@ async fn leave(
         ("deaf", Some(adopted)) => {
             deaf.set(slug, name, DeafAct::LeftStanding(because.to_string()));
             record_stale(t, adopted, authority);
-            tend(t, found).await;
-        }
-        // Priced amnesty: only a core older than the draining keep still
-        // leaves an outdated pane; this arm goes once every core this runner
-        // build serves keeps one instead.
-        ("outdated", Some(_)) => {
-            if masters.note_outdated(project_id, Some(because.to_string())) {
-                tracing::warn!(
-                    "[master] {slug}: {name} is left running and not nudged: {because}. Core replaces it on the first sweep that finds no run it holds still working, it at its prompt, and work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
-                );
-            }
-            record_heard(t, ledger, authority).await;
             tend(t, found).await;
         }
         _ => say_unplaced(
