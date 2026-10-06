@@ -31,7 +31,7 @@ import {
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
-import { issueHref } from "../../../lib/routes/issues";
+import { issueHref } from "@/lib/routes/issues";
 
 export const issueBadge = (r: Pick<IssueStandingRow, "status" | "standing">) => (
   <StatusBadge family="issue" value={r.status} step={r.standing.step} tone={r.standing.tone} />

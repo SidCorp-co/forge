@@ -4,7 +4,7 @@
 // opened from, the key, the title, the state badge and the one primary act
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useMasterStanding, useRunDetail } from "../hooks";
-import { AGENTS_LIST, agentsListHref } from "../../../lib/routes/agents";
+import { AGENTS_LIST, agentsListHref } from "@/lib/routes/agents";
 import { runName } from "../view";
 import { MasterPage, masterName } from "./master-views";
 import type { AgentsAccess } from "./runs-list";

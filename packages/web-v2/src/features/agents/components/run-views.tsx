@@ -41,7 +41,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useCancelRun, useRunDetail } from "../hooks";
-import { masterHref, runHref } from "../../../lib/routes/agents";
+import { masterHref, runHref } from "@/lib/routes/agents";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
 import { actorName, fmtTime, leaseLeft, runBanner, runKey, runName, stamp, stepLabel, waitingView } from "../view";
 

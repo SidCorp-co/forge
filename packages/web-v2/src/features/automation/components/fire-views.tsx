@@ -31,7 +31,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFireDetail } from "../hooks";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "../../../lib/routes/automation";
+import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
 import { fireWhy, fmtDuration, producedLine, shortId } from "../view";
 

@@ -19,7 +19,7 @@ import {
 } from "@/design";
 import { issueHref } from "@/lib/routes/issues";
 import { formatAge, formatStamp } from "@/lib/utils/format";
-import { moduleHref } from "../../../lib/routes/modules";
+import { moduleHref } from "@/lib/routes/modules";
 import type { ModuleCoupling, ModuleDetail, ModuleLanding } from "../types";
 import { ActivityBars, AttentionBadge, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleFacts } from "./module-facts";

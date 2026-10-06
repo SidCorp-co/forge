@@ -13,7 +13,7 @@ import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
-import { requirementHref } from "../../../lib/routes/requirements";
+import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementDetail } from "../types";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */

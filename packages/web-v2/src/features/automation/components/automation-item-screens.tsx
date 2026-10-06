@@ -5,7 +5,7 @@
 // the title, the state badge and the one primary act
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useFireDetail, useReportDetail, useScheduleDetail } from "../hooks";
-import { AUTOMATION_LIST, automationListHref, automationTabHref, fireHref, scheduleHref } from "../../../lib/routes/automation";
+import { AUTOMATION_LIST, automationListHref, automationTabHref, fireHref, scheduleHref } from "@/lib/routes/automation";
 import { shortId } from "../view";
 import { FirePage } from "./fire-views";
 import { ReportPage, ReportPrimary } from "./report-views";

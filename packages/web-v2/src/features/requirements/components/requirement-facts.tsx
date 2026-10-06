@@ -12,7 +12,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
-import { requirementHref } from "../../../lib/routes/requirements";
+import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper } from "./standing-bits";
 

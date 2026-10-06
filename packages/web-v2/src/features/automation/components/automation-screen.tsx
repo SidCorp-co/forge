@@ -35,7 +35,7 @@ import { useCreateSchedule } from "@/features/automation/schedule-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
-import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "../../../lib/routes/automation";
+import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
 import { FirePeek, fireRow } from "./fire-views";
 import { ReportPeek, reportRow } from "./report-views";

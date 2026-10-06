@@ -16,7 +16,7 @@ import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { describeSystem, type OverviewFact, overviewFacts, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
 import { useHealthOverlay, useSystemGraph, useWorkflowHealth } from "../hooks";
-import { WORKFLOWS_LIST, workflowHref } from "../../../lib/routes/workflows";
+import { WORKFLOWS_LIST, workflowHref } from "@/lib/routes/workflows";
 import type { SystemGraph, WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
 

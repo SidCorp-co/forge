@@ -39,7 +39,7 @@ import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } fr
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useScheduleDetail } from "../hooks";
-import { automationListHref, fireHref } from "../../../lib/routes/automation";
+import { automationListHref, fireHref } from "@/lib/routes/automation";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
 import { fmtTime } from "../view";
 import { FireLines } from "./fire-views";

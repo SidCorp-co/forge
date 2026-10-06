@@ -18,7 +18,7 @@ import {
 import { ContentLanguageField } from "./content-language-field";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
-import { useProjectDocument, useWriteProjectDocument } from "../../project-config/hooks";
+import { useProjectDocument, useWriteProjectDocument } from "@/features/project-config/hooks";
 import { projectDescriptionOf } from "../project-document";
 
 /** The document Basics writes: the one read, with `project.name` and `project.description` as edited; an empty description is removed. */

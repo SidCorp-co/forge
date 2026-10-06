@@ -27,7 +27,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";
-import { RELEASES_LIST, releaseHref } from "../../../lib/routes/releases";
+import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
 import type { ReleaseSummary } from "../types";
 import { ReleasePeek } from "./release-peek";
 import { ReleaseTrain } from "./release-train";

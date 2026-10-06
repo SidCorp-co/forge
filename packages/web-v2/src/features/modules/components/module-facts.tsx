@@ -5,7 +5,7 @@ import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/desig
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
-import { moduleHref } from "../../../lib/routes/modules";
+import { moduleHref } from "@/lib/routes/modules";
 import type { ModuleActiveIssue, ModuleDetail } from "../types";
 
 const SHOWN = 8;

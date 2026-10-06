@@ -39,7 +39,7 @@ import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/er
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "../../../lib/routes/automation";
+import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { ReportStanding } from "../types";
 import { shortId } from "../view";
 

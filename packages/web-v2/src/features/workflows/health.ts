@@ -14,7 +14,7 @@ import { HEALTH_MARKER_KINDS } from "@forge/contracts/workflow-health";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issuesHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
-import { workflowHref } from "../../lib/routes/workflows";
+import { workflowHref } from "@/lib/routes/workflows";
 import type { WorkflowBody, WorkflowStep } from "./types";
 
 export const HEALTH_PARAM = "health";

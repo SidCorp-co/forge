@@ -1,8 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatApiError } from "@/lib/api/error";
-import { useToast } from "@/providers/toast-provider";
+import { useQuery } from "@tanstack/react-query";
 import { pipelineApi } from "./api";
 import type { AnalyticsOpts } from "./types";
 

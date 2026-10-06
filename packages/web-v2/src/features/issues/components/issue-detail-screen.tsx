@@ -57,7 +57,7 @@ import {
   usePatchIssue,
   useProjectMembers,
 } from "../hooks";
-import { ISSUES_LIST, issuesHref } from "../../../lib/routes/issues";
+import { ISSUES_LIST, issuesHref } from "@/lib/routes/issues";
 import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";

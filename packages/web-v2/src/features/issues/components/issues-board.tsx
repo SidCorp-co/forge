@@ -37,7 +37,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useIssueStanding } from "../hooks";
-import { ISSUES_LIST, issueHref } from "../../../lib/routes/issues";
+import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
 import { priorityLabel, statusesFromParam, statusLabel } from "../derive";
 import { issueBadge, issueRowView } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";

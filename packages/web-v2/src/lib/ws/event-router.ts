@@ -263,21 +263,16 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
 			scheduleInvalidation(qc, ["needs-you"]);
-			if (data?.fromIssueId) {
-				scheduleInvalidation(qc, ["issue", data.fromIssueId, "dependencies"]);
-				scheduleInvalidation(qc, ["issue", data.fromIssueId]);
-				scheduleInvalidation(qc, ["activities", data.fromIssueId]);
-			}
-			if (data?.toIssueId) {
-				scheduleInvalidation(qc, ["issue", data.toIssueId, "dependencies"]);
-				scheduleInvalidation(qc, ["issue", data.toIssueId]);
-				scheduleInvalidation(qc, ["activities", data.toIssueId]);
+			for (const id of [data?.fromIssueId, data?.toIssueId]) {
+				if (!id) continue;
+				scheduleInvalidation(qc, ["issue", id, "dependencies"]);
+				scheduleInvalidation(qc, ["issue", id]);
+				scheduleInvalidation(qc, ["activities", id]);
 			}
 			return;
 		}
-		case "issue.unblockCascade": {
+		case "issue.unblockCascade":
 			return;
-		}
 		case "integration.changed": {
 			// ISS-401/C — a binding mutation (create/update/delete/rotate-secret/
 			// confirm-prod-deploy) broadcasts this to the project room. Refresh the
@@ -302,8 +297,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			return;
 		}
 		default: {
-			// Unknown event: no-op. Log once per event kind in dev to surface
-			// missing wiring on the client side.
+			// A frame no case names: logged in dev to surface missing wiring.
 			if (process.env.NODE_ENV !== "production") {
 				console.debug("[ws] unhandled event", event, data);
 			}
