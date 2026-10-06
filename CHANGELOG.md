@@ -3145,9 +3145,16 @@
 - **`forge-runner doctor` reports each bound checkout's folder trust**, and a master that stopped on
   the trust dialog is reported as that (ISS-1382).
 
-- **A run's checkout is no longer taken while its agent works in it.** A master's helper no
-  longer takes a declared run. An update that will not start is rolled back, and `status` names a
-  refused one.
+- **A run's checkout is no longer taken while its agent works in it, nor by another run's
+  release.** A master's helper no longer takes a declared run. An update that will not start is
+  rolled back and not reinstalled.
+
+- **A hand `forge-runner update` starts the new build on probation**, as the daemon's own update
+  does, so a build that will not start is rolled back there too, and `status` names a held-back
+  update (ISS-1378).
+
+- **A subagent its master resumes takes the run declared for it**, so that run is no longer ended
+  as one that never started (ISS-1378).
 
 - **An automatic release no longer waits on a commit it already serves.** A verdict judged at an
   earlier commit counts once production runs a later one containing it, and a runner-only change is
