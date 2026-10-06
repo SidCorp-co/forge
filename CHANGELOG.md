@@ -9,10 +9,6 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-### Added
-
-- **An approver can correct what a feedback item is about.** An item filed about a screen moves to the requirement that later records its rule, at any phase, and that requirement lists it. Its history names the target it replaced.
-
 ## [0.4.0-dev.63] - 2026-10-06
 
 Core decides master placement and retirement; boxes report facts and obey
