@@ -14,6 +14,8 @@
 
 - Two racing release sweeps write one hold, not two; two agents updating one issue's session state can no longer both succeed against the same earlier read.
 
+- **Ecosystem, feedback and workflow paths are proven against a migrated database.** Channel, notices, links, design wakes, contract and breakdown waits, adopt, impact, re-plan tasks, feedback standing and onboarding requests each have a suite that goes red when its rule breaks.
+
 ## [0.4.0-dev.55] - 2026-10-06
 
 Onboarding confirm carries the owner's request; coded chat turn errors; recorded issue decisions
