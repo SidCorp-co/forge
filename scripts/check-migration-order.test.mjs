@@ -279,20 +279,40 @@ describe('check-migration-order, beside another gated line', () => {
   });
 
   it('still refuses a base-line sibling the other line merged in, holding the same number', () => {
-    const { w, work } = twoLines({ declareDev: true });
-    const sibling = pushBranch(
+    const w = world(journal([288, 1000, '0288_main']));
+    pushBranch(
       w,
       'iss-integrated',
       journal([288, 1000, '0288_main'], [290, 2000, '0290_integrated']),
     );
-    // `dev` takes the main-bound branch in for integration, with a merge commit of its own.
+    // `dev` takes the main-bound branch in for integration, with a merge commit of its own, and
+    // then adds its own migration on its own first-parent chain.
     const devWork = join(w.box, 'w-dev');
-    git(devWork, 'checkout', 'dev');
+    git(w.box, 'clone', '-b', 'main', w.origin, devWork);
+    git(devWork, 'config', 'user.email', 'check@example.invalid');
+    git(devWork, 'config', 'user.name', 'check');
+    git(devWork, 'checkout', '-b', 'dev');
+    writeFileSync(join(devWork, 'what-dev-changes.txt'), 'dev');
+    git(devWork, 'add', '-A');
+    git(devWork, 'commit', '-m', 'dev');
     git(devWork, 'fetch', 'origin', 'iss-integrated');
-    git(devWork, 'merge', '--no-ff', '-X', 'ours', '-m', 'dev takes iss-integrated', 'FETCH_HEAD');
+    git(devWork, 'merge', '--no-ff', '-m', 'dev takes iss-integrated', 'FETCH_HEAD');
+    writeJournal(
+      devWork,
+      journal([288, 1000, '0288_main'], [290, 2000, '0290_integrated'], [291, 3000, '0291_dev']),
+    );
+    git(devWork, 'add', '-A');
+    git(devWork, 'commit', '-m', 'dev migration');
     git(devWork, 'push', 'origin', 'dev');
-    expect(sibling).toBeTruthy();
+    const work = pushBranch(
+      w,
+      'iss-main',
+      journal([288, 1000, '0288_main'], [289, 2000, '0289_main']),
+    );
+    mkdirSync(join(work, dirname(CI)), { recursive: true });
+    writeFileSync(join(work, CI), GATED);
     const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(out).toContain('dev: origin/dev');
     expect(out).toContain(
       '[duplicate-when] iss-main and origin/iss-integrated both hold when 2000',
     );

@@ -116,7 +116,7 @@ const otherLines = existsSync(ciPath)
 const spines = new Map();
 function spineOf(ref) {
   if (!spines.has(ref)) {
-    const out = git(['rev-list', '--first-parent', ref, `^${baseRef}`], root);
+    const out = git(['log', '--first-parent', '--format=%H', ref, `^${baseRef}`], root);
     spines.set(ref, out === null ? undefined : new Set(out.split('\n').filter(Boolean)));
   }
   return spines.get(ref);
