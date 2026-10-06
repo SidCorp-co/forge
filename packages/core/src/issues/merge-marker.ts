@@ -5,7 +5,7 @@ import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
-import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
   type LandingShape,
   landingMarkRefusal,
@@ -58,6 +58,40 @@ async function resolveRecordedCommit(issueId: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** A commit the handoff recorded that the repository did not resolve, kept off the mark. */
+type LeftOut = { commit: string; why: string };
+
+/**
+ * ISS-1350 — the commit a `git` mark records, as the project's repository resolves it, never as
+ * the caller typed it. The caller's own commit is refused by name where the repository does not
+ * hold it or cannot be read; the handoff's, which the caller never sent, is left off the mark and
+ * said to be instead. The one commit not read is a merged pull request's own merge sha, which
+ * Forge already holds.
+ */
+async function recordedClaim(args: {
+  projectId: string;
+  issueId: string;
+  commit: string | undefined;
+  observedSha: string | null;
+  fallback: boolean;
+}): Promise<{ claim: string | null; repository: string | null; leftOut: LeftOut | null }> {
+  const { projectId, commit, observedSha } = args;
+  if (commit) {
+    if (observedSha && commit.toLowerCase() === observedSha.toLowerCase()) {
+      return { claim: commit, repository: null, leftOut: null };
+    }
+    const read = await resolveMarkCommit({ projectId, commit });
+    if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+    return { claim: read.sha, repository: read.repository, leftOut: null };
+  }
+  const recorded = args.fallback ? await resolveRecordedCommit(args.issueId) : null;
+  if (!recorded) return { claim: null, repository: null, leftOut: null };
+  const read = await resolveMarkCommit({ projectId, commit: recorded });
+  if (!read.ok)
+    return { claim: null, repository: null, leftOut: { commit: recorded, why: read.reason } };
+  return { claim: read.sha, repository: read.repository, leftOut: null };
 }
 
 export async function writeAuditComment(
@@ -120,8 +154,9 @@ export async function applyMergeMarker(args: {
   op: 'mark' | 'unmark';
   target?: string;
   note?: string | undefined;
-  /** The commit the CALLER says this mark was made at. Recorded in the audit trail; the column
-   *  takes only a commit Forge observed. Absent falls back to the recorded handoff sha. */
+  /** The commit the CALLER says this mark was made at. On a `git` project the repository resolves
+   *  it before anything is written (`recordedClaim`); the column takes only a commit Forge
+   *  observed. Absent falls back to the recorded handoff sha. */
   commit?: string | undefined;
   /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
   landing?: string | undefined;
@@ -149,6 +184,9 @@ export async function applyMergeMarker(args: {
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
+  /** The repository that holds the claimed commit, where this call read it there. */
+  let claimHeldBy: string | null = null;
+  let leftOut: LeftOut | null = null;
   if (args.op === 'mark') {
     const shape = await markShape(before.projectId);
     // A landing on a git project is refused below whatever the target, and that refusal names the
@@ -172,6 +210,17 @@ export async function applyMergeMarker(args: {
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
+    // Every read is taken before the first write, so a refusal leaves the row as it found it.
+    const recorded =
+      shape === 'git' && !fromRepository
+        ? await recordedClaim({
+            projectId: before.projectId,
+            issueId: before.id,
+            commit: args.commit,
+            observedSha: observed?.commitSha ?? null,
+            fallback: !observed,
+          })
+        : null;
     if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
@@ -183,7 +232,7 @@ export async function applyMergeMarker(args: {
           landing,
         },
       });
-      const claimed = args.commit ?? null;
+      const claimed = recorded?.claim ?? args.commit ?? null;
       claimedCommit =
         claimed && claimed.toLowerCase() !== observed.commitSha.toLowerCase() ? claimed : null;
     } else if (fromRepository) {
@@ -208,7 +257,10 @@ export async function applyMergeMarker(args: {
         issueId: before.id,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
       });
-      claimedCommit = args.commit ?? (await resolveRecordedCommit(before.id));
+      // Only a `git` project reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
+      claimedCommit = recorded?.claim ?? null;
+      claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
+      leftOut = recorded?.leftOut ?? null;
     }
     const standing = standingMarkRefusal({
       sent: landing,
@@ -267,6 +319,8 @@ export async function applyMergeMarker(args: {
     claimedCommit,
     landing: stampResult.landing,
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
+    claimHeldBy,
+    leftOut,
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(

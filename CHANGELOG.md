@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **Marking an issue merged at a commit its repository does not hold is refused.** Whoever marks
+  it, the commit is looked up first, a short one is recorded in full, and an unreadable repository
+  is said rather than trusted (ISS-1350).
+
 - **A master pane can no longer stop on a question dialog.** The box refuses it and names how to
   put the question on the issue at each status (ISS-1385).
 

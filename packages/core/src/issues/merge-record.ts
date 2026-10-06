@@ -67,6 +67,10 @@ export function describeMergeMark(args: {
   landing?: string | null;
   /** Where this call read an `observed` commit from the repository rather than a pull request. */
   readFrom?: { repository: string; branch: string } | null;
+  /** The repository this call found the claimed commit in; it says nothing of whose landing it is. */
+  claimHeldBy?: string | null;
+  /** The handoff's commit, which this call kept off the mark because the repository did not resolve it. */
+  leftOut?: { commit: string; why: string } | null;
 }): string {
   if (args.kind === 'unmarked') {
     return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
@@ -90,7 +94,14 @@ export function describeMergeMark(args: {
   const claim = args.claimedCommit
     ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
     : 'no commit is recorded in `merged_commit_sha`';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue`;
+  const held =
+    args.claimedCommit && args.claimHeldBy
+      ? `. ${args.claimHeldBy} holds commit ${args.claimedCommit}: Forge read that much there, and not whether it is this issue's landing`
+      : '';
+  const left = args.leftOut
+    ? `. The commit ${args.leftOut.commit} this issue's implementation handoff recorded is not recorded on this mark, because ${args.leftOut.why}`
+    : '';
+  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}${left}`;
 }
 
 async function readBack(

@@ -200,8 +200,9 @@ export function noWorkEvidenceDetail(
       `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
       'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
       "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
-      "carrying `data.commit`, which Forge checks against the project's repository; a person's " +
-      `mark records no commit Forge read, so it does not clear this. ${DECLARED} ${NOT_A_BRANCH}`
+      "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
+      "landing; a person's mark naming a commit is checked only for the repository holding it, " +
+      `not read as this issue's landing, so it does not clear this. ${DECLARED} ${NOT_A_BRANCH}`
     );
   }
   return (

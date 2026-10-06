@@ -75,6 +75,16 @@ vi.mock('../pipeline/work-evidence.js', () => ({
 vi.mock('../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
 let shape: 'git' | 'outside_git' = 'git';
+// A git mark's commit is resolved by the project's repository (ISS-1350); this one holds every
+// commit asked for, padded out to the whole sha it resolves a prefix to.
+vi.mock('./commit-landing.js', async (original) => ({
+  ...(await original<typeof import('./commit-landing.js')>()),
+  resolveMarkCommit: async ({ commit }: { commit: string }) => ({
+    ok: true as const,
+    sha: commit.toLowerCase().padEnd(40, '0'),
+    repository: 'SidCorp-co/specimen',
+  }),
+}));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => shape,

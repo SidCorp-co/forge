@@ -55,9 +55,9 @@ const READABLE =
   'installation can read it';
 
 /**
- * Only an agent's mark on an issue holding no branch or handoff reads the repository, so the
- * commit is the one route left: the refusal names what reopens it, never the branch the work was
- * done on, which on the base-branch lane is the base branch `collectWorkEvidence` discards.
+ * An agent's mark on an issue holding no branch or handoff has the commit as its one route left, so
+ * the refusal names what reopens it, never the branch the work was done on, which on the
+ * base-branch lane is the base branch `collectWorkEvidence` discards.
  */
 function unreadable(commit: string, why: string, clears: string = READABLE): CommitLanding {
   return refuse(
@@ -66,14 +66,49 @@ function unreadable(commit: string, why: string, clears: string = READABLE): Com
       `taken as evidence unchecked: ${why}. This issue records no branch or handoff, so the ` +
       `commit is the only evidence an agent's mark can carry here, and a branch recorded under ` +
       `the base branch's name is not evidence. Two routes clear it: mark again ${clears}; or ` +
-      'have a person mark it merged and move it through `developed` and `testing`, because a ' +
-      "person's mark carries no commit Forge read and those two statuses refuse an agent without one",
+      'have a person mark it merged naming no commit and move it through `developed` and ' +
+      "`testing`, which hold an agent to this evidence and not a person; a person's mark naming " +
+      'a commit is checked against the same repository',
     { commit },
   );
 }
 
 /** Long enough to be a whole sha (SHA-1, or SHA-256 at 64), which GitHub cannot read as a prefix. */
 const FULL_SHA_LENGTH = 40;
+
+type CommitLookup =
+  | { kind: 'found'; sha: string; read: CommitRead }
+  | { kind: 'absent'; detail: string; details: Record<string, unknown> }
+  | { kind: 'unreadable'; why: string };
+
+/** The one read of a commit by its sha, which both readers below take: what the repository holds
+ *  under it, that it holds nothing there, or that it could not be asked. */
+async function lookUpCommit(client: GitHubRepoClient, commit: string): Promise<CommitLookup> {
+  const repository = client.fullName;
+  let read: CommitRead;
+  try {
+    read = await client.get<CommitRead>(
+      `/repos/${repository}/commits/${encodeURIComponent(commit)}`,
+    );
+  } catch (err) {
+    const lookup = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
+    if (lookup === 404 || lookup === 422) {
+      // GitHub answers a prefix nothing starts with and one several commits start with alike, so
+      // an abbreviated sha it cannot resolve is not reported as absent.
+      const detail =
+        commit.length >= FULL_SHA_LENGTH
+          ? `GitHub finds no commit ${commit} in ${repository} (HTTP ${lookup}). Mark with the sha the work landed at`
+          : `GitHub resolves no single commit from ${commit} in ${repository} (HTTP ${lookup}): ` +
+            'no commit there starts with it, or more than one does, and GitHub answers both ' +
+            'alike. Mark with the full 40-character sha the work landed at';
+      return { kind: 'absent', detail, details: { commit, repository } };
+    }
+    return { kind: 'unreadable', why: err instanceof Error ? err.message : String(err) };
+  }
+  const sha = read.sha?.toLowerCase();
+  if (!sha) return { kind: 'unreadable', why: `${repository} answered no sha for it` };
+  return { kind: 'found', sha, read };
+}
 
 /**
  * Whether `commit` is this issue's landing, read from the project's own repository: the repository
@@ -119,28 +154,12 @@ export async function readCommitLanding(
   }
   const repository = client.fullName;
 
-  let read: CommitRead;
-  try {
-    read = await client.get<CommitRead>(
-      `/repos/${repository}/commits/${encodeURIComponent(commit)}`,
-    );
-  } catch (err) {
-    const lookup = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
-    if (lookup === 404 || lookup === 422) {
-      // GitHub answers a prefix nothing starts with and one several commits start with alike, so
-      // an abbreviated sha it cannot resolve is not reported as absent.
-      const detail =
-        commit.length >= FULL_SHA_LENGTH
-          ? `GitHub finds no commit ${commit} in ${repository} (HTTP ${lookup}). Mark with the sha the work landed at`
-          : `GitHub resolves no single commit from ${commit} in ${repository} (HTTP ${lookup}): ` +
-            'no commit there starts with it, or more than one does, and GitHub answers both ' +
-            'alike. Mark with the full 40-character sha the work landed at';
-      return refuse('COMMIT_NOT_IN_REPOSITORY', detail, { commit, repository });
-    }
-    return unreadable(commit, err instanceof Error ? err.message : String(err));
+  const looked = await lookUpCommit(client, commit);
+  if (looked.kind === 'absent') {
+    return refuse('COMMIT_NOT_IN_REPOSITORY', looked.detail, looked.details);
   }
-  const sha = read.sha?.toLowerCase();
-  if (!sha) return unreadable(commit, `${repository} answered no sha for it`);
+  if (looked.kind === 'unreadable') return unreadable(commit, looked.why);
+  const { sha, read } = looked;
 
   const message = read.commit?.message ?? '';
   const ref = (await issueRefFormatter(projectId))(issSeq);
@@ -176,4 +195,56 @@ export async function readCommitLanding(
     `commit ${sha} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
     { commit: sha, repository, branches },
   );
+}
+
+export type CommitResolution =
+  | { ok: true; sha: string; repository: string }
+  | {
+      ok: false;
+      code: 'COMMIT_NOT_IN_REPOSITORY' | 'COMMIT_UNVERIFIED';
+      detail: string;
+      details: Record<string, unknown>;
+      /** The cause alone, for a reader that words its own sentence around it. */
+      reason: string;
+    };
+
+/**
+ * The commit a mark on a `git` project names, as the project's repository resolves it: the full sha
+ * it holds under that name, or a refusal by name. Unlike `readCommitLanding` it does not ask whether
+ * the commit is this issue's landing, so what it resolves stays the caller's claim.
+ */
+export async function resolveMarkCommit(
+  args: { projectId: string; commit: string },
+  deps: CommitLandingDeps = {},
+): Promise<CommitResolution> {
+  const { projectId, commit } = args;
+  const unresolved = (why: string): CommitResolution => ({
+    ok: false,
+    code: 'COMMIT_UNVERIFIED',
+    detail:
+      `commit ${commit} could not be checked against this project's repository, so the mark is ` +
+      `not recorded naming it unchecked: ${why}. Mark again ${READABLE}, or mark it naming no ` +
+      'commit, which records a claim that names none',
+    details: { commit },
+    reason: `the repository could not be read: ${why}`,
+  });
+  let client: GitHubRepoClient;
+  try {
+    client = await (deps.client ?? githubRepoClient)(projectId);
+  } catch (err) {
+    if (err instanceof GitHubClientError) return unresolved(err.message);
+    throw err;
+  }
+  const looked = await lookUpCommit(client, commit);
+  if (looked.kind === 'unreadable') return unresolved(looked.why);
+  if (looked.kind === 'absent') {
+    return {
+      ok: false,
+      code: 'COMMIT_NOT_IN_REPOSITORY',
+      detail: looked.detail,
+      details: looked.details,
+      reason: `${client.fullName} does not resolve it`,
+    };
+  }
+  return { ok: true, sha: looked.sha, repository: client.fullName };
 }

@@ -55,8 +55,10 @@ date, and the mark reads `observed`. Every other answer is a refusal by name and
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
 evidence unchecked. That refusal names two routes: mark again once the repository can be read
-(or, where the project names no base branch, once it does), or have a person mark it merged and
-move it through `developed` and `testing`, since a person's mark carries no commit Forge read. GitHub answers an abbreviated sha that no commit starts with and one that
+(or, where the project names no base branch, once it does), or have a person mark it merged naming
+no commit and move it through `developed` and `testing`, which hold an agent to this evidence and not
+a person; a person's mark naming a commit is checked against the same repository (below). GitHub
+answers an abbreviated sha that no commit starts with and one that
 several commits start with alike, so such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
 unresolved, asking for the full sha, and never reported as absent.
 
@@ -75,7 +77,8 @@ routes and a person's mark and move, which the agent-only gate does not hold.
 
 The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
 is read by `anyone` (`EvidenceReader`): it names the branch and handoff routes, says a person's mark
-records no commit Forge read and does not clear it, and names `statusEntryCriteria` as the
+naming a commit is checked only for the repository holding it, not read as this issue's landing, so
+it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
@@ -91,6 +94,32 @@ the correction, and neither the row nor the thread is written. The first stamp w
 as for `merged_at`; a `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
+
+## Every `git` mark's commit is one the repository holds
+
+A claim is still checked (ISS-1350). On a `git` project every commit a mark records — a person's,
+an agent's on an issue that has a branch or handoff, one beside a merged pull request — is first
+resolved by the project's repository (`resolveMarkCommit` in `commit-landing.ts`, the same commit
+read `readCommitLanding` takes). The repository holding no such commit refuses the mark
+`COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
+why, and a mark naming no commit is the route that still records. A resolved commit is recorded by
+the full sha the repository gives, never as the caller typed it. It stays a claim: Forge read that
+the repository holds it, not that it is this issue's landing, so `merged_commit_sha` is not stamped
+from it and the answer says which of the two Forge read. The one commit not read is the merged pull
+request's own merge sha, which Forge already holds.
+
+Where the caller names no commit, the mark falls back to the commit the issue's implementation
+handoff recorded. That commit is resolved the same way, and where the repository does not hold it
+or cannot be read it is left off the mark — the caller never sent it, so it is not refused — and the
+answer and the audit comment name it and why.
+
+What this replaced: sid-desk ISS-578's mark carried a real commit's first eight characters and a
+fabricated tail, and nothing read it before it was recorded. That mark, like every mark that
+predates this rule, reads `asserted` and names no commit: `merged_commit_sha` has held only a sha
+GitHub gave since migration `0286`, which kept only values a merged pull request's sha starts with,
+so no migration carries this rule backwards. The sha in such a mark's note is prose the
+forge-plugin CLI reads; it sends the commit it marks at in the note and not as `data.commit`, so
+until it does, this check sees only what reaches `data.commit`.
 
 ## What counts as landed depends on the project's shape
 
