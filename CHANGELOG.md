@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **Marking an issue merged at a commit its repository does not hold is refused.** Whoever marks
+  it, the commit is looked up first, a short one is recorded in full, and an unreadable repository
+  is said rather than trusted (ISS-1350).
+
 - **A runner update that waits says truly how long, and on whom.** Its two-hour limit is clock
   time, each chat or master-pane message it waits on is named, and it no longer announces a
   handover that does not begin (ISS-1223).

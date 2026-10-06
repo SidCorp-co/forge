@@ -67,7 +67,10 @@ export function forgeIssuesDescription(refClause: string): string {
     'declaring this issue in its subject, and contained in the base or live branch, else refused ' +
     'COMMIT_NOT_IN_REPOSITORY, COMMIT_NOT_THIS_ISSUE, COMMIT_NOT_LANDED or COMMIT_UNVERIFIED. ' +
     'Anywhere else your commit never reaches the column: it ' +
-    'reaches the audit trail as YOUR CLAIM. The answer, and every row this tool returns, ' +
+    'reaches the audit trail as YOUR CLAIM, and on a git project only once the repository ' +
+    'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
+    'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read, ' +
+    'in which case mark naming no commit. The answer, and every row this tool returns, ' +
     'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +
