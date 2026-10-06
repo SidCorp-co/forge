@@ -1,6 +1,6 @@
 // Pattern v2's import rules (docs/conventions/domain-entities.md, ADR 0008), as a dependency-cruiser
-// rule set generated from packages/core/src/modules.json, and the shrink-only baseline over its
-// violations. Pure functions: the CLI hands in the declaration and the cruise result.
+// rule set generated from packages/core/src/modules.json, and the keys its violations are reported
+// by. Pure functions: the CLI hands in the declaration and the cruise result.
 
 import { ROOT_MODULE, tableReads } from './module-shape.mjs';
 
@@ -236,7 +236,7 @@ export function readFindings({ modules, files, tables, moduleOf }) {
   return { undeclared: [...undeclared].sort(), unused };
 }
 
-/** One baseline key per (rule, importing file, imported file), over the cruises' summaries. */
+/** One key per (rule, importing file, imported file), over the cruises' summaries. */
 export function violationKeys(summaries) {
   const out = Object.fromEntries(BOUNDARY_RULES.map((r) => [r, new Set()]));
   for (const v of summaries.flatMap((s) => s?.violations ?? [])) {
@@ -245,23 +245,4 @@ export function violationKeys(summaries) {
     out[rule].add(`${v.from.slice(SRC.length)} -> ${v.to.slice(SRC.length)}`);
   }
   return Object.fromEntries(Object.entries(out).map(([r, s]) => [r, [...s].sort()]));
-}
-
-/**
- * The verdict over the current violations, the committed baseline and the baseline at the base
- * revision: what is new, what is stale, and which rule's frozen count rose.
- */
-export function judge(current, baseline, before) {
-  const fresh = [];
-  const stale = [];
-  const grown = [];
-  for (const rule of BOUNDARY_RULES) {
-    const now = new Set(current[rule] ?? []);
-    const frozen = new Set(baseline?.[rule] ?? []);
-    for (const k of now) if (!frozen.has(k)) fresh.push(`${rule}: ${k}`);
-    for (const k of frozen) if (!now.has(k)) stale.push(`${rule}: ${k}`);
-    if (before && Array.isArray(before[rule]) && frozen.size > before[rule].length)
-      grown.push(`${rule}: ${before[rule].length} -> ${frozen.size}`);
-  }
-  return { fresh, stale, grown };
 }

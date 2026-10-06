@@ -1,4 +1,4 @@
-// The module-shape lint: run by scripts/check-module-shape.mjs, never by the root eslint.config.mjs.
+// The module-shape lint, run by scripts/check-module-shape.mjs.
 // The bulk-suppressions file is its only amnesty, so inline disable comments are not read.
 
 import tseslint from 'typescript-eslint';

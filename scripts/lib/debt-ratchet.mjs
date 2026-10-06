@@ -71,11 +71,6 @@ export function fileTotal(metrics) {
   return Object.values(metrics ?? {}).reduce((a, n) => a + (typeof n === 'number' ? n : 0), 0);
 }
 
-/** Every file's metrics, summed. `files` is the baseline/measured `{path: {metric: n}}` shape. */
-export function total(files) {
-  return Object.values(files ?? {}).reduce((a, metrics) => a + fileTotal(metrics), 0);
-}
-
 /**
  * Freeze: no file may hold more of a metric than its baseline allows.
  *

@@ -135,7 +135,7 @@ export function originOf(citation) {
  *
  * ONE RESIDUAL, priced on ISS-1112 with the condition that ends it: a document in a scope
  * citing a root file whose name is also taken in that scope — `scripts/README.md` naming a
- * root `eslint.config.mjs` beside a `scripts/eslint.config.mjs`. The exact match wins while
+ * root `x.mjs` while `scripts/x.mjs` exists too. The exact match wins while
  * the root file exists and returns before any scoped candidate, so deleting it hands the
  * citation to the namesake and the pair is never seen as two answers. Closing it needs a
  * root notation and a rewrite of every rooted citation. It needs one name taken twice, at

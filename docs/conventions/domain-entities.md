@@ -18,9 +18,8 @@ requirements and workflow designs.
   `packages/core/src` with rules generated from `packages/core/src/modules.json`: context direction,
   kind direction, runtime cycles between modules, face-only access, adapters through their port,
   and read models SELECTing only the tables they declare under `reads`.
-  Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
-  entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
-  shrinks. It runs in `pnpm verify` and CI.
+  Every rule is at zero and nothing is frozen, so any violation fails. It runs in `pnpm verify`
+  and CI.
 - **The semantic rules block too.** `scripts/check-module-shape.mjs` refuses a declaration that
   contradicts itself, then runs the type-aware ESLint rules in `scripts/eslint-module-shape/`: a
   write to a table outside its owner module (any receiver typed as a Drizzle database or
@@ -86,7 +85,7 @@ serves neither is dead). Its entry's `serves` lists `REQ-<n>`, `<workflow>` or
 through a module that serves one directly. The same file declares `serves` for each web-v2 feature
 directory (`web`) and each runner crate (`runner`). `scripts/check-module-shape.mjs` refuses an
 empty `serves`, a reference `.forge/design-index.json` does not hold, and a `via:` to a unit that
-serves nothing directly, against the shrink-only `.forge/module-trace-baseline.json`; the snapshot
+serves nothing directly, with nothing frozen, so any untraced unit fails; the snapshot
 is rewritten by `scripts/refresh-design-index.mjs`, so verify reads no network. `GET
 /api/projects/:id/code-trace` serves the build's trace (`packages/core/src/code-trace.ts:codeTrace`)
 to the project whose declared repository is this one, and an empty trace to every other; the

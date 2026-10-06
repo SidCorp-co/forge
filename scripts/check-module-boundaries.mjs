@@ -2,26 +2,20 @@
 // Pattern v2's import rules over packages/core/src (docs/conventions/domain-entities.md, ADR 0008):
 // context direction, kind direction, runtime cycles between modules, face-only access, adapters
 // reached through their port, and read models SELECTing only the tables they declare under `reads`.
-// dependency-cruiser checks the imports with a rule set generated from packages/core/src/modules.json,
-// and every violation that already existed is frozen in a shrink-only baseline.
+// dependency-cruiser checks the imports with a rule set generated from packages/core/src/modules.json.
+// Nothing is frozen: every rule is at zero, so any violation fails.
 //
-// Exits 1 on a declaration fault, a declared read nothing uses, a violation the baseline does not
-// hold, a baseline entry that no longer occurs, or a rule whose frozen count rose over the base
-// revision; 2 when it cannot run.
-// --update-baseline rewrites the baseline to today's violations and refuses to let any rule's
-// count rise.
+// Exits 1 on a declaration fault, a declared read nothing uses, or any violation; 2 when it cannot
+// run.
 //
-//   node scripts/check-module-boundaries.mjs [--update-baseline]
+//   node scripts/check-module-boundaries.mjs
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { baseRevision } from './lib/baseline-ratchet.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import {
   BOUNDARY_RULES,
   cruiseOptions,
-  judge,
   readFindings,
   SRC,
   violationKeys,
@@ -31,12 +25,9 @@ import { declaredTables, moduleOf, parseDeclaration } from './lib/module-shape.m
 const die = dieAs('module-boundaries');
 
 const DECLARATION = 'packages/core/src/modules.json';
-const BASELINE = '.forge/module-boundaries-baseline.json';
 
 const args = process.argv.slice(2);
-for (const a of args)
-  if (a !== '--update-baseline') die(`unknown argument ${a} — the only flag is --update-baseline`);
-const update = args.includes('--update-baseline');
+if (args.length) die(`unknown argument ${args[0]} — this checker takes none`);
 
 let declaration;
 try {
@@ -110,75 +101,19 @@ if (unused.length) {
 }
 const rules = options.imports.ruleSet.forbidden.length + options.cycles.ruleSet.forbidden.length;
 
-function readJson(text, where) {
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    die(`${where} is unreadable: ${err.message}`);
-  }
-}
-
-const baseline = existsSync(join(ROOT, BASELINE))
-  ? readJson(readFileSync(join(ROOT, BASELINE), 'utf8'), BASELINE).rules
-  : null;
-
-let before = null;
-const { rev, refusal } = baseRevision(ROOT);
-if (refusal && !update) die(`no base revision can be taken: ${refusal}`);
-if (!rev && !update)
-  die(
-    'no base revision to compare the baseline against (a shallow or single-commit checkout); fetch history and re-run',
-  );
-if (rev) {
-  try {
-    const text = execFileSync('git', ['show', `${rev}:${BASELINE}`], {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    before = readJson(text, `${BASELINE} at ${rev.slice(0, 9)}`).rules;
-  } catch {
-    before = null;
-  }
-}
-
 const counts = (rules) => BOUNDARY_RULES.map((r) => `${r} ${rules?.[r]?.length ?? 0}`).join(' · ');
 console.log(
   `module-boundaries: ${files} file(s) cruised, ${imports.summary.totalDependenciesCruised} import(s) (${cycles.summary.totalDependenciesCruised} evaluated at load), ${rules} generated rule(s)`,
 );
-console.log(`module-boundaries: now      ${counts(current)}`);
-console.log(`module-boundaries: baseline ${baseline ? counts(baseline) : 'none'}`);
+console.log(`module-boundaries: now ${counts(current)}`);
 
-if (update) {
-  const rose = baseline
-    ? BOUNDARY_RULES.filter((r) => current[r].length > (baseline[r]?.length ?? 0))
-    : [];
-  if (rose.length) {
-    console.error(
-      `module-boundaries: refused — ${rose.map((r) => `${r} ${baseline[r]?.length ?? 0} -> ${current[r].length}`).join(', ')}; the baseline only shrinks, so fix the new violations instead`,
-    );
-    process.exit(1);
-  }
-  const doc = {
-    $comment:
-      'Frozen violations of the import rules scripts/check-module-boundaries.mjs generates from packages/core/src/modules.json, one "<importing file> -> <imported file>" per entry under its rule. Shrink-only: a new violation fails, an entry that no longer occurs fails, and a rule whose count rose over the base revision fails. Rewrite with --update-baseline after fixing violations, never to admit one.',
-    rules: current,
-  };
-  writeFileSync(join(ROOT, BASELINE), `${JSON.stringify(doc, null, 1)}\n`);
-  console.log(`module-boundaries: wrote ${BASELINE}`);
-  process.exit(0);
+const violations = BOUNDARY_RULES.flatMap((r) => (current[r] ?? []).map((k) => `${r}: ${k}`));
+if (violations.length) {
+  console.error(
+    `\nmodule-boundaries: ${violations.length} violation(s) — fix the import; nothing can freeze one`,
+  );
+  for (const line of violations.slice(0, 50)) console.error(`  ${line}`);
+  if (violations.length > 50) console.error(`  … and ${violations.length - 50} more`);
+  process.exit(1);
 }
-
-if (!baseline) die(`${BASELINE} is absent; --update-baseline writes it`);
-const { fresh, stale, grown } = judge(current, baseline, before);
-const show = (title, list) => {
-  if (!list.length) return;
-  console.error(`\nmodule-boundaries: ${list.length} ${title}`);
-  for (const line of list.slice(0, 50)) console.error(`  ${line}`);
-  if (list.length > 50) console.error(`  … and ${list.length - 50} more`);
-};
-show('new violation(s), not in the baseline — fix the import, never add it to the baseline', fresh);
-show('stale baseline entr(y/ies), no longer violated — run --update-baseline to drop them', stale);
-show(`rule(s) whose frozen count rose over ${rev?.slice(0, 9) ?? 'the base'}`, grown);
-if (fresh.length || stale.length || grown.length) process.exit(1);
-console.log('module-boundaries: every violation is frozen and every frozen entry still occurs');
+console.log('module-boundaries: no violation');

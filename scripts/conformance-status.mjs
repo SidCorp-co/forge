@@ -11,15 +11,12 @@ import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequis
 
 const PROBES = {
   form: {
-    gate: 'check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations',
+    gate: 'check-size-budget + biome + check-provider-literals + check-integration-declarations',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
     needs: ['deps'],
     also: [
-      {
-        from: 'alsoBaseline',
-        needs: ['deps'],
-        probe: ['node', 'scripts/check-lint-budget.mjs', '--all'],
-      },
+      { from: 'none', needs: ['deps'], probe: ['pnpm', '--filter', '@forge/core', 'lint'] },
+      { from: 'none', needs: ['deps'], probe: ['pnpm', '--filter', 'web-v2', 'lint'] },
       { from: 'none', probe: ['node', 'scripts/check-provider-literals.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-integration-declarations.mjs'] },
     ],

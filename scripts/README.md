@@ -36,8 +36,8 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated six times
-(biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
-`check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
+(biome for `core`'s rules · biome for `web-v2`'s rules · `check-size-budget` for `web-v2`'s length
+baseline biome cannot hold · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named and where core may call out · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
 `behaviour` twice (reachability · signal) and `knowledge` five (honest
@@ -52,9 +52,8 @@ passed, because the external record of what shipped belonged to none of them.
 
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
-| format + lint | `biome check … --max-diagnostics=none` — `core` | whitespace, import order, recommended rules | comment content |
-| size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
-| lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
+| format + lint | `biome check src` — `core` and `web` | whitespace, import order, recommended rules, every one at `error` with nothing frozen | comment content |
+| size | `check-size-budget` — `conformance` | file & function length in `web-v2`, frozen per file and drained on touch (`core` holds both length rules at `error`) | which rules exist — biome declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | lazy init | `check-lazy-module-init` — `conformance` | whether a read of `env` or `db` runs when a core module is merely IMPORTED | what the value is once read, or whether a caller should be reading it at all |
 | provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `sentry`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core imports a vendor SDK `egress.vendorSdks` lists outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and the global `fetch`, which is `check-module-shape`'s |
@@ -80,9 +79,8 @@ simply not printed. Measured 2026-08-31: a planted format error in `packages/cor
 `Found 2 errors.` and **zero** mentions of that file, while the visible diagnostics all pointed at
 a test file that was clean and untouched.
 
-`check-lint-budget` already defended against exactly this — it invokes biome with
-`--max-diagnostics=5000` because truncation would silently empty its input. The blocking lint step
-had no such guard. The two now agree.
+`lib/size-budget.mjs:biomeReport` invokes biome with `--max-diagnostics=5000` for the same reason:
+truncation would silently empty its input.
 
 ### Conformance levels
 
@@ -130,49 +128,39 @@ outside its package is not this checker's, and neither is what no observer insid
 native code, and a listing delegated to a process the test did not start. All three are recorded in
 `docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
 
-### Why lint debt and size are their own rows
+### Why size is its own row
 
-**The drain half does not arm on a direct-to-`main` commit.** A touched file in a draining scope must
-come back strictly under its baseline — but the scope is computed from the branch delta, and on
-`main` the merge-base IS `HEAD`, so the run prints `drain skipped — no branch delta; freeze-only`
-and only growth is checked. A change that lands straight on `main` (the owner lane) therefore never
-sees a tier of this gate that a PR would fail on. `--update-baseline` cannot pay a drain either — it
-re-measures and writes the same count back. Run `node scripts/check-lint-budget.mjs` from a branch,
-or read the touched file's row in `.forge/lint-baseline.json`, before pushing to `main`.
+biome **declares** the two length rules but cannot gate them where debt exists: it has no baseline,
+so the only choices were `warn` (nothing held) and `error` (every build red). `packages/core` drained
+to zero and holds both at `error`, so biome blocks them there. `packages/web-v2` holds them at `warn`,
+and `check-size-budget.mjs` reads biome's own JSON, freezes today's offenders per file in
+`.forge/size-baseline.json`, and fails on growth. It adds no rule — each package's `biome.json` owns
+the thresholds. Every other biome rule in both packages is `error`, so nothing else needs a baseline.
 
-`web-v2` had no biome config at all until 2026-08-23; measured on the day it got one, 748
-diagnostics — 409 formatter, 185 import order, 151 real lint errors. `error` would have been 151 red
-builds; `warn` would have held nothing. `check-lint-budget.mjs` freezes today's 216 violations
-across 98 files per (file, rule) and fails only on growth — per rule rather than per line, so moving
-code inside a file is not a violation. The formatter stays **off** there on purpose: enabling it is
-a 313-file, 22k-line diff that would bury every real change under it.
+**The drain.** A frozen `web-v2` file in the branch delta must come back strictly shorter. The scope
+is the branch delta, and on a gated branch the merge-base IS `HEAD`, so a direct push prints
+`drain skipped — no branch delta; freeze-only` and only growth is checked. `--update-baseline`
+cannot pay a drain: it re-measures and writes the same count back.
 
-Size is the same shape one package over. biome **declares** the two length rules but cannot gate
-them: it has no baseline, so the only choices were `warn` (143 violations, exit 0, nothing held) and
-`error` (every build red). `check-size-budget.mjs` reads biome's own JSON, freezes today's offenders
-per file, and fails only on growth. It adds no rule — `packages/core/biome.json` still owns the
-thresholds.
+The `web-v2` formatter stays **off** on purpose: enabling it is a 313-file, 22k-line diff that would
+bury every real change under it.
 
 ### Declared severity downgrades
 
 `packages/core/biome.json`'s first `overrides` block is scoped to `**/*.test.ts` and
-`**/tests/**`: `correctness/noUnsafeOptionalChaining` drops to `warn` (41 sites) and
-`suspicious/noThenProperty` goes `off`. The first is the `expect(call).toBeDefined()` then
-`call?.[1]` idiom, where the optional chain is asserted safe one line above; the second is Drizzle's
-thenable query builder. Both are downgrades of rules the preset makes errors, so they belong in this
-accounting rather than only in the config — an undocumented severity downgrade is how an axis stops
-meaning what its row says. Measured 2026-08-25.
+`**/tests/**`: `suspicious/noThenProperty` goes `off` for Drizzle's thenable query builder. It is a
+downgrade of a rule the preset makes an error, so it belongs in this accounting rather than only in
+the config — an undocumented severity downgrade is how an axis stops meaning what its row says.
 
 ### Do not add a rule to an axis another already owns
 
 - **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
-  `noExcessiveLinesPerFile`, so `eslint.config.mjs` switches `max-lines` and
-  `max-lines-per-function` off, and its four comment-content rules are off too. ESLint holds only
-  the web-v2 design rules and `no-pass-through-wrapper`, run by `pnpm lint:code-quality`, which no
-  gate calls; two linters holding one axis means two configs drifting apart.
+  `noExcessiveLinesPerFile`. The only ESLint here is `eslint-module-shape/`, the type-aware
+  module-shape rules, which hold no length or comment rule; two linters holding one axis means two
+  configs drifting apart.
 - **No comment rules in biome, or anywhere.** A density or run-length rule cannot tell
-  documentation from noise on its own: the 19-line `/** */` block on
-  `failReconcileRunIfNoVerdictRecorded` is documentation, and 19 comment lines to a counter are not.
+  documentation from noise on its own: a 19-line `/** */` block above a function can be
+  documentation, and 19 comment lines to a counter are not.
   The comment-grammar gate removed in ISS-1029 flagged prose that was right more often than prose
   that was wrong, and a checker at that noise level teaches the reader to skip it. The
   comment-budget gate that followed it was removed by the owner on 2026-10-04 with the rest of
@@ -224,14 +212,9 @@ declaration fault. A read model's import of an owner's read files (`read.ts`, `<
 `read/`) for a table it declares is exempt from `face-only` and `context-direction`
 (`lib/module-boundaries.mjs:readFilePattern`).
 
-`.forge/module-boundaries-baseline.json` holds one `<importing file> -> <imported file>` per frozen
-violation, under its rule. Exit `1` on a declaration fault, a violation the baseline does not hold, a
-frozen entry that no longer occurs, or a rule whose frozen count rose over the base revision
-(`lib/baseline-ratchet.mjs:baseRevision`); exit `2` when it cannot run, including on a checkout with no
-base revision. `--update-baseline` rewrites the file and refuses when any rule's count would rise —
-it is for after a fix or a file move, never to admit a violation. The ratchet lives in the checker
-rather than in `conformance.json`, whose `relations` axis already declares its two baseline slots
-for archmap.
+Nothing is frozen: every rule is at zero, and no flag or file can admit a violation. Exit `1` on a
+declaration fault or any violation, each printed as `<rule>: <importing file> -> <imported file>`;
+exit `2` when it cannot run.
 
 ### check-module-shape
 
@@ -279,10 +262,7 @@ unit `packages/core/src/modules.json` declares — `modules` (core), `web` (each
 `trace-empty`: an empty `serves`, or a web feature or crate directory with no entry; `trace-unknown`:
 a reference to a requirement that is absent or dropped, a workflow, or a step the snapshot does not
 hold; `trace-via`: `via:<unit>` naming a unit that serves nothing directly. A declared web feature or
-crate with no directory is refused outright. Untraced units are frozen in
-`.forge/module-trace-baseline.json` with the boundary gate's ratchet: a new entry, a stale entry or a
-rule whose count rose over the base revision fails, and `--update-trace-baseline` refuses to let a
-count rise. Planted red before landing: an emptied `labels`, `REQ-999`, a step that does not exist,
+crate with no directory is refused outright. Nothing is frozen: any untraced unit fails. Planted red before landing: an emptied `labels`, `REQ-999`, a step that does not exist,
 `via:pm` (itself untraced), an emptied web feature and a new feature directory with no entry — each
 named with its unit and rule, and the three modules that serve through `labels` named under
 `trace-via`.
@@ -396,7 +376,7 @@ dependency-cruiser 18.3.0 had renamed the CLI entry point
 `node_modules` for the old name alone — so the package was installed, complete and runnable, and the
 resolver was missing. `^18` in `packages/core/package.json` admitted 18.3.x, so every npm
 dependency-group PR met it: #369, #394, #425 and #448 closed unmerged and #509 failed twice, each
-told only that this repo's scope matched nothing. `packages/core/package.json` now pins
+told only that this repo's scope matched nothing. The root `package.json` now pins
 dependency-cruiser to exactly 18.2.0 and `.github/dependabot.yml` ignores every newer version. Both
 go when archmap releases its resolver fix (archmap ISS-10) and `archmap install --force` re-vendors
 it (ISS-1354). The `archmap-resolver` prerequisite resolves the
@@ -521,20 +501,34 @@ differ's to assign, not the build's.
 
 ## check-size-budget.mjs — file and function length
 
-`packages/core/biome.json` owns both length rules; this owns only the baseline biome lacks. The files
-frozen in `.forge/size-baseline.json` may stay over budget, they may not get worse. Frozen per file
-(its length and its longest function), so a reflow or a moved function is not a violation.
+`packages/web-v2/biome.json` owns both length rules, at `warn`; this owns only the baseline biome
+lacks. `packages/core` holds them at `error`, so it is not a scope. The files frozen in
+`.forge/size-baseline.json` may stay over budget, they may not get worse. Frozen per file (its
+length and its longest function), so a reflow or a moved function is not a violation.
 
 **A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
-already at its number — a comment, a column on `packages/core/src/db/schema-issues.ts` — trips this,
-and re-freezing above it is then refused by `conformance-status`: the form axis declares
-`improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
-rise and on any per-area total rise. There is no waiver to buy and no amnesty to price. The way
-through is to make the file come in under the number it already holds — ISS-1136 moved the session
-vocabularies out to `packages/core/src/db/session-vocabulary.ts` to land two columns, ISS-1192 moved
-the device vocabularies out to `packages/core/src/db/device-vocabulary.ts` to land one, each
-re-exported so no importer changed. `--update-baseline` is for a baseline moving DOWN, which is the
-only direction the manifest allows.
+already at its number trips this, and re-freezing above it is then refused by `conformance-status`:
+the form axis declares `improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs`
+faults on ANY per-key rise and on any per-area total rise. The way through is to make the file come
+in under the number it already holds. `--update-baseline` is for a baseline moving DOWN, which is
+the only direction the manifest allows.
+
+**Drain.** A scope that declares `drain` (`lib/size-budget.mjs:drainFaults`) also refuses a frozen
+file in the branch delta that does not come back strictly shorter, its file and longest-function
+counts summed. Equal fails, a new file must be under budget, and a rename carries its count through
+unpaid — the baseline is path-keyed, so charging a move would fire on every rename. Drain needs a
+branch delta: on a push straight to a gated branch the merge-base *is* HEAD, so it is skipped,
+freeze still runs, and the skip is **printed**.
+
+```json
+{ "cwd": "packages/<pkg>", "args": ["check", "src"],
+  "drain": { "include": "^packages/<pkg>/src/", "exclude": "\\.test\\.tsx?$" } }
+```
+
+Exit `0` clean · `1` a file grew, landed over budget, or skipped its payment · `2` could not run:
+biome scanned zero files, or the baseline records a kind of violation this run found none of (the
+rule stopped firing, or it was cleaned up and wants a re-freeze). Modes: `--all` (CI, in the
+always-on `conformance` job) · `--staged` (freeze-only; no hook runs it today) · `--update-baseline`.
 
 ### Adding a check
 
@@ -542,31 +536,7 @@ Append to `CHECKS` with a `scanned` regex matching that checker's own success li
 fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
 the same commit — `--ci-parity` fails otherwise, which is the point.
 
-## check-lint-budget.mjs — every biome diagnostic that is not a length rule, frozen per (file, rule)
-
-Each package's `biome.json` owns the rules; this owns only the baseline biome lacks — the same split
-as `check-size-budget.mjs`, which keeps the two length rules because it freezes them by line count.
-
-It counts **every** diagnostic biome emits in a scope except the two length rules
-`check-size-budget.mjs` owns — error severity included, and today 147 of web-v2's 210 frozen
-diagnostics are errors. Severity decides only whether biome itself would have failed the build:
-`error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`, or a
-rule left at its default by `on`) held nothing. So both packages' debt is frozen per (file, rule) in
-`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Measured 2026-08-27: **487 violations
-across 175 files** — web-v2 210 of an original 226 (95 files), core 277 of 280 (80 files, of which
-53 diagnostics across 32 files are drainable).
-
-`web-v2` had no biome config at all until 2026-08-23 — 748 diagnostics on the day it got one, 409
-formatter, 185 import order, 151 real lint errors. The **formatter stays off** there on purpose:
-enabling it is a 313-file, 22k-line diff that would bury every real change, and that is a separate
-decision from the linter.
-
-`packages/core` joined on 2026-08-27 (ISS-833) carrying 280 diagnostics that nothing counted, because
-biome exits 0 on a warning and the blocking `core` lint step therefore passed straight over them.
-**Registering it was a scope entry in `.forge/conformance.json` plus one `--update-baseline` run** —
-no second script, no second baseline file. That is the contract to hold when the next class arrives.
-
-### Level 1 is forbidden, and three rules say so rather than this paragraph
+## Level 1 is forbidden, and three rules say so rather than this paragraph
 
 A check that runs, prints, and blocks nothing has no baseline to be held to, and every gate this
 repo lost was at level 1 while documented as blocking. A check you cannot pass on the day you add it
@@ -574,85 +544,9 @@ is frozen at level 2 that same day — never merged at level 1 behind a comment 
 `continue-on-error: true` is the same shape written in YAML.
 
 **R8** fails on a CI step that cannot fail. **R9** fails on a biome rule left at a severity biome
-exits 0 on that no baselined checker counts. **R10** fails on an axis that does not declare a
+exits 0 on, unless it is a length rule a `check-size-budget` scope counts. **R10** fails on an axis that does not declare a
 numeric level of at least 2 — including by omitting the key or quoting the digit. None of the three
 is a number to read; each is a build that goes red.
-
-### Adding a scope
-
-```json
-{ "cwd": "packages/<pkg>", "args": ["check", "src"],
-  "drain": { "include": "^packages/<pkg>/src/", "exclude": "\\.test\\.tsx?$" } }
-```
-
-The scope directory must hold a `biome.json` — the linter-enabled guard reads it, and reads any
-config it `extends`. A `biome.jsonc`, or a config resolved from a parent directory, exits 2 rather
-than being assumed healthy.
-
-`drain` is optional and a scope without it is freeze-only. `--update-baseline` then freezes the new
-scope's debt and seeds its `original`; the `improves: down` ratchet accepts the widened baseline
-because it compares totals per *area* and this one is new (see `lib/baseline-ratchet.mjs`).
-
-### Drain — the half freezing does not do
-
-Freezing stops growth; it does not reduce. The comment-debt baseline sat frozen for months at 3% drained,
-which is the evidence that "not higher" and "lower when you edit it" are different rules. So for a
-scope that declares `drain`: **touch a file it matches and its count must come back strictly
-lower.** Equal fails. A file already at 0 stays at 0, a new file must be 0, and a rename carries its
-debt through unpaid — the baseline is path-keyed, so charging a move would fire on every rename, and
-a rule that fires on renames is a rule someone switches off.
-
-Pay it by removing one diagnostic: restructure so the compiler narrows, or write
-`// biome-ignore <rule>: <the invariant>`, which forces the reason into the source next to the code
-it justifies. **Never `biome check --write` these rules** — it rewrites `a!.b` to `a?.b`, turning
-"throw when the invariant is violated" into "silently evaluate to undefined".
-
-Drain needs a branch delta. On a push straight to `main` the merge-base *is* HEAD, so drain is
-skipped, freeze still runs, and the skip is **printed** — an unprinted skip reads identically to a
-pass, which is how the prose gate once ran over zero files while printing success.
-
-### Numbers, modes, exit codes
-
-Every run prints, per scope, `current / original (N% drained)`. `original` is written once and
-`--update-baseline` may only add a missing key: a denominator that gets recomputed makes each
-percentage relative to the last re-freeze, so it can never fall and "trending to 0" stays exactly as
-unfalsifiable as it was before anyone printed it. web-v2's `226` is its measured freeze figure from
-2026-08-23, seeded by hand because the field did not exist yet; core's `280` was measured the day it
-was registered.
-
-Exit `0` clean · `1` a file gained a violation or skipped its payment · `2` could not run. Three
-guards produce that last one, because a scope legitimately drained to zero and a scope nobody is
-linting report identical numbers:
-
-- **the baseline disagrees with the measurement** — a scope whose baseline freezes debt and which now
-  measures **zero** exits 2, whatever config line did it, because this parses no config. Three review
-  rounds each found another way to empty the input while biome still exits 0 — top-level
-  `linter.enabled`, the same switch behind `extends`, then a single `overrides` block needing no second
-  file at all — and enumeration lost every round. Draining a scope to zero is a real achievement and
-  stays recordable, but never silently: `--update-baseline --accept-emptied-scope=<scope>` writes it,
-  and the bare re-freeze refuses.
-
-  **It catches a scope emptied entirely, not one emptied in part, and that gap is open.** Measured
-  2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics
-  over a full 459 scanned files, so no guard here fires and the next `--update-baseline` drops 9 files
-  and 24 frozen diagnostics at exit 0 — accepted by `improves: down`, which only faults on a rise.
-  Closing it needs a per-file "was this linted" signal biome's JSON reporter does not expose, and
-  refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block.
-- **files scanned** — biome's own `summary` says how many files it looked at, and zero means the scope
-  matched nothing. A narrowed `files.includes` lands here.
-- **the linter is on** — the scope's resolved config, following `extends` to the end of the chain, must
-  not disable the linter. An `extends` this checker cannot resolve from the filesystem (biome's package
-  form, say) is itself an error, never a skip.
-
-The last two are now a **second opinion that names the cause**: they fire before biome runs and say
-which config line is wrong, where the first says only that the numbers stopped adding up. Keep all
-three — a guard that explains a failure is worth having even once another guard would have caught it.
-
-Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-v2 lint`) ·
-`--staged` (**freeze-only** — the payment is due against the branch, not a half-staged tree) ·
-`--update-baseline` (`--accept-emptied-scope` to confirm a scope really did drain to zero).
-`--staged` exists for a pre-commit hook but **no hook runs it today**: on `dev`, `.githooks/pre-commit`
-runs nothing. The gate is the `conformance` job.
 
 ## check-lockfile-transport.mjs — no dependency that only SSH can fetch
 
@@ -1095,17 +989,16 @@ Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the othe
 baselines.
 
 The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
-`lib/debt-ratchet.mjs`, shared with the two biome budgets; what lives in this script is the
+`lib/debt-ratchet.mjs`, shared with the size budget; what lives in this script is the
 analyzer — which files to read and what to count in them. Thresholds and regexes are
 `checkers.test-signal` in `.forge/conformance.json`, and deleting that block degrades to the
 built-in defaults rather than to an empty scope.
 
-## lib/debt-ratchet.mjs — the ratchet the three baselined checkers share
+## lib/debt-ratchet.mjs — the ratchet the baselined checkers share
 
-`check-test-signal`, `check-lint-budget` and `check-size-budget` all freeze `{path: {metric: n}}`
-and fail when a metric rises, and each carried its own copy of that until ISS-848. The copies did
-not agree, which is the point: `check-size-budget`'s own guard named `check-lint-budget` as the
-version it must not drift from with nothing enforcing it, while `check-test-signal` fell back to
+`check-test-signal` and `check-size-budget` both freeze `{path: {metric: n}}` and fail when a metric
+rises, and each carried its own copy of that until ISS-848. The copies did not agree, which is the
+point: `check-test-signal` fell back to
 built-in defaults on an absent registry and read a failed `git diff --cached` as an empty stage —
 a hook reporting clean because git broke.
 
@@ -1113,7 +1006,7 @@ What is shared is `freezeFaults` (a metric absent from the baseline reads as 0, 
 fails), `readManifest` / `scopeConfig` / `tunedConfig`, `loadBaseline` / `writeBaseline`
 (`null` for unreadable, `{}` for absent — a caller must be able to refuse rather than report
 clean), `parseMode`, `stagedFiles` and `sortDeep`. What is not shared is the analyzer: biome for
-the two budgets, regex scoring for test-signal, and `drain` stays in `lib/lint-budget.mjs` because
+the size budget, regex scoring for test-signal, and `drain` stays in `lib/size-budget.mjs` because
 only a biome scope declares one.
 
 `scopeConfig` refuses an absent manifest and `tunedConfig` degrades to defaults, which is not an

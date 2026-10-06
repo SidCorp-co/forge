@@ -74,22 +74,6 @@ export function traceFindings(doc, index, present) {
   return { findings: out, faults };
 }
 
-/** New entries, frozen entries that no longer occur, and rules whose frozen count rose over the base. */
-export function judgeTrace(current, baseline, before) {
-  const fresh = [];
-  const stale = [];
-  const grown = [];
-  for (const rule of TRACE_RULES) {
-    const now = new Set(current[rule] ?? []);
-    const frozen = new Set(baseline?.[rule] ?? []);
-    for (const k of now) if (!frozen.has(k)) fresh.push(`${rule}: ${k}`);
-    for (const k of frozen) if (!now.has(k)) stale.push(`${rule}: ${k}`);
-    if (before && Array.isArray(before[rule]) && frozen.size > before[rule].length)
-      grown.push(`${rule}: ${before[rule].length} -> ${frozen.size}`);
-  }
-  return { fresh, stale, grown };
-}
-
 export const TRACE_RULE_SAYS = {
   'trace-empty': 'serves names no requirement or workflow step',
   'trace-unknown': 'names a requirement or workflow step .forge/design-index.json does not hold',

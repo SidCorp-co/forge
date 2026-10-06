@@ -116,9 +116,9 @@ export const CHECKS = [
   },
   {
     axis: 'form',
-    label: 'lint-budget',
-    cmd: ['node', 'scripts/check-lint-budget.mjs', '--all'],
-    scanned: /^lint-budget: (\d+) file/m,
+    label: 'web lint',
+    cmd: ['pnpm', '--filter', 'web-v2', 'lint'],
+    scanned: /Checked (\d+)/,
     needs: ['deps'],
   },
   {
