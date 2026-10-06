@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A reopened feedback item can no longer be marked verified by the machine**: verify follows a shipped fix, which a reopened item never has, so its only ways out are back to triage or declined (feedback machine v3).
+
 ## [0.4.0-dev.60] - 2026-10-06
 
 Bell badge counts listed rows; web app tested again on every change
