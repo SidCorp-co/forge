@@ -12,15 +12,15 @@ import { getGuide, listGuides } from './registry.js';
  * Public, read-only surface for Forge capability guides (D2 in the plan —
  * no tenant data, no secrets, deliberately unauthenticated so `WebFetch` /
  * browser / docs-site clients and agents all read the same bytes).
- * No `requireAuth`, no project-membership check — by design.
+ * The `/guides` and `/llms.txt` routes take no `requireAuth` and no membership check, by design.
  *
  * Mounted at BOTH the core root and `/api` in `index.ts`, mirroring
  * `installRoutes`: the hosted edge proxy forwards only `/api/*` to core, so
  * every pointer we emit elsewhere in the product MUST use the `/api/guides`
  * form; the root mount exists for self-hosters exposing core directly.
  *
- * The `/orgs/:orgId/integration-guides` sub-tree below is the write tier and is
- * separately authenticated.
+ * The one exception is `/projects/:id/guides/:slug` below: it reads a guide as the
+ * project's org shadows it, so it is authenticated and needs `project.read`.
  */
 export const guideRoutes = new Hono();
 /** A project member reads a guide as its org shadows it: an org's integration guide over the code default. */
