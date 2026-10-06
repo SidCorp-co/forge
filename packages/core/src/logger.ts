@@ -96,8 +96,10 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
   if (typeof first === 'string') first = clean(first);
-  else if (typeof first === 'object' && first !== null && !(first instanceof Error)) {
-    first = besideErr(first as Record<string, unknown>, clean);
+  else if (first instanceof Error) first = { err: serializeError(first, errors) };
+  else if (typeof first === 'object' && first !== null) {
+    const record = besideErr(first as Record<string, unknown>, clean);
+    first = err ? { ...record, err: serializeError(err, errors) } : record;
   }
   if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
     rest = [redactQueryParams(err.message, errors), ...rest];
@@ -106,8 +108,10 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
 }
 
 /** pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`. */
-function serializeError(err: unknown): unknown {
-  const out = redactQueryParams(stdSerializers.err(err as Error), err);
+function serializeError(err: unknown, hints: unknown[] = [err]): unknown {
+  // `redactCall` hands pino an `err` it already serialized against the whole call's errors.
+  if (!(err instanceof Error)) return err;
+  const out = redactQueryParams(stdSerializers.err(err), hints);
   const sqlstate = pgErrorCode(err);
   if (!sqlstate || typeof out !== 'object' || out === null) return out;
   return { ...out, sqlstate, constraint: pgConstraintName(err) };

@@ -134,6 +134,19 @@ describe('the core logger', () => {
     expect(line).not.toContain(EMAIL);
   });
 
+  it('redacts the logged err against another error the same call carries', () => {
+    const { lines, log } = capture();
+    log.error({ err: new Error(`duplicate ${EMAIL}`), other: failedInsert() }, 'failed');
+    log.error(new Error(`duplicate ${EMAIL}`), 'failed %j', { other: failedInsert() });
+    for (const line of lines) {
+      expect(line).not.toContain(EMAIL);
+      expect(line).not.toContain(HASH);
+    }
+    const first = JSON.parse(lines[0] ?? '');
+    expect(first.err.type).toBe('Error');
+    expect(first.other.sqlstate).toBe('23505');
+  });
+
   it('still names the statement, the SQLSTATE and the constraint', () => {
     const { lines, log } = capture();
     log.error({ err: failedInsert() }, 'http.unhandled');
