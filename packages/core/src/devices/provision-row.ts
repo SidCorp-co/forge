@@ -5,7 +5,9 @@
  * and not every other one the device is waiting on (ISS-1184).
  */
 
+import { redactQueryParams } from '@forge/observability';
 import { decryptSecret } from '../integrations/vault.js';
+import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 
 const REASON_MAX = 200;
 
@@ -81,19 +83,13 @@ export interface ProvisionRowContext {
 
 /**
  * SQLSTATE class 23 and the constraint it names: the data itself refusing, the
- * only cause this code can tell from a blip. Walked, because drizzle wraps what
- * pg threw. Null for anything else.
+ * only cause this code can tell from a blip. Null for anything else.
  */
 export function integrityViolation(err: unknown): string | null {
-  for (let cur: unknown = err, depth = 0; cur && depth < 5; depth++) {
-    const e = cur as { code?: unknown; constraint_name?: unknown };
-    if (typeof e.code === 'string' && e.code.startsWith('23')) {
-      const named = typeof e.constraint_name === 'string' ? e.constraint_name : '';
-      return named ? `${e.code}:${named}` : e.code;
-    }
-    cur = (cur as { cause?: unknown }).cause;
-  }
-  return null;
+  const code = pgErrorCode(err);
+  if (!code?.startsWith('23')) return null;
+  const named = pgConstraintName(err);
+  return named ? `${code}:${named}` : code;
 }
 
 /** The innermost message: drizzle's outer one is the whole failed statement. */
@@ -104,7 +100,7 @@ function messageOf(err: unknown): string {
     if (typeof message === 'string' && message.length > 0) deepest = message;
     cur = (cur as { cause?: unknown }).cause;
   }
-  return deepest ?? String(err);
+  return redactQueryParams(deepest ?? String(err), err);
 }
 
 function truncate(text: string, max: number): string {

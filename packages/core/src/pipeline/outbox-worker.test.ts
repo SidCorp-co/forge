@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmitResult } from './hooks.js';
 
@@ -234,6 +235,25 @@ describe('outbox-worker', () => {
     expect(result.processed).toBe(0);
     expect(result.failed).toBe(1);
     expect(updateCalls).toEqual([expect.objectContaining({ kind: 'failed' })]);
+  });
+
+  it("stores none of a failed query's bound params as the row's last_error", async () => {
+    const r = row({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' });
+    claimQueue.push([r]);
+    emitMock.mockImplementationOnce(async () => {
+      throw new DrizzleQueryError(
+        'insert into "comments" ("body") values ($1)',
+        ['a comment body carrying a secret-ish value'],
+        Object.assign(new Error('value too long'), { code: '22001' }),
+      );
+    });
+
+    await drainOutboxOnce();
+
+    const stored = (updateCalls[0]?.chunks ?? []).filter((c) => typeof c === 'string').join(' ');
+    expect(updateCalls[0]?.kind).toBe('failed');
+    expect(stored).toContain('insert into "comments"');
+    expect(stored).not.toContain('secret-ish');
   });
 
   it('on a pipeline-orchestrator failure reported via EmitResult.failures, backs off the lease and records last_error', async () => {

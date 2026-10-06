@@ -25,7 +25,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
-import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 import {
   type AgentCredentialFence,
   agentCredentialFence,
@@ -80,7 +80,7 @@ async function mapHandleCollision<T>(
   } catch (err) {
     if (
       isUniqueViolation(err) &&
-      uniqueViolationConstraint(err) === 'organization_members_org_handle_uniq'
+      pgConstraintName(err) === 'organization_members_org_handle_uniq'
     ) {
       throw new HTTPException(409, {
         message: `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
@@ -307,7 +307,7 @@ async function mintDistinctlyNamed(
       );
       return minted.plaintext;
     } catch (err) {
-      if (!isUniqueViolation(err) || uniqueViolationConstraint(err) !== 'pat_user_name_uniq') {
+      if (!isUniqueViolation(err) || pgConstraintName(err) !== 'pat_user_name_uniq') {
         throw err;
       }
     }

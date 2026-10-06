@@ -1,5 +1,7 @@
+import { redactQueryParams } from '@forge/observability';
 import type { Context } from 'hono';
-import { type Logger, pino } from 'pino';
+import { type Logger, type LoggerOptions, pino, stdSerializers } from 'pino';
+import { pgConstraintName, pgErrorCode } from './lib/db-errors.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 // pino-pretty is dev-only — use JSON in staging/test for parity with prod and so
@@ -24,9 +26,63 @@ const redactPaths = [
   'headers.cookie',
 ];
 
-export const logger: Logger = pino({
+/**
+ * A finished line with a failed query's params redacted. The `err` serializer has already redacted
+ * what the error itself carried; this reaches what it cannot see — pino's `msg`, which defaults to
+ * the raw `err.message`, an error under another key, a message interpolated into the text.
+ */
+function redactLine(line: string): string {
+  if (!line.includes('params')) return line;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return redactQueryParams(line);
+  }
+  let changed = false;
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    // `err` went through `serializeError`, which read the error itself; a second, blind pass would
+    // take the database's reason that follows the params along with them.
+    redacted[key] = key === 'err' ? value : redactQueryParams(value);
+    if (redacted[key] !== value) changed = true;
+  }
+  return changed ? `${JSON.stringify(redacted)}\n` : line;
+}
+
+/** The error a call logs, which pino would also take its `msg` from when the call names none. */
+function loggedError(first: unknown): Error | null {
+  if (first instanceof Error) return first;
+  const obj = first as { err?: unknown; msg?: unknown } | null;
+  return obj?.err instanceof Error && obj.msg === undefined ? obj.err : null;
+}
+
+/** pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`. */
+function serializeError(err: unknown): unknown {
+  const out = redactQueryParams(stdSerializers.err(err as Error), err);
+  const sqlstate = pgErrorCode(err);
+  if (!sqlstate || typeof out !== 'object' || out === null) return out;
+  return { ...out, sqlstate, constraint: pgConstraintName(err) };
+}
+
+export const loggerOptions: LoggerOptions = {
   level: process.env.LOG_LEVEL ?? defaultLevel,
   redact: { paths: redactPaths, censor: '[Redacted]' },
+  serializers: { err: serializeError },
+  hooks: {
+    logMethod(args, method) {
+      const err = loggedError(args[0]);
+      if (err && typeof args[1] !== 'string') {
+        return method.apply(this, [args[0] as object, redactQueryParams(err.message, err)]);
+      }
+      return method.apply(this, args);
+    },
+    streamWrite: redactLine,
+  },
+};
+
+export const logger: Logger = pino({
+  ...loggerOptions,
   ...(usePrettyTransport
     ? {
         transport: {

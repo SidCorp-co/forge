@@ -5,6 +5,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { pgErrorCode } from '../lib/db-errors.js';
 import {
   DEPLOY_CONFIRM_WINDOW_MS,
   type DeployHolds,
@@ -157,17 +158,11 @@ export async function acquireDeployLocks(
       }
     });
   } catch (err) {
-    if (isLockWaitTimeout(err)) throw new DeployEnvironmentLockedError(waitedOn, null);
+    if (pgErrorCode(err) === LOCK_NOT_AVAILABLE)
+      throw new DeployEnvironmentLockedError(waitedOn, null);
     throw err;
   }
   return taken;
-}
-
-/** Drizzle keeps the driver's error on `cause`: reading the outer one alone is how this refusal
- *  becomes an unhandled query error instead. */
-function isLockWaitTimeout(err: unknown): boolean {
-  const outer = err as { code?: unknown; cause?: { code?: unknown } } | null;
-  return outer?.code === LOCK_NOT_AVAILABLE || outer?.cause?.code === LOCK_NOT_AVAILABLE;
 }
 
 /** A reacquire moves `acquired_at`, telling this hold from the next on the same environment.

@@ -13,6 +13,7 @@ import {
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { projectLens } from '../messaging/record-screen.js';
@@ -37,7 +38,6 @@ import {
   rethrowBodyInvalid,
 } from './body-input.js';
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
-import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { messageRefusalHttp } from './screen.js';
 import {

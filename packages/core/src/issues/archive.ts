@@ -37,6 +37,7 @@ import {
   issues,
   memories,
 } from '../db/schema.js';
+import { pgErrorCode } from '../lib/db-errors.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
@@ -364,11 +365,7 @@ export async function runIssueArchive(input: {
 }
 
 const DEADLOCK_ATTEMPTS = 3;
-
-function isDeadlock(err: unknown): boolean {
-  const code = (e: unknown) => (e && typeof e === 'object' ? (e as { code?: unknown }).code : null);
-  return code(err) === '40P01' || code((err as { cause?: unknown } | null)?.cause) === '40P01';
-}
+const DEADLOCK_DETECTED = '40P01';
 
 /**
  * Two archives of issues one edge joins each hold their own rows and wait on the other's, and
@@ -380,7 +377,7 @@ export async function withDeadlockRetry<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
     } catch (err) {
-      if (!isDeadlock(err) || attempt >= DEADLOCK_ATTEMPTS) throw err;
+      if (pgErrorCode(err) !== DEADLOCK_DETECTED || attempt >= DEADLOCK_ATTEMPTS) throw err;
     }
   }
 }

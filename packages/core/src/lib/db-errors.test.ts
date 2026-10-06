@@ -1,5 +1,6 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
-import { isUniqueViolation, uniqueViolationConstraint } from './db-errors.js';
+import { isUniqueViolation, pgConstraintName, pgErrorCode } from './db-errors.js';
 
 describe('isUniqueViolation', () => {
   it('returns true for a top-level pg error with code 23505', () => {
@@ -29,6 +30,28 @@ describe('isUniqueViolation', () => {
     ).toBe(false);
   });
 
+  it('reads the code through the error drizzle itself throws, and through one more wrapper', () => {
+    const driver = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint_name: 'users_email_unique',
+    });
+    const failed = new DrizzleQueryError('insert into "users" values ($1)', ['a@b.co'], driver);
+    expect(isUniqueViolation(failed)).toBe(true);
+    expect(isUniqueViolation(new Error('register failed', { cause: failed }))).toBe(true);
+    expect(pgConstraintName(new Error('register failed', { cause: failed }))).toBe(
+      'users_email_unique',
+    );
+  });
+
+  it('stops at a cycle and at the depth bound rather than looping', () => {
+    const a: { cause?: unknown } = {};
+    a.cause = a;
+    expect(isUniqueViolation(a)).toBe(false);
+    let deep: unknown = Object.assign(new Error('pg'), { code: '23505' });
+    for (let i = 0; i < 8; i++) deep = new Error(`wrap ${i}`, { cause: deep });
+    expect(isUniqueViolation(deep)).toBe(false);
+  });
+
   it('returns false for non-error inputs', () => {
     expect(isUniqueViolation(null)).toBe(false);
     expect(isUniqueViolation(undefined)).toBe(false);
@@ -37,7 +60,7 @@ describe('isUniqueViolation', () => {
   });
 });
 
-describe('uniqueViolationConstraint', () => {
+describe('pgConstraintName', () => {
   it('reads constraint_name from a Drizzle-wrapped postgres-js error', () => {
     const err = Object.assign(new Error('Failed query: ...'), {
       cause: Object.assign(new Error('dup'), {
@@ -45,7 +68,7 @@ describe('uniqueViolationConstraint', () => {
         constraint_name: 'projects_slug_unique',
       }),
     });
-    expect(uniqueViolationConstraint(err)).toBe('projects_slug_unique');
+    expect(pgConstraintName(err)).toBe('projects_slug_unique');
   });
 
   it('reads constraint from a node-postgres-style top-level error', () => {
@@ -53,7 +76,7 @@ describe('uniqueViolationConstraint', () => {
       code: '23505',
       constraint: 'projects_slug_unique',
     });
-    expect(uniqueViolationConstraint(err)).toBe('projects_slug_unique');
+    expect(pgConstraintName(err)).toBe('projects_slug_unique');
   });
 
   it('prefers cause.constraint_name over top-level constraint (Drizzle path is canonical)', () => {
@@ -61,11 +84,25 @@ describe('uniqueViolationConstraint', () => {
       constraint: 'wrong',
       cause: Object.assign(new Error('inner'), { constraint_name: 'right' }),
     });
-    expect(uniqueViolationConstraint(err)).toBe('right');
+    expect(pgConstraintName(err)).toBe('right');
   });
 
   it('returns undefined when no constraint name is present', () => {
-    expect(uniqueViolationConstraint(new Error('plain'))).toBeUndefined();
-    expect(uniqueViolationConstraint(null)).toBeUndefined();
+    expect(pgConstraintName(new Error('plain'))).toBeUndefined();
+    expect(pgConstraintName(null)).toBeUndefined();
+  });
+});
+
+describe('pgErrorCode', () => {
+  it('skips a code that is not a SQLSTATE to reach the driver one beneath it', () => {
+    const err = Object.assign(new Error('outer'), {
+      code: 'CONNECTION_CLOSED',
+      cause: Object.assign(new Error('inner'), { code: '40P01' }),
+    });
+    expect(pgErrorCode(err)).toBe('40P01');
+  });
+
+  it('returns undefined where nothing on the chain is a SQLSTATE', () => {
+    expect(pgErrorCode(Object.assign(new Error('fs'), { code: 'ENOENT' }))).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
+import { redactQueryParams } from '@forge/observability';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import type { ChatTool } from '../providers/types.js';
@@ -49,8 +50,8 @@ export function toolError(message: string): CallToolResult {
 
 export function thrownMessage(err: unknown): string {
   const cause = (err as { cause?: unknown } | null)?.cause;
-  if (cause instanceof Error && cause.message) return cause.message;
-  return err instanceof Error ? err.message : String(err);
+  if (cause instanceof Error && cause.message) return redactQueryParams(cause.message, err);
+  return redactQueryParams(err instanceof Error ? err.message : String(err), err);
 }
 
 /** Flatten a result to the string the model reads as its `role:'tool'` message: text blocks joined, any other block (image, resource) JSON-serialised, capped at RESULT_CAP. */

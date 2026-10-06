@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,7 +27,20 @@ const { requestId } = await import('./request-id.js');
 
 import type { RequestIdVars } from './request-id.js';
 
-function makeApp() {
+const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c3ludGhldGlj$bWlkZGxld2FyZQ';
+
+function failedInsert(): DrizzleQueryError {
+  const pg = Object.assign(new Error('duplicate key value violates unique constraint "u"'), {
+    code: '23505',
+  });
+  return new DrizzleQueryError(
+    'insert into "users" values ($1, $2)',
+    ['dup@example.test', HASH],
+    pg,
+  );
+}
+
+function makeApp(handler: typeof errorHandler = errorHandler) {
   const app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
   app.get('/http-ex', () => {
@@ -67,10 +81,25 @@ function makeApp() {
     const fsError = Object.assign(new Error('disk gone'), { code: 'ENOENT' });
     throw new HTTPException(500, { message: 'persist failed', cause: fsError });
   });
+  app.get('/failed-query', () => {
+    throw failedInsert();
+  });
+  app.get('/failed-query-http', () => {
+    const err = failedInsert();
+    throw new HTTPException(500, { message: `persist failed: ${err.message}`, cause: err });
+  });
+  app.get('/failed-query-details', () => {
+    throw new HTTPException(409, {
+      message: 'conflict',
+      cause: { code: 'CONFLICT', details: { reason: failedInsert().message } },
+    });
+  });
   app.notFound(notFoundHandler);
-  app.onError(errorHandler);
+  app.onError(handler);
   return app;
 }
+
+const LEAKS = /argon2|dup@example\.test/;
 
 describe('error middleware', () => {
   beforeEach(() => {
@@ -151,4 +180,36 @@ describe('error middleware', () => {
     expect(body.code).toBe('INTERNAL_ERROR');
     expect(body.code).not.toBe('ENOENT');
   });
+
+  it.each(['/failed-query', '/failed-query-http', '/failed-query-details'])(
+    "answers %s with none of the failed query's bound params outside production",
+    async (path) => {
+      const text = await (await makeApp().request(path)).text();
+      expect(text).not.toMatch(LEAKS);
+      expect(text).toContain('[Redacted]');
+    },
+  );
+
+  it('names an unhandled failed query by its statement in the non-production details', async () => {
+    const body = (await (await makeApp().request('/failed-query')).json()) as {
+      details: { message: string };
+    };
+    expect(body.details.message).toBe(
+      'Failed query: insert into "users" values ($1, $2)\nparams: [Redacted]',
+    );
+  });
+});
+
+describe('error middleware in production', () => {
+  it.each(['/failed-query', '/failed-query-http', '/failed-query-details'])(
+    "answers %s with none of the failed query's bound params",
+    async (path) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.resetModules();
+      const prod = await import('./error.js');
+      vi.unstubAllEnvs();
+      const text = await (await makeApp(prod.errorHandler).request(path)).text();
+      expect(text).not.toMatch(LEAKS);
+    },
+  );
 });
