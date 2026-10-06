@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.40] - 2026-10-06
+
+Documentation matches the code it cites, and dead comment prefixes are gone
+
+
 ### Changed
 
 - **Documentation matches the code it cites.** 707 dead `cm:` comment prefixes are gone,
