@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { DetailHeader, ErrorState, ProjectLoader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useModuleDetail, useModuleRollup } from "../hooks";
-import { MODULES_LIST, moduleHref, modulesHref } from "../routes";
+import { MODULES_LIST, moduleHref, modulesHref } from "@/lib/routes/modules";
 import { ancestorsOf } from "../tree";
 import type { ModuleRollupRow } from "../types";
 import { AttentionBadge, ModuleAction } from "./module-bits";

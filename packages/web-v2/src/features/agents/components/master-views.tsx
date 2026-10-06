@@ -33,11 +33,11 @@ import {
   WaitBanner,
 } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
-import { MASTER_KEY, runHref } from "../routes";
+import { MASTER_KEY, runHref } from "@/lib/routes/agents";
 import type { MasterPassView, MasterStanding, RunStanding } from "../types";
 import { fmtTime, leaseLeft, runName } from "../view";
 

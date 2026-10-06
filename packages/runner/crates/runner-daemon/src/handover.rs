@@ -88,7 +88,6 @@ pub fn replace_image(exe: &Path, args: &[OsString], listener: Option<i64>) -> st
 /// environment without any [`LISTENER_ENV`] this process was handed, which
 /// names only what the caller passes on.
 #[cfg(unix)]
-#[allow(clippy::type_complexity)]
 fn exec_vectors(
     exe: &Path,
     args: &[OsString],

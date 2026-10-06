@@ -32,7 +32,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { useRunStanding } from "../hooks";
-import { AGENTS_LIST, MASTER_KEY, masterHref, runHref } from "../routes";
+import { AGENTS_LIST, MASTER_KEY, masterHref, runHref } from "@/lib/routes/agents";
 import type { MasterStanding, RunStanding, RunStandingList } from "../types";
 import { GROUP_MODES, type GroupMode, runGroups } from "../view";
 import { MasterPeek, masterRow } from "./master-views";

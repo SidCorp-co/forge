@@ -38,7 +38,7 @@ import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { canManageProject } from "@/features/projects/write-access";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
-import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { useProjectDocument } from "@/features/project-config/hooks";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";

@@ -14,27 +14,26 @@ import {
   StatusChip,
   useElapsed,
 } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
 import { isJobDriven } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
   sessionStep,
   statusToChip,
 } from "@/features/sessions/types";
-import { buildShareLink, useRecents } from "@/features/shell";
+import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
+import { useRecents } from "@/lib/navigation/recents";
 import { formatApiError } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useToast } from "@/providers/toast-provider";
 import { useRouter } from "next/navigation";
 // Run-conversation orchestrator (ISS-292). Header (id/title/status + Stop /
 // Rerun / Fork), two-pane body (thread + context rail), sticky composer.
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
 import { useEffect, useMemo, useState } from "react";
-import { useCancelSession, useRerunSession, useStuckRuns } from "@/features/sessions/hooks";
+import { useStuckRuns } from "@/features/agents/hooks";
+import { useCancelSession, useRerunSession } from "@/features/sessions/hooks";
 import {
   useEditTurn,
   useForkSession,
@@ -44,8 +43,7 @@ import {
   useSessionTurns,
 } from "../hooks";
 import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
-import { SESSION_ATTACHMENTS } from "@/features/chat/attachments";
-import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
+import { SessionComposer } from "./session-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
@@ -62,7 +60,7 @@ interface SessionScreenProps {
 
 export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const router = useRouter();
-  const { toast } = useToast();
+  const copyShareLink = useCopyShareLink();
   const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
   const turnsQ = useSessionTurns(sessionId);
@@ -74,10 +72,6 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
 
-  // A reader gets no composer (the server 403s sends regardless).
-  const projectsQ = useProjects();
-  const canWrite =
-    !!session && canWriteProject(projectsQ.data?.find((p) => p.id === session.projectId)?.role);
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   const loadedId = session?.id;
@@ -95,11 +89,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   function copyLink() {
     if (!projectSlug) return;
-    const url = buildShareLink(`/projects/${projectSlug}/agents/${sessionId}`);
-    navigator.clipboard?.writeText(url).then(
-      () => toast({ title: "Link copied", description: url, tone: "success" }),
-      () => toast({ title: "Couldn't copy link", tone: "error" }),
-    );
+    copyShareLink(`/projects/${projectSlug}/agents/${sessionId}`);
   }
   // Subscribe to the project room once we know the project — the event-router
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
@@ -380,18 +370,14 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               <div ref={bottomRef} />
             </div>
           </div>
-          {canWrite ? (
-            <ChatComposer
-              onSend={async (message, files) => {
-                await send.mutateAsync({ sessionId, message, files });
-              }}
-              busy={live || send.isPending}
-              disabled={!session.deviceId}
-              attachments={SESSION_ATTACHMENTS}
-            />
-          ) : (
-            <ReadOnlyComposerNote />
-          )}
+          <SessionComposer
+            projectId={session.projectId}
+            onSend={async (message, files) => {
+              await send.mutateAsync({ sessionId, message, files });
+            }}
+            busy={live || send.isPending}
+            disabled={!session.deviceId}
+          />
         </div>
 
         {/* Desktop rail — collapsible (persisted); hidden when collapsed so main

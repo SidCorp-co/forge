@@ -4,13 +4,13 @@ import type { QuestionnaireAnswer, QuestionnaireItem } from '@forge/contracts/on
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type TxOnly } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
-import { appendMessagesIn, openOrExtendWindow, type TxOnly } from './ports.js';
+import { appendMessagesIn, openOrExtendWindow } from './ports.js';
 import {
   type BatchRow,
   batchIn,

@@ -1,6 +1,6 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
-import { configApi } from "@/features/project-settings/config-api";
+import { configApi } from "@/features/project-config/api";
 import { documentRefusals, refusalLine } from "@/lib/api/refusals";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import {

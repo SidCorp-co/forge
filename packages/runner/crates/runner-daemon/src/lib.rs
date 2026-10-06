@@ -423,11 +423,112 @@ async fn boot(cfg: &Config, client: &CoreClient) {
     );
 }
 
+/// Where this daemon's WebSocket connects, as the device it is.
+fn ws_config(core_url: &str, device_token: &str, device_id: &str) -> WsConfig {
+    // tungstenite needs a ws:// / wss:// scheme, not http(s)://.
+    let ws_base = core_url
+        .trim_end_matches('/')
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1);
+    WsConfig {
+        url: format!("{ws_base}/ws"),
+        device_token: device_token.to_string(),
+        device_id: device_id.to_string(),
+    }
+}
+
+/// The WebSocket connect loop.
+fn spawn_ws(
+    ws_cfg: WsConfig,
+    frame_tx: mpsc::Sender<Frame>,
+    ledger_rx: watch::Receiver<Option<String>>,
+    cancel_rx: watch::Receiver<bool>,
+) {
+    tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, ledger_rx, cancel_rx).await });
+}
+
+/// Ctrl-C → cancel.
+fn spawn_ctrl_c(cancel_tx: watch::Sender<bool>) {
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("shutting down…");
+        let _ = cancel_tx.send(true);
+    });
+}
+
+/// Background skill auto-pull (ISS-736) — OFF by default (canary gate).
+/// Independent poller; `skill.sync` stays the immediate, explicit path.
+fn spawn_skill_pull(
+    client: &Arc<CoreClient>,
+    cfg: &Arc<Config>,
+    cancel_rx: &watch::Receiver<bool>,
+) {
+    if cfg.skills.auto_pull {
+        let (client, cfg) = (client.clone(), cfg.clone());
+        let cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move { skill_pull::run(client, cfg, cancel_rx).await });
+        tracing::info!("[skills] background auto-pull enabled");
+    } else {
+        tracing::debug!(
+            "[skills] background auto-pull disabled (set skills.auto_pull=true to enable)"
+        );
+    }
+}
+
+/// Where started pool jobs are recorded, so a job whose pane dies with this daemon is reported dead.
+fn job_records() -> Arc<dyn pool_jobs::Records> {
+    match pool_jobs::FileRecords::default_dir() {
+        Some(dir) => Arc::new(pool_jobs::FileRecords { dir }),
+        None => {
+            tracing::error!(
+                "[pool] no config directory to record started jobs in — a job whose pane dies with this daemon will wait out core's result timeout instead of being reported dead"
+            );
+            Arc::new(pool_jobs::NoRecords)
+        }
+    }
+}
+
+/// The pool's job panes and the master loop that reads them; answers the sender that wakes the master.
+fn spawn_panes_and_master(
+    client: &Arc<CoreClient>,
+    cfg: &Arc<Config>,
+    masters: &Arc<master::Masters>,
+    drain: Arc<drain::Drain>,
+    activity: &Arc<agent_activity::Activities>,
+    cancel_rx: &watch::Receiver<bool>,
+) -> Result<tokio::sync::mpsc::Sender<master::Wake>> {
+    let job_panes = Arc::new(pool_jobs::JobPanes::new());
+    let job_records = job_records();
+    let (adopted_tx, adopted_rx) = watch::channel(false);
+    tokio::spawn(actors::job_panes(
+        (**client).clone(),
+        job_panes.clone(),
+        job_records.clone(),
+        activity.clone(),
+        adopted_tx,
+        cancel_rx.clone(),
+    ));
+    #[cfg(unix)]
+    actors::control(activity, masters, &drain, cancel_rx.clone())?;
+    let (wake_tx, wake_rx) = master::wake_channel();
+    tokio::spawn(master::run(
+        (**client).clone(),
+        (**cfg).clone(),
+        master::Shared {
+            masters: masters.clone(),
+            activity: activity.clone(),
+            job_panes,
+            job_records,
+            drain,
+        },
+        adopted_rx,
+        cancel_rx.clone(),
+        wake_rx,
+    ));
+    Ok(wake_tx)
+}
+
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the daemon wiring: one spawn per actor, in start order (ISS-218 amnesty)"
-)]
 pub async fn run(
     cfg: Config,
     core_url: String,
@@ -454,21 +555,12 @@ pub async fn run(
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
-    // WebSocket connect loop.
-    {
-        // tungstenite needs a ws:// / wss:// scheme, not http(s)://.
-        let ws_base = core_url
-            .trim_end_matches('/')
-            .replacen("https://", "wss://", 1)
-            .replacen("http://", "ws://", 1);
-        let ws_cfg = WsConfig {
-            url: format!("{ws_base}/ws"),
-            device_token: device_token.clone(),
-            device_id: device_id.clone(),
-        };
-        let cancel_rx = cancel_rx.clone();
-        tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, ledger_rx, cancel_rx).await });
-    }
+    spawn_ws(
+        ws_config(&core_url, &device_token, &device_id),
+        frame_tx,
+        ledger_rx,
+        cancel_rx.clone(),
+    );
 
     tokio::spawn(actors::ledger_snapshot(ledger_tx, cancel_rx.clone()));
 
@@ -521,15 +613,7 @@ pub async fn run(
     ));
     tokio::spawn(actors::heartbeat(client.clone(), cancel_rx.clone()));
 
-    // Ctrl-C → cancel.
-    {
-        let cancel_tx = cancel_tx.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            tracing::info!("shutting down…");
-            let _ = cancel_tx.send(true);
-        });
-    }
+    spawn_ctrl_c(cancel_tx.clone());
 
     tracing::info!(
         "runner online — device {device_id}, {} binding(s)",
@@ -546,18 +630,7 @@ pub async fn run(
     tokio::spawn(actors::worktree_reap(cfg.clone(), cancel_rx.clone()));
     tokio::spawn(actors::headroom(cancel_rx.clone()));
 
-    // Background skill auto-pull (ISS-736) — OFF by default (canary gate).
-    // Independent poller; `skill.sync` above stays the immediate, explicit path.
-    if cfg.skills.auto_pull {
-        let (client, cfg) = (client.clone(), cfg.clone());
-        let cancel_rx = cancel_rx.clone();
-        tokio::spawn(async move { skill_pull::run(client, cfg, cancel_rx).await });
-        tracing::info!("[skills] background auto-pull enabled");
-    } else {
-        tracing::debug!(
-            "[skills] background auto-pull disabled (set skills.auto_pull=true to enable)"
-        );
-    }
+    spawn_skill_pull(&client, &cfg, &cancel_rx);
 
     tokio::spawn(actors::plugin_sweep(
         client.clone(),
@@ -567,42 +640,7 @@ pub async fn run(
 
     let activity = Arc::new(agent_activity::Activities::new());
 
-    let job_panes = Arc::new(pool_jobs::JobPanes::new());
-    let job_records: Arc<dyn pool_jobs::Records> = match pool_jobs::FileRecords::default_dir() {
-        Some(dir) => Arc::new(pool_jobs::FileRecords { dir }),
-        None => {
-            tracing::error!(
-                "[pool] no config directory to record started jobs in — a job whose pane dies with this daemon will wait out core's result timeout instead of being reported dead"
-            );
-            Arc::new(pool_jobs::NoRecords)
-        }
-    };
-    let (adopted_tx, adopted_rx) = watch::channel(false);
-    tokio::spawn(actors::job_panes(
-        (*client).clone(),
-        job_panes.clone(),
-        job_records.clone(),
-        activity.clone(),
-        adopted_tx,
-        cancel_rx.clone(),
-    ));
-    #[cfg(unix)]
-    actors::control(&activity, &masters, &drain, cancel_rx.clone())?;
-    let (wake_tx, wake_rx) = master::wake_channel();
-    tokio::spawn(master::run(
-        (*client).clone(),
-        (*cfg).clone(),
-        master::Shared {
-            masters: masters.clone(),
-            activity: activity.clone(),
-            job_panes,
-            job_records,
-            drain,
-        },
-        adopted_rx,
-        cancel_rx.clone(),
-        wake_rx,
-    ));
+    let wake_tx = spawn_panes_and_master(&client, &cfg, &masters, drain, &activity, &cancel_rx)?;
 
     let ctx = actors::FrameCtx {
         client,

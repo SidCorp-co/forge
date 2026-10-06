@@ -21,7 +21,7 @@ import {
 } from "@/design";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
-import { MODULES_LIST, moduleHref } from "../routes";
+import { MODULES_LIST, moduleHref } from "@/lib/routes/modules";
 import { useCodeTrace } from "../hooks";
 import type { CodeTraceResponse, ModuleRollupResponse, ModuleRollupRow } from "../types";
 import { moduleWaitingView, OpenBar } from "./module-bits";

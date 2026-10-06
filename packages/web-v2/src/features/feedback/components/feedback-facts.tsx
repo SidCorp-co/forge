@@ -6,10 +6,10 @@
 
 import Link from "next/link";
 import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
-import { requirementHref } from "@/features/requirements/routes";
-import { issueHref } from "@/features/issues/routes";
+import { requirementHref } from "@/lib/routes/requirements";
+import { issueHref } from "@/lib/routes/issues";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
-import { feedbackHref } from "../routes";
+import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_LABELS } from "@forge/contracts/feedback";
 

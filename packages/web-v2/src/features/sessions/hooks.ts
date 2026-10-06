@@ -1,12 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { useRunStanding } from "@/features/agents/hooks";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
-import { type StuckRuns, stuckRunsOf } from "./types";
 
 /** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated. */
 export function useSessions(opts: ListSessionsOpts) {
@@ -92,11 +89,4 @@ export function useSweepZombies() {
         d.queueTimedOut + d.heartbeatTimedOut === 1 ? "" : "s"
       }`,
   });
-}
-
-/** The runs core reads as stuck on this project (`runs/standing`, live scope), as a lookup a session row is
- *  read against; empty until it loads, so nothing shows stalled on a guess. */
-export function useStuckRuns(projectId: string | undefined): StuckRuns {
-  const standing = useRunStanding(projectId, "live");
-  return useMemo(() => stuckRunsOf(standing.data?.items), [standing.data]);
 }

@@ -14,8 +14,8 @@ import {
   ViewHeading,
   WaitingOn,
 } from "@/design";
-import { issueHref } from "@/features/issues/routes";
-import { requirementHref } from "@/features/requirements/routes";
+import { issueHref } from "@/lib/routes/issues";
+import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
 import { ReleaseTrain } from "./release-train";

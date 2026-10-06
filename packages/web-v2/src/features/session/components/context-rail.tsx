@@ -34,7 +34,8 @@ import {
   statusToChip,
   type SessionRow,
 } from "@/features/sessions/types";
-import { useSessionCost, useSessions, useStuckRuns } from "@/features/sessions/hooks";
+import { useStuckRuns } from "@/features/agents/hooks";
+import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { useRun } from "@/features/pipeline/hooks";

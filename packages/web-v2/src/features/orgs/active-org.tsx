@@ -4,13 +4,11 @@ import { createContext, useContext, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import { settingsApi } from "@/features/settings/api";
-import type { Preferences } from "@/features/settings/types";
-import { usePreferences } from "@/features/settings/hooks";
+import { preferencesApi } from "@/features/preferences/api";
+import { PREFERENCES_KEY as PREFS_KEY, usePreferences } from "@/features/preferences/hooks";
+import type { Preferences } from "@/features/preferences/types";
 import { useOrgs } from "./hooks";
 import type { OrgListItem } from "./types";
-
-const PREFS_KEY = ["settings", "preferences"] as const;
 
 /** Personal org first, then alphabetical by name — matches Settings → Orgs. */
 function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
@@ -53,7 +51,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   }, [orgs, prefs?.activeOrgId]);
 
   const mutation = useMutation({
-    mutationFn: (orgId: string) => settingsApi.updatePreferences({ activeOrgId: orgId }),
+    mutationFn: (orgId: string) => preferencesApi.update({ activeOrgId: orgId }),
     // Optimistically flip the stored preference so the chrome + console update
     // instantly; reconcile/rollback against the server response.
     onMutate: (orgId: string) => {

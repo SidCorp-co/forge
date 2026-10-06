@@ -8,7 +8,6 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import Link from "next/link";
 import { Markdown } from "@/design/patterns/markdown";
-import { useProjects } from "@/features/projects/hooks";
 import { useOnboardingState, useReanalyze } from "../hooks";
 import type { OnboardingDesignView, QuestionnaireView } from "../types";
 import { DesignStatusChip, HoverNote, ToneChip } from "./marks";
@@ -23,6 +22,8 @@ export interface ThreadBlock {
 
 interface ThreadData {
   projectId: string;
+  /** The project's slug, for links out of the thread; undefined until the project list loads. */
+  projectSlug: string | undefined;
   conversationId: string;
   kind: "onboarding" | "requirement" | "first_requirements" | null;
   questionnaires: QuestionnaireView[];
@@ -128,9 +129,8 @@ function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
 
 function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["designs"]>; first: boolean }) {
   const data = useContext(ThreadDataContext);
-  const projectsQ = useProjects();
   const projectId = data?.projectId ?? "";
-  const slug = projectsQ.data?.find((p) => p.id === projectId)?.slug;
+  const slug = data?.projectSlug;
   const { byId, onboarding } = useDesigns(projectId, data?.kind === "onboarding");
   const reanalyze = useReanalyze(projectId, data?.conversationId);
   const rows = block.workflowIds.map((id) => ({ id, design: byId.get(id) }));

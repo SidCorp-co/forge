@@ -8,7 +8,7 @@
 // change — a pinned-view click on this same route, back/forward — restores the
 // exact view without a remount (the old hydrate-once useState went stale).
 
-import { decodeFilter, decodeNumber } from "@/features/shell";
+import { decodeFilter, decodeNumber } from "@/lib/navigation/deep-link";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -3,6 +3,7 @@
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { useStuckRuns } from "../hooks";
 import { QuestionsPane } from "./questions-pane";
 import { type AgentsAccess, RunsList } from "./runs-list";
 
@@ -27,7 +28,12 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "questions" ? <QuestionsPane scope={access} focusQuestionId={focusQuestionId} /> : null}
-      {tab === "sessions" ? <SessionsScreen projectId={access.projectId} /> : null}
+      {tab === "sessions" ? <SessionsTab projectId={access.projectId} /> : null}
     </div>
   );
+}
+
+/** The sessions tab reads each row against the runs core holds stuck, which this feature owns. */
+function SessionsTab({ projectId }: { projectId: string }) {
+  return <SessionsScreen projectId={projectId} stuck={useStuckRuns(projectId)} />;
 }

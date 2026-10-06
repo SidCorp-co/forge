@@ -54,7 +54,10 @@ pub(crate) fn install_hooks_from(
 }
 
 /// What telling core about a resume choice needs of it.
-#[allow(async_fn_in_trait)]
+#[expect(
+    async_fn_in_trait,
+    reason = "a test seam implemented only inside this workspace; no caller needs its future to be Send"
+)]
 pub trait ChoiceReporter {
     async fn report(
         &self,

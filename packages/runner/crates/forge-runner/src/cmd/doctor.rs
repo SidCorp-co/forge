@@ -22,10 +22,6 @@ pub struct Args {
     pub offline: bool,
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "a flat list of diagnostic rows printed in order; split per row it only grows (ISS-218 amnesty)"
-)]
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     println!("Forge Runner — doctor\n");
     println!(
@@ -52,7 +48,41 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     let cfg = Config::load().unwrap_or_default();
 
-    match ctx.resolve_core_url(&cfg) {
+    failed |= config_rows(&ctx, &cfg);
+
+    device_rows(&cfg);
+
+    let credential_file = cred_store::credential_file_path().ok();
+    let (row, token_failed) = access_token_row(&cred_store::load_pat(), credential_file.as_deref());
+    println!("{row}");
+    failed |= token_failed;
+
+    update_row(&ctx, &cfg).await;
+    failed |= pool_record_rows(&cfg);
+
+    // End-to-end online checks: heartbeat (token + reachability) and the
+    // server-side assignment reconciliation. Gated behind `--offline`.
+    if args.offline {
+        println!("• online       skipped (--offline)");
+    } else {
+        failed |= online_checks(&ctx, &cfg).await;
+    }
+
+    if failed {
+        println!("\n✖ VERDICT      FAIL — fix the ✖ items above");
+        // Exit non-zero (not an anyhow::Err) so the checklist prints cleanly
+        // without an `Error:` trace while CI/install scripts see the failure.
+        std::process::exit(1);
+    }
+    println!("\n✔ VERDICT      PASS");
+    Ok(())
+}
+
+/// The rows for what this box is configured with: core, pairing, bindings and each bound
+/// checkout's `.mcp.json`. Returns `true` if any of them failed.
+fn config_rows(ctx: &Ctx, cfg: &Config) -> bool {
+    let mut failed = false;
+    match ctx.resolve_core_url(cfg) {
         Some(url) => println!("✔ core_url     {url}"),
         None => {
             println!("✖ core_url     not configured (run `forge-runner login` or pass --core-url)");
@@ -100,7 +130,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             }
         }
     }
+    failed
+}
 
+/// The rows for which plugin a job finds installed and where credentials are kept; notes only.
+fn device_rows(cfg: &Config) {
     // Which plugin a job spawned here would find installed. `enabled = false`
     // is a legitimate device state, not a failure, so it reports as a note.
     if cfg.plugins.enabled {
@@ -132,16 +166,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
         _ => println!("✔ cred store   {backend}"),
     }
+}
 
-    let credential_file = cred_store::credential_file_path().ok();
-    let (row, token_failed) = access_token_row(&cred_store::load_pat(), credential_file.as_deref());
-    println!("{row}");
-    failed |= token_failed;
-
-    // Best-effort update check (3s budget — never blocks doctor).
+/// Best-effort update check (3s budget — never blocks doctor).
+async fn update_row(ctx: &Ctx, cfg: &Config) {
     if let Some(url) = update::manifest_url(
         cfg.update.manifest_url.as_deref(),
-        ctx.resolve_core_url(&cfg).as_deref(),
+        ctx.resolve_core_url(cfg).as_deref(),
     ) {
         match tokio::time::timeout(
             std::time::Duration::from_secs(3),
@@ -157,7 +188,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             _ => println!("• update       could not check (manifest missing/unreachable)"),
         }
     }
+}
 
+/// What the daemon recorded about its own pool reads. Returns `true` when that record cannot be read.
+fn pool_record_rows(cfg: &Config) -> bool {
+    let mut failed = false;
     // What the daemon recorded about its own pool reads. History, not a check of
     // this run: the live read of each project follows in the online section. A
     // record that cannot be read fails the check — the box is reporting nothing.
@@ -166,27 +201,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         let recorded = runner_daemon::pool_reads::report(&dir, now);
         let mark = if recorded.is_err() { "✖" } else { "•" };
         failed |= recorded.is_err();
-        for line in super::status::pool_lines(&recorded, &cfg, now) {
+        for line in super::status::pool_lines(&recorded, cfg, now) {
             println!("{mark} {line}");
         }
     }
-
-    // End-to-end online checks: heartbeat (token + reachability) and the
-    // server-side assignment reconciliation. Gated behind `--offline`.
-    if args.offline {
-        println!("• online       skipped (--offline)");
-    } else {
-        failed |= online_checks(&ctx, &cfg).await;
-    }
-
-    if failed {
-        println!("\n✖ VERDICT      FAIL — fix the ✖ items above");
-        // Exit non-zero (not an anyhow::Err) so the checklist prints cleanly
-        // without an `Error:` trace while CI/install scripts see the failure.
-        std::process::exit(1);
-    }
-    println!("\n✔ VERDICT      PASS");
-    Ok(())
+    failed
 }
 
 /// What a human opening `claude` in a bound checkout would find.
@@ -247,10 +266,6 @@ fn access_token_row(
 /// Run the network section. Returns `true` if any check failed. Missing
 /// core_url/token is non-fatal (mirrors `cmd/runners.rs`) — we skip online
 /// checks and let the local verdict stand.
-#[expect(
-    clippy::too_many_lines,
-    reason = "a flat list of diagnostic rows printed in order; split per row it only grows (ISS-218 amnesty)"
-)]
 async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     // A store this box cannot parse is not a box that never paired. Read as
     // absent, this row told an operator to re-pair while the row above it
@@ -282,31 +297,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     let client = CoreClient::new(core_url.clone(), token);
     let mut failed = false;
 
-    // Heartbeat: 200 => token valid + core reachable; 401 => bad token/core_url.
-    match tokio::time::timeout(ONLINE_TIMEOUT, heartbeat::beat_verbose(&client)).await {
-        Ok(Ok(server_time)) => {
-            if server_time.is_empty() {
-                println!("✔ heartbeat    core reachable, token valid");
-            } else {
-                println!("✔ heartbeat    core reachable, token valid (serverTime {server_time})");
-            }
-        }
-        Ok(Err(Error::Unauthorized)) => {
-            println!("✖ heartbeat    401 — bad token/core_url, run `forge-runner login`");
-            failed = true;
-        }
-        Ok(Err(e)) => {
-            println!("✖ heartbeat    core unreachable — check core_url ({core_url}): {e}");
-            failed = true;
-        }
-        Err(_) => {
-            println!(
-                "✖ heartbeat    timeout after {}s — check core_url ({core_url})",
-                ONLINE_TIMEOUT.as_secs()
-            );
-            failed = true;
-        }
-    }
+    failed |= heartbeat_row(&client, &core_url).await;
 
     // Assignment reconciliation: server view vs local bindings/paths.
     match tokio::time::timeout(ONLINE_TIMEOUT, runners::list_me(&client)).await {
@@ -316,43 +307,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             }
             let mut mcp_rows = spawn_mcp_rows(&client, &rows);
             for r in &rows {
-                let local_path = cfg
-                    .bindings
-                    .iter()
-                    .find(|(_, b)| b.project_id.as_deref() == Some(r.project_id.as_str()))
-                    .map(|(_, b)| b.repo_path.clone());
-                let server_path = r
-                    .repo_path
-                    .as_deref()
-                    .filter(|p| !p.trim().is_empty())
-                    .map(std::path::PathBuf::from);
-
-                // Prefer the server's repo_path (the source of truth web + CLI
-                // both write via PATCH /me/runners) over the local binding;
-                // matches the precedence in `cmd/runners.rs`.
-                match server_path.or(local_path) {
-                    None => {
-                        println!(
-                            "✖ runner       {} assigned on the server but missing local repo_path (run `forge-runner bind {} --path <dir>`)",
-                            r.slug, r.slug
-                        );
-                        failed = true;
-                    }
-                    Some(p) => {
-                        let has_git = p.join(".git").exists();
-                        if has_git {
-                            println!("✔ runner       {} → {}", r.slug, p.display());
-                        } else {
-                            let why = if p.exists() {
-                                "no .git"
-                            } else {
-                                "directory does not exist"
-                            };
-                            println!("✖ runner       {} → {} ({why})", r.slug, p.display());
-                            failed = true;
-                        }
-                    }
-                }
+                failed |= runner_path_row(r, cfg);
 
                 if let Some(handle) = mcp_rows.remove(&r.project_id) {
                     failed |= print_mcp_row(&r.slug, handle.await.unwrap_or(None));
@@ -383,6 +338,79 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
         }
     }
 
+    failed
+}
+
+/// Heartbeat: 200 => token valid + core reachable; 401 => bad token/core_url. Returns `true` on failure.
+async fn heartbeat_row(client: &CoreClient, core_url: &str) -> bool {
+    let mut failed = false;
+    match tokio::time::timeout(ONLINE_TIMEOUT, heartbeat::beat_verbose(client)).await {
+        Ok(Ok(server_time)) => {
+            if server_time.is_empty() {
+                println!("✔ heartbeat    core reachable, token valid");
+            } else {
+                println!("✔ heartbeat    core reachable, token valid (serverTime {server_time})");
+            }
+        }
+        Ok(Err(Error::Unauthorized)) => {
+            println!("✖ heartbeat    401 — bad token/core_url, run `forge-runner login`");
+            failed = true;
+        }
+        Ok(Err(e)) => {
+            println!("✖ heartbeat    core unreachable — check core_url ({core_url}): {e}");
+            failed = true;
+        }
+        Err(_) => {
+            println!(
+                "✖ heartbeat    timeout after {}s — check core_url ({core_url})",
+                ONLINE_TIMEOUT.as_secs()
+            );
+            failed = true;
+        }
+    }
+    failed
+}
+
+/// The row for where one assigned project's checkout is. Returns `true` on failure.
+fn runner_path_row(r: &runners::MeRunner, cfg: &Config) -> bool {
+    let mut failed = false;
+    let local_path = cfg
+        .bindings
+        .iter()
+        .find(|(_, b)| b.project_id.as_deref() == Some(r.project_id.as_str()))
+        .map(|(_, b)| b.repo_path.clone());
+    let server_path = r
+        .repo_path
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+        .map(std::path::PathBuf::from);
+
+    // Prefer the server's repo_path (the source of truth web + CLI
+    // both write via PATCH /me/runners) over the local binding;
+    // matches the precedence in `cmd/runners.rs`.
+    match server_path.or(local_path) {
+        None => {
+            println!(
+                "✖ runner       {} assigned on the server but missing local repo_path (run `forge-runner bind {} --path <dir>`)",
+                r.slug, r.slug
+            );
+            failed = true;
+        }
+        Some(p) => {
+            let has_git = p.join(".git").exists();
+            if has_git {
+                println!("✔ runner       {} → {}", r.slug, p.display());
+            } else {
+                let why = if p.exists() {
+                    "no .git"
+                } else {
+                    "directory does not exist"
+                };
+                println!("✖ runner       {} → {} ({why})", r.slug, p.display());
+                failed = true;
+            }
+        }
+    }
     failed
 }
 

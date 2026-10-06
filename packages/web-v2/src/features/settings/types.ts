@@ -1,6 +1,4 @@
 import type { AnswerStyle } from "@forge/contracts/assistant-self";
-export type ThemePref = "system" | "light" | "dark";
-export type LanguagePref = "en" | "vi";
 
 export type { AnswerStyle, PreferenceChange } from "@forge/contracts/assistant-self";
 
@@ -8,16 +6,6 @@ export interface AssistantPreferences {
   answerStyle: AnswerStyle;
   /** Standing instructions the assistant follows in every reply to this person; null when none. */
   assistantInstructions: string | null;
-}
-
-export interface Preferences {
-  theme: ThemePref;
-  language: LanguagePref;
-  notifyOnMention: boolean;
-  /** The org the user is currently "working in" (ISS-469 global org switcher);
-   *  null = no explicit choice (client resolves to the personal org). */
-  activeOrgId: string | null;
-  updatedAt: string | null;
 }
 
 export type PatScope = "read" | "write";

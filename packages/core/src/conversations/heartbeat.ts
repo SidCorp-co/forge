@@ -197,7 +197,7 @@ export async function runHeartbeatTick(
   for (const room of rooms) {
     const verdict = await dbi.transaction(async (tx) => {
       await lockXact(tx, 'conversationHeartbeat', room.conversationId);
-      const due = heartbeatDue(await factsFor(room, now, tx as unknown as Executor));
+      const due = heartbeatDue(await factsFor(room, now, tx));
       if (!due.due) return due;
       await openOrExtendWindow(
         {
@@ -209,7 +209,7 @@ export async function runHeartbeatTick(
           origin: 'heartbeat',
           now,
         },
-        tx as unknown as Executor,
+        tx,
       );
       return due;
     });

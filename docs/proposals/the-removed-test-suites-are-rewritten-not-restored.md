@@ -22,7 +22,7 @@ largest, by tests:
 | `deriveStepOutcomes` | 13 | gone |
 | `useCodeTrace` | 11 | `features/modules/hooks.ts` — same name, the tests' shape no longer matches |
 | `groupedTransitions` | 10 | gone |
-| `useStuckRuns` | 10 | `features/sessions/hooks.ts` — same name, the tests' shape no longer matches |
+| `useStuckRuns` | 10 | `features/agents/hooks.ts` — same name, the tests' shape no longer matches |
 | `allowedTransitions` | 9 | gone |
 
 The popover tests (menu 11, select 10, peek-panel 4, slide-over 4, notifications-menu 4,

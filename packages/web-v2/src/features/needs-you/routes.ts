@@ -1,10 +1,10 @@
-import { reportHref, scheduleHref } from "@/features/automation/routes";
-import { contractHref } from "@/features/contracts/routes";
-import { feedbackHref } from "@/features/feedback/routes";
-import { issueHref, issuesHref } from "@/features/issues/routes";
-import { releaseHref } from "@/features/releases/routes";
-import { requirementHref } from "@/features/requirements/routes";
-import { workflowHref } from "@/features/workflows/routes";
+import { reportHref, scheduleHref } from "@/lib/routes/automation";
+import { contractHref } from "@/lib/routes/contracts";
+import { feedbackHref } from "@/lib/routes/feedback";
+import { issueHref, issuesHref } from "@/lib/routes/issues";
+import { releaseHref } from "@/lib/routes/releases";
+import { requirementHref } from "@/lib/routes/requirements";
+import { workflowHref } from "@/lib/routes/workflows";
 import type { NeedsYouItem } from "./types";
 
 /** The page a needs-you row opens, by what it is. */

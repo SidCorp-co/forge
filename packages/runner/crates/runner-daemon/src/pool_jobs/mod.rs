@@ -31,7 +31,7 @@ use runner_core::turn_evidence::{self, Evidence, Watch};
 use runner_platform::error::{Error, Result};
 use runner_transport::events::{self, JobEventInput};
 use runner_transport::mcp_servers::{self, ProjectMcpServers};
-use runner_transport::pool::{self, PoolEntry, Prepared, ReadFailure, Started};
+use runner_transport::pool::{self, PoolEntry, Prepared, PreparedJob, ReadFailure, Started};
 use runner_transport::{lifecycle, CoreClient};
 use runner_workspace::hook_install;
 use runner_workspace::terminal;
@@ -81,10 +81,178 @@ pub struct ServedProject<'a> {
     pub slug: &'a str,
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "taking one pool job from claim to an open pane; the steps share the claim (ISS-218 amnesty)"
-)]
+/// Ask core to prepare the job for this master session; a refusal or a failure is what `take_one` answers.
+async fn prepare(
+    pool_ports: &dyn Pool,
+    job_id: &str,
+    session_id: &str,
+    project_id: &str,
+) -> std::result::Result<Box<PreparedJob>, Took> {
+    match pool_ports.prepare(job_id, session_id).await {
+        Ok(Prepared::Took(p)) => Ok(p),
+        Ok(Prepared::Refused(r)) => {
+            tracing::info!(
+                "[pool] {project_id}: job {} not taken: {}",
+                job_id,
+                r.describe()
+            );
+            Err(Took::Refused(r.as_str().to_string()))
+        }
+        Err(e) => {
+            tracing::warn!("[pool] {project_id}: prepare failed: {e}");
+            Err(Took::PrepareFailed(e.to_string()))
+        }
+    }
+}
+
+/// What a pane for a prepared job starts from: its checkout, its prompt and the project's declared
+/// MCP servers. A job missing any of them is given back, and the refusal is what `take_one` answers.
+async fn launch_inputs(
+    pool_ports: &dyn Pool,
+    prepared: &PreparedJob,
+    session_id: &str,
+    project: ServedProject<'_>,
+) -> std::result::Result<(PathBuf, String, ProjectMcpServers), Took> {
+    let project_id = project.id;
+    let Some(cwd) = prepared.repo_path.as_deref().map(PathBuf::from) else {
+        give_back(pool_ports, &prepared.job_id, session_id).await;
+        tracing::error!(
+            "[pool] {project_id}: job {} given back — core prepared it with no checkout, so this device's binding to {} names none; bind one with `forge-runner bind {} --path <dir>`",
+            prepared.job_id,
+            project.slug,
+            project.slug
+        );
+        return Err(Took::GaveBack(prepared.job_id.clone()));
+    };
+    if !cwd.is_dir() {
+        give_back(pool_ports, &prepared.job_id, session_id).await;
+        tracing::error!(
+            "[pool] {project_id}: job {} given back — this box's device binding to {} names {}, which is not a directory here; rebind with `forge-runner bind {} --path <dir>`",
+            prepared.job_id,
+            project.slug,
+            cwd.display(),
+            project.slug
+        );
+        return Err(Took::GaveBack(prepared.job_id.clone()));
+    }
+
+    let Some(prompt) = prepared
+        .prompt_string
+        .clone()
+        .filter(|p| !p.trim().is_empty())
+    else {
+        give_back(pool_ports, &prepared.job_id, session_id).await;
+        tracing::error!(
+            "[pool] {project_id}: job {} was prepared with no prompt — given back",
+            prepared.job_id
+        );
+        return Err(Took::GaveBack(prepared.job_id.clone()));
+    };
+
+    let declared = match pool_ports.mcp_servers(project_id).await {
+        Ok(declared) => declared,
+        Err(e) => {
+            give_back(pool_ports, &prepared.job_id, session_id).await;
+            tracing::error!(
+                "[pool] {project_id}: job {} given back — this box could not read the project's declared MCP servers ({e}), and a pane started now would carry none of them",
+                prepared.job_id
+            );
+            return Err(Took::GaveBack(prepared.job_id.clone()));
+        }
+    };
+    Ok((cwd, prompt, declared))
+}
+
+/// Tell core the job started. A refusal kills the pane, or holds it under supervision when it will
+/// not close; no answer holds it for the next tick to ask whose job it is. `None` when core took it.
+async fn start_or_hold(
+    ports: &JobPorts<'_>,
+    registry: &JobPanes,
+    job_id: &str,
+    pane: &str,
+    opened: &Live,
+    session_id: &str,
+    project_id: &str,
+) -> Option<Took> {
+    match ports.pool.start(job_id, session_id).await {
+        Ok(Started::Ok) => None,
+        Ok(Started::Refused(r)) => {
+            if let Err(e) = ports.panes.kill(pane).await {
+                // The pane may still be working a job core refused, so the
+                // slot and the record stay: the next tick asks core again,
+                // hears the job is not this box's, and closes it then.
+                registry.hold(
+                    job_id,
+                    pane,
+                    opened.watch.clone(),
+                    None,
+                    None,
+                    opened.opened_at,
+                );
+                registry.note_project(job_id, project_id);
+                tracing::warn!(
+                    "[pool] {project_id}: start refused for job {} ({}) but {pane} would not close: {e} — kept under supervision, and the next tick closes it",
+                    job_id,
+                    r.as_str()
+                );
+                return Some(Took::Refused(r.as_str().to_string()));
+            }
+            ports.panes.released(pane).await;
+            ports.records.forget(job_id).await;
+            tracing::warn!(
+                "[pool] {project_id}: start refused for job {} ({}) — pane {pane} killed",
+                job_id,
+                r.as_str()
+            );
+            Some(Took::Refused(r.as_str().to_string()))
+        }
+        Err(e) => {
+            registry.hold(
+                job_id,
+                pane,
+                opened.watch.clone(),
+                None,
+                None,
+                opened.opened_at,
+            );
+            registry.note_project(job_id, project_id);
+            tracing::error!(
+                "[pool] {project_id}: start for job {} did not answer ({e}) — pane {pane} kept, and the next tick asks core whose job it is",
+                job_id
+            );
+            Some(Took::Unresolved(job_id.to_string()))
+        }
+    }
+}
+
+/// The record of a pane just opened for a job: watched through its hooks when a channel was opened.
+fn opened_live(job_id: &str, pane: &str, channel: Option<String>, opened_at: i64) -> Live {
+    let watch = match channel {
+        Some(session) => Watch::Hooked {
+            session_id: session,
+            delivered_at: now_ms(),
+        },
+        None => Watch::Unhooked,
+    };
+    Live {
+        job_id: job_id.to_string(),
+        pane: pane.to_string(),
+        watch,
+        seen: None,
+        transcript: None,
+        opened_at: Some(opened_at),
+    }
+}
+
+/// The MCP servers a started pane carries, as its log line names them.
+fn carrying(declared: &ProjectMcpServers) -> String {
+    if declared.resolved_names.is_empty() {
+        "no declared MCP servers".to_string()
+    } else {
+        declared.resolved_names.join(", ")
+    }
+}
+
 pub async fn take_one(
     ports: &JobPorts<'_>,
     registry: &JobPanes,
@@ -119,69 +287,17 @@ pub async fn take_one(
         return Took::NoMasterSession(entry.job_id);
     };
 
-    let prepared = match pool_ports.prepare(&entry.job_id, session_id).await {
-        Ok(Prepared::Took(p)) => p,
-        Ok(Prepared::Refused(r)) => {
-            tracing::info!(
-                "[pool] {project_id}: job {} not taken: {}",
-                entry.job_id,
-                r.describe()
-            );
-            return Took::Refused(r.as_str().to_string());
-        }
-        Err(e) => {
-            tracing::warn!("[pool] {project_id}: prepare failed: {e}");
-            return Took::PrepareFailed(e.to_string());
-        }
+    let prepared = match prepare(pool_ports, &entry.job_id, session_id, project_id).await {
+        Ok(prepared) => prepared,
+        Err(not_taken) => return not_taken,
     };
 
     let pane = pane_name(&prepared.job_id);
-    let Some(cwd) = prepared.repo_path.as_deref().map(PathBuf::from) else {
-        give_back(pool_ports, &prepared.job_id, session_id).await;
-        tracing::error!(
-            "[pool] {project_id}: job {} given back — core prepared it with no checkout, so this device's binding to {} names none; bind one with `forge-runner bind {} --path <dir>`",
-            prepared.job_id,
-            project.slug,
-            project.slug
-        );
-        return Took::GaveBack(prepared.job_id);
-    };
-    if !cwd.is_dir() {
-        give_back(pool_ports, &prepared.job_id, session_id).await;
-        tracing::error!(
-            "[pool] {project_id}: job {} given back — this box's device binding to {} names {}, which is not a directory here; rebind with `forge-runner bind {} --path <dir>`",
-            prepared.job_id,
-            project.slug,
-            cwd.display(),
-            project.slug
-        );
-        return Took::GaveBack(prepared.job_id);
-    }
-
-    let Some(prompt) = prepared
-        .prompt_string
-        .clone()
-        .filter(|p| !p.trim().is_empty())
-    else {
-        give_back(pool_ports, &prepared.job_id, session_id).await;
-        tracing::error!(
-            "[pool] {project_id}: job {} was prepared with no prompt — given back",
-            prepared.job_id
-        );
-        return Took::GaveBack(prepared.job_id);
-    };
-
-    let declared = match pool_ports.mcp_servers(project_id).await {
-        Ok(declared) => declared,
-        Err(e) => {
-            give_back(pool_ports, &prepared.job_id, session_id).await;
-            tracing::error!(
-                "[pool] {project_id}: job {} given back — this box could not read the project's declared MCP servers ({e}), and a pane started now would carry none of them",
-                prepared.job_id
-            );
-            return Took::GaveBack(prepared.job_id);
-        }
-    };
+    let (cwd, prompt, declared) =
+        match launch_inputs(pool_ports, &prepared, session_id, project).await {
+            Ok(inputs) => inputs,
+            Err(gave_back) => return gave_back,
+        };
 
     let (env, channel) = open_channel(
         &cwd,
@@ -213,61 +329,31 @@ pub async fn take_one(
         tracing::error!("[pool] {project_id}: could not open {pane}: {e} — hold given back");
         return Took::GaveBack(prepared.job_id);
     }
-    let watch = match channel {
-        Some(session) => Watch::Hooked {
-            session_id: session,
-            delivered_at: now_ms(),
-        },
-        None => Watch::Unhooked,
-    };
-
-    let opened = Live {
-        job_id: prepared.job_id.clone(),
-        pane: pane.clone(),
-        watch: watch.clone(),
-        seen: None,
-        transcript: None,
-        opened_at: Some(opened_at),
-    };
+    let opened = opened_live(&prepared.job_id, &pane, channel, opened_at);
     records.note(&opened).await;
 
-    match pool_ports.start(&prepared.job_id, session_id).await {
-        Ok(Started::Ok) => {}
-        Ok(Started::Refused(r)) => {
-            if let Err(e) = panes.kill(&pane).await {
-                // The pane may still be working a job core refused, so the
-                // slot and the record stay: the next tick asks core again,
-                // hears the job is not this box's, and closes it then.
-                registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
-                registry.note_project(&prepared.job_id, project_id);
-                tracing::warn!(
-                    "[pool] {project_id}: start refused for job {} ({}) but {pane} would not close: {e} — kept under supervision, and the next tick closes it",
-                    prepared.job_id,
-                    r.as_str()
-                );
-                return Took::Refused(r.as_str().to_string());
-            }
-            panes.released(&pane).await;
-            records.forget(&prepared.job_id).await;
-            tracing::warn!(
-                "[pool] {project_id}: start refused for job {} ({}) — pane {pane} killed",
-                prepared.job_id,
-                r.as_str()
-            );
-            return Took::Refused(r.as_str().to_string());
-        }
-        Err(e) => {
-            registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
-            registry.note_project(&prepared.job_id, project_id);
-            tracing::error!(
-                "[pool] {project_id}: start for job {} did not answer ({e}) — pane {pane} kept, and the next tick asks core whose job it is",
-                prepared.job_id
-            );
-            return Took::Unresolved(prepared.job_id);
-        }
+    if let Some(not_started) = start_or_hold(
+        ports,
+        registry,
+        &prepared.job_id,
+        &pane,
+        &opened,
+        session_id,
+        project_id,
+    )
+    .await
+    {
+        return not_started;
     }
 
-    registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
+    registry.hold(
+        &prepared.job_id,
+        &pane,
+        opened.watch,
+        None,
+        None,
+        opened.opened_at,
+    );
     registry.note_project(&prepared.job_id, project_id);
     if let Err(e) = report.ack(&prepared.job_id).await {
         tracing::warn!("[pool] ack for job {} failed: {e}", prepared.job_id);
@@ -276,11 +362,7 @@ pub async fn take_one(
         "[pool] {project_id}: job {} ({}) running in {pane}, carrying {}",
         prepared.job_id,
         prepared.job_type,
-        if declared.resolved_names.is_empty() {
-            "no declared MCP servers".to_string()
-        } else {
-            declared.resolved_names.join(", ")
-        }
+        carrying(&declared)
     );
     Took::Started(prepared.job_id)
 }

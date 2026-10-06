@@ -7,9 +7,9 @@ import { Button, IconButton, Input } from "@/design";
 import { fileBase64, mockupsApi } from "@/features/mockups/api";
 import { requirementsApi } from "@/features/requirements/api";
 import { formatApiError } from "@/lib/api/error";
-import { boardExporter, boardStore, useBoard } from "./board-store";
+import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
 
-const BoardCanvas = dynamic(() => import("./board-canvas"), {
+const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
   ssr: false,
   loading: () => <p className="fg-body-sm p-4 text-muted">Opening the board…</p>,
 });

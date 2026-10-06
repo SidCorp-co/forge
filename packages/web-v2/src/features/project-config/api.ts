@@ -9,7 +9,7 @@ import type {
 	V1Read,
 	V1Write,
 	V1Written,
-} from "./config-types";
+} from "./types";
 
 const put = (path: string, write: V1Write) =>
 	apiClient<V1Written>(path, { method: "PUT", body: JSON.stringify(write) });

@@ -70,7 +70,10 @@ impl Held {
 }
 
 /// What reporting a held checkout needs of core.
-#[allow(async_fn_in_trait)]
+#[expect(
+    async_fn_in_trait,
+    reason = "a test seam implemented only inside this workspace; no caller needs its future to be Send"
+)]
 pub trait HeldReporter {
     async fn report(&self, session_id: &str, held: &Held) -> runner_platform::error::Result<()>;
 }

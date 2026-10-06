@@ -8,7 +8,7 @@ import {
 	rebaseDocumentDraft,
 } from "@forge/contracts/document-patch";
 import { documentRefusals, type Refusal } from "@/lib/api/refusals";
-import type { V1Document } from "./config-types";
+import type { V1Document } from "./types";
 
 export const STALE_BASE = "STALE_BASE";
 

@@ -1,5 +1,5 @@
 import { isPlainObject } from "@forge/contracts/document-patch";
-import { pointerOf } from "./document-edit";
+import { pointerOf } from "@/features/project-config/document-edit";
 
 export const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const SECRET_REF = /^secret:\/\/([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})$/;

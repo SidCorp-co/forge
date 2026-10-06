@@ -53,10 +53,42 @@ pub(crate) fn run_choice(
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one match over the run-declaration verbs (ISS-218 amnesty)"
-)]
+/// The refusal for a pane resumed holding runs it has not answered for, if it holds any.
+fn unanswered_inherited(
+    led: &runner_core::ledger::Ledger,
+    session_id: &str,
+    boot_id: &str,
+) -> Option<ClaimReply> {
+    match led.runs_awaiting_choice(session_id, boot_id) {
+        Ok(pending) if !pending.is_empty() => {
+            let names: Vec<String> = pending
+                .iter()
+                .map(|r| {
+                    let keys = led
+                        .issues(&r.run_id)
+                        .map(|m| {
+                            m.iter()
+                                .map(|i| i.issue_key.clone())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    format!("{} ({keys})", r.run_id)
+                })
+                .collect();
+            Some(ClaimReply::refused(format!(
+                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Answer each one with `forge-runner run choice <run-id> continue|restart|leave --reason \"<why>\"` before declaring new work. Closing a run is not answering for it: the close records that the row ended, not what you decided, and a reason written there reaches no issue.",
+                pending.len(),
+                names.join("; ")
+            )))
+        }
+        Ok(_) => None,
+        Err(e) => Some(ClaimReply::refused(format!(
+            "cannot read this pane's inherited runs: {e}"
+        ))),
+    }
+}
+
 pub(crate) fn run_declare_as(
     ctl: &Arc<Control>,
     holder: &Holder,
@@ -111,33 +143,8 @@ pub(crate) fn run_declare_as(
     let Some(led) = held.as_mut() else {
         return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
     };
-    match led.runs_awaiting_choice(session_id, &ctl.boot_id) {
-        Ok(pending) if !pending.is_empty() => {
-            let names: Vec<String> = pending
-                .iter()
-                .map(|r| {
-                    let keys = led
-                        .issues(&r.run_id)
-                        .map(|m| {
-                            m.iter()
-                                .map(|i| i.issue_key.clone())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        })
-                        .unwrap_or_default();
-                    format!("{} ({keys})", r.run_id)
-                })
-                .collect();
-            return ClaimReply::refused(format!(
-                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Answer each one with `forge-runner run choice <run-id> continue|restart|leave --reason \"<why>\"` before declaring new work. Closing a run is not answering for it: the close records that the row ended, not what you decided, and a reason written there reaches no issue.",
-                pending.len(),
-                names.join("; ")
-            ));
-        }
-        Ok(_) => {}
-        Err(e) => {
-            return ClaimReply::refused(format!("cannot read this pane's inherited runs: {e}"));
-        }
+    if let Some(refused) = unanswered_inherited(led, session_id, &ctl.boot_id) {
+        return refused;
     }
     let new_run = |session: &str| runner_core::ledger::NewRun {
         run_id: run_id.clone(),

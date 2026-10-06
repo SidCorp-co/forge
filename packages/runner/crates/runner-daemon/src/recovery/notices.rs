@@ -187,10 +187,6 @@ pub(crate) fn standing_notice(standing: Standing, state: &CloseState) -> &'stati
 /// it. Answers whether it has been said, now or on an earlier sweep, so the
 /// sweep's own per-sweep line can stand down; a notice that could not be
 /// recorded answers `false` and leaves that line to speak.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one notice per recovery outcome, in order (ISS-218 amnesty)"
-)]
 pub(crate) fn say_standing(
     ledger: &Ledger,
     run: &Run,
@@ -224,27 +220,7 @@ pub(crate) fn say_standing(
     );
     match standing {
         Standing::Unanswered => {
-            let what_ends_it = if !state.session_terminal {
-                format!(
-                    "core still holds its session open, and the bound of {}m starts when core \
-                     calls it over",
-                    UNANSWERED_RELEASE_AFTER.as_secs() / 60
-                )
-            } else if !state.checkout_returned {
-                format!(
-                    "its checkout {} is released once core has called its session over for {}m \
-                     ({}, now)",
-                    run.worktree_path.display(),
-                    UNANSWERED_RELEASE_AFTER.as_secs() / 60,
-                    silence_evidence(run)
-                )
-            } else {
-                format!(
-                    "its checkout is back and only its leases ({}/{} returned) are still being \
-                     asked back",
-                    state.leases_returned, state.leases_total
-                )
-            };
+            let what_ends_it = unanswered_ends(run, state);
             tracing::warn!(
                 "[recovery] run {} ({issues}) is partially closed ({holds}): no master on this box \
                  answers for it (it answered to {}), so {what_ends_it}. Said once; what ends it \
@@ -285,40 +261,7 @@ pub(crate) fn say_standing(
         )
         }
         Standing::AwaitingCore => {
-            // The two marks this box cannot set itself, said apart: a session
-            // core still holds open and a lease core has not handed back are
-            // different facts and a line covering both names no act (ISS-1239).
-            //
-            // Neither says an ask has stopped, so neither names a verb that
-            // restarts one. `forge-runner run release` is the `Decided` arm's
-            // act and is correct there because that arm's condition is
-            // `release_terminal_at` SET; this arm is only reached while it is
-            // NULL, which is the very condition `cmd/run.rs::retract` bails on
-            // — so naming it here names an act nobody can take, and an
-            // operator who takes it once, on a line said once, is told nothing
-            // again. What the reader is pointed at instead is the ask that is
-            // running and the line that carries core's refusal, which repeats
-            // on every sweep and so is still there when they look. That the
-            // ask is in the sweep at all is held by `master.rs`'s own
-            // `depth_of_call_in_sweep("run_record::close_ended_runs(")`.
-            let what_ends_it = if !state.session_terminal {
-                format!(
-                    "core's session row for {} is not over yet, and this box asks core to close \
-                     it again on every sweep, so the run ends within a sweep of core taking that \
-                     close; where core refuses, `[run-record] run {}: core would not take the \
-                     close` carries the reason, every sweep",
-                    run.session_id.as_deref().unwrap_or("this run"),
-                    run.run_id,
-                )
-            } else {
-                format!(
-                    "its checkout is back and {}/{} of its leases are, and this box asks core for \
-                     the rest on every sweep, so the run ends within a sweep of core handing them \
-                     back; where core refuses, `[close] run={} <issue>: lease release refused` \
-                     carries the reason, every sweep",
-                    state.leases_returned, state.leases_total, run.run_id,
-                )
-            };
+            let what_ends_it = awaiting_core_ends(run, state);
             tracing::warn!(
                 "[recovery] run {} ({issues}) is partially closed ({holds}): every mark it has \
                  left is core's to set and this box is still asking — {what_ends_it}. There is no \
@@ -332,6 +275,69 @@ pub(crate) fn say_standing(
         }
     }
     true
+}
+
+/// What ends an unanswered run's standing, by which of its marks is still out.
+fn unanswered_ends(run: &Run, state: &CloseState) -> String {
+    if !state.session_terminal {
+        format!(
+            "core still holds its session open, and the bound of {}m starts when core \
+             calls it over",
+            UNANSWERED_RELEASE_AFTER.as_secs() / 60
+        )
+    } else if !state.checkout_returned {
+        format!(
+            "its checkout {} is released once core has called its session over for {}m \
+             ({}, now)",
+            run.worktree_path.display(),
+            UNANSWERED_RELEASE_AFTER.as_secs() / 60,
+            silence_evidence(run)
+        )
+    } else {
+        format!(
+            "its checkout is back and only its leases ({}/{} returned) are still being \
+             asked back",
+            state.leases_returned, state.leases_total
+        )
+    }
+}
+
+/// What ends a run whose remaining marks are core's to set.
+fn awaiting_core_ends(run: &Run, state: &CloseState) -> String {
+    // The two marks this box cannot set itself, said apart: a session
+    // core still holds open and a lease core has not handed back are
+    // different facts and a line covering both names no act (ISS-1239).
+    //
+    // Neither says an ask has stopped, so neither names a verb that
+    // restarts one. `forge-runner run release` is the `Decided` arm's
+    // act and is correct there because that arm's condition is
+    // `release_terminal_at` SET; this arm is only reached while it is
+    // NULL, which is the very condition `cmd/run.rs::retract` bails on
+    // — so naming it here names an act nobody can take, and an
+    // operator who takes it once, on a line said once, is told nothing
+    // again. What the reader is pointed at instead is the ask that is
+    // running and the line that carries core's refusal, which repeats
+    // on every sweep and so is still there when they look. That the
+    // ask is in the sweep at all is held by `master.rs`'s own
+    // `depth_of_call_in_sweep("run_record::close_ended_runs(")`.
+    if !state.session_terminal {
+        format!(
+            "core's session row for {} is not over yet, and this box asks core to close \
+             it again on every sweep, so the run ends within a sweep of core taking that \
+             close; where core refuses, `[run-record] run {}: core would not take the \
+             close` carries the reason, every sweep",
+            run.session_id.as_deref().unwrap_or("this run"),
+            run.run_id,
+        )
+    } else {
+        format!(
+            "its checkout is back and {}/{} of its leases are, and this box asks core for \
+             the rest on every sweep, so the run ends within a sweep of core handing them \
+             back; where core refuses, `[close] run={} <issue>: lease release refused` \
+             carries the reason, every sweep",
+            state.leases_returned, state.leases_total, run.run_id,
+        )
+    }
 }
 
 /// Say once, in the journal and on the row, why a subagent run that looks

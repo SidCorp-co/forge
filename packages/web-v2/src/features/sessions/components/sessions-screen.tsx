@@ -24,10 +24,9 @@ import {
   useRerunSession,
   useRetrySession,
   useSessions,
-  useStuckRuns,
   useSweepZombies,
 } from "../hooks";
-import { deriveSessionDisplayStatus, type SessionFilter } from "../types";
+import { deriveSessionDisplayStatus, type SessionFilter, type StuckRuns } from "../types";
 import {
   FILTERS,
   FILTER_LABEL,
@@ -44,12 +43,11 @@ import { SessionList } from "./session-rows";
 import { SessionsHeader } from "./sessions-header";
 import { orderByOwner } from "./session-tree";
 
-export function SessionsScreen({ projectId }: { projectId: string }) {
+export function SessionsScreen({ projectId, stuck }: { projectId: string; stuck: StuckRuns }) {
   // Counts and tabs are computed over one page of the newest sessions; the pager and its caption
   // say which page, so a tab never claims to cover sessions it was not given.
   const [page, setPage] = useState(1);
   const sessionsQ = useSessions({ projectId, page });
-  const stuck = useStuckRuns(projectId);
   const total = sessionsQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / SESSIONS_PAGE_SIZE));
   const [filter, setFilter] = useState<SessionFilter>("all");

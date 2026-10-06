@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge, Banner, Button, PageSectionTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useSecretNames, useTestingProfiles, useWriteSecret } from "../config-hooks";
+import { useSecretNames, useTestingProfiles, useWriteSecret } from "@/features/project-config/hooks";
 import { NAME, type SecretStanding, secretUsesIn, standingOf } from "../secret-refs";
 
 

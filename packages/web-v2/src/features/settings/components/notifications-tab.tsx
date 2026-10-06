@@ -36,12 +36,8 @@ import {
 } from "@/lib/notifications/sound";
 import { deliveryResolved, liveBody } from "@/features/notifications/map";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
-import {
-  useMarkAllRead,
-  useNotifications,
-  usePreferences,
-  useUpdatePreferences,
-} from "../hooks";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
+import { useMarkAllRead, useNotifications } from "../hooks";
 import type { NotificationRow } from "../types";
 
 const SKELETON_ROWS = ["a", "b", "c", "d", "e"] as const;

@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
-import { issueHref } from "@/features/issues/routes";
-import { requirementHref } from "@/features/requirements/routes";
-import { moduleHref } from "../routes";
+import { issueHref } from "@/lib/routes/issues";
+import { requirementHref } from "@/lib/routes/requirements";
+import { moduleHref } from "@/lib/routes/modules";
 import type { ModuleActiveIssue, ModuleDetail } from "../types";
 
 const SHOWN = 8;

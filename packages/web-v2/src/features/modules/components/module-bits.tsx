@@ -5,7 +5,7 @@ import { MODULE_ATTENTION_LABELS, MODULE_OPEN_KINDS } from "@forge/contracts/mod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type BannerTone, Button, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import { formatStamp } from "@/lib/utils/format";
 import type { ModuleAttentionGroup, ModuleActivityDay, ModuleLanding, ModuleStanding } from "../types";
 

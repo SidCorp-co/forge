@@ -126,7 +126,10 @@ export const db: Db = new Proxy({} as Db, {
   has: (_target, prop) => prop in (currentDb() as object),
 });
 
-export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+/** A transaction, never the pool: for a write that must commit with its caller's. */
+export type TxOnly = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+export type Tx = Db | TxOnly;
 
 export async function closeDb(): Promise<void> {
   if (queryClient === undefined) return;

@@ -2,7 +2,7 @@
 
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useFeedbackItem } from "../hooks";
-import { FEEDBACK_LIST, feedbackListHref } from "../routes";
+import { FEEDBACK_LIST, feedbackListHref } from "@/lib/routes/feedback";
 import { FeedbackPage, FeedbackPrimary, useFeedbackTab } from "./feedback-detail";
 
 // The shell's top bar is the page's sticky header (the shared DetailHeader): "← Feedback" back

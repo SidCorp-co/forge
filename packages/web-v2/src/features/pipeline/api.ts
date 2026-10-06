@@ -58,19 +58,6 @@ export const pipelineApi = {
   /** `GET /api/pipeline-runs/:id` — full run rollup (steps + cost). */
   run: (id: string) => apiClient<PipelineRunSummary>(`/pipeline-runs/${id}`),
 
-  /** `POST /api/pipeline-runs/:id/pause`. */
-  pause: (id: string) => apiClient<unknown>(`/pipeline-runs/${id}/pause`, { method: "POST" }),
-
-  /** `POST /api/pipeline-runs/:id/resume`. */
-  resume: (id: string) => apiClient<unknown>(`/pipeline-runs/${id}/resume`, { method: "POST" }),
-
-  /** `POST /api/pipeline-runs/:id/cancel`. */
-  cancel: (id: string) =>
-    apiClient<{ issueParked: boolean; parkRefused: { code: string; detail: string } | null }>(
-      `/pipeline-runs/${id}/cancel`,
-      { method: "POST" },
-    ),
-
   stepDurations: (opts: AnalyticsOpts = {}) =>
     apiClient<StepDurationRow[]>(`/pipeline/step-durations?${analyticsParams(opts)}`),
 

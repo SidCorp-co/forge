@@ -9,11 +9,11 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Button, Input, showToast, Tooltip } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { type DockDoor, useChatDock } from "@/features/conversations/dock";
+import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
-import { requirementHref } from "../routes";
+import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementDetail } from "../types";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */

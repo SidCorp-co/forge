@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { automationKey } from "@/features/automation/hooks";
 import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { agentReportsApi } from "./api";
+import { agentReportsApi } from "./report-api";
 
 const DONE: Record<TriageAgentReportRequest["act"], string> = {
   file: "Filed",

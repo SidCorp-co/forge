@@ -3,7 +3,7 @@
 import { DetailHeader, ErrorState, ProjectLoader, StatusBadge, useListOrigin, useUrlTab } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useContractDetail } from "../hooks";
-import { CONTRACTS_LIST, contractsHref } from "../routes";
+import { CONTRACTS_LIST, contractsHref } from "@/lib/routes/contracts";
 import { ContractAction } from "./contract-bits";
 import { CONTRACT_TABS, ContractPage } from "./contract-detail";
 

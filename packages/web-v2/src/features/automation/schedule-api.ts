@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api/client";
-import type { ScheduleInput, ScheduleRow } from "./types";
+import type { ScheduleInput, ScheduleRow } from "./schedule-types";
 
 export const schedulesApi = {
   list: (projectId: string) =>

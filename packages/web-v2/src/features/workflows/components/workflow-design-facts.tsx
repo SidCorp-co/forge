@@ -4,8 +4,8 @@ import { HEALTH_MARKER_KINDS, HEALTH_MARKER_LABELS, type WorkflowHealth } from "
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
-import { issueHref } from "@/features/issues/routes";
-import { requirementHref } from "@/features/requirements/routes";
+import { issueHref } from "@/lib/routes/issues";
+import { requirementHref } from "@/lib/routes/requirements";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";

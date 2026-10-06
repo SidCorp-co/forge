@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { StatusBadge } from "@/design";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import type { OverviewChain, OverviewChainNode, OverviewStuck } from "../types";
 
 function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {

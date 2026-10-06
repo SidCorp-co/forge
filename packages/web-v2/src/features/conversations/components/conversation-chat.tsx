@@ -73,8 +73,7 @@ export function ConversationChat({
   const [membersOpen, setMembersOpen] = useState(false);
   const resolvedId = conversationId ?? activeId;
 
-  const projectsQ = useProjects();
-  const projectRow = projectsQ.data?.find((p) => p.id === projectId);
+  const projectRow = useProjects().data?.find((p) => p.id === projectId);
   const canWrite = canWriteProject(projectRow?.role);
 
   const roomQ = useConversation(resolvedId);
@@ -140,9 +139,7 @@ export function ConversationChat({
   });
 
   const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
-  const settledMode: ConversationMode | null = settled
-    ? (roomQ.data?.mode ?? "assistant")
-    : null;
+  const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
   const agentOffer =
     roomQ.data?.agentMode ??
@@ -296,6 +293,7 @@ export function ConversationChat({
             <ThreadDataProvider
               value={{
                 projectId,
+                projectSlug: projectRow?.slug,
                 conversationId: resolvedId ?? "",
                 kind: roomQ.data?.kind ?? null,
                 questionnaires: roomQ.data?.questionnaires ?? [],

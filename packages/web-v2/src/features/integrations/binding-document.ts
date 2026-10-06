@@ -1,5 +1,5 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts/integrations";
-import { schemaUrl } from "@/features/project-settings/document-edit";
+import { schemaUrl } from "@/features/project-config/document-edit";
 import { providerModule } from "./providers/registry";
 
 const RELEASE_RUNNER_LABEL = "releaseRunnerLabel";

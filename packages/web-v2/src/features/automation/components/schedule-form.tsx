@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import { Button, Field, Input, NativeSelect, Textarea } from "@/design";
-import type { ScheduleInput, ScheduleKind, ScheduleRow } from "@/features/schedules/types";
+import type { ScheduleInput, ScheduleKind, ScheduleRow } from "@/features/automation/schedule-types";
 import { formatRefusal } from "@/lib/api/error";
 
 const KIND_OPTIONS: { value: ScheduleKind; label: string }[] = [

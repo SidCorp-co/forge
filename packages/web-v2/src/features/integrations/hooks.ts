@@ -1,7 +1,7 @@
 "use client";
 
 import { useOrgs } from "@/features/orgs/hooks";
-import { invalidateBindingChange } from "@/features/project-settings/config-hooks";
+import { invalidateBindingChange } from "@/features/project-config/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";

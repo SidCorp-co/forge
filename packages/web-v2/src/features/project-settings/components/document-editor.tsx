@@ -6,7 +6,7 @@ import { Banner, Button, PageSectionTitle, MonoTag, Tabs, Textarea } from "@/des
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, type Refusal, readRefusal } from "@/lib/api/refusals";
-import type { V1Document, V1Read, V1Write, V1Written } from "../config-types";
+import type { V1Document, V1Read, V1Write, V1Written } from "@/features/project-config/types";
 import {
 	isStaleBase,
 	movedSince,
@@ -15,7 +15,7 @@ import {
 	sameDocument,
 	setAt,
 	STALE_BASE,
-} from "../document-edit";
+} from "@/features/project-config/document-edit";
 import { DocumentFields } from "./document-fields";
 
 interface Held {

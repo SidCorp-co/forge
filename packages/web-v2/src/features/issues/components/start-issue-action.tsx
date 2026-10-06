@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
-import type { V1Read } from "@/features/project-settings/config-types";
+import type { V1Read } from "@/features/project-config/types";
 import type { ProjectMember } from "@/features/projects/types";
 import { canWriteProject } from "@/features/projects/write-access";
 import { formatRelativeTime } from "@/lib/utils/format";

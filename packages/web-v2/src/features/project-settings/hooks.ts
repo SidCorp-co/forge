@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ProjectDetail } from "@/features/projects/types";
 import { projectSettingsApi } from "./api";
-import { releaseReadinessKey, useToastedMutation } from "./config-hooks";
+import { releaseReadinessKey, useToastedMutation } from "@/features/project-config/hooks";
 import type { LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 
 const project = (id: string | undefined) => ["project", id];

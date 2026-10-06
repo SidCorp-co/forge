@@ -42,7 +42,7 @@
         "path": ".arch.baseline.json",
         "keyBy": "contract|subject",
         "improves": "down",
-        "$compositionRoots": "A declared exemption, not a freeze: packages/core/src/index.ts, route-registry.ts, work-ports.ts, execution-ports.ts, integration-registry.ts, timer-registry.ts and outbox-consumers.ts are in .arch.json's exclude (ISS-225): each is a composition root that wires every module at boot, so its fan-out is its purpose. They are named file by file; any other file is still held to 6."
+        "$compositionRoots": "A declared exemption, not a freeze: packages/core/src/index.ts, route-registry.ts, work-ports.ts, execution-ports.ts, integration-registry.ts, timer-registry.ts and outbox-consumers.ts are in .arch.json's exclude (ISS-225): each is a composition root that wires every module at boot, so its fan-out is its purpose. web-v2's app/(workspace)/layout.tsx and app/(workspace)/projects/[slug]/page.tsx are excluded on the same ground: each web feature is its own archmap module (TD-S1), and these two route files compose them. They are named file by file; any other file is still held to 6."
       }
     },
     "behaviour": {

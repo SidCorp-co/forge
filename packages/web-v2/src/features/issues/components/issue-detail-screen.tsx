@@ -22,12 +22,10 @@ import {
   useListOrigin,
   useUrlTab,
 } from "@/design";
-import { useResumeRun } from "@/features/pipeline/hooks";
-import { usePolicyDocument } from "@/features/project-settings/config-hooks";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
+import { useResumeRun } from "@/features/run-control/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
-import { useRecents } from "@/features/shell";
+import { useRecents } from "@/lib/navigation/recents";
+import { useIssueProject } from "./use-issue-project";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -59,7 +57,7 @@ import {
   usePatchIssue,
   useProjectMembers,
 } from "../hooks";
-import { ISSUES_LIST, issuesHref } from "../routes";
+import { ISSUES_LIST, issuesHref } from "@/lib/routes/issues";
 import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";
@@ -100,10 +98,7 @@ export function IssueDetailScreen({
 
   useRoom(projectRoom(projectId));
 
-  const projectsQ = useProjects();
-  const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
-  const canWrite = canWriteProject(projectRole);
-  const policyQ = usePolicyDocument(projectId);
+  const { projectRole, canWrite, policyQ } = useIssueProject(projectId);
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
   // ISS-1160 — `id` off the URL is the display key as often as the row uuid;

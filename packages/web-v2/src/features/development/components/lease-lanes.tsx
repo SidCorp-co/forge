@@ -3,7 +3,7 @@
 import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
 import { HoverCard, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import { formatStamp } from "@/lib/utils/format";
 import type { OverviewLane, OverviewMoving } from "../types";
 

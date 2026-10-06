@@ -69,7 +69,7 @@ export async function startOnboarding(input: {
     const existing = await onboardingOf(tx, projectId);
     const refusal = startRefusal(existing, await liveJobOf(tx, projectId));
     if (refusal) return [refusal];
-    const handle = tx as unknown as typeof db;
+    const handle = tx;
     const room = await openConversationIn(handle, {
       adapter: 'web',
       externalId: randomUUID(),
@@ -172,7 +172,7 @@ export async function joinOnboarding(input: { projectId: string; actor: Onboardi
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   // addPerson inserts nothing for a person already present (the live-participant unique index).
   await db.transaction(async (tx) => {
-    const handle = tx as unknown as typeof db;
+    const handle = tx;
     await addPerson({
       conversationId: row.conversationId,
       userId: input.actor.userId,

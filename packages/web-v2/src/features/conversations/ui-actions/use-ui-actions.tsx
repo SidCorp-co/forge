@@ -16,8 +16,8 @@ import {
   readUiCall,
   uiSnapshotOf,
 } from "./actions";
-import { issueSelectionBridge, useSelectedIssueKeys } from "./selection-bridge";
-import { useBoard } from "../board/board-store";
+import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock/selection-bridge";
+import { useBoard } from "@/features/board/board-store";
 
 interface UiCallRecord {
   callId: string;

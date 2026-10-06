@@ -31,15 +31,15 @@ import {
   WaitingOn,
 } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
-import { useTriageAgentReport } from "@/features/agent-reports/hooks";
+import { useTriageAgentReport } from "@/features/automation/report-hooks";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
-import { feedbackHref } from "@/features/feedback/routes";
-import { issueHref } from "@/features/issues/routes";
+import { feedbackHref } from "@/lib/routes/feedback";
+import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "../routes";
+import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { ReportStanding } from "../types";
 import { shortId } from "../view";
 

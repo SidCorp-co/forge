@@ -26,7 +26,6 @@ export {
   readConversationAgentTurns,
   turnState,
 } from './conversation-agent-read.js';
-export type { TxOnly } from './db-executor.js';
 export {
   CORRECTIVE_PREFIX,
   emptyFallbackReply,

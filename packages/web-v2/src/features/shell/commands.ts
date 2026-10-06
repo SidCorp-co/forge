@@ -4,8 +4,8 @@
 import type { Command, ToastView } from "@/design";
 import type { ProjectListItem } from "@/features/projects/types";
 import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "./nav-model";
-import type { PinnedView } from "./pinned-views";
-import type { RecentEntry } from "./recents";
+import type { PinnedView } from "@/lib/navigation/pinned-views";
+import type { RecentEntry } from "@/lib/navigation/recents";
 
 interface WorkspaceCommandDeps {
   router: { push: (href: string) => void };

@@ -7,7 +7,7 @@
 
 import { and, asc, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db as defaultDb } from '../db/client.js';
+import { db as defaultDb, type TxOnly } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
   type ConversationAdapter,
@@ -17,7 +17,7 @@ import {
 } from '../db/schema-conversations.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { asBlocks } from './canonical-entry.js';
-import type { Executor, TxOnly } from './db-executor.js';
+import type { Executor } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
@@ -105,7 +105,7 @@ export async function openConversation(
     return seen;
   }
 
-  return dbi.transaction((tx) => openConversationIn(tx as unknown as Executor, venue));
+  return dbi.transaction((tx) => openConversationIn(tx, venue));
 }
 
 /**

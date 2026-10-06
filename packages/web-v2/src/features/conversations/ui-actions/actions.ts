@@ -17,9 +17,9 @@ import {
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, describeWireframe } from "@forge/contracts/wireframe";
-import { boardStore } from "../board/board-store";
-import { assistantFilters } from "./assistant-filters";
-import type { IssueSelectionBridge } from "./selection-bridge";
+import { boardStore } from "@/features/board/board-store";
+import { assistantFilters } from "@/features/chat-dock/assistant-filters";
+import type { IssueSelectionBridge } from "@/features/chat-dock/selection-bridge";
 
 /** The URL params each filter field lives in on the Issues list. */
 const FIELD_PARAM: Record<UiIssueFilterField, string> = {

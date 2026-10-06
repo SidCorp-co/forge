@@ -2,13 +2,10 @@
 // messages, its project handle, its reply window and its readers. The composition root provides
 // them at boot.
 
-import type { db } from '../db/client.js';
+import type { TxOnly } from '../db/client.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { BatchRow } from './read.js';
-
-/** A transaction, never the pool: the questionnaire writes and its room message commit together. */
-export type TxOnly = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 
 interface QuestionnaireMessage {
   role: 'assistant' | 'user';

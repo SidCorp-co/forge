@@ -17,7 +17,10 @@ use runner_core::checkpoint;
 use runner_core::ledger::Ledger;
 use runner_transport::{run_sessions, CoreClient};
 
-#[allow(async_fn_in_trait)]
+#[expect(
+    async_fn_in_trait,
+    reason = "a test seam implemented only inside this workspace; no caller needs its future to be Send"
+)]
 pub trait SessionOpener {
     async fn open(
         &self,
@@ -213,7 +216,10 @@ pub async fn close_ended_runs(
 }
 
 /// What closing a run needs of core.
-#[allow(async_fn_in_trait)]
+#[expect(
+    async_fn_in_trait,
+    reason = "a test seam implemented only inside this workspace; no caller needs its future to be Send"
+)]
 pub trait SessionCloser {
     async fn close(
         &self,

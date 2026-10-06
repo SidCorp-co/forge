@@ -40,7 +40,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFeedbackList } from "../hooks";
-import { FEEDBACK_LIST, feedbackHref } from "../routes";
+import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
 import { FeedbackPeek } from "./feedback-peek";

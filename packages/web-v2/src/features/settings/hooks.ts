@@ -5,28 +5,6 @@ import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { settingsApi } from "./api";
 
-export function usePreferences() {
-  return useQuery({
-    queryKey: ["settings", "preferences"],
-    queryFn: settingsApi.getPreferences,
-  });
-}
-
-export function useUpdatePreferences() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: settingsApi.updatePreferences,
-    onSuccess: (data) => {
-      qc.setQueryData(["settings", "preferences"], data);
-      toast({ title: "Preferences saved", tone: "success" });
-    },
-    onError: (err) => {
-      toast({ title: "Couldn't save preferences", description: formatApiError(err), tone: "error" });
-    },
-  });
-}
-
 export function useTokens() {
   return useQuery({
     queryKey: ["settings", "tokens"],

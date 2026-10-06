@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { type BannerTone, Button, LEGEND, MarkStrip, statusReading, WaitBanner } from "@/design";
-import { feedbackHref } from "@/features/feedback/routes";
-import { issueHref } from "@/features/issues/routes";
-import { requirementHref } from "@/features/requirements/routes";
+import { feedbackHref } from "@/lib/routes/feedback";
+import { issueHref } from "@/lib/routes/issues";
+import { requirementHref } from "@/lib/routes/requirements";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractAttentionGroup, ContractConsumerView, ContractStandingRow } from "../types";
 

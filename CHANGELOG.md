@@ -10,6 +10,10 @@
 
 ### Changed
 
+- **Comments refresh live, and realtime frames are typed.** An open thread hears each comment
+  move; web reads frames through a shared contract; web features import one way only, held by
+  archmap.
+
 - **A newly gated scope's first freeze is not read as debt that grew.** The size ratchet compares
   only scopes its checker already measured at the base; web-v2's first freeze passes, growth fails.
 

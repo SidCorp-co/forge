@@ -25,7 +25,7 @@ import {
 	Skeleton,
 	enumLabel,
 } from "@/design";
-import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { useProjectDocument } from "@/features/project-config/hooks";
 import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";

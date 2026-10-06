@@ -194,6 +194,141 @@
     "web-features": [
       "packages/web-v2/src/features/**"
     ],
+    "web-feature-agent-accounts": [
+      "packages/web-v2/src/features/agent-accounts/**"
+    ],
+    "web-feature-agents": [
+      "packages/web-v2/src/features/agents/**"
+    ],
+    "web-feature-attention": [
+      "packages/web-v2/src/features/attention/**"
+    ],
+    "web-feature-auth": [
+      "packages/web-v2/src/features/auth/**"
+    ],
+    "web-feature-automation": [
+      "packages/web-v2/src/features/automation/**"
+    ],
+    "web-feature-board": [
+      "packages/web-v2/src/features/board/**"
+    ],
+    "web-feature-chat": [
+      "packages/web-v2/src/features/chat/**"
+    ],
+    "web-feature-chat-dock": [
+      "packages/web-v2/src/features/chat-dock/**"
+    ],
+    "web-feature-comments": [
+      "packages/web-v2/src/features/comments/**"
+    ],
+    "web-feature-contracts": [
+      "packages/web-v2/src/features/contracts/**"
+    ],
+    "web-feature-conversations": [
+      "packages/web-v2/src/features/conversations/**"
+    ],
+    "web-feature-development": [
+      "packages/web-v2/src/features/development/**"
+    ],
+    "web-feature-docs": [
+      "packages/web-v2/src/features/docs/**"
+    ],
+    "web-feature-ecosystem": [
+      "packages/web-v2/src/features/ecosystem/**"
+    ],
+    "web-feature-feedback": [
+      "packages/web-v2/src/features/feedback/**"
+    ],
+    "web-feature-guides": [
+      "packages/web-v2/src/features/guides/**"
+    ],
+    "web-feature-integrations": [
+      "packages/web-v2/src/features/integrations/**"
+    ],
+    "web-feature-issues": [
+      "packages/web-v2/src/features/issues/**"
+    ],
+    "web-feature-mockups": [
+      "packages/web-v2/src/features/mockups/**"
+    ],
+    "web-feature-modules": [
+      "packages/web-v2/src/features/modules/**"
+    ],
+    "web-feature-needs-you": [
+      "packages/web-v2/src/features/needs-you/**"
+    ],
+    "web-feature-notifications": [
+      "packages/web-v2/src/features/notifications/**"
+    ],
+    "web-feature-onboarding": [
+      "packages/web-v2/src/features/onboarding/**"
+    ],
+    "web-feature-operator": [
+      "packages/web-v2/src/features/operator/**"
+    ],
+    "web-feature-orgs": [
+      "packages/web-v2/src/features/orgs/**"
+    ],
+    "web-feature-overview": [
+      "packages/web-v2/src/features/overview/**"
+    ],
+    "web-feature-pairing": [
+      "packages/web-v2/src/features/pairing/**"
+    ],
+    "web-feature-pipeline": [
+      "packages/web-v2/src/features/pipeline/**"
+    ],
+    "web-feature-preferences": [
+      "packages/web-v2/src/features/preferences/**"
+    ],
+    "web-feature-project-config": [
+      "packages/web-v2/src/features/project-config/**"
+    ],
+    "web-feature-project-dashboard": [
+      "packages/web-v2/src/features/project-dashboard/**"
+    ],
+    "web-feature-project-settings": [
+      "packages/web-v2/src/features/project-settings/**"
+    ],
+    "web-feature-projects": [
+      "packages/web-v2/src/features/projects/**"
+    ],
+    "web-feature-questions": [
+      "packages/web-v2/src/features/questions/**"
+    ],
+    "web-feature-releases": [
+      "packages/web-v2/src/features/releases/**"
+    ],
+    "web-feature-requirements": [
+      "packages/web-v2/src/features/requirements/**"
+    ],
+    "web-feature-run-control": [
+      "packages/web-v2/src/features/run-control/**"
+    ],
+    "web-feature-runners": [
+      "packages/web-v2/src/features/runners/**"
+    ],
+    "web-feature-session": [
+      "packages/web-v2/src/features/session/**"
+    ],
+    "web-feature-sessions": [
+      "packages/web-v2/src/features/sessions/**"
+    ],
+    "web-feature-settings": [
+      "packages/web-v2/src/features/settings/**"
+    ],
+    "web-feature-shell": [
+      "packages/web-v2/src/features/shell/**"
+    ],
+    "web-feature-suggestions": [
+      "packages/web-v2/src/features/suggestions/**"
+    ],
+    "web-feature-version": [
+      "packages/web-v2/src/features/version/**"
+    ],
+    "web-feature-workflows": [
+      "packages/web-v2/src/features/workflows/**"
+    ],
     "web-lib": [
       "packages/web-v2/src/lib/**"
     ],
@@ -246,7 +381,9 @@
     "packages/core/src/execution-ports.ts",
     "packages/core/src/integration-registry.ts",
     "packages/core/src/timer-registry.ts",
-    "packages/core/src/outbox-consumers.ts"
+    "packages/core/src/outbox-consumers.ts",
+    "packages/web-v2/src/app/(workspace)/layout.tsx",
+    "packages/web-v2/src/app/(workspace)/projects/[slug]/page.tsx"
   ],
   "contracts": [
     {
@@ -271,13 +408,15 @@
       "scope": "file",
       "max_modules": 6,
       "status": "locked",
-      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files. The composition roots (packages/core/src/index.ts, route-registry, work-ports, execution-ports, integration-registry, timer-registry, outbox-consumers) are excluded by name: each exists to wire every module at boot, so their fan-out is their purpose, not a blob; a file that is not a composition root is still held to 6 (ISS-225)."
+      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files. The composition roots (packages/core/src/index.ts, route-registry, work-ports, execution-ports, integration-registry, timer-registry, outbox-consumers) are excluded by name: each exists to wire every module at boot, so their fan-out is their purpose, not a blob. So are web-v2's two route composition roots, `app/(workspace)/layout.tsx` and `app/(workspace)/projects/[slug]/page.tsx`, which compose the features once each feature is its own module (TD-S1); a file that is not a composition root is still held to 6 (ISS-225)."
     },
     {
       "id": "web-design-is-presentational",
       "type": "forbidden",
       "from": "web-design",
-      "to": "web-features",
+      "to": [
+        "packages/web-v2/src/features/**"
+      ],
       "status": "locked",
       "description": "the kit renders what a feature hands it; a kit component reaching into a feature makes the kit un-reusable and the feature un-testable. Measured 2026-08-23 on the alias-resolved graph: 0 edges."
     },
@@ -291,11 +430,58 @@
     },
     {
       "id": "web-features-do-not-reach-into-routes",
-      "type": "forbidden",
-      "from": "web-features",
-      "to": "web-app",
+      "type": "layers",
+      "order": [
+        "web-app",
+        "web-feature-settings",
+        "web-feature-shell",
+        "web-feature-version",
+        "web-feature-project-dashboard",
+        "web-feature-pairing",
+        "web-feature-overview",
+        "web-feature-operator",
+        "web-feature-notifications",
+        "web-feature-guides",
+        "web-feature-docs",
+        "web-feature-development",
+        "web-feature-conversations",
+        "web-feature-requirements",
+        "web-feature-session",
+        "web-feature-pipeline",
+        "web-feature-contracts",
+        "web-feature-automation",
+        "web-feature-auth",
+        "web-feature-attention",
+        "web-feature-ecosystem",
+        "web-feature-needs-you",
+        "web-feature-agents",
+        "web-feature-sessions",
+        "web-feature-issues",
+        "web-feature-modules",
+        "web-feature-workflows",
+        "web-feature-comments",
+        "web-feature-feedback",
+        "web-feature-suggestions",
+        "web-feature-mockups",
+        "web-feature-board",
+        "web-feature-chat",
+        "web-feature-releases",
+        "web-feature-questions",
+        "web-feature-project-settings",
+        "web-feature-integrations",
+        "web-feature-runners",
+        "web-feature-project-config",
+        "web-feature-run-control",
+        "web-feature-agent-accounts",
+        "web-feature-projects",
+        "web-feature-onboarding",
+        "web-feature-chat-dock",
+        "web-feature-orgs",
+        "web-feature-preferences",
+        "web-features"
+      ],
       "status": "locked",
-      "description": "routes compose features, never the reverse; a feature importing a route file pins it to one URL. Same alias blindness as web-design-is-presentational. Measured 2026-08-23 on the alias-resolved graph: 0 edges."
+      "description": "routes compose features, never the reverse, and features import one another one way only: a feature may depend on features later in this order, never earlier, so no two features can import each other (TD-S1 made the 18 two-way pairs one-way). The order is the measured topological order of the feature import graph; moving a feature is allowed only where the move leaves the graph acyclic. `web-features` (last) holds a feature directory not yet declared here, which may depend on no declared feature until it is given its own module."
     }
   ]
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useIssueSelectionBridge } from "@/features/conversations/ui-actions/selection-bridge";
+import { useIssueSelectionBridge } from "@/features/chat-dock/selection-bridge";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IssueRow } from "../../types";
 

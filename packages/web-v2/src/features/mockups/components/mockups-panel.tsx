@@ -13,7 +13,7 @@ import { fileBase64, targetInput } from "../api";
 import { useMockupAct, useMockupBytes, useMockups, useProposeMockup } from "../hooks";
 import type { MockupTarget, MockupView } from "../types";
 
-const BoardCanvas = dynamic(() => import("@/features/conversations/board/board-canvas"), {
+const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
   ssr: false,
   loading: () => <p className="p-4 text-13 text-muted">Opening the board…</p>,
 });

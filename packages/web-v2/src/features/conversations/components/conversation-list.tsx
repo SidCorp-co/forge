@@ -26,7 +26,7 @@ import {
   usePinConversation,
   useRenameConversation,
 } from "../hooks";
-import type { ChatTarget } from "../dock-target";
+import type { ChatTarget } from "@/features/chat-dock/dock-target";
 import { conversationTitle } from "../types";
 import { ConversationRow } from "./conversation-row";
 
@@ -82,8 +82,7 @@ export function ConversationList({
   const projects = useMemo(() => allProjects ?? [], [allProjects]);
   const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
   const current = projects.find((p) => p.id === projectId);
-  const ecosystemsQ = useProjectEcosystems(current?.id ?? "");
-  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(ecosystemsQ, current !== undefined);
+  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(useProjectEcosystems(current?.id ?? ""), current !== undefined);
 
   const [archived, setArchived] = useState(false);
   const list = useConversationsAcrossProjects(projectIds, archived);

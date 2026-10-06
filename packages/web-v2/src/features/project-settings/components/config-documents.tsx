@@ -14,9 +14,9 @@ import {
 	useWritePolicy,
 	useWriteProjectDocument,
 	useWriteTestingProfile,
-} from "../config-hooks";
+} from "@/features/project-config/hooks";
 import { bindingTemplate, policyTemplate, projectTemplate, testingProfileTemplate } from "../config-templates";
-import type { V1Read } from "../config-types";
+import type { V1Read } from "@/features/project-config/types";
 import { NAME } from "../secret-refs";
 import { DocumentEditor } from "./document-editor";
 
