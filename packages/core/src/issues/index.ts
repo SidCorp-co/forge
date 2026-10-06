@@ -66,6 +66,7 @@ export {
 export {
   type ResolvedLeaseKey,
   readDeviceIssueLease,
+  readRunIssues,
   resolveLeaseKey,
 } from './issue-lease-read.js';
 export {

@@ -75,6 +75,29 @@ async function readIssueStanding(args: {
   return { issueOver: row.over === true, issueResting: row.resting === true };
 }
 
+/**
+ * Whether each issue a box's run holds is over, and whether it rests, in the order the box named
+ * them: the issue half of core's verdict on that run (ADR 0009, What core takes over: Recovery
+ * verdict). A key that reaches no issue answers `null` for both, which licenses no end.
+ */
+export async function readRunIssues(args: {
+  deviceId: string;
+  projectId: string | null;
+  issueKeys: readonly string[];
+}): Promise<{ over: Array<boolean | null>; rests: Array<boolean | null> }> {
+  const over: Array<boolean | null> = [];
+  const rests: Array<boolean | null> = [];
+  for (const rawKey of args.issueKeys) {
+    const resolved = await resolveLeaseKey({ rawKey, projectId: args.projectId });
+    const standing = resolved.ok
+      ? await readIssueStanding({ deviceId: args.deviceId, ...resolved.key })
+      : { issueOver: null, issueResting: null };
+    over.push(standing.issueOver);
+    rests.push(standing.issueResting);
+  }
+  return { over, rests };
+}
+
 /** One issue's lease as one box sees it. */
 export async function readDeviceIssueLease(args: {
   deviceId: string;
