@@ -17,6 +17,8 @@ mod ports;
 pub use ports::*;
 mod panes;
 pub use panes::*;
+mod cancel;
+pub use cancel::*;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -500,7 +502,9 @@ pub async fn supervise(
         // this box knows nothing about, and `job_exit` keeps it.
         let seen = said.as_ref().map(job_exit::Reported::of).or(live.seen);
         let transcript = transcript_of(said.as_ref(), live.transcript.as_deref());
-        if seen != live.seen || transcript != live.transcript {
+        if (seen != live.seen || transcript != live.transcript)
+            && registry.refresh(&live.job_id, seen, transcript.clone())
+        {
             records
                 .note(&Live {
                     seen,
@@ -508,14 +512,6 @@ pub async fn supervise(
                     ..live.clone()
                 })
                 .await;
-            registry.hold(
-                &live.job_id,
-                &live.pane,
-                live.watch.clone(),
-                seen,
-                transcript.clone(),
-                live.opened_at,
-            );
         }
         let written_at = transcript
             .as_deref()
@@ -540,8 +536,12 @@ pub async fn supervise(
             .progress(&live.job_id, evidence.runtime_state())
             .await
         {
-            Ok(true) => {}
-            Ok(false) => {
+            Ok(Standing::Ours) => {}
+            // The `job.cancel` frame may never have reached this box; the heartbeat always does.
+            Ok(Standing::CancelRequested) => {
+                cancel(panes, report, records, registry, &live.job_id).await;
+            }
+            Ok(Standing::Over) => {
                 if let Err(e) = panes.kill(&live.pane).await {
                     tracing::warn!(
                         "[pool] job {} is terminal but {} would not close: {e} — keeping it under supervision, and the next tick closes it",

@@ -15,16 +15,29 @@ pub trait Pool: Send + Sync {
     async fn mcp_servers(&self, project_id: &str) -> Result<ProjectMcpServers>;
 }
 
+/// What core answered a job's heartbeat with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Standing {
+    /// Still this box's to run.
+    Ours,
+    /// No longer this box's: over, or out on some other box. Close the pane and say nothing more.
+    Over,
+    /// A person asked to cancel it: close the pane and say so with a kill-ack, which is what
+    /// settles the job `cancelled` (ISS-252).
+    CancelRequested,
+}
+
 #[async_trait::async_trait]
 pub trait Report: Send + Sync {
     async fn ack(&self, job_id: &str) -> Result<()>;
-    /// `Ok(false)` means core has answered that the job is no longer this box's.
-    ///
     /// `runtime_state` is what the box knows the agent to be doing, or `None`
     /// where it knows nothing about it at all.
-    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool>;
+    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<Standing>;
     /// `Ok(false)` means core has answered that the job is no longer this box's.
     async fn fail(&self, job_id: &str, error: &str) -> Result<bool>;
+    /// That the job's process is over by this box's hand (`killed`) or was never here
+    /// (`not_found`), answering a `job.cancel`. An `Err` is an ack core did not take.
+    async fn kill_ack(&self, job_id: &str, outcome: &str) -> Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -101,15 +114,16 @@ impl Report for CoreReport<'_> {
         lifecycle::ack(self.client, job_id, None).await
     }
 
-    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool> {
+    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<Standing> {
         let mut data = serde_json::json!({ "source": "pool_jobs" });
         if let Some(state) = runtime_state {
             data["runtimeState"] = serde_json::Value::String(state.to_string());
         }
         let beat = JobEventInput::new(HEARTBEAT_KIND, data);
         match events::post_job_events(self.client, job_id, &[beat]).await {
-            Ok(_) => Ok(true),
-            Err(e) if events::is_disowned(&e) => Ok(false),
+            Ok(_) => Ok(Standing::Ours),
+            Err(e) if events::is_cancel_requested(&e) => Ok(Standing::CancelRequested),
+            Err(e) if events::is_disowned(&e) => Ok(Standing::Over),
             Err(e) => Err(e),
         }
     }
@@ -120,6 +134,10 @@ impl Report for CoreReport<'_> {
             Err(e) if events::is_disowned(&e) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    async fn kill_ack(&self, job_id: &str, outcome: &str) -> Result<()> {
+        lifecycle::kill_ack(self.client, job_id, outcome).await
     }
 }
 

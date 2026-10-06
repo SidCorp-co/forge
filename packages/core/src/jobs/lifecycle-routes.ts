@@ -8,7 +8,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { cancelJob } from './cancel-job.js';
+import { cancelJob, settleConfirmedCancel } from './cancel-job.js';
 import { readJobGate } from './job-queries.js';
 import { salvageSchema } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
@@ -118,13 +118,18 @@ jobLifecycleDeviceRoutes.post(
 );
 
 /**
- * ISS-785 — device-scoped kill-ack for the `job.cancel` frame the
- * kill-before-reap gate sends. Deliberately NOT a lifecycle transition: it
- * only stamps `killConfirmedAt`/`killOutcome` (first ack wins — idempotent)
- * and appends a `kill_ack` audit event, then returns 200 whether or not the
- * job is still active. `resolveKillConfirmation` (jobs/kill-gate.ts) is the
- * ONLY reader of these columns. `recorded:false` in the response means the
- * ack was audited but not stamped — see the guard below.
+ * ISS-785 — device-scoped kill-ack for a `job.cancel` frame. It stamps
+ * `killConfirmedAt`/`killOutcome` (first ack wins — idempotent) and appends a
+ * `kill_ack` audit event, then returns 200 whether or not the job is still
+ * active. `resolveKillConfirmation` (jobs/kill-gate.ts) is the ONLY reader of
+ * those columns, and for the kill-before-reap gate that is all the ack does.
+ * `recorded:false` in the response means the ack was audited but not stamped —
+ * see the guard below.
+ *
+ * For a job a person asked to cancel, a `killed` ack is also the box saying the
+ * process is gone, which settles the job `cancelled` (`settled:true`). A
+ * `not_found` settles nothing: a box older than ISS-252 answers it for a pool
+ * pane it cannot see while that pane runs on.
  */
 jobLifecycleDeviceRoutes.post(
   '/:id/kill-ack',
@@ -141,8 +146,16 @@ jobLifecycleDeviceRoutes.post(
 
     const recorded = job.killRequestedAt !== null;
     await confirmJobKill(id, outcome, device.id, recorded);
+    const settled =
+      outcome === 'killed' && job.cancellationRequested
+        ? await settleConfirmedCancel({
+            jobId: id,
+            deviceId: device.id,
+            reason: "cancel confirmed: the runner killed the job's process",
+          })
+        : null;
 
-    return c.json({ jobId: id, killOutcome: outcome, acked: true, recorded });
+    return c.json({ jobId: id, killOutcome: outcome, acked: true, recorded, settled: !!settled });
   },
 );
 

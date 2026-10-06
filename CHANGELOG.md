@@ -12,6 +12,10 @@
 
 - **An approval can carry the approver's note.** An approver writes the conditions of a design's approval on the approval, such as a revision still owed or an accepted deviation. The revision shows it; the master and the build read it.
 
+### Fixed
+
+- **Cancelling a running pool job now stops it.** The box closes its session, frees the runner slot once the close is confirmed, and the job reads cancelled, not failed. A box that missed the cancel learns at its next check-in.
+
 ## [0.4.0-dev.60] - 2026-10-06
 
 Bell badge counts listed rows; web app tested again on every change

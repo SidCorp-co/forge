@@ -146,6 +146,28 @@ impl JobPanes {
             });
     }
 
+    /// What a sweep read of a job it is still holding: `false`, and nothing written, where the
+    /// job was let go of since the sweep took its snapshot — a cancel that closed the pane and
+    /// gave the slot back must not have it taken again by a pass that read it a moment before.
+    pub fn refresh(
+        &self,
+        job_id: &str,
+        seen: Option<job_exit::Reported>,
+        transcript: Option<String>,
+    ) -> bool {
+        let Ok(mut map) = self.inner.lock() else {
+            return false;
+        };
+        match map.get_mut(job_id) {
+            Some(h) => {
+                h.seen = seen;
+                h.transcript = transcript;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// That a supervision sweep ran to the end. Read where the box is refusing
     /// work, because the slot's return depends on this sweep and a design that
     /// leans on a sweep has to say when the sweep last ran.
