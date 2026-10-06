@@ -223,9 +223,10 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   waiting handover keeps admission open.
 - **It is bounded at 2h of clock time** from the moment it began. A step under
   way when the bound passes — a closing window, or the close of parked
-  sessions — runs to its end, and the give-up comes at the look after it, so
-  `status` says a waiting handover gives up at its first look past 2h rather
-  than that it waits at most 2h. In-process work that outlasts that defers the
+  sessions, followed where it leaves the box idle by the one closing window
+  that would hand over — runs to its end, and the give-up comes at the look
+  after it, so `status` says a waiting handover gives up at its first look
+  past 2h rather than that it waits at most 2h. In-process work that outlasts that defers the
   handover — admission was never closed, and the give-up line says so and how
   long it really waited — and no handover is attempted again for 2h. The next
   attempt is the next update check, or the next re-login.

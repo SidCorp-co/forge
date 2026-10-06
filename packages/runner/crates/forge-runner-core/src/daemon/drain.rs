@@ -708,7 +708,10 @@ fn give_up_line(
 ///
 /// The bound is read off the clock since the attempt began. A step under way
 /// when it passes — a closing window, or the one close of parked sessions —
-/// runs to its own end, and the give-up comes at the look after it.
+/// runs to its own end, and the give-up comes at the look after it. A box that
+/// close leaves idle is given the one closing window that would hand it over
+/// first: giving up on an idle box for being a moment late would hold the old
+/// build for the whole reopen interval.
 pub(crate) async fn drain_to_idle<F, Fut>(
     drain: &Drain,
     what: &str,
@@ -1090,6 +1093,50 @@ mod tests {
             .expect("a give-up line");
         let waited = format!("after {} with", serving::span_secs(took.as_secs()));
         assert!(gave_up.contains(&waited), "`{waited}` missing: {gave_up}");
+    }
+
+    /// ISS-1223 criterion 20, review F1's variant: a parked close crossing the
+    /// bound that leaves the box idle is followed by the one closing window
+    /// that would hand over — an idle box is not given up on for being a
+    /// second late — and when a stuck request holds that window, the give-up
+    /// comes at its 10s bound and nothing is closed or opened again.
+    #[tokio::test(start_paused = true)]
+    async fn an_idle_box_past_the_bound_tries_one_window_and_no_more() {
+        const CLOSE: Duration = Duration::from_secs(120);
+        let drain = Drain::unrecorded();
+        let _stuck = drain.socket().serving();
+        let turns = Turns::new();
+        let ending = turns.enter("a chat turn in session s1");
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(DRAIN_TIMEOUT_SECS - 100)).await;
+            drop(ending);
+        });
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let close_ended = Arc::new(Mutex::new(None::<Instant>));
+        let ended = close_ended.clone();
+        let close = move || async move {
+            seen.fetch_add(1, Ordering::AcqRel);
+            tokio::time::sleep(CLOSE).await;
+            *ended.lock().unwrap() = Some(Instant::now());
+            1
+        };
+        let out = drain_to_idle(&drain, "test", "c", &turns, close, next).await;
+        assert_eq!(out, Drained::GaveUp);
+        assert_eq!(
+            calls.load(Ordering::Acquire),
+            1,
+            "parked sessions closed once"
+        );
+        let after_close = Instant::now().duration_since(close_ended.lock().unwrap().unwrap());
+        assert!(
+            after_close <= Duration::from_secs(HANDOVER_QUIET_SECS + 1),
+            "gave up {after_close:?} after the close that crossed the bound ended"
+        );
+        assert!(
+            drain.refusal().is_none(),
+            "admission is open after the give-up"
+        );
     }
 
     /// Criterion 5: the closing window refuses a declaration naming its cause,
