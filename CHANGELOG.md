@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **Live updates reach the lists they name.** Tokens and Settings notifications refresh live; every
+  runner frame names its project, so a created, deleted or stale runner updates Runners at once.
+  Copy link without a clipboard shows the link.
 - **An upgraded runner converts every bound checkout's orientation at start.** Each daemon start
   rewrites it once under the provision lock, so no re-bind is needed; `forge-runner status` names
   any checkout it could not convert, and why.

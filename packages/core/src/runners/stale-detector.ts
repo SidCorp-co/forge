@@ -35,7 +35,7 @@ export async function runRunnerStaleSweep(): Promise<{
       projectId: row.projectId,
       runnerId: row.id,
       event: 'runner.status',
-      data: { runnerId: row.id, status: 'offline', reason: 'stale' },
+      data: { runnerId: row.id, projectId: row.projectId, status: 'offline', reason: 'stale' },
       runnerRoom: true,
     });
   }

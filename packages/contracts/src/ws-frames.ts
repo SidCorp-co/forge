@@ -4,7 +4,7 @@
 // listed only while web routes it.
 
 import type { StateOf } from "./machines.js";
-import type { OutboxEventPayload } from "./outbox-events.js";
+import type { OutboxEventPayload, RunnerChange } from "./outbox-events.js";
 
 interface IssueRef {
 	issueId: string;
@@ -27,11 +27,8 @@ interface JobFrame {
 	jobId: string;
 }
 
-interface RunnerFrame {
-	runnerId: string;
-	projectId?: string;
-	status?: string;
-}
+/** Every runner.* frame names its project, so the project's runner list can refresh. */
+type RunnerFrame = RunnerChange;
 
 /** A blocker reached a terminal status and released the issues it held. */
 export interface UnblockCascadeFrame {
@@ -106,8 +103,10 @@ export interface WsFramePayloads {
 	"device.paired": { deviceId: string };
 	"device.revoked": { deviceId: string };
 	"runner.provision": OutboxEventPayload<"runner.provisionStatus">;
+	"runner.created": RunnerFrame;
 	"runner.status": RunnerFrame;
 	"runner.updated": RunnerFrame;
+	"runner.deleted": RunnerFrame;
 	"user.preferencesChanged": OutboxEventPayload<"user.preferencesChanged">;
 	"notification.created": Omit<
 		OutboxEventPayload<"notification.created">,

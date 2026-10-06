@@ -11,8 +11,6 @@ export async function broadcastRunnerChanged(projectId: string, runnerId: string
     projectId,
     runnerId,
     event: 'runner.status',
-    // projectId lets the web event-router refresh the project's runner list
-    // (dashboard card + Runners screen), not just the runner activity feed.
     data: { runnerId, projectId },
     runnerRoom: false,
   });
