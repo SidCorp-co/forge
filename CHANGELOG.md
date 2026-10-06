@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **The tmux pane test can no longer pass without running.** Where tmux is missing it fails naming
+  tmux, unless `FORGE_TEST_SKIP_TMUX=1` skips it out loud; CI installs tmux on Linux and macOS.
+
 - **A pane's agent runs the daemon's own `forge-runner`.** The pane PATH is set by the pane command
   itself (`env PATH=…`), since tmux hands a new pane the starting client's PATH over `-e PATH`.
 

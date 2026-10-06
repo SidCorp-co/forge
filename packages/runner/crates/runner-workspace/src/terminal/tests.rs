@@ -24,13 +24,40 @@ fn runnable(dir: &Path, name: &str) {
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// The one named way a box without tmux skips a test that needs a real server.
+const SKIP_TMUX: &str = "FORGE_TEST_SKIP_TMUX";
+
+/// Whether `test` may run: tmux on PATH says yes. Without it the test fails naming tmux, so a
+/// box that lacks it cannot pass having asserted nothing — unless [`SKIP_TMUX`] is `1`, which is
+/// reported on stderr past the harness's capture, so the skip is seen and not mistaken for a pass.
+fn tmux_or_skip(test: &str) -> bool {
+    if which::which("tmux").is_ok() {
+        return true;
+    }
+    match std::env::var(SKIP_TMUX) {
+        Ok(v) if v == "1" => {
+            use std::io::Write;
+            let _ = writeln!(
+                std::io::stderr(),
+                "SKIPPED {test}: tmux is not on PATH and {SKIP_TMUX}=1 opted this run out — nothing was asserted"
+            );
+            false
+        }
+        Ok(v) => panic!(
+            "TMUX_SKIP_VALUE_UNKNOWN: {test} needs tmux, which is not on PATH, and {SKIP_TMUX}={v:?} is not the opt-out — set it to 1 to skip, or install tmux"
+        ),
+        Err(_) => panic!(
+            "TMUX_NOT_ON_PATH: {test} needs a real tmux server and tmux is not on PATH — install tmux, or set {SKIP_TMUX}=1 to skip it by name"
+        ),
+    }
+}
+
 /// The daemon's PATH holds another box's `forge-runner` ahead of its own, and tmux 3.x hands a
 /// pane the PATH of the client that ran `new-session`, over the `-e PATH` that client passed
 /// (spawn.c:spawn_pane). So the pane's own process has to be what sets it.
 #[test]
 fn the_pane_process_resolves_forge_runner_to_the_path_the_daemon_handed_it() {
-    if which::which("tmux").is_err() {
-        eprintln!("tmux is not installed here; this test needs a real server");
+    if !tmux_or_skip("the_pane_process_resolves_forge_runner_to_the_path_the_daemon_handed_it") {
         return;
     }
     let root = Scratch(std::env::temp_dir().join(format!("fpp-{}", uuid::Uuid::new_v4().simple())));
