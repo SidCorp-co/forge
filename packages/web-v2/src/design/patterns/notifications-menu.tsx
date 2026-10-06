@@ -17,6 +17,8 @@ export interface NotificationItem {
   id: string;
   /** The entity it names (`ISS-12`, a project slug), from core's payload; never parsed from the text. */
   subjectKey?: string;
+  /** The project it belongs to, where the key alone does not say: ISS-1 exists in every project. */
+  project?: string;
   /** The notification type, drawn as an EnumBadge (`issue_stranded` reads "Stranded"). */
   type: string;
   /** The thing it told of has cleared. */
@@ -205,6 +207,11 @@ export function NotificationsMenu({
                     <span className="fg-caption flex-none whitespace-nowrap text-subtle">{n.time}</span>
                   </button>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {n.project && (
+                      <span className="fg-caption max-w-full truncate text-muted" data-testid="notification-project">
+                        {n.project}
+                      </span>
+                    )}
                     <EnumBadge family="notificationType" value={n.type} />
                     {n.resolved && (
                       <ToneBadge tone="done" label="Resolved" glyph="✓" title="resolved: what this told of has cleared" />

@@ -109,7 +109,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   if (f.approval) {
     return person(ctx, {
       need: 'approve',
-      act: 'approve the release',
+      act: 'Approve release on Releases',
       ref: 'release_approvals: no decision (RELEASE_AWAITING_APPROVAL)',
       since: f.approval.requestedAt,
       rule: 'the release waits on a pending approval, which a holder of releases.approve decides',
@@ -312,13 +312,13 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
           ? runWait(
               'machine',
               'Machine',
-              `no free slot · ${ctx.slots.inUse} of ${ctx.slots.max} in use`,
+              `no free slot (${ctx.slots.inUse} of ${ctx.slots.max} in use)`,
               `no free slot: ${ctx.slots.inUse} of ${ctx.slots.max} in use (masters/standing.slots)`,
             )
           : runWait(
               'master',
               f.master?.name ?? 'Master',
-              'dispatches it',
+              'dispatch it',
               'queued: the project master takes it in a pass',
             ),
     };
@@ -341,7 +341,7 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
       waitingOn: runWait(
         'master',
         f.master?.name ?? 'Master',
-        'dispatches it',
+        'dispatch it',
         'queued: nothing is dispatched on the run',
       ),
     };

@@ -114,9 +114,10 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
 
     const delivered = await db.transaction(async (tx) => {
       let deliveryId: string | undefined;
+      let reopened = false;
       if (input.groupKey) {
         const [existing] = await tx
-          .select({ id: notificationDeliveries.id })
+          .select({ id: notificationDeliveries.id, readAt: notificationDeliveries.readAt })
           .from(notificationDeliveries)
           .where(
             and(
@@ -127,6 +128,13 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
           )
           .limit(1);
         deliveryId = existing?.id;
+        if (existing?.readAt) {
+          await tx
+            .update(notificationDeliveries)
+            .set({ readAt: null })
+            .where(eq(notificationDeliveries.id, existing.id));
+          reopened = true;
+        }
       }
       let founded = false;
       if (!deliveryId) {
@@ -152,7 +160,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
       await emitEvent(tx, 'notification.created', {
         notificationId: recordId,
         userId,
-        announce: founded,
+        announce: founded || reopened,
         projectId: input.projectId ?? null,
         type: input.type,
         title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,

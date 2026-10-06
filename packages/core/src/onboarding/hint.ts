@@ -78,6 +78,9 @@ function openBatchHint(
 function liveJobText(job: NonNullable<OnboardingView['job']>): string {
   const w = job.waitingOn;
   if (w?.kind === 'gate') return `Waits on the ${w.gate} gate; the project works meanwhile.`;
+  if (w?.kind === 'machine') {
+    return `Waiting on ${w.who}${w.act ? `: ${w.act}` : ''}; the project works meanwhile.`;
+  }
   if (w && w.kind !== 'none') {
     return `Waits on ${w.who}${w.act ? ` to ${w.act}` : ''}; the project works meanwhile.`;
   }

@@ -111,6 +111,11 @@ export function issueWorkMovingSql(args: {
   )`;
 }
 
+/** Whether a run session holds the issue now: the fleet lease of a run that has not ended. */
+export function issueRunLiveSql(args: { projectId: SQL | string; issueKey: SQL | string }): SQL {
+  return issueLeaseHeldSql(args.projectId, args.issueKey);
+}
+
 /** One issue's holder, as the refusal and the lease endpoint report it. */
 export interface IssueLeaseHolder {
   issueKey: string;

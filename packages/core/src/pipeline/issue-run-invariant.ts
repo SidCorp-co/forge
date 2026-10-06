@@ -134,7 +134,7 @@ async function emit(
     issueId: args.row.issueId,
     type: 'issue_stranded',
     resolutionKey,
-    groupKey: sweepGroupKey('orphan-assertion', args.now),
+    groupKey: sweepGroupKey('orphan-assertion', args.row.projectId),
     groupTitle: 'Issues asserting work in progress with no run behind them',
     title: `${args.ref} says work is in progress with no run behind it`,
     body:

@@ -119,6 +119,8 @@ interface DestinationInput {
 
 type ConversationOrigin = Extract<QuestionOrigin, { kind: 'conversation' }>;
 
+export const NO_ROOM_REASON = 'no Rocket.Chat room is bound to this project';
+
 const unresolvable = (reason: string): QuestionDestination => ({ kind: 'unresolvable', reason });
 const openRoom = (connectionId: string, rid: string): QuestionDestination => ({
   kind: 'room',
@@ -154,9 +156,7 @@ export async function resolveQuestionDestination(
   }
   if (!input.origin) {
     const room = await roomForProject(input.projectId);
-    return room
-      ? openRoom(room.connectionId, room.rid)
-      : unresolvable('no Rocket.Chat room is bound to this project');
+    return room ? openRoom(room.connectionId, room.rid) : unresolvable(NO_ROOM_REASON);
   }
   if (input.origin.kind === 'unresolved') return unresolvable(input.origin.reason);
   if (input.origin.kind === 'channel_gate') {

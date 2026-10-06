@@ -131,7 +131,7 @@ export async function writeEffect(
     const created = await createRequirementIn(tx, {
       projectId,
       actor,
-      authorId: authorOf(row, actor).userId,
+      author: authorOf(row, actor),
       title,
       write: { ...(write as RevisionWrite), fromSuggestionId: row.id },
       designs,

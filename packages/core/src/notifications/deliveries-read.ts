@@ -74,15 +74,17 @@ export async function listDeliveries(
     issueDisplayIds(distinct(rows.map((r) => (r.members === 1 ? r.issueId : null)))),
     projectIds.length
       ? db
-          .select({ id: projects.id, slug: projects.slug })
+          .select({ id: projects.id, slug: projects.slug, name: projects.name })
           .from(projects)
           .where(inArray(projects.id, projectIds))
       : Promise.resolve([]),
   ]);
   const slugs = new Map(slugRows.map((p) => [p.id, p.slug]));
+  const named = new Map(slugRows.map((p) => [p.id, { slug: p.slug, name: p.name }]));
   const items = rows.map((r) => {
     const subject = deliverySubject(r, issueKeys, slugs);
-    return { ...r, subject, line: deliveryLine(r.title, subject?.key ?? null) };
+    const project = r.projectId ? (named.get(r.projectId) ?? null) : null;
+    return { ...r, subject, project, line: deliveryLine(r.title, subject?.key ?? null) };
   });
   return { items, total: totalRow?.n ?? 0 };
 }

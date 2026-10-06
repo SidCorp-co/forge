@@ -94,6 +94,7 @@ export async function writeRevision(input: {
         changeSummary: stored.changeSummary ?? null,
         reason: stored.reason.trim(),
         authorId: actor.userId,
+        authorAgency: actor.agency,
       })
       .where(revisionWhere(row.id, target.revision));
     const own = await resetDraftCriteria(tx, row.id, target.revision);

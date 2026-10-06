@@ -27,6 +27,7 @@ import { contractVersions } from './schema-ecosystem.js';
 import { mockups } from './schema-mockups.js';
 import { projects } from './schema-projects.js';
 import { suggestions } from './schema-suggestions.js';
+import { actorAgencies } from './schema-vocabulary.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 
 export { REQUIREMENT_STATUSES, type RequirementStatus } from '@forge/contracts/requirements';
@@ -110,6 +111,7 @@ export const requirementRevisions = pgTable(
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    authorAgency: text('author_agency', { enum: actorAgencies }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     proposedAt: timestamp('proposed_at', { withTimezone: true }),
     proposedBy: uuid('proposed_by').references(() => users.id, { onDelete: 'restrict' }),
@@ -137,6 +139,10 @@ export const requirementRevisions = pgTable(
       sql`${t.state} IN ('draft', 'proposed', 'current', 'superseded')`,
     ),
     revisionChk: check('requirement_revisions_revision_chk', sql`${t.revision} >= 1`),
+    authorAgencyChk: check(
+      'requirement_revisions_author_agency_chk',
+      sql`${t.authorAgency} IN (${inList(actorAgencies)})`,
+    ),
     reasonChk: check('requirement_revisions_reason_chk', sql`${t.reason} ~ '[^[:space:]]'`),
     decidedChk: check(
       'requirement_revisions_decided_chk',

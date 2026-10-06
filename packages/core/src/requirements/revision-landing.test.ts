@@ -6,7 +6,7 @@ const base = {
   requirementId: 'r1',
   revision: 2,
   head: 1,
-  authorId: 'agent-1',
+  author: { userId: 'agent-1', agency: 'agent' as const },
   write: { reason: 'FB-1', criteria: [] },
   at,
 };

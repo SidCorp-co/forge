@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Needs you lists only your acts.** Harness reports, agent-written drafts and per-issue release
+  approvals leave it; bell rows name their project and fold per project; run, banner, last-run
+  and undeliverable-question copy says who acts.
+
 ## [0.4.0-dev.52] - 2026-10-06
 
 Every master turn counts as a pass, and boxes report missing pane binaries

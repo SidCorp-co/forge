@@ -72,6 +72,8 @@ export interface IssueStandingInput {
   stepStartedAt: Date | null;
   lease: IssueLeaseView | null;
   inFlight: boolean;
+  /** A run session holds it through the fleet lease (`issue-lease.ts:issueRunLiveSql`). */
+  runLive: boolean;
   /** An open `human` question on it (`questions/issue-coupling.ts:holdsOpenHumanQuestion`). */
   owesAnswer: boolean;
   /** The move that parked it at `on_hold`: its reason, and whether a run (not a person) made it. */
@@ -231,11 +233,15 @@ function releaseTurn(input: IssueStandingInput, running: boolean): Turn {
     };
   }
   if (input.releaseApproval) {
-    return forPerson(
-      input.viewer,
-      'approve the release',
-      'every criterion passed; this project requires a person to approve a release',
-    );
+    return {
+      group: 'queued',
+      waitingOn: wait(
+        'release',
+        'Release',
+        'Approve release on Releases',
+        'every criterion passed; this project requires a person to approve each release, once per release on Releases (Cut the version, then Approve release), never once per issue',
+      ),
+    };
   }
   return running
     ? { group: 'moving', waitingOn: wait('run', 'Release', 'running', 'a release run holds it') }
@@ -251,7 +257,7 @@ function releaseTurn(input: IssueStandingInput, running: boolean): Turn {
 }
 
 function runningTurn(input: IssueStandingInput): Turn {
-  const leased = held(input.lease);
+  const leased = held(input.lease) || input.runLive;
   const step = input.step ? STEP_WORD[input.step] : null;
   const mins = minutesSince(input.stepStartedAt, input.now);
   const act = [step, mins !== null && step ? `${mins} min` : null].filter(Boolean).join(' · ');
@@ -262,8 +268,8 @@ function runningTurn(input: IssueStandingInput): Turn {
       leased ? 'Run' : 'Queued run',
       act || (leased ? 'working' : 'starting'),
       leased
-        ? `lease held by ${input.lease?.holder ?? 'a run'}`
-        : 'a job or run is queued or running on it',
+        ? `lease held by ${input.lease?.holder ?? 'a run session that has not ended'}`
+        : 'a job is queued on it and no run session holds it yet',
     ),
   };
 }

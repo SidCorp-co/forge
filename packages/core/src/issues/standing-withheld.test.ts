@@ -16,6 +16,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   stepStartedAt: null,
   lease: null,
   inFlight: false,
+  runLive: false,
   owesAnswer: false,
   blockedBy: [],
   blocks: [],

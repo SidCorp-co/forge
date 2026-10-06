@@ -162,8 +162,12 @@ async function selectHumanBlockedAges(
 async function selectProjectRuns(projectIds: string[]) {
   const rows = (await db.execute(sql`
     SELECT p.id, p.slug, p.name,
-           (SELECT max(r.started_at) FROM pipeline_runs r
-             WHERE r.project_id = p.id AND r.kind = 'issue') AS last_issue_run_at,
+           GREATEST(
+             (SELECT max(r.started_at) FROM pipeline_runs r
+               WHERE r.project_id = p.id AND r.kind = 'issue'),
+             (SELECT max(coalesce(s.started_at, s.created_at)) FROM agent_sessions s
+               WHERE s.project_id = p.id AND s.kind = 'run_session')
+           ) AS last_issue_run_at,
            (SELECT count(*)::int FROM pipeline_runs r
              WHERE r.project_id = p.id AND r.status IN ('running','paused')
                AND NOT EXISTS (
