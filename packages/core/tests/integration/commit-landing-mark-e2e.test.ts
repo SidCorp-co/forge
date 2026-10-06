@@ -27,6 +27,8 @@ const UNDECLARED = 'c3d4e5f60718293a4b5c6d7e8f90123456789ab';
 const OFF_BASE = 'd4e5f60718293a4b5c6d7e8f90123456789abc0';
 const ON_LIVE = 'e5f60718293a4b5c6d7e8f90123456789abcd01';
 const FABRICATED = 'f60718293a4b5c6d7e8f90123456789abcde0123';
+/** Shares its first seven characters with OWN, so that prefix names two commits. */
+const OWN_TWIN = `${OWN.slice(0, 7)}${'0'.repeat(33)}`;
 
 interface FakeCommit {
   message: string;
@@ -61,8 +63,12 @@ function httpError(status: number, path: string): Error {
 
 vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/integrations/github/client.js')>();
-  const find = (ref: string): [string, FakeCommit] | undefined =>
-    [...repo.commits.entries()].find(([sha]) => sha.startsWith(ref.toLowerCase()));
+  // GitHub resolves a prefix only where exactly one commit starts with it, and answers 422 alike
+  // for a prefix nothing starts with and for one several do (checked against the real API, ISS-1318).
+  const find = (ref: string): [string, FakeCommit] | undefined => {
+    const hits = [...repo.commits.entries()].filter(([sha]) => sha.startsWith(ref.toLowerCase()));
+    return hits.length === 1 ? hits[0] : undefined;
+  };
   return {
     ...real,
     githubRepoClient: vi.fn(async () => {
@@ -134,11 +140,21 @@ beforeEach(async () => {
     [UNDECLARED, { message: `chore: tidy, see ISS-${SEQ}`, on: ['main'] }],
     [OFF_BASE, { message: `ISS-${SEQ}: work in progress`, on: ['ISS-1318-wip'] }],
     [ON_LIVE, { message: `hotfix: straight to production (ISS-${SEQ})`, on: ['production'] }],
+    [OWN_TWIN, { message: 'chore: an unrelated commit sharing a prefix', on: ['main'] }],
   ]);
   userId = (await createTestUser(harness.db)).id;
   projectId = (await createTestProject(harness.db, userId)).id;
   await harness.db.execute(sql`UPDATE projects SET base_branch = 'main' WHERE id = ${projectId}`);
 });
+
+async function withLiveBranch(): Promise<void> {
+  await harness.db.execute(sql`
+    UPDATE projects SET release_chain = ${JSON.stringify([
+      { branch: 'main' },
+      { branch: 'production', from: 'merge-branch' },
+    ])}::jsonb WHERE id = ${projectId}
+  `);
+}
 
 async function seed(
   opts: {
@@ -246,12 +262,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   });
 
   it('accepts a commit the live branch holds and the base does not (criterion 1)', async () => {
-    await harness.db.execute(sql`
-      UPDATE projects SET release_chain = ${JSON.stringify([
-        { branch: 'main' },
-        { branch: 'production', from: 'merge-branch' },
-      ])}::jsonb WHERE id = ${projectId}
-    `);
+    await withLiveBranch();
     const issue = await seed();
     const res = await mark(issue, ON_LIVE);
     expect(res.mark).toBe('observed');
@@ -262,7 +273,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     [
       'COMMIT_NOT_IN_REPOSITORY',
       FABRICATED,
-      [FABRICATED, 'is not an object in SidCorp-co/specimen'],
+      [`GitHub finds no commit ${FABRICATED} in SidCorp-co/specimen`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
@@ -301,6 +312,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
       expect(refused.message).toContain('not taken as evidence unchecked');
+      expect(refused.message).toContain('or have a person mark it merged');
+      expect(refused.message).toContain("a branch recorded under the base branch's name");
+      expect(refused.message).not.toContain('record the branch the work was done on');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
@@ -311,17 +325,6 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
     expect(refused.message).toContain('`mark_merged` carrying `data.commit`');
     expect(repo.reads).toEqual([]);
-  });
-
-  it('still refuses developed and testing with the base branch recorded and no merged commit (criterion 11)', async () => {
-    const issue = await seed();
-    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
-      'NO_WORK_EVIDENCE',
-    );
-    const atDeveloped = await seed({ status: 'developed', seq: SEQ + 1 });
-    expect((await refusal(() => advance(atDeveloped.id, 'developed', 'testing'))).code).toBe(
-      'NO_WORK_EVIDENCE',
-    );
   });
 
   it('keeps the commit a claim, and reads nothing, where the issue already has a branch (criterion 13)', async () => {
@@ -357,6 +360,69 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ kind: 'website' });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
+    expect(refused.message).toContain("This project's work lands outside git");
+    expect(refused.message).toContain('a person may mark it merged');
+    expect(refused.message).not.toContain('`mark_merged` carrying `data.commit`');
     expect(repo.reads).toEqual([]);
+  });
+});
+
+describe('ISS-1318 — the live branch and an abbreviated sha, named for what they are (real Postgres)', () => {
+  it.each([
+    ['nothing starts with', 'f6071829'],
+    ['two commits start with', OWN.slice(0, 7)],
+  ] as const)(
+    'refuses an abbreviated commit %s it as unresolved, never as absent (criterion 4)',
+    async (_case, short) => {
+      const issue = await seed();
+      const refused = await refusal(() => mark(issue, short));
+      expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+      expect(refused.message).toContain(
+        `GitHub resolves no single commit from ${short} in SidCorp-co/specimen`,
+      );
+      expect(refused.message).toContain('or more than one does');
+      expect(refused.message).toContain('the full 40-character sha');
+      expect(refused.message).not.toContain('finds no commit');
+      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+    },
+  );
+
+  it.each([
+    ['sessionContext.branch', { branch: 'production' }],
+    ['sessionContext.worklog.branch', { worklog: { branch: 'production' } }],
+  ])(
+    'still refuses NO_WORK_EVIDENCE for a mark with no commit when %s names only the live branch (criterion 10)',
+    async (_where, sessionContext) => {
+      await withLiveBranch();
+      const issue = await seed({ sessionContext });
+      const refused = await refusal(() => mark(issue, undefined));
+      expect(refused.code).toBe('NO_WORK_EVIDENCE');
+      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+      expect(repo.reads).toEqual([]);
+    },
+  );
+
+  it('still refuses developed and testing with only the live branch recorded and no merged commit (criterion 11)', async () => {
+    await withLiveBranch();
+    const live = { worklog: { branch: 'production' } };
+    const issue = await seed({ sessionContext: live });
+    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
+      'NO_WORK_EVIDENCE',
+    );
+    const atDeveloped = await seed({ status: 'developed', seq: SEQ + 1, sessionContext: live });
+    expect((await refusal(() => advance(atDeveloped.id, 'developed', 'testing'))).code).toBe(
+      'NO_WORK_EVIDENCE',
+    );
+  });
+
+  it('still refuses developed and testing with the base branch recorded and no merged commit (criterion 11)', async () => {
+    const issue = await seed();
+    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
+      'NO_WORK_EVIDENCE',
+    );
+    const atDeveloped = await seed({ status: 'developed', seq: SEQ + 1 });
+    expect((await refusal(() => advance(atDeveloped.id, 'developed', 'testing'))).code).toBe(
+      'NO_WORK_EVIDENCE',
+    );
   });
 });

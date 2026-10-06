@@ -41,7 +41,14 @@ describe('collectWorkEvidence', () => {
         { payload: { step: 'code', filesModified: [{ path: 'a.ts', op: 'edit' }] } },
         { payload: { step: 'fix', commitSha: 'abc123', filesModified: [] } },
       ],
-      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', releaseChain: [] }],
+      [
+        {
+          sessionContext: { branch: 'ISS-1-foo' },
+          baseBranch: 'main',
+          releaseChain: [],
+          projectKind: 'standard',
+        },
+      ],
     );
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence).toEqual({
@@ -50,6 +57,7 @@ describe('collectWorkEvidence', () => {
       handoffFilesModified: 1,
       branch: 'ISS-1-foo',
       mergedCommitSha: null,
+      lane: 'git',
     });
   });
 
@@ -120,6 +128,7 @@ describe('collectWorkEvidence', () => {
       handoffFilesModified: 0,
       branch: null,
       mergedCommitSha: null,
+      lane: null,
     });
   });
 
@@ -171,6 +180,7 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: 'ISS-1-foo',
         mergedCommitSha: null,
+        lane: 'git',
       }),
     ).toBe(true);
   });
@@ -183,6 +193,7 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: null,
         mergedCommitSha: null,
+        lane: 'git',
       }),
     ).toBe(true);
   });
@@ -195,6 +206,7 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 3,
         branch: null,
         mergedCommitSha: null,
+        lane: 'git',
       }),
     ).toBe(true);
   });
@@ -207,6 +219,7 @@ describe('hasCodeEvidence', () => {
         handoffFilesModified: 0,
         branch: null,
         mergedCommitSha: null,
+        lane: 'git',
       }),
     ).toBe(false);
   });
@@ -272,12 +285,44 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
   });
 
   it('names the commit route in the refusal, beside the branch and the handoff', async () => {
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup(
+      [],
+      [],
+      [],
+      [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }],
+    );
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('`mark_merged` carrying `data.commit`');
     expect(detail).toContain("checks against the project's repository");
     expect(detail).toContain('sessionContext.worklog.branch');
     expect(detail).toContain('commitSha/filesModified');
+  });
+
+  it('offers no commit route on a project whose work lands outside git, and names who clears it', async () => {
+    setup(
+      [],
+      [],
+      [],
+      [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'website' }],
+    );
+    const detail = await findMissingWorkEvidence('iss-1');
+    expect(detail).toContain('no branch or code handoff is recorded');
+    expect(detail).not.toContain('`mark_merged` carrying `data.commit`');
+    expect(detail).toContain("This project's work lands outside git");
+    expect(detail).toContain('a person may mark it merged and move it');
+    expect(detail).toContain('commitSha/filesModified');
+  });
+
+  it('offers no commit route where the project kind is none Forge knows, and says so', async () => {
+    setup(
+      [],
+      [],
+      [],
+      [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'kiosk' }],
+    );
+    const detail = await findMissingWorkEvidence('iss-1');
+    expect(detail).not.toContain('`mark_merged` carrying `data.commit`');
+    expect(detail).toContain('none of `standard`, `website`');
   });
 });
 
@@ -300,7 +345,12 @@ describe('findMissingWorkEvidence', () => {
   });
 
   it('returns the detail string when no evidence exists', async () => {
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup(
+      [],
+      [],
+      [],
+      [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }],
+    );
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('no branch, commit or code handoff');
     expect(detail).toContain('sessionContext.worklog.branch');
