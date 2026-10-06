@@ -322,6 +322,8 @@ mod tests {
         let seed = root.join("seed");
         std::fs::create_dir_all(&seed).unwrap();
         run(&seed, &["init", "-q", "-b", "dev"]);
+        // Windows runners ship `core.autocrlf=true`, which restores committed files with CRLF; these tests assert the committed bytes.
+        run(&seed, &["config", "core.autocrlf", "false"]);
         for (path, body) in files {
             let at = seed.join(path);
             std::fs::create_dir_all(at.parent().unwrap()).unwrap();
@@ -346,6 +348,8 @@ mod tests {
             &[
                 "clone",
                 "-q",
+                "-c",
+                "core.autocrlf=false",
                 bare.to_str().unwrap(),
                 checkout.to_str().unwrap(),
             ],

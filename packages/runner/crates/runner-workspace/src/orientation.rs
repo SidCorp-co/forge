@@ -692,6 +692,8 @@ mod tests {
     fn repo_with(name: &str, files: &[(&str, &str)]) -> PathBuf {
         let repo = scratch(name);
         git(&repo, &["init", "-q"]);
+        // Windows runners ship `core.autocrlf=true`, which restores committed files with CRLF; these tests assert the committed bytes.
+        git(&repo, &["config", "core.autocrlf", "false"]);
         for (path, body) in files {
             let at = repo.join(path);
             std::fs::create_dir_all(at.parent().unwrap()).unwrap();
