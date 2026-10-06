@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.62] - 2026-10-06
+
+Runner panes deny permission dialogs instead of freezing; feedback cannot verify a reopened item
+
 ### Fixed
 
 - **A reopened feedback item can no longer be marked verified by the machine**: verify follows a shipped fix, which a reopened item never has, so its only ways out are back to triage or declined (feedback machine v3).
