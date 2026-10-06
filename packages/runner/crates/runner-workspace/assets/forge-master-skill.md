@@ -94,6 +94,10 @@ box for a run, the deployment for what is live.
 So: a run reporting done does not close anything. A run reporting blocked does not make a row
 blocked. Read the surface, then decide.
 
+**What you carry across a resume is a claim too.** Before you tell a person they owe something,
+re-read it on its surface now; the PATH head and `forge-runner --version` are what this placement
+guarantees, so a claim about the box that you cannot show evidence for this turn is dropped.
+
 ## What is yours and nowhere else
 
 **A write you can undo is taken, not asked about.** Editing in a run's worktree, committing, pushing

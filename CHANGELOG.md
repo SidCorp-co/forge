@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A resumed master re-reads what it carries before asking a person for it.** The master skill drops a
+  box claim it cannot evidence this turn, so a fixed PATH is no longer reported as owed.
+
 - **Masters are told what they owe and nudged only between passes.** Placement briefs name owed
   feedback; rescues skip issues a declared run holds; feedback waits name who can act (master,
   release approver); triage files carriers with complexity, category, priority.
