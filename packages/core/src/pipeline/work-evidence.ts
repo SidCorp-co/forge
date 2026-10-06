@@ -149,13 +149,44 @@ const NOT_A_BRANCH =
   'any happened. Where the chain is empty or names one branch there is no live branch to ' +
   'exclude, so a branch of that name counts like any other';
 
+/** Who reads the refusal: an agent at the agent-only gate, or anyone a project-declared
+ *  `work_evidence` entry criterion holds, a person included. */
+export type EvidenceReader = 'agent' | 'anyone';
+
+const DECLARED =
+  'This check holds a person as well as an agent because the project declares it in ' +
+  "`statusEntryCriteria`; where this project's work leaves none of these, that declaration is " +
+  'what to change.';
+
+function laneWhy(lane: LandingShape | null, reader: EvidenceReader): string {
+  if (lane === 'outside_git') {
+    return reader === 'agent'
+      ? "This project's work lands outside git (kind `website`), so a commit sent with " +
+          '`mark_merged` is not read here, and a landing it names is not evidence for an agent: ' +
+          'where neither route above is open, a person may mark it merged and move it, which ' +
+          'this check does not hold them to.'
+      : "This project's work lands outside git (kind `website`), so a mark counts only over a " +
+          'merged pull request Forge holds for this issue; a landing it names is not evidence, ' +
+          `whoever marks it. ${DECLARED}`;
+  }
+  const unknown =
+    "This project's kind is none of " +
+    projectKinds.map((k) => `\`${k}\``).join(', ') +
+    ', so whether its work lands in git is unknown and the commit route is not offered.';
+  return reader === 'agent' ? unknown : `${unknown} ${DECLARED}`;
+}
+
 /**
- * The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this project's lane:
- * the commit route is read on a `git` project alone (`merge-marker.ts:applyMergeMarker`), so a
- * sentence offering it anywhere else sends the caller into the same refusal again.
+ * The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this project's lane for
+ * this reader: the commit route is read on a `git` project alone, and for an agent alone
+ * (`merge-marker.ts:applyMergeMarker`), so a sentence offering it to anyone else sends them into
+ * the same refusal again.
  */
-export function noWorkEvidenceDetail(lane: LandingShape | null): string {
-  if (lane === 'git') {
+export function noWorkEvidenceDetail(
+  lane: LandingShape | null,
+  reader: EvidenceReader = 'agent',
+): string {
+  if (lane === 'git' && reader === 'agent') {
     return (
       'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
       'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
@@ -164,18 +195,18 @@ export function noWorkEvidenceDetail(lane: LandingShape | null): string {
       `at, which Forge checks against the project's repository, before advancing. ${NOT_A_BRANCH}`
     );
   }
-  const why =
-    lane === 'outside_git'
-      ? "This project's work lands outside git (kind `website`), so a commit sent with " +
-        '`mark_merged` is not read here, and a landing it names is not evidence for an agent: ' +
-        'where neither route above is open, a person may mark it merged and move it, which ' +
-        'this check does not hold them to.'
-      : "This project's kind is none of " +
-        projectKinds.map((k) => `\`${k}\``).join(', ') +
-        ', so whether its work lands in git is unknown and the commit route is not offered.';
+  if (lane === 'git') {
+    return (
+      `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
+      'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
+      "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
+      "carrying `data.commit`, which Forge checks against the project's repository; a person's " +
+      `mark records no commit Forge read, so it does not clear this. ${DECLARED} ${NOT_A_BRANCH}`
+    );
+  }
   return (
     `no branch or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, before ` +
-    `advancing. ${why} ${NOT_A_BRANCH}`
+    `advancing. ${laneWhy(lane, reader)} ${NOT_A_BRANCH}`
   );
 }
 
@@ -193,18 +224,20 @@ export function noWorkEvidenceDetail(lane: LandingShape | null): string {
 export async function missingWorkEvidenceStrict(
   issueId: string,
   executor: EvidenceExecutor = db,
+  reader: EvidenceReader = 'agent',
 ): Promise<string | null> {
   if (await hasChildIssues(issueId, executor)) return null;
   const evidence = await collectWorkEvidence(issueId, executor);
-  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane);
+  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, reader);
 }
 
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
+  reader: EvidenceReader = 'agent',
 ): Promise<string | null> {
   try {
-    return await missingWorkEvidenceStrict(issueId, executor);
+    return await missingWorkEvidenceStrict(issueId, executor, reader);
   } catch (err) {
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;

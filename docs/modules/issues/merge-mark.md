@@ -54,7 +54,9 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. GitHub answers an abbreviated sha that no commit starts with and one that
+evidence unchecked. That refusal names two routes: mark again once the repository can be read
+(or, where the project names no base branch, once it does), or have a person mark it merged and
+move it through `developed` and `testing`, since a person's mark carries no commit Forge read. GitHub answers an abbreviated sha that no commit starts with and one that
 several commits start with alike, so such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
 unresolved, asking for the full sha, and never reported as absent.
 
@@ -68,8 +70,13 @@ A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
 `developed` or `testing` one status later. The `NO_WORK_EVIDENCE` refusal
 (`packages/core/src/pipeline/work-evidence.ts:noWorkEvidenceDetail`) offers that commit route
-on the `git` shape only. On `outside_git` it names the branch and handoff routes and a person's
-mark, which the check does not hold.
+on the `git` shape only, and to an agent only. On `outside_git` it names the branch and handoff
+routes and a person's mark and move, which the agent-only gate does not hold.
+
+The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
+is read by `anyone` (`EvidenceReader`): it names the branch and handoff routes, says a person's mark
+records no commit Forge read and does not clear it, and names `statusEntryCriteria` as the
+declaration to change where the project's work leaves none of these.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
@@ -93,7 +100,12 @@ criterion, the release-record door's `RELEASE_WORK_UNMERGED`, and the mark write
 batch's finish closes through the same transition, so it reads the same answer.
 
 `landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
-optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name.
+optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name
+(`UnknownProjectKindError`), and the mark writer answers it `PROJECT_KIND_UNKNOWN`, naming the
+kind, the known kinds and the route that sets one, with nothing written. Every route that writes
+`projects.kind` validates it, so only a write outside them leaves such a value; the column
+constraint that would refuse it there is priced in
+`docs/proposals/a-project-kind-forge-does-not-know-is-accepted-at-write.md`.
 The release chain is NOT the discriminator: a one-entry chain (`publish`) says how a release is
 deployed, and forge-dev is such a project and lands every change in git.
 

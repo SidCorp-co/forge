@@ -324,6 +324,28 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
     expect(detail).not.toContain('`mark_merged` carrying `data.commit`');
     expect(detail).toContain('none of `standard`, `website`');
   });
+
+  it.each([
+    ['standard', "a person's mark records no commit Forge read, so it does not clear this"],
+    ['website', 'a landing it names is not evidence, whoever marks it'],
+    ['kiosk', 'none of `standard`, `website`'],
+  ])(
+    'tells anyone a declared criterion holds which routes clear it on a %s project, never that it does not hold them',
+    async (projectKind, says) => {
+      setup(
+        [],
+        [],
+        [],
+        [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind }],
+      );
+      const detail = await findMissingWorkEvidence('iss-1', undefined, 'anyone');
+      expect(detail).toContain(says);
+      expect(detail).toContain('`statusEntryCriteria`');
+      expect(detail).toContain('commitSha/filesModified');
+      expect(detail).not.toContain('does not hold them to');
+      expect(detail).not.toContain('the commit it landed at, which Forge checks');
+    },
+  );
 });
 
 describe('hasChildIssues', () => {

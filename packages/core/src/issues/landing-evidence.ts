@@ -28,15 +28,25 @@ const SHAPE_OF_KIND: Readonly<Record<ProjectKind, LandingShape>> = {
   website: 'outside_git',
 };
 
-/** `projects.kind` is plain text in the table, so a value no route writes is refused by name. */
-export function landingShapeOf(kind: string): LandingShape {
-  const shape = (SHAPE_OF_KIND as Record<string, LandingShape | undefined>)[kind];
-  if (!shape) {
-    throw new Error(
-      `project kind \`${kind}\` is not one of ${projectKinds.map((k) => `\`${k}\``).join(', ')}, ` +
-        'so whether its work lands in git is unknown and no mark can be judged against it',
+export class UnknownProjectKindError extends Error {
+  constructor(
+    readonly kind: string,
+    readonly projectId?: string,
+  ) {
+    super(
+      `${projectId ? `project ${projectId}'s ` : 'project '}kind \`${kind}\` is not one of ` +
+        `${projectKinds.map((k) => `\`${k}\``).join(', ')}, so whether its work lands in git is ` +
+        'unknown and no mark can be judged against it. Set the kind to one of them (`kind` on ' +
+        '`PATCH /api/projects/:id`), then mark again',
     );
+    this.name = 'UnknownProjectKindError';
   }
+}
+
+/** `projects.kind` is plain text in the table, so a value no route writes is refused by name. */
+export function landingShapeOf(kind: string, projectId?: string): LandingShape {
+  const shape = (SHAPE_OF_KIND as Record<string, LandingShape | undefined>)[kind];
+  if (!shape) throw new UnknownProjectKindError(kind, projectId);
   return shape;
 }
 
@@ -184,5 +194,5 @@ export async function readLandingShape(
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) throw new Error(`no project row for ${projectId}, so its landing shape is unknown`);
-  return landingShapeOf(row.kind);
+  return landingShapeOf(row.kind, projectId);
 }

@@ -51,8 +51,8 @@ function refuse(
 }
 
 const READABLE =
-  "once the tracker can read the project's repository — a GitHub binding whose installation can " +
-  'read it';
+  "once the tracker can read the project's repository, through a GitHub binding whose " +
+  'installation can read it';
 
 /**
  * Only an agent's mark on an issue holding no branch or handoff reads the repository, so the
@@ -65,7 +65,9 @@ function unreadable(commit: string, why: string, clears: string = READABLE): Com
     `commit ${commit} could not be checked against this project's repository, so it is not ` +
       `taken as evidence unchecked: ${why}. This issue records no branch or handoff, so the ` +
       `commit is the only evidence an agent's mark can carry here, and a branch recorded under ` +
-      `the base branch's name is not evidence. Mark again ${clears}, or have a person mark it merged`,
+      `the base branch's name is not evidence. Two routes clear it: mark again ${clears}; or ` +
+      'have a person mark it merged and move it through `developed` and `testing`, because a ' +
+      "person's mark carries no commit Forge read and those two statuses refuse an agent without one",
     { commit },
   );
 }
