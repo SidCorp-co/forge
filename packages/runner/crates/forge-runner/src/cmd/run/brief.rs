@@ -14,6 +14,8 @@ use runner_core::ledger::Ledger;
 use runner_transport::CoreClient;
 use serde_json::Value;
 
+use crate::cmd::api::get_json;
+
 /// The method a dispatched run reads, as `forge-runner api` takes the path.
 pub const METHOD: &str = "forge-runner api guides/issue-flow.md";
 
@@ -54,10 +56,24 @@ fn short(sha: &str) -> &str {
     sha.get(..9).unwrap_or(sha)
 }
 
+/// Who holds a tree, each fact under its own label: issue keys and a branch
+/// in one unlabelled bracket read as one list (ISS-294's judge).
+fn holder(h: &Held) -> String {
+    let mut who = Vec::new();
+    match h.keys.as_slice() {
+        [] => {}
+        [one] => who.push(format!("issue {one}")),
+        many => who.push(format!("issues {}", many.join(", "))),
+    }
+    who.push(match &h.tree.branch {
+        Some(b) => format!("branch {b}"),
+        None => "detached HEAD".to_string(),
+    });
+    who.join(" · ")
+}
+
 fn held_line(h: &Held) -> String {
-    let mut who = h.keys.clone();
-    who.push(h.tree.branch.clone().unwrap_or_else(|| "detached".into()));
-    let who = who.join(", ");
+    let who = holder(h);
     if h.tree.prunable {
         return format!(
             "  {} ({who}): not read: the directory is gone",
@@ -77,7 +93,7 @@ fn held_line(h: &Held) -> String {
     .flatten()
     .collect();
     let said = if parts.is_empty() {
-        "reads empty".to_string()
+        "nothing held".to_string()
     } else {
         parts.join("; ")
     };
@@ -237,20 +253,6 @@ pub fn read_trees(
     Ok((target, base_sha, others))
 }
 
-async fn get_json(client: &CoreClient, path: &str) -> Result<Value, String> {
-    let resp = client
-        .get(path)
-        .send()
-        .await
-        .map_err(|e| format!("GET {path}: {e}"))?;
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(format!("GET {path} answered {status}: {}", text.trim()));
-    }
-    serde_json::from_str(&text).map_err(|e| format!("GET {path} answered no JSON: {e}"))
-}
-
 fn text_field(v: &Value, field: &str, path: &str) -> Result<String, String> {
     v.get(field)
         .and_then(Value::as_str)
@@ -285,6 +287,7 @@ pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<(PathBuf, String, 
 
 pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> {
     let led = Ledger::open_read_only(&Ledger::default_path()?)?;
+    let run_id = &super::full_id(&led, run_id)?;
     let (worktree, project_id, keys) = declared(&led, run_id)?;
 
     let project_path = format!("/api/projects/{project_id}");
@@ -380,6 +383,12 @@ mod tests {
                     committed: Some(vec!["a.rs".into(), "b.rs".into()]),
                     uncommitted: None,
                 },
+                Held {
+                    tree: tree("/r/.claude/worktrees/ISS-261", None),
+                    keys: vec!["ISS-261".into(), "ISS-262".into()],
+                    committed: Some(vec![]),
+                    uncommitted: Some(vec![]),
+                },
             ],
         });
         for want in [
@@ -388,8 +397,9 @@ mod tests {
             "Run: 70d69d6e",
             "Tree: /r/.claude/worktrees/ISS-294 · branch dev-ISS-294 · head 1aae01978",
             "Base branch: dev (the project's baseBranch); held trees read against origin/dev at 1aae01978",
-            "  /r (dev): reads empty",
-            "  /r/.claude/worktrees/ISS-280 (ISS-280, dev-ISS-280): committed: a.rs, b.rs; uncommitted: not read",
+            "  /r (branch dev): nothing held",
+            "  /r/.claude/worktrees/ISS-280 (issue ISS-280 · branch dev-ISS-280): committed: a.rs, b.rs; uncommitted: not read",
+            "  /r/.claude/worktrees/ISS-261 (issues ISS-261, ISS-262 · detached HEAD): nothing held",
             "Method: forge-runner api guides/issue-flow.md",
         ] {
             assert!(text.contains(want), "missing `{want}` in:\n{text}");

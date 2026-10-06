@@ -7,6 +7,7 @@ use runner_transport::api::{
     build, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
 };
 use runner_transport::CoreClient;
+use serde_json::Value;
 
 use super::Ctx;
 
@@ -22,7 +23,7 @@ pub struct Args {
     /// Endpoint path. `issues`, `/issues` and `/api/issues` are the same.
     pub path: String,
 
-    /// HTTP method (default GET, or POST when --data is given).
+    /// HTTP method (default GET, or POST when --data or -F is given).
     #[arg(short = 'X', long)]
     pub method: Option<String>,
 
@@ -125,8 +126,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     };
 
     let resp = run_api(&client, &req).await;
-    if !resp.stdout.is_empty() {
-        println!("{}", resp.stdout);
+    {
+        use std::io::Write;
+        let mut out = std::io::stdout().lock();
+        out.write_all(&resp.printed())?;
+        out.flush()?;
     }
     if !resp.stderr.is_empty() {
         eprintln!("{}", resp.stderr);
@@ -191,6 +195,21 @@ fn credential_for(
     }
 }
 
+/// One GET to core, answered as JSON or as the line that says why not.
+pub(crate) async fn get_json(client: &CoreClient, path: &str) -> Result<Value, String> {
+    let resp = client
+        .get(path)
+        .send()
+        .await
+        .map_err(|e| format!("GET {path}: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("GET {path} answered {status}: {}", text.trim()));
+    }
+    serde_json::from_str(&text).map_err(|e| format!("GET {path} answered no JSON: {e}"))
+}
+
 fn usage(message: &str) -> anyhow::Result<()> {
     let (outcome, line) = usage_failure(message);
     eprintln!("{line}");
@@ -207,6 +226,18 @@ mod tests {
             url: "https://forge-dev-api.example".into(),
             token: "tok-dev".into(),
         })
+    }
+
+    #[test]
+    fn the_help_says_a_form_is_posted_as_json_is() {
+        use clap::Args as _;
+        let help = Args::augment_args(clap::Command::new("api"))
+            .render_help()
+            .to_string();
+        assert!(
+            help.contains("POST when --data or -F is given"),
+            "the help for -X does not say what -F does to the method:\n{help}"
+        );
     }
 
     #[test]

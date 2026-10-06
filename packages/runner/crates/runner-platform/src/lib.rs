@@ -6,6 +6,7 @@ pub mod exe;
 pub mod git;
 pub mod proc;
 pub mod process;
+pub mod standing;
 pub mod subagent_host;
 
 pub use error::{Error, Result};

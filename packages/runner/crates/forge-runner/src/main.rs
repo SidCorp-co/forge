@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,
         Command::GitCredential(a) => cmd::git_credential::run(ctx, a).await,
         Command::Hook(a) => {
-            cmd::hook::run(a).await;
+            cmd::hook::run(ctx, a).await;
             Ok(())
         }
         Command::Gate(a) => {

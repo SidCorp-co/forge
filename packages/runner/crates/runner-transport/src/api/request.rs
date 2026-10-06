@@ -28,9 +28,37 @@ pub struct Request {
 
 /// What `run` produced, so the caller can print it and pick an exit code.
 pub struct Response {
-    pub stdout: String,
+    /// The response body exactly as core sent it: an attachment downloaded
+    /// through here is bytes, and a `String` would have replaced any that are
+    /// not UTF-8.
+    pub stdout: Vec<u8>,
+    /// Whether core said the body is JSON.
+    pub json: bool,
     pub stderr: String,
     pub outcome: Outcome,
+}
+
+impl Response {
+    fn failed(stderr: String, outcome: Outcome) -> Self {
+        Self {
+            stdout: Vec::new(),
+            json: false,
+            stderr,
+            outcome,
+        }
+    }
+
+    /// What `forge-runner api` writes to stdout: the body byte for byte, with
+    /// a newline after a JSON body that does not end in one, so a terminal
+    /// prompt does not run on after it. Any other body — a download — gets
+    /// nothing added, or the file a caller saves is not the file uploaded.
+    pub fn printed(&self) -> Vec<u8> {
+        let mut out = self.stdout.clone();
+        if self.json && !out.is_empty() && !out.ends_with(b"\n") {
+            out.push(b'\n');
+        }
+        out
+    }
 }
 
 pub fn normalize_path(path: &str) -> String {
@@ -67,11 +95,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
                 code: "USAGE".to_string(),
             };
             let msg = format!("not an HTTP method: {}", req.method);
-            return Response {
-                stdout: String::new(),
-                stderr: failure_json(&outcome, None, &msg),
-                outcome,
-            };
+            return Response::failed(failure_json(&outcome, None, &msg), outcome);
         }
     };
 
@@ -96,11 +120,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
                 Ok(parts) => parts,
                 Err(message) => {
                     let (outcome, stderr) = usage_failure(&message);
-                    return Response {
-                        stdout: String::new(),
-                        stderr,
-                        outcome,
-                    };
+                    return Response::failed(stderr, outcome);
                 }
             };
             let (content_type, bytes) = encode(&parts);
@@ -113,11 +133,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         Ok(r) => r,
         Err(e) => {
             let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
-            return Response {
-                stdout: String::new(),
-                stderr: failure_json(&outcome, None, &msg),
-                outcome,
-            };
+            return Response::failed(failure_json(&outcome, None, &msg), outcome);
         }
     };
 
@@ -129,12 +145,19 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             header_dump.push_str(&format!("{k}: {}\n", v.to_str().unwrap_or("<binary>")));
         }
     }
-    let text = resp.text().await.unwrap_or_default();
+    let json = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|t| t.to_ascii_lowercase().contains("json"));
+    let body = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
+    let text = String::from_utf8_lossy(&body);
     let outcome = classify(status, crate::status::refusal_code(&text).as_deref());
 
     if outcome.exit_code == 0 {
         return Response {
-            stdout: text,
+            stdout: body,
+            json,
             stderr: header_dump,
             outcome,
         };
@@ -149,9 +172,38 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         text.trim(),
         failure_json(&outcome, Some(status), &message)
     );
-    Response {
-        stdout: String::new(),
-        stderr,
-        outcome,
+    Response::failed(stderr, outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok(stdout: &[u8], json: bool) -> Response {
+        Response {
+            stdout: stdout.to_vec(),
+            json,
+            stderr: String::new(),
+            outcome: Outcome {
+                exit_code: 0,
+                retryable: false,
+                code: "OK".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_download_is_printed_byte_for_byte_with_nothing_added() {
+        let bytes = [0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x00, 0x80, b'x'];
+        assert_eq!(ok(&bytes, false).printed(), bytes.to_vec());
+        assert_eq!(ok(b"plain text", false).printed(), b"plain text".to_vec());
+        assert!(ok(b"", false).printed().is_empty());
+    }
+
+    #[test]
+    fn a_json_body_ends_in_exactly_one_newline() {
+        assert_eq!(ok(br#"{"a":1}"#, true).printed(), b"{\"a\":1}\n".to_vec());
+        assert_eq!(ok(b"{}\n", true).printed(), b"{}\n".to_vec());
+        assert!(ok(b"", true).printed().is_empty());
     }
 }
