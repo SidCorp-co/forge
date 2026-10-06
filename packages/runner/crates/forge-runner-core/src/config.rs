@@ -578,6 +578,12 @@ mod tests {
                 "config_home_at, the config home it hands a child it spawns, inside the test's \
                  scratch",
             ),
+            (
+                "forge-runner/tests/probation.rs",
+                2,
+                "an_updating_box and update_by_hand: the config home the box writes its release \
+                 URL into and hands the `update` child it spawns, inside the test's scratch",
+            ),
         ];
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut seen = std::collections::BTreeMap::<String, usize>::new();

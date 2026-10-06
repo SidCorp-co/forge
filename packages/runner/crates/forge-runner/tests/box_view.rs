@@ -252,6 +252,7 @@ fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
         started_at_ms: 0,
         drain: None,
         update_refused: None,
+        update_held_back: None,
     };
     serving::write(&cfg, &record).unwrap();
     // A spawn can return while the child is still the image it was forked

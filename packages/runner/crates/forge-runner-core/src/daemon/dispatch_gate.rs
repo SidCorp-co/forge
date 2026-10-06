@@ -37,6 +37,12 @@ pub struct Dispatch {
     pub subagent_type: Option<String>,
     /// This tool call's own id, which is what a declaration is promised to.
     pub tool_use_id: Option<String>,
+    /// The subagent a master's `SendMessage` resumes, which starts no new
+    /// subagent and so sends no `SubagentStart`.
+    pub resumes: Option<String>,
+    /// The transcript of the conversation that made this tool call, beside
+    /// which Claude Code keeps each of its subagents' own.
+    pub transcript_path: Option<String>,
 }
 
 /// What the box knows when the question is asked.
@@ -253,6 +259,7 @@ mod tests {
             agent_id: None,
             subagent_type: Some(role.into()),
             tool_use_id: Some(tool_use.into()),
+            ..Default::default()
         }
     }
 

@@ -45,9 +45,13 @@ pub enum Payload {
     NotADispatch,
     /// This box could not read the payload at all.
     Malformed,
-    /// A subagent is about to be dispatched.
+    /// A subagent is about to be dispatched, or a master is about to resume
+    /// one with `SendMessage` (`Dispatch::resumes`).
     Dispatch(Dispatch),
 }
+
+/// The tool a master resumes a subagent it already started with.
+const RESUME_TOOL: &str = "SendMessage";
 
 pub fn dispatch_in(payload: &[u8]) -> Payload {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
@@ -61,6 +65,21 @@ pub fn dispatch_in(payload: &[u8]) -> Payload {
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
+    if field("tool_name").as_deref() == Some(RESUME_TOOL) {
+        let to = v
+            .get("tool_input")
+            .and_then(|t| t.get("to"))
+            .and_then(serde_json::Value::as_str);
+        return match (field("agent_id"), to) {
+            (None, Some(to)) => Payload::Dispatch(Dispatch {
+                resumes: Some(to.to_string()),
+                tool_use_id: field("tool_use_id"),
+                transcript_path: field("transcript_path"),
+                ..Dispatch::default()
+            }),
+            _ => Payload::NotADispatch,
+        };
+    }
     let subagent_type = match v.get("tool_input") {
         None => return Payload::NotADispatch,
         Some(t) if !t.is_object() => return Payload::Malformed,
@@ -76,6 +95,8 @@ pub fn dispatch_in(payload: &[u8]) -> Payload {
         agent_id: field("agent_id"),
         subagent_type: Some(subagent_type),
         tool_use_id: field("tool_use_id"),
+        resumes: None,
+        transcript_path: field("transcript_path"),
     })
 }
 
@@ -482,6 +503,12 @@ pub async fn run(args: Args) {
         }
     };
     let token = session_tokens::token_from_env().ok();
+    // A resume is never refused, so a process with no capability to bind it
+    // with has nothing to ask.
+    if d.resumes.is_some() && token.is_none() {
+        println!("{ALLOW}");
+        return;
+    }
     let dir = config_dir();
     let caller = match token.as_deref() {
         Some(token) => Caller::Token(token),
@@ -550,6 +577,27 @@ mod tests {
     const DISPATCH: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","cwd":"/tmp/x","permission_mode":"bypassPermissions","hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Run echo command","prompt":"Run exactly this shell command","subagent_type":"general-purpose","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
     const INSIDE_A_CHILD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_use_id":"toolu_02"}"#;
     const AN_ORDINARY_TOOL_CALL: &str = r#"{"session_id":"d5953edb","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"toolu_03"}"#;
+
+    const A_RESUME: &str = r#"{"session_id":"d5953edb","transcript_path":"/h/.claude/projects/p/d5953edb.jsonl","hook_event_name":"PreToolUse","tool_name":"SendMessage","tool_input":{"to":"a4301aac9619978a0","summary":"go on","message":"carry on"},"tool_use_id":"toolu_05"}"#;
+    const A_RESUME_INSIDE_A_CHILD: &str = r#"{"session_id":"d5953edb","agent_id":"acf9b1721de184fa7","hook_event_name":"PreToolUse","tool_name":"SendMessage","tool_input":{"to":"a4301aac9619978a0","message":"hi"},"tool_use_id":"toolu_06"}"#;
+
+    /// A master's `SendMessage` names the subagent it resumes and the
+    /// transcript beside which that subagent's own is kept; one sent from
+    /// inside a subagent is not a master's resume.
+    #[test]
+    fn a_master_resuming_a_subagent_is_read_as_naming_it() {
+        let d = as_dispatch(A_RESUME);
+        assert_eq!(d.resumes.as_deref(), Some("a4301aac9619978a0"));
+        assert_eq!(
+            d.transcript_path.as_deref(),
+            Some("/h/.claude/projects/p/d5953edb.jsonl")
+        );
+        assert_eq!(d.subagent_type, None);
+        assert!(matches!(
+            dispatch_in(A_RESUME_INSIDE_A_CHILD.as_bytes()),
+            Payload::NotADispatch
+        ));
+    }
 
     fn as_dispatch(payload: &str) -> Dispatch {
         match dispatch_in(payload.as_bytes()) {

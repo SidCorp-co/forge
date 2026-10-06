@@ -183,6 +183,7 @@ mod tests {
             started_at_ms: 0,
             drain: None,
             update_refused: None,
+            update_held_back: None,
         }
     }
 

@@ -276,6 +276,45 @@ fn confirm_probation() {
     }
 }
 
+/// What `status` carries for a release a probation put back from `exe`.
+fn held_back_record(
+    r: &crate::update::probation::Rejected,
+    exe: &std::path::Path,
+) -> serving::UpdateRefused {
+    serving::UpdateRefused {
+        version: r.version.clone(),
+        why: r.why(exe),
+        at_ms: r.at_ms,
+    }
+}
+
+/// Put on the record, from this process's first moment, a release a
+/// probation put back from the build it serves: the first update check is
+/// half a minute away, and this is the build that was put back.
+fn say_what_is_held_back(drain: &drain::Drain) {
+    let exe = match crate::exe::own() {
+        Ok(own) => own.path,
+        Err(e) => {
+            tracing::warn!("[update] whether a release is held back cannot be read: {e}");
+            return;
+        }
+    };
+    match crate::update::probation::rejected(&exe) {
+        Ok(Some(r)) => {
+            tracing::warn!(
+                "[update] {} is held back: {}",
+                r.version,
+                r.why(&exe)
+            );
+            drain.update_held_back(Some(held_back_record(&r, &exe)));
+        }
+        Ok(None) => {}
+        Err(why) => tracing::warn!(
+            "[update] the record of a release a probation put back is unreadable, so no update is installed until it is: {why}"
+        ),
+    }
+}
+
 /// Serve the master panes the image before this one handed on, where this
 /// process is that image's exec, and say what was found.
 fn take_handed_masters(masters: &master::Masters) {
@@ -667,6 +706,7 @@ pub async fn run(
     // Whether this daemon admits long work, shared by everything that admits
     // it, and the record `forge-runner status` reads of the build it serves.
     let drain = Arc::new(drain::Drain::new(control::config_dir()));
+    say_what_is_held_back(&drain);
 
     // The build this process serves, kept where an update installs another,
     // and the master panes it serves, both carried by a handover's exec.
@@ -720,8 +760,18 @@ pub async fn run(
                         );
                         if auto {
                             match crate::update::apply(&m, Some(&served)).await {
-                                Ok(Some(o)) => {
+                                Ok(crate::update::Applied::HeldBack { rejected, exe }) => {
+                                    tracing::warn!(
+                                        "[update] {} is not installed: {}",
+                                        rejected.version,
+                                        rejected.why(&exe)
+                                    );
                                     drain.update_settled();
+                                    drain.update_held_back(Some(held_back_record(&rejected, &exe)));
+                                }
+                                Ok(crate::update::Applied::Installed(o)) => {
+                                    drain.update_settled();
+                                    drain.update_held_back(None);
                                     // The new binary is already swapped on disk;
                                     // this process hands over to it once its
                                     // own in-process work has ended.
@@ -785,7 +835,7 @@ pub async fn run(
                                         }
                                     }
                                 }
-                                Ok(None) => {}
+                                Ok(crate::update::Applied::UpToDate) => {}
                                 Err(e) => {
                                     tracing::warn!("[update] apply failed: {e}");
                                     drain.update_refused(&m.version, &e.to_string());

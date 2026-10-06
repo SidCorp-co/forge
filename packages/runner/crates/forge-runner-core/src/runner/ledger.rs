@@ -1480,6 +1480,22 @@ impl Ledger {
         Ok(n == 1)
     }
 
+    /// Bind `run_id` to a subagent its master resumed, which may have answered
+    /// to a run that has ended but answers to no open one.
+    pub fn bind_resumed(&self, run_id: &str, agent_id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET agent_id = ?2
+                  WHERE run_id = ?1 AND agent_id IS NULL AND ended_by IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM runs o
+                                     WHERE o.agent_id = ?2 AND o.ended_by IS NULL)",
+                params![run_id, agent_id],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
     /// The run this master declared that no subagent has bound yet, if any.
     pub fn unbound_run_for_master(
         &self,
