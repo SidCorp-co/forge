@@ -3136,9 +3136,8 @@
 
 ### Fixed
 
-- **A release no box has started says so.** Its run screen says why — which box could take it, or
-  what holds each — and when it is handed back; a claimed issue on the release gate reads "in a
-  release", not "shipping now" (ISS-1323).
+- **A release no box has started says so.** Its run screen says why and when it is handed back, and
+  a claimed issue on the release gate reads "in a release", not "shipping now" (ISS-1323).
 
 - **A release that cannot close an issue says why on it.** The comment names the refusal, each
   open question holding it and what clears it, and how to close the issue once it is cleared
