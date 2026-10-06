@@ -156,10 +156,16 @@ describe('impact: the issues building a flow a breaking version reaches', () => 
     { issueId: 'i1', workflowId: 'checkout', issSeq: 12, title: 'Cart screen', status: 'open' },
     { issueId: 'i2', workflowId: 'refunds', issSeq: 14, title: 'Refunds', status: 'developed' },
   ];
+  const traced = [
+    { issueId: 'i3', issSeq: 15, title: 'Pay with a saved card', status: 'in_progress' },
+    { issueId: 'i1', issSeq: 12, title: 'Cart screen', status: 'open' },
+    { issueId: 'i4', issSeq: 16, title: 'Dropped spike', status: 'dropped' },
+  ];
   it('lists the issues building the flow of a broken binding, and none for an unbroken one', () => {
     const [broken, whole] = attachBuildingIssues(
       [binding('checkout', '3.0.0'), binding('refunds', null)],
       builds,
+      [],
       'ISS',
     );
     expect(broken?.buildingIssues).toEqual([
@@ -168,7 +174,24 @@ describe('impact: the issues building a flow a breaking version reaches', () => 
     expect(whole?.buildingIssues).toEqual([]);
   });
   it('names no issue when nothing builds the broken flow', () => {
-    const [b] = attachBuildingIssues([binding('search', '3.0.0')], builds, 'ISS');
+    const [b] = attachBuildingIssues([binding('search', '3.0.0')], builds, [], 'ISS');
     expect(b?.buildingIssues).toEqual([]);
+  });
+  it('adds each issue whose criteria trace a BC of the requirement pinning the broken version, once, never a dropped one', () => {
+    const [broken, whole] = attachBuildingIssues(
+      [binding('checkout', '3.0.0'), binding('refunds', null)],
+      builds,
+      traced,
+      'ISS',
+    );
+    expect(broken?.buildingIssues).toEqual([
+      { issueId: 'i1', displayId: 'ISS-12', title: 'Cart screen', status: 'open' },
+      { issueId: 'i3', displayId: 'ISS-15', title: 'Pay with a saved card', status: 'in_progress' },
+    ]);
+    expect(whole?.buildingIssues).toEqual([]);
+  });
+  it('names the tracing issues of a broken flow no build link names', () => {
+    const [b] = attachBuildingIssues([binding('search', '3.0.0')], builds, traced, 'ISS');
+    expect(b?.buildingIssues.map((i) => i.displayId)).toEqual(['ISS-12', 'ISS-15']);
   });
 });

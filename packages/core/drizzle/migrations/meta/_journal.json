@@ -2717,6 +2717,13 @@
       "when": 1819152000000,
       "tag": "0419_every_outbox_event_type_the_registry_names_is_one_the_table_admits",
       "breakpoints": true
+    },
+    {
+      "idx": 420,
+      "version": "7",
+      "when": 1819238400000,
+      "tag": "0420_the_last_two_legacy_failure_causes_are_rewritten",
+      "breakpoints": true
     }
   ]
 }

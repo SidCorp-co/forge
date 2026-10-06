@@ -7,7 +7,6 @@ export {
   FAILURE_CAUSES,
   type FailureCause,
   type FailureCausePresentation,
-  LEGACY_CAUSE_ALIAS,
   LEGACY_NEUTRAL_REASONS,
   resolveFailureCause,
 } from '@forge/contracts/failure-causes';

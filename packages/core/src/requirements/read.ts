@@ -354,7 +354,9 @@ export async function detailOf(
     linkedContracts(db, row.id),
   ]);
   const [bindings, request] = await Promise.all([
-    latestBaselineBindingsOf(db, baselines, pins).then((b) => withBuildingIssues(db, b, prefix)),
+    latestBaselineBindingsOf(db, baselines, pins).then((b) =>
+      withBuildingIssues(db, row.id, b, prefix),
+    ),
     requestViewOf(row),
   ]);
   const [people, standings, changedTraced] = await Promise.all([

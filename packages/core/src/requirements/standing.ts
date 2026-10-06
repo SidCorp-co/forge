@@ -184,7 +184,7 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
 // issue closed and every BC proven → the BA's check task, a BC unproven → the master proves it; 7. an open
 // breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
-// re-plans it; 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
+// re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
 // 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: Phased,
@@ -274,14 +274,14 @@ function turnOf(
   if (input.openSuggestionKinds.includes('breakdown')) {
     return signerWait(viewer, 'approve breakdown', 'a breakdown suggestion waits on a person');
   }
-  const replan = live.filter((i) => i.changedSincePlan);
+  const replan = replanTasksOf(input, live);
   if (replan.length > 0) {
     return {
       group: 'waiting',
       waitingOn: wait(
         'agent',
         'Master',
-        `re-plan ${replan.map((i) => i.displayId).join(', ')}`,
+        `re-plan ${replan.map((t) => t.displayId).join(', ')}`,
         `planned against an earlier revision than r${input.currentRevision ?? '?'} (REQUIREMENT_CHANGED_SINCE_PLAN)`,
       ),
     };
@@ -325,14 +325,17 @@ function turnOf(
   };
 }
 
+type SlaTask = Extract<RequirementTask, { kind: 'breakdown' | 'check' }>;
+type ReplanTask = Extract<RequirementTask, { kind: 're-plan' }>;
+
 const taskOf = (
-  kind: RequirementTask['kind'],
-  owner: RequirementTask['owner'],
+  kind: SlaTask['kind'],
+  owner: SlaTask['owner'],
   revision: number,
   openedAt: Date,
   days: number,
   now: Date,
-): RequirementTask => {
+): SlaTask => {
   const due = addWorkingDays(openedAt, days);
   return {
     kind,
@@ -344,13 +347,33 @@ const taskOf = (
   };
 };
 
+// workflow requirement-to-delivery: `impact` opens one re-plan task in `delivery` per flagged issue and
+// revision, the master's, for each live issue of an agreed requirement still to ship whose plan a
+// later revision changed (changedSincePlan, the flag the awaiting_release gate refuses on); it opens
+// when the revision it is for became current, and the design gives it no SLA
+function replanTasksOf(input: StandingInput, live: readonly StandingIssue[]): ReplanTask[] {
+  const revision = input.currentRevision;
+  if (input.status !== 'agreed' || revision === null) return [];
+  const head = input.revisions.find((r) => r.revision === revision);
+  const openedAt = (head?.decidedAt ?? head?.createdAt ?? input.updatedAt).toISOString();
+  return live
+    .filter((i) => i.changedSincePlan && i.status !== 'closed')
+    .map((i) => ({
+      kind: 're-plan',
+      owner: 'Project master',
+      revision,
+      openedAt,
+      dueAt: null,
+      overdue: false,
+      issueId: i.id,
+      displayId: i.displayId,
+    }));
+}
+
 // workflow requirement-to-delivery step `breakdown`: the project master proposes the breakdown of
 // an agreed revision within 2 working days; the task is open while the revision has no live issue
 // and no open breakdown suggestion
-function breakdownTaskOf(
-  input: StandingInput,
-  live: readonly StandingIssue[],
-): RequirementTask | null {
+function breakdownTaskOf(input: StandingInput, live: readonly StandingIssue[]): SlaTask | null {
   if (input.status !== 'agreed' || input.currentRevision === null || !input.agreedAt) return null;
   if (live.length > 0 || input.openSuggestionKinds.includes('breakdown')) return null;
   return taskOf(
@@ -367,7 +390,7 @@ function breakdownTaskOf(
 // one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
 // completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is
 // `deliveryOf`'s, so the task is read from the same computation as delivered
-function checkTaskOf(input: Phased, live: readonly StandingIssue[]): RequirementTask | null {
+function checkTaskOf(input: Phased, live: readonly StandingIssue[]): SlaTask | null {
   if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
   if (input.currentRevision === null || live.length === 0) return null;
   const ids = new Set(live.map((i) => i.id));
@@ -462,9 +485,12 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },
-    tasks: [breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
-      (t): t is RequirementTask => t !== null,
-    ),
+    tasks: [
+      ...[breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
+        (t): t is SlaTask => t !== null,
+      ),
+      ...replanTasksOf(input, live),
+    ],
     shownRevision,
     coverage,
     owner: input.owner,

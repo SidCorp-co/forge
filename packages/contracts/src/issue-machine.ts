@@ -1,4 +1,4 @@
-// The issue machine: workflow `issue-lifecycle`, approved revision 8. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, approved revision 11. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and an issue closes only through a release.
 
@@ -202,7 +202,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
 	shapes: ["853ac6ba", "23991d04"],
-	design: { flow: "issue-lifecycle", revision: 8 },
+	design: { flow: "issue-lifecycle", revision: 11 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,

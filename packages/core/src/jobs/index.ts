@@ -29,7 +29,6 @@ export {
   releaseJobHold,
 } from './master-holds.js';
 export { parkedOnAHuman } from './park-deadline.js';
-export { probePgBossBackstop, recordPipelineSweeperTick } from './pgboss-health.js';
 export { poolPrompt, settleNoPromptJob } from './pool-served.js';
 export {
   provideJobsPorts,

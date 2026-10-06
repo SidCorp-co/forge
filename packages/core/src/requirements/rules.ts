@@ -1,5 +1,5 @@
 /**
- * The guards of workflow `requirement-lifecycle` rev 6, as pure functions over what the service
+ * The guards of workflow `requirement-lifecycle` rev 8, as pure functions over what the service
  * read: whether the actor holds requirements.approve, which revision may move where, what an agree pins, and the
  * BC codes a criteria list keeps or takes. Every refusal is named; the service answers it with
  * nothing written.

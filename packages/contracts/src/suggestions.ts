@@ -1,4 +1,4 @@
-// one declaration of the suggestion vocabulary (workflow suggestion-lifecycle rev 5, ISS-58):
+// one declaration of the suggestion vocabulary (workflow suggestion-lifecycle rev 9, ISS-58):
 // core's table CHECKs, REST, MCP and the web all import these values, the request schemas and the
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 

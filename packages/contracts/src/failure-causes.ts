@@ -100,22 +100,14 @@ export const FAILURE_CAUSES = [
 
 export type FailureCause = (typeof FAILURE_CAUSES)[number];
 
-export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
-	job_failed: "unclassified",
-	usage_limit: "provider_usage_limit",
-};
-
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(
-	Object.entries(LEGACY_CAUSE_ALIAS),
-);
 
 export function resolveFailureCause(
 	raw: string | null | undefined,
 ): FailureCause {
 	if (!raw) return "unclassified";
 	if (CAUSE_SET.has(raw)) return raw as FailureCause;
-	return ALIAS_LOOKUP.get(raw) ?? "unclassified";
+	return "unclassified";
 }
 
 export type FailureCausePresentation = "cleanup" | "swept" | "failure";

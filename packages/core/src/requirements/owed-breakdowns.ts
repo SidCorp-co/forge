@@ -38,7 +38,7 @@ export async function owedBreakdowns(projectId: string): Promise<OwedBreakdown[]
   const standings = await standingsOf(projectId, rows, null);
   return rows.flatMap((r) => {
     const task = standings.get(r.id)?.tasks.find((t) => t.kind === 'breakdown');
-    if (!task) return [];
+    if (task?.kind !== 'breakdown') return [];
     return [
       {
         requirementId: r.id,
