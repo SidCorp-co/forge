@@ -89,35 +89,6 @@ pub(crate) fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     h.finish()
 }
 
-/// The capacity refusal this master's pane is sitting behind, if any.
-///
-/// `newest` is the newest decisive record in the conversation `conversation`
-/// names. It holds the pane when it is a quota refusal and the pane's own hooks
-/// contradict neither half of that reading: they name no other conversation,
-/// and they report no turn begun after the refusal was written. Hooks that have
-/// reported nothing veto nothing — a daemon that has just adopted a pane has
-/// heard nothing from it yet, and that pane is exactly the one left parked.
-pub(crate) fn held_by_limit(
-    newest: Option<&master_limit::Decisive>,
-    conversation: Option<&str>,
-    seen: Option<&agent_activity::Activity>,
-) -> Option<master_limit::Refusal> {
-    let newest = newest?;
-    let refusal = master_limit::quota_refusal(newest)?;
-    if let Some(seen) = seen {
-        if let (Some(heard), Some(read)) = (seen.conversation.as_deref(), conversation) {
-            if heard != read {
-                return None;
-            }
-        }
-        let refused_at_ms = newest.at * 1000 + i64::from(newest.millis);
-        if seen.turn_started_at.is_some_and(|t| t > refused_at_ms) {
-            return None;
-        }
-    }
-    Some(refusal.clone())
-}
-
 pub(crate) fn nudge(inbox: &[UnansweredDocument]) -> String {
     format!(
         "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.{}",
@@ -328,31 +299,22 @@ impl NudgePass<'_> {
     }
 }
 
-/// Paste one nudge into this project's master. `held` is the capacity refusal
-/// the pane is parked behind, when that is why it is being asked; the nudge is
-/// the same line either way, and it submits straight through Claude Code's
-/// armed wait-for-reset (captured 2026-09-24: `Usage limit reached again after
-/// you continued`), so no key is sent ahead of it.
+/// Paste one nudge into this project's master, saying core's reason for it.
+/// A pane parked behind its account limit is asked with the same line, which
+/// submits straight through Claude Code's armed wait-for-reset (captured
+/// 2026-09-24: `Usage limit reached again after you continued`), so no key is
+/// sent ahead of it.
 pub(crate) async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
     slug: &str,
-    held: Option<&master_limit::Refusal>,
+    because: &str,
     inbox: &[UnansweredDocument],
 ) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
-    match held {
-        Some(refusal) => tracing::warn!("{}", limit_reask_line(slug, &name, refusal)),
-        None if inbox.is_empty() => {
-            tracing::info!("[master] {slug}: admissible work — nudging {name}")
-        }
-        None => tracing::info!(
-            "[master] {slug}: {} item(s) owed from the channel, issue threads, requirements or feedback — nudging {name}",
-            inbox.len()
-        ),
-    }
+    tracing::info!("[master] {slug}: nudging {name}: {because}");
     if let Err(e) = terminal::send_line(&name, &nudge(inbox)).await {
         // A pane that exited before the nudge reached it is reported by the
         // sweep that reads it gone, with why; a warning here too would be the

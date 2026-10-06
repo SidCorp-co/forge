@@ -15,6 +15,11 @@ const TEXT_MAX = 1000;
 const NAME_LIST_MAX = 200;
 
 const age = z.number().int().min(0).max(AGE_MAX);
+const ageMs = z
+	.number()
+	.int()
+	.min(0)
+	.max(AGE_MAX * 1000);
 const count = z.number().int().min(0).max(COUNT_MAX);
 const text = z.string().trim().min(1).max(TEXT_MAX);
 const names = z.array(text).max(NAME_LIST_MAX);
@@ -37,6 +42,13 @@ export const MASTER_SINCE_NUDGE = [
 	"ran",
 ] as const;
 export type MasterSinceNudge = (typeof MASTER_SINCE_NUDGE)[number];
+
+/** What a refused turn's own record says the account refused it over: a quota window, a throttle, a credential. */
+export const MASTER_ACCOUNT_REFUSALS = [
+	"usage_limit",
+	"rate_limit",
+	"auth",
+] as const;
 
 export const masterFactsSchema = z.strictObject({
 	/** The cause of the handover window the daemon is in, or null outside one. */
@@ -94,8 +106,17 @@ export const masterFactsSchema = z.strictObject({
 			lastClosedAgoSeconds: age.nullable(),
 		}),
 	}),
-	/** Whether the pane sits behind its account's capacity refusal. */
-	limitHeld: z.boolean(),
+	/** What the pane's own conversation and hooks say about its account's last refusal; core decides whether it holds the pane. */
+	limit: z.strictObject({
+		/** The newest record in the conversation that says anything, where it is a refusal; null where it says the account answered, or none is read. */
+		refusal: z
+			.strictObject({ reason: z.enum(MASTER_ACCOUNT_REFUSALS), agoMs: ageMs })
+			.nullable(),
+		/** Whether the pane's hooks name that conversation: `unheard` where either side is not known. */
+		hooks: z.enum(["same", "other", "unheard"]),
+		/** Since the pane's hooks last reported a turn starting; null where none runs. */
+		turnStartedAgoMs: ageMs.nullable(),
+	}),
 	nudge: z.strictObject({
 		/** A digest of this sweep's admissible and owed work, compared for equality only. */
 		digest: z.string().trim().min(1).max(64),
@@ -117,7 +138,7 @@ export const masterVerdictRequestSchema = z.strictObject({
 	facts: masterFactsSchema,
 });
 export const MASTER_VERDICT_SHAPE =
-	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, holding, turn, idle, limitHeld, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
+	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
 
 /** Why no pane is placed, none ended and none nudged. */
 export const MASTER_WITHHOLD_REASONS = [

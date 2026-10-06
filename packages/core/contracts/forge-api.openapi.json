@@ -6061,8 +6061,66 @@
                         ],
                         "type": "object"
                       },
-                      "limitHeld": {
-                        "type": "boolean"
+                      "limit": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "hooks": {
+                            "enum": [
+                              "same",
+                              "other",
+                              "unheard"
+                            ],
+                            "type": "string"
+                          },
+                          "refusal": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agoMs": {
+                                    "maximum": 315360000000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "reason": {
+                                    "enum": [
+                                      "usage_limit",
+                                      "rate_limit",
+                                      "auth"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "reason",
+                                  "agoMs"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "turnStartedAgoMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "refusal",
+                          "hooks",
+                          "turnStartedAgoMs"
+                        ],
+                        "type": "object"
                       },
                       "nudge": {
                         "additionalProperties": false,
@@ -6259,7 +6317,7 @@
                       "holding",
                       "turn",
                       "idle",
-                      "limitHeld",
+                      "limit",
                       "nudge"
                     ],
                     "type": "object"

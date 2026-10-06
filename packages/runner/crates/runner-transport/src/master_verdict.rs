@@ -30,8 +30,27 @@ pub struct Facts {
     pub holding: Holding,
     pub turn: Turn,
     pub idle: Idle,
-    pub limit_held: bool,
+    pub limit: Limit,
     pub nudge: NudgeFacts,
+}
+
+/// What the pane's own conversation and hooks say about its account's last
+/// refusal; whether that holds the pane is core's.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Limit {
+    pub refusal: Option<LimitRefusal>,
+    /// `same`, `other` or `unheard`.
+    pub hooks: &'static str,
+    pub turn_started_ago_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitRefusal {
+    /// `usage_limit`, `rate_limit` or `auth`.
+    pub reason: &'static str,
+    pub ago_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

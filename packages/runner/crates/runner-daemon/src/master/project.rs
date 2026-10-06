@@ -153,11 +153,18 @@ fn facts_for(
         .get(&runner.project_id)
         .and_then(|(s, _)| activity.get(&s));
     let nudge = nudge_facts(masters, &runner.project_id, seen.digest, reported.as_ref());
+    let limit = limit_facts(
+        seen.last_said.as_ref(),
+        seen.stored_conversation.as_deref(),
+        reported.as_ref(),
+        agent_activity::now_ms(),
+    );
     facts_of(
         seen,
         &work.answered(),
         judged,
         idle,
+        limit,
         nudge,
         &resolved.repo_path,
     )
@@ -212,14 +219,6 @@ async fn see(
         stored_conversation.as_deref(),
         sw.now_unix,
     );
-    let reported = masters
-        .get(project_id)
-        .and_then(|(s, _)| sw.shared.activity.get(&s));
-    let held = held_by_limit(
-        last_said.as_ref(),
-        stored_conversation.as_deref(),
-        reported.as_ref(),
-    );
     Some(Seen {
         standing,
         pane_name,
@@ -229,7 +228,6 @@ async fn see(
         adopted,
         servers,
         restarting,
-        held,
         last_said,
         digest: work_digest(&work.admissible).wrapping_add(master_inbox::inbox_digest(&work.inbox)),
     })

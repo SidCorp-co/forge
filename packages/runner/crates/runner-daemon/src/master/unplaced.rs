@@ -23,9 +23,7 @@ pub(crate) enum Unplaced {
         pane: Option<String>,
     },
     /// The pane could not be given the skill it runs on, so none was started.
-    SkillMissing {
-        detail: String,
-    },
+    SkillMissing { detail: String },
     /// An owner stood this project's master down while this box was placing
     /// its pane, so the pane was withdrawn (ISS-1118). `pane` is the session
     /// still running against that stand-down, where tmux would not end it.
@@ -51,17 +49,12 @@ pub(crate) enum Unplaced {
     /// kill-session` is the right remedy HERE and the wrong one on
     /// `forge-runner master status`, where the reader is an operator in a shell
     /// of their own and the runner's socket is not the default server.
-    StaleCapability {
-        session: String,
-        pane: String,
-    },
+    StaleCapability { session: String, pane: String },
     /// Core could not be asked which MCP servers this project declares, so no
     /// pane was started: one started now would carry none of them and no
     /// record would say why (ISS-1235). `detail` names the route and what it
     /// met.
-    ServersUnreadable {
-        detail: String,
-    },
+    ServersUnreadable { detail: String },
     /// The project declares MCP servers and the file handing them to a pane
     /// could not be written into `dir`, so no pane was started for the same
     /// reason. `dir` is what an operator has to make writable.
@@ -72,13 +65,9 @@ pub(crate) enum Unplaced {
     /// Everything before the pane was in place and the capability it would
     /// carry could not be minted, so no pane was started: one without it has
     /// every declaration refused.
-    CapabilityUnminted {
-        detail: String,
-    },
+    CapabilityUnminted { detail: String },
     /// Everything was in place and tmux did not start the pane.
-    PaneUnstarted {
-        detail: String,
-    },
+    PaneUnstarted { detail: String },
     /// Core withheld a pane, or left a running one undriven, said as core said
     /// it (ADR 0009, What core takes over: Placement). `pane` is the one left
     /// running, where core left one.
@@ -89,9 +78,7 @@ pub(crate) enum Unplaced {
     },
     /// Core could not be asked what to do about this project's master, so the
     /// box placed, ended and nudged nothing: it holds no answer of its own.
-    VerdictUnanswered {
-        detail: String,
-    },
+    VerdictUnanswered { detail: String },
 }
 
 impl std::fmt::Display for Unplaced {

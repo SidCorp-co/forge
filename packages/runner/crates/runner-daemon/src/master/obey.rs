@@ -60,8 +60,7 @@ pub(crate) async fn obey(
             record_heard(t, ledger, &authority).await;
             tend(t, found).await;
             if nudge {
-                tracing::debug!("[master] {}: nudge owed: {because}", t.slug());
-                drive(t, ledger, true).await;
+                drive(t, ledger, Some(&because)).await;
             }
         }
         Verdict::Place {
@@ -289,9 +288,10 @@ async fn tend(t: &Turn<'_>, found: &mut Found) {
     }
 }
 
-/// Open the pass core asked for, and type the nudge where `typed`: a pane just
-/// placed was handed its brief, which is this pass's nudge.
-async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: bool) {
+/// Open the pass core asked for, and type the nudge where core said why it is
+/// owed (`typed`): a pane just placed was handed its brief, which is this
+/// pass's nudge.
+async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
     let (masters, project_id) = (t.masters(), t.project_id());
     let prompts = masters
         .get(project_id)
@@ -304,10 +304,9 @@ async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: bool) {
         project_id,
         issue_key: master_pass::nudged_issue(&t.work.admissible, t.work.inbox.is_empty()),
     };
-    pass.open(ledger, typed).await;
-    if typed {
-        let held = t.seen.held.as_ref();
-        nudge_master(masters, project_id, t.slug(), held, &t.work.inbox).await;
+    pass.open(ledger, typed.is_some()).await;
+    if let Some(because) = typed {
+        nudge_master(masters, project_id, t.slug(), because, &t.work.inbox).await;
     }
 }
 
@@ -431,7 +430,7 @@ async fn place(
     // the fail-open the standing read exists to close, so an unread one
     // forfeits the pass its brief would open.
     if placing.nudge && clear == Some(true) {
-        drive(t, ledger, false).await;
+        drive(t, ledger, None).await;
     }
 }
 
@@ -566,7 +565,10 @@ mod tests {
             left.lead(),
             "forge-master-forge is RUNNING and this box is not driving it"
         );
-        assert!(left.is_error(), "a pane left running undriven was said as a warning");
+        assert!(
+            left.is_error(),
+            "a pane left running undriven was said as a warning"
+        );
     }
 
     /// ISS-1233, measured 2026-09-24: a refused registration under a resident

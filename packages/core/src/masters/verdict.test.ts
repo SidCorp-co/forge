@@ -1,6 +1,6 @@
 import type { MasterFacts } from '@forge/contracts/master-verdict';
 import { describe, expect, it } from 'vitest';
-import { masterVerdict, nudgeDue } from './verdict.js';
+import { limitHeld, masterVerdict, nudgeDue } from './verdict.js';
 
 // ADR 0009, What core takes over: Placement and Retirement were the runner's ensure_master and sweep;
 // each case below is one branch of the verdict the box now asks core for and obeys.
@@ -25,7 +25,7 @@ function facts(over: Partial<MasterFacts> = {}): MasterFacts {
       pane: { doing: 'idle', lastEvent: 'stop', lastEventAgoSeconds: 0 },
       children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
     },
-    limitHeld: false,
+    limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
     nudge: { digest: 'd1', last: null, since: 'unreported' },
     ...over,
   };
@@ -367,7 +367,14 @@ describe('keep: when a driven master is nudged', () => {
   });
 
   it('a limited master is asked every window, even with no work and a pass open', () => {
-    const limited = { work: noWork, limitHeld: true };
+    const limited = {
+      work: noWork,
+      limit: {
+        refusal: { reason: 'usage_limit' as const, agoMs: 60_000 },
+        hooks: 'same' as const,
+        turnStartedAgoMs: null,
+      },
+    };
     expect(due({ last: last('d0', 300) }, limited, true)).toBe(true);
     expect(due({ last: last('d0', 299) }, limited, true)).toBe(false);
   });
@@ -379,5 +386,43 @@ describe('keep: when a driven master is nudged', () => {
       act: 'keep',
       nudge: false,
     });
+  });
+});
+
+describe('limit: whether the pane sits behind its account refusal', () => {
+  const refused = (reason: 'usage_limit' | 'rate_limit' | 'auth', agoMs: number) => ({
+    reason,
+    agoMs,
+  });
+
+  it('a quota refusal holds the pane however old, while its hooks do not contradict it', () => {
+    for (const reason of ['usage_limit', 'rate_limit'] as const) {
+      expect(
+        limitHeld({
+          refusal: refused(reason, 9 * HOUR * 1000),
+          hooks: 'unheard',
+          turnStartedAgoMs: null,
+        }),
+      ).toBe(true);
+    }
+    expect(
+      limitHeld({ refusal: refused('usage_limit', 1000), hooks: 'same', turnStartedAgoMs: 1000 }),
+    ).toBe(true);
+  });
+
+  it('a credential refusal, an answered account, or nothing read holds nothing', () => {
+    expect(
+      limitHeld({ refusal: refused('auth', 1000), hooks: 'same', turnStartedAgoMs: null }),
+    ).toBe(false);
+    expect(limitHeld({ refusal: null, hooks: 'same', turnStartedAgoMs: null })).toBe(false);
+  });
+
+  it('hooks naming another conversation, or a turn begun after the refusal, release it', () => {
+    expect(
+      limitHeld({ refusal: refused('usage_limit', 1000), hooks: 'other', turnStartedAgoMs: null }),
+    ).toBe(false);
+    expect(
+      limitHeld({ refusal: refused('usage_limit', 1000), hooks: 'same', turnStartedAgoMs: 999 }),
+    ).toBe(false);
   });
 });

@@ -24,9 +24,21 @@ function workWaits(facts: MasterFacts): boolean {
   return admissible > 0 || owed > 0 || poolWaits;
 }
 
+/**
+ * Whether the pane sits behind its account's capacity refusal: the newest thing its conversation
+ * says is a quota refusal, and its hooks contradict neither half of that reading — they name no
+ * other conversation, and report no turn begun after the refusal. Age does not end it: a refusal
+ * with nothing after it is the last thing the pane's account said to it (ISS-1248).
+ */
+export function limitHeld(limit: MasterFacts['limit']): boolean {
+  const { refusal, hooks, turnStartedAgoMs } = limit;
+  if (refusal === null || refusal.reason === 'auth' || hooks === 'other') return false;
+  return turnStartedAgoMs === null || turnStartedAgoMs >= refusal.agoMs;
+}
+
 /** Whether a master pass is owed at all: a pool job is taken under the master, not passed to it. */
 function passAsked(facts: MasterFacts): boolean {
-  return facts.work.admissible > 0 || facts.work.owed > 0 || facts.limitHeld;
+  return facts.work.admissible > 0 || facts.work.owed > 0 || limitHeld(facts.limit);
 }
 
 function withheld(facts: MasterFacts, record: MasterRecord): MasterVerdict | null {
@@ -230,7 +242,7 @@ export function nudgeDue(facts: MasterFacts, passOpen: boolean): { due: boolean;
   const windowPassed = last !== null && last.agoSeconds >= MASTER_NUDGE_REFRESH_SECONDS;
   if (!passAsked(facts)) return { due: false, because: 'nothing is owed a pass' };
   if (last === null) return { due: true, because: 'it has not been nudged about this work' };
-  if (facts.limitHeld) {
+  if (limitHeld(facts.limit)) {
     return windowPassed
       ? { due: true, because: 'it sits behind its account limit and the refresh window has passed' }
       : { due: false, because: 'it sits behind its account limit and was asked inside the window' };

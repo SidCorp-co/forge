@@ -83,7 +83,7 @@ function facts(over: Doc = {}): Doc {
       pane: null,
       children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
     },
-    limitHeld: false,
+    limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
     nudge: { digest: 'd1', last: null, since: 'unreported' },
     ...over,
   };
