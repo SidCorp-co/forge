@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Two racing release sweeps write one hold, not two; two agents updating one issue's session state can no longer both succeed against the same earlier read.
+
 ## [0.4.0-dev.55] - 2026-10-06
 
 Onboarding confirm carries the owner's request; coded chat turn errors; recorded issue decisions
