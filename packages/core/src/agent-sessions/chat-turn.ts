@@ -31,7 +31,7 @@ import { seedTurn } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { readSessionModel } from './session-model.js';
 import { transitionSessions } from './session-transition.js';
-import { readTranscript, writeTranscript } from './turns-helpers.js';
+import { readTranscript, type TranscriptEntry, writeTranscript } from './turns-helpers.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
@@ -203,16 +203,12 @@ function checkoutUnbound(projectId: string, deviceId: string | null): RefusalErr
  * re-injects the prior transcript, since the on-disk `--resume` state stayed on the old box.
  * ISS-733 — the slash-command goes on line 1, as a pipeline job's prompt carries it.
  */
-async function coldStartPrompt(
-  args: DispatchChatTurnArgs,
-  decoratedMessage: string,
-  language: ContentLanguageView | null,
-  prevMessages: ReadonlyArray<{ type?: string; content?: unknown }>,
-): Promise<string> {
-  let prompt = decoratedMessage;
+async function coldStartPrompt(args: DispatchChatTurnArgs, plan: TurnPlan): Promise<string> {
+  const { language } = plan;
+  let prompt = plan.message;
   if (!args.preBuilt) {
     const languageSection = language ? `${contentLanguageBlock(language, 'chat')}\n\n---\n\n` : '';
-    const history = buildRehydrationBlock(prevMessages);
+    const history = buildRehydrationBlock(plan.prevMessages);
     let preamble = '';
     try {
       preamble = await agentSessionsPorts().buildChatPreamble(
@@ -227,7 +223,7 @@ async function coldStartPrompt(
         'chat-turn: the project preamble could not be built; the cold start goes without it',
       );
     }
-    prompt = preamble + languageSection + history + decoratedMessage;
+    prompt = preamble + languageSection + history + plan.message;
   }
   return args.skillName ? `/${args.skillName}\n${prompt}` : prompt;
 }
@@ -260,44 +256,72 @@ async function liveRunFor(
   return next.id;
 }
 
-export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
-  const { session, project, client } = args;
+/** What one turn carries, read and refused before anything is written. */
+interface TurnPlan {
+  deviceId: string;
+  migrated: boolean;
+  repoPath: string;
+  /** The user text with its `[Context: …]` header when the page changed. */
+  message: string;
+  attachments: SessionAttachmentRef[];
+  prevMessages: TranscriptEntry[];
+  userMessage: TranscriptEntry;
+  now: Date;
+  claudeSessionId: string | null;
+  resumable: boolean;
+  model: ReturnType<typeof readSessionModel>;
+  language: ContentLanguageView | null;
+}
+
+/**
+ * The [Context: …] header goes first only when the user switched page/issue since the previous
+ * turn; a brand-new session has none, so its first turn always gets it.
+ */
+function turnMessage(args: DispatchChatTurnArgs): string {
+  const prev = (args.session.metadata as { pageContext?: unknown } | null)?.pageContext;
+  return !args.pageContext || samePageContext(readPersistedPageContext(prev), args.pageContext)
+    ? args.message
+    : `${formatPageContextLine(args.pageContext)}\n${args.message}`;
+}
+
+/** The session's checkout, re-read from the device binding when the turn lands on another box. */
+async function turnCheckout(
+  session: AgentSessionRow,
+  projectId: string,
+  deviceId: string,
+  migrated: boolean,
+): Promise<string> {
+  const deviceChanged = migrated || deviceId !== (session.deviceId ?? null);
+  const repoPath =
+    session.repoPath && !deviceChanged
+      ? session.repoPath
+      : await resolveSessionRepoPathForDevice(projectId, deviceId);
+  if (!repoPath) throw checkoutUnbound(projectId, deviceId);
+  return repoPath;
+}
+
+async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
+  const { session, client } = args;
   const { deviceId } = client;
   if (!deviceId) throw noClaudeClient('session');
   const migrated = !!client.migrated;
-  const broadcastEvent = args.broadcastEvent ?? 'agent-session.updated';
-
-  // The [Context: …] header goes first only when the user switched page/issue since the
-  // previous turn; a brand-new session has none, so its first turn always gets it.
-  const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & { pageContext?: unknown };
-  const decoratedMessage =
-    !args.pageContext ||
-    samePageContext(readPersistedPageContext(prevMeta.pageContext), args.pageContext)
-      ? args.message
-      : `${formatPageContextLine(args.pageContext)}\n${args.message}`;
-
-  const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
-  let repoPath = session.repoPath ?? null;
-  if (!repoPath || deviceChanged)
-    repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId);
-  if (!repoPath) throw checkoutUnbound(project.id, deviceId);
+  const message = turnMessage(args);
+  const repoPath = await turnCheckout(session, args.project.id, deviceId, migrated);
   // a turn no socket of the box would receive is refused before anything is written
   requireListeningBox(deviceId);
 
-  const attachments: SessionAttachmentRef[] = args.attachmentIds?.length
+  const attachments = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
     : [];
-
   const prevMessages = await readTranscript(session.id);
   const now = new Date();
-  const userMessage: Record<string, unknown> = {
+  const userMessage: TranscriptEntry = {
     id: randomUUID(),
     type: 'user',
-    content: decoratedMessage,
+    content: message,
     timestamp: now.getTime(),
     ...(attachments.length ? { attachments } : {}),
   };
-  const messages = [...prevMessages, userMessage];
 
   // Resolved before the transaction so the ISS-733 `pendingSkillName` marker persists in it.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
@@ -312,42 +336,80 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // project's content language and records it; a resumed or pre-built turn keeps what it was told
   const language =
     !resumable && !args.preBuilt
-      ? await agentSessionsPorts().readContentLanguage(project.id)
+      ? await agentSessionsPorts().readContentLanguage(args.project.id)
       : null;
 
-  const updates: AgentSessionPatch = {
+  return {
+    deviceId,
+    migrated,
+    repoPath,
+    message,
+    attachments,
+    prevMessages,
+    userMessage,
+    now,
+    claudeSessionId,
+    resumable,
+    model,
+    language,
+  };
+}
+
+/**
+ * The session row a turn writes: heartbeat, checkout and device, the metadata a cold start
+ * records, and a title derived from the first message of an untitled chat.
+ */
+function sessionPatch(
+  args: DispatchChatTurnArgs,
+  plan: TurnPlan,
+): { patch: AgentSessionPatch; fallbackTitle: string | null } {
+  const { session } = args;
+  const { deviceId, now, language } = plan;
+  const patch: AgentSessionPatch = {
     lastHeartbeatAt: now,
     updatedAt: now,
     startedAt: session.startedAt ?? now,
     failureReason: null,
-    repoPath,
+    repoPath: plan.repoPath,
   };
-  if (deviceId && session.deviceId !== deviceId) updates.deviceId = deviceId;
-  if (migrated) updates.claudeSessionId = null;
-  const nextMeta = { ...prevMeta };
-  if (deviceId) nextMeta.deviceId = deviceId;
-  if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
-  if (args.pageContext) nextMeta.pageContext = args.pageContext;
+  if (session.deviceId !== deviceId) patch.deviceId = deviceId;
+  if (plan.migrated) patch.claudeSessionId = null;
+
+  const metadata: Record<string, unknown> = {
+    ...((session.metadata ?? {}) as Record<string, unknown>),
+    deviceId,
+  };
+  if (args.model !== undefined) metadata.model = args.model ?? 'default';
+  if (args.pageContext) metadata.pageContext = args.pageContext;
   if (language) {
-    nextMeta[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
+    metadata[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
   }
-  if (!resumable && args.skillName) {
-    nextMeta.pendingSkillName = args.skillName;
-    nextMeta.pendingSkillBaselineCount = messages.length;
+  if (!plan.resumable && args.skillName) {
+    metadata.pendingSkillName = args.skillName;
+    metadata.pendingSkillBaselineCount = plan.prevMessages.length + 1;
   }
-  updates.metadata = nextMeta;
+  patch.metadata = metadata;
 
-  let fallbackTitle: string | null = null;
-  if (prevMessages.length === 0 && isPlaceholderTitle(session.title)) {
-    fallbackTitle = deriveChatTitle(stripSystemNoise(args.message)) || null;
-    if (fallbackTitle) updates.title = fallbackTitle;
-  }
+  const fallbackTitle =
+    plan.prevMessages.length === 0 && isPlaceholderTitle(session.title)
+      ? deriveChatTitle(stripSystemNoise(args.message)) || null
+      : null;
+  if (fallbackTitle) patch.title = fallbackTitle;
+  return { patch, fallbackTitle };
+}
 
-  const { updated, sync, eventSeqBase } = await db.transaction(async (tx) => {
+/** The turn's one transaction: the row under a live run, its move to `running`, and the user entry. */
+async function writeTurn(
+  session: AgentSessionRow,
+  actor: KernelActor | undefined,
+  plan: TurnPlan,
+  patch: AgentSessionPatch,
+) {
+  return db.transaction(async (tx) => {
     const pipelineRunId = await liveRunFor(tx, session);
     const [written] = await tx
       .update(agentSessions)
-      .set({ ...updates, pipelineRunId })
+      .set({ ...patch, pipelineRunId })
       .where(eq(agentSessions.id, session.id))
       .returning();
     if (!written) throw new Error('agent_sessions: update returned no row');
@@ -357,71 +419,96 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
           to: 'running',
           expect: written.status,
           where: eq(agentSessions.id, session.id),
-          actor: args.actor ?? { type: 'system' },
+          actor: actor ?? { type: 'system' },
           source: 'chat-turn',
           returning: ['id'],
         }),
       );
     }
-    const row = { ...written, status: 'running' as const };
-    const s = await writeTranscript(tx, row.id, messages);
-    const seeded = await seedTurn(tx, row.id, {
-      priorMessages: prevMessages,
-      entry: userMessage,
-      at: now,
+    const updated = { ...written, status: 'running' as const };
+    const { appended } = await writeTranscript(tx, updated.id, [
+      ...plan.prevMessages,
+      plan.userMessage,
+    ]);
+    const seeded = await seedTurn(tx, updated.id, {
+      priorMessages: plan.prevMessages,
+      entry: plan.userMessage,
+      at: plan.now,
     });
-    return { updated: row, sync: s, eventSeqBase: seeded.lastSeq };
+    return { updated, appended, eventSeqBase: seeded.lastSeq };
   });
-  for (const t of sync.appended) broadcastTurnAppended(updated, t);
+}
+
+/** The box frame: `agent:send` resumes Claude's own session, `agent:start` cold-starts one. */
+async function boxFrame(
+  args: DispatchChatTurnArgs,
+  plan: TurnPlan,
+  sessionId: string,
+  eventSeqBase: number,
+): Promise<{ event: string; data: Record<string, unknown> }> {
+  const ports = agentSessionsPorts();
+  const { mcpServers: mcpServersOverride } = await ports.resolveSessionMcpServers(args.project.id);
+  const common = {
+    sessionId,
+    eventSeqBase,
+    repoPath: plan.repoPath,
+    projectSlug: args.project.slug,
+    mcpServersOverride,
+    ...(plan.model ? { model: plan.model } : {}),
+    ...(plan.attachments.length ? { attachments: plan.attachments } : {}),
+    ...(args.credential ? { forgeToken: args.credential } : {}),
+  };
+  // `--resume` keeps the original system prompt and history
+  if (plan.resumable) {
+    return {
+      event: 'agent:send',
+      data: { ...common, message: plan.message, claudeSessionId: plan.claudeSessionId },
+    };
+  }
+  return {
+    event: 'agent:start',
+    data: {
+      ...common,
+      prompt: await coldStartPrompt(args, plan),
+      preBuilt: args.preBuilt ?? false,
+      systemPrompt: ports.toolReference(),
+    },
+  };
+}
+
+/** The box's socket dropped between the check and the frame: the turn is failed, never left running. */
+async function failUndelivered(sessionId: string): Promise<never> {
+  await transitionSessions(db, {
+    to: 'failed',
+    set: { failureReason: 'no_client_ack', updatedAt: new Date() },
+    where: eq(agentSessions.id, sessionId),
+    reason: 'no_client_ack',
+    actor: { type: 'system' },
+    source: 'chat-turn',
+  });
+  throw noClaudeClient('session');
+}
+
+export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
+  const plan = await planTurn(args);
+  const { patch, fallbackTitle } = sessionPatch(args, plan);
+  const { updated, appended, eventSeqBase } = await writeTurn(
+    args.session,
+    args.actor,
+    plan,
+    patch,
+  );
+  for (const t of appended) broadcastTurnAppended(updated, t);
 
   // the AI title upgrade runs outside the transaction and is never awaited
   if (fallbackTitle) {
     void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
   }
 
-  const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
-    project.id,
-  );
-  const common = {
-    sessionId: updated.id,
-    eventSeqBase,
-    repoPath,
-    projectSlug: project.slug,
-    mcpServersOverride,
-    ...(model ? { model } : {}),
-    ...(attachments.length ? { attachments } : {}),
-    ...(args.credential ? { forgeToken: args.credential } : {}),
-  };
-  const delivered = agentSessionsPorts().sendToBoxNow(
-    deviceId,
-    resumable
-      ? // `--resume` keeps the original system prompt and history
-        {
-          event: 'agent:send',
-          data: { ...common, message: decoratedMessage, claudeSessionId },
-        }
-      : {
-          event: 'agent:start',
-          data: {
-            ...common,
-            prompt: await coldStartPrompt(args, decoratedMessage, language, prevMessages),
-            preBuilt: args.preBuilt ?? false,
-            systemPrompt: agentSessionsPorts().toolReference(),
-          },
-        },
-  );
-  if (delivered === 0) {
-    // the box's socket dropped between the check and the frame: the turn is failed, never left running
-    await transitionSessions(db, {
-      to: 'failed',
-      set: { failureReason: 'no_client_ack', updatedAt: new Date() },
-      where: eq(agentSessions.id, updated.id),
-      reason: 'no_client_ack',
-      actor: { type: 'system' },
-      source: 'chat-turn',
-    });
-    throw noClaudeClient('session');
+  const frame = await boxFrame(args, plan, updated.id, eventSeqBase);
+  if (agentSessionsPorts().sendToBoxNow(plan.deviceId, frame) === 0) {
+    await failUndelivered(updated.id);
   }
-  broadcastSession(updated, broadcastEvent);
+  broadcastSession(updated, args.broadcastEvent ?? 'agent-session.updated');
   return updated;
 }
