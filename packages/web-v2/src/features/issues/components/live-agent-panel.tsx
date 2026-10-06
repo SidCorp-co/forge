@@ -15,6 +15,7 @@ import { PageSection, PageSectionBody, Icon, MonoTag } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import type { QueuedStepView } from "../waiting";
 import type { IssueAgentSession } from "../types";
+import { issueSessionsHref } from "@/lib/routes/agents";
 
 export type LiveAgentState =
   | { kind: "live"; session: IssueAgentSession }
@@ -175,7 +176,7 @@ function QueuedRow({
 function TimelineLink({ slug, issueId }: { slug: string; issueId: string }) {
   return (
     <Link
-      href={`/projects/${slug}/agents?issue=${issueId}`}
+      href={issueSessionsHref(slug, issueId)}
       className="fg-caption ml-auto inline-flex items-center gap-1 text-accent-text transition-opacity hover:opacity-80"
     >
       View timeline

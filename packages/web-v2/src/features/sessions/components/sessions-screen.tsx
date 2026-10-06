@@ -2,6 +2,7 @@
 
 // A project's Sessions index under the Agents shell (ISS-291). Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue (ISS-331).
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   EmptyState,
@@ -12,8 +13,9 @@ import {
   SessionRowSkeleton,
   type SegmentOption,
 } from "@/design";
+import { useIssue } from "@/features/issues/detail-hooks";
 import { useProject } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { SESSIONS_PAGE_SIZE } from "../api";
@@ -43,11 +45,27 @@ import { SessionList } from "./session-rows";
 import { SessionsHeader } from "./sessions-header";
 import { orderByOwner } from "./session-tree";
 
-export function SessionsScreen({ projectId, stuck }: { projectId: string; stuck: StuckRuns }) {
+/** Narrows the list to one issue's sessions, with the way back to all of them. */
+export interface SessionsIssueFilter {
+  issueId: string;
+  clearHref: string;
+}
+
+export function SessionsScreen({
+  projectId,
+  issueFilter,
+  stuck,
+}: {
+  projectId: string;
+  issueFilter: SessionsIssueFilter | null;
+  stuck: StuckRuns;
+}) {
   // Counts and tabs are computed over one page of the newest sessions; the pager and its caption
   // say which page, so a tab never claims to cover sessions it was not given.
   const [page, setPage] = useState(1);
-  const sessionsQ = useSessions({ projectId, page });
+  const issueId = issueFilter?.issueId;
+  const sessionsQ = useSessions({ projectId, issueId, page });
+  const issueQ = useIssue(issueId, projectId);
   const total = sessionsQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / SESSIONS_PAGE_SIZE));
   const [filter, setFilter] = useState<SessionFilter>("all");
@@ -112,6 +130,18 @@ export function SessionsScreen({ projectId, stuck }: { projectId: string; stuck:
     <PageContainer className="min-h-dvh">
       <SessionsHeader stats={stats} sweeping={sweep.isPending} onSweep={() => sweep.mutate(projectId)} />
 
+      {issueFilter && (
+        <div className="mb-4 flex flex-wrap items-baseline gap-3 border-b border-line-subtle pb-2" data-testid="sessions-issue-filter">
+          <span className="text-13 font-medium text-fg">
+            Sessions of {issueQ.data?.displayId ?? "this issue"}
+            {issueQ.data?.title ? <span className="text-muted"> · {issueQ.data.title}</span> : null}
+          </span>
+          <Link href={issueFilter.clearHref} className="fg-caption text-accent-text hover:opacity-80">
+            Show all sessions
+          </Link>
+        </div>
+      )}
+
       {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner banner. */}
       <div className="mb-4">
         <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} stuck={stuck} />
@@ -140,18 +170,30 @@ export function SessionsScreen({ projectId, stuck }: { projectId: string; stuck:
         </div>
       )}
 
+      {issueQ.isError && (
+        <ErrorState
+          title="Couldn't read the issue these sessions are filtered to"
+          message={formatRefusal(issueQ.error)}
+          onRetry={() => issueQ.refetch()}
+        />
+      )}
+
       {sessionsQ.isError && (
         <ErrorState
           title="Couldn't load sessions"
-          message={formatApiError(sessionsQ.error)}
+          message={formatRefusal(sessionsQ.error)}
           onRetry={() => sessionsQ.refetch()}
         />
       )}
 
-      {!sessionsQ.isLoading && !sessionsQ.isError && rows.length === 0 && (
+      {!sessionsQ.isLoading && !sessionsQ.isError && !issueQ.isError && rows.length === 0 && (
         <EmptyState
-          title="No sessions yet"
-          message="Agent sessions for this project will appear here as the pipeline runs."
+          title={issueFilter ? "No sessions for this issue" : "No sessions yet"}
+          message={
+            issueFilter
+              ? "No agent session has worked this issue yet."
+              : "Agent sessions for this project will appear here as the pipeline runs."
+          }
         />
       )}
 
@@ -170,7 +212,7 @@ export function SessionsScreen({ projectId, stuck }: { projectId: string; stuck:
         />
       )}
 
-      {!sessionsQ.isLoading && !sessionsQ.isError && visibleRows.length > 0 && (
+      {!sessionsQ.isLoading && !sessionsQ.isError && !issueQ.isError && visibleRows.length > 0 && (
         <SessionList
           treeRows={treeRows}
           slug={slug}

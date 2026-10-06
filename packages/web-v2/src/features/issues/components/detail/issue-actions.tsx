@@ -4,6 +4,7 @@ import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRouter } from "next/navigation";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
+import { issueSessionsHref } from "@/lib/routes/agents";
 
 /** The header's one primary act, asking and help, and the actions menu. */
 export function IssueActions({
@@ -34,7 +35,7 @@ export function IssueActions({
   const router = useRouter();
   const copyShareLink = useCopyShareLink();
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  const openSessions = () => router.push(`/projects/${slug}/agents?issue=${issue.id}`);
+  const openSessions = () => router.push(issueSessionsHref(slug, issue.id));
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   function copyLink() {

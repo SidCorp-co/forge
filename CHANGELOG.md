@@ -16,6 +16,9 @@
 - **A session transcript no longer passes part of itself off as the whole.** A failed turns read
   shows its error, not the last 20 messages; a transcript cut at the page cap offers no branch and
   no live caret.
+- **Cancel run says when the issue was not put on hold.** Agents / Runs shares the pipeline's one
+  cancel, naming a refused park by code and detail. An issue's session links open Sessions filtered
+  to that issue.
 
 ## [0.4.0-dev.43] - 2026-10-06
 
