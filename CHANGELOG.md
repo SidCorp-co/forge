@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.46] - 2026-10-06
+
+Ecosystem peers read approved contracts first; Agents run list refreshes live
+
+
 ### Fixed
 
 - **The Agents run list refreshes live when a job or run moves.** Every job frame names its
