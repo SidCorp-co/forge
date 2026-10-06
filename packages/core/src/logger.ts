@@ -83,13 +83,24 @@ function withErrorsSerialized(value: unknown, depth = 0): unknown {
   return Array.isArray(value) ? next.map(([, v]) => v) : Object.fromEntries(next);
 }
 
+/** Every `Error` anywhere in a log call's arguments, within the depth `withErrorsSerialized` reads. */
+function errorsIn(value: unknown, found: Error[] = [], depth = 0): Error[] {
+  if (value instanceof Error) found.push(value);
+  else if (depth < 8 && typeof value === 'object' && value !== null) {
+    for (const v of Object.values(value)) errorsIn(v, found, depth + 1);
+  }
+  return found;
+}
+
 /**
- * The call's arguments with every error in them serialized and, where the call logs an error, its
- * text redacted against that error, which only this hook still holds: a driver message repeating a
- * short bound value is told only by the values the error carries.
+ * The call's arguments with every error in them serialized, and all of its text redacted against
+ * every error it carries, which only this hook still holds: a value the call repeats beside its
+ * error, or a driver message repeating a short one, is told only by the values the errors carry.
  */
 function redactCall(args: unknown[], err: Error | null): unknown[] {
-  const clean = (v: unknown) => redactQueryParams(withErrorsSerialized(v), err ?? undefined);
+  const errors = errorsIn(args);
+  const clean = (v: unknown) =>
+    redactQueryParams(withErrorsSerialized(v), errors.length > 0 ? errors : undefined);
   let [first, ...rest] = args;
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
@@ -97,7 +108,7 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
     first = besideErr(first as Record<string, unknown>, clean);
   }
   if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
-    rest = [redactQueryParams(err.message, err), ...rest];
+    rest = [redactQueryParams(err.message, errors), ...rest];
   }
   return [first, ...rest];
 }

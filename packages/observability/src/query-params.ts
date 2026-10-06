@@ -167,11 +167,13 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
 
 /**
  * `value` with every bound parameter of a failed SQL statement replaced by `[Redacted]`, the same
- * reference where there was none. `err`, the error `value` was made from, lets the statement and
- * the driver's reason survive; without it a failed query's text is redacted to its end. An `Error`
- * inside `value` that carries one comes back as the plain object it would serialize as.
+ * reference where there was none. `err`, the error `value` was made from (or every error it was
+ * made from, as an array), lets the statement and the driver's reason survive; without it a failed
+ * query's text is redacted to its end. An `Error` inside `value` that carries one comes back as the
+ * plain object it would serialize as.
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
-  const chain = err === undefined ? null : readChain(err);
+  const errs = err === undefined ? [] : Array.isArray(err) ? err : [err];
+  const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
   return redactValue(value, chain, 0) as T;
 }

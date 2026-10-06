@@ -108,6 +108,11 @@ describe('the core logger', () => {
       (log: Logger, err: Error) => log.error({ ...err }, 'failed'),
     ],
     [
+      'under another key, beside text repeating a bound value',
+      (log: Logger, err: Error) =>
+        log.error({ error: err, reason: `duplicate ${EMAIL}` }, 'failed'),
+    ],
+    [
       'nine objects deep with no err beside it',
       (log: Logger, err: Error) => {
         let deep: object = { error: err };
