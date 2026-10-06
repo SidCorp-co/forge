@@ -1,8 +1,9 @@
-import { RUN_GROUP_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, issues } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
+import { sessionRunGroupSql } from '../lib/issue-run-group.js';
 import { getLoopThresholds } from './ports.js';
 
 type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
@@ -109,8 +110,7 @@ export async function hydrateAgentSessionsForIssues(
     .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...issueIds])));
   const idByKey = new Map(keyed.map((r) => [canonicalIssueKey(r.seq), r.id]));
   const groupKeys = [...idByKey.keys()];
-  const runGroup = sql<unknown>`(SELECT pr.metadata -> ${RUN_GROUP_METADATA_KEY}
-      FROM pipeline_runs pr WHERE pr.id = ${agentSessions.pipelineRunId})`;
+  const runGroup = sessionRunGroupSql;
   const byGroup =
     groupKeys.length === 0
       ? undefined

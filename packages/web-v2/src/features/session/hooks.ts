@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import type { TurnRow, TurnsResponse } from "./types";
 import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
 
@@ -67,7 +67,7 @@ function useInvalidateSession(id: string) {
 function useToastError() {
   const { toast } = useToast();
   return (err: unknown) =>
-    toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+    toast({ title: "Action failed", description: formatRefusal(err), tone: "error" });
 }
 
 /**
@@ -91,7 +91,7 @@ export function useSendMessage(id: string) {
         } catch (err) {
           toast({
             title: "An attachment failed to upload",
-            description: `${file.name}: ${formatApiError(err)}`,
+            description: `${file.name}: ${formatRefusal(err)}`,
             tone: "error",
           });
         }

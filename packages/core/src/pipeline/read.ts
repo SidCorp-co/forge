@@ -1,7 +1,7 @@
-import { RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import { and, count, desc, eq, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { runGroupHoldsIssue } from '../lib/issue-run-group.js';
 import { listItemsFromRows } from './runs-rollup.js';
 import type { PipelineRunListItem } from './runs-rollup-types.js';
 
@@ -115,11 +115,9 @@ export async function listProjectPipelineRuns(
   // a run session's row names no issue: it carries its issues as a group, so an issue's runs are read
   // through the group as well, by the canonical key (ISS-992)
   if (filter.issueId) {
-    const key = sql`(SELECT 'ISS-' || i.iss_seq FROM issues i
-      WHERE i.id = ${filter.issueId} AND i.project_id = ${projectId})`;
     const byIssue = or(
       eq(pipelineRuns.issueId, filter.issueId),
-      sql`${pipelineRuns.metadata} -> ${RUN_GROUP_METADATA_KEY} ? ${key}`,
+      runGroupHoldsIssue(pipelineRuns.metadata, filter.issueId, projectId),
     );
     if (byIssue) conds.push(byIssue);
   }
