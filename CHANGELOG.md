@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.64] - 2026-10-06
+
+Each change keeps its release note in its own file until release
+
+### Changed
+
+- **An unreleased changelog entry is now a file of its own**, `changelog.d/<branch>.<section>.md`, so a release and a branch landing at once no longer misplace or conflict it. The release folds the files in; CHANGELOG.md holds released sections only.
+
 ## [0.4.0-dev.63] - 2026-10-06
 
 Core decides master placement and retirement; boxes report facts and obey
