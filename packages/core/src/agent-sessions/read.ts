@@ -39,7 +39,6 @@ const agentSessionListColumns = {
   kind: agentSessions.kind,
   parentSessionId: agentSessions.parentSessionId,
   diff: agentSessions.diff,
-  pipelineControl: agentSessions.pipelineControl,
   pipelineTelemetry: agentSessions.pipelineTelemetry,
   pipelineHealth: agentSessions.pipelineHealth,
   messageCount: sql<number | null>`(

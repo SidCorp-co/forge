@@ -1,22 +1,5 @@
 import { z } from "zod";
 
-// Typed shape for the agent_sessions.pipeline_control jsonb column. Pre-Epic-3
-// rows wrote a free-form jsonb merge; this schema normalises the contract so
-// downstream consumers (admin dashboard, runners) can rely on field names.
-// Legacy rows tolerate `pipelineControlSchema.partial().parse()` on read.
-export const pipelineControlSchema = z
-	.object({
-		paused: z.boolean(),
-		pausedBy: z.string().uuid().nullable(),
-		pausedAt: z.iso.datetime().nullable(),
-		reason: z.string().max(2000).nullable(),
-		abort: z.boolean(),
-		updatedAt: z.iso.datetime(),
-	})
-	.strict();
-
-export type PipelineControl = z.infer<typeof pipelineControlSchema>;
-
 export const failureKindEnum = z.enum([
 	"code",
 	"infra",

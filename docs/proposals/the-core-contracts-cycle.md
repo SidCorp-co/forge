@@ -31,39 +31,39 @@ the typecheck configs map `@forge/contracts` to `src/`, so core's build no longe
 reproducible in that shape on dev; what remains is a cycle with no order, which turbo reports on
 every run.
 
-Three places still impose the ordering by hand, each naming the 2026-09-23 race as the reason:
+Three places still impose the ordering by hand:
 
-- `packages/core/Dockerfile`
-- `packages/web-v2/Dockerfile`
-- `.github/actions/setup-workspace/action.yml`
+- `packages/core/Dockerfile`, which names the 2026-09-23 race as its reason;
+- `packages/web-v2/Dockerfile` and `.github/actions/setup-workspace/action.yml`, which name a
+  different one: contracts' export map points at `dist/`, which a checkout does not hold, so it has
+  to be built before anything resolves `@forge/contracts/<module>`.
 
-That is three copies of one fact, which is the shape this repo treats as a defect rather than a
-convention.
+The last two stand without the cycle; the first is the one that stands only because of it.
 
 ## Why the declaration exists, and why it reads as wrong
 
-`packages/contracts`'s own `description` field says **"Type-only surface — no runtime coupling."**
-It re-exports Drizzle row types and request types from core, and every import of `@forge/core` under
-`packages/contracts/src` (`admin.ts`, `integrations.ts`, `requests.ts`, `rows.ts`,
+`packages/contracts` re-exports Drizzle row types and request types from core, and every import of
+`@forge/core` under `packages/contracts/src` (`admin.ts`, `integrations.ts`, `requests.ts`, `rows.ts`,
 `body-components.ts`) is an `import type` or `export type`. `src/document-patch.ts` has **zero
-imports**.
+imports**. Its own `description` now reads "Shared types and runtime tables … row and request types
+derived from @forge/core", so it no longer claims to be type-only, but nothing it carries at runtime
+comes from core: the emitted `dist/*.js` holds no `@forge/core` import, and five `dist/*.d.ts` do.
 
-So the declaration and the description already disagree, and the code agrees with the description.
+So core is a dependency of contracts' declarations, not of its runtime, and `dependencies` says the
+second.
 
 ## What is not established
 
 - Whether moving `"@forge/core"` to `devDependencies` in `packages/contracts` is safe for
-  `packages/web-v2`. A few of contracts' exports (the root `.` among them) still point at
-  `./src/*.ts`, and those files import core for types; a bundler erases type imports, but
-  `pnpm deploy --prod` of web-v2 has not been tested against that change. **Untested — do not assume
-  either direction.**
-- Whether any consumer imports a *value* from `@forge/contracts` that transitively needs
-  `@forge/core` at runtime. Nothing has scanned for it.
+  `packages/web-v2`'s image. Every export now points at `dist/`, and web-v2's `next build`
+  type-checks against those five `.d.ts`, which name `@forge/core/public` and
+  `@forge/core/admin-types`; whether `pnpm install --filter web-v2...` still links core for them
+  once it is a dev dependency has not been run. **Untested — do not assume either direction.**
 
 ## Honest costs
 
 | Choice | What it costs whoever adopts it |
 |---|---|
-| Leave the cycle, keep the three hand-written orderings | Turbo warns on every run, and the three orderings keep stating a reason the emit-only builds no longer have. `pnpm verify` runs no docker build, so nothing here can gate either. |
-| Move `"@forge/core"` to `devDependencies` in `packages/contracts` | One line to write, and a validation that has to be bought before the answer is known: a `pnpm deploy --prod` of `packages/web-v2` plus a real `next build`, because web-v2 consumes contracts' `./src/*.ts` exports and those import core. If a consumer turns out to need core at runtime, the line comes back and the work is spent. |
+| Leave the cycle, keep the three hand-written orderings | Turbo warns on every run, and core's Dockerfile keeps stating a reason the emit-only builds no longer have. `pnpm verify` runs no docker build, so nothing here can gate either. |
+| Move `"@forge/core"` to `devDependencies` in `packages/contracts` | One line to write, and a validation that has to be bought before the answer is known: a web-v2 image build with a real `next build`, because contracts' declarations name core's types. Its runtime cannot need core (the emitted `.js` imports none of it); if the type resolution fails, the line comes back and the work is spent. |
 | Remove an ordering early, on the argument the race is gone | Cheap, and only safe once it is established that no consumer type-checks against contracts' `dist` in the same invocation that builds it. Keep all three until that is read. |

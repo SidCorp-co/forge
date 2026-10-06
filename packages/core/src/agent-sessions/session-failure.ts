@@ -1,6 +1,6 @@
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import type { FailureCause } from '../pipeline/index.js';
 import { classifyFailure, type FailureAction, type FailureKind } from '../pipeline/index.js';
 import { parseUsageLimitReset } from '../runners/index.js';
 import { agentSessionsPorts } from './ports.js';

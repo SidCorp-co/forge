@@ -3,8 +3,8 @@
  * database.
  */
 
+import { type FailureCause, resolveFailureCause } from '@forge/contracts/failure-causes';
 import { PARK_STATUSES } from '@forge/contracts/issue-machine';
-import { type FailureCause, resolveFailureCause } from '../pipeline/index.js';
 import {
   PULSE_AWAITING_RELEASE_STATUSES,
   PULSE_FLOW_WEEKS,

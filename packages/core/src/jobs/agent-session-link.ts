@@ -1,3 +1,4 @@
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import { and, eq, ne } from 'drizzle-orm';
 import {
   insertSessionRow,
@@ -8,7 +9,7 @@ import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import type { FailureCause, RunFailureCause } from '../pipeline/index.js';
+import type { RunFailureCause } from '../pipeline/index.js';
 import { assertRunAcceptsWork, classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
 

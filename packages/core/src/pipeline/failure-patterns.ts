@@ -15,8 +15,8 @@
  * cause to that bucket would have to pick one and be wrong about the rest.
  */
 
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
-import type { FailureCause } from './failure-causes.js';
 
 export const PERMISSION_PATTERNS: ReadonlyArray<RegExp> = [
   /\b(401|403)\b/,

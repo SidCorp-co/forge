@@ -45,6 +45,12 @@ use runner_workspace::refresh;
 /// resulting `turn.appended` broadcast at 100ms so this stays cheap.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(750);
 
+/// How often a running turn tells core it is working. Core reads an in-flight
+/// chat turn's liveness from this beat (`pipeline/one-shot-reap.ts`), as it
+/// reads a run session's from `run_sessions::beat`; well inside its 3-minute
+/// silence window.
+const TURN_BEAT_INTERVAL: Duration = Duration::from_secs(60);
+
 /// A file attached to a chat turn (ISS-499). Core sends these on the
 /// `agent:start` / `agent:send` frame; `url` is a core-relative download path
 /// the runner pulls with its device token (the download route is auth-gated).
@@ -495,6 +501,8 @@ async fn consume(
 
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
+    let mut beat = tokio::time::interval(TURN_BEAT_INTERVAL);
+    beat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let mut terminal: Option<Terminal> = None;
 
@@ -512,6 +520,12 @@ async fn consume(
                 Some(RunnerEvent::Failed { error }) => { terminal = Some(Terminal::Failed(error)); break; }
                 None => break,
             },
+            _ = beat.tick() => {
+                if let Err(WriteFailure::Ended { code, said }) = beat_turn(client, session_id).await {
+                    tracing::info!("[chat {session_id}] core ended this session ({code}) — stopping stream: {said}");
+                    return;
+                }
+            }
             _ = flush.tick() => {
                 if pending.is_empty() { continue; }
                 match agent_sessions::post_events(client, session_id, &pending).await {
@@ -555,6 +569,21 @@ async fn consume(
     }
 
     close_turn(client, session_id, terminal, claude_sid, runtime_state).await;
+}
+
+/// The turn's beat: `working`, which core takes as the box's word that the
+/// turn is alive. A failure other than an ended session is left to the next
+/// beat; three missed in a row is core's to read as a dead box.
+async fn beat_turn(client: &CoreClient, session_id: &str) -> std::result::Result<(), WriteFailure> {
+    let patch = SessionPatch {
+        runtime_state: Some("working".into()),
+        ..Default::default()
+    };
+    let beat = agent_sessions::write_session(client, session_id, &patch).await;
+    if let Err(e @ (WriteFailure::Refused { .. } | WriteFailure::Unreached(_))) = &beat {
+        tracing::warn!("[chat {session_id}] turn beat: {e}");
+    }
+    beat
 }
 
 /// How the CLI's own stream ended, as far as this turn saw it.
@@ -778,6 +807,12 @@ mod tests {
         assert!(ran.is_ok(), "the stream loop never returned");
     }
 
+    /// The patches that write the turn's outcome, the turn's beat left out.
+    fn outcome_patches(seen: &Seen) -> Vec<Value> {
+        let beat = serde_json::json!({ "runtimeState": "working" });
+        patches(seen).into_iter().filter(|p| p != &beat).collect()
+    }
+
     fn patches(seen: &Seen) -> Vec<Value> {
         seen.lock()
             .unwrap()
@@ -785,6 +820,33 @@ mod tests {
             .filter(|(m, _, _)| m == "PATCH")
             .map(|(_, _, b)| serde_json::from_str(b).unwrap())
             .collect()
+    }
+
+    /// A turn held open past its first moments, then ended: the box has to
+    /// have told core the turn is working before it says how the turn ended,
+    /// because core reads an in-flight chat turn's liveness from that beat.
+    #[tokio::test]
+    async fn a_turn_in_flight_beats_its_session_before_it_ends() {
+        let (client, seen) = fake_core(200, "").await;
+        let (tx, rx) = mpsc::channel::<RunnerEvent>(8);
+        let loop_ = tokio::spawn({
+            let client = client.clone();
+            async move { consume(&client, "s1", 0, rx).await }
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        tx.send(RunnerEvent::Done).await.unwrap();
+        drop(tx);
+        let ran = tokio::time::timeout(Duration::from_secs(10), loop_).await;
+        assert!(ran.is_ok(), "the stream loop never returned");
+        let patches = patches(&seen);
+        let beat = patches
+            .iter()
+            .position(|p| p == &serde_json::json!({ "runtimeState": "working" }));
+        let end = patches.iter().position(|p| p["status"] == "completed");
+        assert!(
+            matches!((beat, end), (Some(b), Some(e)) if b < e),
+            "a running turn sent core no beat before its end, so core reads a long turn as a dead box: {patches:?}"
+        );
     }
 
     #[tokio::test]
@@ -828,14 +890,14 @@ mod tests {
     async fn a_session_core_has_terminated_stops_the_stream_without_a_write() {
         let (client, seen) = fake_core(422, "SESSION_TERMINATED").await;
         stream_one_line(&client).await;
-        assert_eq!(patches(&seen), Vec::<Value>::new());
+        assert_eq!(outcome_patches(&seen), Vec::<Value>::new());
     }
 
     #[tokio::test]
     async fn a_session_the_user_cancelled_stops_the_stream_without_a_write() {
         let (client, seen) = fake_core(409, "SESSION_CANCELLED").await;
         stream_one_line(&client).await;
-        assert_eq!(patches(&seen), Vec::<Value>::new());
+        assert_eq!(outcome_patches(&seen), Vec::<Value>::new());
     }
 
     #[tokio::test]

@@ -23,8 +23,6 @@ export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled";
 /** The run ids and session ids of the runs core reads as stuck. */
 export type StuckRuns = ReadonlySet<string>;
 
-export const NO_STUCK_RUNS: StuckRuns = new Set<string>();
-
 export function stuckRunsOf(items: readonly Pick<RunStanding, "id" | "sessionId" | "state">[] | undefined): StuckRuns {
   const stuck = new Set<string>();
   for (const run of items ?? []) {

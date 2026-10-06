@@ -20,8 +20,8 @@ a domain's facts with no rule of its own, the shape ISS-163 removed from
 release run (`run_id` referencing `pipeline_runs`), with the version, the shipped moment, the abort
 stamp, the finish record (its version column keeps the compare-and-set), the method and the
 verification as typed columns, and a migration that carries the stored values and aborts naming
-any run whose metadata it cannot represent. The writer in `pipeline/run-records.ts` and the port's
-three members are deleted in that change.
+any run whose metadata it cannot represent. The three release writers in `pipeline/run-records.ts`
+are deleted in that change.
 
 **The cost** is the readers: about 96 places in `packages/core/src` read these keys, the release
 views, the finish and abort paths and the stranded-release recovery among them, and each moves to
@@ -36,6 +36,7 @@ the record's read function in the same change.
   stored value into typed columns and abort naming any run it cannot represent, and the readers in
   the release views, the finish and abort paths and the stranded-release recovery all move in the
   same change, because a reader left on the metadata would read a value nothing writes any more.
-- **The port stays until then.** `release-batch` reaches the writer through
-  `ReleaseBatchPorts` only because the sweeper imports `release-batch` at load; that indirection is
-  paid for as long as this proposal stands.
+- **The pipeline face carries a domain's writers until then.** `release-batch` imports the three
+  writers from `pipeline/index.ts` (`release-batch/finish.ts`, `abort-stamp.ts`,
+  `coolify-prod-gate.ts` and `finish-record.ts` among them), so the pipeline module exports writes
+  only another module's rules call.

@@ -10,6 +10,7 @@
  */
 
 import type { FailureCause } from '@forge/contracts/failure-causes';
+import { resolveFailureCause } from '@forge/contracts/failure-causes';
 import {
   claimSessionMarker,
   messageRoleToTurnRole,
@@ -24,7 +25,6 @@ import { type MessageVerdict, refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
-import { resolveFailureCause } from '../pipeline/index.js';
 import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
 import {
   CONVERSATION_AGENT_MARKER,

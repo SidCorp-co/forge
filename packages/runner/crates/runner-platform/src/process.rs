@@ -1,10 +1,6 @@
 //! Process helpers: resolve the `claude` binary, build the spawn command, and
-//! gracefully kill a process group.
-//!
-//! TODO(M-win): the Tauri app's Windows/WSL spawn (native vs WSL detection,
-//! UTF-16 distro parsing, temp shell script) is intentionally omitted here —
-//! this targets native Linux/macOS first. Windows falls back to a bare
-//! `claude` invocation.
+//! gracefully kill a process group. On Windows the binary is a bare `claude`
+//! resolved from `PATH`, with no WSL detection.
 
 use std::ffi::OsStr;
 use std::process::ExitStatus;

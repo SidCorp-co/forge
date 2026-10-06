@@ -223,7 +223,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `contract-first` | Built | — | `issues/contract-waits.ts:assertContractWaitsSettledForIssue` | **kept** (owner, 2026-10-05, option A): a consumer issue waits on its own project's contract >= version until an approved version is recorded. |
 | `delivery` | Upcoming | — | — | **rewrite**: Build the case. |
 | `expect-breakdown` | Upcoming | — | — | **rewrite**: Build it. |
-| `agreed` | Wrong | behaviour | `requirements/service.ts:agreeRequirement` | **rewrite**: Pin contract versions in the agree transaction, with pins. |
+| `agreed` | Wrong | behaviour | `requirements/agree.ts:agreeRequirement` | **rewrite**: Pin contract versions in the agree transaction, with pins. |
 | `breakdown` | Wrong | behaviour, data | `suggestions/propose.ts:proposeIn` | **rewrite** (due): One open breakdown per revision, BC traces required, master as proposer. |
 | `build` | Wrong | behaviour, data | `workflows/run-context-service.ts:tracedDesignsOf` | **rewrite** (due): Load the pinned design and contract revisions, not the latest approved and issue-text refs (REQ-1 BC-7, REQ-4 BC-12); delete the second path. |
 | `check` | Wrong | behaviour, data | `requirements/standing.ts:coverageOf` | **rewrite** (due): Build the acceptance task with its SLA on the coverage read that exists. |
@@ -240,7 +240,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `req-head` | Wrong | data | `requirements/read.ts:detailOf` | **rewrite**: Add the requirement-to-contract link; agreed and pins cannot pin contracts without it (REQ-5). |
 | `rollup` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: The phase is one TypeScript computation since ISS-164 (view dropped); short-as-pass is left to the passing predicate (ISS-165). |
 | `route` | Wrong | wiring | `feedback/triage.ts:triageIn` | **keep**: Its only divergence is that triage and route are one act; settled by the fb-case decision. |
-| `route-result` | Wrong | data | `feedback.ts:FEEDBACK_ROUTES` | **keep**: Same revision as routed: take the route values from feedback-triage. |
+| `route-result` | Wrong | data | `packages/contracts/src/feedback.ts:FEEDBACK_ROUTES` | **keep**: Same revision as routed: take the route values from feedback-triage. |
 | `routed` | Wrong | behaviour | `feedback/triage.ts:triageIn` | **keep**: feedback-triage r3 draws decline and answer as the code does; revise this design to reference it. |
 | `runs` | Wrong | data | `issues/criteria/verdict-input.ts:VerdictIdentity` | **rewrite**: REQ-6 BC-2 names four identities; storefront_draft and short-as-pass are outside it. |
 | `stalled` | Wrong | behaviour | `requirements/standing.ts:turnOf` | **rewrite**: Build the 2-day expectation and its breach on the master pass instead of the instant standing line. |
@@ -262,7 +262,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `obs-link-build` | `suggestions/breakdown.ts:breakdownEffect` | Each breakdown issue is linked as a build of one pinned design (SUGGESTION_BUILD_UNNAMED, SUGGESTION_BUILD_UNPINNED); issues are filed at draft. | **keep**: Traceability step markers need; draw it, and decide whether draft issues wait on a promote. |
 | `obs-context-budget` | `workflows/run-context.ts:ARTIFACT_CONTEXT_CAP_CHARS` | 24k design and 12k requirement budgets with named trims (ARTIFACT_CONTEXT_OVER_BUDGET); egress checks the blocks. | **keep**: REQ-1 BC-5. |
 | `obs-contract-wait` | `issues/contract-waits.ts:assertContractWaitsSettledForIssue` | An issue waiting on a contract version is held from dispatch until an approved version reaches it (CONTRACT_WAIT_UNSETTLED), and a production release until the provider serves it (CONTRACT_PROVIDER_NOT_LIVE). | **kept** (owner, 2026-10-05, option A): issue-delivery `case-run`, feedback-triage `upgrade` and requirement-to-delivery `release-gate` name it; rebuilt on that design. |
-| `obs-named-contracts` | `ecosystem/contract/named-context.ts:loadNamedContracts` (deleted by ISS-150) | A job gets the contract versions its issue text names, and a link-pin diff (ecosystem/contract/run-context-service.ts:loadContractContext). | **delete**: A second pin path beside the baseline; removed when build loads contract pins. |
+| `obs-named-contracts` | — (its file, `named-context.ts`, was deleted by ISS-150) | A job got the contract versions its issue text named, beside the link-pin diff (`ecosystem/contract/run-context-service.ts:loadContractContext`). | **deleted** (ISS-150): build loads the contract versions the requirement's baseline pins. |
 | `obs-release-hold` | `release-batch/hold.ts:criteriaHold` | RELEASE_CRITERIA_UNEARNED re-checks verdicts against the serving runtime. | **keep**: Guards released; draw it on release-gate. |
 | `obs-contract-approve` | `ecosystem/contract/decide.ts:decideContractVersion` | A recorded version is proposed until approved or returned; breaking needs a person. | **keep**: REQ-5 BC-5 to BC-10; the publish node owes the approval. |
 | `obs-breaking-feedback` | `ecosystem/contract/announce.ts:fileBreakingIn` | Approving a breaking version files feedback per consumer with the commitment window. | **keep**: Design files it at record; draw it at approval. |

@@ -14,16 +14,16 @@ and whatever sentence `agent-sessions/session-failure.ts` had to hand. That sent
 agent's reply, a runner error or a fragment of the session's own prompt. ISS-877 moved the sentence to
 `failure_detail`, and since then every writer in core writes a `FailureCause` (the producer audit is in
 ISS-1157's plan). Migration 0192 chose not to backfill: a legacy value reads as `unclassified` through
-`resolveFailureCause` (`packages/contracts/src/failure-causes.ts`, re-exported by
-`pipeline/failure-causes.ts`). The two retired cause spellings, `job_failed` and `usage_limit`, were
+`resolveFailureCause` (`packages/contracts/src/failure-causes.ts`). The two retired cause spellings, `job_failed` and `usage_limit`, were
 rewritten to `unclassified` and `provider_usage_limit` by migration 0420, which deleted their read-time
 alias; what is left is prose.
 
-Two readers resolve that way today:
-`me/pulse-folds.ts:foldSessionFailures` (since ISS-1157) and `runs/standing-final.ts`. Every other reader of the column still gets the raw value:
-`pipeline/runs-rollup.ts`, `runners/read.ts`,
-`devices/run-ledger.ts` and the agent-session list. Each of those is scoped to one project, so the
-prose stays inside the project that wrote it. A new reader that forgets to resolve would get the
+Three readers resolve that way today:
+`me/pulse-folds.ts:foldSessionFailures` (since ISS-1157), `runs/standing-final.ts` and
+`conversations/conversation-agent-bridge.ts`, which reads the cause to decide whether a failed turn
+fails over. Every other reader of the column still gets the raw value: `pipeline/runs-rollup.ts`,
+`runners/read.ts` and the agent-session list (`agent-sessions/read.ts`). Each of those is scoped to
+one project, so the prose stays inside the project that wrote it. A new reader that forgets to resolve would get the
 prose too.
 
 ## What is owed
