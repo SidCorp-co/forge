@@ -16,6 +16,7 @@ import {
   guardVerdict,
   logLines,
   processRunning,
+  unjudgedVerdict,
 } from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
 
@@ -56,7 +57,7 @@ function readLog() {
     bytes = readFileSync(state.log);
   } catch (e) {
     const why = `this file's child log could not be read (${e?.code ?? 'unknown'}), so what its processes listed is unknown and counted as the root`;
-    return [{ dir: ROOT, via: why, at: null }];
+    return [{ dir: ROOT, via: why, at: null, unseen: true }];
   }
   // Every byte seen already, a line not yet ended included, must still be there: a log rewritten
   // under the guard is not evidence.
@@ -65,7 +66,7 @@ function readLog() {
     state.read = Buffer.from(bytes);
     const why =
       "this file's child log was rewritten after the guard read it, so what its processes listed is unknown and counted as the root";
-    return [{ dir: ROOT, via: why, at: null }];
+    return [{ dir: ROOT, via: why, at: null, unseen: true }];
   }
   const { lines, offset, pending } = logLines(bytes, state.offset);
   state.offset = offset;
@@ -94,6 +95,7 @@ async function childHits() {
           dir: ROOT,
           via: `the child log holds a line that is not a record (${JSON.stringify(line.malformed.slice(0, 80))}), so what it held is unknown and counted as the root`,
           at: null,
+          unseen: true,
         });
       else hits.push(line);
     }
@@ -120,18 +122,21 @@ async function childHits() {
       dir: ROOT,
       via: `child process ${pid} was still running when the file ended, so what it lists afterwards is read by nobody and counted as the root`,
       at: null,
+      unseen: true,
     });
   if (state.pending)
     hits.push({
       dir: ROOT,
       via: 'the child log ends in a line no process finished writing, so what it held is unknown and counted as the root',
       at: null,
+      unseen: true,
     });
   if (mine().length > 0)
     hits.push({
       dir: ROOT,
       via: `${mine().length} worker thread(s) were still running when the file ended, so what they list afterwards is read by nobody and counted as the root`,
       at: null,
+      unseen: true,
     });
   return hits;
 }
@@ -150,12 +155,19 @@ afterAll(async () => {
   state.hits = [];
   state.ended = filepath ? relative(ROOT, filepath) : 'a file';
   state.endedDeclared = false;
-  if (!filepath) return;
-  let source = '';
+  // A file the guard cannot read the source of cannot be judged, and passing it would drop
+  // whatever it listed: it is refused, naming why.
+  if (!filepath) {
+    throw new Error(
+      unjudgedVerdict({ file: null, why: 'vitest named no test file at its end', hits, root: ROOT }),
+    );
+  }
+  let source;
   try {
     source = readFileSync(filepath, 'utf8');
-  } catch {
-    return;
+  } catch (e) {
+    const why = `its source could not be read (${e?.code ?? 'unknown'})`;
+    throw new Error(unjudgedVerdict({ file: relative(ROOT, filepath), why, hits, root: ROOT }));
   }
   state.endedDeclared = declaresWholeTree(source);
   hits.push(...globHits(source, filepath));
