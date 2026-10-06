@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A consumer pins an approved contract version only.** A link's `pinnedVersion` or a
+  consumption's `builtAgainst` naming a proposed or returned version is refused
+  `CONTRACT_VERSION_NOT_APPROVED`, naming its state and the approved versions.
+
 ## [0.4.0-dev.46] - 2026-10-06
 
 Ecosystem peers read approved contracts first; Agents run list refreshes live
@@ -15,9 +21,6 @@ Ecosystem peers read approved contracts first; Agents run list refreshes live
 
 ### Fixed
 
-- **A consumer pins an approved contract version only.** A link's `pinnedVersion` or a
-  consumption's `builtAgainst` naming a proposed or returned version is refused
-  `CONTRACT_VERSION_NOT_APPROVED`, naming its state and the approved versions.
 - **The Agents run list refreshes live when a job or run moves.** Every job frame names its
   project; a job of a person's own chat, log lines included, reaches only its readers, never the
   project room.
