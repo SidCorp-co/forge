@@ -10,6 +10,7 @@ import {
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
@@ -331,13 +332,12 @@ export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   }
 }
 
-const SHIPPED_OR_DROPPED: readonly (string | null)[] = ['closed', 'dropped'];
-
 /** What a planned item still waits on: an issue route's carriers not yet closed or dropped, any other route's one carrier. */
 function owedCarriers(route: FeedbackRouteView | null): FeedbackCarrierView[] {
   if (!route) return [];
   if (route.route !== 'issue') return route.carriers;
-  return route.carriers.filter((c) => !SHIPPED_OR_DROPPED.includes(c.status));
+  const finished: readonly (string | null)[] = ISSUE_TERMINAL_STATUSES;
+  return route.carriers.filter((c) => !finished.includes(c.status));
 }
 
 export function summaryOf(
