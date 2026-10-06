@@ -98,6 +98,10 @@ pub(crate) fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
 
 /// Whether this master is owed a nudge now.
 ///
+/// A changed digest is owed only between passes: while a pass is open the
+/// pane is mid-turn, often on the very work that changed the digest, so the
+/// change waits for the pass to close and the next sweep reads it again.
+///
 /// `held` is a master whose account refused its last turn for capacity. What
 /// its hooks say about that turn is no evidence the pass happened: a refused
 /// turn ends like one that ran, and the runs it dispatched die on the same
@@ -113,14 +117,33 @@ pub(crate) fn nudge_due(
     now: Instant,
     since: SinceNudge,
     held: bool,
+    pass_open: bool,
 ) -> bool {
     let window_passed = |last: Nudge| now.saturating_duration_since(last.at) >= NUDGE_REFRESH;
     match prev {
         None => true,
         Some(last) if held => window_passed(last),
-        Some(last) if last.digest != digest => true,
+        Some(last) if last.digest != digest => !pass_open,
         Some(last) => window_passed(last) && retry_owed(since),
     }
+}
+
+/// Whether a pass this process opened for the project's live master still
+/// covers a turn that has not ended, judged as `master_pass::reconcile` judges
+/// it. Unreadable reads as no pass: the nudge it would hold is the one
+/// `open_for_nudge` then reports the ledger read for.
+pub(crate) fn pass_in_flight(
+    ledger: Option<&Ledger>,
+    masters: &Masters,
+    project_id: &str,
+    seen: Option<&agent_activity::Activity>,
+) -> bool {
+    let Some(Ok(Some(pass))) = ledger.map(|led| led.master_pass_for(project_id)) else {
+        return false;
+    };
+    let live = masters.get(project_id).map(|(session_id, _)| session_id);
+    master_pass::judge(&pass, master_pass::this_process(), live.as_deref(), seen)
+        == master_pass::Judged::Open
 }
 
 /// The capacity refusal this master's pane is sitting behind, if any.
@@ -367,6 +390,31 @@ pub(crate) async fn nudge_master(
 mod tests {
     use super::*;
     use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
+
+    #[test]
+    fn a_changed_digest_waits_for_the_open_pass_to_close() {
+        let now = Instant::now();
+        let last = Nudge {
+            digest: 1,
+            at: now,
+            prompts: Some(3),
+        };
+        assert!(
+            !nudge_due(Some(last), 2, now, SinceNudge::Working, false, true),
+            "a digest change typed a nudge into a pane whose pass is still open"
+        );
+        assert!(nudge_due(Some(last), 2, now, SinceNudge::Ran, false, false));
+        let later = now + NUDGE_REFRESH;
+        assert!(nudge_due(Some(last), 2, later, SinceNudge::Ran, true, true));
+        assert!(nudge_due(
+            Some(last),
+            1,
+            later,
+            SinceNudge::NoTurn,
+            false,
+            true
+        ));
+    }
 
     #[test]
     fn untriaged_feedback_alone_owes_the_master_a_pass_that_names_it() {

@@ -314,6 +314,7 @@ impl Masters {
         digest: u64,
         seen: Option<&agent_activity::Activity>,
         held: bool,
+        pass_open: bool,
     ) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let Some(m) = reg.live.get_mut(project_id) else {
@@ -321,7 +322,7 @@ impl Masters {
         };
         let now = Instant::now();
         let since = since_nudge(seen, m.last_nudge.and_then(|n| n.prompts));
-        if !nudge_due(m.last_nudge, digest, now, since, held) {
+        if !nudge_due(m.last_nudge, digest, now, since, held, pass_open) {
             return false;
         }
         m.last_nudge = Some(Nudge {

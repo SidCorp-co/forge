@@ -43,6 +43,32 @@ pub(crate) struct Carryover<'a> {
     /// runs a conversation outside this box's panes.
     pub(crate) hosts: &'a dyn subagent_host::Hosts,
     pub(crate) slots: u32,
+    /// What the project owes its master this sweep. A placed pane is typed no
+    /// nudge (`types_nudge`), so its brief is the only place the pass it is
+    /// placed for can be told what it owes.
+    pub(crate) inbox: &'a [UnansweredDocument],
+}
+
+/// The brief a placed pane is sent: the standing prompt, what a resumed
+/// conversation carries, the stand-down it comes out of, and what its first
+/// pass owes.
+pub(crate) fn placement_brief(
+    standing: String,
+    resumed: Option<String>,
+    lifted: Option<String>,
+    inbox: &[UnansweredDocument],
+) -> String {
+    let owed = master_inbox::inbox_line(inbox);
+    let owed = if owed.is_empty() {
+        owed
+    } else {
+        format!("\n## What this first pass owes\n\n{}\n", owed.trim_start())
+    };
+    format!(
+        "{standing}{}{}{owed}",
+        resumed.unwrap_or_default(),
+        lifted.unwrap_or_default()
+    )
 }
 
 /// The verdict `ensure_master` reached about the capability a pane holds, on
@@ -560,17 +586,14 @@ surface it reads",
         resolved.master_policy.as_deref(),
         &reach,
     );
-    let brief = match resume.as_deref() {
-        Some(conv) => format!(
-            "{brief}{}",
-            resumed_brief(conv, inherited, started, carry.hosts)
-        ),
-        None => brief,
-    };
-    let brief = match carry.lifted {
-        Some(lifted) => format!("{brief}{}", stood_up_brief(lifted)),
-        None => brief,
-    };
+    let brief = placement_brief(
+        brief,
+        resume
+            .as_deref()
+            .map(|conv| resumed_brief(conv, inherited, started, carry.hosts)),
+        carry.lifted.map(stood_up_brief),
+        carry.inbox,
+    );
     match terminal::brief_new_pane(&name, &brief).await {
         Ok(()) => {
             let carried = carry.lifted.is_some();
@@ -714,4 +737,29 @@ pub(crate) fn remember(
             mcp_stale_reported: false,
         },
     );
+}
+
+#[cfg(test)]
+mod placement_brief_tests {
+    use super::*;
+    use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
+
+    #[test]
+    fn a_pane_placed_for_owed_feedback_is_told_which_item_its_first_pass_owes() {
+        let owed = [UnansweredDocument {
+            id: "f1".into(),
+            number: Some("FB-1".into()),
+            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
+            from: None,
+            overdue: false,
+        }];
+        let brief = placement_brief("standing\n".into(), Some("resumed\n".into()), None, &owed);
+        assert!(
+            brief.contains("1 feedback item owes a triage (FB-1)"),
+            "the placement brief names no owed item, so the pass it places triages nothing: {brief}"
+        );
+        assert!(brief.starts_with("standing\nresumed\n"), "{brief}");
+        let quiet = placement_brief("standing\n".into(), None, None, &[]);
+        assert_eq!(quiet, "standing\n");
+    }
 }

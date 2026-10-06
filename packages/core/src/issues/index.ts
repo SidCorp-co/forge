@@ -58,6 +58,7 @@ export { resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,
+  issueRunDeclaredSql,
   issueWorkInFlightSql,
   releaseIssueLeaseRow,
   takeIssueLeases,

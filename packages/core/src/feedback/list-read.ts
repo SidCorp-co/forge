@@ -9,6 +9,7 @@ import {
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { releaseApprovalRequired } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
@@ -19,16 +20,26 @@ import { requirementRevisions, requirements } from '../db/schema-requirements.js
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
+import { productionOf, readProjectDocument } from '../project-config/index.js';
 import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
+import { owedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
-import { feedbackStandingOf, type PhaseFacts, phaseOf, revisionStageOf } from './standing.js';
+import {
+  type CarrierRelease,
+  feedbackStandingOf,
+  type PhaseFacts,
+  phaseOf,
+  revisionStageOf,
+  type StandingViewer,
+} from './standing.js';
 import { targetView } from './target-view.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
@@ -52,6 +63,39 @@ export interface Linked {
   >;
   roots: Map<string, Row>;
   names: Map<string, string>;
+  /** Items of these rows the project's master owes a triage. */
+  masterOwed: Set<string>;
+  /** How this project's release is made, read only where a routed issue waits at the gate. */
+  release: CarrierRelease | null;
+}
+
+/** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
+export type ViewerCan = Omit<StandingViewer, 'isReporter'>;
+
+type PermissionFacts = Parameters<typeof holds>[0];
+
+export function viewerCanOf(facts: PermissionFacts): ViewerCan {
+  return {
+    canTriage: holds(facts, 'feedback.approve'),
+    canApproveRelease: holds(facts, 'releases.approve'),
+    canWrite: holds(facts, 'project.write'),
+  };
+}
+
+export async function viewerCanIn(userId: string, projectId: string): Promise<ViewerCan> {
+  const access = await effectiveProjectRole(userId, projectId);
+  return viewerCanOf({ projectId, role: access?.role ?? null, grants: access?.grants ?? [] });
+}
+
+const AT_RELEASE_GATE = 'awaiting_release';
+
+async function releaseOf(projectId: string): Promise<CarrierRelease> {
+  const document = (await readProjectDocument(projectId))?.document;
+  const production = document ? productionOf(document) : null;
+  if (!production) return 'none';
+  if (releaseApprovalRequired(document)) return 'approval';
+  const deployment = production.declaration.deployment;
+  return 'trigger' in deployment && deployment.trigger === 'on-land' ? 'automatic' : 'manual';
 }
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
@@ -137,7 +181,18 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
   );
+  const atGate = issueRows.some(
+    (i) =>
+      i.status === AT_RELEASE_GATE &&
+      rows.some((r) => r.route === 'issue' && r.routedIssueId === i.id),
+  );
+  const [owed, release] = await Promise.all([
+    rows.some((r) => r.status === 'new' || r.status === 'reopened') ? owedTriages(projectId) : [],
+    atGate ? releaseOf(projectId) : null,
+  ]);
   return {
+    masterOwed: new Set(owed.map((o) => o.feedbackId)),
+    release,
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
     issues: new Map(
@@ -248,6 +303,7 @@ export function summaryOf(
   l: Linked,
   viewer: FeedbackActor,
   withhold: boolean,
+  can: ViewerCan,
 ): FeedbackSummary {
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
@@ -258,10 +314,17 @@ export function summaryOf(
     r.route,
     route?.key ?? null,
     reporter,
-    viewer.userId === r.reportedBy,
+    { ...can, isReporter: viewer.userId === r.reportedBy },
     r.route === 'revision' && r.routedSuggestionId
       ? revisionStageOf(l.suggestions.get(r.routedSuggestionId) ?? null)
       : null,
+    {
+      masterOwesTriage: l.masterOwed.has(r.id),
+      carrierRelease:
+        phase === 'planned' && r.route === 'issue' && route?.status === AT_RELEASE_GATE
+          ? l.release
+          : null,
+    },
   );
   return {
     id: r.id,
@@ -313,9 +376,12 @@ export async function listFeedbackAs(
     )
     .orderBy(desc(feedback.createdAt))
     .limit(500);
-  const linked = await linkedOf(projectId, rows);
+  const [linked, can] = await Promise.all([
+    linkedOf(projectId, rows),
+    viewerCanIn(viewer.userId, projectId),
+  ]);
   const all = shown(
-    rows.map((r) => summaryOf(r, linked, viewer, withhold)),
+    rows.map((r) => summaryOf(r, linked, viewer, withhold, can)),
     'the feedback list',
   );
   const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;

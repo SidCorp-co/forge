@@ -399,6 +399,7 @@ pub(crate) async fn sweep(
                 started: &started,
                 hosts: &hosts,
                 slots: cfg.runner.max_job_panes.max(1),
+                inbox: &inbox,
             },
             placement,
             &CapabilityPorts {
@@ -608,11 +609,18 @@ pub(crate) async fn sweep(
             project_id: &runner.project_id,
             issue_key: master_pass::nudged_issue(&admissible, inbox.is_empty()),
         };
+        let pass_open = pass_in_flight(
+            ledger.as_ref(),
+            masters,
+            &runner.project_id,
+            reported.as_ref(),
+        );
         let claimed = masters.claim_nudge(
             &runner.project_id,
             digest,
             reported.as_ref(),
             held.is_some(),
+            pass_open,
         );
         if claimed {
             pass.open(ledger).await;

@@ -50,7 +50,8 @@ Nothing ever reads an item as \`verified\` on its own.
   new-requirement route carried by a requirement that is not a draft is also \`FEEDBACK_ROUTE_TARGET_MISMATCH\`.
 - The route is written in the triage act, with what carries it: \`issue\` (\`issue\` to link one, or
   \`createIssue\` to file a draft, which takes the requirement of the item's target, or of its target
-  issue; naming neither files a draft), \`revision\` (\`suggestion\`), \`new_requirement\` (\`requirement\`,
+  issue; naming neither files a draft; \`createIssue\` also takes the draft's \`complexity\`, \`category\` and
+  \`priority\`, which otherwise follow the item's kind and severity, and refuses any other key by name), \`revision\` (\`suggestion\`), \`new_requirement\` (\`requirement\`,
   a draft, or \`title\` to start one) and \`answer\` (the text the reporter reads, \`FEEDBACK_ANSWER_MISSING\`
   without it). A carrier of another route is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`; two alternatives at once,
   or a route that needs a carrier and names none, \`FEEDBACK_ROUTE_INCOMPLETE\`.
@@ -96,8 +97,11 @@ metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list b
 (\`PERMISSION_FORBIDDEN\` without it).
 
 ### Reading the list
-\`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on: a person to
-triage a new or reopened item or a triaged one whose carrier died, the carrier to ship a planned one, the reporter to verify a resolved one.
+\`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer: a holder of
+\`feedback.approve\` to triage a new or reopened item or a triaged one whose carrier died (the project's master for a high or
+critical one it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
+makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and the
+reporter to verify a resolved one. It reads \`You\` only where the viewer holds that act.
 \`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a
 feedback item revises moves is in ${guideRef('requirement-lifecycle')}.`,
 };

@@ -15,6 +15,7 @@
  * naming -> packages/core/src/issues/session-claim.ts — which RUN may write a record.
  */
 
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
@@ -108,6 +109,25 @@ export function issueWorkMovingSql(args: {
          AND mr.status = 'running'
     )
     OR ${issueLeaseHeldSql(args.projectId, args.issueKey)}
+  )`;
+}
+
+/**
+ * Whether a run session that has not ended was declared over the issue: the run ledger's own
+ * record that a box has it in hand, which a rescue reads as no wake lost (eco round 4, #46).
+ */
+export function issueRunDeclaredSql(args: {
+  projectId: SQL | string;
+  issueKey: SQL | string;
+}): SQL {
+  return sql`EXISTS (
+    SELECT 1
+      FROM pipeline_runs dr
+      JOIN agent_sessions ds ON ds.pipeline_run_id = dr.id
+     WHERE dr.project_id = ${args.projectId}
+       AND ds.kind = ${RUN_SESSION_KIND}
+       AND ds.status NOT IN (${terminalSessionList})
+       AND dr.metadata -> ${RUN_ISSUES_METADATA_KEY} ? (${args.issueKey})
   )`;
 }
 

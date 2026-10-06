@@ -4,9 +4,13 @@ import {
 } from '@forge/contracts/agent-sessions';
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { issueWorkInFlightSql, transitionIssueStatus } from '../issues/index.js';
+import {
+  issueRunDeclaredSql,
+  issueWorkInFlightSql,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { countOverdueDeliveries } from '../outbox/index.js';
@@ -45,6 +49,54 @@ const RECOVERY_TARGETS: readonly IssueStatus[] = ISSUE_MACHINE.edges
   .filter((e) => e.recovery && e.from === WEDGE_STATUS)
   .map((e) => e.to);
 
+type RescueCandidate = {
+  id: string;
+  project_id: string;
+  status: string;
+  created_by: string | null;
+  reopen_count: number;
+  changed_at: string;
+};
+
+/**
+ * Issues at the entry status whose wake may have been lost: unchanged past the interval, with no
+ * job, run or lease working them and no run declared over them, no decision since their last
+ * change, and no rescue due later. A box holding the issue lost no wake.
+ */
+export async function selectRescueCandidates(
+  notDue: string,
+  exec: Pick<Tx, 'execute'> = db,
+): Promise<RescueCandidate[]> {
+  return (await exec.execute<RescueCandidate>(sql`
+    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
+           i.updated_at::text AS changed_at
+    FROM issues i
+    INNER JOIN projects p ON p.id = i.project_id
+    WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
+      AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
+      AND NOT ${issueWorkInFlightSql({
+        issueId: sql`i.id`,
+        projectId: sql`i.project_id`,
+        issueKey: sql`'ISS-' || i.iss_seq`,
+      })}
+      AND NOT ${issueRunDeclaredSql({
+        projectId: sql`i.project_id`,
+        issueKey: sql`'ISS-' || i.iss_seq`,
+      })}
+      AND NOT EXISTS (
+        SELECT 1 FROM comments c
+        WHERE c.issue_id = i.id
+          AND c.intent = 'decision'
+          AND c.created_at >= i.updated_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_to_recordset(${notDue}::jsonb) AS w(id uuid, at text)
+        WHERE w.id = i.id AND w.at::timestamptz = i.updated_at
+      )
+    LIMIT ${STUCK_ISSUE_LIMIT}
+  `)) as unknown as RescueCandidate[];
+}
+
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
   stale: number;
@@ -58,37 +110,7 @@ export async function runReconcilerOnce(): Promise<{
   // on it post-dates its last change (its master has read it as it stands and held it), and a
   // rescue that reached a box is redelivered on the ledger's backoff, not every minute.
   const notDue = await rescuesNotDue(AUTONOMOUS_ENTRY_STATUS, Date.now());
-  const stuck = await db.execute<{
-    id: string;
-    project_id: string;
-    status: string;
-    created_by: string | null;
-    reopen_count: number;
-    changed_at: string;
-  }>(sql`
-    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
-           i.updated_at::text AS changed_at
-    FROM issues i
-    INNER JOIN projects p ON p.id = i.project_id
-    WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
-      AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
-      AND NOT EXISTS (
-        SELECT 1 FROM jobs j
-        WHERE j.issue_id = i.id
-          AND j.status IN ('queued','dispatched')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM comments c
-        WHERE c.issue_id = i.id
-          AND c.intent = 'decision'
-          AND c.created_at >= i.updated_at
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM jsonb_to_recordset(${notDue}::jsonb) AS w(id uuid, at text)
-        WHERE w.id = i.id AND w.at::timestamptz = i.updated_at
-      )
-    LIMIT ${STUCK_ISSUE_LIMIT}
-  `);
+  const stuck = await selectRescueCandidates(notDue);
 
   for (const row of stuck) {
     try {
