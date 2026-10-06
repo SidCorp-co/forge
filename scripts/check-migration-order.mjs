@@ -98,15 +98,18 @@ if (landing.length === 0 && !isBase) {
 }
 
 /**
- * The other gated lines — every branch CI gates on a push, but this tree's merge target. A sibling
- * carrying history of one of them that the base does not hold lands on that line, which merges this
- * base in and renumbers its own migrations above it (`dev`, since 2026-10-01); counting it here
- * refuses every migration the base takes while that line holds any of its own.
+ * The lines that renumber above a base rather than beside it, declared rather than derived: `dev`
+ * merges `main` in and moves its own migrations above main's (b3710d63d, 2026-10-01), so a branch
+ * cut from `dev` is not a sibling of a `main` tree, and counting it refused every migration `main`
+ * took while `dev` held any. A line is set aside only where CI also gates it on a push.
  */
+const RENUMBERS_ABOVE = new Map([['dev', 'main']]);
 const CI_WORKFLOW = '.github/workflows/ci.yml';
 const ciPath = join(root, CI_WORKFLOW);
 const otherLines = existsSync(ciPath)
-  ? (ciBranches(readFileSync(ciPath, 'utf8')).push ?? []).filter((b) => b !== base.branch)
+  ? (ciBranches(readFileSync(ciPath, 'utf8')).push ?? []).filter(
+      (b) => RENUMBERS_ABOVE.get(b) === base.branch,
+    )
   : [];
 
 /** A line's own commits: its first-parent chain the base does not hold. `undefined` unreadable. */
