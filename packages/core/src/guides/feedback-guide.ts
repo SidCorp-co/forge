@@ -55,6 +55,9 @@ Two more phases are **read, never written**, from the work the item was routed t
   is delivered, or the answer was posted. A duplicate is resolved with its root, and declined with it.
 - A route whose carrier died (the issue dropped, the suggestion rejected, the requirement dropped) reads
   \`triaged\` again, and waits on a person to route it anew.
+- An issue route carried by several issues reads them all: a dropped one carries nothing, the item is
+  \`resolved\` once every other is closed, \`planned\` while any is open (waiting on each still open), and
+  \`triaged\` only when every one was dropped.
 
 Nothing ever reads an item as \`verified\` on its own.
 
@@ -64,7 +67,9 @@ Nothing ever reads an item as \`verified\` on its own.
   change takes the issue route (\`FEEDBACK_ROUTE_TARGET_MISMATCH\` otherwise). A revision for an item about
   no agreed requirement, a suggestion that is not a revision_diff of that requirement, or a
   new-requirement route carried by a requirement that is not a draft is also \`FEEDBACK_ROUTE_TARGET_MISMATCH\`.
-- The route is written in the triage act, with what carries it: \`issue\` (\`issue\` to link one, or
+- The route is written in the triage act, with what carries it: \`issue\` (\`issue\` to link one existing
+  issue, or a list of up to 50 when several deliver it, one issue named twice being
+  \`FEEDBACK_CARRIER_REPEATED\` at \`/issue/<n>\`; or
   \`createIssue\` to file a draft, which takes the requirement of the item's target, or of its target
   issue; naming neither files a draft; \`createIssue\` also takes the draft's \`complexity\`, \`category\` and
   \`priority\`, which otherwise follow the item's kind and severity, and refuses any other key by name), \`revision\` (\`suggestion\`), \`new_requirement\` (\`requirement\`,

@@ -30,6 +30,12 @@ pub struct Args {
     #[arg(short = 'd', long)]
     pub data: Option<String>,
 
+    /// A `multipart/form-data` field, repeatable: `name=@path` sends a file, `name=@path;type=<mime>`
+    /// claims its media type, `name=value` sends text. An attachment route reads `file`:
+    /// `forge-runner api issues/<id>/attachments -F file=@./shot.png`. Not with --data.
+    #[arg(short = 'F', long = "form")]
+    pub form: Vec<String>,
+
     /// Project slug for the `X-Forge-Project-Slug` header. Defaults to
     /// `$FORGE_PROJECT_SLUG`, then the sole bound project when there is one.
     #[arg(long)]
@@ -44,11 +50,15 @@ pub struct Args {
     pub include: bool,
 }
 
-pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
+/// The client a REST call from this box goes out with — the pane's borrowed checkout credential, or
+/// this person's own PAT — or the line that refuses it. `api` and `run brief` both call core as the
+/// person, never as the device. The outer error is a fault reading this box's own files; the inner
+/// one a refusal to say as a usage failure.
+pub(crate) fn rest_client(ctx: &Ctx) -> anyhow::Result<Result<CoreClient, String>> {
     let cfg = Config::load()?;
     let borrowed = match runner_workspace::mcp::config::borrowed_credential() {
         Ok(b) => b,
-        Err(e) => return usage(&e.to_string()),
+        Err(e) => return Ok(Err(e.to_string())),
     };
     let env_pat = std::env::var("FORGE_PAT")
         .ok()
@@ -62,14 +72,24 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
         Credential::Own(url) => match cred_store::load_pat()? {
             Some(token) => (url, token),
-            None => return usage(
+            None => return Ok(Err(
                 "no personal access token — the REST API is reached with a PAT, not the device token. \
                  Mint one in the web UI under Settings → Access tokens, then either \
-                 `forge-runner login --pat <token>` to store it or export FORGE_PAT=<token>.",
-            ),
+                 `forge-runner login --pat <token>` to store it or export FORGE_PAT=<token>."
+                    .to_string(),
+            )),
         },
-        Credential::Refused(why) => return usage(&why),
+        Credential::Refused(why) => return Ok(Err(why)),
     };
+    Ok(Ok(CoreClient::new(core_url, token)))
+}
+
+pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
+    let client = match rest_client(&ctx)? {
+        Ok(c) => c,
+        Err(why) => return usage(&why),
+    };
+    let cfg = Config::load()?;
 
     let stdin_body = match args.data.as_deref() {
         Some("-") => {
@@ -90,6 +110,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         path: &args.path,
         method: args.method.as_deref(),
         data,
+        form: &args.form,
         project: args.project.as_deref(),
         headers: &args.headers,
         include: args.include,
@@ -103,7 +124,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Err(message) => return usage(&message),
     };
 
-    let client = CoreClient::new(core_url, token);
     let resp = run_api(&client, &req).await;
     if !resp.stdout.is_empty() {
         println!("{}", resp.stdout);

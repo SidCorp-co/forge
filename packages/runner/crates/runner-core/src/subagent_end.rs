@@ -17,17 +17,14 @@
 //! background session outside it (ISS-1312, run e67c08e0). This reading decides
 //! what the box says about a run it keeps (ISS-1246), and nothing more: no run
 //! holds a daemon's handover to a new build, since a run lives in its master's
-//! pane and the next build adopts it (ISS-1379).
+//! pane and the next build adopts it (ISS-1379). Nor does it say when a
+//! silence is long enough to call the subagent over: that bound is core's
+//! (`devices/run-verdict.ts:subagentOver`), which the box reports this to.
 
 use std::path::Path;
-use std::time::Duration;
 
 use crate::ledger::Run;
 use crate::transcript_age::{self, Newest};
-
-/// Silence after a turn-end past which a subagent run reads as quiet: the
-/// hour core's run verdict also waits before it calls a silent run over.
-pub const SUBAGENT_QUIET: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Evidence {
@@ -43,18 +40,12 @@ pub enum Evidence {
     /// and its end has not been heard. `silent_ms` is since that entry.
     Resumed { silent_ms: i64 },
     /// The newest entry after the last stop is one the model answers, written
-    /// less than [`SUBAGENT_QUIET`] ago, and no reply has followed yet.
+    /// `silent_ms` ago, and no reply has followed yet.
     AwaitingReply { silent_ms: i64 },
-    /// A turn ended less than [`SUBAGENT_QUIET`] ago.
-    Recent { silent_ms: i64 },
-    /// A turn ended at least [`SUBAGENT_QUIET`] ago and nothing but that
-    /// stop's own hook records was written after it. It may still be resumed,
-    /// so this ends nothing.
-    Quiet { silent_ms: i64 },
-    /// The newest entry after the last stop is one the model answers, and at
-    /// least [`SUBAGENT_QUIET`] has passed with no reply: nothing took it up.
-    /// It may still be resumed, so this ends nothing.
-    Unanswered { silent_ms: i64 },
+    /// A turn ended `silent_ms` ago and nothing but that stop's own hook
+    /// records was written after it. It may still be resumed, so this ends
+    /// nothing.
+    TurnEnded { silent_ms: i64 },
     /// A turn ended and the box cannot read when the transcript that would
     /// say what followed was last written, or has no path for it.
     Unreadable,
@@ -83,7 +74,6 @@ pub fn read(
     let Some(written) = written_at else {
         return Evidence::Unreadable;
     };
-    let quiet = SUBAGENT_QUIET.as_millis() as i64;
     if written > stop {
         // The stop hooks write their records after the stop is stamped, so a
         // write after the stop is a turn only where it is something else
@@ -100,11 +90,6 @@ pub fn read(
                     silent_ms: since_write,
                 }
             }
-            Some(Newest::AwaitingReply) if since_write >= quiet => {
-                return Evidence::Unanswered {
-                    silent_ms: since_write,
-                };
-            }
             Some(Newest::AwaitingReply) => {
                 return Evidence::AwaitingReply {
                     silent_ms: since_write,
@@ -115,11 +100,25 @@ pub fn read(
     }
     // Silence is measured from the later of the two, so a stop whose own
     // frame never reached the box is still measured from its end.
-    let silent_ms = now.saturating_sub(stop.max(written));
-    if silent_ms >= quiet {
-        Evidence::Quiet { silent_ms }
-    } else {
-        Evidence::Recent { silent_ms }
+    Evidence::TurnEnded {
+        silent_ms: now.saturating_sub(stop.max(written)),
+    }
+}
+
+impl Evidence {
+    /// The evidence as core's `RUN_SUBAGENT_EVIDENCE` names it, and its silence
+    /// in ms: since the run was declared for `no_turn_end`, none for `unreadable`.
+    pub fn wire(self) -> (&'static str, Option<u64>) {
+        let ms = |v: i64| Some(u64::try_from(v).unwrap_or(0));
+        match self {
+            Self::NoTurnEnd { since_ms } => ("no_turn_end", ms(since_ms)),
+            Self::HostEnded { silent_ms } => ("host_ended", ms(silent_ms)),
+            Self::Resumed { silent_ms } => ("resumed", ms(silent_ms)),
+            Self::AwaitingReply { silent_ms } => ("awaiting_reply", ms(silent_ms)),
+            Self::TurnEnded { silent_ms } => ("turn_ended", ms(silent_ms)),
+            Self::Unreadable => ("unreadable", None),
+            Self::TailUnreadable { silent_ms } => ("tail_unreadable", ms(silent_ms)),
+        }
     }
 }
 
@@ -165,67 +164,50 @@ pub fn observe(
     read(declared_at, turn_ended_at, written, newest, now)
 }
 
-/// What the box says when it first finds a run in this state, or `None` for
-/// the states it says nothing about. The value is written to `kept_notice`,
-/// which recovery's other notices share, so none of them may be one of these
-/// (`recovery::tests::no_two_writers_of_kept_notice_share_a_value`).
+/// The value the box writes to `kept_notice` when core has it say why it keeps
+/// a run in this state, or `None` for the states it says nothing about.
+/// Recovery's other notices share the column, so none of them may be one of
+/// these (`recovery::tests::no_two_writers_of_kept_notice_share_a_value`).
 pub fn notice(evidence: Evidence) -> Option<&'static str> {
     match evidence {
-        Evidence::NoTurnEnd { .. }
-        | Evidence::Resumed { .. }
-        | Evidence::AwaitingReply { .. }
-        | Evidence::Recent { .. } => None,
-        Evidence::Quiet { .. } => Some("quiet"),
-        Evidence::Unanswered { .. } => Some("no-reply"),
+        Evidence::NoTurnEnd { .. } | Evidence::Resumed { .. } => None,
+        Evidence::TurnEnded { .. } => Some("quiet"),
+        Evidence::AwaitingReply { .. } => Some("no-reply"),
         Evidence::HostEnded { .. } => Some("host-ended"),
         Evidence::Unreadable | Evidence::TailUnreadable { .. } => Some("unreadable"),
     }
 }
 
-/// What the run's evidence says, in the words recovery's lines carry, so a kept
-/// run is read from its own line (ISS-1312).
-pub fn held_because(evidence: Evidence, transcript: Option<&str>) -> String {
-    let bound = SUBAGENT_QUIET.as_secs() / 60;
-    let path = transcript.unwrap_or("no path was recorded");
-    match evidence {
-        Evidence::NoTurnEnd { since_ms } => format!(
-            "its subagent has not ended a turn since its run was declared {}m ago",
-            since_ms / 60_000
-        ),
-        Evidence::HostEnded { silent_ms } => format!(
-            "the Claude Code process its subagent ran in was read gone {}m ago, and nothing has \
-             been heard from its subagent since",
-            silent_ms / 60_000
-        ),
-        Evidence::Resumed { silent_ms } => format!(
-            "its subagent's transcript has an entry written {}m ago, after its last turn-end, that is \
-             neither that turn-end's own record nor one awaiting a reply, so a resumed turn is taken to be running",
-            silent_ms / 60_000
-        ),
-        Evidence::AwaitingReply { silent_ms } => format!(
-            "its subagent was handed an entry written {}m ago, after its last turn-end, and has written \
-             no reply yet, inside the {bound}m a reply is given to start",
-            silent_ms / 60_000
-        ),
-        Evidence::Recent { silent_ms } => format!(
-            "its subagent ended a turn {}m ago, inside the {bound}m it is given to resume",
-            silent_ms / 60_000
-        ),
-        Evidence::Quiet { silent_ms } => format!(
-            "its subagent ended a turn {}m ago and wrote nothing after it",
-            silent_ms / 60_000
-        ),
-        Evidence::Unanswered { silent_ms } => format!(
-            "its subagent ended a turn, and the entry handed to it after that, written {}m ago, has had no reply",
-            silent_ms / 60_000
-        ),
-        Evidence::Unreadable => format!(
-            "its subagent ended a turn and its transcript ({path}) cannot be read, so nothing says what followed"
-        ),
-        Evidence::TailUnreadable { silent_ms } => format!(
-            "its subagent's transcript ({path}) was written {}m ago, after its last turn-end, and cannot be \
-             opened to read what that write was, so nothing says whether a turn resumed",
-            silent_ms / 60_000
-        ),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HOUR_MS: i64 = 60 * 60 * 1000;
+
+    /// The box reads no bound: a turn ended hours ago and one ended a second
+    /// ago are the same evidence with a different silence, and core decides
+    /// which is over (`devices/run-verdict.ts:subagentOver`).
+    #[test]
+    fn evidence_carries_its_silence_and_no_verdict() {
+        let now = 10 * HOUR_MS;
+        let long = read(
+            0,
+            Some(now - 3 * HOUR_MS),
+            Some(now - 3 * HOUR_MS),
+            None,
+            now,
+        );
+        assert_eq!(long.wire(), ("turn_ended", Some(3 * 3_600_000)));
+        let short = read(0, Some(now - 1000), Some(now - 1000), None, now);
+        assert_eq!(short.wire(), ("turn_ended", Some(1000)));
+        let handed = read(
+            0,
+            Some(now - 3 * HOUR_MS),
+            Some(now - 2 * HOUR_MS),
+            Some(Newest::AwaitingReply),
+            now,
+        );
+        assert_eq!(handed.wire(), ("awaiting_reply", Some(2 * 3_600_000)));
+        assert_eq!(read(0, None, None, None, now).wire().0, "no_turn_end");
     }
 }

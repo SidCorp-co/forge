@@ -14,10 +14,6 @@ pub(crate) fn account_record(
     master_limit::newest_record(&tail, now_unix)
 }
 
-/// The line a limit re-ask is announced by.
-///
-/// The reset is said and never waited on: the account can be swapped, topped
-/// up or re-planned before it, and only the turn this nudge starts can tell.
 /// The pane's `forge` CLI borrows the account its checkout was provisioned with,
 /// so it reaches this project as the agent the pane's MCP server is — or, where
 /// the provision left none, nothing is set and it reads its home's own account.
@@ -34,17 +30,6 @@ pub(crate) fn cli_borrow_env(slug: &str) -> Option<(String, String)> {
         runner_workspace::mcp::config::CLI_BORROW_VAR.to_string(),
         path.to_string_lossy().into_owned(),
     ))
-}
-
-pub(crate) fn limit_reask_line(slug: &str, pane: &str, refusal: &master_limit::Refusal) -> String {
-    let reset = match refusal.resets_in_seconds {
-        Some(secs) => format!("the account reports its reset in {secs}s"),
-        None => "the account reported no reset".to_string(),
-    };
-    format!(
-        "[master] {slug}: its last turn was refused ({}) — asking {pane} again; {reset}, and capacity restored before then is seen only by a turn that tries",
-        refusal.reason.wire()
-    )
 }
 
 pub(crate) const REPORT_TIMEOUT: Duration = Duration::from_secs(10);

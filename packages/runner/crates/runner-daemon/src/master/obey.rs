@@ -4,7 +4,7 @@
 //! of it.
 
 use super::*;
-use runner_transport::master_verdict::Verdict;
+use runner_transport::master_verdict::{self as wire, Verdict};
 
 /// One project's turn in a sweep, as the acts below read it.
 pub(crate) struct Turn<'a> {
@@ -12,7 +12,8 @@ pub(crate) struct Turn<'a> {
     pub(crate) runner: &'a runners::MeRunner,
     pub(crate) resolved: &'a crate::dispatch::Resolved,
     pub(crate) seen: &'a Seen,
-    pub(crate) work: &'a Work,
+    /// The work core read for the project, which a nudge or a brief carries.
+    pub(crate) work: &'a wire::OwedWork,
 }
 
 impl Turn<'_> {
@@ -48,7 +49,7 @@ pub(crate) async fn obey(
     match verdict {
         Verdict::Withhold { reason, because } => withhold(t, &reason, &because),
         Verdict::Leave { reason, because } => {
-            leave(t, ledger, &reason, &because, &authority, &deaf, found).await
+            leave(t, &reason, &because, &authority, &deaf, found).await
         }
         Verdict::Retire { because } => retire(t, &because).await,
         Verdict::Keep {
@@ -60,8 +61,7 @@ pub(crate) async fn obey(
             record_heard(t, ledger, &authority).await;
             tend(t, found).await;
             if nudge {
-                tracing::debug!("[master] {}: nudge owed: {because}", t.slug());
-                drive(t, ledger, true).await;
+                drive(t, ledger, Some(&because)).await;
             }
         }
         Verdict::Place {
@@ -105,53 +105,6 @@ pub(crate) async fn obey(
     }
 }
 
-/// What core withheld, in the words this box's own records use where it has
-/// them, and in core's where it does not.
-pub(crate) fn withheld_as(
-    reason: &str,
-    because: &str,
-    runner: &runners::MeRunner,
-    seen: &Seen,
-) -> Unplaced {
-    let standing = match &seen.standing {
-        StandingRead::Known(s) => Ok(s.as_ref()),
-        StandingRead::Unreadable(detail) => Err(detail),
-    };
-    match (reason, standing, &seen.elsewhere) {
-        ("standing_unreadable", Err(detail), _) => Unplaced::StandingUnreadable {
-            detail: detail.clone(),
-        },
-        ("restarting", _, _) if seen.restarting.is_some() => Unplaced::Restarting {
-            cause: seen.restarting.clone().unwrap_or_default(),
-        },
-        ("runner_not_accepting", _, _) => Unplaced::Draining {
-            status: runner.status.clone(),
-        },
-        ("stood_down", Ok(row), _) => stood_down_reason(row, &runner.slug, None),
-        ("no_terminal", _, _) => Unplaced::NoTerminal,
-        ("nothing_owed", _, _) => Unplaced::NothingAdmissible,
-        (
-            "conversation_elsewhere",
-            _,
-            Some((conversation, short, subagent_host::Running::Found(pid))),
-        ) => Unplaced::ConversationElsewhere {
-            conversation: conversation.clone(),
-            short: short.clone(),
-            pid: *pid,
-        },
-        ("conversation_unaskable", _, Some((conversation, short, _))) => {
-            Unplaced::ConversationUnaskable {
-                conversation: conversation.clone(),
-                short: short.clone(),
-            }
-        }
-        _ => Unplaced::Withheld {
-            reason: reason.to_string(),
-            because: because.to_string(),
-        },
-    }
-}
-
 /// What core said of a kept pane's draining, held for `run declare` to refuse
 /// by; said once per session and reason rather than once a sweep.
 fn note_draining(t: &Turn<'_>, drain: bool, because: &str) {
@@ -167,66 +120,42 @@ fn note_draining(t: &Turn<'_>, drain: bool, because: &str) {
     }
 }
 
+/// What core withheld, said as core said it.
 fn withhold(t: &Turn<'_>, reason: &str, because: &str) {
-    match withheld_as(reason, because, t.runner, t.seen) {
-        // Said where the box takes no new work at all, not once per project.
-        why @ (Unplaced::Restarting { .. } | Unplaced::Draining { .. }) => {
-            t.masters().note_unplaced(t.project_id(), why);
-        }
-        why => say_unplaced(t.masters(), t.project_id(), t.slug(), why),
-    }
+    let why = Unplaced::Withheld {
+        reason: reason.to_string(),
+        because: because.to_string(),
+        pane: None,
+    };
+    say_unplaced(t.masters(), t.project_id(), t.slug(), why);
+}
+
+/// A running pane core leaves undriven, said as core said it.
+fn left_undriven(t: &Turn<'_>, reason: &str, because: &str) {
+    let why = Unplaced::Withheld {
+        reason: reason.to_string(),
+        because: because.to_string(),
+        pane: Some(t.seen.pane_name.clone()),
+    };
+    say_unplaced(t.masters(), t.project_id(), t.slug(), why);
 }
 
 async fn leave(
     t: &Turn<'_>,
-    ledger: &mut Option<Ledger>,
     reason: &str,
     because: &str,
     authority: &AuthoritySink,
     deaf: &DeafSink,
     found: &mut Found,
 ) {
-    let (masters, project_id, slug) = (t.masters(), t.project_id(), t.slug());
-    let name = &t.seen.pane_name;
     match (reason, t.seen.adopted.as_ref()) {
-        ("stood_down", _) => {
-            let row = match &t.seen.standing {
-                StandingRead::Known(s) => s.as_ref(),
-                StandingRead::Unreadable(_) => None,
-            };
-            say_unplaced(
-                masters,
-                project_id,
-                slug,
-                stood_down_reason(row, slug, Some(name)),
-            );
-        }
         ("deaf", Some(adopted)) => {
-            deaf.set(slug, name, DeafAct::LeftStanding(because.to_string()));
+            let name = &t.seen.pane_name;
+            deaf.set(t.slug(), name, DeafAct::LeftStanding(because.to_string()));
             record_stale(t, adopted, authority);
             tend(t, found).await;
         }
-        // Priced amnesty: only a core older than the draining keep still
-        // leaves an outdated pane; this arm goes once every core this runner
-        // build serves keeps one instead.
-        ("outdated", Some(_)) => {
-            if masters.note_outdated(project_id, Some(because.to_string())) {
-                tracing::warn!(
-                    "[master] {slug}: {name} is left running and not nudged: {because}. Core replaces it on the first sweep that finds no run it holds still working, it at its prompt, and work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
-                );
-            }
-            record_heard(t, ledger, authority).await;
-            tend(t, found).await;
-        }
-        _ => say_unplaced(
-            masters,
-            project_id,
-            slug,
-            Unplaced::Withheld {
-                reason: reason.to_string(),
-                because: because.to_string(),
-            },
-        ),
+        _ => left_undriven(t, reason, because),
     }
 }
 
@@ -360,25 +289,25 @@ async fn tend(t: &Turn<'_>, found: &mut Found) {
     }
 }
 
-/// Open the pass core asked for, and type the nudge where `typed`: a pane just
-/// placed was handed its brief, which is this pass's nudge.
-async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: bool) {
+/// Open the pass core asked for, and type the nudge where core said why it is
+/// owed (`typed`): a pane just placed was handed its brief, which is this
+/// pass's nudge.
+async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
     let (masters, project_id) = (t.masters(), t.project_id());
     let prompts = masters
         .get(project_id)
         .and_then(|(s, _)| t.sw.shared.activity.get(&s))
         .map(|a| a.prompts);
-    masters.note_nudged(project_id, t.seen.digest, prompts);
+    masters.note_nudged(project_id, &t.work.digest, prompts);
     let pass = NudgePass {
         client: t.sw.client,
         shared: *t.sw.shared,
         project_id,
-        issue_key: master_pass::nudged_issue(&t.work.admissible, t.work.inbox.is_empty()),
+        issue_key: t.work.issue_key.as_deref(),
     };
-    pass.open(ledger, typed).await;
-    if typed {
-        let held = t.seen.held.as_ref();
-        nudge_master(masters, project_id, t.slug(), held, &t.work.inbox).await;
+    pass.open(ledger, typed.is_some()).await;
+    if let Some(because) = typed {
+        nudge_master(masters, project_id, t.slug(), because, &t.work.nudge).await;
     }
 }
 
@@ -428,15 +357,7 @@ async fn end_for_replacement(
             }
         }
         _ => {
-            say_unplaced(
-                masters,
-                project_id,
-                slug,
-                Unplaced::Withheld {
-                    reason: reason.to_string(),
-                    because: because.to_string(),
-                },
-            );
+            left_undriven(t, reason, because);
             None
         }
     }
@@ -457,7 +378,7 @@ async fn place(
     let adopted = t.seen.adopted.as_ref().filter(|_| placing.ended_deaf);
     let session = match adopted {
         Some(a) => a.session.clone(),
-        None => match register_master(t.sw, project_id, slug, &t.seen.pane_name).await {
+        None => match register_master(t.sw, project_id, slug, &t.seen.pane_name, false).await {
             Some(s) => s,
             None => return,
         },
@@ -477,7 +398,7 @@ async fn place(
         stood_down_told: &told,
         started: &started,
         hosts: &hosts,
-        inbox: &t.work.inbox,
+        owed: &t.work.owed_line,
     };
     let ports = CapabilityPorts {
         tokens: t.sw.tokens,
@@ -510,7 +431,7 @@ async fn place(
     // the fail-open the standing read exists to close, so an unread one
     // forfeits the pass its brief would open.
     if placing.nudge && clear == Some(true) {
-        drive(t, ledger, false).await;
+        drive(t, ledger, None).await;
     }
 }
 
@@ -624,64 +545,50 @@ fn owe_resume_choices(t: &Turn<'_>, ledger: &mut Option<Ledger>) {
 mod tests {
     use super::*;
 
-    fn runner() -> runners::MeRunner {
-        serde_json::from_value(serde_json::json!({
-            "projectId": "p",
-            "runnerId": "r",
-            "slug": "forge",
-            "status": "draining",
-        }))
-        .expect("a runner row decodes")
-    }
-
-    fn seen(elsewhere: Option<subagent_host::Running>) -> Seen {
-        Seen {
-            standing: StandingRead::Known(None),
-            pane_name: "forge-master-forge".into(),
-            pane_alive: false,
-            stored_conversation: Some("c1".into()),
-            elsewhere: elsewhere.map(|r| ("c1".to_string(), Some("ab12".to_string()), r)),
-            adopted: None,
-            servers: None,
-            restarting: None,
-            held: None,
-            last_said: None,
-            digest: 0,
-        }
-    }
-
     #[test]
-    fn a_withheld_reason_this_build_knows_is_said_in_its_own_records_words() {
-        let r = runner();
-        let found = subagent_host::Running::Found(42);
-        assert!(matches!(
-            withheld_as("conversation_elsewhere", "x", &r, &seen(Some(found))),
-            Unplaced::ConversationElsewhere { pid: 42, .. }
-        ));
-        assert!(matches!(
-            withheld_as("runner_not_accepting", "x", &r, &seen(None)),
-            Unplaced::Draining { status } if status == "draining"
-        ));
-        assert!(matches!(
-            withheld_as("nothing_owed", "x", &r, &seen(None)),
-            Unplaced::NothingAdmissible
-        ));
-    }
-
-    #[test]
-    fn a_reason_it_does_not_know_is_said_as_core_said_it_rather_than_read_as_another() {
-        let r = runner();
-        let why = withheld_as("quota_exhausted", "the org is out of runs", &r, &seen(None));
-        assert!(
-            matches!(&why, Unplaced::Withheld { reason, because } if reason == "quota_exhausted" && because == "the org is out of runs"),
-            "a reason core added after this build was mapped onto one this build knows"
+    fn a_withheld_master_is_said_in_cores_words_and_a_left_one_as_running() {
+        let withheld = Unplaced::Withheld {
+            reason: "conversation_elsewhere".into(),
+            because: "a process on the box still runs its conversation".into(),
+            pane: None,
+        };
+        assert_eq!(withheld.lead(), "no master pane placed");
+        assert_eq!(
+            withheld.to_string(),
+            "core withheld a master for it (conversation_elsewhere): a process on the box still runs its conversation"
+        );
+        let left = Unplaced::Withheld {
+            reason: "stood_down".into(),
+            because: "its owner stood this master down and a pane is up anyway".into(),
+            pane: Some("forge-master-forge".into()),
+        };
+        assert_eq!(
+            left.lead(),
+            "forge-master-forge is RUNNING and this box is not driving it"
         );
         assert!(
-            matches!(
-                withheld_as("restarting", "x", &r, &seen(None)),
-                Unplaced::Withheld { .. }
-            ),
-            "a restart this box is not in was recorded as one"
+            left.is_error(),
+            "a pane left running undriven was said as a warning"
         );
+    }
+
+    /// ISS-1233, measured 2026-09-24: a refused registration under a resident
+    /// pane read "no master pane placed" while that pane was nudged seconds later.
+    #[test]
+    fn a_refused_registration_under_a_running_pane_says_it_runs() {
+        let refused = Unplaced::RegisterFailed {
+            detail: "502 from core".into(),
+            pane: Some("forge-master-forge".into()),
+        };
+        assert_eq!(
+            refused.lead(),
+            "forge-master-forge is RUNNING and this box is not driving it"
+        );
+        assert!(refused.is_error());
+        let unplaced = Unplaced::RegisterFailed {
+            detail: "502 from core".into(),
+            pane: None,
+        };
+        assert_eq!(unplaced.lead(), "no master pane placed");
     }
 }

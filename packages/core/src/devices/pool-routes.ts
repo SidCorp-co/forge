@@ -68,9 +68,7 @@ const answerQuerySchema = z.object({ runId: z.string().optional() });
 import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { RefusalError } from '../lib/refusal.js';
-import { readAdmissibleIssues } from './admissible.js';
 import { assertMasterSessionHeld, prepareJobForMaster, startJobForMaster } from './claim.js';
-import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
@@ -82,7 +80,6 @@ export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // The device's run-session and inbox routes live in their own files and mount here.
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
-devicePoolRoutes.route('/', deviceCommentInboxRoutes);
 
 const poolQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -98,20 +95,6 @@ devicePoolRoutes.get(
     const deviceId = c.get('device').id;
     const items = await readPool({ deviceId, projectId, limit });
     return c.json({ items, count: items.length });
-  },
-);
-
-devicePoolRoutes.get(
-  '/me/issues/admissible',
-  requireDevice(),
-  zValidator('query', poolQuerySchema),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const { items, refused } = await readAdmissibleIssues({
-      deviceId: c.get('device').id,
-      projectId,
-    });
-    return c.json({ items, count: items.length, refused });
   },
 );
 

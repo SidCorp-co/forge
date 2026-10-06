@@ -16,6 +16,7 @@ export {
   nodeSetRefusals,
   observedNodesIn,
 } from './node-refs.js';
+export { owedDesignRevisions } from './owed-designs.js';
 export { loadPinnedContracts, renderPinnedContracts } from './pinned-contracts.js';
 export { provideWorkflowPorts } from './ports.js';
 export { renderIssueMockups } from './requirement-context.js';

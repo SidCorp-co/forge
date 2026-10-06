@@ -246,6 +246,8 @@ export const FEEDBACK_LIMITS = {
 	whereSeen: 500,
 	reason: 4_000,
 	answer: 10_000,
+	/** The issues one issue route names at most. */
+	carriers: 50,
 	attachmentBytes: 5 * 1024 * 1024,
 	attachmentsPerItem: 10,
 } as const;
@@ -260,6 +262,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_TARGET_CORE_FILED",
 	"FEEDBACK_ROUTE_TARGET_MISMATCH",
 	"FEEDBACK_ROUTE_INCOMPLETE",
+	"FEEDBACK_CARRIER_REPEATED",
 	"FEEDBACK_ANSWER_MISSING",
 	"FEEDBACK_DECLINE_REASON_REQUIRED",
 	"FEEDBACK_REOPEN_REASON_REQUIRED",
@@ -319,7 +322,8 @@ export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
 export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 const carrierFields = {
-	issue: ref.optional(),
+	/** One issue that carries the route, or every one of them as a list (ISS-265). */
+	issue: z.union([ref, z.array(ref).min(1).max(FEEDBACK_LIMITS.carriers)]).optional(),
 	createIssue: z
 		.strictObject({
 			title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
@@ -340,8 +344,8 @@ const carrierFields = {
 
 /**
  * A route as a person picks it, or as a `feedback_triage` suggestion carries it, written in the
- * triage act with what carries it: issue: `issue` links one, `createIssue` (or neither) files a
- * draft; revision: `suggestion` names a revision_diff
+ * triage act with what carries it: issue: `issue` links one existing issue or a list of them,
+ * `createIssue` (or neither) files a draft; revision: `suggestion` names a revision_diff
  * suggestion; new_requirement: `requirement` names a draft, `title` starts one; answer: `answer`.
  * duplicate names its root (`duplicateOf`), and decline its reason (`note`).
  */
@@ -352,7 +356,7 @@ export const feedbackTriageSchema = z.strictObject({
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({
@@ -439,12 +443,16 @@ export interface FeedbackTargetView {
 	node?: NodeRef;
 }
 
+/** One thing carrying a route: ISS-n, REQ-n, a suggestion id or FB-n, with its own status in its own vocabulary. */
+export interface FeedbackCarrierView {
+	key: string | null;
+	status: string | null;
+}
+
 export interface FeedbackRouteView {
 	route: FeedbackRoute;
-	/** What carries it: ISS-n, REQ-n, a suggestion id, FB-n, or null for an answer. */
-	key: string | null;
-	/** That carrier's own status, in its own vocabulary. */
-	status: string | null;
+	/** What carries it: every issue of an issue route, the one carrier of another, none for an answer. */
+	carriers: FeedbackCarrierView[];
 	answer: string | null;
 }
 
@@ -579,7 +587,8 @@ export interface FeedbackPromoteEffect {
 export interface FeedbackTriageEffect {
 	feedback: string;
 	route: FeedbackTriageRoute;
-	carrier: string | null;
+	/** What carries the route by key, every issue of an issue route; none for a decline or an answer. */
+	carriers: string[];
 }
 
 /** A feedback item's key, `FB-<seq>`. */

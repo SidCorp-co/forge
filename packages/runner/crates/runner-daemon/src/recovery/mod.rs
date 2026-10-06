@@ -518,11 +518,9 @@ async fn gather(
         Some(id) => watch.idle.reported(id).await.map(|r| activity_of(r, now)),
         None => None,
     };
+    let subagent = subagent_end::of_run(run, now);
     let host_ended = (run.pid.is_none()
-        && matches!(
-            subagent_end::of_run(run, now),
-            subagent_end::Evidence::HostEnded { .. }
-        ))
+        && matches!(subagent, subagent_end::Evidence::HostEnded { .. }))
     .then(|| HostEnd::from_ledger(run.host_ended_by.as_deref()).wire());
     let facts = Facts {
         issue_keys: issue_keys(ledger, &run.run_id)?,
@@ -552,6 +550,7 @@ async fn gather(
         session_over_for_ms: run
             .session_terminal_at
             .map(|at| ago(now, at.saturating_mul(1000))),
+        subagent: subagent.wire().into(),
         transcript: match (run.agent_transcript.as_deref(), transcript_written(run)) {
             (_, Some(w)) => Transcript::Written {
                 ago_ms: ago(now, w),

@@ -22,13 +22,13 @@ const passName = (p: Pick<MasterOpenPass, 'verb' | 'startedAt' | 'issueKey'>) =>
   `the ${p.verb} pass started ${p.startedAt}${p.issueKey ? ` on ${p.issueKey}` : ''}`;
 
 // contract -> packages/runner/crates/runner-daemon/src/master_pass.rs:named_pass_id — the runner reads the
-// open pass's id from `id <uuid>` in this detail to close a pass whose open answer it never received
+// open pass's id from `id <uuid>` in this detail to settle a pass whose open answer it never received
 export function passAlreadyOpenRefusal(open: MasterOpenPass | null): MasterRefusal | null {
   if (!open) return null;
   return {
     code: 'MASTER_PASS_ALREADY_OPEN',
     path: '/op',
-    detail: `this master already has ${passName(open)} open, id ${open.id}; close it ({ op: "close", sessionId, passId, dispatched, skipped, parked }) before opening the next`,
+    detail: `this master already has ${passName(open)} open, id ${open.id}; it closes when core judges it ended ({ op: "settle", sessionId, passId, facts }), and the next opens after`,
   };
 }
 
@@ -44,23 +44,8 @@ export function passNotOpenRefusal(args: {
     code: 'MASTER_PASS_NOT_OPEN',
     path: '/passId',
     detail: args.named
-      ? `${passName(args.named)} ended ${args.named.endedAt}, and a closed pass is final, so this close changed nothing.${now}`
+      ? `${passName(args.named)} ended ${args.named.endedAt}, and a closed pass is final, so this settle changed nothing.${now}`
       : `this master has no pass ${args.passId}.${now}`,
-  };
-}
-
-export function refusedWithWorkRefusal(args: {
-  refused: { reason: string } | null;
-  dispatched: string[];
-  skipped: unknown[];
-  parked: string[];
-}): MasterRefusal | null {
-  if (!args.refused) return null;
-  if (args.dispatched.length + args.skipped.length + args.parked.length === 0) return null;
-  return {
-    code: 'MASTER_PASS_REFUSED_WITH_WORK',
-    path: '/refused',
-    detail: `a pass refused before it ran (${args.refused.reason}) did no work, so it reports none: send dispatched, skipped and parked empty, or close it without refused if its turn ran`,
   };
 }
 

@@ -1,17 +1,15 @@
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
-  MasterClosedPass,
   MasterOpenPass,
   MasterOutdated,
-  MasterPassCloseReason,
-  MasterPassRefusal,
-  MasterPassSkip,
+  MasterPassFacts,
+  MasterPassSettleResponse,
   MasterPassTrigger,
   MasterRefusal,
   MasterSessionResponse,
   MasterVerb,
 } from '@forge/contracts/master-standing';
-import type { MasterFacts, MasterVerdict } from '@forge/contracts/master-verdict';
+import type { MasterFacts, MasterVerdictAnswer } from '@forge/contracts/master-verdict';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -24,6 +22,8 @@ import {
   setMaxJobPanes,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { readMasterWork } from './owed.js';
+import { passEnd } from './pass-end.js';
 import {
   closedPassOf,
   openPassOf,
@@ -35,17 +35,16 @@ import {
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
-  refusedWithWorkRefusal,
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
-import { masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
+import { judged, masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
 type MasterSessionOutcome = { ok: true; session: MasterSessionResponse } | Refused;
 type OpenPassOutcome = { ok: true; pass: MasterOpenPass } | Refused;
-type ClosePassOutcome = { ok: true; pass: MasterClosedPass } | Refused;
+type SettlePassOutcome = { ok: true; settled: MasterPassSettleResponse } | Refused;
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 
@@ -134,47 +133,50 @@ export async function openMasterPass(args: {
   });
 }
 
-export async function closeMasterPass(args: {
+/**
+ * Judge one open pass from the box's facts and close it where it ended (`pass-end.ts:passEnd`). A
+ * pass core no longer holds open is refused by name, which the box reads as its record to drop.
+ */
+export async function settleMasterPass(args: {
   deviceId: string;
   sessionId: string;
   passId: string;
-  dispatched: string[];
-  skipped: MasterPassSkip[];
-  parked: string[];
-  refused: MasterPassRefusal | null;
-  closeReason: MasterPassCloseReason | null;
-}): Promise<ClosePassOutcome> {
-  const withWork = refusedWithWorkRefusal(args);
-  if (withWork) return { ok: false, refusals: [withWork] };
+  facts: MasterPassFacts;
+}): Promise<SettlePassOutcome> {
   return db.transaction(async (tx) => {
     await lockMasterPasses(tx, args.sessionId);
     const master = await ownedMaster(tx, args.deviceId, args.sessionId);
+    const open = await readOpenPass(tx, master.id);
+    if (!open || open.id !== args.passId) {
+      const named = await readClosedPass(tx, { sessionId: master.id, passId: args.passId });
+      return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
+    }
+    const end = passEnd(args.facts);
+    if (!end) {
+      return {
+        ok: true,
+        settled: { pass: open, because: 'its turn has not ended and its master is not quiet' },
+      };
+    }
+    const { dispatched } = args.facts;
     const [row] = rowsOf<Parameters<typeof closedPassOf>[0]>(
       await tx.execute(sql`
         UPDATE master_passes
            SET ended_at = GREATEST(now(), started_at),
                dispatched = ${sql`ARRAY[${sql.join(
-                 args.dispatched.map((d) => sql`${d}`),
+                 dispatched.map((d) => sql`${d}`),
                  sql`, `,
                )}]::text[]`},
-               skipped = ${JSON.stringify(scrubSecretsDeep(args.skipped))}::jsonb,
-               parked = ${sql`ARRAY[${sql.join(
-                 args.parked.map((p) => sql`${p}`),
-                 sql`, `,
-               )}]::text[]`},
-               refusal = ${args.refused ? JSON.stringify(scrubSecretsDeep(args.refused)) : null}::jsonb,
-               close_reason = ${args.closeReason}
+               skipped = '[]'::jsonb,
+               parked = ARRAY[]::text[],
+               refusal = ${end.refused ? JSON.stringify(scrubSecretsDeep(end.refused)) : null}::jsonb,
+               close_reason = ${end.reason}
          WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
         RETURNING ${PASS_COLUMNS}`),
     );
-    if (!row) {
-      const [named, open] = await Promise.all([
-        readClosedPass(tx, { sessionId: master.id, passId: args.passId }),
-        readOpenPass(tx, master.id),
-      ]);
-      return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
-    }
-    return { ok: true, pass: closedPassOf(row) };
+    if (!row)
+      throw new Error(`settleMasterPass: pass ${args.passId} was read open and closed nothing`);
+    return { ok: true, settled: { pass: closedPassOf(row), because: end.because } };
   });
 }
 
@@ -198,15 +200,15 @@ export async function recordMasterDialog(args: {
 
 /**
  * Core's verdict on one project's resident master on the box sweeping `runnerId`: the box's facts,
- * its runner row's status and whether its live master has a pass open (ADR 0009, What core takes
- * over: Placement and Retirement).
+ * the work core reads the project owes its master, its runner row's status and whether its live
+ * master has a pass open (ADR 0009, What core takes over: Placement and Retirement).
  */
 export async function judgeMaster(args: {
   deviceId: string;
   projectId: string;
   runnerId: string;
   facts: MasterFacts;
-}): Promise<MasterVerdict> {
+}): Promise<MasterVerdictAnswer> {
   await assertDeviceBoundToProject(args.deviceId, args.projectId);
   const [runner] = await db
     .select({ status: runners.status })
@@ -241,11 +243,13 @@ export async function judgeMaster(args: {
     )
     .limit(1);
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
-  const verdict = masterVerdict(args.facts, { runnerStatus: runner.status, passOpen });
+  const work = await readMasterWork(args.deviceId, args.projectId);
+  const facts = judged(args.facts, work);
+  const verdict = masterVerdict(facts, { runnerStatus: runner.status, passOpen });
   if (master && verdict.act === 'keep') {
-    await recordOutdated(master.id, master.outdated, outdatedHold(args.facts));
+    await recordOutdated(master.id, master.outdated, outdatedHold(facts));
   }
-  return verdict;
+  return { verdict, work };
 }
 
 /**

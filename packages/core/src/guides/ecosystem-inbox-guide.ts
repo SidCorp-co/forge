@@ -26,21 +26,19 @@ set of repository paths reaches, recorded on your session when you name it:
 the token the pane's \`forge\` CLI borrows.
 
 ### How it reaches you
-- Your box reads what the channel owes this project on every sweep, from core's
-  \`GET /api/devices/me/channel/unanswered\`. A \`master.wake\` with \`source: 'channel'\` only makes
-  that sweep come sooner; a wake that was lost loses nothing, because the inbox is read, not the wake.
+- Core reads what the channel owes this project every time your box sweeps it, when it judges your
+  master. A \`master.wake\` with \`source: 'channel'\` only makes that sweep come sooner; a wake that
+  was lost loses nothing, because the inbox is read, not the wake.
 - When anything is owed, the pass is nudged even when the backlog is empty, and the nudge names how
   many documents are waiting. A pass that ends with the inbox untouched and no word on why is the same
   deviation as an idle pane with admissible issues.
-- The same sweep reads, beside the channel, which issue comments a person is owed a reply to, from
-  \`GET /api/devices/me/comments/unanswered\`, and a person's comment wakes the box with
-  \`source: 'comment'\`. That inbox is not an ecosystem one and needs no channel: see *Issue comments*
+- The same read counts, beside the channel, which issue comments a person is owed a reply to, and a
+  person's comment wakes the box with \`source: 'comment'\`. That inbox is not an ecosystem one and needs no channel: see *Issue comments*
   below.
 
 ### What counts as owed
-\`GET /api/devices/me/channel/unanswered?projectId=<id>\` lists exactly what the sweep counted. It
-answers a device's token; a personal token reads the same list at
-\`GET /api/projects/:id/channel/unanswered\`, and the nudge names each number it counted. A document is on it when it is
+\`GET /api/projects/:id/channel/unanswered\` lists exactly what the sweep counted, and the nudge names
+each number it counted. A document is on it when it is
 published to this project, its type owes a reply (a binding change notice owes an acknowledgement; an
 RFI and a change request owe a decision), no published reply from this project answers it yet, no
 person holds its thread, and no reply of yours is already waiting at the approve gate. A non-binding

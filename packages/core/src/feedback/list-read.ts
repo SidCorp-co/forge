@@ -3,19 +3,21 @@
 import {
   FEEDBACK_ATTENTION_GROUPS,
   type FeedbackAttentionGroup,
+  type FeedbackCarrierView,
   type FeedbackListResponse,
   type FeedbackPhase,
   type FeedbackRouteView,
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
-import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
-import { feedback } from '../db/schema-feedback.js';
+import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
@@ -46,6 +48,8 @@ import { targetView } from './target-view.js';
 export interface Linked {
   prefix: string | null;
   issues: Map<string, { key: string; title: string; status: string }>;
+  /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
+  routeIssues: Map<string, string[]>;
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
   releases: Map<string, string>;
   workflows: Map<string, { flow: string; title: string | null }>;
@@ -100,8 +104,24 @@ async function releaseOf(projectId: string): Promise<CarrierRelease> {
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
 
+/** Every issue an issue route names, per item, oldest issue first. */
+async function routeIssuesOf(rows: Row[]): Promise<Map<string, string[]>> {
+  const routed = rows.filter((r) => r.route === 'issue').map((r) => r.id);
+  const out = new Map<string, string[]>();
+  if (routed.length === 0) return out;
+  const links = await db
+    .select({ feedbackId: feedbackRouteIssues.feedbackId, issueId: feedbackRouteIssues.issueId })
+    .from(feedbackRouteIssues)
+    .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
+    .where(inArray(feedbackRouteIssues.feedbackId, routed))
+    .orderBy(asc(issues.issSeq));
+  for (const l of links) out.set(l.feedbackId, [...(out.get(l.feedbackId) ?? []), l.issueId]);
+  return out;
+}
+
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
-  const issueIds = ids(rows.flatMap((r) => [r.issueId, r.routedIssueId]));
+  const routeIssues = await routeIssuesOf(rows);
+  const issueIds = ids([...rows.map((r) => r.issueId), ...[...routeIssues.values()].flat()]);
   const reqIds = ids(rows.flatMap((r) => [r.requirementId, r.routedRequirementId]));
   const releaseIds = ids(rows.map((r) => r.releaseRunId));
   const workflowIds = ids(rows.map((r) => r.workflowId));
@@ -181,11 +201,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
   );
-  const atGate = issueRows.some(
-    (i) =>
-      i.status === AT_RELEASE_GATE &&
-      rows.some((r) => r.route === 'issue' && r.routedIssueId === i.id),
-  );
+  const carrying = new Set([...routeIssues.values()].flat());
+  const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
   const [owed, release] = await Promise.all([
     rows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
@@ -203,6 +220,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
         { key: formatIssueRef(prefix, i.seq), title: i.title, status: i.status },
       ]),
     ),
+    routeIssues,
     requirements: new Map(
       reqRows.map((r) => [
         r.id,
@@ -242,12 +260,25 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   };
 }
 
+/** Every issue an issue-routed item names, by key with its own status; none for another route. */
+function routeIssueViews(r: Row, l: Linked): { key: string; status: string }[] {
+  return (l.routeIssues.get(r.id) ?? []).map((id) => {
+    const issue = l.issues.get(id);
+    if (!issue) {
+      throw new Error(
+        `${feedbackKey(r.fbSeq)} is carried by issue ${id}, which the carriers' read did not load`,
+      );
+    }
+    return { key: issue.key, status: issue.status };
+  });
+}
+
 function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFacts {
   const s = r.routedSuggestionId ? l.suggestions.get(r.routedSuggestionId) : undefined;
   return {
     status: r.status,
     route: r.route,
-    routedIssueStatus: r.routedIssueId ? (l.issues.get(r.routedIssueId)?.status ?? null) : null,
+    routedIssueStatuses: routeIssueViews(r, l).map((i) => i.status),
     suggestion: s
       ? {
           status: s.status as SuggestionStatus,
@@ -271,33 +302,42 @@ export function phaseIn(r: Row, l: Linked): FeedbackPhase {
   return phaseOf(phaseFacts(r, l, rootPhase));
 }
 
+const one = (carrier: FeedbackCarrierView): FeedbackCarrierView[] => [carrier];
+
 export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   if (!r.route) return null;
   switch (r.route) {
-    case 'issue': {
-      const i = l.issues.get(r.routedIssueId as string);
-      return { route: r.route, key: i?.key ?? null, status: i?.status ?? null, answer: null };
-    }
+    case 'issue':
+      return { route: r.route, carriers: routeIssueViews(r, l), answer: null };
     case 'new_requirement': {
       const q = l.requirements.get(r.routedRequirementId as string);
-      return { route: r.route, key: q?.key ?? null, status: q?.status ?? null, answer: null };
+      const carriers = one({ key: q?.key ?? null, status: q?.status ?? null });
+      return { route: r.route, carriers, answer: null };
     }
     case 'revision': {
       const s = l.suggestions.get(r.routedSuggestionId as string);
-      return { route: r.route, key: r.routedSuggestionId, status: s?.status ?? null, answer: null };
+      const carriers = one({ key: r.routedSuggestionId, status: s?.status ?? null });
+      return { route: r.route, carriers, answer: null };
     }
     case 'duplicate': {
       const root = l.roots.get(r.duplicateOf as string);
-      return {
-        route: r.route,
+      const carriers = one({
         key: root ? feedbackKey(root.fbSeq) : null,
         status: root ? phaseIn(root, l) : null,
-        answer: null,
-      };
+      });
+      return { route: r.route, carriers, answer: null };
     }
     case 'answer':
-      return { route: r.route, key: null, status: null, answer: r.answer };
+      return { route: r.route, carriers: [], answer: r.answer };
   }
+}
+
+/** What a planned item still waits on: an issue route's carriers not yet closed or dropped, any other route's one carrier. */
+function owedCarriers(route: FeedbackRouteView | null): FeedbackCarrierView[] {
+  if (!route) return [];
+  if (route.route !== 'issue') return route.carriers;
+  const finished: readonly (string | null)[] = ISSUE_TERMINAL_STATUSES;
+  return route.carriers.filter((c) => !finished.includes(c.status));
 }
 
 export function summaryOf(
@@ -311,10 +351,11 @@ export function summaryOf(
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
   const reporter = reporterName ?? 'The reporter';
+  const owed = owedCarriers(route);
   const standing = feedbackStandingOf(
     phase,
     r.route,
-    route?.key ?? null,
+    owed.flatMap((c) => (c.key ? [c.key] : [])),
     reporter,
     { ...can, isReporter: viewer.userId === r.reportedBy },
     r.route === 'revision' && r.routedSuggestionId
@@ -323,7 +364,10 @@ export function summaryOf(
     {
       masterOwesTriage: l.masterOwed.has(r.id),
       carrierRelease:
-        phase === 'planned' && r.route === 'issue' && route?.status === AT_RELEASE_GATE
+        phase === 'planned' &&
+        r.route === 'issue' &&
+        owed.length > 0 &&
+        owed.every((c) => c.status === AT_RELEASE_GATE)
           ? l.release
           : null,
     },

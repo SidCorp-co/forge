@@ -392,5 +392,4 @@ workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, async (c
   });
 });
 
-export { deviceDesignInboxRoutes } from './device-owed-routes.js';
 export { workflowTemplateCatalogueRoutes } from './template-routes.js';

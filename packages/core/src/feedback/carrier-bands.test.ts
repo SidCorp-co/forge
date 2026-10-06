@@ -1,6 +1,6 @@
 import { feedbackTriageSchema } from '@forge/contracts/feedback';
 import { describe, expect, it } from 'vitest';
-import { carrierBands } from './triage.js';
+import { carrierBands } from './route-write.js';
 
 describe('the issue route files its carrier with the bands the triager names', () => {
   it('takes complexity, category and priority in createIssue, so no write follows the route', () => {

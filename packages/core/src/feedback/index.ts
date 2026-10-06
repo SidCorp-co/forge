@@ -4,6 +4,7 @@ export { provideFeedbackDependents } from './dependents.js';
 export type { ReadDoor } from './egress.js';
 export { embedFeedback, embedFeedbackLater, nearestFeedbackOf } from './embeddings.js';
 export { listFeedbackAs } from './list-read.js';
+export { owedTriages } from './owed-triage.js';
 export { rowIn } from './read.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
