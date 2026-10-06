@@ -22,6 +22,60 @@ fn claude_json_path() -> Option<PathBuf> {
     dirs_next::home_dir().map(|h| h.join(".claude.json"))
 }
 
+/// The `.claude.json` a session started on this box reads its folder trust
+/// from, by the same resolution the write uses: `CLAUDE_CONFIG_DIR` first,
+/// the home directory otherwise.
+pub fn config_path() -> Option<PathBuf> {
+    claude_json_path()
+}
+
+/// What `.claude.json` says about one folder, read and never written
+/// (ISS-1382): `forge-runner doctor` reports it for every bound checkout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrustState {
+    /// Every spelling the pre-trust write stamps reads `true`.
+    Trusted,
+    /// These spellings do not: the entry is absent, the key is, or it is not `true`.
+    Untrusted { keys: Vec<String> },
+    /// There is no `.claude.json` at all yet.
+    NoFile,
+    /// The file is there and cannot be read or parsed, and why.
+    Unreadable(String),
+}
+
+/// What `json_path` says about `dir`, under every spelling [`pre_trust`] stamps.
+pub fn state_in(json_path: &Path, dir: &Path) -> TrustState {
+    let root = match std::fs::read(json_path) {
+        Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+            Ok(v) => v,
+            Err(e) => return TrustState::Unreadable(format!("it is not valid JSON: {e}")),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return TrustState::NoFile,
+        Err(e) => return TrustState::Unreadable(format!("it could not be read: {e}")),
+    };
+    if !root.is_object() {
+        return TrustState::Unreadable("it is not a JSON object".into());
+    }
+    let keys: Vec<String> = keys_for(dir)
+        .into_iter()
+        .filter(|k| {
+            root.get("projects")
+                .and_then(|p| p.get(k))
+                .and_then(|e| e.get(TRUST_FIELD))
+                .and_then(serde_json::Value::as_bool)
+                != Some(true)
+        })
+        .collect();
+    if keys.is_empty() {
+        TrustState::Trusted
+    } else {
+        TrustState::Untrusted { keys }
+    }
+}
+
+/// The key a folder's trust is kept under, for a reader to be told.
+pub const KEY: &str = TRUST_FIELD;
+
 /// Record `dir` as trusted. `Ok(true)` when the file was written, `Ok(false)`
 /// when it already said so.
 pub fn pre_trust(dir: &Path) -> Result<bool, String> {
@@ -252,6 +306,78 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()
         ));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_read_names_each_state_and_never_writes() {
+        let dir = temp("state");
+        let json = dir.join(".claude.json");
+        assert_eq!(state_in(&json, Path::new("/srv/x")), TrustState::NoFile);
+        assert!(!json.exists(), "a read creates nothing");
+
+        let seeded = br#"{"projects":{"/srv/x":{"hasTrustDialogAccepted":true},"/srv/f":{"hasTrustDialogAccepted":false},"/srv/k":{}}}"#;
+        std::fs::write(&json, seeded).expect("seed");
+        assert_eq!(state_in(&json, Path::new("/srv/x")), TrustState::Trusted);
+        for untrusted in ["/srv/f", "/srv/k", "/srv/absent"] {
+            assert_eq!(
+                state_in(&json, Path::new(untrusted)),
+                TrustState::Untrusted {
+                    keys: vec![untrusted.to_string()]
+                }
+            );
+        }
+        assert_eq!(
+            std::fs::read(&json).expect("read"),
+            seeded.to_vec(),
+            "byte-identical"
+        );
+
+        std::fs::write(&json, b"not json").expect("seed");
+        assert!(
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("not valid JSON"))
+        );
+        std::fs::write(&json, b"[]").expect("seed");
+        assert!(
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("not a JSON object"))
+        );
+        std::fs::remove_file(&json).expect("rm");
+        std::fs::create_dir(&json).expect("a directory where the file goes");
+        assert!(
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("could not be read"))
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_checkout_is_trusted_only_under_both_spellings() {
+        let dir = temp("state-link");
+        let real = dir.join("real");
+        std::fs::create_dir_all(&real).expect("real dir");
+        let link = dir.join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let json = dir.join(".claude.json");
+        let literal = link.to_string_lossy().into_owned();
+        std::fs::write(
+            &json,
+            serde_json::json!({"projects": {literal.clone(): {"hasTrustDialogAccepted": true}}})
+                .to_string(),
+        )
+        .expect("seed");
+        let canonical = std::fs::canonicalize(&real)
+            .expect("canonical")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            state_in(&json, &link),
+            TrustState::Untrusted {
+                keys: vec![canonical]
+            },
+            "the spelling the write also stamps is missing"
+        );
+        assert!(trust_in(&json, &link).expect("stamp"));
+        assert_eq!(state_in(&json, &link), TrustState::Trusted);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

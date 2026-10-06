@@ -97,6 +97,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
 
+    // Whether Claude Code will ask a master pane in each bound checkout to
+    // trust the folder, read where that pane reads it (ISS-1382).
+    let config = forge_runner_core::workspace::trust::config_path();
+    let (rows, trust_failed) = trust_rows(
+        cfg.bindings
+            .iter()
+            .map(|(slug, b)| (slug.as_str(), b.repo_path.as_path())),
+        config.as_deref(),
+    );
+    for row in rows {
+        println!("{row}");
+    }
+    failed |= trust_failed;
+
     // Which plugin a job spawned here would find installed. `enabled = false`
     // is a legitimate device state, not a failure, so it reports as a note.
     if cfg.plugins.enabled {
@@ -183,6 +197,54 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
     println!("\n✔ VERDICT      PASS");
     Ok(())
+}
+
+/// One `trust` row per bound checkout, and whether any fails the run.
+///
+/// Only a `.claude.json` that cannot be read fails it: the daemon's own
+/// pre-trust write refuses that file the same way, so a master placed there
+/// meets the dialog. An untrusted folder, or no file yet, is a warning, since
+/// the daemon writes the key (creating the file) before every placement and a
+/// fresh bind has not had one. Nothing here writes.
+fn trust_rows<'a>(
+    bindings: impl Iterator<Item = (&'a str, &'a std::path::Path)>,
+    config: Option<&std::path::Path>,
+) -> (Vec<String>, bool) {
+    use forge_runner_core::workspace::trust::{self, TrustState};
+    let key = trust::KEY;
+    let mut rows = Vec::new();
+    let mut failed = false;
+    for (slug, path) in bindings {
+        let entry = format!("projects[\"{}\"].{key}", path.display());
+        let Some(file) = config else {
+            rows.push(format!(
+                "✖ trust        {slug}: no `.claude.json` could be resolved (neither CLAUDE_CONFIG_DIR nor a home directory), so whether {entry} is true cannot be read"
+            ));
+            failed = true;
+            continue;
+        };
+        let file_shown = file.display();
+        rows.push(match trust::state_in(file, path) {
+            TrustState::Trusted => format!("✔ trust        {slug}: {entry} is true in {file_shown}"),
+            TrustState::Untrusted { keys } => format!(
+                "⚠ trust        {slug}: {file_shown} does not hold {key}: true for {} — a master placed in {} stops on the folder-trust dialog unless the daemon's write before placement lands",
+                keys.iter().map(|k| format!("projects[\"{k}\"]")).collect::<Vec<_>>().join(" or "),
+                path.display()
+            ),
+            TrustState::NoFile => format!(
+                "⚠ trust        {slug}: {file_shown} does not exist, so {entry} is not set — the daemon writes it before placing a master in {}",
+                path.display()
+            ),
+            TrustState::Unreadable(why) => {
+                failed = true;
+                format!(
+                    "✖ trust        {slug}: {file_shown} — {why} — so {entry} cannot be read for {}, and the daemon's own write before placement fails the same way",
+                    path.display()
+                )
+            }
+        });
+    }
+    (rows, failed)
 }
 
 /// What a human opening `claude` in a bound checkout would find.
@@ -1425,5 +1487,66 @@ mod tests {
         );
         assert!(mark == Mark::Ok, "{line}");
         assert!(line.contains("no MCP servers declared"), "{line}");
+    }
+
+    /// ISS-1382 criteria 1 to 7: one trust row per bound checkout, read and
+    /// never written.
+    #[test]
+    fn a_trust_row_names_the_file_the_key_and_the_path_and_writes_nothing() {
+        let scratch = forge_runner_core::test_scratch::Scratch::new("doctor-trust");
+        let json = scratch.join(".claude.json");
+        let trusted = std::path::Path::new("/srv/trusted");
+        let untrusted = std::path::Path::new("/srv/untrusted");
+        let rows_for = |paths: &[(&'static str, &'static std::path::Path)]| {
+            trust_rows(paths.iter().copied(), Some(json.as_path()))
+        };
+
+        let (rows, failed) = rows_for(&[("a", trusted)]);
+        assert!(!failed);
+        assert!(
+            rows[0].starts_with("⚠ trust        a:") && rows[0].contains("does not exist"),
+            "{rows:?}"
+        );
+        assert!(!json.exists(), "doctor creates no .claude.json");
+
+        let seeded = br#"{"projects":{"/srv/trusted":{"hasTrustDialogAccepted":true}}}"#;
+        std::fs::write(&json, seeded).unwrap();
+        let (rows, failed) = rows_for(&[("a", trusted), ("b", untrusted)]);
+        assert!(!failed, "an untrusted folder is a warning: {rows:?}");
+        assert!(rows[0].starts_with("✔ trust        a:"), "{rows:?}");
+        for said in [
+            "⚠ trust        b:",
+            &json.display().to_string(),
+            "hasTrustDialogAccepted",
+            "projects[\"/srv/untrusted\"]",
+            "/srv/untrusted",
+        ] {
+            assert!(rows[1].contains(said), "`{said}` missing: {}", rows[1]);
+        }
+        assert_eq!(
+            std::fs::read(&json).unwrap(),
+            seeded.to_vec(),
+            "byte-identical"
+        );
+
+        std::fs::write(&json, b"{broken").unwrap();
+        let (rows, failed) = rows_for(&[("b", untrusted)]);
+        assert!(failed, "an unreadable file fails the verdict");
+        for said in [
+            "✖ trust        b:",
+            &json.display().to_string(),
+            "not valid JSON",
+            "projects[\"/srv/untrusted\"].hasTrustDialogAccepted",
+            "/srv/untrusted",
+        ] {
+            assert!(rows[0].contains(said), "`{said}` missing: {}", rows[0]);
+        }
+        assert_eq!(std::fs::read(&json).unwrap(), b"{broken".to_vec());
+
+        let (rows, failed) = trust_rows([("c", untrusted)].into_iter(), None);
+        assert!(
+            failed && rows[0].contains("no `.claude.json` could be resolved"),
+            "{rows:?}"
+        );
     }
 }
