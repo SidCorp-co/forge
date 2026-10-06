@@ -249,3 +249,36 @@ describe('readCheckoutHead asks every connected bound box (R1-04)', () => {
     expect((await reading).ok).toBe(true);
   });
 });
+
+describe("a credential in a box's origin never reaches what core says (R3-06)", () => {
+  const SECRET = 'ghp_planted0000000000000000000000000000';
+
+  it('names an other-repository origin without its userinfo', async () => {
+    const d = deps();
+    const reading = read(d);
+    await vi.waitFor(() => expect(d.sent).toHaveLength(1));
+    const outcome = answerCheckoutHead(
+      'dev-1',
+      requestIdOf(d.sent),
+      good(`https://x-access-token:${SECRET}@github.com/someone/app.git`),
+    );
+    expect(outcome).toMatchObject({ ok: false, code: 'CHECKOUT_HEAD_OTHER_REPOSITORY' });
+    expect(JSON.stringify(outcome)).not.toContain(SECRET);
+    const err = refused(await reading);
+    expect(err.detail).toContain('https://github.com/someone/app.git');
+    expect(err.detail).not.toContain(SECRET);
+  });
+
+  it("carries an older box's refusal without the userinfo of the origin it names", async () => {
+    const d = deps();
+    const reading = read(d);
+    await vi.waitFor(() => expect(d.sent).toHaveLength(1));
+    answerCheckoutHead('dev-1', requestIdOf(d.sent), {
+      projectId: P,
+      error: `\`git ls-remote origin\` in /w/epod (https://${SECRET}@github.com/org/app.git) failed`,
+    });
+    const err = refused(await reading);
+    expect(err.detail).toContain('(https://github.com/org/app.git) failed');
+    expect(err.detail).not.toContain(SECRET);
+  });
+});

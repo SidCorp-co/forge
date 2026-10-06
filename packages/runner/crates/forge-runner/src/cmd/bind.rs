@@ -44,19 +44,21 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     };
 
+    // Before anything is saved: a checkout of another host's repository is refused, not bound.
+    let helper_host = if given {
+        let origin = runner_platform::git::origin_url(&path).await;
+        checkout_credential_host(&args.slug, &path, &assignment, origin.as_deref())?
+    } else {
+        None
+    };
+
+    // Only here, past every refusal, is what this says true: the binding is saved next.
     if !path.join(".git").exists() {
         eprintln!(
             "warning: {} has no `.git` — binding will still be saved, but double-check the path.",
             path.display()
         );
     }
-
-    // Before anything is saved: a checkout of another host's repository is refused, not bound.
-    let helper_host = if given {
-        checkout_credential_host(&args.slug, &path, &assignment, origin_url(&path).as_deref())?
-    } else {
-        None
-    };
 
     let bound = write_binding(&client, &assignment, &args.slug, &path, args.branch).await?;
     println!(
@@ -66,8 +68,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     );
     // A checkout bound by path is provisioned like any other: without this its orientation kept
     // whatever instance last wrote it, and a re-bind never put this instance's back.
-    if given {
-        provision::reprovision(&client, &Config::load()?, &assignment.runner_id).await;
+    if given && !provision::reprovision(&client, &Config::load()?, &assignment.runner_id).await {
+        eprintln!(
+            "note: core returned no queued provision for {} after it was queued, so this checkout's orientation, skills and .mcp.json were not refreshed now — the daemon's provision sweep takes it once core queues it",
+            args.slug
+        );
     }
     if let Some(host) = helper_host {
         git_cred::set_repo_credential_helper(&bound, &host).map_err(|e| {
@@ -81,18 +86,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         );
     }
     Ok(())
-}
-
-/// `origin`'s URL in the checkout, or `None` where it has no such remote.
-fn origin_url(path: &std::path::Path) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .ok()?;
-    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (out.status.success() && !url.is_empty()).then_some(url)
 }
 
 /// Where a repository lives, as the project document or a git remote names it.
@@ -356,7 +349,13 @@ pub async fn provision_checkout(
         })?;
 
     println!("provisioning {} → {}", assignment.slug, target.display());
-    provision::reprovision(client, &cfg, &assignment.runner_id).await;
+    if !provision::reprovision(client, &cfg, &assignment.runner_id).await {
+        eprintln!(
+            "note: core returned no queued provision for {} after it was queued, so this call cloned nothing — what is at {} is what the daemon's provision sweep left",
+            assignment.slug,
+            target.display()
+        );
+    }
 
     if !target.join(".git").exists() && !target.exists() {
         anyhow::bail!(

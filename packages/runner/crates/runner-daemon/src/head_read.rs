@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use runner_platform::config::{Binding, Config};
-use runner_platform::git::git_line;
+use runner_platform::git::{git_line, origin_url, strip_userinfo};
 use runner_transport::{checkout_head, CoreClient};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -34,12 +34,9 @@ struct HeadReadFrame {
 }
 
 pub(crate) async fn handle(client: &CoreClient, data: Value) {
-    let frame: HeadReadFrame = match serde_json::from_value(data) {
+    let frame: HeadReadFrame = match serde_json::from_value(data.clone()) {
         Ok(f) => f,
-        Err(e) => {
-            tracing::warn!("[head] undecodable checkout.head.read: {e}");
-            return;
-        }
+        Err(e) => return answer_undecodable(client, &data, &e).await,
     };
     let body = match answer(&frame.project_id, frame.repo_path.as_deref(), &frame.branch).await {
         Ok((sha, origin)) => json!({
@@ -48,9 +45,10 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
             "ref": format!("refs/heads/{}", frame.branch),
             "readAt": rfc3339_utc(runner_platform::clock::now_secs()),
             "via": "runner-checkout",
-            "origin": origin,
+            "origin": strip_userinfo(&origin),
         }),
         Err(error) => {
+            let error = strip_userinfo(&error);
             tracing::warn!(
                 "[head] project={} runner={}: {error}",
                 frame.project_id,
@@ -59,12 +57,38 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
             json!({ "projectId": frame.project_id, "error": error })
         }
     };
-    if let Err(e) = checkout_head::answer(client, &frame.request_id, &body).await {
-        tracing::warn!(
-            "[head] project={}: the answer did not reach core: {e}",
-            frame.project_id
-        );
+    post(client, &frame.request_id, &frame.project_id, &body).await;
+}
+
+async fn post(client: &CoreClient, request_id: &str, project_id: &str, body: &Value) {
+    if let Err(e) = checkout_head::answer(client, request_id, body).await {
+        tracing::warn!("[head] project={project_id}: the answer did not reach core: {e}");
     }
+}
+
+/// A frame this build cannot read is answered, naming what failed to decode, so core settles it
+/// with that and not with its wait's "this runner is older than core". Only a frame without the
+/// `requestId` and `projectId` an answer is filed under goes unanswered, and that is said here.
+async fn answer_undecodable(client: &CoreClient, data: &Value, e: &serde_json::Error) {
+    let field = |name: &str| data.get(name).and_then(Value::as_str).map(str::to_string);
+    let (Some(request_id), Some(project_id)) = (field("requestId"), field("projectId")) else {
+        tracing::warn!(
+            "[head] undecodable checkout.head.read with no requestId and projectId to answer it under, so core waits it out: {e}"
+        );
+        return;
+    };
+    let error = format!(
+        "the checkout.head.read frame could not be decoded by forge-runner {}: {e} — this core sends a frame this runner does not read",
+        runner_update::CURRENT_VERSION
+    );
+    tracing::warn!("[head] project={project_id}: {error}");
+    post(
+        client,
+        &request_id,
+        &project_id,
+        &json!({ "projectId": project_id, "error": error }),
+    )
+    .await;
 }
 
 /// The binding is read from the config file now, not from the daemon's start:
@@ -132,7 +156,7 @@ fn branch_refusal(branch: &str) -> Option<String> {
     bad.then(|| format!("branch {branch:?} is not a branch name this box will pass to git"))
 }
 
-/// The sha `origin` holds for `refs/heads/<branch>`, and origin's URL as git prints it.
+/// The sha `origin` holds for `refs/heads/<branch>`, and origin's URL as git resolves it.
 pub(crate) async fn read_head(repo: &Path, branch: &str) -> Result<(String, String), String> {
     if let Some(why) = branch_refusal(branch) {
         return Err(why);
@@ -153,8 +177,9 @@ pub(crate) async fn read_head(repo: &Path, branch: &str) -> Result<(String, Stri
             repo.display()
         ));
     }
-    let origin = git_line(repo, &["config", "--get", "remote.origin.url"])
+    let origin = origin_url(repo)
         .await
+        .map(|url| strip_userinfo(&url))
         .ok_or_else(|| {
             format!(
                 "the bound checkout {} has no `origin` remote",
@@ -384,6 +409,109 @@ mod tests {
         assert!(why.contains("named no checkout"), "{why}");
         let why = bound_checkout(&one, "q", Some("/w/epod")).unwrap_err();
         assert!(why.contains("forge-runner bind"), "{why}");
+    }
+
+    const SECRET: &str = "ghp_planted0000000000000000000000000000";
+
+    #[tokio::test]
+    async fn a_credential_in_origin_never_leaves_the_box() {
+        let (checkout, _) = clone_of_local_bare();
+        let with_token = format!("https://x-access-token:{SECRET}@127.0.0.1:1/org/repo.git");
+        git(&checkout, &["remote", "set-url", "origin", &with_token]);
+        let why = read_head(&checkout, "dev").await.unwrap_err();
+        assert!(!why.contains(SECRET), "{why}");
+        assert!(why.contains("https://127.0.0.1:1/org/repo.git"), "{why}");
+    }
+
+    #[tokio::test]
+    async fn origin_is_read_as_git_resolves_it_the_way_bind_reads_it() {
+        let (checkout, head) = clone_of_local_bare();
+        let bare = git(&checkout, &["config", "--get", "remote.origin.url"]);
+        git(
+            &checkout,
+            &["remote", "set-url", "origin", "planted:repo.git"],
+        );
+        git(
+            &checkout,
+            &[
+                "config",
+                &format!("url.{}.insteadOf", bare.trim_end_matches("repo.git")),
+                "planted:",
+            ],
+        );
+        let (sha, origin) = read_head(&checkout, "dev").await.expect("read");
+        assert_eq!(sha, head);
+        assert_eq!(origin, bare, "origin as `git remote get-url` resolves it");
+    }
+
+    /// A fake core taking every POST, recording path and body.
+    async fn fake_core() -> (
+        CoreClient,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    ) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let n = sock.read(&mut chunk).await.unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let len = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if body.len() >= len {
+                            let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                            log.lock().unwrap().push((path, body.to_string()));
+                            break;
+                        }
+                    }
+                }
+                let reply = "{\"settled\":true}";
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    reply.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.write_all(reply.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (CoreClient::new(format!("http://{addr}"), "token"), seen)
+    }
+
+    #[tokio::test]
+    async fn an_undecodable_frame_is_answered_naming_the_field() {
+        let (client, seen) = fake_core().await;
+        handle(
+            &client,
+            json!({ "requestId": "r-1", "projectId": "p-1", "branch": null }),
+        )
+        .await;
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1, "one answer posted: {seen:?}");
+        assert_eq!(seen[0].0, "/api/devices/me/checkout-heads/r-1");
+        let body: Value = serde_json::from_str(&seen[0].1).unwrap();
+        assert_eq!(body["projectId"], "p-1");
+        let error = body["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains("could not be decoded") && error.contains("string"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

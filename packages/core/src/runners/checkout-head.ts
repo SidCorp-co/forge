@@ -89,6 +89,14 @@ const asked = new Map<string, Asked>();
 
 const SCHEME = /^(?:[a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d*)?\/(.+)$/i;
 
+/** `scheme://user[:password]@`: the userinfo a checkout cloned with a token carries in its origin. */
+const USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@'"`()]+@/gi;
+
+/** `text` with every URL's userinfo removed: a box older than this core sends its origin as git stores it, token included. */
+function withoutUserinfo(text: string): string {
+  return text.replace(USERINFO, '$1');
+}
+
 /** How a remote URL git prints names the repository, in the declared spellings' terms: a host and path, or a local path. */
 function identityOf(remote: string): { local: boolean; id: string } {
   const trimmed = remote.trim();
@@ -260,7 +268,7 @@ export function answerCheckoutHead(
     return { ok: false, code: 'CHECKOUT_HEAD_MALFORMED', detail: why };
   };
   if (answer.error !== undefined) {
-    refused(answer.error);
+    refused(withoutUserinfo(answer.error));
     return { ok: true };
   }
   if (!answer.sha || !COMMIT.test(answer.sha)) {
@@ -282,7 +290,7 @@ export function answerCheckoutHead(
     );
   }
   if (!sameRepository(answer.origin, entry.repository)) {
-    const why = `the checkout ${entry.repoPath} reads origin ${answer.origin}, which is not the project's declared repository ${entry.repository}; its ${entry.ref} is no head of this project`;
+    const why = `the checkout ${entry.repoPath} reads origin ${withoutUserinfo(answer.origin)}, which is not the project's declared repository ${entry.repository}; its ${entry.ref} is no head of this project`;
     entry.settle({ ok: false, reason: 'other_repository', why });
     return { ok: false, code: 'CHECKOUT_HEAD_OTHER_REPOSITORY', detail: why };
   }

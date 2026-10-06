@@ -362,17 +362,35 @@ fn write_cli_borrow_at(path: &Path, core_url: &str, credential: Option<&str>) ->
     Ok(CliBorrow::Written(path.to_path_buf()))
 }
 
-/// The checkout credential a master pane was started with under
-/// [`CLI_BORROW_VAR`], for any CLI in the pane that speaks to core as its
-/// project: `None` where the variable is unset (not a master pane). A variable
-/// naming a file that is missing or holds no `token` is refused by path rather
-/// than passed over, since what a caller would pass over to is the box's
-/// operator PAT, which reaches only the projects one person pasted it for.
-pub fn borrowed_token() -> Result<Option<String>> {
-    borrowed_token_from(std::env::var_os(CLI_BORROW_VAR))
+/// A checkout credential a master pane borrows, and the one core it was minted by.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Borrowed {
+    /// The core URL the credential was minted by, with no trailing `/`: the only one it is sent to.
+    pub url: String,
+    pub token: String,
 }
 
-fn borrowed_token_from(var: Option<std::ffi::OsString>) -> Result<Option<String>> {
+impl std::fmt::Debug for Borrowed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Borrowed")
+            .field("url", &self.url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+/// The checkout credential a master pane was started with under
+/// [`CLI_BORROW_VAR`], with the core it belongs to, for any CLI in the pane that
+/// speaks to core as its project: `None` where the variable is unset (not a
+/// master pane). A variable naming a file that is missing or holds no `url` and
+/// `token` is refused by path rather than passed over, since what a caller would
+/// pass over to is the box's operator PAT, which reaches only the projects one
+/// person pasted it for.
+pub fn borrowed_credential() -> Result<Option<Borrowed>> {
+    borrowed_credential_from(std::env::var_os(CLI_BORROW_VAR))
+}
+
+fn borrowed_credential_from(var: Option<std::ffi::OsString>) -> Result<Option<Borrowed>> {
     let Some(path) = var.filter(|v| !v.is_empty()).map(PathBuf::from) else {
         return Ok(None);
     };
@@ -390,10 +408,17 @@ fn borrowed_token_from(var: Option<std::ffi::OsString>) -> Result<Option<String>
             "is not the {{url, token}} JSON it should hold ({e})"
         ))
     })?;
-    match doc.get("token").and_then(Value::as_str).map(str::trim) {
-        Some(token) if !token.is_empty() => Ok(Some(token.to_string())),
-        _ => Err(refused("holds no `token`".to_string())),
-    }
+    let field = |name: &str| {
+        doc.get(name)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| refused(format!("holds no `{name}`")))
+    };
+    let token = field("token")?;
+    let url = field("url")?.trim_end_matches('/').to_string();
+    Ok(Some(Borrowed { url, token }))
 }
 
 /// Append `entry` to `<repo>/.git/info/exclude` if not already present. Touches
@@ -439,15 +464,22 @@ mod borrowed_token_tests {
 
     #[test]
     fn a_pane_with_no_borrow_reads_none() {
-        assert_eq!(borrowed_token_from(None).unwrap(), None);
+        assert_eq!(borrowed_credential_from(None).unwrap(), None);
     }
 
     #[test]
     fn the_written_checkout_credential_is_the_token_read_back() {
         let path = dir().join("forge-cli.json");
         write_cli_borrow_at(&path, "https://core/", Some("tok-1")).unwrap();
-        let got = borrowed_token_from(Some(path.clone().into_os_string())).unwrap();
-        assert_eq!(got.as_deref(), Some("tok-1"));
+        let got = borrowed_credential_from(Some(path.clone().into_os_string())).unwrap();
+        assert_eq!(
+            got,
+            Some(Borrowed {
+                url: "https://core".into(),
+                token: "tok-1".into()
+            }),
+            "the token comes back with the core it was minted by"
+        );
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -455,15 +487,19 @@ mod borrowed_token_tests {
     fn a_borrow_naming_a_missing_or_tokenless_file_is_refused_by_path() {
         let d = dir();
         let missing = d.join("missing.json");
-        let err = borrowed_token_from(Some(missing.clone().into_os_string())).unwrap_err();
+        let err = borrowed_credential_from(Some(missing.clone().into_os_string())).unwrap_err();
         assert!(
             err.to_string().contains(&missing.display().to_string()),
             "{err}"
         );
         let empty = d.join("empty.json");
         std::fs::write(&empty, r#"{"url":"https://core"}"#).unwrap();
-        let err = borrowed_token_from(Some(empty.into_os_string())).unwrap_err();
+        let err = borrowed_credential_from(Some(empty.into_os_string())).unwrap_err();
         assert!(err.to_string().contains("holds no `token`"), "{err}");
+        let urlless = d.join("urlless.json");
+        std::fs::write(&urlless, r#"{"token":"tok-1"}"#).unwrap();
+        let err = borrowed_credential_from(Some(urlless.into_os_string())).unwrap_err();
+        assert!(err.to_string().contains("holds no `url`"), "{err}");
         std::fs::remove_dir_all(d).unwrap();
     }
 }

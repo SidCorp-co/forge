@@ -18,6 +18,9 @@
 - **A chat turn core refuses is failed by its code.** Only `SESSION_TERMINATED` or `SESSION_CANCELLED`
   stops a turn quietly; `SEQ_TAKEN_BY_CORE` and every other 4xx mark the session failed, naming the
   code, instead of dropping the rest of the turn.
+- **A runner's origin token stays on the box.** Head reads strip URL userinfo; `bind` provisions only
+  its own project, one provisioner per checkout; a pane's borrowed credential is refused
+  `API_BORROW_OTHER_CORE` at another core; an undecodable head-read frame is answered.
 
 ## [0.4.0-dev.42] - 2026-10-06
 
