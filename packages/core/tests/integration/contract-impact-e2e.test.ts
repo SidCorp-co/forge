@@ -116,7 +116,7 @@ describe('a requirement pins a design whose screen binds a provider element', ()
     ]);
   });
 
-  it('files the issues that trace its BC through a breakdown', async () => {
+  it('files a build of the design and two issues that only trace its BC', async () => {
     const proposed = ok(
       await say('plugin', 'POST', at('/suggestions'), {
         kind: 'breakdown',
@@ -133,6 +133,13 @@ describe('a requirement pins a design whose screen binds a provider element', ()
               title: 'Board caches the issue',
               criteria: [{ body: 'a reload is instant', tracesTo: 'BC-1' }],
               complexity: 's',
+              builds: null,
+            },
+            {
+              title: 'Board prints the issue',
+              criteria: [{ body: 'a print shows it', tracesTo: 'BC-1' }],
+              complexity: 's',
+              builds: null,
             },
           ],
         },
@@ -145,8 +152,8 @@ describe('a requirement pins a design whose screen binds a provider element', ()
       }),
     );
     const effect = accepted.effect;
-    [ids.first, ids.second] = effect.issues.map((i: Doc) => i.issueId);
-    expect(ids.second).toBeTruthy();
+    [ids.build, ids.traced, ids.dropped] = effect.issues.map((i: Doc) => i.issueId);
+    expect(effect.issues.map((i: Doc) => i.builds)).toEqual(['issue-board', null, null]);
   });
 });
 
@@ -177,11 +184,13 @@ describe('a breaking version names every issue building the flow it reaches', ()
         { decision: 'approve' },
       ),
     );
-    await issueAtStatus(ids.second as string, 'dropped');
+    await issueAtStatus(ids.dropped as string, 'dropped');
     const read = ok(await say('plugin', 'GET', at(`/requirements/${req}`)));
     expect(read.bindings[0]).toMatchObject({ brokenBy: '2026-10-25', pinnedVersion: '2026-09-20' });
+    // the build of the design, and the issue only tracing the requirement's BC; the dropped one builds nothing
     expect(read.bindings[0].buildingIssues).toEqual([
-      expect.objectContaining({ issueId: ids.first, displayId: 'ISS-1' }),
+      expect.objectContaining({ issueId: ids.build, displayId: 'ISS-1' }),
+      expect.objectContaining({ issueId: ids.traced, displayId: 'ISS-2' }),
     ]);
   });
 });
