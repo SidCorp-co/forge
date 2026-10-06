@@ -1,28 +1,23 @@
-import { PROBLEM_CONTENT_TYPE, refusalTitle, refusalType } from '@forge/contracts/refusal';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { activeChildUnderTerminalRun, withoutQueryParams } from '../lib/db-errors.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { getLogger } from '../lib/logger.js';
-import { problem, RefusalError, refusalEnvelope, requestRefusals } from '../lib/refusal.js';
+import {
+  problem,
+  problemBody,
+  RefusalError,
+  refusalEnvelope,
+  requestRefusals,
+} from '../lib/refusal.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
 
-/** An error that is not a refusal keeps `code`/`message`/`details`, with the RFC 9457 members beside them. */
+/** An error that is not a refusal, in the one problem body (`lib/refusal.ts:problemBody`). */
 function httpProblem(c: Context, status: ContentfulStatusCode, body: ErrorBody) {
-  return c.json(
-    {
-      type: refusalType(body.code),
-      title: refusalTitle(body.code),
-      status,
-      detail: body.message,
-      ...body,
-    },
-    status,
-    { 'Content-Type': PROBLEM_CONTENT_TYPE },
-  );
+  return problem(c, problemBody(status, body.code, body.message, body.details));
 }
 
 const isProd = process.env.NODE_ENV === 'production';

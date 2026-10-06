@@ -38,15 +38,27 @@ export function refusalTitle(code: string): string {
 	return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** RFC 9457 problem details beside the envelope Forge clients branch on (`error.code`). */
-export type RefusalEnvelope = {
+/**
+ * The one body every refusal and every error answers, at both doors. `type`, `title`, `status` and
+ * `detail` are RFC 9457's members; `code` and `message` are extension members at the top level
+ * (RFC 9457 section 3.2), where every forge client already shipped reads them, and `error` holds the
+ * same code and message with the refusal rows. The two places always agree: a client on another
+ * release clock branches on either.
+ */
+export type ProblemBody = {
 	type: string;
 	title: string;
-	status: RefusalStatus;
+	status: number;
 	detail: string;
+	code: string;
+	message: string;
+	details?: unknown;
 	error: {
 		code: string;
 		message: string;
 		refusals: Refusal[];
 	};
 };
+
+/** A refusal's body: a problem whose status is one a refusal answers, and nothing was written. */
+export type RefusalEnvelope = ProblemBody & { status: RefusalStatus };

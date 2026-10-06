@@ -362,6 +362,40 @@ fn write_cli_borrow_at(path: &Path, core_url: &str, credential: Option<&str>) ->
     Ok(CliBorrow::Written(path.to_path_buf()))
 }
 
+/// The checkout credential a master pane was started with under
+/// [`CLI_BORROW_VAR`], for any CLI in the pane that speaks to core as its
+/// project: `None` where the variable is unset (not a master pane). A variable
+/// naming a file that is missing or holds no `token` is refused by path rather
+/// than passed over, since what a caller would pass over to is the box's
+/// operator PAT, which reaches only the projects one person pasted it for.
+pub fn borrowed_token() -> Result<Option<String>> {
+    borrowed_token_from(std::env::var_os(CLI_BORROW_VAR))
+}
+
+fn borrowed_token_from(var: Option<std::ffi::OsString>) -> Result<Option<String>> {
+    let Some(path) = var.filter(|v| !v.is_empty()).map(PathBuf::from) else {
+        return Ok(None);
+    };
+    let refused = |why: String| {
+        Error::Config(format!(
+            "${CLI_BORROW_VAR} names {}, which {why}; this pane's project credential is that \
+             file's `token`, written when the checkout was provisioned — re-provision the checkout",
+            path.display()
+        ))
+    };
+    let body =
+        std::fs::read_to_string(&path).map_err(|e| refused(format!("cannot be read ({e})")))?;
+    let doc: Value = serde_json::from_str(&body).map_err(|e| {
+        refused(format!(
+            "is not the {{url, token}} JSON it should hold ({e})"
+        ))
+    })?;
+    match doc.get("token").and_then(Value::as_str).map(str::trim) {
+        Some(token) if !token.is_empty() => Ok(Some(token.to_string())),
+        _ => Err(refused("holds no `token`".to_string())),
+    }
+}
+
 /// Append `entry` to `<repo>/.git/info/exclude` if not already present. Touches
 /// only the local-untracked excludes, never the repo's committed `.gitignore`.
 fn ensure_git_excluded(repo_path: &Path, entry: &str) {
@@ -380,4 +414,56 @@ fn ensure_git_excluded(repo_path: &Path, entry: &str) {
         "\n"
     };
     let _ = std::fs::write(&exclude, format!("{current}{sep}{entry}\n"));
+}
+
+#[cfg(test)]
+mod borrowed_token_tests {
+    use super::*;
+
+    fn dir() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("borrowed-token-{}", uuid_like()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn uuid_like() -> String {
+        format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
+    #[test]
+    fn a_pane_with_no_borrow_reads_none() {
+        assert_eq!(borrowed_token_from(None).unwrap(), None);
+    }
+
+    #[test]
+    fn the_written_checkout_credential_is_the_token_read_back() {
+        let path = dir().join("forge-cli.json");
+        write_cli_borrow_at(&path, "https://core/", Some("tok-1")).unwrap();
+        let got = borrowed_token_from(Some(path.clone().into_os_string())).unwrap();
+        assert_eq!(got.as_deref(), Some("tok-1"));
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_borrow_naming_a_missing_or_tokenless_file_is_refused_by_path() {
+        let d = dir();
+        let missing = d.join("missing.json");
+        let err = borrowed_token_from(Some(missing.clone().into_os_string())).unwrap_err();
+        assert!(
+            err.to_string().contains(&missing.display().to_string()),
+            "{err}"
+        );
+        let empty = d.join("empty.json");
+        std::fs::write(&empty, r#"{"url":"https://core"}"#).unwrap();
+        let err = borrowed_token_from(Some(empty.into_os_string())).unwrap_err();
+        assert!(err.to_string().contains("holds no `token`"), "{err}");
+        std::fs::remove_dir_all(d).unwrap();
+    }
 }

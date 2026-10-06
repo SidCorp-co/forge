@@ -13,6 +13,9 @@
 - **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
   registered event type; a test fails when schema and migrations disagree; an undelivered reply is
   kept and shown with its reason.
+- **Every refusal names its code where any forge client reads it.** One problem body carries
+  `code` and `message` at the top level and under `error`, at every door; a master pane's
+  `forge-runner api` sends its project's checkout credential.
 
 ## [0.4.0-dev.40] - 2026-10-06
 

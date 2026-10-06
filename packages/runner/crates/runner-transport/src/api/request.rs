@@ -34,9 +34,10 @@ pub fn normalize_path(path: &str) -> String {
     format!("/api/{rest}")
 }
 
-/// `{ code, message, details }` is what `middleware/error.ts` emits for a
-/// transport error, and `{ error: { code, refusals } }` for a rule refusal;
-/// anything else (a proxy's HTML 502, an empty body) yields `None` and the
+/// Core's problem body carries the code at the top level and under
+/// `error.code`, the two always equal (`contracts/src/refusal.ts:ProblemBody`);
+/// either is read, so a core from before or after that envelope answers.
+/// Anything else (a proxy's HTML 502, an empty body) yields `None` and the
 /// status decides.
 fn body_code(body: &str) -> Option<String> {
     let parsed = serde_json::from_str::<Value>(body).ok()?;

@@ -12,7 +12,9 @@ use super::Ctx;
 
 /// `forge-runner api <PATH>` — call any Forge REST endpoint with a personal
 /// access token, fenced to the projects that token may speak for. Shaped after
-/// `gh api`. The device token is a different credential and REST rejects it.
+/// `gh api`. In a master pane that token is the checkout's own credential, the
+/// one its `forge` CLI borrows (`mcp::config::borrowed_token`); elsewhere it is
+/// `$FORGE_PAT` or the stored PAT. The device token is a different credential.
 #[derive(ClapArgs)]
 #[command(after_help = EXIT_TAXONOMY)]
 pub struct Args {
@@ -46,7 +48,12 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let Some(core_url) = ctx.resolve_core_url(&cfg) else {
         return usage("no core URL — pass --core-url or run `forge-runner login`");
     };
-    let Some(token) = cred_store::load_pat()? else {
+    let token = match runner_workspace::mcp::config::borrowed_token() {
+        Ok(Some(borrowed)) => Some(borrowed),
+        Ok(None) => cred_store::load_pat()?,
+        Err(e) => return usage(&e.to_string()),
+    };
+    let Some(token) = token else {
         return usage(
             "no personal access token — the REST API is reached with a PAT, not the device token. \
              Mint one in the web UI under Settings → Access tokens, then either \

@@ -264,8 +264,9 @@ written:
 ```json
 { "type": "urn:forge:refusal:<code>", "title": "<Code in words>", "status": 422,
   "detail": "<the leading refusal's detail>",
-  "error": { "code": "<the code, or <MODULE>_REFUSED when several differ>",
-             "message": "refused, nothing written: <CODE> at <path>; …",
+  "code": "<the code, or <MODULE>_REFUSED when several differ>",
+  "message": "refused, nothing written: <CODE> at <path>: <detail>; …",
+  "error": { "code": "<the same code>", "message": "<the same message>",
              "refusals": [{ "code": "…", "path": "/json/pointer or ''", "detail": "…" }] } }
 ```
 
@@ -279,9 +280,14 @@ written:
 - **`refusals[]` is ordered most relevant first**: by status in the order 403, 404, 400, 409,
   422, and in the service's own order within one status. The envelope's `status` and `detail`
   are the leading refusal's.
-- **`error.code` and `refusals[]` stay the contract.** `type`, `title`, `status` and `detail` are
-  the RFC 9457 members beside them; an error that is not a refusal (401, a 404 from `rowIn`, a
-  5xx) carries the same four members beside its `code`, `message` and `details`.
+- **The code and message are in two places that always agree.** `code` and `message` at the top
+  level are RFC 9457 extension members (section 3.2), where every forge client already shipped
+  reads them; `error.code`, `error.message` and `refusals[]` are where newer clients read. A
+  client on another release clock branches on either, so neither is dropped
+  (`packages/contracts/src/refusal.ts:ProblemBody`).
+- **An error that is not a rule refusal** (401, a 404 from `rowIn`, a 5xx) answers the same body
+  with one row at the request naming its sentence, and may carry `details`
+  (`packages/core/src/lib/refusal.ts:problemBody`).
 
 - **Both doors** build it with `packages/core/src/lib/refusal.ts:refusalEnvelope`: REST through
   `packages/core/src/lib/refusal.ts:refused`, under the module's `<MODULE>_REFUSED` fallback code,
