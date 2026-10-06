@@ -26,6 +26,7 @@ mod people;
 mod render;
 mod skill;
 mod source;
+mod spend;
 mod table;
 mod tree_age;
 mod view;
@@ -98,7 +99,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let mut carry = gather::Carry::default();
     let live = !args.once && std::io::stdout().is_terminal();
     if !live {
-        let snapshot = gather::frame(&ctx, &mut carry).await;
+        let snapshot = gather::frame(&ctx, &mut carry, None).await;
         // Core's text reaches this frame whole (question prompts, blocker
         // messages), so a control character in it is written out here as on
         // the live screen: `--once` on a terminal, or piped to one, would
@@ -144,7 +145,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             // this task, they would hold every key and signal behind them.
             let (task_ctx, mut held) = (Arc::clone(&ctx), std::mem::take(&mut carry));
             let gathering = tokio::spawn(async move {
-                let s = gather::frame(&task_ctx, &mut held).await;
+                let s = gather::frame(&task_ctx, &mut held, Some(spend::BUDGET_BYTES)).await;
                 (s, held)
             });
             tokio::pin!(gathering);

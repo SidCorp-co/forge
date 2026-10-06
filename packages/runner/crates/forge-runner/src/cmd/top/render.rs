@@ -32,6 +32,12 @@ pub fn frame(s: &Snapshot, interval_secs: Option<u64>) -> Vec<String> {
     out.push(String::new());
     waiting(s, &mut out);
     out.push(String::new());
+    out.extend(super::spend::lines::section(
+        &s.spend,
+        s.now_ms,
+        &s.config_path,
+    ));
+    out.push(String::new());
     health(s, &mut out);
     out
 }
@@ -489,6 +495,13 @@ pub(super) fn project_detail(s: &Snapshot, p: &Project) -> Vec<String> {
             ));
         }
     }
+    out.push(String::new());
+    out.extend(super::spend::lines::project(
+        &s.spend,
+        &p.key,
+        s.now_ms,
+        &s.config_path,
+    ));
     out
 }
 
@@ -977,6 +990,7 @@ pub(super) mod tests {
             gate_source: "/c/gate-marks.jsonl".into(),
             pool: Vec::new(),
             pool_source: String::new(),
+            spend: crate::cmd::top::spend::Spend::Unreadable(no()),
         }
     }
 
@@ -1563,6 +1577,7 @@ pub(super) mod tests {
                     project_id: a.into(),
                     pane_name: "forge-master-alpha".into(),
                     session_id: Some("sess-now".into()),
+                    conversation_id: Some("conv-alpha".into()),
                     boot_id: "boot-now".into(),
                     cold_started_at: NOW / 1000 - 7_200,
                     last_seen_at: NOW / 1000 - 60,
@@ -1647,7 +1662,63 @@ pub(super) mod tests {
         s.core = Ok((NOW, all));
         s.pool = vec!["pool       no failed pool read recorded in the last 24h".into()];
         s.pool_source = "/c/pool-reads.json".into();
+        s.spend = fine_spend(&s, busy);
         s
+    }
+
+    /// Spend read whole from transcripts: alpha's master and a subagent of
+    /// it priced, where `busy`; nothing anywhere, where not.
+    fn fine_spend(s: &Snapshot, busy: bool) -> crate::cmd::top::spend::Spend {
+        use crate::cmd::top::spend::{read::Response, sum, Spend};
+        use std::sync::Arc;
+        let root = std::path::Path::new("/h/.claude/projects");
+        let at = |file: &str, cwd: &str, tokens| Response {
+            at_ms: NOW - 3_600_000,
+            model: Arc::from("model-a"),
+            cwd: Some(Arc::from(cwd)),
+            file: Arc::from(root.join(file)),
+            tokens,
+        };
+        let responses = if busy {
+            vec![
+                at("-repo-a/conv-alpha.jsonl", "/repo/a", [1_000_000, 0, 0, 0]),
+                at(
+                    "-repo-a/conv-alpha/subagents/x.jsonl",
+                    "/repo/a/wt",
+                    [0, 100_000, 0, 0],
+                ),
+            ]
+        } else {
+            vec![]
+        };
+        let rates = sum::rates(
+            &"[model-a]\ninput = 3\noutput = 15\ncache_write = 3.75\ncache_read = 0.3\n"
+                .parse()
+                .unwrap(),
+        );
+        let owners: Vec<sum::Owner> = s
+            .projects
+            .iter()
+            .map(|p| sum::Owner {
+                key: &p.key,
+                repo: p.repo.as_deref(),
+                master: Some((p.key == "alpha").then_some("conv-alpha")),
+            })
+            .collect();
+        Spend::Read(Box::new(sum::totals(
+            responses.iter(),
+            sum::Context {
+                root,
+                now_ms: NOW,
+                files: responses.len(),
+                owners: &owners,
+                rates: &rates,
+                rates_unread: None,
+                unreadable: vec![],
+                bad: 0,
+                unkeyed: 0,
+            },
+        )))
     }
 
     /// Criterion 21, over the whole frame rather than two of its lines: on a

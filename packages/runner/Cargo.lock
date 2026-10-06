@@ -404,6 +404,7 @@ dependencies = [
  "forge-runner-core",
  "libc",
  "rusqlite",
+ "serde",
  "serde_json",
  "tokio",
  "toml",

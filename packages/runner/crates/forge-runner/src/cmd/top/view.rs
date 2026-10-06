@@ -627,7 +627,8 @@ mod tests {
         );
         assert_eq!(legend_for(None, &narrow, None, true), Legend::Full);
         // The short form costs fewer rows than the full one at 80, and fewer
-        // than the 9 the legend, keys and footer took at e3617a0.
+        // than the 9 the legend, keys and footer took at e3617a0; the $24H
+        // column's own item (ISS-1375) costs it a seventh.
         let short = table::build(
             &s,
             &Opts {
@@ -640,10 +641,11 @@ mod tests {
             },
         );
         assert!(
-            short.foot.len() <= 6 && short.foot.len() < narrow.foot.len(),
-            "{} short rows, {} full",
+            short.foot.len() <= 7 && short.foot.len() < narrow.foot.len(),
+            "{} short rows, {} full: {:#?}",
             short.foot.len(),
-            narrow.foot.len()
+            narrow.foot.len(),
+            short.foot.iter().map(|l| &l.text).collect::<Vec<_>>()
         );
     }
 

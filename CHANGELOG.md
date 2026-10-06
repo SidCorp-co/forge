@@ -121,6 +121,8 @@
 
 ### Added
 
+- **`forge-runner top` shows what each project spent.** Tokens and estimated cost over 24 hours and 7 days, the master's share apart, priced by `[rates]` in `config.toml`; a model without a rate is named, never priced as zero.
+
 - **An issue can say its work lands outside git, even in a git project.** A change that touches
   no file, such as a deployment's settings, is marked with where it lands instead of a commit it
   never made.

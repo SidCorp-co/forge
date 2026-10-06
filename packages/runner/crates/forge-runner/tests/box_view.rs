@@ -2412,3 +2412,222 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
     let f = pty.first_table().join("\r\n");
     assert!(full(&f) && fits(&f, 170, 50), "{f}");
 }
+
+/// One assistant line as Claude Code writes it, `message.content` carrying
+/// `said` so a frame that printed content would be caught.
+fn usage_line(
+    at_ms: i64,
+    cwd: &Path,
+    ids: (&str, &str),
+    model: &str,
+    counts: [u64; 4],
+    said: &str,
+) -> String {
+    let ts = rfc3339(at_ms);
+    serde_json::json!({
+        "type": "assistant",
+        "timestamp": ts,
+        "cwd": cwd.display().to_string(),
+        "sessionId": "s",
+        "requestId": ids.1,
+        "message": {
+            "id": ids.0,
+            "model": model,
+            "role": "assistant",
+            "content": [{"type": "text", "text": said}],
+            "usage": {
+                "input_tokens": counts[0],
+                "output_tokens": counts[1],
+                "cache_creation_input_tokens": counts[2],
+                "cache_read_input_tokens": counts[3],
+            },
+        },
+    })
+    .to_string()
+}
+
+const SECRET: &str = "SECRET-MARKER-1375-do-not-print";
+
+/// `ms` since the epoch as Claude Code writes a transcript's `timestamp`.
+fn rfc3339(ms: i64) -> String {
+    let (secs, milli) = (ms.div_euclid(1000), ms.rem_euclid(1000));
+    let (days, rest) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Howard Hinnant's civil_from_days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{milli:03}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
+/// ISS-1375's proof fixture: a master conversation whose one response is
+/// written on two content-block lines with growing output, a response three
+/// days old, one eight days old, one straddling the 24h line, a subagent on
+/// an unpriced model in a worktree, a job pane in beta, and a session under no
+/// bound checkout. Returns the transcript files, for their bytes and times.
+fn plant_transcripts(b: &PlantedBox) -> Vec<PathBuf> {
+    let now = now_secs() * 1000;
+    let (h, d) = (3_600_000, 86_400_000);
+    let (alpha, beta) = (b.root.join("repos/alpha"), b.root.join("repos/beta"));
+    let projects = b.root.join("h/.claude/projects");
+    let conv = projects.join("-repos-alpha/conv-alpha.jsonl");
+    let sub = projects.join("-repos-alpha/conv-alpha/subagents/agent-x.jsonl");
+    let job = projects.join("-repos-beta/job-1.jsonl");
+    let tmp = projects.join("-tmp-scratch/s-1.jsonl");
+    let m = 1_000_000;
+    let files: Vec<(&PathBuf, Vec<String>)> = vec![
+        (
+            &conv,
+            vec![
+                format!("{{\"type\":\"user\",\"cwd\":\"{}\",\"message\":{{\"role\":\"user\",\"content\":\"{SECRET} what is the usage\"}}}}", alpha.display()),
+                usage_line(now - h, &alpha, ("msg_1", "req_1"), "model-a", [m, 100_000, 2 * m, 10 * m], SECRET),
+                usage_line(now - h + 900, &alpha, ("msg_1", "req_1"), "model-a", [m, m, 2 * m, 10 * m], SECRET),
+                usage_line(now - 3 * d, &alpha, ("msg_2", "req_2"), "model-a", [2 * m, 0, 0, 0], SECRET),
+                usage_line(now - 8 * d, &alpha, ("msg_3", "req_3"), "model-a", [7_777, 0, 0, 0], SECRET),
+                // Straddles the 24h line: its later line, inside the window,
+                // carries the larger output, and its time is the earlier one.
+                usage_line(now - d - 60_000, &alpha, ("msg_4", "req_4"), "model-a", [m, 100, 0, 0], SECRET),
+                usage_line(now - d + 60_000, &alpha, ("msg_4", "req_4"), "model-a", [m, 200_000, 0, 0], SECRET),
+            ],
+        ),
+        (
+            &sub,
+            vec![usage_line(now - 2 * h, &alpha.join(".claude/worktrees/iss-1"), ("msg_5", "req_5"), "model-b", [3_000, 30_000, 0, 0], SECRET)],
+        ),
+        (
+            &job,
+            vec![usage_line(now - h, &beta, ("msg_6", "req_6"), "model-a", [2 * m, 0, 0, 0], SECRET)],
+        ),
+        (
+            &tmp,
+            vec![usage_line(now - h, Path::new("/tmp/scratch-x"), ("msg_7", "req_7"), "model-a", [4 * m, 0, 0, 0], SECRET)],
+        ),
+    ];
+    let mut out = Vec::new();
+    for (path, lines) in files {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, lines.join("\n") + "\n").unwrap();
+        out.push(path.clone());
+    }
+    // The master's conversation, as the daemon records it, and rates for
+    // model-a alone.
+    let boot = forge_runner_core::runner::inflight::boot_identity().unwrap_or_default();
+    Ledger::open(&b.ledger)
+        .unwrap()
+        .note_master(
+            ALPHA,
+            "forge-master-alpha",
+            Some("conv-alpha"),
+            Some("sess-now"),
+            &boot,
+        )
+        .unwrap();
+    let cfg = b.root.join("c/forge-runner/config.toml");
+    let mut body = std::fs::read_to_string(&cfg).unwrap();
+    body.push_str(
+        "\n[rates.model-a]\ninput = 3\noutput = 15\ncache_write = 3.75\ncache_read = 0.3\n",
+    );
+    std::fs::write(&cfg, body).unwrap();
+    out
+}
+
+/// ISS-1375, criteria 1–8, 11, 13 and 14: `--once` prints each project's 24h
+/// and 7d tokens and cost, its master's conversation apart; each response
+/// once at its largest counts and earliest time; windows exclude what falls
+/// before them; the unmapped cwd is named; the unpriced model's tokens are
+/// named and left out of every cost said to leave them out; no content
+/// reaches the frame; and the transcripts are left as they were.
+#[test]
+fn spend_counts_each_response_once_by_project_window_and_rate() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let files = plant_transcripts(&b);
+    let before: Vec<_> = files.iter().map(|f| stamp(f)).collect();
+    let out = top(&b, &["--once"]);
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(out.status.success(), "{text}");
+    assert!(!text.contains(SECRET), "content reached the frame:\n{text}");
+    let spend = section(&text, "SPEND");
+    let words = spend.split_whitespace().collect::<Vec<_>>().join(" ");
+    let under = |p: &str| {
+        format!(
+            "{p} ← every response written from a cwd under {}: its master, job panes and subagent runs 24h",
+            b.root.join("repos").join(p).display()
+        )
+    };
+    let alpha = format!(
+        "{} in 1.0M · out 1.0M · cache-write 2.0M · cache-read 10.0M · $28.50 + model-b unpriced",
+        under("alpha")
+    );
+    let beta = format!(
+        "{} in 2.0M · out 0 · cache-write 0 · cache-read 0 · $6.00",
+        under("beta")
+    );
+    for said in [
+        // alpha: msg_1 at its largest (out 1.0M, not 1.1M) and the subagent.
+        alpha.as_str(),
+        // 7d adds msg_2 and msg_4 (its larger output), never msg_3.
+        "7d in 4.0M · out 1.2M · cache-write 2.0M · cache-read 10.0M · $40.50 + model-b unpriced",
+        "master conversation conv-alpha",
+        "master 24h in 1.0M · out 1.0M · cache-write 2.0M · cache-read 10.0M · $28.50",
+        "master 7d in 4.0M · out 1.2M · cache-write 2.0M · cache-read 10.0M · $40.50",
+        beta.as_str(),
+        "unattributed ← every response written from /tmp/scratch-x, under no bound checkout 24h in 4.0M · out 0 · cache-write 0 · cache-read 0 · $12.00",
+        "model-b has no rate",
+    ] {
+        assert!(words.contains(said), "{said:?} not in:\n{spend}");
+    }
+    assert!(
+        !words.contains("7,777") && !words.contains("7.8K"),
+        "msg_3 counted:\n{spend}"
+    );
+    assert!(
+        spend.contains("config.toml [rates]") && spend.contains(".claude/projects"),
+        "the section names what it read:\n{spend}"
+    );
+    for (f, was) in files.iter().zip(before) {
+        assert_eq!(stamp(f), was, "{} was written", f.display());
+    }
+}
+
+/// ISS-1375, criterion 10: a transcript root that cannot be read is said to
+/// be, never shown as no spend.
+#[test]
+fn an_unreadable_transcript_root_is_unreadable_and_never_no_spend() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let root = b.root.join("h/.claude/projects");
+    std::fs::create_dir_all(root.parent().unwrap()).unwrap();
+    std::fs::write(&root, "not a directory").unwrap();
+    let out = top(&b, &["--once"]);
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let spend = section(&text, "SPEND");
+    assert!(
+        spend.contains("UNREADABLE") && spend.contains(&root.display().to_string()),
+        "{spend}"
+    );
+    assert!(!spend.contains("nothing"), "{spend}");
+}
+
+/// ISS-1375, criterion 15: there is no `usage` subcommand.
+#[test]
+fn there_is_no_usage_subcommand() {
+    let out = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+        .arg("usage")
+        .env_clear()
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("unrecognized subcommand 'usage'"), "{err}");
+}

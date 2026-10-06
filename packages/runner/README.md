@@ -39,7 +39,7 @@ lines below. They were listed here as deferred long after they landed.)
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
 | `status` | Connection + runner status; `--watch` is `top` |
-| `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health. Each row names what it read, and a source it cannot read says so. On a terminal it opens on a table, one row per project and one for the box: ↑ ↓ or `j` `k` select, Enter opens a row's detail and Esc returns, `s` shows each row's sources, `l` switches the legend, `q` quits. A detail taller than the screen is shown a page per redraw: space holds the page, `n` and `p` turn it at once, and a page a key showed stays a whole interval. Ctrl-C and Ctrl-\\ end the view and Ctrl-Z stops it until `fg`, each giving the terminal back its modes; `--help` lists the keys. `--once` prints one frame whole, as it does when stdout is not a terminal. `--interval` is a whole number of seconds from 1 to 3600, 5 by default |
+| `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health; and each project's tokens and estimated cost over 24h and 7d (see below). Each row names what it read, and a source it cannot read says so. On a terminal it opens on a table, one row per project and one for the box: ↑ ↓ or `j` `k` select, Enter opens a row's detail and Esc returns, `s` shows each row's sources, `l` switches the legend, `q` quits. A detail taller than the screen is shown a page per redraw: space holds the page, `n` and `p` turn it at once, and a page a key showed stays a whole interval. Ctrl-C and Ctrl-\\ end the view and Ctrl-Z stops it until `fg`, each giving the terminal back its modes; `--help` lists the keys. `--once` prints one frame whole, as it does when stdout is not a terminal. `--interval` is a whole number of seconds from 1 to 3600, 5 by default |
 | `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
@@ -47,6 +47,37 @@ lines below. They were listed here as deferred long after they landed.)
 | `runners` | List runners registered for this device |
 | `sync` | Pull the latest skills for bound projects now (one-shot) |
 | `update` | Self-update from the release manifest |
+
+### `top`'s SPEND — tokens and estimated cost per project
+
+`top`'s SPEND section, the table's `$24H` column and each project's detail sum
+the transcripts Claude Code writes under `~/.claude/projects` (each
+`*/*.jsonl`, and `*/<session>/subagents/*.jsonl`) over the last 24 hours and 7
+days: input, output, cache-write and cache-read tokens, and an estimated cost.
+A response is counted once, keyed by `message.id` and `requestId`, at the
+largest counts its lines carry. It belongs to the bound project whose checkout
+holds the cwd it was written from; the master's own conversation (the ledger's
+`masters.conversation_id`) is shown apart, and a cwd under no bound checkout is
+listed as unattributed. Only the usage, model, time, ids and cwd of a line are
+read, never its content, and nothing is written. A live view reads at most
+1 GiB of transcript per redraw and says how far it has read until it has read
+them all; `--once` reads them all first. It is a report: nothing is limited or
+alerted on.
+
+The cost comes from per-model rates in `config.toml`, in US dollars per million
+tokens, keyed by the transcript's `message.model`:
+
+```toml
+[rates."claude-opus-5-5"]
+input = 15
+output = 75
+cache_write = 18.75
+cache_read = 1.5
+```
+
+A model with tokens and no rate, or a rate missing a key, is named, and every
+cost leaving its tokens out says so (`$12.30 + <model> unpriced`, `$12+` in the
+table); it is never priced as zero.
 
 ### `api` — the REST surface from a shell
 
