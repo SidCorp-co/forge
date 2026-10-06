@@ -10,6 +10,7 @@
 
 ### Security
 
+- **Signing up with an email already registered says so.** It used to fail as a server error, and the failed save's values, including the typed password's hash, could reach logs, error reports and error messages; none do now.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
