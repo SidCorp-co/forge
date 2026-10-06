@@ -692,7 +692,6 @@ mod tests {
         ];
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut seen = std::collections::BTreeMap::<String, usize>::new();
-        let mut doc_code_at = Vec::new();
         // The whole crate, so a `build.rs`, an example or a bench is read too.
         let mut stack: Vec<PathBuf> = ["forge-runner-core", "forge-runner"]
             .iter()
@@ -721,18 +720,13 @@ mod tests {
                     .to_string_lossy()
                     .replace('\\', "/");
                 // `lines` drops a trailing `\r`, so a CRLF checkout counts alike.
-                // A comment is skipped: no doctest runs (the manifests below),
-                // and no doc comment holds code `cargo test --doc` could run.
+                // A comment is skipped: no doctest runs (the manifests and the
+                // library's own refusal, below).
                 let hits: usize = text
                     .lines()
                     .filter(|l| !l.trim_start().starts_with("//"))
                     .map(|l| routes_on(l, in_config))
                     .sum();
-                for (i, l) in text.lines().enumerate() {
-                    if doc_code(l) {
-                        doc_code_at.push(format!("{rel}:{}", i + 1));
-                    }
-                }
                 if hits > 0 {
                     seen.insert(rel, hits);
                 }
@@ -823,17 +817,13 @@ mod tests {
                 "{rel} renames {renamed:?}, which no identifier count here can see"
             );
         }
+        // `doctest = false` keeps `cargo test` from running them, and an
+        // explicit `cargo test --doc` runs them anyway, so the library refuses
+        // to be collected for one, whatever form the doc's code takes.
+        let lib = std::fs::read_to_string(crates.join("forge-runner-core/src/lib.rs")).unwrap();
         assert!(
-            doc_code_at.is_empty(),
-            "doc comments holding code `cargo test --doc` runs, with no refusal, whatever the \
-             manifest says: {doc_code_at:?}"
-        );
-        assert!(
-            doc_code(concat!("/// ``", "`"))
-                && doc_code(concat!("    //! ``", "`rust"))
-                && doc_code(concat!("#![doc = include_", "str!(\"../README.md\")]"))
-                && !doc_code(concat!("// ``", "`"))
-                && !doc_code("/// a fence is three backticks")
+            lib.contains(concat!("#[cfg(doc", "test)]\ncompile_error!(")),
+            "forge-runner-core's lib.rs refuses `cargo test --doc` by name"
         );
         let doctests_on: toml::Table = toml::from_str("[lib]\ndoctest = true").unwrap();
         let no_lib_table: toml::Table = toml::from_str("[package]\nname = \"x\"").unwrap();
@@ -855,17 +845,6 @@ mod tests {
             take.contains("crate::daemon::control::config_dir()"),
             "the pool-read writer resolves its dir through the guarded route"
         );
-    }
-
-    /// A doc comment's code fence, or a doc read in from a file: what
-    /// `cargo test --doc` runs even where the manifest turns doctests off.
-    fn doc_code(line: &str) -> bool {
-        let l = line.trim_start();
-        let fenced = ["///", "//!"].iter().any(|d| {
-            l.strip_prefix(d)
-                .is_some_and(|r| r.trim_start().starts_with("```"))
-        });
-        fenced || (l.starts_with("#") && l.contains("doc") && l.contains("include_str!"))
     }
 
     fn runs_no_doctest(manifest: &toml::Table) -> bool {
