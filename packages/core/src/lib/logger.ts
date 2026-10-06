@@ -9,6 +9,16 @@ const isProd = process.env.NODE_ENV === 'production';
 const usePrettyTransport = process.env.NODE_ENV === 'development';
 const defaultLevel = isProd ? 'info' : 'debug';
 
+/**
+ * What a log record's `err` field holds: an error (or any object) as pino's error shape with its
+ * failed queries' parameters redacted, and anything else — a message string, most often — as itself,
+ * scrubbed. Spreading a string would log it as one key per character.
+ */
+export function serializeLogErr(err: unknown): unknown {
+  if (typeof err !== 'object' || err === null) return scrubLogRecord(err);
+  return scrubLogRecord({ ...withoutQueryParams(stdSerializers.err(err as Error), err) });
+}
+
 export const logger: Logger = pino({
   level: process.env.LOG_LEVEL ?? defaultLevel,
   // the record, its message and an error's text pass the scrubber Sentry uses, so a secret
@@ -22,10 +32,7 @@ export const logger: Logger = pino({
       );
     },
   },
-  serializers: {
-    err: (err: unknown) =>
-      scrubLogRecord({ ...withoutQueryParams(stdSerializers.err(err as Error), err) }),
-  },
+  serializers: { err: serializeLogErr },
   ...(usePrettyTransport
     ? {
         transport: {

@@ -256,7 +256,7 @@ workflowRoutes.post(
       decision: z.enum(DESIGN_DECISIONS),
       reason: z.string().max(DESIGN_REASON_MAX).nullable().optional(),
     }),
-    `{ revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason } — a return carries its reason`,
+    `{ revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason? } — a return carries its reason, and an approval may carry its approver's note`,
   ),
   async (c) => {
     const { id, workflow } = c.req.valid('param');

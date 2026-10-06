@@ -173,8 +173,9 @@ export interface WorkflowDesign {
   requirements: DesignRequirementLink[];
 }
 
+/** An approval may carry its approver's note (its conditions); a return always carries its reason. */
 export type DesignDecisionBody =
-  | { revision: number; decision: "approve" }
+  | { revision: number; decision: "approve"; reason?: string }
   | { revision: number; decision: "return"; reason: string };
 
 /** `GET /api/projects/:id/workflow-templates`. */

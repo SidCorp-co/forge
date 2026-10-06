@@ -210,6 +210,50 @@ describe('a design decision wakes its master', () => {
     );
   });
 
+  it('on approve with a note, stores it on the revision, where the master reads it', async () => {
+    const workflowId = await proposedDesign('noted-flow');
+    const note = 'Approved as drawn; the SLA step is owed in the next revision.';
+    ok(
+      await say('owner', 'POST', at(`/workflows/${workflowId}/design/decision`), {
+        revision: 1,
+        decision: 'approve',
+        reason: `  ${note}\n`,
+      }),
+    );
+    const full = ok(await say('master', 'GET', at(`/workflows/${workflowId}/design`)));
+    expect(full.revisions[0]).toMatchObject({ revision: 1, decision: 'approve', reason: note });
+    const summary = ok(
+      await say('master', 'GET', at(`/workflows/${workflowId}/design?view=summary`)),
+    );
+    expect(summary.revisions[0]).toMatchObject({ revision: 1, decision: 'approve', reason: note });
+  });
+
+  it('on approve with a blank note, stores no note', async () => {
+    const workflowId = await proposedDesign('blank-note-flow');
+    ok(
+      await say('owner', 'POST', at(`/workflows/${workflowId}/design/decision`), {
+        revision: 1,
+        decision: 'approve',
+        reason: '   ',
+      }),
+    );
+    const full = ok(await say('master', 'GET', at(`/workflows/${workflowId}/design`)));
+    expect(full.revisions[0]).toMatchObject({ revision: 1, decision: 'approve', reason: null });
+  });
+
+  it('refuses a malformed decision naming the note as optional on an approval', async () => {
+    const workflowId = await proposedDesign('malformed-decision-flow');
+    const res = await say('owner', 'POST', at(`/workflows/${workflowId}/design/decision`), {
+      revision: 1,
+      decision: 'approve',
+      note: 'the wrong key',
+    });
+    expect(res.status, JSON.stringify(res.json)).toBe(400);
+    expect(JSON.stringify(res.json)).toContain(
+      "a return carries its reason, and an approval may carry its approver's note",
+    );
+  });
+
   it('on return over a takeable issue, keeps its status and posts the reason on it', async () => {
     const designIssue = await plantIssue('open');
     const workflowId = await proposedDesign('takeable-flow', `ISS-${seq}`);

@@ -6,7 +6,7 @@ import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowsHref } from "@/lib/routes/workflows";
-import { ApproveAction, DecisionError, decidableRevision, ReturnControl } from "./design-decision";
+import { ApproveAction, DecisionError, DecisionNoteControl, decidableRevision } from "./design-decision";
 import { shownDesign, useDesignTab, WorkflowDesignPage } from "./workflow-design-page";
 import { DesignPill } from "./workflow-parts";
 
@@ -35,16 +35,16 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   } else if (!record || !d || !shown) body = centred(<ErrorState title="Workflow not found" message={`This project draws no workflow "${flow}".`} />);
   else {
     const template = templateFor(shown, (templates.data?.templates ?? []).map((t) => t.template));
-    const returnControl = revision !== null ? (
+    const noteControl = revision !== null ? (
       <>
-        <ReturnControl revision={revision} decide={decide} />
+        <DecisionNoteControl revision={revision} decide={decide} />
         <DecisionError decide={decide} />
       </>
     ) : null;
     const walkDecision = revision !== null ? (
       <span className="grid gap-2">
         <ApproveAction revision={revision} decide={decide} />
-        <ReturnControl revision={revision} decide={decide} />
+        <DecisionNoteControl revision={revision} decide={decide} />
       </span>
     ) : null;
     body = (
@@ -57,7 +57,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         decisionCount={decisions.data?.returned}
         tab={tab}
         onTab={setTab}
-        returnControl={returnControl}
+        noteControl={noteControl}
         walkDecision={walkDecision}
       />
     );

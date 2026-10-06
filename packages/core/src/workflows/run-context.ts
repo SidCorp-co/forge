@@ -40,8 +40,8 @@ export interface TracedDesignRow {
   workflowRevision: number;
   /** The approved revision the job is given. */
   approvedRevision: number | null;
-  /** The design row holding `approvedRevision`; null when no row holds it. */
-  revisionRow: { document: unknown; decision: string | null } | null;
+  /** The design row holding `approvedRevision`, with its approver's note; null when no row holds it. */
+  revisionRow: { document: unknown; decision: string | null; reason: string | null } | null;
   /** The requirement whose latest baseline pins `approvedRevision`, with the revision approved now. */
   pinnedBy?: { key: string; currentApproved: number | null };
 }
@@ -224,6 +224,12 @@ function renderDesign(
   } else if (row.workflowRevision > revision) {
     head.push(
       `The workflow stands at revision ${row.workflowRevision}; nothing its approver decides has changed since revision ${revision}.`,
+    );
+  }
+  const note = row.revisionRow?.reason?.trim();
+  if (note) {
+    head.push(
+      `Its approver approved revision ${revision} with this note, the conditions the approval was given under:\n> ${note.replace(/\n/g, '\n> ')}`,
     );
   }
   if (slice.lanes.length)
