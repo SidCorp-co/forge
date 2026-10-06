@@ -1472,16 +1472,26 @@ mod tests {
         }
         let whole = crate::test_scratch::lf(include_str!("mod.rs"));
         let src = whole.split("\nmod tests {").next().unwrap();
-        for (arm, line) in [
-            ("[update] applied", "applied_line("),
-            ("[cred] device token changed", "TOKEN_CHANGED_LINE"),
+        for (arm, call) in [
+            (
+                "[update] applied",
+                r#"tracing::warn!("{}", applied_line(&o.from, &o.to));"#,
+            ),
+            (
+                "[cred] device token changed",
+                r#"tracing::warn!("{TOKEN_CHANGED_LINE}");"#,
+            ),
         ] {
             assert_eq!(
                 src.matches(arm).count(),
                 1,
                 "`{arm}` is written only by its helper"
             );
-            assert!(src.contains(line), "{line}");
+            assert_eq!(
+                src.matches(call).count(),
+                1,
+                "the loop writes its line through the helper: `{call}`"
+            );
         }
     }
 
