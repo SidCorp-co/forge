@@ -75,6 +75,14 @@ function dialogsText(m: MasterStanding): string {
   return `${count}${when}${d.last ? `: ${d.last}` : ""}`;
 }
 
+// core keeps an outdated master and drives it; what its replacement waits on is read here (agent-run-standing, master)
+function outdatedText(m: MasterStanding): string {
+  const o = m.outdated;
+  if (!o) return "—";
+  const drain = o.draining ? ", draining: takes no new run" : "";
+  return `since ${formatRelativeTime(o.since)}${drain}. Replacement waits on: ${o.heldBy.join("; ")}`;
+}
+
 export const masterRow =
   (href: string) =>
   (m: MasterStanding): ListRowView => ({
@@ -136,6 +144,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
         <Fact label="Last pass">
           {m.lastPass ? <span title={formatStamp(m.lastPass.endedAt)}>{lastPassText(m)?.replace(/^Last pass /, "")}</span> : "—"}
         </Fact>
+        <Fact label="Outdated">{m.outdated ? <span title={m.outdated.why}>{outdatedText(m)}</span> : "—"}</Fact>
       </FactsGroup>
       <FactsGroup title="Slots">
         <Fact label="In use">

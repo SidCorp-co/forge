@@ -282,7 +282,8 @@ Windows             ─▶ refused by name: no download is taken and a re-login 
   were placed under. The daemon records the runner build and the installed
   Claude Code plugin set at every placement; a pane placed under another build,
   another plugin set, or before the build was recorded is outdated. An outdated
-  pane is not nudged, and the journal says so once per pane and reason. It is
+  pane decides only its replacement: until then core keeps it and it is nudged
+  as a current master is, so owed work still reaches it. It is
   ended and placed again — in the same sweep, resuming its conversation — only
   when it holds no open run under the session this box serves it as (written
   onto its ledger row with the carry; a pane whose row names another, or whose
@@ -291,8 +292,12 @@ Windows             ─▶ refused by name: no download is taken and a re-login 
   or, unheard since the handover, its transcript's newest entry is a turn's
   end), its project has admissible work, and the conversation its row records
   has a transcript to resume (a successor without one starts cold). Otherwise
-  it is left running and the journal names every reason that holds and
-  `forge-runner master kill <slug>`, which replaces it now. The pane placed in
+  it is kept, and where its successor could resume it, it drains: the box
+  refuses its `run declare`, so a master that dispatches back to back runs out
+  of open runs and reaches its replacement (a CI agent's graceful stop: finish
+  what is held, take nothing new). The journal names every reason that holds
+  and `forge-runner master kill <slug>`, which replaces it now; the master's
+  standing in core says since when it is outdated and why. The pane placed in
   its stead takes its brief as this sweep's nudge, and is nudged from the next.
 - **A declaration nothing binds is ended at 60 minutes.** A run declared and
   never bound to a subagent or a process holds its issues' leases and its

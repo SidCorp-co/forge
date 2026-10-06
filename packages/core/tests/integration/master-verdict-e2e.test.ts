@@ -18,7 +18,7 @@ import {
 // ADR 0009, What core takes over: Placement and Retirement. The box posts what only it can see and
 // obeys the verdict; core adds its runner row's status and whether its master has a pass open.
 
-type Who = 'box' | 'otherBox';
+type Who = 'box' | 'otherBox' | 'owner';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let runnerId = '';
@@ -39,7 +39,9 @@ beforeAll(async () => {
   drainingRunnerId = await bindTestRunner(drainingProjectId, deviceId, { status: 'draining' });
   const otherDevice = await createTestDevice(ownerId);
   otherRunnerId = await bindTestRunner(projectId, otherDevice);
+  const { signUserToken } = await import('../../src/credentials/jwt.js');
   say = requester(app, {
+    owner: await signUserToken(ownerId),
     box: (
       await mintPat({
         userId: ownerId,
@@ -138,6 +140,44 @@ describe('POST /api/devices/me/master-session/verdict', () => {
       }),
     );
     expect(ok(await verdict({ projectId, runnerId, facts: alive })).nudge).toBe(true);
+  });
+
+  // forge-dev 2026-10-07: an outdated master that dispatches back to back always holds a run, and was
+  // left undriven for two hours while owed feedback waited on it.
+  it('keeps and nudges an outdated master holding a working run, and says on its standing how long and why', async () => {
+    ok(
+      await say('box', 'POST', '/api/devices/me/master-session', {
+        projectId,
+        name: 'forge-master-verdict',
+        maxJobPanes: 1,
+      }),
+    );
+    const outdated = facts({
+      pane: 'alive',
+      capability: 'current',
+      work: { admissible: 0, owed: 6, poolWaits: false, jobPanes: 0 },
+      outdated: 'placed under 1.0.0, this box runs 1.1.0',
+      holding: { kind: 'these', working: ['r7 (FB-89)'], over: [] },
+      nudge: { digest: 'd9', last: null, since: 'unreported' },
+    });
+    expect(ok(await verdict({ projectId, runnerId, facts: outdated }))).toMatchObject({
+      act: 'keep',
+      nudge: true,
+      drain: true,
+    });
+    const standing = () => say('owner', 'GET', `/api/projects/${projectId}/masters/standing`);
+    const first = ok(await standing()).outdated;
+    expect(first).toMatchObject({ why: 'placed under 1.0.0, this box runs 1.1.0', draining: true });
+    expect(first.heldBy.join(' ')).toContain('r7 (FB-89)');
+
+    const later = facts({ ...outdated, holding: { kind: 'these', working: ['r8'], over: [] } });
+    ok(await verdict({ projectId, runnerId, facts: later }));
+    const second = ok(await standing()).outdated;
+    expect(second.since, 'since moved while the pane stayed outdated').toBe(first.since);
+    expect(second.heldBy.join(' ')).toContain('r8');
+
+    ok(await verdict({ projectId, runnerId, facts: facts({ ...outdated, outdated: null }) }));
+    expect(ok(await standing()).outdated).toBeNull();
   });
 
   it("refuses a runner row that is not this device's, naming it", async () => {

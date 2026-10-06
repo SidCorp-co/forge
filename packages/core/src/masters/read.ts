@@ -2,6 +2,7 @@ import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-se
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterOutdated,
   MasterPaneDialog,
   MasterPassCloseReason,
   MasterPassList,
@@ -156,6 +157,7 @@ interface MasterRow {
   silent: boolean;
   pane_dialog: MasterPaneDialog | null;
   gate_report: unknown;
+  outdated: unknown;
 }
 
 async function liveMaster(projectId: string): Promise<MasterRow | null> {
@@ -168,6 +170,7 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
                  ${masterLastBeatSql('s')} AS last_beat,
                  ${masterSilentSql('s')} AS silent,
                  s.metadata -> 'paneDialog' AS pane_dialog,
+                 s.metadata -> 'outdated' AS outdated,
                  d.gate_report
             FROM agent_sessions s
             LEFT JOIN devices d ON d.id = s.device_id
@@ -208,6 +211,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       lastBeatAt: null,
       waitingOn: null,
       dialogsAnswered: null,
+      outdated: null,
     };
   }
   const device =
@@ -234,6 +238,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     runsOut,
     waitingOn,
     dialogsAnswered: readDialogsAnswered(master.gate_report, projectId),
+    outdated: storedOutdated(master.outdated),
     sessionId: master.id,
     name: master.title,
     device,
@@ -288,4 +293,23 @@ export async function listMasterPasses(
     hasMore: rows.length > opts.limit,
     next: rows.length > opts.limit && last ? last.startedAt : null,
   };
+}
+
+/**
+ * A master's outdated record as judgeMaster (service.ts) wrote it on a keep verdict, or null where
+ * none is stored or what is stored is not that shape.
+ */
+export function storedOutdated(stored: unknown): MasterOutdated | null {
+  if (typeof stored !== 'object' || stored === null) return null;
+  const o = stored as Record<string, unknown>;
+  if (
+    typeof o.since !== 'string' ||
+    typeof o.why !== 'string' ||
+    !Array.isArray(o.heldBy) ||
+    !o.heldBy.every((h) => typeof h === 'string') ||
+    typeof o.draining !== 'boolean'
+  ) {
+    return null;
+  }
+  return { since: o.since, why: o.why, heldBy: o.heldBy as string[], draining: o.draining };
 }
