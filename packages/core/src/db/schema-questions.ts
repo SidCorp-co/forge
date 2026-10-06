@@ -18,6 +18,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -34,6 +35,7 @@ import { questionnaireBatches } from './schema-onboarding.js';
 import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
 import type { ConversationAdapter } from './schema-vocabulary.js';
+import { projectWorkflowDesigns } from './schema-workflows.js';
 
 export const questionStatuses = QUESTION_STATUSES;
 export type QuestionStatus = (typeof questionStatuses)[number];
@@ -157,11 +159,26 @@ export const agentQuestions = pgTable(
     parkDeadlineAt: timestamp('park_deadline_at', { withTimezone: true }),
     endedBy: text('ended_by'),
     endedReason: text('ended_reason'),
+    /** The workflow design revision a park waits on: its approver's decision answers this question (ISS-254). */
+    awaitsWorkflowId: uuid('awaits_workflow_id'),
+    awaitsRevision: integer('awaits_revision'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
+    foreignKey({
+      name: 'agent_questions_awaits_design_fk',
+      columns: [t.awaitsWorkflowId, t.awaitsRevision],
+      foreignColumns: [projectWorkflowDesigns.workflowId, projectWorkflowDesigns.revision],
+    }),
+    check(
+      'agent_questions_awaits_design_chk',
+      sql`(${t.awaitsWorkflowId} IS NULL) = (${t.awaitsRevision} IS NULL)`,
+    ),
+    index('agent_questions_awaits_design_open_idx')
+      .on(t.awaitsWorkflowId, t.awaitsRevision)
+      .where(sql`${t.status} = 'open' and ${t.awaitsWorkflowId} is not null`),
     index('agent_questions_session_idx').on(t.agentSessionId),
     index('agent_questions_issue_idx').on(t.issueId),
     index('agent_questions_batch_idx').on(t.batchId),

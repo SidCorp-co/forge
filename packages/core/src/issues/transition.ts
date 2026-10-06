@@ -26,6 +26,10 @@ const transitionBodySchema = z
     reason: z.string().trim().min(1).max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
+    awaitsDesign: z
+      .object({ workflowId: z.uuid(), revision: z.number().int().min(1) })
+      .strict()
+      .optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
   })
@@ -140,7 +144,8 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind, needs, voidQuestions, recovery } = c.req.valid('json');
+    const { toStatus, reason, waitingKind, needs, awaitsDesign, voidQuestions, recovery } =
+      c.req.valid('json');
     const userId = c.get('userId');
 
     const issue = await transitionIssueRow(id);
@@ -166,6 +171,7 @@ transitionRoutes.post(
           transitionReason: reason,
           waitingKind,
           needs,
+          awaitsDesign,
           voidQuestions,
           ...(recovery ? { recovery } : {}),
         },

@@ -9,11 +9,11 @@
  */
 
 import type { DesignStatus } from '@forge/contracts/design-status';
-import { ISSUE_MACHINE, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_MACHINE, PARK_STATUSES, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { exitsOf } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -31,6 +31,20 @@ function returnedBody(args: { flow: string; revision: number; reason: string }):
   return `Design \`${args.flow}\` revision ${args.revision} was returned by its approver:\n\n> ${args.reason.replace(/\n/g, '\n> ')}\n\nRevise the design by writing it again, which proposes the revision.`;
 }
 
+/**
+ * Whether the design issue stood at a park when the decision was made, read inside the decision's
+ * transaction: a question that park waits on is answered there and may resume the issue before the
+ * return is handed back, so the hand-back is decided by this reading and not by a later one.
+ */
+export async function parkedAtDecision(tx: Tx, designIssueId: string | null): Promise<boolean> {
+  if (!designIssueId) return false;
+  const rows = (await tx.execute(
+    sql`SELECT status FROM issues WHERE id = ${designIssueId}`,
+  )) as unknown as Array<{ status: IssueStatus }>;
+  const status = rows[0]?.status;
+  return status !== undefined && PARK_STATUSES.includes(status);
+}
+
 export async function settleDesignIssue(input: {
   projectId: string;
   flow: string;
@@ -38,6 +52,8 @@ export async function settleDesignIssue(input: {
   decision: DesignDecision;
   reason: string | null;
   designIssueId: string | null;
+  /** `parkedAtDecision`'s reading. */
+  parked: boolean;
   decider: WorkflowWriter;
 }): Promise<DesignIssueOutcome> {
   return input.decision === 'return'
@@ -51,6 +67,7 @@ async function handBack(input: {
   revision: number;
   reason: string | null;
   designIssueId: string | null;
+  parked: boolean;
   decider: WorkflowWriter;
 }): Promise<DesignIssueOutcome> {
   if (!input.designIssueId) return { issueId: null, action: 'none', status: null };
@@ -67,7 +84,14 @@ async function handBack(input: {
     reason: input.reason ?? '',
   });
   const actor = { type: 'user' as const, id: input.decider.userId, agency: input.decider.agency };
-  if (!TAKEABLE_STATUSES.includes(status) && exitsOf(ISSUE_MACHINE, status).includes('reopen')) {
+  // a park returns only to the status it left, so `reopen` is not this move's to make there: a
+  // question waiting on this revision was answered by the decision and resumes it
+  const reopens =
+    !input.parked &&
+    !TAKEABLE_STATUSES.includes(status) &&
+    !PARK_STATUSES.includes(status) &&
+    exitsOf(ISSUE_MACHINE, status).includes('reopen');
+  if (reopens) {
     const moved = await transitionIssueStatus(
       {
         id: String(row.id),

@@ -9,8 +9,9 @@ import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, transition } from '../lifecycle/index.js';
+import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
@@ -79,6 +80,11 @@ interface ApplyStatusTransitionOptions {
    * park mints a free-text question and the reason becomes its prompt.
    */
   needs?: string | undefined;
+  /**
+   * The workflow design revision this park waits on. Its approver's decision answers the question
+   * the park mints, which moves the issue on as an answer does (ISS-254).
+   */
+  awaitsDesign?: { workflowId: string; revision: number } | undefined;
   /** Why the open questions died with the work; a terminal move with one open is refused without it. */
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */
@@ -263,74 +269,83 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     actorDeviceId: actor.type === 'device' ? actor.id : null,
     to: toStatus,
   });
-  const moved = await transition(db, ISSUE_MACHINE, {
-    to: toStatus,
-    where: eq(issues.id, issue.id),
-    expect: fromStatus,
-    recovery: recovering,
-    set: {
-      reopenCount: toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-      waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
-      updatedAt: sql`now()`,
-    } as never,
-    returning: ['id', 'status', 'reopenCount', 'updatedAt'],
-    reason: options.transitionReason?.trim() || options.reason || null,
-    actor: kernelActorFor(actor),
-    source: 'issues',
-    guards: issueGuards({
-      issue: { id: issue.id, projectId: issue.projectId },
-      leftStatus: input.leftStatus,
-      agency: actorAgency(actor),
-      actorUserId: by,
-      facts,
-      transitionReason: options.transitionReason,
-      waitingKind: options.waitingKind,
-      recoveringRunId: options.recoveringRunId,
-      onVerdictsWaived: () => {
-        waiver.waived = true;
+  const write = (exec: KernelExecutor) =>
+    transition(exec, ISSUE_MACHINE, {
+      to: toStatus,
+      where: eq(issues.id, issue.id),
+      expect: fromStatus,
+      recovery: recovering,
+      set: {
+        reopenCount: toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+        waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
+        updatedAt: sql`now()`,
+      } as never,
+      returning: ['id', 'status', 'reopenCount', 'updatedAt'],
+      reason: options.transitionReason?.trim() || options.reason || null,
+      actor: kernelActorFor(actor),
+      source: 'issues',
+      guards: issueGuards({
+        issue: { id: issue.id, projectId: issue.projectId },
+        leftStatus: input.leftStatus,
+        agency: actorAgency(actor),
+        actorUserId: by,
+        facts,
+        transitionReason: options.transitionReason,
+        waitingKind: options.waitingKind,
+        recoveringRunId: options.recoveringRunId,
+        onVerdictsWaived: () => {
+          waiver.waived = true;
+        },
+      }),
+      beforeWrite: async (tx) => {
+        const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
+        if (archiveRefusal) {
+          throw transitionRefused('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
+        }
+        await options.beforeStatusWrite?.(tx);
+        if (requiresAuthoredReason(fromStatus, toStatus)) {
+          await postTransitionReasonComment(
+            {
+              issueId: issue.id,
+              authorId: by,
+              fromStatus,
+              toStatus,
+              reason: options.transitionReason?.trim() ?? '',
+              waitingKind: options.waitingKind ?? null,
+            },
+            tx,
+          );
+        }
+        await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
+        await mintParkQuestion({ issue, toStatus, actor, options }, tx);
+        const asked = await settleOpenQuestions(tx, {
+          ...options,
+          issueId: issue.id,
+          toStatus,
+          by,
+          actor: kernelActorFor(actor),
+        });
+        if (asked) throw transitionRefused(asked.code, asked.detail, asked.details);
       },
-    }),
-    beforeWrite: async (tx) => {
-      const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
-      if (archiveRefusal) {
-        throw transitionRefused('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
-      }
-      await options.beforeStatusWrite?.(tx);
-      if (requiresAuthoredReason(fromStatus, toStatus)) {
-        await postTransitionReasonComment(
-          {
-            issueId: issue.id,
-            authorId: by,
-            fromStatus,
-            toStatus,
-            reason: options.transitionReason?.trim() ?? '',
-            waitingKind: options.waitingKind ?? null,
-          },
-          tx,
-        );
-      }
-      await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
-      await mintParkQuestion({ issue, toStatus, actor, options }, tx);
-      const asked = await settleOpenQuestions(tx, {
-        ...options,
-        issueId: issue.id,
-        toStatus,
-        by,
-        actor: kernelActorFor(actor),
-      });
-      if (asked) throw transitionRefused(asked.code, asked.detail, asked.details);
-    },
-    afterWrite: async (tx, rows) => {
-      const row = rows[0];
-      if (!row) return;
-      await recordMove(tx, moveOf(input, row.reopenCount, waiver.waived));
-      await writeWorkStateOfMove(tx, input);
-      if (toStatus === 'dropped') {
-        unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
-        await postDropUnblockNotices(tx, issue, unblockedDependents, actor);
-      }
-    },
-  });
+      afterWrite: async (tx, rows) => {
+        const row = rows[0];
+        if (!row) return;
+        await recordMove(tx, moveOf(input, row.reopenCount, waiver.waived));
+        await writeWorkStateOfMove(tx, input);
+        if (toStatus === 'dropped') {
+          unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
+          await postDropUnblockNotices(tx, issue, unblockedDependents, actor);
+        }
+      },
+    });
+  // a park waiting on a design revision takes the project's workflow lock before the issue row, the
+  // order a decision or a superseding write takes them in, so the two cannot deadlock (ISS-254)
+  const moved = options.awaitsDesign
+    ? await db.transaction(async (tx) => {
+        await lockXact(tx, 'workflows', issue.projectId);
+        return write(tx);
+      })
+    : await write(db);
   const lead: Refusal | undefined = moved.refusals[0];
   if (lead && isStale(lead)) {
     throw transitionRefused('STALE_TRANSITION', lead.detail, {

@@ -37,7 +37,14 @@ names the workflow it builds is not dispatched while that design is not approved
    revision still owed or a deviation accepted — so read it before linking or building, and a build job is
    given it with the approved revision. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
-   \`proposesWorkflow\`, so the issue is admissible work again. A return no live issue carries is the
+   \`proposesWorkflow\`, so the issue is admissible work again; a design issue standing at a park keeps
+   its park and only gets the reason posted. **To park an issue until the approver decides**, park it at
+   \`needs_info\` with \`awaitsDesign: { workflowId, revision }\` naming the revision now waiting: the
+   decision, approve or return, is written as the answer to the question that park asks, and the issue
+   moves back to the status it left as any answer moves it. A park naming any other revision is refused
+   \`QUESTION_DESIGN_UNKNOWN\` or \`QUESTION_DESIGN_NOT_AWAITING\`; a park asked in prose alone stays open
+   after the approval until a person answers it too. Writing a new revision while one is still waiting
+   voids the questions on the old one and asks each issue again of the new one. A return no live issue carries is the
    master's own work: its box reads it on every sweep (\`GET /api/devices/me/designs/owed\`) and names it on
    the pass until the next revision is proposed. A returned design is revised by writing it again, which
    proposes the revision; there is nothing to re-send.

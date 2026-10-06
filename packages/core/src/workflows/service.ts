@@ -14,6 +14,7 @@ import { bindRefusalsIn } from './bind-check.js';
 import { designApproverRefusal, designFingerprint, designStatusAfterWrite } from './design.js';
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
+import { reaskSupersededDesignQuestions } from './ports.js';
 import {
   checkWorkflow,
   duplicateWorkflowRefusal,
@@ -32,6 +33,7 @@ import {
   readWorkflow,
   replaceWorkflow,
   returnReasonsOf,
+  designsOf as revisionsOf,
   type StoredWorkflow,
   workflowHolding,
   workflowsOf,
@@ -228,6 +230,12 @@ export async function updateWorkflow(input: {
     if (design.proposes && row.designStatus !== 'proposed') {
       await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
     }
+    // read before the insert: while the design stands proposed, the latest revision is the one
+    // still waiting on its approver, and this write supersedes it undecided
+    const waiting =
+      design.proposes && row.designStatus === 'proposed'
+        ? ((await revisionsOf(tx, id))[0]?.revision ?? null)
+        : null;
     if (design.proposes) {
       await insertDesign(tx, {
         workflowId: id,
@@ -235,6 +243,16 @@ export async function updateWorkflow(input: {
         document: doc,
         userId: writer.userId,
         designIssueId,
+      });
+    }
+    if (waiting !== null) {
+      await reaskSupersededDesignQuestions(tx, {
+        workflowId: id,
+        superseded: waiting,
+        revision: next.revision,
+        flow: doc.flow,
+        by: writer.userId,
+        actor: { type: 'user', id: writer.userId, agency: writer.agency },
       });
     }
     return {

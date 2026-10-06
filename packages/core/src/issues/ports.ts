@@ -103,7 +103,15 @@ interface IssuePorts {
   personOwesAnAnswer: (executor: Tx, issueId: string) => Promise<boolean>;
   askParkQuestion: (
     executor: Tx,
-    input: { id: string; projectId: string; issueId: string; prompt: string; needed: string },
+    input: {
+      id: string;
+      projectId: string;
+      issueId: string;
+      prompt: string;
+      needed?: string | undefined;
+      /** The design revision whose decision answers the question (ISS-254). */
+      awaitsDesign?: { workflowId: string; revision: number } | undefined;
+    },
   ) => Promise<unknown>;
   openHumanQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
   postIssueNotice: (

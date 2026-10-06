@@ -14,6 +14,7 @@ interface MintParkQuestionInput {
   actor: TransitionActor;
   options: {
     needs?: string | undefined;
+    awaitsDesign?: { workflowId: string; revision: number } | undefined;
     transitionReason?: string | undefined;
     reason?: string | undefined;
   };
@@ -26,25 +27,36 @@ function mintsAt(toStatus: IssueStatus): boolean {
 }
 
 /**
- * Mint the question this park is answered through — unless the park names no need
- * and a person already owes the issue an answer, which is the question it waits on.
+ * Mint the question this park is answered through — unless the park names no need and no design
+ * revision, and a person already owes the issue an answer, which is the question it waits on.
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   const needs = input.options.needs?.trim();
+  const { awaitsDesign } = input.options;
   if (!mintsAt(input.toStatus)) return;
   if (actorAgency(input.actor) !== 'agent') return;
-  if (!needs && (await personOwesAnAnswer(tx, input.issue.id))) return;
+  if (!needs && !awaitsDesign && (await personOwesAnAnswer(tx, input.issue.id))) return;
   await askParkQuestion(tx, {
     id: randomUUID(),
     projectId: input.issue.projectId,
     issueId: input.issue.id,
     prompt: input.options.transitionReason?.trim() || input.options.reason?.trim() || '',
-    needed: needs || NEED_NOT_STATED,
+    // a park on a design revision says what settles it by naming the revision
+    needed: needs || (awaitsDesign ? undefined : NEED_NOT_STATED),
+    ...(awaitsDesign ? { awaitsDesign } : {}),
   });
 }
 
-/** Why `needs` cannot be taken on this move: it mints a question only on an agent's park. */
+/** Why `needs` or `awaitsDesign` cannot be taken on this move: each shapes the question an agent's park mints. */
 export function needsNotApplicable(input: MintParkQuestionInput): string | null {
+  if (input.options.awaitsDesign) {
+    if (!mintsAt(input.toStatus)) {
+      return `\`awaitsDesign\` was sent with \`${input.toStatus}\`, which mints no question — only a park at \`${AUTONOMOUS_QUESTION_STATUS}\` waits on a design revision's decision.`;
+    }
+    if (actorAgency(input.actor) !== 'agent') {
+      return '`awaitsDesign` was sent on a credential owned by a person, which mints no question for the decision to answer — a person parking their own work owns their own resume. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.';
+    }
+  }
   if (!input.options.needs?.trim()) return null;
   if (!mintsAt(input.toStatus)) {
     return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` does. Put what you need in \`reason\`, or park at \`${AUTONOMOUS_QUESTION_STATUS}\` instead.`;

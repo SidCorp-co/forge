@@ -4,6 +4,7 @@
 // runner on a box that compiles against none of these types, so a shape held
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
+import { randomUUID } from 'node:crypto';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { scrubSecretsDeep } from '@forge/observability';
@@ -22,7 +23,14 @@ import {
 } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
+import type { KernelActor } from '../lifecycle/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
+import {
+  type AwaitedDesign,
+  awaitedDesignFault,
+  neededFor,
+  voidSupersededDesignQuestions,
+} from './design-wait.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
@@ -52,6 +60,8 @@ export type AskInput = {
   /** This round's material is private to whoever asked, so it is put to them in a direct room. */
   sensitive?: boolean;
   origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
+  /** The design revision whose decision answers this question; only a park names one. */
+  awaitsDesign?: AwaitedDesign;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -189,9 +199,22 @@ export async function askQuestion(input: AskInput) {
 
 export async function askParkQuestion(
   executor: QuestionExecutor,
-  input: { id: string; projectId: string; issueId: string; prompt: string; needed: string },
+  input: {
+    id: string;
+    projectId: string;
+    issueId: string;
+    prompt: string;
+    needed?: string | undefined;
+    awaitsDesign?: AwaitedDesign | undefined;
+  },
 ) {
-  const answer: AskAnswer = { shape: 'free_text', needed: input.needed };
+  let needed = input.needed?.trim() ?? '';
+  if (input.awaitsDesign) {
+    const awaited = await awaitedDesignFault(executor, input.projectId, input.awaitsDesign);
+    if ('fault' in awaited) throw refuseQuestion(awaited.fault.code, awaited.fault.detail);
+    needed ||= neededFor(awaited.flow, input.awaitsDesign.revision);
+  }
+  const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
   return insertQuestion(executor, {
     id: input.id,
@@ -200,7 +223,38 @@ export async function askParkQuestion(
     prompt: input.prompt,
     blockerKind: 'human',
     answer,
+    ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
   });
+}
+
+/**
+ * A write superseded a revision nobody had decided: void the questions waiting on it and ask each
+ * issue again, of the revision that replaced it, inside the write's transaction (ISS-254).
+ */
+export async function reaskSupersededDesignQuestions(
+  tx: Tx,
+  args: {
+    workflowId: string;
+    superseded: number;
+    revision: number;
+    flow: string;
+    by: string;
+    actor: KernelActor;
+  },
+): Promise<void> {
+  const voided = await voidSupersededDesignQuestions(tx, args);
+  const asked = new Set<string>();
+  for (const { projectId, issueId } of voided) {
+    if (!issueId || asked.has(issueId)) continue;
+    asked.add(issueId);
+    await askParkQuestion(tx, {
+      id: randomUUID(),
+      projectId,
+      issueId,
+      prompt: `Design \`${args.flow}\` revision ${args.superseded}, which this issue was parked on, was superseded by revision ${args.revision} before anyone decided it. Approve or return revision ${args.revision} on its design page.`,
+      awaitsDesign: { workflowId: args.workflowId, revision: args.revision },
+    });
+  }
 }
 
 async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
@@ -228,6 +282,8 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       workspacesPinned: input.cost?.workspacesPinned ?? 0,
       dependents: input.cost?.dependents ?? 0,
       parkDeadlineAt: input.parkDeadlineAt,
+      awaitsWorkflowId: input.awaitsDesign?.workflowId,
+      awaitsRevision: input.awaitsDesign?.revision,
     })
     .returning();
   if (!row) throw new Error('the question was not written');

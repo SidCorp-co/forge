@@ -102,11 +102,13 @@ import {
 } from './projects/index.js';
 import { provideQuestionnairePorts } from './questionnaires/index.js';
 import {
+  answerDesignQuestions,
   askParkQuestion,
   holdsOpenHumanQuestion,
   openHumanQuestionIdsOn,
   personOwesAnAnswer,
   provideQuestionPorts,
+  reaskSupersededDesignQuestions,
   settleOpenQuestions,
   voidCancelledRunQuestions,
 } from './questions/index.js';
@@ -249,6 +251,8 @@ export function provideWorkPorts(): void {
 
   provideWorkflowPorts({
     changedTracedOf,
+    answerDesignQuestions,
+    reaskSupersededDesignQuestions,
     repositoryOf: async (projectId) => {
       const { defaultBranch } = await readLandingBranches(projectId);
       if (!defaultBranch) {

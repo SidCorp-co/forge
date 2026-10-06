@@ -19,10 +19,11 @@ import {
   readBases,
   standingBaseRefusal,
 } from './design-bases.js';
-import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
+import { type DesignIssueOutcome, parkedAtDecision, settleDesignIssue } from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
+import { answerDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
 import { assertWriter, storedWorkflow, type WorkflowWriter } from './service.js';
 import {
@@ -199,7 +200,9 @@ export async function decideDesignAs(input: {
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId);
   if (refusal) return { ok: false, refusals: [refusal] };
-  type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
+  type Decided =
+    | { refusals: DesignRefusal[] }
+    | { flow: string; designIssueId: string | null; parked: boolean };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -225,13 +228,24 @@ export async function decideDesignAs(input: {
       reason,
       ...(decision === 'approve' ? { approvedRevision: revision } : {}),
     });
+    const parked = await parkedAtDecision(tx, latest?.designIssueId ?? null);
+    // the decision is the answer a question waiting on this revision asked for (ISS-254)
+    await answerDesignQuestions(tx, {
+      workflowId: id,
+      revision,
+      flow: row.flow,
+      decision,
+      reason,
+      by: decider.userId,
+      agency: decider.agency,
+    });
     await emitEvent(tx, 'workflow.designDecided', {
       projectId,
       workflowId: id,
       decision,
       issueId: latest?.designIssueId ?? null,
     });
-    return { flow: row.flow, designIssueId: latest?.designIssueId ?? null };
+    return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked };
   });
   if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };
   const designIssue = await settleDesignIssue({
@@ -241,6 +255,7 @@ export async function decideDesignAs(input: {
     decision,
     reason,
     designIssueId: outcome.designIssueId,
+    parked: outcome.parked,
     decider,
   });
   return {

@@ -230,13 +230,14 @@ A plan awaiting approval and a tradeoff awaiting a call are both \`needs_decisio
 
 ### \`needs_info\` is a question, and a question has an answer box
 
-It takes **three** fields, and two of them are not the same sentence:
+It takes **three** fields, and two of them are not the same sentence, plus a fourth when it waits on a design:
 
 | Field | Says | Required |
 |---|---|---|
 | \`reason\` | why the work stopped | yes — 422 without it |
 | \`waitingKind\` | what it is stopped on | yes — 422 without it |
 | \`needs\` | what a person must supply for it to start again | no, and send it anyway |
+| \`awaitsDesign\` | \`{ workflowId, revision }\`: the workflow design revision whose approver's decision settles it | only when the park waits on a design approval — the decision then answers the question, and a revision not awaiting its approver is refused (\`QUESTION_DESIGN_UNKNOWN\`, \`QUESTION_DESIGN_NOT_AWAITING\`) |
 
 \`needs\` mints a free-text question in the SAME transaction as the status write and the reason comment, so a park either carries its question or does not commit. **That question is the only thing a person can answer.** Omitting \`needs\` does not skip the question: it mints one saying the run did not say what would settle this, which is true and is a worse thing to have said — unless a question blocked on a person is already open on the issue, which is then the question the park waits on, and nothing is asked twice.
 

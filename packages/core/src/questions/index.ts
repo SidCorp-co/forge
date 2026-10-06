@@ -1,3 +1,4 @@
+export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {
   holdsOpenHumanQuestion,
   openHumanQuestionIdsOn,
@@ -23,5 +24,6 @@ export {
   insertAskedQuestion,
   insertBatchQuestions,
   mayChoose,
+  reaskSupersededDesignQuestions,
   recordItemLandings,
 } from './write.js';

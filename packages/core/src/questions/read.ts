@@ -193,6 +193,8 @@ export async function projectQuestionsFor(
         parkDeadlineAt: agentQuestions.parkDeadlineAt,
         endedBy: agentQuestions.endedBy,
         endedReason: agentQuestions.endedReason,
+        awaitsWorkflowId: agentQuestions.awaitsWorkflowId,
+        awaitsRevision: agentQuestions.awaitsRevision,
         createdAt: agentQuestions.createdAt,
         updatedAt: agentQuestions.updatedAt,
         rounds: sql<number>`jsonb_array_length(${agentQuestions.steps})::int`,
