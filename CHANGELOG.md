@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.66] - 2026-10-06
+
+Core decides when interrupted runs end and idle chats close, not the box
+
+### Changed
+
+- **Core now takes a box's recovery and chat idle verdicts:** `POST /api/devices/me/run-sessions/verdict` and an `agent:close` frame. Deploy core first: against an older core this runner ends no run and closes no resident chat; older runners still decide locally.
+
 ## [0.4.0-dev.65] - 2026-10-06
 
 Feedback items can be retargeted to the requirement that records their rule

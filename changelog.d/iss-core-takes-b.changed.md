@@ -1,1 +1,0 @@
-**Core now takes a box's recovery and chat idle verdicts:** `POST /api/devices/me/run-sessions/verdict` and an `agent:close` frame. Deploy core first: against an older core this runner ends no run and closes no resident chat; older runners still decide locally.
