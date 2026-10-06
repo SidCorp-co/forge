@@ -1,3 +1,4 @@
+export { checkoutOrientation } from './checkout-orientation.js';
 export {
   buildPlatformInvariantSet,
   describeInvariantDelta,

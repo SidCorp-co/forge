@@ -47,7 +47,7 @@ fn gateway(code: u16) -> Option<&'static str> {
 /// A response body as one short line. A gateway answers with a whole HTML page
 /// whose markup says nothing the status has not, so a page is said as what it
 /// is — its title, or its size where it has none — rather than pasted.
-fn body_line(text: &str) -> String {
+pub(crate) fn body_line(text: &str) -> String {
     html_page(text).unwrap_or_else(|| one_line(text))
 }
 

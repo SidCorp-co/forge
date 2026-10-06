@@ -26,6 +26,8 @@ struct HeartbeatResponse {
     pool: Option<GateAck>,
     #[serde(default)]
     binaries: Option<GateAck>,
+    #[serde(default)]
+    disk: Option<GateAck>,
 }
 
 /// What core says it did with the gate condition. A refusal is carried back
@@ -69,6 +71,10 @@ pub struct Conditions {
     /// Rides inside `gate`, and only when there is one to name: a core that
     /// predates it refuses the gate report by name rather than the heartbeat.
     pub dialogs: Vec<runner_proto::dialogs::Answered>,
+    /// What each scratch root's filesystem had left at the last reading. `None`
+    /// sends no `disk` key, which core reads as "changes nothing": a box that
+    /// has not read yet says nothing rather than an empty picture.
+    pub disk: Option<Vec<runner_proto::disk::Root>>,
 }
 
 /// Core's reasons for refusing either condition while taking the heartbeat.
@@ -77,6 +83,7 @@ pub struct Refused {
     pub gate: Option<String>,
     pub pool: Option<String>,
     pub binaries: Option<String>,
+    pub disk: Option<String>,
 }
 
 pub async fn beat(client: &CoreClient, conditions: &Conditions) -> Result<Refused> {
@@ -111,6 +118,7 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
             gate: gate_refusal(parsed.gate),
             pool: gate_refusal(parsed.pool),
             binaries: gate_refusal(parsed.binaries),
+            disk: gate_refusal(parsed.disk),
         },
     ))
 }
@@ -155,6 +163,9 @@ pub(crate) fn heartbeat_body(
     }
     if let Some(missing) = &conditions.binaries {
         body["binaries"] = serde_json::json!({ "missing": missing });
+    }
+    if let Some(roots) = &conditions.disk {
+        body["disk"] = serde_json::json!({ "roots": roots });
     }
     body
 }
@@ -239,6 +250,34 @@ mod tests {
             last: None,
             by_reason: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_disk_reading_rides_on_the_beat_and_core_refusing_it_is_carried_back() {
+        let conditions = Conditions {
+            disk: Some(vec![runner_proto::disk::Root::new(
+                "/tmp",
+                runner_proto::disk::Reading::Refused {
+                    refused: "statvfs on /tmp answered EIO".into(),
+                },
+            )]),
+            ..Conditions::default()
+        };
+        assert_eq!(
+            heartbeat_body("1.0.0", None, &conditions)["disk"],
+            serde_json::json!({ "roots": [{ "root": "/tmp", "refused": "statvfs on /tmp answered EIO" }] })
+        );
+        assert!(heartbeat_body("1.0.0", None, &Conditions::default())
+            .get("disk")
+            .is_none());
+        let parsed: HeartbeatResponse = serde_json::from_value(serde_json::json!({
+            "disk": { "accepted": false, "reason": "disk.roots: too many" }
+        }))
+        .unwrap();
+        assert_eq!(
+            gate_refusal(parsed.disk).as_deref(),
+            Some("disk.roots: too many")
+        );
     }
 
     #[test]

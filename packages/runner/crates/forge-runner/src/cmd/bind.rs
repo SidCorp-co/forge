@@ -420,6 +420,7 @@ mod tests {
             host_credential,
             rate_limited_for_seconds: None,
             limit_reason: None,
+            orientation: None,
         }
     }
 

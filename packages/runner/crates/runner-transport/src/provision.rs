@@ -41,6 +41,11 @@ pub struct Provision {
     /// reaches Forge without pasting one in by hand.
     #[serde(default)]
     pub mcp_credential: Option<String>,
+    /// The orientation to write into the checkout, served by core from its one
+    /// affordances table. `None` from a core older than this runner, and then
+    /// nothing is written.
+    #[serde(default)]
+    pub orientation: Option<String>,
 }
 
 impl std::fmt::Debug for Provision {
@@ -141,7 +146,7 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
     let named = crate::status::named(status.as_u16());
     if !status.is_success() {
         let body = match tokio::time::timeout(BODY_DEADLINE, resp.text()).await {
-            Ok(Ok(raw)) => body_excerpt(&raw),
+            Ok(Ok(raw)) => raw,
             Ok(Err(e)) => format!("<could not be read: {e}>"),
             Err(_) => format!("<not sent within {}s>", BODY_DEADLINE.as_secs()),
         };
@@ -166,11 +171,6 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
         dropped: reported.dropped,
     })
 }
-
-/// How much of a refusal's body reaches the journal. Long enough that a
-/// gateway's error page is recognisable from the first line of it, short
-/// enough that a refusal repeating for a day cannot fill a disk.
-const BODY_CAP: usize = 400;
 
 /// Consecutive refusals of ONE condition before it stops being a warning.
 /// Chosen so a deploy window — a few polls of `503` while core restarts —
@@ -215,11 +215,19 @@ impl PullRefusal {
     /// is not written — the escalation carries the body of the refusal that
     /// escalated, which is the current one.
     /// `named` is the status as [`crate::status::named`] says it, which is what
-    /// makes one 52x code tell itself apart from the next.
+    /// makes one 52x code tell itself apart from the next. The body is said by
+    /// [`crate::status::body_line`], the one rule every refused call to core
+    /// prints its body by: a gateway's HTML page named by its title, anything
+    /// else collapsed to one short line, and an empty body left off.
     fn answered(url: &str, named: &str, body: &str) -> Self {
         let condition = format!("GET {url} answered {named}");
+        let body = crate::status::body_line(body);
         Self {
-            subject: format!("provisions failed: {condition}, body: {body}"),
+            subject: if body.is_empty() {
+                format!("provisions failed: {condition}")
+            } else {
+                format!("provisions failed: {condition}, body: {body}")
+            },
             condition,
         }
     }
@@ -239,24 +247,6 @@ impl std::fmt::Display for PullRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.subject)
     }
-}
-
-/// One poll's response body as a log line carries it: whitespace collapsed so
-/// a multi-line HTML error page stays one journal entry, and cut at
-/// [`BODY_CAP`] with the cut declared. An empty body says so — a line ending
-/// in `body: ` reads as a bug in this code rather than as core answering with
-/// nothing.
-fn body_excerpt(raw: &str) -> String {
-    let flat = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.is_empty() {
-        return "<none>".to_string();
-    }
-    let len = flat.chars().count();
-    if len <= BODY_CAP {
-        return flat;
-    }
-    let head: String = flat.chars().take(BODY_CAP).collect();
-    format!("{head}… (cut at {BODY_CAP} of {len} characters)")
 }
 
 /// A span as an operator reads one, coarse on purpose: the question a streak
@@ -430,4 +420,22 @@ pub async fn report_status(
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PullRefusal;
+
+    #[test]
+    fn a_refused_pull_says_its_body_by_the_one_rule_every_refused_call_uses() {
+        let page = "<!DOCTYPE html>\n<html><head><title>Error 520</title></head><body>\n<p>Ray ID 9f</p></body></html>";
+        let said =
+            PullRefusal::answered("https://core/x", "520 (unknown origin error)", page).to_string();
+        assert!(
+            said.ends_with("body: an HTML page titled \"Error 520\""),
+            "a gateway page is named, never pasted: {said}"
+        );
+        let empty = PullRefusal::answered("https://core/x", "503", "  \n").to_string();
+        assert_eq!(empty, "provisions failed: GET https://core/x answered 503");
+    }
 }

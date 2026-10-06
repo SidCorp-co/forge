@@ -29,21 +29,13 @@ interface DeviceIssueLease {
   /** Held by THIS box. What a close loop asking "have I given this back" means. */
   heldByThisDevice: boolean;
   holder: IssueLeaseHolder | null;
-  /**
-   * The issue has reached a terminal status. `null` is *not known to be over* —
-   * no issue was reached — which a box keeps its run on (ISS-1245).
-   */
-  issueOver: boolean | null;
-  /**
-   * The issue is over or parked (`needs_info`, `on_hold`): no run works it now. A box ends a declaration
-   * whose every issue rests and whose checkout is gone. `null` as for `issueOver`.
-   */
-  issueResting: boolean | null;
 }
 
 /**
- * Whether that pair's issue is over, and whether it rests, read off the ISSUE and not the lease row:
- * the rows that most need the fact are the ones whose lease core already freed.
+ * Whether that pair's issue is over (`null` is *not known to be over*: no issue was reached, which
+ * a box keeps its run on, ISS-1245), and whether it rests (over or parked, so no run works it now),
+ * read off the ISSUE and not the lease row: the rows that most need the fact are the ones whose
+ * lease core already freed.
  * `iss_seq` restarts per project, so a request naming none is answered `null`
  * rather than tie-broken — a guess there closes the wrong project's run.
  */
@@ -118,9 +110,8 @@ export async function readDeviceIssueLease(args: {
      ORDER BY (l.device_id = ${args.deviceId}) DESC, l.acquired_at ASC
      LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
-  const standing = await readIssueStanding(args);
   const row = rows[0];
-  if (!row) return { held: false, heldByThisDevice: false, holder: null, ...standing };
+  if (!row) return { held: false, heldByThisDevice: false, holder: null };
   const holder: IssueLeaseHolder = {
     issueKey: String(row.issue_key),
     deviceId: String(row.device_id),
@@ -132,7 +123,6 @@ export async function readDeviceIssueLease(args: {
     held: true,
     heldByThisDevice: holder.deviceId === args.deviceId,
     holder,
-    ...standing,
   };
 }
 

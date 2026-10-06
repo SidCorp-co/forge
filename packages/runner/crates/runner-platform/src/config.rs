@@ -31,10 +31,6 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projects_root: Option<PathBuf>,
 
-    /// Windows only: "native" | "wsl" | "auto".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub claude_mode: Option<String>,
-
     #[serde(default)]
     pub runner: RunnerSettings,
 
@@ -388,4 +384,18 @@ pub fn config_dir() -> Option<PathBuf> {
 /// a scratch (ISS-1344).
 pub fn master_dir(slug: &str) -> crate::error::Result<PathBuf> {
     Ok(base_dir()?.join("master").join(slug))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn a_config_written_with_the_retired_claude_mode_still_loads_and_does_not_write_it_back() {
+        let cfg: Config = toml::from_str("core_url = \"https://x\"\nclaude_mode = \"wsl\"\n")
+            .expect("a key nothing reads must not refuse the whole config");
+        assert_eq!(cfg.core_url.as_deref(), Some("https://x"));
+        let saved = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!saved.contains("claude_mode"), "{saved}");
+    }
 }

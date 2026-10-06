@@ -10,9 +10,10 @@ enough that an agent lost its shell: `/tmp` on `sid-xeon-1` — a 61G tmpfs, so 
 `ENOSPC: no space left on device, open '/proc/self/fd/11/<id>.output'`. It could take none of the
 acts that would have freed space, and nothing anywhere named the disk (ISS-1260).
 
-The daemon now reads that filesystem and says so before the ceiling —
-`packages/runner/crates/runner-workspace/src/headroom.rs`, on both axes, at a level that
-rises. **It reclaims nothing.** This page is what the next change in this area has to start from.
+The daemon now reads that filesystem on both axes —
+`packages/runner/crates/runner-workspace/src/headroom.rs` — and reports it on the heartbeat, where
+core judges it against its thresholds (`packages/core/src/devices/disk-report.ts`) and shows it on
+the device's page. **Nothing reclaims anything.** This page is what the next change in this area has to start from.
 
 ## The two properties of the reaper that keep it out of reach
 
@@ -51,8 +52,8 @@ of the mechanism this names. Counting them as scratch accumulation reads the num
 **The reporting half reads both filesystems, and had to be corrected to.** A daemon here runs with
 `TMPDIR=/home/dev/.cache/forge-tmp`, which is on the root disk at 88% of its inodes free, while the
 tmpfs above is at 40%. `headroom::scratch_roots` therefore reads the configured root *and* `/tmp`
-when the two are different filesystems, and reports the shorter. Reading only the configured one —
-which is what it did when first written — reports `Clear` for this box while the filesystem that
+when the two are different filesystems, and reports both. Reading only the configured one —
+which is what it did when first written — reports `clear` for this box while the filesystem that
 actually fills is the one nobody is looking at.
 
 ## Why this repository could not close it

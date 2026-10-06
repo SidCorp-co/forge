@@ -54,6 +54,8 @@ interface DevicesPorts {
   isHttpsGitUrl(url: string | null | undefined): boolean;
   mainRunnerHead(): string | null;
   cmpVersion(a: string, b: string): number;
+  /** The orientation a box writes into a checkout of the project, from the one affordances table. */
+  checkoutOrientation(projectId: string, slug: string): string;
   questions: {
     askQuestion(input: DeviceQuestion): Promise<{ id: string }>;
     registerWaiter(args: { questionId: string; deviceId: string; runId: string }): Promise<void>;

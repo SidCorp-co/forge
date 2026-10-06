@@ -62,6 +62,7 @@ import {
 import {
   buildChatPreamble,
   buildPipelinePreambleStructured,
+  checkoutOrientation,
   TOOL_REFERENCE,
 } from './prompt/index.js';
 import {
@@ -160,6 +161,7 @@ export function provideExecutionPorts(): void {
     isHttpsGitUrl,
     mainRunnerHead,
     cmpVersion,
+    checkoutOrientation,
     questions: {
       askQuestion: (input) => askQuestion(input as AskInput),
       registerWaiter,
