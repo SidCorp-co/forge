@@ -13,6 +13,9 @@
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
   version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
   reference resolves to the shipped run.
+- **A box's head read counts only for the declared repository.** Every connected bound box is asked
+  for the checkout core names; another repository's origin is refused `CHECKOUT_HEAD_OTHER_REPOSITORY`.
+  A revise whose accept is refused answers `acceptRefused`.
 
 ## [0.4.0-dev.41] - 2026-10-06
 

@@ -3,7 +3,7 @@
  * target, the decision record on an issue, and the answer read back after the commit.
  */
 
-import type { SuggestionView } from '@forge/contracts/suggestions';
+import type { SuggestionResponse, SuggestionView } from '@forge/contracts/suggestions';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
@@ -17,7 +17,13 @@ import { type Row, type SuggestionActor, type SuggestionTarget, viewOf } from '.
 import { baseStaleRefusal } from './rules.js';
 
 export type SuggestionOutcome =
-  | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
+  | {
+      ok: true;
+      suggestion: SuggestionView;
+      effect?: Effect;
+      created?: boolean;
+      acceptRefused?: SuggestionResponse['acceptRefused'];
+    }
   | { ok: false; refusals: Refusal[] };
 
 /** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */

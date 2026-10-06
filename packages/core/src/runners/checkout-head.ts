@@ -3,6 +3,7 @@
 // core decides). Asked over the box's socket and answered on the device route; never stored here.
 
 import { randomUUID } from 'node:crypto';
+import { parseRepository } from '@forge/contracts/git-repository';
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
@@ -11,7 +12,8 @@ import { runnersPorts } from './ports.js';
 const COMMIT = /^[0-9a-f]{40}$/;
 const ANSWER_WAIT_MS = 20_000;
 
-type CheckoutHeadReason = 'no_checkout' | 'no_runner_online' | 'unanswered' | 'runner_refused';
+type BoxReason = 'no_runner_online' | 'unanswered' | 'runner_refused' | 'other_repository';
+type CheckoutHeadReason = BoxReason | 'no_checkout' | 'every_box_failed';
 
 /** A box's read of the head, or why none could be made, with the two ways out in `detail`. */
 export type CheckoutHeadRead =
@@ -59,20 +61,56 @@ export interface CheckoutHeadAnswer {
 
 type AnswerOutcome =
   | { ok: true }
-  | { ok: false; code: 'CHECKOUT_HEAD_NOT_ASKED' | 'CHECKOUT_HEAD_MALFORMED'; detail?: string };
+  | {
+      ok: false;
+      code:
+        | 'CHECKOUT_HEAD_NOT_ASKED'
+        | 'CHECKOUT_HEAD_MALFORMED'
+        | 'CHECKOUT_HEAD_OTHER_REPOSITORY';
+      detail?: string;
+    };
 
 const WAYS_OUT =
   "bind the repository's host on the project's Integrations page, or bring online a box holding a checkout of it bound to this project (`forge-runner bind <slug> --path <checkout>`, or assign the box a runner with a repo path on the project's Runners page)";
 
+type BoxRead = { ok: true; head: CheckoutHead } | { ok: false; reason: BoxReason; why: string };
+
 interface Asked {
   deviceId: string;
   projectId: string;
+  repoPath: string;
+  repository: string;
   ref: string;
-  settle(read: CheckoutHeadRead): void;
+  settle(read: BoxRead): void;
   timer: ReturnType<typeof setTimeout>;
 }
 
 const asked = new Map<string, Asked>();
+
+const SCHEME = /^(?:[a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d*)?\/(.+)$/i;
+
+/** How a remote URL git prints names the repository, in the declared spellings' terms: a host and path, or a local path. */
+function identityOf(remote: string): { local: boolean; id: string } {
+  const trimmed = remote.trim();
+  const file = /^file:\/\//i.test(trimmed) ? trimmed.replace(/^file:\/\//i, '') : null;
+  const url = file === null ? SCHEME.exec(trimmed) : null;
+  const ref = parseRepository(file ?? (url ? `${url[1]}/${url[2]}` : trimmed));
+  if (ref.kind === 'local') return { local: true, id: ref.path.replace(/\/+$/, '') };
+  return {
+    local: false,
+    id: `${ref.host}/${ref.path}`
+      .replace(/\/+$/, '')
+      .replace(/\.git$/i, '')
+      .toLowerCase(),
+  };
+}
+
+/** One repository, however the two spell it: a local path by its path, a hosted or SSH one by host and path. */
+function sameRepository(origin: string, declared: string): boolean {
+  const a = identityOf(origin);
+  const b = identityOf(declared);
+  return a.local === b.local && a.id === b.id;
+}
 
 async function boundCheckouts(projectId: string): Promise<BoundCheckout[]> {
   const rows = await db
@@ -101,13 +139,15 @@ function defaultDeps(): CheckoutHeadDeps {
 }
 
 /**
- * Ask the first connected box holding a bound checkout of the project for `branch`'s head at its
- * origin. No checkout, no box online, no answer in time, or a refusal from the box: each refuses
- * by name, naming the two ways out. Nothing is guessed and nothing is cached.
+ * Ask every connected box holding a bound checkout of the project for `branch`'s head at its
+ * origin, naming the checkout each is asked to read; the first read of `repository` itself wins.
+ * No checkout, no box online, or no box answering well: each refuses by name, every box's reason
+ * named, with the two ways out. Nothing is guessed and nothing is cached.
  */
 export async function readCheckoutHead(
   projectId: string,
   branch: string,
+  repository: string,
   deps: CheckoutHeadDeps = defaultDeps(),
 ): Promise<CheckoutHeadRead> {
   const bound = await deps.boundCheckouts(projectId);
@@ -117,41 +157,84 @@ export async function readCheckoutHead(
       `no runner holds a checkout bound to this project, so no box can read ${branch}'s head with its own git access — ${WAYS_OUT}`,
     );
   }
-  const box = bound.find((b) => deps.listening(b.deviceId));
-  if (!box) {
+  const online = bound.filter((b) => deps.listening(b.deviceId));
+  if (online.length === 0) {
     return unread(
       'no_runner_online',
       `no box holding a checkout bound to this project is connected now (${bound.map((b) => b.repoPath).join(', ')}), so none can read ${branch}'s head — ${WAYS_OUT}`,
     );
   }
-  const requestId = randomUUID();
   const ref = `refs/heads/${branch}`;
   return new Promise<CheckoutHeadRead>((settle) => {
-    const timer = setTimeout(() => {
-      asked.delete(requestId);
+    const failed: { box: BoundCheckout; reason: BoxReason; why: string }[] = [];
+    let done = false;
+    const onRead = (box: BoundCheckout) => (read: BoxRead) => {
+      if (done) return;
+      if (read.ok) {
+        done = true;
+        settle(read);
+        return;
+      }
+      failed.push({ box, reason: read.reason, why: read.why });
+      if (failed.length < online.length) return;
+      done = true;
+      const only = failed.length === 1 ? failed[0] : undefined;
       settle(
-        unread(
-          'unanswered',
-          `the box holding ${box.repoPath} was asked for ${ref} and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read heads: \`forge-runner update\`) — ${WAYS_OUT}`,
-        ),
+        only
+          ? unread(only.reason, `${only.why} — ${WAYS_OUT}`)
+          : unread(
+              'every_box_failed',
+              `no box read ${ref} of ${repository}: ${online
+                .map((b) => failed.find((f) => f.box === b))
+                .map((f) => (f ? `${f.reason}: ${f.why}` : ''))
+                .join('; ')} — ${WAYS_OUT}`,
+            ),
       );
-    }, deps.timeoutMs);
-    asked.set(requestId, { deviceId: box.deviceId, projectId, ref, settle, timer });
-    const took = deps.send(box.deviceId, {
-      event: 'checkout.head.read',
-      data: { requestId, projectId, branch },
-    });
-    if (took === 0) {
-      clearTimeout(timer);
-      asked.delete(requestId);
-      settle(
-        unread(
-          'no_runner_online',
-          `the box holding ${box.repoPath} disconnected before it could be asked for ${ref} — ${WAYS_OUT}`,
-        ),
-      );
-    }
+    };
+    for (const box of online) ask(box, projectId, repository, ref, branch, deps, onRead(box));
   });
+}
+
+function ask(
+  box: BoundCheckout,
+  projectId: string,
+  repository: string,
+  ref: string,
+  branch: string,
+  deps: CheckoutHeadDeps,
+  settle: (read: BoxRead) => void,
+): void {
+  const requestId = randomUUID();
+  const timer = setTimeout(() => {
+    asked.delete(requestId);
+    settle({
+      ok: false,
+      reason: 'unanswered',
+      why: `the box holding ${box.repoPath} was asked for ${ref} and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read heads: \`forge-runner update\`)`,
+    });
+  }, deps.timeoutMs);
+  asked.set(requestId, {
+    deviceId: box.deviceId,
+    projectId,
+    repoPath: box.repoPath,
+    repository,
+    ref,
+    settle,
+    timer,
+  });
+  const took = deps.send(box.deviceId, {
+    event: 'checkout.head.read',
+    data: { requestId, projectId, branch, runnerId: box.runnerId, repoPath: box.repoPath },
+  });
+  if (took === 0) {
+    clearTimeout(timer);
+    asked.delete(requestId);
+    settle({
+      ok: false,
+      reason: 'no_runner_online',
+      why: `the box holding ${box.repoPath} disconnected before it could be asked for ${ref}`,
+    });
+  }
 }
 
 /** Settle the read `requestId` asked of `deviceId`. An answer nobody asked that box for is refused. */
@@ -167,12 +250,11 @@ export function answerCheckoutHead(
   asked.delete(requestId);
   clearTimeout(entry.timer);
   const refused = (why: string) =>
-    entry.settle(
-      unread(
-        'runner_refused',
-        `the box holding a bound checkout could not read ${entry.ref}: ${why} — ${WAYS_OUT}`,
-      ),
-    );
+    entry.settle({
+      ok: false,
+      reason: 'runner_refused',
+      why: `the box holding ${entry.repoPath} could not read ${entry.ref}: ${why}`,
+    });
   const refuse = (why: string): AnswerOutcome => {
     refused(why);
     return { ok: false, code: 'CHECKOUT_HEAD_MALFORMED', detail: why };
@@ -193,6 +275,16 @@ export function answerCheckoutHead(
   const readAt = answer.readAt ? new Date(answer.readAt) : null;
   if (!readAt || Number.isNaN(readAt.getTime())) {
     return refuse(`it named no readable readAt (${JSON.stringify(answer.readAt ?? null)})`);
+  }
+  if (!answer.origin?.trim()) {
+    return refuse(
+      `it named no origin, so nothing shows its head is of the declared repository ${entry.repository}`,
+    );
+  }
+  if (!sameRepository(answer.origin, entry.repository)) {
+    const why = `the checkout ${entry.repoPath} reads origin ${answer.origin}, which is not the project's declared repository ${entry.repository}; its ${entry.ref} is no head of this project`;
+    entry.settle({ ok: false, reason: 'other_repository', why });
+    return { ok: false, code: 'CHECKOUT_HEAD_OTHER_REPOSITORY', detail: why };
   }
   entry.settle({
     ok: true,

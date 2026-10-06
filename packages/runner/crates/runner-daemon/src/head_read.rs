@@ -5,10 +5,11 @@
 //! and decides what to do with the answer. This only reads and reports: the
 //! sha `origin` holds for the branch, or why it could not be read.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use runner_platform::config::Config;
+use runner_platform::config::{Binding, Config};
 use runner_platform::git::git_line;
 use runner_transport::{checkout_head, CoreClient};
 use serde::Deserialize;
@@ -24,6 +25,12 @@ struct HeadReadFrame {
     request_id: String,
     project_id: String,
     branch: String,
+    /// The runner row core chose; logged so a refusal names the row it was asked through.
+    #[serde(default)]
+    runner_id: Option<String>,
+    /// The checkout core names in its evidence: the one this box reads, never another binding.
+    #[serde(default)]
+    repo_path: Option<String>,
 }
 
 pub(crate) async fn handle(client: &CoreClient, data: Value) {
@@ -34,7 +41,7 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
             return;
         }
     };
-    let body = match answer(&frame.project_id, &frame.branch).await {
+    let body = match answer(&frame.project_id, frame.repo_path.as_deref(), &frame.branch).await {
         Ok((sha, origin)) => json!({
             "projectId": frame.project_id,
             "sha": sha,
@@ -44,7 +51,11 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
             "origin": origin,
         }),
         Err(error) => {
-            tracing::warn!("[head] project={}: {error}", frame.project_id);
+            tracing::warn!(
+                "[head] project={} runner={}: {error}",
+                frame.project_id,
+                frame.runner_id.as_deref().unwrap_or("-")
+            );
             json!({ "projectId": frame.project_id, "error": error })
         }
     };
@@ -58,19 +69,57 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
 
 /// The binding is read from the config file now, not from the daemon's start:
 /// a `forge-runner bind` or a provision since then is a binding this box holds.
-async fn answer(project_id: &str, branch: &str) -> Result<(String, String), String> {
+async fn answer(
+    project_id: &str,
+    repo_path: Option<&str>,
+    branch: &str,
+) -> Result<(String, String), String> {
     let cfg = Config::load().map_err(|e| format!("this box's config could not be read: {e}"))?;
-    let repo = cfg
-        .bindings
-        .values()
-        .find(|b| b.project_id.as_deref() == Some(project_id))
-        .map(|b| b.repo_path.clone())
-        .ok_or_else(|| {
-            format!(
-                "this box holds no checkout bound to project {project_id} — `forge-runner bind <slug> --path <checkout>` binds one"
-            )
-        })?;
+    let repo = bound_checkout(&cfg.bindings, project_id, repo_path)?;
     read_head(&repo, branch).await
+}
+
+/// The checkout core named, as long as this box binds it to the project. With none named (a core
+/// that predates naming it), only a project bound once here is unambiguous; anything else is said.
+fn bound_checkout(
+    bindings: &HashMap<String, Binding>,
+    project_id: &str,
+    repo_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    let mut held: Vec<&Path> = bindings
+        .values()
+        .filter(|b| b.project_id.as_deref() == Some(project_id))
+        .map(|b| b.repo_path.as_path())
+        .collect();
+    held.sort();
+    let listed = || {
+        held.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if held.is_empty() {
+        return Err(format!(
+            "this box holds no checkout bound to project {project_id} — `forge-runner bind <slug> --path <checkout>` binds one"
+        ));
+    }
+    match repo_path {
+        Some(named) => held
+            .iter()
+            .find(|p| **p == Path::new(named))
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| {
+                format!(
+                    "core asked for the checkout {named}, which this box does not bind to project {project_id} (it binds {})",
+                    listed()
+                )
+            }),
+        None if held.len() == 1 => Ok(held[0].to_path_buf()),
+        None => Err(format!(
+            "core named no checkout to read and this box binds {} to project {project_id}, so which one it meant is not known — update forge-core",
+            listed()
+        )),
+    }
 }
 
 fn branch_refusal(branch: &str) -> Option<String> {
@@ -188,7 +237,6 @@ fn rfc3339_utc(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use std::process::Command;
 
     fn git(dir: &Path, args: &[&str]) -> String {
@@ -288,6 +336,54 @@ mod tests {
         assert_eq!(rfc3339_utc(0), "1970-01-01T00:00:00Z");
         assert_eq!(rfc3339_utc(1_818_633_600), "2027-08-19T00:00:00Z");
         assert_eq!(rfc3339_utc(951_782_400 + 3_661), "2000-02-29T01:01:01Z");
+    }
+
+    fn bound(entries: &[(&str, &str, &str)]) -> HashMap<String, Binding> {
+        entries
+            .iter()
+            .map(|(slug, path, project)| {
+                (
+                    (*slug).to_string(),
+                    Binding {
+                        repo_path: PathBuf::from(path),
+                        branch: None,
+                        project_id: Some((*project).to_string()),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_checkout_core_names_is_the_one_read() {
+        let b = bound(&[
+            ("a", "/w/old", "p"),
+            ("b", "/w/epod", "p"),
+            ("c", "/w/x", "q"),
+        ]);
+        assert_eq!(
+            bound_checkout(&b, "p", Some("/w/epod")).unwrap(),
+            PathBuf::from("/w/epod")
+        );
+        let why = bound_checkout(&b, "p", Some("/w/x")).unwrap_err();
+        assert!(
+            why.contains("/w/x") && why.contains("/w/epod, /w/old"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn with_no_checkout_named_only_a_single_binding_is_read() {
+        let one = bound(&[("a", "/w/epod", "p")]);
+        assert_eq!(
+            bound_checkout(&one, "p", None).unwrap(),
+            PathBuf::from("/w/epod")
+        );
+        let two = bound(&[("a", "/w/old", "p"), ("b", "/w/epod", "p")]);
+        let why = bound_checkout(&two, "p", None).unwrap_err();
+        assert!(why.contains("named no checkout"), "{why}");
+        let why = bound_checkout(&one, "q", Some("/w/epod")).unwrap_err();
+        assert!(why.contains("forge-runner bind"), "{why}");
     }
 
     #[tokio::test]
