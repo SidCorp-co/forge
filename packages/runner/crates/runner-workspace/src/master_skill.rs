@@ -337,3 +337,38 @@ fn log(entry: &Entry) {
         _ => tracing::warn!("[skill] {slug} {when}: {said}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ASSET;
+
+    /// The plugin's `forge` CLI is built against one core and a box can be bound to another, so a
+    /// master sent there for a method or a write meets a verb its core refuses (ISS-275). Every
+    /// command the skill names is `forge-runner`'s, whose `api` reaches the core this box talks to.
+    #[test]
+    fn the_skill_names_no_command_of_the_plugin_cli() {
+        let named: Vec<&str> = ASSET
+            .match_indices("`forge ")
+            .map(|(at, _)| ASSET[at..].lines().next().unwrap_or_default())
+            .collect();
+        assert!(
+            named.is_empty(),
+            "forge-master-skill.md names a command of the plugin's `forge` CLI, which a box's core may not serve: {named:?}"
+        );
+    }
+
+    #[test]
+    fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
+        for door in [
+            "`forge-runner api guides`",
+            "`dispatch`",
+            "`issue-flow`",
+            "`forge-runner api <path>`",
+        ] {
+            assert!(
+                ASSET.contains(door),
+                "forge-master-skill.md no longer names {door}, so a master has no route to its method or its tracker that its own core serves"
+            );
+        }
+    }
+}

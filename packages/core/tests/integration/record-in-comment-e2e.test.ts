@@ -88,14 +88,14 @@ async function stored(): Promise<{ comments: number; verdicts: number }> {
 }
 
 describe('a caller that declared it can write a record elsewhere', () => {
-  it('is refused under the rule record-in-comment, pointed at the events store, and nothing is written', async () => {
+  it('is refused under the rule record-in-comment, pointed at the act that records a verdict, and nothing is written', async () => {
     const res = await post(fenced('verdict'), 'record-route');
 
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('MESSAGE_REFUSED');
     expect(ruleOf(res)).toBe('record-in-comment');
     expect(String(res.body.detail)).toContain(
-      'a `verdict` record goes to `POST /api/issues/:id/events`',
+      'a `verdict` record goes to `POST /api/issues/:id/verdicts`',
     );
     expect(String(res.body.detail)).toContain('records-and-comments');
     expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
@@ -104,7 +104,9 @@ describe('a caller that declared it can write a record elsewhere', () => {
   it('names the kind it was sent, whatever the kind', async () => {
     const res = await post(fenced('baseline'), 'record-route');
     expect(ruleOf(res)).toBe('record-in-comment');
-    expect(String(res.body.detail)).toContain('a `baseline` record goes to');
+    expect(String(res.body.detail)).toContain(
+      'a `baseline` record goes to `POST /api/issues/:id/events`',
+    );
   });
 
   it('is written for a body carrying no fence, with no record warning', async () => {

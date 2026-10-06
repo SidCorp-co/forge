@@ -5,7 +5,11 @@ import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 /** Which reading a project's own members are screened and drawn under. */
 export type RecordLens = 'product' | 'technical';
 
-import { RECORD_EVENT_KINDS } from '@forge/contracts/record-events';
+import {
+  isKernelOnlyRecordKind,
+  type KernelOnlyRecordKind,
+  RECORD_EVENT_KINDS,
+} from '@forge/contracts/record-events';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,
@@ -27,16 +31,24 @@ export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
 /**
  * Where a record goes when it is not a comment, by the kind that names it. Since ISS-56 every kind
- * in the closed set has a whole store: `POST /api/issues/:id/events`, whose rows the gates read. A
- * `Map` because the kind is caller-supplied: `constructor` on an object literal answers off the
- * prototype instead of taking the unsupported-kind path.
+ * in the closed set has a whole store: `POST /api/issues/:id/events`, whose rows the gates read,
+ * except the kernel's own, which that route refuses (`EVENT_KIND_KERNEL_ONLY`) because core writes
+ * them inside the act they record — so a fence of one is pointed at the act. A `Map` because the
+ * kind is caller-supplied: `constructor` on an object literal answers off the prototype instead of
+ * taking the unsupported-kind path.
  */
 const RECORD_EVENTS_ROUTE = 'POST /api/issues/:id/events';
+const KERNEL_ACT_ROUTES: Record<KernelOnlyRecordKind, string> = {
+  verdict: 'POST /api/issues/:id/verdicts',
+  transition: 'POST /api/issues/:id/transition',
+  park: 'POST /api/issues/:id/transition',
+};
 export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map(
-  RECORD_EVENT_KINDS.map((kind) => [kind, RECORD_EVENTS_ROUTE]),
+  RECORD_EVENT_KINDS.map((kind) => [
+    kind,
+    isKernelOnlyRecordKind(kind) ? KERNEL_ACT_ROUTES[kind] : RECORD_EVENTS_ROUTE,
+  ]),
 );
-
-export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
 
 function destinationFor(kind: string | null): string | null {
   return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
@@ -48,7 +60,7 @@ function recordInCommentMessage(record: ForgeRecord): string {
   const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
   const where = route
     ? `${named} goes to \`${route}\`, and the comment keeps your summary line`
-    : `no store here holds ${named} whole — put the assertions it makes about the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the sentence in the comment`;
+    : `no store holds ${named} — a record carries one of the kinds \`${RECORD_EVENTS_ROUTE}\` takes, and what fits none of them is the comment's own sentence`;
   return `a \`forge-record\` fence is not comment content — ${where}. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
 }
 

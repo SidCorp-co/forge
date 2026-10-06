@@ -5,11 +5,7 @@
 // the comment thread stays readable by a person. Not the schema of each store —
 // each store's own tool carries that.
 
-import {
-  ISSUE_ASSERTION_ROUTE,
-  RECORD_DESTINATIONS,
-  RECORD_GUIDE_SLUG,
-} from '../messaging/record-screen.js';
+import { RECORD_DESTINATIONS, RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
 import type { CoreGuide } from './types.js';
 
 const route = (kind: string): string => `\`${RECORD_DESTINATIONS.get(kind) ?? ''}\``;
@@ -20,7 +16,7 @@ export const RECORDS_GUIDE: CoreGuide = {
   title: 'What a comment is for, and where a record goes',
   summary:
     'A comment carries what a person wrote for a person to read; a structured record goes to the store its kind names, with the comment keeping the pointer back.',
-  version: 1,
+  version: 2,
   body: `## What a comment is for, and where a record goes
 
 A comment is prose a person reads. Everything else a run has to record has a store of its own, and
@@ -33,10 +29,9 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | What you have | Where it goes | Format |
 |---|---|---|
 | A sentence a person needs to read | \`comments\` | prose, no fence, no field list. Say what happened and what it means |
-| A verdict on an acceptance criterion | \`POST /api/issues/:id/verdicts\` → \`criterion_verdicts\` | \`{ criterion, verdict, reason?, identity?, evidence? }\`, one row per criterion judged |
+| A verdict on an acceptance criterion | ${route('verdict')} → \`criterion_verdicts\` | \`{ criterion, verdict, reason?, identity?, evidence? }\`, one row per criterion judged |
 | A step's handoff, per attempt | \`POST /api/issue-step-contexts\` → \`issue_step_contexts\` | the handoff payload, keyed \`(issue, step, attempt)\` |
 | A run's own record — a review, a decision, a baseline, a correction, a finding | ${route('review')} → \`activity_log\` | a typed record event of one kind in the closed set; a kind outside it is refused \`EVENT_KIND_UNKNOWN\` |
-| An assertion about the issue itself — blocking, delivered, obligation, supersedes, human_required | \`${ISSUE_ASSERTION_ROUTE}\` → \`issue_attributes\` | typed value under a registered key, \`sourceCommentId\` pointing at the line that asserted it |
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
 | Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.park\` (plus \`record.transition\` for a move that waived its verdicts) on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
@@ -46,9 +41,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 ### Two rules
 
 **A record and its human line are joined, not duplicated.** The structured row holds the fields;
-the comment holds the sentence and the pointer. Neither repeats the other, and
-\`issue_attributes.source_comment_id\` is what joins them — write the comment first, then send its
-id as \`sourceCommentId\` on the attribute, and a reader of either can reach the other.
+the comment holds the sentence and names the record. Neither repeats the other.
 
 **A fence in a comment is the smell.** A \` \\\`\\\`\\\`forge-record \` block in a comment body means a
 record was serialised instead of stored. That is what the \`record-in-comment\` rule refuses — by
