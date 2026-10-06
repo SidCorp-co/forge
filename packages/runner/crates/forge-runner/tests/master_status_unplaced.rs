@@ -4,23 +4,51 @@
 //! The daemon's sweep keeps why it placed no pane beside the project's
 //! transcript; this command runs in a process of its own and asks the daemon
 //! nothing, so that record is the only way the refusal reaches it.
+//!
+//! Every call runs with a PATH holding one empty directory, so no `tmux` is
+//! found: the box `master status` has to answer on is one without it, which
+//! is where the daemon keeps its "tmux is not installed" refusal, and which
+//! is the macOS and Windows legs' box whatever the host running the test has.
 
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use forge_runner_core::daemon::pane_path::Unresolved;
 use forge_runner_core::daemon::unplaced_record::{self, Record};
 use forge_runner_core::test_scratch::Scratch;
 
-fn status(home: &Scratch, slug: &str) -> Output {
+fn master(home: &Scratch, args: &[&str]) -> Output {
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
     Command::new(env!("CARGO_BIN_EXE_forge-runner"))
-        .args(["master", "status", slug])
+        .arg("master")
+        .args(args)
         .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("PATH", &bin)
         .env("HOME", home.join("h"))
         .env("XDG_CONFIG_HOME", home.join("c"))
         .env("XDG_DATA_HOME", home.join("d"))
+        .env("FORGE_RUNNER_CRED_STORE", "file")
         .output()
         .expect("the binary runs")
+}
+
+fn status(home: &Scratch, slug: &str) -> Output {
+    master(home, &["status", slug])
+}
+
+/// Every `ledger.sqlite` under `dir`, at any depth.
+fn ledgers_under(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(ledgers_under(&path));
+        } else if path.file_name().is_some_and(|n| n == "ledger.sqlite") {
+            found.push(path);
+        }
+    }
+    found
 }
 
 #[test]
@@ -41,6 +69,18 @@ fn a_master_refused_for_its_path_is_said_on_status_naming_each_binary_and_the_pa
     assert!(
         !said.contains(" unplaced  "),
         "nothing recorded, nothing said: {said}"
+    );
+    assert!(
+        said.contains("tmux is not on this command's PATH"),
+        "a status that could ask no tmux says so: {said}"
+    );
+    let pane = said
+        .lines()
+        .find(|l| l.contains(" pane  "))
+        .unwrap_or_else(|| panic!("status prints the pane line: {said}"));
+    assert!(
+        pane.contains(" unknown "),
+        "a pane no tmux was asked about is unknown, never gone: {pane}"
     );
 
     let detail = Unresolved {
@@ -84,5 +124,82 @@ fn a_master_refused_for_its_path_is_said_on_status_naming_each_binary_and_the_pa
     assert!(
         !String::from_utf8_lossy(&after.stdout).contains(" unplaced  "),
         "a placement that cleared the record leaves nothing said"
+    );
+    assert_eq!(
+        ledgers_under(home.path()),
+        Vec::<PathBuf>::new(),
+        "status reads the box's ledger and creates none where there was none"
+    );
+}
+
+#[test]
+fn a_box_without_tmux_still_reads_a_masters_transcript() {
+    let home = Scratch::short("mst-log");
+    let dir = home
+        .join("c")
+        .join("forge-runner")
+        .join("master")
+        .join("plantslug");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("transcript.log"), "first\nsecond\nthird\n").unwrap();
+    let out = master(&home, &["log", "plantslug", "--lines", "2"]);
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{said}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains("second\nthird") && !said.contains("first"),
+        "the last two lines, and only those: {said}"
+    );
+}
+
+#[test]
+fn a_verb_that_drives_a_pane_is_still_refused_without_tmux() {
+    let home = Scratch::short("mst-say");
+    let out = master(&home, &["say", "plantslug", "hello"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "say ran with no tmux: {err}");
+    assert!(
+        err.contains("tmux is not installed on this box"),
+        "the refusal names tmux: {err}"
+    );
+}
+
+/// The read-only open still reads what a daemon wrote. That it writes nothing
+/// is the first test's: a migrated ledger reopened read-write changes no byte,
+/// so only a ledger that was not there can show a write.
+///
+/// Linux only because only there does the ledger's data dir follow
+/// `XDG_DATA_HOME`, so only there can a test plant one where the binary looks
+/// without touching the box's own. The open is the same on every platform.
+#[cfg(target_os = "linux")]
+#[test]
+fn status_reads_a_stand_down_through_a_read_only_ledger() {
+    use forge_runner_core::runner::ledger::Ledger;
+
+    let home = Scratch::short("mst-ledger");
+    let path = home.join("d").join("forge-runner").join("ledger.sqlite");
+    Ledger::open(&path)
+        .unwrap()
+        .stand_down_master("p-1", "plantslug", "owner", "waiting on the planted wait")
+        .unwrap();
+
+    let out = status(&home, "plantslug");
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{said}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let standing = said
+        .lines()
+        .find(|l| l.contains(" standing  "))
+        .unwrap_or_else(|| panic!("status prints the standing line: {said}"));
+    assert!(
+        standing.contains("STOOD DOWN by owner")
+            && standing.contains("waiting on the planted wait"),
+        "the stand-down is read through the read-only ledger: {standing}"
     );
 }
