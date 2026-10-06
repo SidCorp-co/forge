@@ -36,9 +36,9 @@ notificationRoutes.use('*', requireAuth(), assertEmailVerified());
  *
  * ISS-1063 replaced `GET /unread-count` with this rather than redefining it: a route
  * named `unread-count` returning an open count is a silent substitution, and web-v2's
- * only caller moved in the same change. The count is over DISTINCT RECORDS reachable
- * through the caller's deliveries, not over deliveries — a grouped delivery carrying
- * fifteen firing parks reads fifteen, and resolving one of them reads fourteen.
+ * only caller moved in the same change. The count is over the caller's deliveries that
+ * still carry an open record — the rows the bell lists as open, so a grouped delivery
+ * carrying fifteen firing parks reads one until the last of them resolves (FB-76).
  */
 notificationRoutes.get('/open-count', zValidator('query', openCountQuerySchema), async (c) => {
   const { projectId } = c.req.valid('query');
