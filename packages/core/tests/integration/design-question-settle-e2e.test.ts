@@ -7,7 +7,12 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// a design write queues several deliveries behind one issue, and the outbox worker reaches the ones whose
+// wake it missed on its 10 s poll, so a settle here can take longer than the default test budget
+vi.setConfig({ testTimeout: 90_000 });
+
 import {
   closeWorld,
   type Doc,

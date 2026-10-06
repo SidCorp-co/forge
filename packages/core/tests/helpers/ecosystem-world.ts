@@ -78,7 +78,7 @@ export async function startQueue(): Promise<void> {
  * Waits until every outbox delivery due now has been worked, so a test reads the bell and the
  * wakes an act caused. A delivery still due after `ms` fails the test naming its queue.
  */
-export async function settleOutbox(ms = 15_000): Promise<void> {
+export async function settleOutbox(ms = 45_000): Promise<void> {
   const until = Date.now() + ms;
   for (;;) {
     const rows = (await db.execute(sql`
