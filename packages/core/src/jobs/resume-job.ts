@@ -43,13 +43,10 @@ export async function resumeHeldJob(
   });
   if (!updated) throw refuseJob('NOT_HELD', 'job state changed mid-request');
 
-  await pushJobChanged({
+  await pushJobChanged(job, 'job.resumed', {
+    jobId: job.id,
     projectId: job.projectId,
-    jobId: updated.id,
-    deviceId: job.deviceId,
-    event: 'job.resumed',
-    data: { jobId: updated.id, status: 'queued' },
-    rooms: ['project'],
+    status: 'queued',
   });
   if (updated.issueId) await publishPipelineHealthChanged(job.projectId, [updated.issueId]);
   return { jobId: updated.id, status: 'queued', heldReason };

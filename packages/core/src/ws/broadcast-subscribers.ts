@@ -27,7 +27,7 @@ function on<T extends ConsumedBy<'ws-broadcast'>>(
 
 const refuseFrame = refuser('SESSION_FRAME_AUDIENCE_MISSING');
 
-/** A session frame written before its audience was recorded names no readers; refused by name rather than guessed project-wide. */
+/** A session or job frame written before its audience was recorded names no readers; refused by name rather than guessed project-wide. */
 function assertAudience(event: string, userIds: unknown): void {
   if (!Array.isArray(userIds)) {
     throw refuseFrame(
@@ -177,12 +177,18 @@ export function registerWsBroadcastSubscribers(): void {
 
   on('runner.changed', (p) => {
     if (p.runnerRoom) pub(runnerRoom(p.runnerId), p.event, p.data);
-    pub(projectRoom(p.projectId), p.event, p.data);
+    frame(projectRoom(p.projectId), p.event, p.data);
   });
 
+  // a job of a person's own chat is told to its readers by name, never to the project room
   on('job.changed', (p) => {
-    if (p.rooms.includes('device') && p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
-    if (p.rooms.includes('project')) pub(projectRoom(p.projectId), p.event, p.data);
+    if (p.event === 'job.cancel') {
+      pub(deviceRoom(p.deviceId), p.event, p.data);
+      return;
+    }
+    assertAudience(p.event, p.userIds);
+    if (p.projectWide) frame(projectRoom(p.projectId), p.event, p.data);
+    for (const userId of p.userIds) frame(userRoom(userId), p.event, p.data);
   });
 
   on('device.pushed', (p) => {

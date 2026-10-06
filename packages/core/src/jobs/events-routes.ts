@@ -17,6 +17,7 @@ import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
+import { jobEphemeralTarget } from './job-push.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
@@ -182,15 +183,23 @@ jobEventsRoutes.post(
 
     const inserted = await appendJobEvents(jobId, persisted);
 
-    // Live log lines are ephemeral (lib/ephemeral.ts): stored above, announced without the outbox.
-    for (const row of inserted) {
-      publishEphemeral(
-        { projectId: job.projectId },
-        {
+    // Live log lines are ephemeral (lib/ephemeral.ts): stored above, announced without the outbox,
+    // to the readers its job's frames go to — a person's own chat never reaches the project room.
+    if (inserted.length > 0) {
+      const target = await jobEphemeralTarget(job);
+      for (const row of inserted) {
+        publishEphemeral(target, {
           event: 'job.event',
-          data: { jobId, seq: row.seq, kind: row.kind, ts: row.ts, data: row.data },
-        },
-      );
+          data: {
+            jobId,
+            projectId: job.projectId,
+            seq: row.seq,
+            kind: row.kind,
+            ts: row.ts,
+            data: row.data,
+          },
+        });
+      }
     }
 
     if (job.ackedAt === null) {

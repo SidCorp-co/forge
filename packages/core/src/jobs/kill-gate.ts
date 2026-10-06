@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { pushJobChanged } from './job-push.js';
+import { pushJobCancel } from './job-push.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -52,14 +52,10 @@ export async function requestJobKill(
       .where(eq(jobs.id, job.id));
   }
   if (!job.deviceId) return 'no_device';
-  await pushJobChanged({
-    projectId: job.projectId,
-    jobId: job.id,
-    deviceId: job.deviceId,
-    event: 'job.cancel',
-    data: { jobId: job.id, reason },
-    rooms: ['device'],
-  });
+  await pushJobCancel(
+    { id: job.id, projectId: job.projectId, deviceId: job.deviceId },
+    { jobId: job.id, projectId: job.projectId, reason },
+  );
   return 'requested';
 }
 

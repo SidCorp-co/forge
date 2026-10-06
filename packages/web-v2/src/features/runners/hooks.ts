@@ -194,11 +194,9 @@ export function useRunnerActivity(runnerId: string, enabled: boolean) {
 /**
  * Live snapshot of which runners are executing a job for a project. Keyed
  * `['projects', id, 'active-runners']`. Invalidated by the event-router on
- * `issue.pipelineHealth.changed` (fires on every job completion/failure +
- * dispatch tick, carries projectId) and on `runner.status`/`pipeline_run`
- * terminal events. The 10s `refetchInterval` is a backstop for any gap (e.g.
- * `job.assigned` rides the device room, so busy ONSET can lag up to one poll)
- * and re-anchors the row's elapsed counter to real `startedAt` values (the
+ * `issue.pipelineHealth.changed`, every `job.*` move, `runner.*` and every
+ * `pipeline_run` move. The 10s `refetchInterval` is a backstop for any gap
+ * (a job's claim sends no frame of its own) and re-anchors the row's elapsed counter to real `startedAt` values (the
  * per-second tick itself is purely client-side).
  */
 export function useActiveRunners(projectId: string | null) {

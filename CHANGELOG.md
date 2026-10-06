@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **The Agents run list refreshes live when a job or run moves.** Every job frame names its
+  project; a job of a person's own chat, log lines included, reaches only its readers, never the
+  project room.
+
 - **An OpenAPI artifact oasdiff cannot load is refused, not stored "unknown".** `ARTIFACT_UNREADABLE`
   names the loader error and the misplaced schema; an unmeasured semver change takes the uploader's
   named version (`VERSION_NOT_MEASURED`), never a guessed MAJOR.

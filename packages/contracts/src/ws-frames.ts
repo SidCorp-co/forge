@@ -4,7 +4,7 @@
 // listed only while web routes it.
 
 import type { StateOf } from "./machines.js";
-import type { OutboxEventPayload, RunnerChange } from "./outbox-events.js";
+import type { JobChange, JobFrameName, OutboxEventPayload, RunnerChange } from "./outbox-events.js";
 
 interface IssueRef {
 	issueId: string;
@@ -23,9 +23,8 @@ interface SessionFrame {
 	status?: string;
 }
 
-interface JobFrame {
-	jobId: string;
-}
+/** Every job.* frame names its project, so the project's run list can refresh. */
+type JobFrames = { [E in JobFrameName]: JobChange };
 
 /** Every runner.* frame names its project, so the project's runner list can refresh. */
 type RunnerFrame = RunnerChange;
@@ -47,7 +46,7 @@ interface TokenFrame {
 	ts: string;
 }
 
-export interface WsFramePayloads {
+export interface WsFramePayloads extends JobFrames {
 	"issue.created": IssueRef & { actorId: string };
 	"issue.updated": IssueRef & { fields: string[]; actorId: string };
 	"issue.statusChanged": {
@@ -86,12 +85,14 @@ export interface WsFramePayloads {
 	"agent-session.turn.edited": SessionFrame & { turnId: string };
 	"agent-session.turn.truncated": SessionFrame & { fromTurnIndex: number };
 	"session.recoveryChanged": { sessionId: string; recoveryStats: unknown };
-	"job.event": { jobId: string; seq: number; kind: string; ts: string; data: unknown };
-	"job.assigned": JobFrame;
-	"job.completed": JobFrame;
-	"job.failed": JobFrame;
-	"job.resumed": JobFrame;
-	"job.cancelled": JobFrame;
+	"job.event": {
+		jobId: string;
+		projectId: string;
+		seq: number;
+		kind: string;
+		ts: string;
+		data: unknown;
+	};
 	"pipeline_run.status_changed": {
 		runId: string;
 		projectId: string;
