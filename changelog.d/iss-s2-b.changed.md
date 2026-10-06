@@ -1,1 +1,0 @@
-**Core now judges a box's disk headroom and serves its checkout orientation.** The heartbeat carries both scratch axes, shown per device; a box writes only the orientation core sends; the lease read drops issueOver/issueResting; config key claude_mode is retired.
