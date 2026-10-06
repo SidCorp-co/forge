@@ -8,6 +8,18 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.63] - 2026-10-06
+
+Core decides master placement and retirement; boxes report facts and obey
+
+### Changed
+
+- **Core now decides when a box places, nudges, replaces or retires a master** (new `POST /api/devices/me/master-session/verdict`). Deploy core first: this runner places nothing without it; older runners still decide locally.
+
+## [0.4.0-dev.62] - 2026-10-06
+
+Runner panes deny permission dialogs instead of freezing; feedback cannot verify a reopened item
+
 ### Fixed
 
 - **A reopened feedback item can no longer be marked verified by the machine**: verify follows a shipped fix, which a reopened item never has, so its only ways out are back to triage or declined (feedback machine v3).

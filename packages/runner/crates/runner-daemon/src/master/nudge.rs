@@ -57,13 +57,6 @@ pub(crate) fn since_nudge(
     }
 }
 
-pub(crate) fn retry_owed(since: SinceNudge) -> bool {
-    match since {
-        SinceNudge::Unreported | SinceNudge::NoTurn | SinceNudge::Failed => true,
-        SinceNudge::Working | SinceNudge::AwaitingPermission | SinceNudge::Ran => false,
-    }
-}
-
 pub(crate) fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut lines: Vec<String> = Vec::with_capacity(admissible.len());
@@ -96,64 +89,6 @@ pub(crate) fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     h.finish()
 }
 
-/// Whether this master is owed a nudge now.
-///
-/// A changed digest is owed only between passes: while a pass is open the
-/// pane is mid-turn, often on the very work that changed the digest, so the
-/// change waits for the pass to close and the next sweep reads it again.
-///
-/// `held` is a master whose account refused its last turn for capacity. What
-/// its hooks say about that turn is no evidence the pass happened: a refused
-/// turn ends like one that ran, and the runs it dispatched die on the same
-/// limit without reporting their end, which reads as a pass still working. So a
-/// held master is asked again every refresh window whatever `since` says —
-/// capacity an operator restores out of band is seen only by a turn that tries
-/// (ISS-1248). The window binds it even when the work changed: every turn it is
-/// sent is refused until capacity returns, and the set a held master is asked
-/// over can swing every sweep while its own cut-short runs come and go.
-pub(crate) fn nudge_due(
-    prev: Option<Nudge>,
-    digest: u64,
-    now: Instant,
-    since: SinceNudge,
-    held: bool,
-    pass_open: bool,
-) -> bool {
-    let window_passed = |last: Nudge| now.saturating_duration_since(last.at) >= NUDGE_REFRESH;
-    match prev {
-        None => true,
-        Some(last) if held => window_passed(last),
-        Some(last) if last.digest != digest => !pass_open,
-        Some(last) => window_passed(last) && retry_owed(since),
-    }
-}
-
-/// Whether a pass this process opened for the project's live master still
-/// covers a turn that has not ended, judged as `master_pass::reconcile` judges
-/// it. Unreadable reads as no pass: the nudge it would hold is the one
-/// `open_for_nudge` then reports the ledger read for.
-pub(crate) fn pass_in_flight(
-    ledger: Option<&Ledger>,
-    masters: &Masters,
-    project_id: &str,
-    seen: Option<&agent_activity::Activity>,
-) -> bool {
-    let Some(Ok(Some(pass))) = ledger.map(|led| led.master_pass_for(project_id)) else {
-        return false;
-    };
-    let live = masters.get(project_id).map(|(session_id, _)| session_id);
-    let now = agent_activity::now_ms();
-    let written = master_pass::written_ms(seen);
-    master_pass::judge(
-        &pass,
-        master_pass::this_process(),
-        live.as_deref(),
-        seen,
-        now,
-        written,
-    ) == master_pass::Judged::Open
-}
-
 /// The capacity refusal this master's pane is sitting behind, if any.
 ///
 /// `newest` is the newest decisive record in the conversation `conversation`
@@ -181,19 +116,6 @@ pub(crate) fn held_by_limit(
         }
     }
     Some(refusal.clone())
-}
-
-/// Whether this master is a candidate for a nudge at all this sweep.
-///
-/// A pass the account refused is one the master still owes itself, and the
-/// runs that pass dispatched hold their issues out of the admissible set while
-/// they stand — so an empty set is no reason to leave a refused master unasked.
-pub(crate) fn asked_this_sweep(
-    admissible: &[AdmissibleIssue],
-    inbox: &[UnansweredDocument],
-    held: Option<&master_limit::Refusal>,
-) -> bool {
-    !admissible.is_empty() || !inbox.is_empty() || held.is_some()
 }
 
 pub(crate) fn nudge(inbox: &[UnansweredDocument]) -> String {
@@ -451,32 +373,7 @@ mod tests {
     use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
 
     #[test]
-    fn a_changed_digest_waits_for_the_open_pass_to_close() {
-        let now = Instant::now();
-        let last = Nudge {
-            digest: 1,
-            at: now,
-            prompts: Some(3),
-        };
-        assert!(
-            !nudge_due(Some(last), 2, now, SinceNudge::Working, false, true),
-            "a digest change typed a nudge into a pane whose pass is still open"
-        );
-        assert!(nudge_due(Some(last), 2, now, SinceNudge::Ran, false, false));
-        let later = now + NUDGE_REFRESH;
-        assert!(nudge_due(Some(last), 2, later, SinceNudge::Ran, true, true));
-        assert!(nudge_due(
-            Some(last),
-            1,
-            later,
-            SinceNudge::NoTurn,
-            false,
-            true
-        ));
-    }
-
-    #[test]
-    fn untriaged_feedback_alone_owes_the_master_a_pass_that_names_it() {
+    fn a_nudge_for_untriaged_feedback_names_it() {
         let owed = [UnansweredDocument {
             id: "f2".into(),
             number: Some("FB-2".into()),
@@ -484,17 +381,16 @@ mod tests {
             from: None,
             overdue: false,
         }];
-        assert!(asked_this_sweep(&[], &owed, None));
         assert!(nudge(&owed).contains("feedback item owes a triage (FB-2)"));
-        assert!(!asked_this_sweep(&[], &[], None));
     }
 
     /// FB-82, dev 2026-10-06: forge-master-forge was resumed at 14:51:43 and
     /// handed its brief, and the same sweep claimed a nudge it never typed. The
     /// brief's turn ended at 14:55:16; its pass stood open past 15:56 and held
-    /// six newly admitted issues' nudge behind it.
+    /// six newly admitted issues' nudge behind it. Whether the next nudge is
+    /// owed once it closes is core's (`masters/verdict.ts:nudgeDue`).
     #[test]
-    fn a_resumed_panes_brief_turn_closes_its_pass_and_frees_the_nudge_it_held() {
+    fn a_resumed_panes_brief_turn_closes_its_pass() {
         use runner_core::agent_activity::{Activities, Event, Report};
         use runner_core::ledger::MasterPass;
         const T0: i64 = 1_791_298_308;
@@ -529,7 +425,7 @@ mod tests {
             session_id: "s",
             issue_key: None,
             turns: Some(briefed.turns),
-            typed: types_nudge(PaneState::Resumed, true),
+            typed: false,
         };
         if let Some(turns) = master_pass::start_after_nudge(&claimed) {
             row.turns_at_nudge = turns;
@@ -540,12 +436,5 @@ mod tests {
             master_pass::Judged::TurnEnded,
             "a nudge that was never typed moved the pass past the brief's turn, so the pane's Stop closed nothing"
         );
-        let now = Instant::now();
-        let last = Nudge {
-            digest: 1,
-            at: now,
-            prompts: Some(1),
-        };
-        assert!(nudge_due(Some(last), 2, now, SinceNudge::Ran, false, false));
     }
 }

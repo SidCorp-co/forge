@@ -10,12 +10,13 @@ import type {
   MasterSessionResponse,
   MasterVerb,
 } from '@forge/contracts/master-standing';
+import type { MasterFacts, MasterVerdict } from '@forge/contracts/master-verdict';
 import { scrubSecretsDeep } from '@forge/observability';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
-import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessions, devices, runners, terminalAgentSessionStatuses } from '../db/schema.js';
 import {
   assertDeviceBoundToProject,
   ensureMasterSession,
@@ -30,6 +31,7 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
+import { masterVerdict } from './verdict.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
@@ -184,4 +186,49 @@ export async function recordMasterDialog(args: {
       : null;
     await mergeSessionMetadata(args.sessionId, { paneDialog }, tx);
   });
+}
+
+/**
+ * Core's verdict on one project's resident master on the box sweeping `runnerId`: the box's facts,
+ * its runner row's status and whether its live master has a pass open (ADR 0009, What core takes
+ * over: Placement and Retirement).
+ */
+export async function judgeMaster(args: {
+  deviceId: string;
+  projectId: string;
+  runnerId: string;
+  facts: MasterFacts;
+}): Promise<MasterVerdict> {
+  await assertDeviceBoundToProject(args.deviceId, args.projectId);
+  const [runner] = await db
+    .select({ status: runners.status })
+    .from(runners)
+    .where(
+      and(
+        eq(runners.id, args.runnerId),
+        eq(runners.deviceId, args.deviceId),
+        eq(runners.projectId, args.projectId),
+      ),
+    )
+    .limit(1);
+  if (!runner) {
+    throw new HTTPException(404, {
+      message: `runner ${args.runnerId} is not this device's runner for project ${args.projectId}: name the runner row GET /api/devices/me/runners answered for it`,
+      cause: { code: 'NOT_FOUND' },
+    });
+  }
+  const [master] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.deviceId, args.deviceId),
+        eq(agentSessions.projectId, args.projectId),
+        eq(agentSessions.kind, MASTER_SESSION_KIND),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+    )
+    .limit(1);
+  const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
+  return masterVerdict(args.facts, { runnerStatus: runner.status, passOpen });
 }

@@ -159,10 +159,6 @@ pub(crate) fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "the master sweep, whose verdicts core takes over per ADR 0009 What core takes over: Retirement; deleted rather than split once core answers them (ISS-218 amnesty)"
-)]
 pub(crate) async fn sweep(
     client: &CoreClient,
     cfg: &Config,
@@ -172,22 +168,60 @@ pub(crate) async fn sweep(
     tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
 ) -> Duration {
-    let SweepShared {
-        masters,
-        activity,
-        job_panes,
-        drain,
-        ..
-    } = *shared;
+    let Some(served) = read_served(client, shared.masters).await else {
+        return POLL_INTERVAL;
+    };
+    let delay = next_poll_delay(&served);
+    if delay > POLL_INTERVAL {
+        for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
+            tracing::info!(
+                "[master] {}: rate-limited ({}) — still sweeping, next pass in {}s",
+                r.slug,
+                r.limit_reason.as_deref().unwrap_or("unknown"),
+                delay.as_secs()
+            );
+        }
+    }
     let now_unix = master_limit::now_unix();
-    let mut account_said: Vec<master_limit::Decisive> = Vec::new();
-    let mut deaf_found: Vec<Deaf> = Vec::new();
+    let sw = Sweep {
+        client,
+        cfg,
+        shared,
+        adopted,
+        tokens,
+        served: &served,
+        now_unix,
+    };
+    let mut found = Found::default();
+    for runner in &served {
+        sweep_project(&sw, ledger, runner, &mut found).await;
+    }
+    report_deaf_fleet(shared.masters, &found.deaf);
+    report_account_limit(
+        client,
+        &served,
+        &found.account_said,
+        account_limit_said,
+        now_unix,
+    )
+    .await;
+    report_job_capacity(cfg, shared.job_panes, shared.activity);
+    settle_runs(client, shared, cfg, &served, ledger).await;
+    delay
+}
+
+/// The projects core serves this box, with the configs of any it no longer
+/// serves removed. `None` where core could not be asked, which is recorded.
+async fn read_served(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+) -> Option<Vec<runners::MeRunner>> {
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
             tracing::warn!("[master] cannot read this box's projects: {e}");
             masters.note_served(Served::Unreadable(e.to_string()));
-            return POLL_INTERVAL;
+            return None;
         }
     };
     masters.note_served(Served::Read(
@@ -209,433 +243,19 @@ pub(crate) async fn sweep(
             runner_workspace::mcp::config::session_dir().display()
         ),
     }
-    let delay = next_poll_delay(&served);
-    if delay > POLL_INTERVAL {
-        for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
-            tracing::info!(
-                "[master] {}: rate-limited ({}) — still sweeping, next pass in {}s",
-                r.slug,
-                r.limit_reason.as_deref().unwrap_or("unknown"),
-                delay.as_secs()
-            );
-        }
-    }
+    Some(served)
+}
 
-    for runner in &served {
-        // Leave is taken per project and held to the end of its iteration, so
-        // a drain that begins part-way through a sweep waits for the project
-        // in hand to finish admitting and stops the sweep at the next one.
-        let _admitting = match drain.admit() {
-            Ok(permit) => permit,
-            Err(closed) => {
-                let read = read_standing(ledger.as_ref(), &runner.project_id);
-                let verdict =
-                    standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
-                if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
-                    masters.note_unplaced(
-                        &runner.project_id,
-                        Unplaced::Restarting {
-                            cause: closed.cause,
-                        },
-                    );
-                }
-                supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-                continue;
-            }
-        };
-        if !accepts_new_work(&runner.status) {
-            tracing::info!(
-                "[master] {}: runner is {} — taking no new work; anything already running finishes",
-                runner.slug,
-                runner.status
-            );
-            // A box taking no work still meets the contradiction, and the
-            // louder reason wins the one slot this project has: `draining`
-            // explains an absent pane, never a pane that is up and never a
-            // standing this box could not read. Overwriting either would hide
-            // it AND make every unchanged sweep look like a change, which is
-            // the repetition `note_unplaced` exists to stop.
-            let read = read_standing(ledger.as_ref(), &runner.project_id);
-            let verdict = standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
-            if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
-                masters.note_unplaced(
-                    &runner.project_id,
-                    Unplaced::Draining {
-                        status: runner.status.clone(),
-                    },
-                );
-            }
-            supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-            continue;
-        }
-        supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-        let pool_waits = take_pool_job(client, cfg, shared, adopted, tokens, runner).await;
-
-        // The owner's veto, read off the ledger this sweep already holds and
-        // decided before anything is asked of core. A stand-down governs the
-        // resident master and nothing else, which is why it sits AFTER
-        // `take_pool_job`: the box goes on taking pool jobs for a project whose
-        // master is stood down (ISS-1118).
-        let read = read_standing(ledger.as_ref(), &runner.project_id);
-        let Some((placed, standing)) =
-            standing_verdict(masters, read, &runner.project_id, &runner.slug).await
-        else {
-            continue;
-        };
-        match placed {
-            Placed::Proceed => {}
-            Placed::Withheld => {
-                say_unplaced(
-                    masters,
-                    &runner.project_id,
-                    &runner.slug,
-                    stood_down_reason(standing.as_ref(), &runner.slug, None),
-                );
-                continue;
-            }
-            Placed::Contradicted => continue,
-        }
-        let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-        let lifted_episode = standing.as_ref().and_then(lifted_from);
-
-        let admissible = admissible::admissible(client, Some(&runner.project_id))
-            .await
-            .unwrap_or_default();
-        let inbox = read_inbox(client, masters, &runner.project_id, &runner.slug).await;
-        // A waiting pool job is work: it is taken under this project's master
-        // session, so the master is placed for it (ISS-219).
-        let placement = if pool_waits {
-            Placement::AdoptOrStart
-        } else {
-            placement_for(&admissible, &inbox)
-        };
-        // A job pane taken under this master is its work until it ends: the
-        // master retiring over it closed the job's session in core, which then
-        // killed a release that was still running.
-        let runs_jobs = job_panes.holds_for(&runner.project_id) > 0;
-        if placement == Placement::AdoptOnly && !runs_jobs {
-            if retire_if_idle(
-                client,
-                masters,
-                activity,
-                ledger,
-                tokens,
-                &runner.project_id,
-                &runner.slug,
-            )
-            .await
-            {
-                continue;
-            }
-        } else {
-            masters.note_work(&runner.project_id);
-        }
-
-        let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
-            Ok(r) => r,
-            Err(slug) => {
-                if !admissible.is_empty() || !inbox.is_empty() {
-                    tracing::error!(
-                        "[master] {slug} has claimable work but no repo path on this box — no master will run for it; bind it or set the runner's repo_path"
-                    );
-                }
-                say_unplaced(masters, &runner.project_id, &slug, Unplaced::NoRepoPath);
-                continue;
-            }
-        };
-
-        // A pane an update left on the build it was placed under is judged
-        // before the placement below, so one that may be replaced is ended in
-        // time for this same sweep to place its successor (ISS-1379).
-        let outdated_left = outdated_resident(
-            client,
-            masters,
-            ledger,
-            tokens,
-            activity,
-            &pane_name,
-            &resolved,
-            &runner.project_id,
-            placement,
-        )
-        .await;
-
-        let stored_conversation = ledger
-            .as_ref()
-            .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
-            .and_then(|row| row.conversation_id);
-        // Read by project and boot, not off the session this process last
-        // registered: a pane placed again is given a new master session, and a
-        // run declared under the one it replaced was otherwise listed by
-        // nobody after a restart and answerable by nobody after a resume
-        // (ISS-1312).
-        let inherited: Vec<InheritedRun> = ledger
-            .as_ref()
-            .and_then(|led| {
-                let boot = inheritance_boot(
-                    runner_core::inflight::boot_identity(),
-                    led,
-                    &runner.project_id,
-                    &runner.slug,
-                )?;
-                Some(inherited_runs(led, &runner.project_id, &boot))
-            })
-            .unwrap_or_default();
-        let told = std::sync::atomic::AtomicBool::new(false);
-        let started = std::sync::atomic::AtomicBool::new(false);
-        let authority = AuthoritySink::default();
-        let deaf = DeafSink::default();
-        let hosts = subagent_host::ProcHosts::system();
-        let pane = ensure_master(
-            client,
-            masters,
-            &runner.project_id,
-            &resolved,
-            &Carryover {
-                conversation: stored_conversation.as_deref(),
-                inherited: &inherited,
-                lifted: lifted_episode.as_ref(),
-                stood_down_told: &told,
-                started: &started,
-                hosts: &hosts,
-                slots: cfg.runner.max_job_panes.max(1),
-                inbox: &inbox,
-            },
-            placement,
-            &CapabilityPorts {
-                tokens,
-                authority: &authority,
-                deaf: &deaf,
-            },
-        )
-        .await;
-        // Written before the `Absent` gate below, because a verdict reached and
-        // dropped is the defect this issue was reopened for: the sweep that
-        // learns a pane is refused is the only one that knows it.
-        let heard = match authority.take() {
-            Some(said) => {
-                write_authority(ledger.as_ref(), &runner.project_id, &resolved.slug, &said);
-                said.verdict == MasterAuthority::CURRENT
-            }
-            None => false,
-        };
-        // Gathered here rather than reported here: one project's deaf pane is a
-        // line, and a box whose whole fleet went deaf at once is a condition
-        // nobody reads four quarters of (ISS-1208).
-        if let Some(found) = deaf.take() {
-            deaf_found.push(found);
-        }
-        if let (true, Some((successor, name))) = (
-            pane == PaneState::Adopted && heard,
-            masters.get(&runner.project_id),
-        ) {
-            let pane_pid = terminal::pane_pid(&name).await;
-            if let Some(led) = ledger.as_mut() {
-                carry_and_record(
-                    led,
-                    &runner.project_id,
-                    &name,
-                    &successor,
-                    pane_pid,
-                    &hosts,
-                    &resolved.slug,
-                );
-            }
-        }
-        let placed = started.load(std::sync::atomic::Ordering::Relaxed)
-            && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
-        if placed {
-            if let Some(led) = ledger.as_ref() {
-                note_placement(led, &runner.project_id, &pane_name, &resolved);
-            }
-            if let (Some(led), Some((successor, _))) =
-                (ledger.as_mut(), masters.get(&runner.project_id))
-            {
-                placed_again(
-                    led,
-                    &inherited,
-                    &successor,
-                    pane == PaneState::Resumed,
-                    agent_activity::now_ms(),
-                    &resolved.slug,
-                    &hosts,
-                );
-            }
-        }
-        if pane == PaneState::Absent {
-            continue;
-        }
-        report_pane_dialog(client, masters, activity, &runner.project_id).await;
-        if told.load(std::sync::atomic::Ordering::Relaxed) {
-            let stamped = ledger.as_ref().zip(lifted_episode.as_ref());
-            if let Some((led, lifted)) = stamped {
-                if let Err(e) = led.note_standing_told(&runner.project_id, lifted.episode) {
-                    tracing::warn!(
-                        "[master] {}: cannot mark the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
-                        resolved.slug
-                    );
-                }
-            }
-        }
-        // A stand-down can be written while this sweep is starting a pane. The
-        // owner's act was already on the record when the placement finished, so
-        // this sweep withdraws the pane IT placed rather than leaving one
-        // running until the next pass. A pane it merely adopted is not ended
-        // here: that one is somebody else's and ISS-933 took this daemon out of
-        // the business of killing panes it did not start. The single condition
-        // under which it does end an adopted pane is in the adopt branch of
-        // `ensure_master` — a capability this box can prove it never minted,
-        // which no later sweep can repair.
-        let mut standing_unknown = false;
-        if matches!(pane, PaneState::ColdStarted | PaneState::Resumed) {
-            // An unreadable standing withholds a placement but never withdraws
-            // one: withholding places nothing, and withdrawing ends a pane
-            // nobody may have stood down. The next sweep meets the same
-            // unreadable ledger at the gate above and withholds there. What it
-            // does forfeit is the nudge, below — driving a pane while unable to
-            // say whether the project is stood down is the fail-open this whole
-            // read exists to close, one step later.
-            let since = match read_standing(ledger.as_ref(), &runner.project_id) {
-                StandingRead::Known(s) => s,
-                StandingRead::Unreadable(detail) => {
-                    tracing::error!(
-                        "[master] {}: {pane_name} was just placed and this box cannot read back whether its owner stood the project down ({detail}). It is NOT being withdrawn — ending a pane on an unreadable record would take work nobody decided to end — and it is NOT being nudged either. If it was stood down, `forge-runner master kill {}` — a bare `tmux kill-session` typed in your own shell reaches a different tmux server than the one masters run on.",
-                        runner.slug,
-                        runner.slug
-                    );
-                    standing_unknown = true;
-                    None
-                }
-            };
-            if since.as_ref().is_some_and(MasterStanding::stands) {
-                tracing::error!(
-                    "[master] {}: {pane_name} was stood down while this sweep was starting it — withdrawing the pane this sweep placed. `forge-runner master stand-up {}` puts the project back under this box's authority.",
-                    resolved.slug,
-                    resolved.slug
-                );
-                // A withdrawal that failed leaves the pane up, so the reason
-                // recorded against the project has to be the one that says a
-                // pane is running — not the one that says none was placed.
-                let mut left_running = None;
-                if let Err(e) = terminal::kill(&pane_name).await {
-                    tracing::error!(
-                        "[master] {}: could not withdraw {pane_name}: {e} — it is running against a stand-down and `forge-runner master kill {}` is what ends it, a bare `tmux kill-session` in your own shell reaching a different tmux server than the one masters run on",
-                        resolved.slug,
-                        resolved.slug
-                    );
-                    left_running = Some(pane_name.clone());
-                }
-                if let Some((session_id, _)) = masters.get(&runner.project_id) {
-                    end_master(
-                        client,
-                        masters,
-                        tokens,
-                        &runner.project_id,
-                        &session_id,
-                        "stood down while this sweep was placing it",
-                    )
-                    .await;
-                }
-                say_unplaced(
-                    masters,
-                    &runner.project_id,
-                    &resolved.slug,
-                    stood_down_reason(since.as_ref(), &resolved.slug, left_running.as_deref()),
-                );
-                continue;
-            }
-        }
-        let last_said = account_record(
-            &resolved.repo_path,
-            stored_conversation.as_deref(),
-            now_unix,
-        );
-        if let Some(said) = last_said
-            .as_ref()
-            .filter(|d| master_limit::is_fresh(d, now_unix))
-        {
-            account_said.push(said.clone());
-        }
-        if pane == PaneState::Resumed {
-            let pane_boot = runner_core::inflight::boot_identity().unwrap_or_default();
-            if let (Some(led), Some((session_id, _))) =
-                (ledger.as_mut(), masters.get(&runner.project_id))
-            {
-                match led.owe_resume_choices(&session_id, &pane_boot) {
-                    Ok(0) => {}
-                    Ok(n) => tracing::info!(
-                        "[master] {}: resumed holding {n} run(s) — it must say what happens to each before declaring new work",
-                        resolved.slug
-                    ),
-                    Err(e) => tracing::warn!(
-                        "[master] {}: cannot mark the runs this pane inherited: {e}",
-                        resolved.slug
-                    ),
-                }
-            }
-        }
-
-        let reported = masters
-            .get(&runner.project_id)
-            .and_then(|(session_id, _)| activity.get(&session_id));
-        let held = held_by_limit(
-            last_said.as_ref(),
-            stored_conversation.as_deref(),
-            reported.as_ref(),
-        );
-
-        if !asked_this_sweep(&admissible, &inbox, held.as_ref()) {
-            continue;
-        }
-
-        if pane == PaneState::StaleCapability {
-            continue;
-        }
-
-        if standing_unknown {
-            continue;
-        }
-
-        // An outdated pane left running is not driven: the work it would take
-        // up waits for the successor placed once it holds nothing (ISS-1379).
-        if outdated_left && pane == PaneState::Adopted {
-            continue;
-        }
-
-        let digest = work_digest(&admissible).wrapping_add(master_inbox::inbox_digest(&inbox));
-        let pass = NudgePass {
-            client,
-            shared: *shared,
-            project_id: &runner.project_id,
-            issue_key: master_pass::nudged_issue(&admissible, inbox.is_empty()),
-        };
-        let pass_open = pass_in_flight(
-            ledger.as_ref(),
-            masters,
-            &runner.project_id,
-            reported.as_ref(),
-        );
-        let claimed = masters.claim_nudge(
-            &runner.project_id,
-            digest,
-            reported.as_ref(),
-            held.is_some(),
-            pass_open,
-        );
-        let typed = types_nudge(pane, claimed);
-        if claimed {
-            pass.open(ledger, typed).await;
-        }
-        if typed {
-            let slug = &resolved.slug;
-            nudge_master(masters, &runner.project_id, slug, held.as_ref(), &inbox).await;
-        }
-    }
-
-    report_deaf_fleet(masters, &deaf_found);
-    report_account_limit(client, &served, &account_said, account_limit_said, now_unix).await;
-    report_job_capacity(cfg, job_panes, activity);
-
+/// What every sweep owes the runs on this box once its masters are seen to:
+/// open and close their records at core, say their choices and held
+/// checkouts, and give back the ones no master holds.
+async fn settle_runs(
+    client: &CoreClient,
+    shared: &SweepShared<'_>,
+    cfg: &Config,
+    served: &[runners::MeRunner],
+    ledger: &mut Option<Ledger>,
+) {
     let boot = runner_core::inflight::boot_identity().unwrap_or_default();
     let sessions = run_record::CoreSessions(client);
     // The condition the gate is in as this run is told to core, stamped on the
@@ -658,12 +278,13 @@ pub(crate) async fn sweep(
     if opened > 0 || closed > 0 {
         tracing::info!("[run-record] {opened} run(s) opened at core, {closed} closed");
     }
-
     give_back_lost_runs(
         boot.as_str(),
-        &PaneMasters { masters },
+        &PaneMasters {
+            masters: shared.masters,
+        },
         &Reclaim {
-            served: &served,
+            served,
             cfg,
             procs: &SignalProbe,
             killer: &terminate::SystemProcesses,
@@ -673,12 +294,13 @@ pub(crate) async fn sweep(
         &CoreRunState { client },
         recovery::RunWatch {
             beat: &CoreBeat { client },
-            idle: &PaneActivity { activity },
+            idle: &PaneActivity {
+                activity: shared.activity,
+            },
         },
         ledger,
     )
     .await;
-    delay
 }
 
 /// What a master's pane is stopped on that only a person answers, from the
@@ -703,7 +325,7 @@ pub(crate) fn dialog_of(
 /// Tell core what this project's master pane is stopped on, once per change:
 /// a pane frozen at a dialog reads `waiting_person` on `masters/standing` and on
 /// the runs it hosts, instead of reaching only this box's log.
-async fn report_pane_dialog(
+pub(crate) async fn report_pane_dialog(
     client: &CoreClient,
     masters: &Arc<Masters>,
     activity: &agent_activity::Activities,

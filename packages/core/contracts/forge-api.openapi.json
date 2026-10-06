@@ -5830,6 +5830,481 @@
         ]
       }
     },
+    "/api/devices/me/master-session/verdict": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "facts": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "capability": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "current",
+                              "stale",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "conversation": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "elsewhere": {
+                            "enum": [
+                              "none",
+                              "running",
+                              "unreadable"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transcript": {
+                            "enum": [
+                              "present",
+                              "absent",
+                              "unlocatable"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transcript",
+                          "elsewhere"
+                        ],
+                        "type": "object"
+                      },
+                      "holding": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "nothing",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "these",
+                                "type": "string"
+                              },
+                              "over": {
+                                "items": {
+                                  "maxLength": 1000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              },
+                              "working": {
+                                "items": {
+                                  "maxLength": 1000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "working",
+                              "over"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "unknown",
+                                "type": "string"
+                              },
+                              "why": {
+                                "maxLength": 1000,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "why"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "idle": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "children": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "lastClosedAgoSeconds": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 315360000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "total": {
+                                "maximum": 100000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "unfinished": {
+                                "items": {
+                                  "maxLength": 1000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "total",
+                              "unfinished",
+                              "lastClosedAgoSeconds"
+                            ],
+                            "type": "object"
+                          },
+                          "noWorkForSeconds": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pane": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "doing": {
+                                    "enum": [
+                                      "idle",
+                                      "working",
+                                      "awaiting_permission",
+                                      "awaiting_children"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "lastEvent": {
+                                    "maxLength": 64,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "lastEventAgoSeconds": {
+                                    "maximum": 315360000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "doing",
+                                  "lastEvent",
+                                  "lastEventAgoSeconds"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "noWorkForSeconds",
+                          "pane",
+                          "children"
+                        ],
+                        "type": "object"
+                      },
+                      "limitHeld": {
+                        "type": "boolean"
+                      },
+                      "nudge": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "last": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agoSeconds": {
+                                    "maximum": 315360000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "digest": {
+                                    "maxLength": 64,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "digest",
+                                  "agoSeconds"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "since": {
+                            "enum": [
+                              "unreported",
+                              "no_turn",
+                              "working",
+                              "awaiting_permission",
+                              "failed",
+                              "ran"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "digest",
+                          "last",
+                          "since"
+                        ],
+                        "type": "object"
+                      },
+                      "outdated": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "pane": {
+                        "enum": [
+                          "absent",
+                          "alive"
+                        ],
+                        "type": "string"
+                      },
+                      "restarting": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "serversReadable": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "standing": {
+                        "enum": [
+                          "proceed",
+                          "stood_down",
+                          "unreadable"
+                        ],
+                        "type": "string"
+                      },
+                      "terminal": {
+                        "type": "boolean"
+                      },
+                      "turn": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "ended",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "in_turn",
+                                "type": "string"
+                              },
+                              "what": {
+                                "maxLength": 1000,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "what"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "work": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "admissible": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "jobPanes": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "owed": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "poolWaits": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "admissible",
+                          "owed",
+                          "poolWaits",
+                          "jobPanes"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "restarting",
+                      "terminal",
+                      "standing",
+                      "pane",
+                      "capability",
+                      "serversReadable",
+                      "work",
+                      "conversation",
+                      "outdated",
+                      "holding",
+                      "turn",
+                      "idle",
+                      "limitHeld",
+                      "nudge"
+                    ],
+                    "type": "object"
+                  },
+                  "projectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "runnerId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "runnerId",
+                  "facts"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/devices/me/mcp-servers": {
       "get": {
         "parameters": [

@@ -16,6 +16,7 @@
 //!   requirements owe a breakdown, and which returned revisions owe a revise
 //! - `feedback_inbox` — GET `/me/feedback/owed`: which feedback items owe the master a triage
 //! - `design_inbox` — GET `/me/designs/owed`: which returned designs owe the master a revision
+//! - `master_verdict` — POST `/me/master-session/verdict`: core's verdict on a project's master
 pub mod admissible;
 pub mod agent_sessions;
 pub mod api;
@@ -30,6 +31,7 @@ pub mod heartbeat;
 pub mod inbox;
 pub mod lifecycle;
 pub mod master;
+pub mod master_verdict;
 pub mod mcp_servers;
 pub mod plugins;
 pub mod pool;
