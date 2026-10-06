@@ -123,7 +123,12 @@ function CommentItem({
         <Avatar initials={initials(author)} size={26} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="fg-label text-fg">{author}</span>
+            <span
+              className="fg-label text-fg"
+              title={isAgent && ownerEmail ? `An agent on ${author}, a box paired by ${ownerEmail}` : undefined}
+            >
+              {author}
+            </span>
             {isAgent && (
               <Badge tone="accent">
                 <span className="inline-flex items-center gap-1">
@@ -137,9 +142,6 @@ function CommentItem({
               {formatRelativeTime(node.createdAt)}
             </span>
           </div>
-          {isAgent && ownerEmail && (
-            <div className="fg-caption">via {ownerEmail}</div>
-          )}
           <div className="mt-1">
             <BodyView
               body={node.body}

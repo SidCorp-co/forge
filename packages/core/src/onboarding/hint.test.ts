@@ -150,3 +150,42 @@ describe('project-onboarding unanswered: one line, never a blocker', () => {
     expect(h?.action).toBe('continue');
   });
 });
+
+// F5: the banner's sentence reads as English for a master's wait and for a full machine
+describe('project-onboarding banner: the run read model wait as a sentence', () => {
+  const queued = {
+    run: { status: 'running', startedAt: T0, updatedAt: T0, pauseReason: null },
+    issue: null,
+    session: null,
+    job: { id: 'j1', status: 'queued', heldBy: null, hold: null, retryAfterAt: null, queuedAt: T0 },
+    ledger: null,
+    question: null,
+    approval: null,
+    master: null,
+    deployLocks: [],
+    lockRefusals: [],
+    releaseAttempt: null,
+  } as unknown as RunFacts;
+  const textFor = (slots: { inUse: number; max: number } | null) => {
+    const ctx = {
+      now: T0,
+      viewer: null,
+      slots,
+      queuedGates: new Map(),
+    } as unknown as StandingContext;
+    const d = liveOf(queued, ctx);
+    return hintOf(view({ job: job({ waitingOn: d.waitingOn }) }), 'none')?.text;
+  };
+
+  it('waits on the master to dispatch it', () => {
+    expect(textFor({ inUse: 0, max: 2 })).toBe(
+      'Waits on Master to dispatch it; the project works meanwhile.',
+    );
+  });
+
+  it('names a full machine as a state, not as an act', () => {
+    expect(textFor({ inUse: 2, max: 2 })).toBe(
+      'Waiting on Machine: no free slot (2 of 2 in use); the project works meanwhile.',
+    );
+  });
+});

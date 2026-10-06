@@ -30,7 +30,7 @@ import { holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { designHoldPhrase } from './design-delivery.js';
-import { issueWorkMovingSql } from './issue-lease.js';
+import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -94,6 +94,7 @@ interface IssueRowRaw {
   ws_updated_at: string | null;
   last_activity: string | null;
   moving: boolean;
+  run_live: boolean;
   owes_answer: boolean;
   holds_dependents: boolean;
   park_entry: { reason: string | null; agency: string; actorType: string } | null;
@@ -141,7 +142,8 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,
                issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
-             })} AS moving
+             })} AS moving,
+             ${issueRunLiveSql({ projectId: sql`i.project_id`, issueKey: sql`'ISS-' || i.iss_seq` })} AS run_live
         FROM issues i
         LEFT JOIN issue_work_state w ON w.issue_id = i.id
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL ${where}
@@ -252,6 +254,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
     lease: leaseOf(r.lease, f.now),
     inFlight: r.moving,
+    runLive: r.run_live,
     owesAnswer: r.owes_answer,
     park: r.park_entry
       ? {

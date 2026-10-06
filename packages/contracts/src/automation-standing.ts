@@ -136,8 +136,8 @@ export const REPORT_GROUP_LABELS: StandingGroupLabels<ReportGroup> = {
 		collapsed: false,
 	},
 	waiting: {
-		label: "Waiting on someone else",
-		hint: "New, owed by its schedule owner",
+		label: "Waiting for triage",
+		hint: "New: a fire's report owed by its schedule owner, or an issue run's report on the harness it worked under",
 		tone: "blocked",
 		collapsed: false,
 	},

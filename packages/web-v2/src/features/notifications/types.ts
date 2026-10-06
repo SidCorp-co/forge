@@ -25,6 +25,7 @@ export interface NotificationRow {
   agentSessionId: string | null;
   createdAt: string;
   subject: NotificationSubject | null;
+  project: { slug: string; name: string } | null;
   line: string;
 }
 

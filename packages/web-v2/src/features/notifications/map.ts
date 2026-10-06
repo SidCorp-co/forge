@@ -57,6 +57,7 @@ export function toNotificationItem(
   return {
     id: row.id,
     ...(row.subject ? { subjectKey: row.subject.key } : {}),
+    ...(row.project && row.subject?.kind !== "project" ? { project: row.project.name } : {}),
     type: row.type,
     resolved: row.resolvedNotice || resolved,
     text: row.line,

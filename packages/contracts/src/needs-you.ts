@@ -108,7 +108,7 @@ export const PULSE_ACTION_LABELS: Record<
 	releaseWaiting: {
 		label: "Waiting to be released",
 		owner: "person",
-		hint: "Merged and waiting on a release nobody has run.",
+		hint: "Merged and waiting on a release: on Releases, Cut the version, then Approve release where the project asks for approval.",
 	},
 	notOnLive: {
 		label: "Closed, not on production",

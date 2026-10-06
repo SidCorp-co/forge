@@ -21,24 +21,14 @@ import {
   type RequirementWaitingKind,
 } from '@forge/contracts/requirements';
 import type { WaitingOn } from '@forge/contracts/standing';
-import type { RequirementStatus, RevisionState } from '../db/schema-requirements.js';
+import type { RequirementStatus } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
 import { liveAt } from './rules.js';
+import { draftTurn, type StandingRevision } from './standing-draft.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
 const DAY_MS = 86_400_000;
-
-interface StandingRevision {
-  revision: number;
-  state: RevisionState;
-  authorId: string;
-  authorName: string | null;
-  authorKind: 'human' | 'agent';
-  createdAt: Date;
-  proposedAt: Date | null;
-  decidedAt: Date | null;
-}
 
 interface StandingCriterion {
   id: string;
@@ -216,20 +206,7 @@ function turnOf(
     );
   }
   const draft = input.revisions.find((r) => r.state === 'draft');
-  if (draft) {
-    const rule = 'an open draft revision waits on its author to propose it';
-    if (viewer && draft.authorId === viewer.userId) {
-      return {
-        group: 'needs_you',
-        waitingOn: wait('you', 'You', `propose r${draft.revision}`, rule),
-      };
-    }
-    const kind = draft.authorKind === 'agent' ? 'agent' : 'person';
-    return {
-      group: 'waiting',
-      waitingOn: wait(kind, draft.authorName ?? 'Its author', 'finish draft', rule),
-    };
-  }
+  if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {
     const head = input.currentRevision;
     return signerWait(

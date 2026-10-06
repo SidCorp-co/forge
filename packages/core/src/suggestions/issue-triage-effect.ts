@@ -12,7 +12,9 @@ import { type Row, type SuggestionActor, targetOfRow } from './read.js';
 // A revision an accepted suggestion carries was written by its producer, not by the person
 // who accepted it; the accept is recorded on the suggestion row (decided_by)
 export const authorOf = (row: Row, actor: SuggestionActor): SuggestionActor =>
-  row.producerId ? { userId: row.producerId, agency: actor.agency } : actor;
+  row.producerId
+    ? { userId: row.producerId, agency: row.producerKind === 'person' ? 'human' : 'agent' }
+    : actor;
 
 async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
   const [issue] = await tx

@@ -241,11 +241,17 @@ function triageWaitOf(
     'writers',
     viewer,
     'triage_report',
-    fire
-      ? 'its schedule has no owner, so any member with write access triages it'
-      : 'no fire filed it, so any member with write access triages it',
+    'its schedule has no owner, so any member with write access triages it',
   );
 }
+
+const harnessTriage = (): AutomationWaitingOn =>
+  owed(
+    'writers',
+    'Harness triage',
+    'triage_report',
+    'no fire filed it: an issue run reported the harness it worked under, which is triaged on Automation, Reports and is not a project member’s to-do',
+  );
 
 /** The steward actions a fire's session proposed or applied; feedback and skipped are not proposals. */
 function proposalsOf(actions: readonly StewardAction[] | null): StewardAction[] {
@@ -349,7 +355,7 @@ export function fireStandingOf(
 
 function reportWaitOf(r: ReportFacts, viewer: AutomationViewer): AutomationWaitingOn {
   const v = r.view;
-  if (v.triage === 'new') return triageWaitOf(r.fire, viewer);
+  if (v.triage === 'new') return r.fire ? triageWaitOf(r.fire, viewer) : harnessTriage();
   if (v.triage === 'filed' && v.feedback) {
     return {
       kind: 'feedback',

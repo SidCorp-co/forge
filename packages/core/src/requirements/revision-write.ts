@@ -127,7 +127,7 @@ export async function createRequirementIn(
     write: RevisionWrite;
     ownerId?: string | null;
     /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
-    authorId?: string | undefined;
+    author?: RequirementActor | undefined;
     /** The designs it is drawn with from the start; the next agree pins their approved revisions. */
     designs?: readonly string[] | undefined;
   },
@@ -156,7 +156,8 @@ export async function createRequirementIn(
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
-    authorId: input.authorId ?? actor.userId,
+    authorId: (input.author ?? actor).userId,
+    authorAgency: (input.author ?? actor).agency,
     fromSuggestionId: write.fromSuggestionId ?? null,
   });
   if (input.designs?.length) {
@@ -180,7 +181,7 @@ export function newRevisionRow(input: {
   requirementId: string;
   revision: number;
   head: number | null;
-  authorId: string;
+  author: RequirementActor;
   write: RevisionWrite;
   landing: RevisionLanding;
   at: Date;
@@ -190,7 +191,8 @@ export function newRevisionRow(input: {
     requirementId: input.requirementId,
     revision: input.revision,
     baseRevision: input.head,
-    authorId: input.authorId,
+    authorId: input.author.userId,
+    authorAgency: input.author.agency,
     spec: specOf(write.spec),
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
@@ -234,7 +236,7 @@ export async function newRevisionIn(
       requirementId,
       revision: next,
       head: input.head,
-      authorId: input.actor.userId,
+      author: input.actor,
       write,
       landing: input.landing,
       at: new Date(),

@@ -138,7 +138,7 @@ export async function reconcileIdleIssues(
     const rewrite = release || !unchangedStrand(row.strand, judged.record);
     const stands = rewrite ? await writeStrand({ row, record: judged.record, release, now }) : true;
     if (stands && release) result.leasesReleased += 1;
-    if (stands) result.reported += await surface({ row, record: judged.record, admins, now });
+    if (stands) result.reported += await surface({ row, record: judged.record, admins });
   }
 
   result.cleared = await clearRecovered(now, scope);

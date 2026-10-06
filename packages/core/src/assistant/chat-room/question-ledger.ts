@@ -16,6 +16,7 @@ import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { sqlTimestamp } from '../../db/sql-timestamp.js';
 import { type KernelActor, transition } from '../../lifecycle/index.js';
 import { emitNotification, resolveNotifications } from '../../notifications/index.js';
+import { NO_ROOM_REASON } from './question-destination.js';
 
 const DELIVERY_ACTOR: KernelActor = { type: 'system' };
 const DELIVERY_SOURCE = 'chat-room.question-delivery';
@@ -181,6 +182,19 @@ export async function settle(
 
 const undeliverableKey = (questionId: string) => `rocketchat-question-undeliverable:${questionId}`;
 
+/** What the bell says about a question chat cannot carry: why in the line, the fix in the body. */
+export function undeliverableNotice(projectName: string, reason: string) {
+  const fix =
+    reason === NO_ROOM_REASON
+      ? 'To have questions posted to chat too, bind a Rocket.Chat room to the project under Integrations; the next sweep posts every waiting one.'
+      : 'Once that is put right, the next sweep posts it to chat.';
+  return {
+    title: `${projectName}: a question is not posted to chat — ${reason}`,
+    groupTitle: `${projectName}: questions are not posted to chat — ${reason}`,
+    body: `The question is waiting on its issue page, where Answer it records the answer now and wakes whoever asked. ${fix} Nothing was posted anywhere, and nobody has to ask again.`,
+  };
+}
+
 export async function reportUndeliverable(
   owed: OwedRound,
   already: boolean,
@@ -200,8 +214,8 @@ export async function reportUndeliverable(
     issueId: owed.issueId,
     type: 'ops_alert',
     severity: 'warning',
-    title: `${row.name} has a question waiting that cannot be delivered`,
-    body: `A question is waiting on a person and ${row.slug} has nowhere to put it: ${reason}. Nothing was posted anywhere. Put that right and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
+    ...undeliverableNotice(row.name, reason),
+    groupKey: `question-undeliverable:${owed.projectId}:${reason}`,
     resolutionKey: undeliverableKey(owed.questionId),
   });
 }

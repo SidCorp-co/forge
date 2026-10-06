@@ -38,15 +38,12 @@ export interface StrandedIssuesResult {
 }
 
 /**
- * ISS-1063 — the grouping key: one evaluation of one detector.
- *
- * Alertmanager's `group_by`. Every strand this sweep tick finds shares it, so a reader is
- * told once about the sweep rather than once per issue it named. The tick is truncated to
- * the evaluation interval so the passes inside one `runPipelineSweep` agree on it without
- * having to pass a value between them.
+ * The grouping key: one detector in one project, Alertmanager's `group_by` on both labels. Every
+ * strand of that kind in that project joins the reader's one open bell row, whichever sweep found
+ * it, so a project's strands read as one notice that counts them, never one notice per tick (F10).
  */
-export function sweepGroupKey(detector: string, now: Date): string {
-  return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
+export function sweepGroupKey(detector: string, projectId: string): string {
+  return `sweep:${detector}:${projectId}`;
 }
 
 /**
@@ -124,7 +121,7 @@ async function surfacePage<R extends SweptRow>(args: {
     const sent = await surfaceOnce({
       now,
       admins,
-      groupKey: sweepGroupKey(args.detector, now),
+      groupKey: sweepGroupKey(args.detector, row.projectId),
       groupTitle: args.groupTitle,
       projectId: row.projectId,
       issueId: row.id,

@@ -2731,6 +2731,13 @@
       "when": 1819324800000,
       "tag": "0421_a_box_names_the_pane_binaries_it_cannot_resolve",
       "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1819584000000,
+      "tag": "0424_a_revision_names_who_wrote_it_and_a_projects_strands_share_one_bell_row",
+      "breakpoints": true
     }
   ]
 }

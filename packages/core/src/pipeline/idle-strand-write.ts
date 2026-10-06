@@ -75,9 +75,8 @@ export async function surface(args: {
   row: CandidateRow;
   record: StrandRecord;
   admins: ReadonlyMap<string, string[]>;
-  now: Date;
 }): Promise<number> {
-  const { row, record, admins, now } = args;
+  const { row, record, admins } = args;
   const recipients = admins.get(row.project_id) ?? [];
   if (recipients.length === 0) return 0;
   const ref = formatIssueRef(row.issue_prefix, row.iss_seq);
@@ -97,7 +96,7 @@ export async function surface(args: {
     issueId: row.id,
     type: 'issue_stranded',
     resolutionKey: strandResolutionKey(row.id),
-    groupKey: sweepGroupKey('idle-issues', now),
+    groupKey: sweepGroupKey('idle-issues', row.project_id),
     groupTitle: 'Issues in a live status with no live work behind them',
     title: headline,
     body:
