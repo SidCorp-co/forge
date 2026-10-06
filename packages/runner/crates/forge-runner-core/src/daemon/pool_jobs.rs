@@ -1128,8 +1128,12 @@ impl Panes for TmuxPanes {
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
+        let path = crate::daemon::pane_path::for_pane()
+            .map_err(|u| Error::Other(format!("{name} was not placed: {u}")))?;
+        let mut env = env.to_vec();
+        env.push(path);
         let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, servers)?;
-        terminal::ensure(name, cwd, &argv, env, None).await?;
+        terminal::ensure(name, cwd, &argv, &env, None).await?;
         terminal::brief_new_pane(name, prompt).await
     }
 
@@ -3985,5 +3989,122 @@ mod own_exe_reporting_tests {
             !hook_install::settings_path(&cwd).exists(),
             "commands that die at every call were written anyway"
         );
+    }
+
+    /// ISS-1390 criteria 1 and 8: a job pane is started with the built PATH,
+    /// and one that cannot be is refused naming what is missing.
+    #[tokio::test]
+    async fn a_job_pane_whose_path_cannot_supply_a_binary_is_refused_by_name() {
+        if !terminal::available() {
+            return;
+        }
+        let _req = crate::daemon::pane_path::testing::Requiring::installed(&[
+            "forge-runner-iss1390-absent",
+        ]);
+        let cwd = crate::test_scratch::Scratch::new("job-path");
+        let err = TmuxPanes
+            .open(
+                "forge-job-iss1390",
+                cwd.path(),
+                "prompt",
+                &[],
+                &serde_json::Map::new(),
+            )
+            .await
+            .expect_err("a pane whose PATH lacks a binary is not placed");
+        let said = err.to_string();
+        assert!(
+            said.contains("forge-job-iss1390 was not placed")
+                && said.contains("`forge-runner-iss1390-absent` resolves in none"),
+            "{said}"
+        );
+    }
+
+    /// ISS-1390 criterion 1, at the pane: a job pane runs with the PATH this
+    /// box builds, the resolved `claude`'s directory and `$HOME/.local/bin`
+    /// ahead of the daemon's own, and not the one its daemon inherited.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_job_pane_runs_with_the_path_this_box_builds() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("jobpath");
+        if !terminal::available() {
+            terminal::testing::cannot_run("tmux is not installed here");
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run(
+                "this box does not resolve its tmux socket from the config dir",
+            );
+            return;
+        }
+        let home = crate::test_scratch::Scratch::new("jobpath-home");
+        let _home = ScopedVar::set("HOME", home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("jobpath-stub");
+        let stub = stub_dir.join("claude");
+        let seen = stub_dir.join("path.seen");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nprintf '%s' \"$PATH\" > '{0}.part' && mv '{0}.part' '{0}'\nsleep 30\n",
+                seen.display()
+            ),
+        )
+        .expect("the stub");
+        terminal::testing::executable(&stub);
+        assert!(
+            (0..50).any(|_| {
+                let ok = std::process::Command::new(&stub)
+                    .arg("--probe")
+                    .status()
+                    .is_ok_and(|s| s.success());
+                if !ok {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                ok
+            }),
+            "the stub never ran"
+        );
+        let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
+        let cwd = crate::test_scratch::Scratch::new("jobpath-cwd");
+        let _ = TmuxPanes
+            .open(
+                "forge-job-jobpath",
+                cwd.path(),
+                "prompt",
+                &[],
+                &serde_json::Map::new(),
+            )
+            .await;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let path = loop {
+            if let Ok(text) = std::fs::read_to_string(&seen) {
+                break text;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the job pane's agent never started"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
+        let _ = terminal::kill("forge-job-jobpath").await;
+        let dirs: Vec<std::path::PathBuf> = std::env::split_paths(&path).collect();
+        let claude_dir = stub_dir.path().to_path_buf();
+        let local_bin = home.join(".local").join("bin");
+        let at = |d: &std::path::Path| dirs.iter().position(|x| x == d);
+        assert!(
+            at(&claude_dir).is_some() && at(&local_bin).is_some(),
+            "the pane's PATH carries the claude directory and $HOME/.local/bin: {path}"
+        );
+        let inherited_first = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .find(|d| d != &claude_dir && d != &local_bin);
+        if let Some(first) = inherited_first {
+            assert!(
+                at(&local_bin) < at(&first),
+                "and both ahead of the daemon's own PATH: {path}"
+            );
+        }
     }
 }

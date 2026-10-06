@@ -32,6 +32,25 @@ pub const NAMED_AFTER: u32 = 3;
 /// resume it here.`
 const BACKGROUND_SESSION: &str = "is running as a background session";
 
+/// The two wordings of Claude Code's folder-trust question: the one captured
+/// in `assets/composer-trust-dialog.txt`, and the one earlier builds printed.
+const TRUST_QUESTIONS: [&str; 2] = [
+    "Is this a project you created or one you trust?",
+    "Do you trust the files in this folder?",
+];
+
+/// An option only the trust dialog offers, which has to follow its question.
+const TRUST_OPTIONS: [&str; 2] = ["trust this folder", "Yes, proceed"];
+
+/// The dialog's footer: a pane stopped on the dialog prints nothing after it.
+const TRUST_FOOTERS: [&str; 2] = ["Esc to cancel", "Esc to exit"];
+
+/// What the dialog prints before the folder it is asking about.
+const TRUST_WORKSPACE: &str = "Accessing workspace:";
+
+/// The key Claude Code keeps the answer in.
+const TRUST_KEY: &str = "hasTrustDialogAccepted";
+
 /// How much of a pane's output is read for why it exited: the sentence is
 /// printed last, and a pane that ran for hours printed a great deal first.
 const EXIT_TAIL: u64 = 64 * 1024;
@@ -52,8 +71,21 @@ pub enum Exit {
         conversation: String,
         short: Option<String>,
     },
-    /// The last words the pane printed after it was placed.
+    /// The pane stopped on Claude Code's folder-trust dialog (ISS-1382):
+    /// `workspace` is the folder the dialog named, and `config` the
+    /// `.claude.json` this box resolves, where the answer is kept.
+    Untrusted {
+        workspace: Option<String>,
+        config: Option<String>,
+    },
+    /// The last words a pane printed when it exited within the early window,
+    /// where what killed it is usually the last thing it said.
     Printed { last: String },
+    /// A pane that ran past the early window and printed no reason this box
+    /// recognises. `screen` is the session's own last output, kept for a
+    /// reader and never offered as the reason: a long-lived pane's last words
+    /// are its own prose, or a brief this box typed at it (ISS-1343 judging).
+    NoReason { screen: String },
     /// The pane printed nothing after it was placed.
     Silent,
     /// What the pane printed cannot be read here, and why.
@@ -94,7 +126,17 @@ impl std::fmt::Display for Exit {
                     None => Ok(()),
                 }
             }
+            Self::Untrusted { workspace, config } => write!(
+                f,
+                "it stopped on Claude Code's folder-trust dialog for {}, which is answered by `projects[\"<that folder>\"].{TRUST_KEY}: true` in {}. This box writes that key before every master placement, so a pane that still meets the dialog names a write that did not land: `forge-runner doctor` reads it for every bound checkout",
+                workspace.as_deref().unwrap_or("a folder the dialog did not name"),
+                config.as_deref().unwrap_or("a `.claude.json` this box could not resolve")
+            ),
             Self::Printed { last } => write!(f, "it exited having printed last: \"{last}\""),
+            Self::NoReason { screen } => write!(
+                f,
+                "it ran past the early window and printed no reason this box recognises for its exit; its screen last showed, as the session's own output and not as a reason: \"{screen}\""
+            ),
             Self::Silent => write!(f, "it exited having printed nothing since it was placed"),
             Self::Unread { why } => write!(f, "why it exited is not known here: {why}"),
         }
@@ -164,8 +206,43 @@ fn elsewhere_in(text: &str) -> Option<(String, Option<String>)> {
     Some((id.to_string(), short))
 }
 
+/// Whether `text` ends on the trust dialog: its question, one of its options
+/// after the last question, and its footer as the final words. Output that
+/// goes on past the footer is a session that met the dialog and carried on, so
+/// it is not this exit.
+fn ends_on_trust_dialog(text: &str) -> bool {
+    let Some(at) = TRUST_QUESTIONS.iter().filter_map(|q| text.rfind(q)).max() else {
+        return false;
+    };
+    TRUST_OPTIONS.iter().any(|o| text[at..].contains(o))
+        && TRUST_FOOTERS.iter().any(|f| text.trim_end().ends_with(f))
+}
+
+/// The folder the last trust dialog in `raw` names: the first line holding a
+/// path after the line that opens the dialog, which is `Accessing workspace:`
+/// where it prints one and the question otherwise. Read line by line, before
+/// the output is flattened to words, so a folder with a space in its name is
+/// kept whole.
+fn trust_workspace(raw: &str) -> Option<String> {
+    let lines: Vec<String> = raw.lines().map(screen_words).collect();
+    let question = lines
+        .iter()
+        .rposition(|l| TRUST_QUESTIONS.iter().any(|q| l.contains(q)))?;
+    let opens = lines[..question]
+        .iter()
+        .rposition(|l| l.contains(TRUST_WORKSPACE))
+        .unwrap_or(question);
+    lines[opens + 1..].iter().find_map(|l| {
+        let named = l.trim();
+        let windows = named.len() > 2 && named.as_bytes()[1] == b':';
+        (named.starts_with('/') || named.starts_with('~') || windows).then(|| named.to_string())
+    })
+}
+
 /// Why the pane whose output is at `path`, written from byte `from` on, exited.
-pub fn classify(path: &Path, from: u64) -> Exit {
+/// `early` is whether it was read gone within [`EARLY_EXIT`] of its placement:
+/// only then are its last words offered as the reason.
+pub fn classify(path: &Path, from: u64, early: bool) -> Exit {
     let unread = |e: std::io::Error| Exit::Unread {
         why: format!("its output at {} could not be read: {e}", path.display()),
     };
@@ -200,6 +277,12 @@ pub fn classify(path: &Path, from: u64) -> Exit {
             short,
         };
     }
+    if ends_on_trust_dialog(&text) {
+        return Exit::Untrusted {
+            workspace: trust_workspace(&String::from_utf8_lossy(&raw)),
+            config: crate::workspace::trust::config_path().map(|p| p.display().to_string()),
+        };
+    }
     if text.is_empty() {
         return Exit::Silent;
     }
@@ -210,14 +293,47 @@ pub fn classify(path: &Path, from: u64) -> Exit {
     } else {
         text
     };
-    Exit::Printed { last }
+    if early {
+        Exit::Printed { last }
+    } else {
+        Exit::NoReason { screen: last }
+    }
+}
+
+/// What two exits have to share to be one reason. Last words are compared with
+/// every volatile token masked — a word carrying a digit, other than a number
+/// of three digits or fewer — so a request id, a uuid, a pid or a duration
+/// that differs per run does not make each exit a reason of its own
+/// (ISS-1343 judging: `API Error: 529 overloaded (request req_<id>)` warned on
+/// every placement). A tail cut to [`LAST_WORDS`] starts mid-word, and where
+/// it is cut moves with those tokens' lengths, so its first word is dropped.
+pub fn reason_key(exit: &Exit) -> String {
+    let Exit::Printed { last } = exit else {
+        return format!("{exit:?}");
+    };
+    let mut words = last.split_whitespace();
+    if last.starts_with('…') {
+        words.next();
+    }
+    let masked: Vec<&str> = words
+        .map(|w| {
+            let core = w.trim_matches(|c: char| !c.is_alphanumeric());
+            let plain = core.len() <= 3 && core.chars().all(|c| c.is_ascii_digit());
+            if core.chars().any(|c| c.is_ascii_digit()) && !plain {
+                "#"
+            } else {
+                w
+            }
+        })
+        .collect();
+    format!("printed:{}", masked.join(" "))
 }
 
 /// Consecutive early exits of one project's pane for one reason.
 #[derive(Debug, Clone, Default)]
 pub struct Tally {
     in_a_row: u32,
-    last: Option<Exit>,
+    last: Option<String>,
 }
 
 /// Where one exit stands in its project's run of early exits.
@@ -247,7 +363,8 @@ impl Tally {
             *self = Self::default();
             return Counted { in_a_row: 0, ended };
         }
-        if self.last.as_ref() == Some(exit) {
+        let key = reason_key(exit);
+        if self.last.as_ref() == Some(&key) {
             self.in_a_row += 1;
             return Counted {
                 in_a_row: self.in_a_row,
@@ -256,7 +373,7 @@ impl Tally {
         }
         let ended = self.named();
         self.in_a_row = 1;
-        self.last = Some(exit.clone());
+        self.last = Some(key);
         Counted { in_a_row: 1, ended }
     }
 
@@ -497,9 +614,9 @@ mod tests {
         let path = dir.join("transcript.log");
         std::fs::write(&path, SID_DESK_EXIT).unwrap();
         let from = std::fs::metadata(&path).unwrap().len();
-        assert_eq!(classify(&path, 0), elsewhere());
+        assert_eq!(classify(&path, 0, true), elsewhere());
         assert_eq!(
-            classify(&path, from),
+            classify(&path, from, true),
             Exit::Silent,
             "an earlier pane's sentence is not why this one exited"
         );
@@ -508,7 +625,10 @@ mod tests {
             .open(&path)
             .unwrap();
         std::io::Write::write_all(&mut later, b"\x1b[2J\x1b[Hbye\r\n").unwrap();
-        assert_eq!(classify(&path, from), Exit::Printed { last: "bye".into() });
+        assert_eq!(
+            classify(&path, from, true),
+            Exit::Printed { last: "bye".into() }
+        );
     }
 
     #[test]
@@ -529,17 +649,17 @@ mod tests {
         let dir = crate::test_scratch::Scratch::new("pane-exit-long");
         let path = dir.join("transcript.log");
         assert!(
-            matches!(classify(&path, 0), Exit::Unread { why } if why.contains("could not be read")),
+            matches!(classify(&path, 0, true), Exit::Unread { why } if why.contains("could not be read")),
             "a missing file is unread, never silent"
         );
         std::fs::write(&path, "short").unwrap();
         assert!(
-            matches!(classify(&path, 100), Exit::Unread { why } if why.contains("shorter")),
+            matches!(classify(&path, 100, true), Exit::Unread { why } if why.contains("shorter")),
             "a file cut below the placement mark is unread, never silent"
         );
         let words: String = (0..400).map(|n| format!("w{n} ")).collect();
         std::fs::write(&path, &words).unwrap();
-        match classify(&path, 0) {
+        match classify(&path, 0, true) {
             Exit::Printed { last } => {
                 assert!(last.starts_with('…'), "{last}");
                 assert!(last.ends_with("w399"), "the LAST words are kept: {last}");
@@ -740,6 +860,177 @@ mod tests {
                 said(how)
             );
         }
+    }
+
+    /// The folder-trust dialog as a pane on this box printed it, captured for
+    /// the composer (ISS-1266).
+    const TRUST_DIALOG: &str = include_str!("../../assets/composer-trust-dialog.txt");
+
+    fn classified(output: &str, early: bool) -> Exit {
+        let dir = crate::test_scratch::Scratch::new("pane-exit-trust");
+        let path = dir.join("transcript.log");
+        std::fs::write(&path, output).unwrap();
+        classify(&path, 0, early)
+    }
+
+    /// ISS-1382 criteria 7, 9 and 10.
+    #[test]
+    fn a_pane_that_ends_on_the_trust_dialog_is_named_as_that() {
+        match classified(TRUST_DIALOG, true) {
+            Exit::Untrusted { workspace, config } => {
+                assert_eq!(
+                    workspace.as_deref(),
+                    Some("/home/dev/.cache/forge-tmp/iss-1266/iso/work")
+                );
+                let said = Exit::Untrusted {
+                    workspace: workspace.clone(),
+                    config: config.clone(),
+                }
+                .to_string();
+                assert!(said.contains("hasTrustDialogAccepted"), "{said}");
+                assert!(
+                    said.contains("/home/dev/.cache/forge-tmp/iss-1266/iso/work"),
+                    "{said}"
+                );
+                assert!(
+                    !said.contains("Quick safety check"),
+                    "not its raw words: {said}"
+                );
+            }
+            other => panic!("the captured dialog is a trust exit: {other:?}"),
+        }
+        assert!(
+            matches!(classified(TRUST_DIALOG, false), Exit::Untrusted { .. }),
+            "a pane read gone late on the dialog is still that"
+        );
+        let older = "\x1b[1mDo you trust the files in this folder?\x1b[0m\r\n\r\n/srv/old\r\n\r\n 1. Yes, proceed\r\n 2. No, exit\r\n\r\nEnter to confirm \u{b7} Esc to exit\r\n";
+        assert!(
+            matches!(
+                classified(older, true),
+                Exit::Untrusted { workspace: Some(w), .. } if w == "/srv/old"
+            ),
+            "the older wording prints the folder after its question"
+        );
+        let spaced = TRUST_DIALOG.replace(
+            "/home/dev/.cache/forge-tmp/iss-1266/iso/work",
+            "/srv/team project",
+        );
+        assert!(
+            matches!(
+                classified(&spaced, true),
+                Exit::Untrusted { workspace: Some(w), .. } if w == "/srv/team project"
+            ),
+            "a folder with a space in its name is named whole"
+        );
+    }
+
+    /// ISS-1382 criterion 8: a pane that met the dialog and carried on exited
+    /// for whatever it said afterwards.
+    #[test]
+    fn a_pane_that_carried_on_past_the_dialog_is_not_a_trust_exit() {
+        let ran_on = format!("{TRUST_DIALOG}\r\n> working on ISS-12\r\nDone. Bye.\r\n");
+        match classified(&ran_on, true) {
+            Exit::Printed { last } => assert!(last.ends_with("Done. Bye."), "{last}"),
+            other => panic!("classified by what came after the dialog: {other:?}"),
+        }
+        let short_error = format!("{TRUST_DIALOG}\r\nError: x\r\n");
+        assert!(
+            !matches!(classified(&short_error, true), Exit::Untrusted { .. }),
+            "even one short line after the footer is not the dialog"
+        );
+    }
+
+    /// ISS-1385 criteria 16 and 17: an exit whose words change only in their
+    /// ids is one reason, so the flood is said once.
+    #[test]
+    fn exits_differing_only_in_volatile_ids_are_one_reason_said_once() {
+        let quick = Some(Duration::from_secs(20));
+        let exits: Vec<Exit> = [
+            "API Error: 529 overloaded (request req_011CT9aB3)",
+            "API Error: 529 overloaded (request req_011CTzz91x7Q)",
+            "API Error: 529 overloaded (request req_9)",
+            "API Error: 529 overloaded (request req_011CU0)",
+            "API Error: 529 overloaded (request req_77a1)",
+        ]
+        .iter()
+        .map(|l| Exit::Printed { last: (*l).into() })
+        .collect();
+        let mut tally = Tally::default();
+        let said: Vec<Say> = exits
+            .iter()
+            .map(|e| {
+                let n = tally.count(quick, e).in_a_row;
+                journal("p", "forge-master-p", quick, e, n)
+            })
+            .collect();
+        assert!(matches!(said[0], Say::Warn(_)), "{said:?}");
+        assert!(matches!(said[1], Say::Quiet(_)), "{said:?}");
+        assert!(matches!(said[2], Say::Error(_)), "{said:?}");
+        assert!(
+            said[3..].iter().all(|s| matches!(s, Say::Quiet(_))),
+            "{said:?}"
+        );
+
+        let key = |l: &str| reason_key(&Exit::Printed { last: l.into() });
+        assert_eq!(
+            key("session 19793a14-07b1-4970-9f51-3262792c1414 died after 3136s, pid 4242"),
+            key("session 0b2c1e44-1111-4970-9f51-aaaaaaaaaaaa died after 12s, pid 7311")
+        );
+        assert_eq!(
+            key("…rror: 529 overloaded"),
+            key("…r: 529 overloaded"),
+            "a cut tail's first fragment is not part of the reason"
+        );
+        assert_ne!(
+            key("API Error: 529 overloaded"),
+            key("API Error: 500 internal"),
+            "a status code is not an id"
+        );
+        assert_ne!(key("Error: boom"), key("Error: other"));
+    }
+
+    /// ISS-1385 criterion 18: a pane that lived past the window is not
+    /// reported as if its last words were why it went.
+    #[test]
+    fn a_long_lived_pane_s_last_words_are_never_offered_as_its_reason() {
+        let closing = "Pass complete. Posture: active. Nothing more owed this pass.\r\n";
+        let late = classified(closing, false);
+        assert_eq!(
+            late,
+            Exit::NoReason {
+                screen: "Pass complete. Posture: active. Nothing more owed this pass.".into()
+            }
+        );
+        let said = late.to_string();
+        assert!(!said.contains("it exited having printed last"), "{said}");
+        assert!(
+            said.contains("printed no reason this box recognises"),
+            "{said}"
+        );
+        assert!(
+            said.contains("the session's own output and not as a reason"),
+            "{said}"
+        );
+        assert_eq!(
+            classified(closing, true),
+            Exit::Printed {
+                last: "Pass complete. Posture: active. Nothing more owed this pass.".into()
+            },
+            "an early exit's last words still are its reason"
+        );
+        let Say::Warn(line) = journal(
+            "p",
+            "forge-master-p",
+            Some(Duration::from_secs(3136)),
+            &late,
+            0,
+        ) else {
+            panic!("a late exit is a warning");
+        };
+        assert!(
+            line.contains("printed no reason this box recognises"),
+            "{line}"
+        );
     }
 
     fn proc_with(conv: Option<&str>) -> crate::test_scratch::Scratch {

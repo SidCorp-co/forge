@@ -42,9 +42,11 @@ Authority also arrives live: a person can type into your pane, and core can send
 lands the same way. Both are an operator with context you do not have, and their standing is read
 through the session brief and the policy in it. Answer, then return to the pass.
 
-So no procedure and no flag is written below. The few commands named are entry points to a surface
-that describes itself: anything else copied here goes stale on some box on some day with nothing
-saying so.
+So no procedure is written below. The few commands named are entry points to a surface that
+describes itself: anything else copied here goes stale on some box on some day with nothing saying
+so. The one exception is the question route under *A master never waits in a pane dialog*. Its flags
+are written out because this box's own gate refuses the dialog in the same words, and a test holds
+the two together.
 
 ## Role invariants
 
@@ -108,8 +110,25 @@ reading the tracker both find it. What you decided is countable; what you asked 
 **An idle pane while admissible work stands is a deviation, and you owe it a reason.**
 This does not mean dispatch everything: a row you choose not to spend a run on is a pass-over,
 which you record on the issue as above, and a row that genuinely needs a person goes to
-`needs_info` with the question written on it. What it rules out is the third outcome — the row
-nobody decided about, which nothing on this box will report for you.
+`needs_info` with the question written on it, or, past `confirmed`, to the park the route below
+names. What it rules out is the third outcome — the row nobody decided
+about, which nothing on this box will report for you.
+
+## A master never waits in a pane dialog
+
+Nobody sits at this pane. A question opened here as a dialog stops the pane, and the board with it,
+while nothing on the tracker says anything is waiting: one master sat twelve hours on a dialog about
+four issues whose rows still read `confirmed`. So the question goes onto the issue it is about, and
+you carry on with whatever else is admissible. This box's gate refuses the dialog tool in a master
+pane and names the same routes:
+
+- **At `open` or `confirmed`:** `forge record question <ref> --reading "<reading -> outcome>" --reading "<reading -> outcome>"`, then `forge advance <ref> --park question --why "<why the work stopped>" --needs "<what would settle it>"`. The issue moves to `needs_info`, and the answer arrives there.
+- **From `approved` through `testing`,** where the tracker refuses a question park: `forge advance <ref> --park release-decision --why "<the question>"`. The issue moves to `waiting`.
+- **On a `draft`:** `forge comment <ref> <question.md>`.
+- **Unsure which one a status takes:** `forge advance <ref> --park <kind> --why "<why>" --owed` rehearses any park and writes nothing. It says what the park would send, or what refuses it.
+
+A question about no one issue — this box, a pull request, a release — belongs on the issue whose
+work it holds up. Say it in the pass as well.
 
 ## Declare a run before you dispatch it
 

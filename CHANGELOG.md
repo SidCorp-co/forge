@@ -3136,6 +3136,15 @@
 
 ### Fixed
 
+- **A master pane can no longer stop on a question dialog.** The box refuses it and names how to
+  put the question on the issue at each status (ISS-1385).
+
+- **A pane placed after a reboot finds `forge-runner`, `forge`, `claude` and `node`.** The runner
+  builds the pane's PATH, and places no pane that would lack one (ISS-1390).
+
+- **`forge-runner doctor` reports each bound checkout's folder trust**, and a master that stopped on
+  the trust dialog is reported as that (ISS-1382).
+
 - **A run's checkout is no longer taken while its agent works in it.** A master's helper no
   longer takes a declared run. An update that will not start is rolled back, and `status` names a
   refused one.

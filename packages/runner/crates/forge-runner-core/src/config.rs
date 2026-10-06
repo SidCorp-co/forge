@@ -528,6 +528,11 @@ mod tests {
                 "detect_user_shadow, which reads ~/.claude/skills",
             ),
             (
+                "forge-runner-core/src/daemon/pane_path.rs",
+                1,
+                "$HOME/.local/bin, a directory on a pane's PATH, which is not the config dir",
+            ),
+            (
                 "forge-runner-core/src/workspace/trust.rs",
                 1,
                 "~/.claude.json, Claude Code's trust file, which is not the config dir",
