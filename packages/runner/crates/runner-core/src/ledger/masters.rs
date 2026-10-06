@@ -38,7 +38,7 @@ impl Ledger {
                     pass.issue_key,
                     pass.opened_at,
                     pass.opened_by,
-                    pass.prompts_at_nudge.map(|n| n as i64),
+                    pass.turns_at_nudge.map(|n| n as i64),
                 ],
             )
             .map_err(sql_err)?;
@@ -73,12 +73,12 @@ impl Ledger {
             .map_err(sql_err)
     }
 
-    pub fn renudge_master_pass(&self, pass_id: &str, prompts: Option<u64>) -> Result<bool> {
+    pub fn renudge_master_pass(&self, pass_id: &str, turns: Option<u64>) -> Result<bool> {
         let n = self
             .conn
             .execute(
                 "UPDATE master_passes SET prompts_at_nudge = ?2 WHERE pass_id = ?1",
-                params![pass_id, prompts.map(|n| n as i64)],
+                params![pass_id, turns.map(|n| n as i64)],
             )
             .map_err(sql_err)?;
         Ok(n == 1)

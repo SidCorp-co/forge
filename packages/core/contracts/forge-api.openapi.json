@@ -4818,6 +4818,7 @@
                     "maxLength": 80,
                     "type": "string"
                   },
+                  "binaries": {},
                   "capabilities": {
                     "additionalProperties": {},
                     "propertyNames": {

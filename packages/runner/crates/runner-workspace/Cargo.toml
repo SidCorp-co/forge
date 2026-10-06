@@ -9,6 +9,7 @@ runner-platform = { path = "../runner-platform" }
 runner-update = { path = "../runner-update" }
 runner-transport = { path = "../runner-transport" }
 runner-core = { path = "../runner-core" }
+runner-proto = { path = "../runner-proto" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

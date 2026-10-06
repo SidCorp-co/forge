@@ -277,7 +277,13 @@ pub struct MasterPass {
     pub issue_key: Option<String>,
     pub opened_at: i64,
     pub opened_by: String,
-    pub prompts_at_nudge: Option<u64>,
+    /// The lead's turn count (`Activity::turns`) when the pass was asked for.
+    /// Stored in the `prompts_at_nudge` column, named when only prompted turns
+    /// were counted: a pass opened by another daemon process is closed as
+    /// abandoned before this is read, so no value written under the old count
+    /// is ever compared, and an older build reopening this ledger still finds
+    /// the column it reads.
+    pub turns_at_nudge: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -525,7 +531,7 @@ fn map_master_pass(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterPass> {
         issue_key: row.get(4)?,
         opened_at: row.get(5)?,
         opened_by: row.get(6)?,
-        prompts_at_nudge: row.get::<_, Option<i64>>(7)?.map(|n| n.max(0) as u64),
+        turns_at_nudge: row.get::<_, Option<i64>>(7)?.map(|n| n.max(0) as u64),
     })
 }
 

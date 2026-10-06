@@ -45,6 +45,12 @@ export interface DeviceRow {
 	 * the box itself (ISS-1192).
 	 */
 	gate: DeviceGate | null;
+	/**
+	 * The binaries this box's panes need and it last said it cannot resolve,
+	 * `null` where it has never reported them. Before this the daemon logged it
+	 * at pane start and no screen could read it.
+	 */
+	binaries: DeviceBinaries | null;
 	createdAt: string;
 }
 
@@ -58,7 +64,7 @@ export interface DeviceRow {
  * behind several of the runners the Overview counts, and `projectNames` holds
  * one entry per assignment.
  */
-export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
+export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate" | "binaries"> {
 	runnerCount: number;
 	projectNames: string[];
 }
@@ -274,6 +280,38 @@ export function deviceGateBanner(
 		rate: gate.perDay === null ? "at an unstated rate" : `${Math.round(gate.perDay)}/day`,
 		window: asSpan(gate.windowMs),
 		reason: gateReasonLine(gate.byReason, gate.count),
+		stale:
+			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
+				? null
+				: `last reported ${asSpan(age)} ago, so this may no longer be true`,
+	};
+}
+
+/** What a box reported about the binaries its panes need. */
+export interface DeviceBinaries {
+	missing: Array<{ name: string; detail: string }>;
+	/** When core heard this, which is what says whether it is still the box's present condition. */
+	receivedAt: string;
+}
+
+/** What a device screen says about its pane binaries. */
+export interface DeviceBinariesRead {
+	/** `unreported` is a box whose build sends no report, never one that resolves everything. */
+	state: "unreported" | "resolved" | "missing";
+	missing: DeviceBinaries["missing"];
+	/** Present where the report is old enough that it may no longer be true. */
+	stale: string | null;
+}
+
+export function deviceBinariesRead(
+	binaries: DeviceBinaries | null,
+	now: number = Date.now(),
+): DeviceBinariesRead {
+	if (binaries === null) return { state: "unreported", missing: [], stale: null };
+	const age = now - Date.parse(binaries.receivedAt);
+	return {
+		state: binaries.missing.length > 0 ? "missing" : "resolved",
+		missing: binaries.missing,
 		stale:
 			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
 				? null

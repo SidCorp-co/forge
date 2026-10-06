@@ -1,3 +1,4 @@
+import { type BinaryReport, storedBinaryReport } from './binary-report.js';
 import { type GateReport, storedGateReport } from './gate-report.js';
 
 interface HeartbeatReport {
@@ -5,6 +6,7 @@ interface HeartbeatReport {
   agentCommit?: string | undefined;
   capabilities?: Record<string, unknown> | undefined;
   gate?: GateReport | undefined;
+  binaries?: BinaryReport | undefined;
 }
 
 export interface DevicePatch {
@@ -13,6 +15,7 @@ export interface DevicePatch {
   agentCommit?: string | null;
   capabilities?: Record<string, unknown>;
   gateReport?: unknown;
+  binaryReport?: unknown;
 }
 
 /**
@@ -28,5 +31,8 @@ export function heartbeatPatch(report: HeartbeatReport, now: Date): DevicePatch 
       : {}),
     ...(report.capabilities !== undefined ? { capabilities: report.capabilities } : {}),
     ...(report.gate !== undefined ? { gateReport: storedGateReport(report.gate, now) } : {}),
+    ...(report.binaries !== undefined
+      ? { binaryReport: storedBinaryReport(report.binaries, now) }
+      : {}),
   };
 }

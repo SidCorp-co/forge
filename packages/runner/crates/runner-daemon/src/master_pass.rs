@@ -55,11 +55,18 @@ impl Abandoned {
     }
 }
 
-pub(crate) fn turn_ended(seen: Option<&Activity>, prompts_at_nudge: Option<u64>) -> bool {
+/// Whether the turn `pass` covers has ended: a turn counted after the pass was
+/// asked for, begun no earlier than the pass opened, and over. A task
+/// notification turn that was already running when a nudge was typed ends
+/// before the nudge's own prompt is taken, and is not the nudged turn.
+pub(crate) fn turn_ended(seen: Option<&Activity>, pass: &MasterPass) -> bool {
     let Some(seen) = seen else {
         return false;
     };
-    seen.prompts > prompts_at_nudge.unwrap_or(0)
+    seen.turns > pass.turns_at_nudge.unwrap_or(0)
+        && seen
+            .turn_began_at
+            .is_some_and(|began| began >= pass.opened_at.saturating_mul(1000))
         && matches!(seen.doing(), Doing::Idle | Doing::AwaitingChildren)
 }
 
@@ -78,7 +85,7 @@ pub(crate) fn judge(
     if live_session != Some(pass.session_id.as_str()) {
         return Judged::Abandoned(Abandoned::SessionGone);
     }
-    if turn_ended(seen, pass.prompts_at_nudge) {
+    if turn_ended(seen, pass) {
         return Judged::TurnEnded;
     }
     Judged::Open
@@ -303,24 +310,25 @@ pub(crate) async fn reconcile(
         };
         if settled {
             if let Some(seen) = seen.as_ref() {
-                masters.note_prompts_settled(&pass.project_id, &pass.session_id, seen.prompts);
+                masters.note_turns_settled(&pass.project_id, &pass.session_id, seen.turns);
             }
         }
     }
 }
 
-/// An unprompted pass's start: the prompt count before its turn and the unix
-/// second that turn's prompt was submitted.
+/// An unprompted pass's start: the turn count before its turn and the unix
+/// second that turn began.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnpromptedTurn {
-    pub prompts_before: u64,
+    pub turns_before: u64,
     pub started_at: i64,
 }
 
-/// The start to record for an unprompted pass, where `seen` shows a prompt
-/// submitted after the last pass settled that no open pass covers — whether
-/// its turn still runs or has already ended, so a turn shorter than a tick is
-/// recorded too. `None` otherwise.
+/// The start to record for an unprompted pass, where `seen` shows a turn begun
+/// after the last pass settled that no open pass covers — whether its turn
+/// still runs or has already ended, so a turn shorter than a tick is recorded
+/// too, and whether a prompt began it or a task notification did. `None`
+/// otherwise.
 pub(crate) fn unprompted_turn(
     pass_open: bool,
     seen: Option<&Activity>,
@@ -330,15 +338,15 @@ pub(crate) fn unprompted_turn(
         return None;
     }
     let seen = seen?;
-    if seen.prompts <= settled_at.unwrap_or(0) {
+    if seen.turns <= settled_at.unwrap_or(0) {
         return None;
     }
-    // `prompts` and `prompted_at` are written by the same PromptSubmitted, so a
-    // count above zero always carries its time.
-    let prompted_ms = seen.prompted_at?;
+    // `turns` and `turn_began_at` are written together, so a count above zero
+    // always carries its time.
+    let began_ms = seen.turn_began_at?;
     Some(UnpromptedTurn {
-        prompts_before: seen.prompts.saturating_sub(1),
-        started_at: prompted_ms.div_euclid(1000),
+        turns_before: seen.turns.saturating_sub(1),
+        started_at: began_ms.div_euclid(1000),
     })
 }
 
@@ -361,7 +369,7 @@ async fn open_unprompted(
     let Some(turn) = unprompted_turn(
         pass_open,
         seen.as_ref(),
-        masters.prompts_settled(project_id, session_id),
+        masters.turns_settled(project_id, session_id),
     ) else {
         return;
     };
@@ -375,7 +383,7 @@ async fn open_unprompted(
                 issue_key: None,
                 opened_at: turn.started_at,
                 opened_by: process.to_string(),
-                prompts_at_nudge: Some(turn.prompts_before),
+                turns_at_nudge: Some(turn.turns_before),
             };
             if let Err(e) = led.open_master_pass(&row) {
                 tracing::error!(
@@ -392,7 +400,7 @@ async fn open_unprompted(
         }
         Err(PassError::Refused { code, detail }) => {
             // Settled as seen so the same turn is not asked about every tick.
-            masters.note_prompts_settled(project_id, session_id, turn.prompts_before + 1);
+            masters.note_turns_settled(project_id, session_id, turn.turns_before + 1);
             tracing::warn!(
                 "[master] {project_id}: opening an unprompted pass was refused {code}: {detail}"
             );
@@ -407,7 +415,7 @@ pub(crate) struct Nudged<'a> {
     pub project_id: &'a str,
     pub session_id: &'a str,
     pub issue_key: Option<&'a str>,
-    pub prompts: Option<u64>,
+    pub turns: Option<u64>,
 }
 
 pub(crate) async fn open_for_nudge(
@@ -429,7 +437,7 @@ pub(crate) async fn open_for_nudge(
     .await;
     match led.master_pass_for(nudged.project_id) {
         Ok(Some(open)) => {
-            if let Err(e) = led.renudge_master_pass(&open.pass_id, nudged.prompts) {
+            if let Err(e) = led.renudge_master_pass(&open.pass_id, nudged.turns) {
                 tracing::warn!(
                     "[master] {}: cannot move pass {}'s start to this nudge ({e}); it closes on the turn the earlier nudge started",
                     nudged.project_id,
@@ -470,7 +478,7 @@ pub(crate) async fn open_for_nudge(
                 issue_key: nudged.issue_key.map(str::to_string),
                 opened_at: now_secs(),
                 opened_by: process.to_string(),
-                prompts_at_nudge: nudged.prompts,
+                turns_at_nudge: nudged.turns,
             };
             if let Err(e) = led.open_master_pass(&row) {
                 tracing::error!(
@@ -532,7 +540,7 @@ fn adopt_orphan(led: &mut Ledger, nudged: &Nudged<'_>, detail: &str) {
         issue_key: None,
         opened_at: now_secs(),
         opened_by: ADOPTED_FROM_CORE.to_string(),
-        prompts_at_nudge: None,
+        turns_at_nudge: None,
     };
     if let Err(e) = led.open_master_pass(&row) {
         tracing::warn!(
@@ -638,7 +646,7 @@ mod tests {
         assert_eq!(
             unprompted_turn(false, Some(&seen), None),
             Some(UnpromptedTurn {
-                prompts_before: 0,
+                turns_before: 0,
                 started_at: T0
             }),
             "a turn shorter than one tick got no pass"
@@ -668,6 +676,67 @@ mod tests {
     }
 
     #[test]
+    fn a_task_notification_turn_with_no_prompt_hook_opens_an_unprompted_pass() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000);
+        report(&a, Event::Stopped, T0 * 1000 + 1000);
+        let seen = report(&a, Event::Stopped, (T0 + 60) * 1000);
+        let turn = unprompted_turn(false, Some(&seen), Some(1)).expect(
+            "a turn the master took up from a task notification, which fires no UserPromptSubmit, opened no pass",
+        );
+        assert_eq!(
+            turn,
+            UnpromptedTurn {
+                turns_before: 1,
+                started_at: T0 + 1
+            }
+        );
+        let row = MasterPass {
+            project_id: "p".into(),
+            session_id: "s".into(),
+            pass_id: "x".into(),
+            verb: NUDGE_VERB.into(),
+            issue_key: None,
+            opened_at: turn.started_at,
+            opened_by: "me".into(),
+            turns_at_nudge: Some(turn.turns_before),
+        };
+        assert_eq!(judge(&row, "me", Some("s"), Some(&seen)), Judged::TurnEnded);
+    }
+
+    #[test]
+    fn a_notification_turn_running_when_the_nudge_was_typed_does_not_close_its_pass() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000);
+        report(&a, Event::Stopped, (T0 + 10) * 1000);
+        let mut row = MasterPass {
+            project_id: "p".into(),
+            session_id: "s".into(),
+            pass_id: "x".into(),
+            verb: NUDGE_VERB.into(),
+            issue_key: None,
+            opened_at: T0 + 30,
+            opened_by: "me".into(),
+            turns_at_nudge: Some(1),
+        };
+        let notified = report(&a, Event::Stopped, (T0 + 40) * 1000);
+        assert_eq!(notified.turns, 2);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&notified)),
+            Judged::Open,
+            "the nudge's pass closed on a turn that began before it was typed"
+        );
+        report(&a, Event::PromptSubmitted, (T0 + 41) * 1000);
+        let nudged = report(&a, Event::Stopped, (T0 + 50) * 1000);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&nudged)),
+            Judged::TurnEnded
+        );
+        row.opened_at = T0 + 60;
+        assert_eq!(judge(&row, "me", Some("s"), Some(&nudged)), Judged::Open);
+    }
+
+    #[test]
     fn a_short_unprompted_pass_is_judged_ended_in_the_reconcile_that_opened_it() {
         let a = Activities::new();
         report(&a, Event::PromptSubmitted, T0 * 1000);
@@ -682,7 +751,7 @@ mod tests {
             issue_key: None,
             opened_at: turn.started_at,
             opened_by: "me".into(),
-            prompts_at_nudge: Some(turn.prompts_before),
+            turns_at_nudge: Some(turn.turns_before),
         };
         assert_eq!(judge(&row, "me", Some("s"), Some(&seen)), Judged::TurnEnded);
     }
