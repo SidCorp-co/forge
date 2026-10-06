@@ -4,7 +4,7 @@ Left standing by ISS-1386 on purpose.
 
 ISS-1386 reads what a release carries beyond its roster only on a chain that promotes by
 `merge-branch`. There the range is two branch heads, `compare(live...start)`, and
-`cut-range.ts:readRangeTo` reads it in full. Two shapes are not read. Each answers
+`packages/core/src/release-batch/cut-range.ts:readRangeTo` reads it in full. Two shapes are not read. Each answers
 `carried: { kind: 'not-read', why }` by name, so nobody takes either for a clean range:
 
 - **A publish chain.** Its release builds and publishes whatever the start branch holds. There is no
@@ -16,7 +16,7 @@ ISS-1386 reads what a release carries beyond its roster only on a chain that pro
   nothing here computes.
 
 There is a third gap on the promote chain itself. The release job is told the exact cut to promote
-(`prompt.ts`), but `finish` does not read the range again. A job that promoted the branch head
+(`packages/core/src/release-batch/prompt.ts`), but `finish` does not read the range again. A job that promoted the branch head
 instead of the cut ships whatever landed after the create, and nothing judges that.
 
 What would close each one:
@@ -29,6 +29,9 @@ What would close each one:
 
 ## Honest costs
 
-Until then, a publish project and a cherry-pick project get the warning-shaped `not-read` and no
-refusal. A promote job that ignores its cut is caught only by the issues' own judges, after the
-release has shipped.
+- A publish project and a cherry-pick project get a `not-read` answer and no refusal, so an issue
+  parked on their start branch still ships unnamed until this is built.
+- A promote job that promotes the branch head instead of its cut ships whatever landed after the
+  create, and only the issues' own judges catch it, after the release has shipped.
+- Reading the range at finish adds one more GitHub read to every finish, and a repository that
+  cannot answer it then would hold a release that has already been promoted.

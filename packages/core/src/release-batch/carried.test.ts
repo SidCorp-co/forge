@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { type CarriedReading, judgeCarried, type LandedIssue } from './carried.js';
 import type { RangeCommit, ReadRange } from './cut-range.js';
 
@@ -19,7 +20,7 @@ function range(commits: RangeCommit[], cut = commits.at(-1)?.sha ?? sha('0')): R
 
 const issue = (id: string, landing: string, status = 'needs_info'): LandedIssue => ({
   issueId: id,
-  displayId: `ISS-${id}`,
+  displayId: formatIssueRef(null, Number(id)),
   status,
   landing,
 });
