@@ -38,6 +38,7 @@ const input = (issues: StandingIssue[]) => ({
   openSuggestionKinds: [],
   stalePins: [],
   staleContractPins: [],
+  unapprovedDesigns: [] as { flow: string; designStatus: string | null }[],
   feedback: { open: 0, untriaged: [] },
   agreedAt: at('2026-09-01T00:00:00Z'),
   updatedAt: at('2026-09-26T00:00:00Z'),
@@ -121,5 +122,50 @@ describe('whose turn an open draft revision is', () => {
     const s = deriveStanding(draftBy('agent'));
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'propose or drop r1' });
+  });
+});
+
+// FB-73: an agree is refused REQUIREMENT_DESIGN_UNAPPROVED while a linked design is unapproved, so
+// the requirement cannot read as waiting on the signer to agree it
+describe('a draft requirement whose linked designs are not all approved', () => {
+  const signer = { userId: 'u1', canSignOff: true };
+  const draftHead = (unapprovedDesigns: { flow: string; designStatus: string | null }[]) => ({
+    ...input([]),
+    status: 'draft' as const,
+    viewer: signer,
+    agreedAt: null,
+    unapprovedDesigns,
+  });
+
+  it('waits on you to agree it once every linked design is approved', () => {
+    const s = deriveStanding(draftHead([]));
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'agree r3' });
+  });
+
+  it('waits on the design approver, not on you, while a linked design is only proposed', () => {
+    const s = deriveStanding(draftHead([{ flow: 'checkout', designStatus: 'proposed' }]));
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'person',
+      who: 'A holder of workflow-designs.approve',
+      act: 'approve design checkout',
+    });
+    expect(s.waitingOn.rule).toContain('REQUIREMENT_DESIGN_UNAPPROVED');
+    expect(s.facts.unapprovedDesigns).toEqual([{ flow: 'checkout', designStatus: 'proposed' }]);
+  });
+
+  it('waits on the master while a linked design is not yet proposed', () => {
+    const s = deriveStanding(
+      draftHead([
+        { flow: 'checkout', designStatus: 'proposed' },
+        { flow: 'refund', designStatus: 'draft' },
+      ]),
+    );
+    expect(s.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: 'Master',
+      act: 'propose design refund',
+    });
   });
 });
