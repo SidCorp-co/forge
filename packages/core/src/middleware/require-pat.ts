@@ -47,6 +47,8 @@ export type PrincipalVars = {
   principal: McpPrincipal;
   patTokenId?: string;
   patRequestClass?: PatRequestClass;
+  /** The calls that made a `/mcp` request write-class, for a refusal to name. */
+  patRequestWrites?: readonly string[];
 };
 
 const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequest?: boolean }) =>
@@ -196,8 +198,19 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
       throw unauth(placeholderRefusal(token), { invalidToken: true });
     if (!isPatLike(token)) throw unauth(NOT_A_PAT_REFUSAL, { invalidToken: true });
 
-    const principal = await authenticatePat(c, token, c.get('patRequestClass') ?? 'write');
+    const requestClass = c.get('patRequestClass') ?? 'write';
+    const principal = await authenticatePat(c, token, requestClass);
     if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
+    if (requestClass === 'write' && !principal.scopes.includes('write')) {
+      const calls = c.get('patRequestWrites') ?? [];
+      throw new HTTPException(403, {
+        message:
+          `this token lacks the 'write' scope, and this /mcp request writes` +
+          `${calls.length > 0 ? ` (${calls.join(', ')})` : ''} — create a token with 'write' ticked ` +
+          'under Settings → API Tokens, or send only reads with this one',
+        cause: { code: 'INSUFFICIENT_SCOPE', details: { scope: 'write', calls } },
+      });
+    }
     c.set('patTokenId', principal.tokenId);
     c.set('principal', principal);
     await next();
