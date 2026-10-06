@@ -199,7 +199,8 @@ describe('a high item is triaged onto an issue', () => {
     );
     const read = ok(await say('owner', 'GET', at(`/${ids.high}`))).feedback;
     expect(read.phase).toBe('planned');
-    ids.carrierKey = read.route.key;
+    expect(read.route.carriers).toHaveLength(1);
+    ids.carrierKey = read.route.carriers[0].key;
     expect(ids.carrierKey).toMatch(/^ISS-\d+$/);
     const carrier = ok(
       await say('owner', 'GET', `/api/issues/${ids.carrierKey}?projectId=${projectId}`),

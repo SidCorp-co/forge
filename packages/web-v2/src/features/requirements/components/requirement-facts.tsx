@@ -13,6 +13,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { requirementHref } from "@/lib/routes/requirements";
+import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
@@ -24,10 +25,16 @@ const VIA_LABEL: Record<RequirementFeedbackItem["via"]["type"], string> = {
   route: "Carried by",
 };
 
+/** Where a carrier's key links: an issue, a requirement or a root item; a revision suggestion has no page. */
+function carrierHrefOf(route: FeedbackRoute, slug: string, key: string): string | null {
+  if (route === "issue") return issueHref(slug, key);
+  if (route === "new_requirement") return requirementHref(slug, key);
+  return route === "duplicate" ? feedbackHref(slug, key) : null;
+}
+
 function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
   const r = f.route;
-  const carrier = r?.key && (r.route === "issue" || r.route === "new_requirement" || r.route === "duplicate") ? r.key : null;
-  const carrierHref = carrier && r ? (r.route === "issue" ? issueHref(slug, carrier) : r.route === "new_requirement" ? requirementHref(slug, carrier) : feedbackHref(slug, carrier)) : null;
+  const carriers = r ? r.carriers.flatMap((c) => (c.key && carrierHrefOf(r.route, slug, c.key) ? [{ key: c.key, href: carrierHrefOf(r.route, slug, c.key) as string }] : [])) : [];
   const via = f.via.type === "requirement" || f.via.type === "route" ? null : `${VIA_LABEL[f.via.type]} ${f.via.key}`;
   return (
     <FeedbackRailItem slug={slug} itemKey={f.key} title={f.title} phase={f.phase}>
@@ -36,11 +43,11 @@ function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) 
           {via ? <span>{via}</span> : null}
           {via && r ? <span aria-hidden>·</span> : null}
           {r ? <span>{enumLabel("feedbackRoute", r.route)}</span> : null}
-          {carrier && carrierHref ? (
-            <Link href={carrierHref} className="font-mono text-link hover:underline">
-              {carrier}
+          {carriers.map((c) => (
+            <Link key={c.key} href={c.href} className="font-mono text-link hover:underline">
+              {c.key}
             </Link>
-          ) : null}
+          ))}
         </span>
       ) : null}
     </FeedbackRailItem>

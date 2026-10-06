@@ -70,7 +70,7 @@ export interface AgentReportFeedbackLink {
 	id: string;
 	key: string;
 	phase: FeedbackPhase;
-	route: { route: FeedbackRoute; key: string | null } | null;
+	route: { route: FeedbackRoute; carriers: string[] } | null;
 }
 export interface AgentReportView {
 	id: string;

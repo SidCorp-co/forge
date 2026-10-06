@@ -19860,9 +19860,23 @@
                     "type": "string"
                   },
                   "issue": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    ]
                   },
                   "kind": {
                     "enum": [

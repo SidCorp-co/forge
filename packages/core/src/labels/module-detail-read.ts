@@ -112,7 +112,8 @@ async function openFeedbackOf(
     .filter(
       (f) =>
         (f.target.type === 'issue' && issueKeys.has(f.target.key)) ||
-        (f.route?.route === 'issue' && f.route.key !== null && issueKeys.has(f.route.key)),
+        (f.route?.route === 'issue' &&
+          f.route.carriers.some((c) => c.key !== null && issueKeys.has(c.key))),
     )
     .map((f) => ({ key: f.key, title: f.title, phase: f.phase }));
 }
