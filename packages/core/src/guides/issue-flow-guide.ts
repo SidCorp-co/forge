@@ -22,8 +22,9 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
 can claim. Every act on the tracker below is a REST call to the core that holds the project. On a
 runner box \`forge-runner api <path>\` makes it with the pane's credential: \`-d -\` reads the JSON body
-from stdin, and its \`-h\` lists the exit codes. Write a body to a file outside the checkout first — a
-payload left in the working tree is one the project's own checkers walk.
+from stdin, and its \`-h\` lists the exit codes. A long body is written to a file outside the
+checkout and sent on stdin — a payload left in the working tree is one the project's own checkers
+walk.
 
 The statuses and the guard on each move: ${guideRef('pipeline-and-issue-lifecycle')}. Where each
 kind of record goes: ${guideRef('records-and-comments')}. The brief you were dispatched with
@@ -60,13 +61,16 @@ Then decide what it is:
   \`needs_info\` where a person owes the requirement.
 - **More than one run** — split it. The other half is filed with
   \`POST /api/projects/:id/issues\` carrying \`relations: [{ kind: 'blocks', dependsOnId }]\` in the
-  create itself, and a \`decision\` record on this issue names it.
+  create itself, \`dependsOnId\` this issue where that half builds on this one, and a \`decision\`
+  record on this issue names it.
 
 ### 2. Take it
-\`POST /api/issues/:id/transition\` \`{ toStatus: 'in_progress' }\`. A run a master declared already
-holds its issue: the box opened a run session naming it. Anywhere else the move is refused
-\`NO_HOLDER\` until a lease stands in \`sessionContext.lease\` (\`PATCH /api/issues/:id\`); read the
-field first, and do not write over a live lease another holder wrote. A live \`blocks\` edge refuses
+\`POST /api/issues/:id/transition\` \`{ toStatus: 'in_progress' }\`. A run a master declared holds
+its issue once the box has opened a run session for it, which its next sweep does: a \`NO_HOLDER\`
+refusal before then is read against \`GET /api/projects/:id/runs/standing\`, never answered with a
+lease. Outside a declared run the move is refused \`NO_HOLDER\` until a lease stands in
+\`sessionContext.lease\` (\`PATCH /api/issues/:id\`); read the field first, and do not write over a
+live lease another holder wrote. A live \`blocks\` edge refuses
 it \`ISSUE_BLOCKED\` — the blocker is the work, not the refusal.
 
 Record where the work is at each push: \`PATCH /api/issues/:id\` \`{ workState: { step, branch, headSha } }\`.
@@ -113,8 +117,9 @@ naming its own rule before the green counts.
    which: a fast-forward, a pull request, a merge.
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target.
    It is refused \`COMMIT_NOT_LANDED\` until it is there. A merge mark moves no status.
-3. \`PATCH /api/issues/:id\` \`{ releaseNotes }\`: what a user will now see, in their words — no
-   paths, hashes or refactors. A release refuses to claim an issue without one.
+3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, userFacing } }\`: what a user will now
+   see, in their words — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
+   nothing. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\`, \`NO_WORK_EVIDENCE\` or \`VERDICT_IDENTITY_REQUIRED\` while what it names is
    missing.
