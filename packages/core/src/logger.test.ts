@@ -52,6 +52,19 @@ describe('the core logger', () => {
     JSON.parse(line);
   });
 
+  it("withholds a driver error's own message when it repeats a bound value and names no msg", () => {
+    const pg = Object.assign(new Error('invalid input syntax for type uuid: "abc"'), {
+      severity: 'ERROR',
+      code: '22P02',
+    });
+    Object.defineProperty(pg, 'parameters', { value: ['abc'], enumerable: false });
+    const { lines, log } = capture();
+    log.error(pg);
+    log.error({ err: pg });
+    for (const line of lines) expect(line).not.toContain('abc');
+    expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22P02');
+  });
+
   it('still names the statement, the SQLSTATE and the constraint', () => {
     const { lines, log } = capture();
     log.error({ err: failedInsert() }, 'http.unhandled');
