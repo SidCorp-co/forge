@@ -157,7 +157,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
           />
           <span className="fg-caption text-muted">
             {chosen.length > 0 ? `${chosen.length} selected` : `${selectable.length} ready`}
-            {claimed > 0 ? ` · ${claimed} shipping now` : ""}
+            {claimed > 0 ? ` · ${claimed} in a release` : ""}
           </span>
         </div>
 
@@ -223,9 +223,9 @@ function RosterRow({
           <Link
             href={`/projects/${slug}/releases/${runId}`}
             className="text-accent-text underline-offset-2 hover:underline"
-            title="Open what this release run has done so far"
+            title="Open the release run: it says whether a box has started it, and what it has done"
           >
-            shipping now
+            in a release
           </Link>
         ) : issue.mergedAt ? (
           `merged ${formatRelativeTime(issue.mergedAt)}`

@@ -59,7 +59,8 @@ beforeAll(async () => {
   await registerIntegrationsForTest();
   const m = await import('../../src/release-batch/unstarted-recovery.js');
   recoverUnstartedReleaseBatches = m.recoverUnstartedReleaseBatches;
-  deadlineMinutes = m.RELEASE_UNSTARTED_DEADLINE_MS / 60_000;
+  const start = await import('../../src/release-batch/job-start.js');
+  deadlineMinutes = start.RELEASE_UNSTARTED_DEADLINE_MS / 60_000;
 }, 60_000);
 
 afterAll(async () => {

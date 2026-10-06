@@ -27,6 +27,7 @@ import type {
 	ReleaseLiveState,
 	ReleaseMethod,
 	ReleaseRunState,
+	ReleaseStart,
 } from "../types";
 import { ReleaseTimeline } from "./release-timeline";
 
@@ -110,6 +111,34 @@ function LiveReading({
 			{live.disagreement ? (
 				<p className="text-xs text-amber">
 					The probes answered different commits: {live.disagreement.join(", ")}
+				</p>
+			) : null}
+		</div>
+	);
+}
+
+const START_HEADLINE: Record<Exclude<ReleaseStart["kind"], "taken">, string> = {
+	waiting: "No box has started this release",
+	claimed: "No box has started this release",
+	"handed-back": "This release never started",
+	ended: "This release never started",
+	none: "This run holds no release job",
+};
+
+/** Says why nothing has happened yet, so a batch no box took never reads like one at work. */
+function StartLine({ start }: { start: ReleaseStart }) {
+	if (start.kind === "taken") return null;
+	const waiting = start.kind === "waiting" || start.kind === "claimed";
+	return (
+		<div className="flex flex-col gap-1 border-b border-line pb-3" data-testid="start-line" data-kind={start.kind}>
+			<p className={`text-sm font-medium ${waiting ? "text-amber" : "text-fg"}`}>
+				{START_HEADLINE[start.kind]}
+			</p>
+			<p className="text-sm text-muted">{start.why}</p>
+			{start.kind === "waiting" ? (
+				<p className="text-xs text-subtle">
+					Waiting since <time dateTime={start.since}>{start.since}</time> · handed back at{" "}
+					<time dateTime={start.handedBackAt}>{start.handedBackAt}</time>
 				</p>
 			) : null}
 		</div>
@@ -244,6 +273,8 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 					{data.runStatus}
 				</Badge>
 			</header>
+
+			<StartLine start={data.start} />
 
 			<div className="grid gap-4 lg:grid-cols-3">
 				<Card>

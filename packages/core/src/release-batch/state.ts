@@ -5,6 +5,7 @@ import { type BoundsReading, readBounds } from './bounds.js';
 import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
+import { type ReleaseStart, readReleaseStart } from './job-start.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import type { ReleaseVerification } from './plan.js';
@@ -33,6 +34,8 @@ export interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
+  /** Whether a box has started this release's job, and if not, why not (ISS-1323). */
+  start: ReleaseStart;
 }
 
 /** The probes the close reads, or none: a refused declaration has nothing to read either. */
@@ -85,10 +88,11 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
 
   const channels = await resolveReleaseChannels(first.projectId);
   const verify = liveProbes(channels);
-  const [roster, attempts, live] = await Promise.all([
+  const [roster, attempts, live, start] = await Promise.all([
     loadReleaseRoster(first.projectId),
     listAttempts(runId),
     verify ? readLiveState(verify) : Promise.resolve(null),
+    readReleaseStart(runId, first.projectId),
   ]);
   const run = (await readRun(runId)) ?? first;
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
@@ -107,6 +111,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
+    start,
   };
 }
 
