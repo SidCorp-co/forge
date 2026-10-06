@@ -14,6 +14,7 @@ import {
   markTargetRequired,
   mergedLandingSchema,
   standingMarkRefusal,
+  UnknownProjectKindError,
 } from './landing-evidence.js';
 
 const AT = new Date('2026-09-29T14:44:34Z');
@@ -31,6 +32,20 @@ describe('the shape is read off the project kind, and nothing else', () => {
   it('refuses a kind no route writes by name, rather than defaulting it to either shape', () => {
     expect(() => landingShapeOf('publish')).toThrow('project kind `publish` is not one of');
     expect(() => landingShapeOf('')).toThrow('`standard`, `website`');
+  });
+
+  it('names the project and the route that sets its kind, as an error a door can refuse by', () => {
+    const thrown = (() => {
+      try {
+        landingShapeOf('kiosk', 'p-1');
+      } catch (err) {
+        return err;
+      }
+    })();
+    expect(thrown).toBeInstanceOf(UnknownProjectKindError);
+    expect(thrown).toMatchObject({ kind: 'kiosk', projectId: 'p-1' });
+    expect((thrown as Error).message).toContain("project p-1's kind `kiosk` is not one of");
+    expect((thrown as Error).message).toContain('`kind` on `PATCH /api/projects/:id`');
   });
 });
 

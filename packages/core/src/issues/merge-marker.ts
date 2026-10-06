@@ -1,16 +1,18 @@
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { comments, projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
+  type LandingShape,
   landingMarkRefusal,
   markTargetRequired,
   readLandingShape,
   standingMarkRefusal,
+  UnknownProjectKindError,
 } from './landing-evidence.js';
 import {
   clearIssueMerge,
@@ -80,12 +82,28 @@ export class MergeMarkerError extends Error {
       | 'LANDING_NOT_THIS_SHAPE'
       | 'MARK_ALREADY_STANDS'
       | 'TARGET_REQUIRED'
+      | 'PROJECT_KIND_UNKNOWN'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'MergeMarkerError';
+  }
+}
+
+/** The shape a mark is judged against; a kind Forge does not know is the caller's refusal, never
+ *  a 500, because the mark cannot be judged and nothing is written. */
+async function markShape(projectId: string): Promise<LandingShape> {
+  try {
+    return await readLandingShape(db, projectId);
+  } catch (err) {
+    if (!(err instanceof UnknownProjectKindError)) throw err;
+    throw new MergeMarkerError('PROJECT_KIND_UNKNOWN', err.message, {
+      projectId,
+      kind: err.kind,
+      kinds: [...projectKinds],
+    });
   }
 }
 
@@ -132,7 +150,7 @@ export async function applyMergeMarker(args: {
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   if (args.op === 'mark') {
-    const shape = await readLandingShape(db, before.projectId);
+    const shape = await markShape(before.projectId);
     // A landing on a git project is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {

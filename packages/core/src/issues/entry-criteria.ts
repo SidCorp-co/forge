@@ -55,8 +55,12 @@ const criteriaWith = (
   },
 });
 
-const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor));
-const STRICT_CRITERIA = criteriaWith((id, executor) => missingWorkEvidenceStrict(id, executor));
+// `work_evidence` holds a person too (`transition-evidence.ts:entryCriteriaRule`), so its refusal
+// names the routes anyone can take, never the agent-only commit route alone.
+const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor, 'anyone'));
+const STRICT_CRITERIA = criteriaWith((id, executor) =>
+  missingWorkEvidenceStrict(id, executor, 'anyone'),
+);
 
 /**
  * What the project declared for the status being entered, or an empty list.

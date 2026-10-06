@@ -217,17 +217,26 @@ async function row(id: string) {
   return r as { status: string; merged_at: unknown; merged_commit_sha: string | null };
 }
 
-async function advance(id: string, from: string, to: string) {
+async function advance(
+  id: string,
+  from: string,
+  to: string,
+  agency: 'agent' | 'human' = 'agent',
+) {
   const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
   return transitionIssueStatus(
     { id, projectId, status: from, reopenCount: 0 } as never,
     to as never,
-    {
-      type: 'user',
-      id: userId,
-      agency: 'agent',
-    },
+    { type: 'user', id: userId, agency },
   );
+}
+
+async function declareWorkEvidence(): Promise<void> {
+  await harness.db.execute(sql`
+    UPDATE projects SET agent_config = ${JSON.stringify({
+      pipelineConfig: { statusEntryCriteria: { developed: ['work_evidence'] } },
+    })}::jsonb WHERE id = ${projectId}
+  `);
 }
 
 async function comments(id: string): Promise<string[]> {
@@ -312,7 +321,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
       expect(refused.message).toContain('not taken as evidence unchecked');
-      expect(refused.message).toContain('or have a person mark it merged');
+      expect(refused.message).toContain(
+        "Two routes clear it: mark again once the tracker can read the project's repository, through a GitHub binding whose installation can read it; or have a person mark it merged and move it through `developed` and `testing`",
+      );
       expect(refused.message).toContain("a branch recorded under the base branch's name");
       expect(refused.message).not.toContain('record the branch the work was done on');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
@@ -425,4 +436,69 @@ describe('ISS-1318 — the live branch and an abbreviated sha, named for what th
       'NO_WORK_EVIDENCE',
     );
   });
+});
+
+describe('ISS-1318 r3 — each refusal names a route its reader can take (real Postgres)', () => {
+  it('asks for a base branch, and a person, where the project names none', async () => {
+    await harness.db.execute(sql`UPDATE projects SET base_branch = NULL WHERE id = ${projectId}`);
+    // With no base branch to discard, a recorded `main` would itself count, so none is recorded.
+    const issue = await seed({ sessionContext: {} });
+    const refused = await refusal(() => mark(issue, OWN));
+    expect(refused.code).toBe('COMMIT_UNVERIFIED');
+    expect(refused.message).toContain('the project names no base branch to look for it on');
+    expect(refused.message).toContain(
+      'Two routes clear it: mark again once the project names its base branch; or have a person mark it merged and move it',
+    );
+    expect(repo.reads).toEqual([]);
+  });
+
+  it("clears the agent's gate once a person marks it merged and moves it, as COMMIT_UNVERIFIED says", async () => {
+    repo.down = 'no_binding';
+    const issue = await seed();
+    expect((await refusal(() => mark(issue, OWN))).code).toBe('COMMIT_UNVERIFIED');
+    await mark(issue, undefined, 'human');
+    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
+      'NO_WORK_EVIDENCE',
+    );
+    await advance(issue.id, 'in_progress', 'developed', 'human');
+    await advance(issue.id, 'developed', 'testing', 'human');
+    expect((await row(issue.id)).status).toBe('testing');
+  });
+
+  it("tells a person held by the declared work_evidence criterion that a person's mark does not clear it (git)", async () => {
+    await declareWorkEvidence();
+    const issue = await seed();
+    await mark(issue, OWN, 'human');
+    const refused = await refusal(() => advance(issue.id, 'in_progress', 'developed', 'human'));
+    expect(refused.code).toBe('ENTRY_CRITERIA_UNMET');
+    expect(refused.message).toContain(
+      "a person's mark records no commit Forge read, so it does not clear this",
+    );
+    expect(refused.message).toContain('`statusEntryCriteria`');
+    expect(refused.message).not.toContain('the commit it landed at, which Forge checks');
+  });
+
+  it('never tells a person held by the declared work_evidence criterion that it does not hold them (website)', async () => {
+    await declareWorkEvidence();
+    const issue = await seed({ kind: 'website' });
+    await mark(issue, undefined, 'human', { landing: 'https://shop.example/p/1318' });
+    const refused = await refusal(() => advance(issue.id, 'in_progress', 'developed', 'human'));
+    expect(refused.code).toBe('ENTRY_CRITERIA_UNMET');
+    expect(refused.message).not.toContain('does not hold them to');
+    expect(refused.message).toContain('a landing it names is not evidence');
+    expect(refused.message).toContain('`statusEntryCriteria`');
+  });
+
+  it.each(['agent', 'human'] as const)(
+    "refuses a %s's mark by name on a project whose kind Forge does not know, writing nothing",
+    async (agency) => {
+      const issue = await seed({ kind: 'kiosk' });
+      const refused = await refusal(() => mark(issue, OWN, agency));
+      expect(refused.code).toBe('PROJECT_KIND_UNKNOWN');
+      expect(refused.message).toContain('kind `kiosk` is not one of `standard`, `website`');
+      expect(refused.message).toContain('`kind` on `PATCH /api/projects/:id`');
+      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+      expect(repo.reads).toEqual([]);
+    },
+  );
 });
