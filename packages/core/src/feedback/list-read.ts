@@ -19,7 +19,6 @@ import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { projectHasLiveMaster } from '../devices/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -29,7 +28,7 @@ import { actorFor, holds, projectResource, requireCan } from '../permissions/ind
 import { productionOf, readProjectDocument } from '../project-config/index.js';
 import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
-import { owedTriages } from './owed-triage.js';
+import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
@@ -68,11 +67,6 @@ export interface Linked {
   masterOwed: Set<string>;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
   release: CarrierRelease | null;
-}
-
-/** The items a live master owes a triage: with no master live, nobody is woken for them, so none. */
-async function masterOwed(projectId: string) {
-  return (await projectHasLiveMaster(projectId)) ? owedTriages(projectId) : [];
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -193,7 +187,9 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       rows.some((r) => r.route === 'issue' && r.routedIssueId === i.id),
   );
   const [owed, release] = await Promise.all([
-    rows.some((r) => r.status === 'new' || r.status === 'reopened') ? masterOwed(projectId) : [],
+    rows.some((r) => r.status === 'new' || r.status === 'reopened')
+      ? liveMasterOwedTriages(projectId)
+      : [],
     atGate ? releaseOf(projectId) : null,
   ]);
   return {

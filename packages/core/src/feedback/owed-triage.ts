@@ -15,6 +15,7 @@ import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { projectHasLiveMaster } from '../devices/index.js';
 
 export interface OwedTriage {
   feedbackId: string;
@@ -68,6 +69,11 @@ export async function owedTriages(projectId: string, exec: Tx = db): Promise<Owe
     severity: r.severity,
     status: r.status as OwedTriage['status'],
   }));
+}
+
+/** What the project's live master owes: with no master live, nobody is woken for these, so none. */
+export async function liveMasterOwedTriages(projectId: string): Promise<OwedTriage[]> {
+  return (await projectHasLiveMaster(projectId)) ? owedTriages(projectId) : [];
 }
 
 /** Most severe first, and in filing order within one severity: the sort is stable. */
