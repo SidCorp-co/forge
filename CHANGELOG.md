@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.53] - 2026-10-06
+
+Masters told what feedback they owe, nudged only between passes, re-read before asking
+
 ### Fixed
 
 - **A resumed master re-reads what it carries before asking a person for it.** The master skill drops a
