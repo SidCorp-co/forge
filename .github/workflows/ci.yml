@@ -464,6 +464,7 @@ jobs:
       # job's path filter already fires on `packages/contracts/**` and web-v2 is the
       # package that consumes the values.
       - run: pnpm --filter @forge/contracts test
+      - run: pnpm --filter web-v2 test
       - run: pnpm --filter web-v2 build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8080/api

@@ -24,7 +24,7 @@ import type { WaitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
 import { liveAt } from './rules.js';
-import { draftTurn, type StandingRevision } from './standing-draft.js';
+import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -75,6 +75,8 @@ interface StandingInput {
   /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
   stalePins: readonly { flow: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
+  /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
+  unapprovedDesigns: readonly { flow: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
@@ -209,6 +211,8 @@ function turnOf(
   if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {
     const head = input.currentRevision;
+    const designs = designTurn(input.unapprovedDesigns, head);
+    if (designs) return designs;
     return signerWait(
       viewer,
       head === null ? 'agree it' : `agree r${head}`,
@@ -459,6 +463,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       draftRevision: input.revisions.find((r) => r.state === 'draft')?.revision ?? null,
       stalePins: [...input.stalePins],
       staleContractPins: [...input.staleContractPins],
+      unapprovedDesigns: [...input.unapprovedDesigns],
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },

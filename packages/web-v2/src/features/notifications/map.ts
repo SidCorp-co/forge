@@ -53,18 +53,19 @@ export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
 ): NotificationItem {
-  const resolved = deliveryResolved(row);
+  const cleared = deliveryResolved(row);
+  const resolved = row.resolvedNotice || cleared;
   return {
     id: row.id,
     ...(row.subject ? { subjectKey: row.subject.key } : {}),
     ...(row.project && row.subject?.kind !== "project" ? { project: row.project.name } : {}),
     type: row.type,
-    resolved: row.resolvedNotice || resolved,
+    resolved,
     text: row.line,
     sub: liveBody(row),
     time: formatRelativeTime(row.createdAt),
     unread: row.readAt === null && !resolved,
-    hue: resolved ? "green" : hueFor(row),
+    hue: cleared ? "green" : hueFor(row),
     group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,
     actions,
   };

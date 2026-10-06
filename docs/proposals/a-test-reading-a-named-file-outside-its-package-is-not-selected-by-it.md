@@ -15,8 +15,9 @@ reach there, since they allowed only whole-tree tests to change selection.
 Measured on the tree ISS-1314 was cut from, seven TypeScript tests in `packages/core` and
 `packages/web-v2` read a named file outside their job's filter — among them the core tests that read
 the runner's wire fixtures. Those tests were deleted on dev with every TypeScript test, and the
-runner's own tests with its fixtures (ISS-216), so none stands on dev today; the reads are
-re-measured when the QA phase rewrites them (ISS-172).
+runner's own tests with its fixtures (ISS-216). Re-measured after the QA phase rewrote the core and
+web suites (ISS-172): none reads a named file outside its package, and the one test that loads
+another package's file, `scripts/lib/unit-config-workers.test.mjs`, declares `@gate-input whole-tree`.
 
 ## What would close it
 
