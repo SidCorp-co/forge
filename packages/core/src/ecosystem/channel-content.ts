@@ -27,7 +27,7 @@ interface ProseAt {
   text: string;
 }
 
-// cm:why a contract-level example's payload is data the contract defines, and an element name is the contract's own word: neither is the sender's prose.
+// a contract-level example's payload is data the contract defines, and an element name is the contract's own word: neither is the sender's prose.
 export function proseOf(body: unknown, at = '/body'): ProseAt[] {
   const out: ProseAt[] = [];
   const walk = (o: unknown, key: string, path: string) => {
@@ -116,7 +116,7 @@ function scan(p: ProseAt, ctx: ContentContext): EcosystemRefusal[] {
   return out;
 }
 
-// cm:why fail-closed: with no interface core cannot tell the sender's internal names, so it refuses rather than let unscanned prose cross.
+// fail-closed: with no interface core cannot tell the sender's internal names, so it refuses rather than let unscanned prose cross.
 export function contentRefusals(
   subject: string,
   body: unknown,

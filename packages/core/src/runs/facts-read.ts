@@ -1,4 +1,4 @@
-// cm:why the rows a page of runs is derived from, one statement per table (design agent-run-standing rev 1,
+// the rows a page of runs is derived from, one statement per table (design agent-run-standing rev 1,
 // ISS-108): pipeline_runs, jobs, agent_sessions and the run ledger; the claim blob, the fleet key and deploy
 // locks; questions, release approvals and the kernel's own transitions
 
@@ -46,7 +46,7 @@ const texts = (values: readonly string[]) =>
 const q = (s: SQL) => db.execute(s).then((r) => rowsOf(r));
 const when = (ok: boolean, s: () => Promise<Row[]>) => (ok ? s() : Promise.resolve([] as Row[]));
 
-// cm:why a run here is a pipeline run a person reads on Agents / Runs: a chat's one-shot run is a conversation,
+// a run here is a pipeline run a person reads on Agents / Runs: a chat's one-shot run is a conversation,
 // and a master's own run is the master, served by masters/standing beside the list; the master is read off its
 // session's `kind` column, never a jsonb key (jobs/session-kinds.test.ts)
 export const MASTER_RUN_SQL = sql`r.issue_id IS NULL AND EXISTS (
@@ -127,7 +127,7 @@ async function latestFlips(entity: 'run' | 'session', ids: string[], to: readonl
   );
 }
 
-// cm:why an attempt is a run: the nth run over the same issue in this project, its retryOf the run before it
+// an attempt is a run: the nth run over the same issue in this project, its retryOf the run before it
 // (decision on agent-run-standing: the next attempt is a new run); a group run counts under its first issue,
 // keyed by sequence number so the key itself is built only by `lib/issue-ref.ts`
 async function attemptsOf(projectId: string, ids: string[]) {

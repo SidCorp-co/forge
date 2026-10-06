@@ -1,4 +1,4 @@
-// cm:why a UI action is a client-side tool: core validates the call against the closed registry and
+// a UI action is a client-side tool: core validates the call against the closed registry and
 // forwards it on the turn's own stream as a deferred result; the browser that sent the message executes
 // it as the signed-in person and reports the page it produced on the next message's snapshot. Core never
 // executes one, so a ui_* call can change no data whatever its params say.

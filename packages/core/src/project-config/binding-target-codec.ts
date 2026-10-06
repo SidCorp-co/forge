@@ -10,7 +10,7 @@ interface Encoded {
   config: Record<string, unknown>;
 }
 
-// cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — each provider's binding-tier
+// contract -> packages/core/src/integrations/provider-schemas.ts — each provider's binding-tier
 // config keys (`bindingConfigKeys`) other than the release channel's, which the target names alike.
 const FIELDS: Readonly<Record<string, readonly string[]>> = {
   coolify: ['targets'],

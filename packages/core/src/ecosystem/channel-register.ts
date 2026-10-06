@@ -45,7 +45,7 @@ export type Listed = ChannelDocument & { thread: string | null };
 export const owesReply = (d: ChannelDocument) =>
   REPLIES[d.type].length > 0 && !(d.type === 'change-notice' && d.body.binding === false);
 
-// cm:why awaiting, answered, overdue and the owner are derived on every read from the published documents and never stored, so a lapsed date reads overdue and nothing closes itself
+// awaiting, answered, overdue and the owner are derived on every read from the published documents and never stored, so a lapsed date reads overdue and nothing closes itself
 export function rowsOf(
   docs: readonly Listed[],
   held: ReadonlyMap<string, ThreadHold>,
@@ -117,7 +117,7 @@ const matches = (row: RegisterRow, status: RegisterStatus | undefined) => {
   return row.state !== 'published';
 };
 
-// cm:why the register lists only documents one of the reader's projects sent or received; the steward org and visibility "all" see no other pair's documents
+// the register lists only documents one of the reader's projects sent or received; the steward org and visibility "all" see no other pair's documents
 export async function readRegister(
   userId: string,
   ecosystemId: string,

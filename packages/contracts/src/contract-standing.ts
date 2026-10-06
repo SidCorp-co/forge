@@ -1,4 +1,4 @@
-// cm:why the Contracts list and a contract's full page read one core model
+// the Contracts list and a contract's full page read one core model
 // (`GET /api/projects/:id/contract-standing`, ISS-70): attention, whom it waits on, the commitment
 // window and adoption are core's, never the browser's (REQ-11 BC-12)
 

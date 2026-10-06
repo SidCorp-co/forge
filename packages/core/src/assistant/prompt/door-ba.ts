@@ -1,6 +1,6 @@
 import type { PromptLayer } from './layer.js';
 
-// cm:why the BA door is a narrow role (ISS-58): it reads and proposes, and a person decides; the
+// the BA door is a narrow role (ISS-58): it reads and proposes, and a person decides; the
 // layer says so because the tool set alone cannot tell the model why its writes are suggestions
 export const BA_DOOR_LAYER: PromptLayer = {
   id: 'door-ba',

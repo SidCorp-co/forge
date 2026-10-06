@@ -46,7 +46,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   const door = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
 
-  // cm:why the dock remembers the page it was opened on, so a new page — reached in the app or loaded
+  // the dock remembers the page it was opened on, so a new page — reached in the app or loaded
   // afresh — finds it closed unless pinned (REQ-11 BC-8); a query change (a peek opening) is the same page
   const open = openOn !== null && (pinned || openOn === pathname);
   useEffect(() => {
@@ -103,7 +103,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       setWidth: (w: number) => setStoredWidth(clampDockWidth(w)),
       show,
       close: () => setOpen(false),
-      // cm:why opening from the top bar on a page that named a door lands in that page's room (the
+      // opening from the top bar on a page that named a door lands in that page's room (the
       // requirement's BA assistant, ISS-58); a door that cannot open says so itself and answers null,
       // which leaves the dock on its own target
       toggle: () => {

@@ -108,7 +108,7 @@ async function scopedEcosystem(side: string, named: string | undefined, scope: R
   return scope.ecosystemId;
 }
 
-// cm:why a widened read is the same party read as a project-scoped one, asked as each side of the fence in turn, home first; a document none of them is a party to stays unreadable
+// a widened read is the same party read as a project-scoped one, asked as each side of the fence in turn, home first; a document none of them is a party to stays unreadable
 async function firstParty<T>(sides: readonly string[], read: (side: string) => Promise<T>) {
   let last: unknown;
   for (const side of sides) {
@@ -221,7 +221,7 @@ const isWrite = (action: ChannelAction) => (CHANNEL_WRITES as readonly string[])
 
 const OWN_AUTHORITY: readonly ChannelAction[] = ['hold', 'release', 'gate'];
 
-// cm:why a hold and a gate are read-gated here as on REST: who may act is the hold rule's HOLD_NOT_AUTHORISED and the gate option's PERMISSION_FORBIDDEN, so both doors refuse a viewer with the same code
+// a hold and a gate are read-gated here as on REST: who may act is the hold rule's HOLD_NOT_AUTHORISED and the gate option's PERMISSION_FORBIDDEN, so both doors refuse a viewer with the same code
 const roleNeeded = (action: ChannelAction) =>
   isWrite(action) && !OWN_AUTHORITY.includes(action) ? 'write' : 'read';
 
@@ -294,7 +294,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 
 const grantOf = (action: ChannelAction) => (isWrite(action) ? 'projects:write' : 'projects:read');
 
-// cm:why every action takes the permission its REST route takes; the register is read fenced to this side, the same rows its inbox and outbox hold, so it is a project read and not the account-wide ecosystems:read
+// every action takes the permission its REST route takes; the register is read fenced to this side, the same rows its inbox and outbox hold, so it is a project read and not the account-wide ecosystems:read
 export const forgeChannelTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_channel',
   description: DESCRIPTION,

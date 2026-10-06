@@ -16,7 +16,7 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
  * The project's query defaults, in one place so the test that asserts them
  * asserts the same object the app runs on rather than a copy of it.
  */
-// cm:why any write can change whose turn a row is, so every settled mutation re-reads the waiting-on-you
+// any write can change whose turn a row is, so every settled mutation re-reads the waiting-on-you
 // counts; the menu would otherwise keep a number its list no longer agrees with (REQ-11 BC-10)
 export function createQueryClient(): QueryClient {
 	const client: QueryClient = new QueryClient({

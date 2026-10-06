@@ -178,7 +178,7 @@ async function decryptedValues(
   return { ok: true, secrets };
 }
 
-// cm:flow testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
+// testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
 // the one testing profile its environment names, and nothing else
 export async function resolveTestingSecrets(args: {
   principal: PatPrincipal;
@@ -236,7 +236,7 @@ export async function resolveTestingSecrets(args: {
   return { ok: true, resolved: { jobId, environment, profileId, secrets } };
 }
 
-// cm:why the environment a job judges is the one deploying the branch its issue's work landed on —
+// the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
 async function judgedEnvironment(
   issueId: string | null,

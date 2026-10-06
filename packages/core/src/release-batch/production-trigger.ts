@@ -2,7 +2,7 @@ import { logger } from '../lib/logger.js';
 import { productionOf, readProjectDocument } from '../project-config/index.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */
-// cm:edge naming -> packages/core/src/project-config/schema.ts:DEPLOYMENT_TRIGGERS
+// naming -> packages/core/src/project-config/schema.ts:DEPLOYMENT_TRIGGERS
 export async function productionDeploysOnLand(projectId: string): Promise<boolean> {
   try {
     const held = await readProjectDocument(projectId);

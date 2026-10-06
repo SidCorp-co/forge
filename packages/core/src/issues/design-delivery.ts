@@ -24,7 +24,7 @@ const unapproved = (alias: SQL) => sql`NOT EXISTS (
      AND a.decision = 'approve'
 )`;
 
-// cm:why an issue delivers a design revision when it is that revision's design issue (the latest it
+// an issue delivers a design revision when it is that revision's design issue (the latest it
 // proposed, per workflow) or when the latest verdict on one of its live criteria names a design
 // revision (a design verdict counts on any issue, ISS-91); either way the work it owes is that
 // revision approved, so a blocks edge from it holds until then (FB-57)

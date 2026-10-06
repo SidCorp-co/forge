@@ -78,7 +78,7 @@ export function pageLabel(pathname: string | null): string {
   if (parts[0] === "projects" && parts.length <= 2) return "Dashboard";
   const last = decodeURIComponent(parts.at(-1) ?? "");
   if (!last) return "Back";
-  // cm:why a record key (REQ-1, ISS-63) is a name already; only a slug reads better as words
+  // a record key (REQ-1, ISS-63) is a name already; only a slug reads better as words
   if (/^[A-Z]+-\d+$/.test(last)) return last;
   return last.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
 }

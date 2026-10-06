@@ -72,7 +72,7 @@ export const issuesApi = {
     if (opts.assignee) params.set("assignee", opts.assignee);
     if (opts.label) params.set("label", opts.label);
     if (opts.module) params.set("module", opts.module);
-    // cm:why an explicit `status` (the assistant's, ISS-47) names the statuses outright, so the segment's cut is not added under it
+    // an explicit `status` (the assistant's, ISS-47) names the statuses outright, so the segment's cut is not added under it
     const segment = opts.status ? {} : filterToQueryParams(opts.filter ?? "all");
     for (const s of opts.status ?? segment.status ?? []) params.append("status", s);
     for (const s of segment.statusNot ?? []) params.append("statusNot", s);

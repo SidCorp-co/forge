@@ -196,7 +196,7 @@ export async function replaceBuilderRun(
   return row;
 }
 
-// cm:edge contract -> packages/core/src/ecosystem/builder-run-rules.ts:isOpenRun — the same reading of "open", in SQL: a step still pending or running
+// contract -> packages/core/src/ecosystem/builder-run-rules.ts:isOpenRun — the same reading of "open", in SQL: a step still pending or running
 export async function openBuilderRunOf(
   tx: Tx,
   by: { projectId: string; ecosystemId: string; exceptId: string | null },

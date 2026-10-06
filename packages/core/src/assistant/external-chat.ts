@@ -101,7 +101,7 @@ export interface ExternalChatTurnResult {
   progress: ProjectProgress | null;
 }
 
-// cm:guard everything a chat turn's model reads is the conversation (surface `conversation`), the
+// everything a chat turn's model reads is the conversation (surface `conversation`), the
 // tool results it calls for included: each text block leaves through the one egress rule, so a
 // tool that reads the room or the project hands it nothing the level forbids
 function egressedTools(level: SensitiveDataLevel, tools: ChatToolset, what: string): ChatToolset {

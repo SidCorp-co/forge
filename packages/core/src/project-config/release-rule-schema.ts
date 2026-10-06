@@ -71,7 +71,7 @@ const releaseRuntimesSchema = z
       });
     });
   });
-// cm:why read by `release-batch/approvals.ts` (approval), `release-batch/version.ts` (prerelease)
+// read by `release-batch/approvals.ts` (approval), `release-batch/version.ts` (prerelease)
 // and `release-batch/runtime-weighing.ts` (runtimes)
 export const releaseRuleSchema = z.strictObject({
   approval: z.strictObject({ required: z.boolean() }),

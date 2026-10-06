@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why Agents / Runs (ISS-111, prototype #/dev/runs, design agent-run-standing rev 1): the signals line,
+// Agents / Runs (ISS-111, prototype #/dev/runs, design agent-run-standing rev 1): the signals line,
 // the project master row and every run grouped by core's attentionGroup (or by lane or box), a peek and a
 // full page per row, all read from GET /runs/standing; the band and the list read the same answer, so
 // they can never disagree about how many runs there are

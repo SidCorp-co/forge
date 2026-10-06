@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why Excalidraw is reached only through this file, which board-panel loads with next/dynamic and
+// Excalidraw is reached only through this file, which board-panel loads with next/dynamic and
 // ssr:false — the package touches window at import, so a static import anywhere on a server-rendered path
 // breaks the build.
 
@@ -122,7 +122,7 @@ export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {})
   const doc = board.doc;
   const version = board.loaded;
 
-  // cm:why a given board is complete at mount, so it goes in as initialData; a scene pushed through the
+  // a given board is complete at mount, so it goes in as initialData; a scene pushed through the
   // API before Excalidraw's first load is replaced by its empty initial scene, and the board shows blank
   useEffect(() => {
     if (given || !api || shown.current === version || !doc) return;

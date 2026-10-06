@@ -1,4 +1,4 @@
-// cm:why the Development overview's one read model (`GET /api/projects/:id/development/overview`):
+// the Development overview's one read model (`GET /api/projects/:id/development/overview`):
 
 import type {
 	IssueAttentionGroup,

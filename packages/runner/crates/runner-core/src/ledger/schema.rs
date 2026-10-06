@@ -157,7 +157,7 @@ impl Ledger {
     /// the config dir for a daemon run under a config dir of its own.
     pub fn default_path() -> Result<PathBuf> {
         let base = runner_platform::config::base_dir()?;
-        // cm:guard the OS data dir is per user, not per daemon: a second daemon reading it sweeps
+        // the OS data dir is per user, not per daemon: a second daemon reading it sweeps
         // the first one's runs and stamps them closed at its own core (ISS-10)
         if !runner_platform::config::is_the_boxs_own_config_dir(&base) {
             return Ok(base.join("ledger.sqlite"));

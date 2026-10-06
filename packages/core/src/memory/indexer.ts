@@ -321,7 +321,7 @@ export function registerMemoryIndexer(): void {
     name: 'memory-indexer',
     handle: async (p) => {
       if (!p.fields.includes('title') && !p.fields.includes('description')) return;
-      // cm:why `after` holds only the changed fields, so the text is rebuilt from the whole row.
+      // `after` holds only the changed fields, so the text is rebuilt from the whole row.
       const head = await memoryIssueReads().head(p.issueId);
       if (head) await indexIssue(p.projectId, p.issueId, head);
     },

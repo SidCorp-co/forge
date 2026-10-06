@@ -178,7 +178,7 @@ fn remote_place(url: &str, checkout: &std::path::Path) -> Option<Place> {
     Some(local(std::path::Path::new(url), checkout))
 }
 
-// cm:why `--clone` gets its helper from the provision; a checkout bound by `--path` gets the same
+// `--clone` gets its helper from the provision; a checkout bound by `--path` gets the same
 // one here, for the host the project document declares — and only once its origin is that repository
 /// The host to point this checkout's credential helper at, `None` where none is wanted (core
 /// mints no credential, or origin is reached over SSH or the disk with this box's own access), or

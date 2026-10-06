@@ -335,7 +335,7 @@ pub fn cli_borrow_path(slug: &str) -> Result<PathBuf> {
     Ok(runner_platform::config::master_dir(slug)?.join("forge-cli.json"))
 }
 
-// cm:why one credential per checkout: the token core minted for it is what `.mcp.json` carries, so the pane's CLI borrows that same token and never the box's operator PAT, which reaches the projects one person pasted it for
+// one credential per checkout: the token core minted for it is what `.mcp.json` carries, so the pane's CLI borrows that same token and never the box's operator PAT, which reaches the projects one person pasted it for
 /// Leave the checkout's credential where its master pane's `forge` CLI borrows
 /// it: `{url, token}` owner-only, or no file at all where core minted none.
 pub fn write_cli_borrow(slug: &str, core_url: &str, credential: Option<&str>) -> Result<CliBorrow> {

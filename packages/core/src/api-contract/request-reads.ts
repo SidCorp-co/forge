@@ -19,7 +19,7 @@ function viaAll(re: RegExp, source: string, show: (m: RegExpMatchArray) => strin
   return [...new Set([...source.matchAll(re)].map(show))].sort();
 }
 
-// cm:why a handler's own text is what it reads; a read this cannot see sits in a helper, and the
+// a handler's own text is what it reads; a read this cannot see sits in a helper, and the
 // source scan below refuses those, so the two together leave no read undescribed
 export function readsOf(source: string): RequestRead[] {
   const reads: RequestRead[] = [];

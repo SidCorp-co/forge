@@ -1,7 +1,7 @@
 // The workflow-template-v1 meta-schema and the resolution of a project's templates; the built-ins
 // are in workflow-template-builtins.ts, and workflow-templates.ts is the one entry both are read through.
 //
-// cm:why a workflow diagram is drawn in a TEMPLATE — a closed vocabulary of bands, node types and
+// a workflow diagram is drawn in a TEMPLATE — a closed vocabulary of bands, node types and
 // edge kinds with the fields each owes — so one project's journey, another's state machine and a
 // third's integration sequence are each checked against their own shape, and the canvas renders
 // any of them from the template alone. The built-in templates are kernel and versioned here; a

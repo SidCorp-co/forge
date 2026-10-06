@@ -250,7 +250,7 @@ export function QuestionnaireCard({
           </HoverNote>
         </span>
       </div>
-      {/* cm:why on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
+      {/* on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
           2026-10-04 ruling holds them to product information, and the card says so where they are typed */}
       {scrubsOnWrite(batch.sensitiveData) && (
         <p data-testid="questionnaire-data-warning" className="border-t border-line-subtle py-1.5 pl-[11px] pr-3 text-[11.5px] text-muted">

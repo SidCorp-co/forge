@@ -5,7 +5,7 @@ const HERMETIC_ENV: Record<string, string> = {
 };
 const KEPT_ENV = new Set(['PATH', 'HOME', 'TMPDIR', 'NODE_OPTIONS']);
 
-// cm:why a caller's shell could mount a different route set, so the default build's env replaces it
+// a caller's shell could mount a different route set, so the default build's env replaces it
 export function enterHermeticEnv(): void {
   for (const key of Object.keys(process.env)) if (!KEPT_ENV.has(key)) delete process.env[key];
   Object.assign(process.env, HERMETIC_ENV);

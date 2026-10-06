@@ -63,7 +63,7 @@ function treeStamp() {
   return hash.digest('hex');
 }
 
-// cm:why generating imports the whole app (~14 s) and CI's conformance job asks twice, this step
+// generating imports the whole app (~14 s) and CI's conformance job asks twice, this step
 // then conformance-status probing it; a kept run is read only by a run on the tree it was made from
 function keptDir(env = process.env) {
   const dir = env.FORGE_API_CONTRACTS_DIR;
@@ -90,7 +90,7 @@ function keep(run) {
 }
 
 function generate() {
-  // cm:why under node_modules because verify runs checks concurrently, and it is the one place in
+  // under node_modules because verify runs checks concurrently, and it is the one place in
   // the package every other checker's tree walk skips.
   const out = mkdtempSync(join(CORE, 'node_modules', '.forge-api-contracts-'));
   try {

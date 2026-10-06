@@ -76,7 +76,7 @@ function scrubbedDecision(level: SensitiveDataLevel, d: DecisionFields): Decisio
   };
 }
 
-// cm:guard a node decision sits on a workflow, is posted by a holder of workflow-designs.approve and
+// a node decision sits on a workflow, is posted by a holder of workflow-designs.approve and
 // names a node of its approved revision or its latest observation (REQ-17 BC-26, design-reconciliation decide)
 async function nodeDecisionRefusals(
   tx: Tx,

@@ -1,6 +1,6 @@
 import { Field, Input } from "@/design";
 
-// cm:edge contract -> packages/core/src/integrations/autoflow/schemas.ts — the site slug and the token prefix it refuses otherwise.
+// contract -> packages/core/src/integrations/autoflow/schemas.ts — the site slug and the token prefix it refuses otherwise.
 export const SHOP_REGEX = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export const TOKEN_PREFIX = "sat_";
 const REFRESH_PREFIX = "srt_";

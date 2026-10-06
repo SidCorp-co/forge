@@ -98,7 +98,7 @@ export async function postOnboardingQuestionnaire(input: {
   return { ok: true, questionnaire: await batchView(db, projectId, batchId), created: true };
 }
 
-// cm:why an update names its designs and registers them with the onboarding, so their status is read
+// an update names its designs and registers them with the onboarding, so their status is read
 // live by the thread and the dashboard, and so they take only a person's approval
 export async function postOnboardingUpdate(input: {
   projectId: string;

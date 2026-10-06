@@ -16,7 +16,7 @@ const gates = new WeakMap<object, AuthGate>();
 
 export const declaredGates: Pick<WeakMap<object, AuthGate>, 'get'> = gates;
 
-// cm:why the API contract reads which credential a route admits off the gate itself
+// the API contract reads which credential a route admits off the gate itself
 export function declareGate<M extends object>(name: AuthGate, middleware: M): M {
   gates.set(middleware, name);
   return middleware;

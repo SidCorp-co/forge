@@ -54,7 +54,7 @@ export const ARTEFACT_KINDS: Readonly<Partial<Record<StorefrontProvider, readonl
 const CALL_SITE_SHAPE =
   'a call site names either a repository path and line (a git consumer) or a storefront artefact (a storefront consumer), exactly one of the two';
 
-// cm:why one site, two readings: a git consumer's code is a file and a line, a storefront consumer's is an artefact the provider holds; which one the consumer may write is its source type's, checked in `link-rules.ts:callSiteRefusals`
+// one site, two readings: a git consumer's code is a file and a line, a storefront consumer's is an artefact the provider holds; which one the consumer may write is its source type's, checked in `link-rules.ts:callSiteRefusals`
 const callSiteSchema = z
   .strictObject({
     path: repoPath().optional(),
@@ -87,7 +87,7 @@ const contractRefSchema = z.strictObject({ provider: uuid(), slug: slug() });
 const linkFields = {
   $schema: z.literal(LINK_SCHEMA_ID),
   version: z.literal(1),
-  // cm:why absent is an in-project link, a module calling its own project's contract; a link to another project's contract names the ecosystem it was made in (`link-rules.ts:referenceRefusals`, `ecosystem_links_scope_chk`)
+  // absent is an in-project link, a module calling its own project's contract; a link to another project's contract names the ecosystem it was made in (`link-rules.ts:referenceRefusals`, `ecosystem_links_scope_chk`)
   ecosystem: uuid().optional(),
   consumer: z.strictObject({ project: uuid(), module: repoPath() }),
   contract: contractRefSchema,
@@ -139,7 +139,7 @@ const stepSchema = z.strictObject({
   detail: z.string().min(1).max(1000).optional(),
 });
 
-// cm:why a repository run names the commit it reads; a storefront has no commit, so its run says where it reads instead of a sha that names nothing (never git's empty tree)
+// a repository run names the commit it reads; a storefront has no commit, so its run says where it reads instead of a sha that names nothing (never git's empty tree)
 const triggerSchema = z
   .strictObject({
     kind: z.enum(BUILDER_TRIGGERS),
@@ -180,7 +180,7 @@ const builderRunFields = {
     .optional(),
 };
 
-// cm:why a superseded run says so twice, in the run (who replaced it and why) and in each step it never reached; one without the other is refused, so neither reading can disagree with the other
+// a superseded run says so twice, in the run (who replaced it and why) and in each step it never reached; one without the other is refused, so neither reading can disagree with the other
 const supersededAgrees = (doc: {
   steps: { status: string }[];
   supersededBy?: unknown;

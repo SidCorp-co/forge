@@ -42,7 +42,7 @@ export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
 const DEVELOPMENT_GROUP_KEY = "development";
 
-// cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
+// the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
 // machinery that builds it sits under one Development group.
 const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
@@ -67,7 +67,7 @@ const PROJECT_MENU: ProjEntry[] = [
 
 export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
 
-// cm:why the waiting-on-you counts come from core's one needs-you read, each the size of its list's
+// the waiting-on-you counts come from core's one needs-you read, each the size of its list's
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
@@ -105,7 +105,7 @@ const ECO_THREADS_KEY = "eco-threads";
 const ECO_NEW_KEY = "eco-new";
 const ECO_PREFIX = "eco:";
 
-// cm:why the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
+// the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
 export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
   return [
     { key: ECO_THREADS_KEY, label: "Threads", icon: "mail", badge: read ? needsMe(read) : undefined },
@@ -188,7 +188,7 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   return ws?.key ?? "overview";
 }
 
-// cm:why More and Chat are lit by state because each opens a sheet over the page and is no route of its own; the other tabs follow the route
+// More and Chat are lit by state because each opens a sheet over the page and is no route of its own; the other tabs follow the route
 export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOpen: boolean): string {
   if (moreOpen) return "more";
   if (chatOpen) return "chat";

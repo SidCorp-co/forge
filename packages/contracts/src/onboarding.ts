@@ -1,4 +1,4 @@
-// cm:why one declaration of the onboarding and questionnaire vocabulary (workflow project-onboarding
+// one declaration of the onboarding and questionnaire vocabulary (workflow project-onboarding
 // rev 1, ISS-63): core's table CHECKs, REST, MCP, the BA door and the web all import these values,
 // the request schemas and the response shapes from here, so no surface names a state another does
 // not know.

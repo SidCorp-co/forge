@@ -113,7 +113,7 @@ export async function transition(input: {
     ],
   });
   if (row.state !== rule.from) return notAllowed(row.state);
-  // cm:why the head is read before anything moves: a join whose run cannot name the commit it reads is refused whole, never accepted with a stand-in sha
+  // the head is read before anything moves: a join whose run cannot name the commit it reads is refused whole, never accepted with a stand-in sha
   let joined: BuilderRunWrite['trigger'] | null = null;
   if (verb === 'accept') {
     const trigger = await owedTrigger({

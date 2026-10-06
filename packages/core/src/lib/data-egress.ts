@@ -8,7 +8,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { redactionCount, scrubPersonalData } from '@forge/observability';
 import { RefusalError } from './refusal.js';
 
-// cm:why the one egress rule (decision on ISS-59, 2026-10-04): every read that hands content to an
+// the one egress rule (decision on ISS-59, 2026-10-04): every read that hands content to an
 // agent or a provider passes `egressDeep(project, surface)`, and each surface declares its class
 // here, the one table. Product is written to build the product and an agent cannot build without
 // it; operational is what people send in, where patient text arrives. A name missing here is
@@ -40,7 +40,7 @@ const EGRESS_SURFACES = {
       'feedback items: title, body, where seen, answer, decision reasons, clarification, triage suggestions',
   },
   'feedback.attachments': { class: 'operational', holds: 'files attached to a feedback item' },
-  // cm:why a mockup's bytes (an image, a sketch, an HTML page, a captured request) cannot be scrubbed
+  // a mockup's bytes (an image, a sketch, an HTML page, a captured request) cannot be scrubbed
   // on write, and a screenshot of the running product is where patient data shows, so they are
   // operational on every target: withheld from every agent at no_egress, while the manifest (key,
   // kind, scrubbed name and caption, status) rides the target's own surface (decision on ISS-78)
@@ -156,7 +156,7 @@ function classOf(surface: string): EgressClass | null {
     : null;
 }
 
-// cm:guard the one rule, at a level already read: an undeclared surface is refused by name at every
+// the one rule, at a level already read: an undeclared surface is refused by name at every
 // level; operational content never leaves at no_egress and leaves scrubbed at redact; product content
 // leaves exactly as stored at every level and is scrubbed once on write (`storedText`) — a read-side
 // scrub breaks every expect-precondition write and rewrites lease places (HOP, 2026-10-04)

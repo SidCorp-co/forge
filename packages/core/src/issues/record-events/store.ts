@@ -244,7 +244,7 @@ interface KernelRecordInput {
   readonly commentId?: string | null;
 }
 
-// cm:guard runs on the executor of the act it records, so the act and its record commit or roll back
+// runs on the executor of the act it records, so the act and its record commit or roll back
 // together; no caller's draft reaches it
 export async function writeKernelRecord(executor: Tx, input: KernelRecordInput): Promise<void> {
   const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));

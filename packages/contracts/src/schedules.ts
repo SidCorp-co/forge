@@ -1,4 +1,4 @@
-// cm:why one declaration of the schedule fire vocabulary (design automation rev 1, steps tick, route,
+// one declaration of the schedule fire vocabulary (design automation rev 1, steps tick, route,
 // skipped and streak; ISS-112): core's schedule_runs CHECKs, the one fire writer, alert A5 and the web
 // read the values from here.
 

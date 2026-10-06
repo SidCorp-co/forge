@@ -21,7 +21,7 @@ export function elementOf(e: Pick<OasdiffEntry, 'operation' | 'path' | 'section'
   return e.path ?? e.section ?? 'document';
 }
 
-// cm:why an unknown level is not guessed into info: oasdiff printing a level this pin does not know is a differ that could not be read, which is unknown
+// an unknown level is not guessed into info: oasdiff printing a level this pin does not know is a differ that could not be read, which is unknown
 function fromChangelog(entries: readonly OasdiffEntry[]): MeasuredChange[] {
   return entries.map((e) => ({
     element: elementOf(e),
@@ -32,7 +32,7 @@ function fromChangelog(entries: readonly OasdiffEntry[]): MeasuredChange[] {
   }));
 }
 
-// cm:why oasdiff judges the OpenAPI vocabulary and reports no check for an x- extension; forge's validated and input markers describe a schema oasdiff already judged, while a gate, a refinement or a foreign extension changes what a caller may send in a way no check here can decide
+// oasdiff judges the OpenAPI vocabulary and reports no check for an x- extension; forge's validated and input markers describe a schema oasdiff already judged, while a gate, a refinement or a foreign extension changes what a caller may send in a way no check here can decide
 const DESCRIPTIVE_EXTENSIONS = new Set(['x-forge-validated', 'x-forge-input', 'x-forge-generator']);
 
 interface ExtensionDiff {

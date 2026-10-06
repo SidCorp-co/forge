@@ -1,4 +1,4 @@
-// cm:why one declaration of the automation read model (design automation rev 1, steps streak, settle,
+// one declaration of the automation read model (design automation rev 1, steps streak, settle,
 // needs_you and wait_triage; ISS-114): core derives every value below from the rows that own it, and
 // the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
 

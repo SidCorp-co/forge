@@ -43,7 +43,7 @@ export async function loadContractContext(
     readInterfaces(db, providers),
   ]);
   const byContract = new Map<string, ContextVersion[]>();
-  // cm:why a run is moved only through versions that are current or were: a proposed or returned version is no one's contract yet (ISS-60)
+  // a run is moved only through versions that are current or were: a proposed or returned version is no one's contract yet (ISS-60)
   for (const v of versions.filter((x) => x.approval === 'approved')) {
     const key = `${v.providerProjectId}/${v.contractSlug}`;
     byContract.set(key, [

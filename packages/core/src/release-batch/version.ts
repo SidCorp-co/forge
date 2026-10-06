@@ -13,7 +13,7 @@ export interface ReleaseVersion {
   pre?: PrereleaseTag | undefined;
 }
 
-// cm:why `release.prerelease` of the project document: every cut is `<of>-<label>.<N>`.
+// `release.prerelease` of the project document: every cut is `<of>-<label>.<N>`.
 export interface PrereleaseLine {
   of: ReleaseVersion;
   label: string;
@@ -57,7 +57,7 @@ function releaseCore(v: ReleaseVersion): ReleaseVersion {
   return { major: v.major, minor: v.minor, patch: v.patch };
 }
 
-// cm:why semver precedence: a prerelease sorts below the release it previews (0.4.0-dev.9 < 0.4.0).
+// semver precedence: a prerelease sorts below the release it previews (0.4.0-dev.9 < 0.4.0).
 /** Digit by digit — never the lexical order of the two strings. */
 export function compareReleaseVersions(a: ReleaseVersion, b: ReleaseVersion): number {
   const core = a.major - b.major || a.minor - b.minor || a.patch - b.patch;
@@ -67,7 +67,7 @@ export function compareReleaseVersions(a: ReleaseVersion, b: ReleaseVersion): nu
   return a.pre.number - b.pre.number;
 }
 
-// cm:why after a prerelease line ends, the next plain release is the one that line previewed.
+// after a prerelease line ends, the next plain release is the one that line previewed.
 /** `highest` is the highest EVER cut, failed releases included: that is the whole of the burn. */
 export function nextReleaseVersion(
   highest: ReleaseVersion | null,
@@ -79,7 +79,7 @@ export function nextReleaseVersion(
   return { major: highest.major, minor: highest.minor + 1, patch: 0 };
 }
 
-// cm:why N continues only from a highest on this same line; landing above it is the store's ruling.
+// N continues only from a highest on this same line; landing above it is the store's ruling.
 function nextOnLine(highest: ReleaseVersion | null, line: PrereleaseLine): ReleaseVersion {
   const pre = highest?.pre;
   const onLine =

@@ -60,7 +60,7 @@ const NUMBER_SPENT = sql`(
   OR EXISTS (SELECT 1 FROM release_attempts a WHERE a.run_id = r.id)
 )`;
 
-// cm:why ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,
+// ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,
 // and a prerelease's `-dev.N` tail has no integer-array cast; the shape CHECK on the column is what
 // makes every stored value parse.
 export async function highestSpentVersion(

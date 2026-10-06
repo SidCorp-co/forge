@@ -29,7 +29,7 @@ function accountRefusal(work: string | null, bound: ToolCallBound): string | nul
   }
 }
 
-// cm:guard reach, epoch and grant are read before any handler, in REST's order, by every door a
+// reach, epoch and grant are read before any handler, in REST's order, by every door a
 // tool is served through (/mcp and chat): a tool's role check alone would let a token granted
 // `issues:read` call every tool its user's role allows, and a token fenced to one project do
 // work belonging to none.

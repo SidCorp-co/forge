@@ -44,7 +44,7 @@ export async function clarificationOf(requirementId: string) {
   };
 }
 
-// cm:why the BA door asks through the same questionnaire card and submit as onboarding (BC-10): one
+// the BA door asks through the same questionnaire card and submit as onboarding (BC-10): one
 // batch is the one open ask a requirement holds (Q5), so it is refused over an open single question
 // and a single question is refused over an open batch
 export const sendQuestionnaire = (room: BaRoom): ContextScopedMcpToolFactory =>

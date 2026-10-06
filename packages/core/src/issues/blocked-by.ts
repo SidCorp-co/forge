@@ -26,7 +26,7 @@ const settledList = sql.join(
   sql`, `,
 );
 
-// cm:guard the one settle predicate (REQ-2 BC-11, FB-57): a blocker holds its dependents until it
+// the one settle predicate (REQ-2 BC-11, FB-57): a blocker holds its dependents until it
 // reaches BLOCKER_SETTLED_STATUSES and every design revision it delivers is approved. A dropped
 // blocker holds nothing: a drop expires its edges (drop-cascade.ts), and an edge drawn from an issue
 // already dropped is read the same way. The admissible set, every claim door and the issue reads
@@ -43,7 +43,7 @@ const liveBlockingEdges = (where: SQL, joins: SQL = sql``) => sql`
     AND (d.valid_until IS NULL OR d.valid_until > now())
     AND ${where}`;
 
-// cm:why correlated on the project as well as the endpoint: issue_dependencies carries only the
+// correlated on the project as well as the endpoint: issue_dependencies carries only the
 // composite indexes (project_id, from_issue_id) and (project_id, to_issue_id), and an endpoint-only
 // filter degrades to a sequential scan of every edge; an edge never crosses projects, so the
 // correlation narrows nothing a claim could take.
@@ -239,7 +239,7 @@ export async function refuseBlockedTake(
   if (held) throw issueBlocked([held], door);
 }
 
-// cm:guard a door that hands out work and does not already ask the dispatch gates asks everything the
+// a door that hands out work and does not already ask the dispatch gates asks everything the
 // admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design gate
 // (workflows/build-gate.ts), then an unsettled contract wait (contract-waits.ts), each refused by its own name
 export async function refuseHeldTake(

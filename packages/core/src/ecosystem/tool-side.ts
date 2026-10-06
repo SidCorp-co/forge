@@ -21,7 +21,7 @@ const no = (code: EcosystemRefusalCode, path: string, detail: string): Side => (
   refusal: { code, path, detail },
 });
 
-// cm:why the ecosystem tools serve both doors, so the side is the one thing they name differently: a chat turn is bound to the project it answers and the adapter pins it, while an /mcp caller names it, holds a token bound to one, or sends the slug header; a call naming none is refused, never guessed, and a side outside the token's fence is refused before anything is read
+// the ecosystem tools serve both doors, so the side is the one thing they name differently: a chat turn is bound to the project it answers and the adapter pins it, while an /mcp caller names it, holds a token bound to one, or sends the slug header; a call naming none is refused, never guessed, and a side outside the token's fence is refused before anything is read
 export async function sideOf(ctx: McpContext, named: unknown, codes: SideCodes): Promise<Side> {
   const side = await namedSide(ctx, named, codes);
   if (!side.ok) return side;
@@ -65,7 +65,7 @@ async function namedSide(ctx: McpContext, named: unknown, codes: SideCodes): Pro
   );
 }
 
-// cm:why a service that refuses by name throws the refusal it decided, and it reaches the caller under that code; only a bare not-found or forbidden is left for the tool to name
+// a service that refuses by name throws the refusal it decided, and it reaches the caller under that code; only a bare not-found or forbidden is left for the tool to name
 export function namedRefusals(err: unknown): EcosystemRefusal[] | null {
   if (err instanceof RefusalError) return err.refusals as EcosystemRefusal[];
   if (!(err instanceof HTTPException)) return null;

@@ -204,7 +204,7 @@ const envelope = {
 const answers = { inReplyTo: docNumber().nullable() };
 const owesDue = { dueBy: date() };
 
-// cm:why JSON Schema's keyword is `then`, which biome refuses as an object-literal key.
+// JSON Schema's keyword is `then`, which biome refuses as an object-literal key.
 const ifThen = (condition: object, consequence: object): object =>
   Object.fromEntries([
     ['if', { type: 'object', ...condition }],
@@ -221,7 +221,7 @@ const STATE_NEEDS: readonly [readonly DocumentState[], readonly string[]][] = [
   ],
 ];
 
-// cm:why zod emits no if/then: the superRefine holds the state rules and the meta makes the emitted schema say them.
+// zod emits no if/then: the superRefine holds the state rules and the meta makes the emitted schema say them.
 export const documentSchema = z
   .discriminatedUnion('type', [
     z.strictObject({

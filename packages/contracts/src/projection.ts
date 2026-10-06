@@ -1,4 +1,4 @@
-// cm:why an agent's context is the budget a tool answer spends: a list or a write answers a
+// an agent's context is the budget a tool answer spends: a list or a write answers a
 // summary by default, and a whole document is read only when asked for (ISS-87)
 
 export const ANSWER_VIEWS = ["summary", "full"] as const;

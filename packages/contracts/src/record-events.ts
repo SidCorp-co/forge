@@ -18,7 +18,7 @@ export const KERNEL_RECORD_KINDS = [
 ] as const;
 type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
 
-// cm:why core alone writes these, in the act's transaction (EVENT_KIND_KERNEL_ONLY)
+// core alone writes these, in the act's transaction (EVENT_KIND_KERNEL_ONLY)
 export const KERNEL_ONLY_RECORD_KINDS = [
 	"transition",
 	"park",

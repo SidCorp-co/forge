@@ -92,7 +92,7 @@ export const PAT_PERMISSION_RESOURCES = {
   admin: { reach: 'account', prefixes: { '/api/admin': 2 } },
 } as const satisfies Record<string, PatResourceDeclaration>;
 
-// cm:why a route is dated by the data surface it serves, never by the mount it sits under (ISS-105,
+// a route is dated by the data surface it serves, never by the mount it sits under (ISS-105,
 // the orchestrator's decision): a route nested under an older mount that serves a newer prefix's rows
 // takes that prefix's epoch, read off the prefix itself, and keeps its mount's grant word
 export const PAT_NESTED_SURFACES = Object.freeze({
@@ -296,7 +296,7 @@ function patNestedSurfaceFor(path: string): PatNestedSurface | null {
   return found;
 }
 
-// cm:guard the one epoch rule: REST reads it for the request path, /mcp for the route a tool
+// the one epoch rule: REST reads it for the request path, /mcp for the route a tool
 // declares, so a token minted before a prefix joined the menu is refused it on both, and a route
 // nested under an older mount is dated by the surface it serves (PAT_NESTED_SURFACES).
 export function patEpochRefusal(

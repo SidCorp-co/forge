@@ -488,7 +488,7 @@ export function NavRail({
         </>
       )}
 
-      {/* cm:why the footer is the account control with the collapse handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
+      {/* the footer is the account control with the collapse handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
         <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
           <div className="min-w-0 flex-1">{userArea}</div>

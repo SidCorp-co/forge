@@ -25,7 +25,7 @@ export async function assertStewardAdmin(
   requireOrgHeld(stewardOrgId, await stewardRole(stewardOrgId, userId), 'org.admin');
 }
 
-// cm:why a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it
+// a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it
 export async function readerProjects(
   userId: string | undefined,
   fence?: readonly string[],
@@ -34,7 +34,7 @@ export async function readerProjects(
   return fence ? new Set(fence.filter((p) => visible.has(p))) : visible;
 }
 
-// cm:why an ecosystem-scoped chat reads as every member project the person holds a role in, home first; the fence never names a project the person cannot already read, so a counterparty's internals stay out
+// an ecosystem-scoped chat reads as every member project the person holds a role in, home first; the fence never names a project the person cannot already read, so a counterparty's internals stay out
 export async function ecosystemReadFence(
   userId: string,
   homeProjectId: string,

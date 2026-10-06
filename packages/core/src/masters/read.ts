@@ -159,7 +159,7 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
   return row ?? null;
 }
 
-// cm:why the project master is the live master session whose box spoke last; silent is the reaper's own
+// the project master is the live master session whose box spoke last; silent is the reaper's own
 // predicate (devices/master-silence.ts), so the board says silent exactly when the reaper will fail it
 export async function readMasterStanding(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
@@ -224,7 +224,7 @@ function waitingOnDialog(master: MasterRow, deviceName: string | null): MasterWa
   };
 }
 
-// cm:why a pass history page reads newest first by start, `before` the last start a page served, so a pass
+// a pass history page reads newest first by start, `before` the last start a page served, so a pass
 // opened between two reads never shifts a page the way an offset would
 export async function listMasterPasses(
   projectId: string,

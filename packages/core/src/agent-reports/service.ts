@@ -124,7 +124,7 @@ export async function visibleIssue(
   return { id: row.id, key: formatIssueRef(await activeIssuePrefix(row.projectId), row.seq) };
 }
 
-// cm:why design automation rev 1 (step report; REQ-16 BC-2): the fire a session runs for is named
+// design automation rev 1 (step report; REQ-16 BC-2): the fire a session runs for is named
 // on its metadata (`scheduleRunId`, ISS-112); a report takes the fire only when that row exists, so a
 // session whose fire went with its schedule files an unlinked report rather than a dangling id
 export async function fireOfSession(sessionId: string | null): Promise<string | null> {
@@ -141,7 +141,7 @@ export async function fireOfSession(sessionId: string | null): Promise<string | 
   return row?.id ?? null;
 }
 
-// cm:why design automation rev 1 (step settle; REQ-16 BC-2, ISS-114): an issue a scheduled session
+// design automation rev 1 (step settle; REQ-16 BC-2, ISS-114): an issue a scheduled session
 // files names that session's fire, resolved as a report's is: the box credential's one live session
 // on its project, then the fire on that session's metadata; a person's own credential names none
 export async function fireOfCaller(caller: PipelineCaller): Promise<string | null> {

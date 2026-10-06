@@ -48,7 +48,7 @@ const refuseSpeaker = refuser<SpeakerRefusalCode>('SPEAKER_SOURCE_UNKNOWN');
 const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
   refuseSpeaker(refusal.code, refusal.message, path);
 
-// cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
+// project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
   await requireCan(
     actorFor(c.get('userId')),

@@ -36,7 +36,7 @@ type PatRequestResolution = {
   scope: PatScope;
 };
 
-// cm:why a gate mounted at a prefix runs for every path under it, served or not, so a token's grant would otherwise answer for a route nobody serves; a `use` entry is method ALL with a (c, next) middleware, anything else is a handler that answers
+// a gate mounted at a prefix runs for every path under it, served or not, so a token's grant would otherwise answer for a route nobody serves; a `use` entry is method ALL with a (c, next) middleware, anything else is a handler that answers
 export function registrationServes(r: {
   method: string;
   handler: Parameters<typeof findTargetHandler>[0];

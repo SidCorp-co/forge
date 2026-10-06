@@ -88,7 +88,7 @@ function cliWriteOf(argv: readonly string[]): { action: string; target: string |
   return null;
 }
 
-// cm:why a channel write is a write whatever its verb, and one that names no published number (a draft, a reply, a submit by uuid) is claimed like a create: the reply can only invent the number
+// a channel write is a write whatever its verb, and one that names no published number (a draft, a reply, a submit by uuid) is claimed like a create: the reply can only invent the number
 function channelActionOf(record: ClaimCall): string | null {
   const action = argsOf(record).action;
   if (typeof action !== 'string' || !CHANNEL_WRITE_SET.has(action)) return null;
@@ -188,7 +188,7 @@ export function correctionLine(claim: ConfabClaim): string {
   return `Correction: the ${claim.action}${of} was refused (${code}); nothing was written.`;
 }
 
-// cm:why a caught claim is corrected in the text the person reads, not only logged: the false sentence stays, and a code-written line under it names the refused call, its code, and that nothing was written
+// a caught claim is corrected in the text the person reads, not only logged: the false sentence stays, and a code-written line under it names the refused call, its code, and that nothing was written
 export function correctFalseClaims(
   text: string,
   calls: readonly ClaimCall[],

@@ -1,4 +1,4 @@
-// cm:why one declaration of the storefront-draft verdict identity (ISS-91, FB-47): core's table
+// one declaration of the storefront-draft verdict identity (ISS-91, FB-47): core's table
 // CHECKs, the REST and MCP verdict doors and the web all read the kind, the field shapes, the
 // corroboration words and the refusal codes from here.
 
@@ -70,7 +70,7 @@ interface VerdictReading extends StorefrontDraftVerdictView {
 	contractVersion: string | null;
 }
 
-// cm:why `short` is a judged pass, and a backfilled abbreviated commit that never resolved reads Unresolved whatever it said, so every screen folds a verdict the way the release gate reads it
+// `short` is a judged pass, and a backfilled abbreviated commit that never resolved reads Unresolved whatever it said, so every screen folds a verdict the way the release gate reads it
 export function criterionStandingOf(
 	latest: Pick<VerdictReading, "verdict" | "identityKind"> | null,
 ): CriterionStanding {

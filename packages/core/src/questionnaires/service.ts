@@ -92,7 +92,7 @@ function stepOf(item: QuestionnaireItem): QuestionStep {
       bindsTo: 'this_call' as const,
       executedBy: 'agent' as const,
     })),
-    // cm:why an inferred default is marked, never chosen: the row records it as the recommendation
+    // an inferred default is marked, never chosen: the row records it as the recommendation
     // and leaves chosenOptionId unset until a person picks
     recommendedOptionId: item.inferredDefault ?? '',
   };

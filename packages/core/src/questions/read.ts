@@ -222,7 +222,7 @@ export async function projectQuestionsFor(
   };
 }
 
-// cm:why a question's surface is read off its own arc: a feedback clarification is `feedback`, a BA
+// a question's surface is read off its own arc: a feedback clarification is `feedback`, a BA
 // clarification about a requirement is `requirement.clarification`, a questionnaire item takes its
 // batch's surface, and an agent's question on an issue is `issue.questions`
 export async function questionSurface(q: {

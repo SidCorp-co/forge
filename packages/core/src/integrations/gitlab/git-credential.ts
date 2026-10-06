@@ -34,7 +34,7 @@ export const gitlabGitCredential: GitCredentialMint = {
       throw new Error(
         `the connection behind ${this.repositoryOf(config)} holds no GitLab access token`,
       );
-    // cm:why the expiry is when git should ask again, not when the token dies: a GitLab access token outlives a job and the helper re-asks per invocation, so a short answer keeps a revoked binding from being cached
+    // the expiry is when git should ask again, not when the token dies: a GitLab access token outlives a job and the helper re-asks per invocation, so a short answer keeps a revoked binding from being cached
     return {
       username: 'oauth2',
       password: token,

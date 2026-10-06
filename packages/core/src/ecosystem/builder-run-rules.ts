@@ -4,7 +4,7 @@ import { BUILDER_RUN_SCHEMA_ID, type BuilderRunWrite } from './link-schema.js';
 import type { EcosystemRefusal } from './refusals.js';
 import type { InterfaceDocument } from './schema.js';
 
-// cm:why a superseded run is closed for good: another run carries its work, so no write reopens or rewrites it, and only the supersede verb ever names supersededBy
+// a superseded run is closed for good: another run carries its work, so no write reopens or rewrites it, and only the supersede verb ever names supersededBy
 export function builderRunIdentityRefusals(
   stored: BuilderRunWrite,
   next: BuilderRunWrite,
@@ -60,7 +60,7 @@ const STOREFRONT_BUILDER_STEPS = [
   'publish-role',
 ] as const;
 
-// cm:why the steps are derived when a run opens and then stored as data: a run already open keeps the steps it was opened with
+// the steps are derived when a run opens and then stored as data: a run already open keeps the steps it was opened with
 const builderStepsFor = (source: BuilderSource): readonly string[] =>
   source.type === 'storefront' ? STOREFRONT_BUILDER_STEPS : REPO_BUILDER_STEPS;
 
@@ -70,7 +70,7 @@ export const stepsStale = (doc: Pick<BuilderRunWrite, 'steps'>, source: BuilderS
 
 const OPEN_STEP: ReadonlySet<string> = new Set(['pending', 'running']);
 
-// cm:why a run is open while any step is still pending or running; there is no status column, so the steps are the one place it is read from, in SQL (link-store.ts:openBuilderRunOf) as here
+// a run is open while any step is still pending or running; there is no status column, so the steps are the one place it is read from, in SQL (link-store.ts:openBuilderRunOf) as here
 export const isOpenRun = (doc: Pick<BuilderRunWrite, 'steps'>) =>
   doc.steps.some((s) => OPEN_STEP.has(s.status));
 
@@ -99,7 +99,7 @@ export interface DeclaredWithoutCallSite {
   detail: string;
 }
 
-// cm:why a declared consumption no finished run found a call site for is said, never silently kept: the interface claims a use the code does not show
+// a declared consumption no finished run found a call site for is said, never silently kept: the interface claims a use the code does not show
 export function declaredWithoutCallSite(input: {
   ecosystem: string;
   consumes: InterfaceDocument['consumes'];

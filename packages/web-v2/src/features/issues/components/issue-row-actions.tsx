@@ -291,7 +291,7 @@ export function IssueTableRow({
       className={`group cursor-pointer ${pending ? "opacity-60" : ""}`}
       aria-busy={pending}
       onClick={(e) => {
-        // cm:why a click on the row opens the issue, but not one that lands on a control inside it (a chip's menu, the checkbox, the row menu)
+        // a click on the row opens the issue, but not one that lands on a control inside it (a chip's menu, the checkbox, the row menu)
         if ((e.target as HTMLElement).closest("button, a, input, [role=menu], [role=menuitem]")) return;
         open();
       }}

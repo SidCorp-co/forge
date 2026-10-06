@@ -17,8 +17,8 @@ export interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
   after?: ReactNode;
 }
 
-// cm:why a page carries no subtitle line under its title (ISS-49): what the page is for rides the title's tooltip, and the heading's accessible description
-// cm:why inside the workspace shell the title renders into the top bar in the bar's own type, so a page's className only shapes it where there is no bar
+// a page carries no subtitle line under its title (ISS-49): what the page is for rides the title's tooltip, and the heading's accessible description
+// inside the workspace shell the title renders into the top bar in the bar's own type, so a page's className only shapes it where there is no bar
 export function PageTitle({ className, hint, back, after, children, ...props }: PageTitleProps) {
   const inBar = useInTopBar();
   const cls = inBar ? "fg-h3 min-w-0 truncate" : rampOr("fg-h1", className);

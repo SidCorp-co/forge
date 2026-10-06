@@ -56,7 +56,7 @@ export const devices = pgTable(
      */
     gateReport: jsonb('gate_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
-    // cm:why the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
+    // the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number
     maxJobPanes: integer('max_job_panes'),
     machineId: text('machine_id'),

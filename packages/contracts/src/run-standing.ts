@@ -1,9 +1,9 @@
-// cm:why one declaration of a run as a person reads it (design agent-run-standing rev 1; REQ-15, ISS-108):
+// one declaration of a run as a person reads it (design agent-run-standing rev 1; REQ-15, ISS-108):
 // core derives each run's state, holder, wait, outcome, attempt and master from the rows it holds, and
 // `GET /api/projects/:id/runs/standing` serves them, so no screen guesses a run's state from raw rows.
-// cm:guard every derived arm that cannot be read is a `RunNone` naming why, never an empty value; a gate
+// every derived arm that cannot be read is a `RunNone` naming why, never an empty value; a gate
 // with no deadline serves `resumesAt: null`, and a hold's `expiresAt` is null only beside `expiryDetail`
-// cm:why stuck is computed in core and nowhere else (ISS-109, decision 7 on the design): a live run nothing
+// stuck is computed in core and nowhere else (ISS-109, decision 7 on the design): a live run nothing
 // moves reads `stuck` with its rule, since and evidence row, so every screen reads one rule
 
 import type { FailureCause } from "./failure-causes.js";
@@ -50,7 +50,7 @@ export const RUN_FINAL_STATES = [
 	"cancelled",
 	"handed_back",
 ] as const satisfies readonly RunState[];
-// cm:guard one source for the silence clocks (decision 7 on agent-run-standing rev 1): stuck shows at 3 min,
+// one source for the silence clocks (decision 7 on agent-run-standing rev 1): stuck shows at 3 min,
 // the master and run-session reapers fail at 10 min, and the loop monitor's job heartbeat reap defaults to
 // 3 min; `silent` counts only a run with no live job, so it never races the job reap, and core's
 // `runs/standing-stuck.test.ts` holds stuck strictly before the session reap

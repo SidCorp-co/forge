@@ -48,7 +48,7 @@ function kindRefusals(kind: string | undefined, published: string | undefined, r
   return [];
 }
 
-// cm:why the REST upload and forge_ecosystem contract_version_publish are one service, so the writer rule, the kind check and the version rules are the same at both doors
+// the REST upload and forge_ecosystem contract_version_publish are one service, so the writer rule, the kind check and the version rules are the same at both doors
 export async function publishContractVersion(input: PublishInput): Promise<PublishOutcome> {
   const { projectId, writer, contract: named, kind, sourceRef, ...body } = input;
   const [project] = await projectsWhere(db, { ids: [projectId] });

@@ -234,7 +234,7 @@ function deriveSessionFailure(job: JobRow): {
   };
 }
 
-// cm:why a job's terminal status is its session's: a cancelled job whose session read `completed`
+// a job's terminal status is its session's: a cancelled job whose session read `completed`
 // told every reader counting finished sessions that work was done which never ran (ISS-100).
 const SESSION_STATUS_OF_JOB_OUTCOME = {
   done: 'completed',

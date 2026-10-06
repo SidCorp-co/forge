@@ -1,10 +1,10 @@
 /** Which run may write one issue's record, from `issue_work_state.lease` — NOT who holds the
  *  fleet's key (`issue_leases`). A wall clock, or the holder's heartbeat where it declared one. */
 
-// cm:edge naming -> packages/core/src/issues/issue-lease.ts — different questions, once the same
+// naming -> packages/core/src/issues/issue-lease.ts — different questions, once the same
 //   word `issue-lease`. Grepping either name must reach only one of them.
 
-// cm:edge contract -> github.com/SidCorp-co/forge-plugin:plugin/src/flow/lease.mjs — that file owns
+// contract -> github.com/SidCorp-co/forge-plugin:plugin/src/flow/lease.mjs — that file owns
 //   the blob: `holder`, `renewedAt`, `minutes`, optional `stopped` and `heartbeat: { at,
 //   everySeconds }`; expiry `renewedAt + minutes`, any other shape `malformed`, report-only.
 const LEASE_VERDICTS = ['none', 'live', 'shared', 'expired', 'abandoned', 'malformed'] as const;

@@ -63,7 +63,7 @@ const ecosystemFields = <I extends z.ZodType>(id: I) => ({
   releases: z.strictObject({ providerLive: z.enum(PROVIDER_LIVE_MODES) }).optional(),
 });
 
-// cm:why core assigns an ecosystem its id, so the id is core's to write: a create carries none and an update carries the one core assigned (`ecosystem-service.ts:parseEcosystem` refuses either otherwise as ECOSYSTEM_ID_IMMUTABLE). The written shape is what ecosystem-v1.json publishes, so the schema a client authors against never asks for an id a create refuses.
+// core assigns an ecosystem its id, so the id is core's to write: a create carries none and an update carries the one core assigned (`ecosystem-service.ts:parseEcosystem` refuses either otherwise as ECOSYSTEM_ID_IMMUTABLE). The written shape is what ecosystem-v1.json publishes, so the schema a client authors against never asks for an id a create refuses.
 const ECOSYSTEM_ID_RULE =
   'assigned by core: leave it out when creating; when updating, it is the id core assigned and never changes';
 
@@ -75,7 +75,7 @@ export const ecosystemDocumentSchema = z.strictObject(ecosystemFields(uuid()));
 
 export type EcosystemDocument = z.infer<typeof ecosystemDocumentSchema>;
 
-// cm:why JSON Schema's keyword is `then`, which biome refuses as an object-literal key.
+// JSON Schema's keyword is `then`, which biome refuses as an object-literal key.
 const ifThen = (condition: object, consequence: object, alternative?: object): object =>
   Object.fromEntries([
     ['if', condition],
@@ -86,7 +86,7 @@ const ifThen = (condition: object, consequence: object, alternative?: object): o
 const DECIDED = ['active', 'declined', 'left', 'removed'] as const;
 const ENDED = ['left', 'removed'] as const;
 
-// cm:why zod emits no if/then: the refine holds the rule and the meta makes the emitted schema say it.
+// zod emits no if/then: the refine holds the rule and the meta makes the emitted schema say it.
 export const membershipDocumentSchema = z
   .strictObject({
     $schema: z.literal(`${SCHEMA_BASE}/membership-v1.json`),
@@ -137,7 +137,7 @@ const publicationSchema = z
     type: z.enum(CONTRACT_TYPES),
     artifact: z.strictObject({ upload: z.literal(true) }).nullable(),
     lifecycle: z.enum(['experimental', 'production', 'deprecated']),
-    // cm:why zero ecosystems is an in-project contract: the project's own modules consume it (Q11, 2026-10-03) and no other project can, since a cross-project consumption names an ecosystem the contract is published in
+    // zero ecosystems is an in-project contract: the project's own modules consume it (Q11, 2026-10-03) and no other project can, since a cross-project consumption names an ecosystem the contract is published in
     ecosystems: unique(z.array(uuid()).max(10)),
     implementedBy: unique(z.array(slug()).max(20)).optional(),
   })
@@ -153,7 +153,7 @@ const publicationSchema = z
 
 export type Publication = z.infer<typeof publicationSchema>;
 
-// cm:why a consumption with no ecosystem is in-project — the project consuming its own contract; one of another project's contract always names the ecosystem both share (`interface-rules.ts:consumptionRefusals`)
+// a consumption with no ecosystem is in-project — the project consuming its own contract; one of another project's contract always names the ecosystem both share (`interface-rules.ts:consumptionRefusals`)
 const consumptionSchema = z.strictObject({
   contract: z.string().regex(CONTRACT_REF),
   ecosystem: uuid().optional(),

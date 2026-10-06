@@ -41,10 +41,10 @@ const DIFF_NOTE_TEXT: Record<DiffNote, string> = {
 
 const normal = (p: string) => p.trim().replace(/^\.\//, '').replace(/\/+$/, '');
 
-// cm:why a path matches a call site when it names that file or a directory holding it: a run that names `cli/src` touches every call site under it, and one naming a sibling touches none
+// a path matches a call site when it names that file or a directory holding it: a run that names `cli/src` touches every call site under it, and one naming a sibling touches none
 const covers = (path: string, site: string) => site === path || site.startsWith(`${path}/`);
 
-// cm:why the diff a consumer moves through is every version after the one it is pinned to, up to the latest, oldest first: one version's measured changes are against its predecessor only
+// the diff a consumer moves through is every version after the one it is pinned to, up to the latest, oldest first: one version's measured changes are against its predecessor only
 function diffBetween(
   versioning: Versioning,
   pinned: string,

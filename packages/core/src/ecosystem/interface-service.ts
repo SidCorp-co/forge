@@ -149,7 +149,7 @@ function edgesOf(
   self: string,
   providers: readonly ProjectRow[],
 ): EdgeRow[] {
-  // cm:why an in-project consumption is no ecosystem edge: `ecosystem_consumptions` holds what one project consumes of another, and the project's own modules reach its contract through the interface and its in-project links
+  // an in-project consumption is no ecosystem edge: `ecosystem_consumptions` holds what one project consumes of another, and the project's own modules reach its contract through the interface and its in-project links
   return doc.consumes.flatMap((c) => {
     const ecosystemId = c.ecosystem;
     if (ecosystemId === undefined) return [];

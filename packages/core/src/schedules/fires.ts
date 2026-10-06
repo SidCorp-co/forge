@@ -60,7 +60,7 @@ export async function attachFireSession(fireId: string, session: FireSession): P
     .where(eq(scheduleRuns.id, fireId));
 }
 
-// cm:guard a fire settles once: the write matches only a fire still running and holding no
+// a fire settles once: the write matches only a fire still running and holding no
 // session, so it never overrides the end the fire's own session records.
 export async function settleFire(fireId: string, settlement: FireSettlement): Promise<boolean> {
   const set: Partial<typeof scheduleRuns.$inferInsert> = {

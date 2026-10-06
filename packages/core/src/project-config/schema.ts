@@ -42,7 +42,7 @@ const httpsUrl = () =>
     .refine((v) => URL.canParse(v), { message: 'Invalid URI' })
     .meta({ format: 'uri' });
 
-// cm:why zod has no uniqueItems: the refine enforces it and the meta makes the emitted schema say it.
+// zod has no uniqueItems: the refine enforces it and the meta makes the emitted schema say it.
 export function unique<T extends z.ZodArray<z.ZodType>>(schema: T): T {
   return schema
     .refine((items) => new Set(items.map((i) => JSON.stringify(i))).size === items.length, {
@@ -82,7 +82,7 @@ const DESIGN_APPROVERS = ['owner', 'master'] as const;
 
 export const STOREFRONT_PROVIDERS = ['epodsystem', 'shopify', 'autoflow'] as const;
 
-// cm:why a deliverable that lives only on the provider: no repository holds it, so a git project
+// a deliverable that lives only on the provider: no repository holds it, so a git project
 // has nothing to send there — `rules.ts:checkGitlessBindings` refuses the pairing by name.
 export const GITLESS_PROVIDERS: readonly string[] = ['autoflow'];
 
@@ -126,7 +126,7 @@ export const projectDocumentSchema = z.strictObject({
     id: uuid(),
     slug: slug(),
     name: z.string().min(1).max(120),
-    // cm:why what the system is, in one line a person reads first (owner, 2026-10-04): the Workflows
+    // what the system is, in one line a person reads first (owner, 2026-10-04): the Workflows
     // overview leads with it instead of a design's summary, which records how the design was drawn.
     // Absent is undescribed; nothing else is read in its place.
     description: z
@@ -168,7 +168,7 @@ export const projectDocumentSchema = z.strictObject({
       'none',
     ]),
   }),
-  // cm:why plan approval held as a project rule: `required` makes the kernel refuse a move into
+  // plan approval held as a project rule: `required` makes the kernel refuse a move into
   // `approved` by an actor without plans.approve (`issues/transition-guards.ts:planGuard`, refusal
   // PERMISSION_FORBIDDEN); absent is not required, and a run's own plan checkpoint is enough.
   plan: z
@@ -177,7 +177,7 @@ export const projectDocumentSchema = z.strictObject({
     })
     .optional(),
   release: releaseRuleSchema.optional(),
-  // cm:why what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
+  // what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
   // `verdictsRequired: false` lets `awaiting_release` and the release cut pass without a passing
   // verdict per criterion, and the move's record says `verdicts-waived`
   // (`issues/transition-guards.ts:verdictGuard`). Absent is `true`.
@@ -203,11 +203,11 @@ export const projectDocumentSchema = z.strictObject({
       approver: z.enum(DESIGN_APPROVERS).optional(),
     })
     .optional(),
-  // cm:why what of this project's content may leave for an embedding or LLM provider (decision Q8,
+  // what of this project's content may leave for an embedding or LLM provider (decision Q8,
   // owner ruling 2026-10-03): `redact` scrubs on write and lets only redacted text out, `no_egress`
   // scrubs on write and lets nothing out. One guard reads it (`lib/data-egress.ts`). Absent is `off`.
   sensitiveData: z.enum(SENSITIVE_DATA_LEVELS).optional(),
-  // cm:why what a requirement's agree reads of its readiness result (decision on ISS-58,
+  // what a requirement's agree reads of its readiness result (decision on ISS-58,
   // 2026-10-04): `warn` records it on the baseline, `block` refuses an agree that is not ready
   // (`requirements/rules.ts:readinessRefusal`, REQUIREMENT_NOT_READY). Absent is `off`.
   requirements: z
@@ -215,12 +215,12 @@ export const projectDocumentSchema = z.strictObject({
       readinessGate: z.enum(REQUIREMENT_READINESS_GATES).optional(),
     })
     .optional(),
-  // cm:why the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
+  // the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
   // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
   // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,
   // commits, PR text, machine-read fields and Forge's UI chrome are English whatever it says.
   contentLanguage: z.string().min(1).max(CONTENT_LANGUAGE_LIMITS.tagMax).optional(),
-  // cm:why terms the prose keeps in English beyond the built-in technical ones
+  // terms the prose keeps in English beyond the built-in technical ones
   // (`@forge/contracts/content-language:TECHNICAL_TERMS_KEPT_IN_ENGLISH`); absent is none.
   keepTermsInEnglish: unique(keepTermsInEnglishSchema).optional(),
   execution: z.strictObject({

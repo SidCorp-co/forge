@@ -20,7 +20,7 @@ function ordered<Row extends DockRow>(rows: Row[]): Row[] {
     .map(({ r }) => r);
 }
 
-// cm:why the dock lists the open project's rooms as the prototype groups them, Project then This page
+// the dock lists the open project's rooms as the prototype groups them, Project then This page
 // (the rooms about the record this page shows), and any other project's rooms under that project's
 // name, so a room from one project never reads as another's (REQ-11 BC-8)
 export function dockSections<Row extends DockRow>(

@@ -1,4 +1,4 @@
-// cm:why one declaration of the product feedback vocabulary (workflows feedback-lifecycle rev 2 and
+// one declaration of the product feedback vocabulary (workflows feedback-lifecycle rev 2 and
 // feedback-triage rev 2, ISS-59): core's table CHECKs, REST, MCP and the web import the values, the
 // request schemas and the response shapes from here.
 

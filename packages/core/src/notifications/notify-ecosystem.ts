@@ -20,7 +20,7 @@ async function humans(ids: readonly string[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
-// cm:why the people of a side are everyone holding a role on its project, explicit or derived from the org, and never its agents
+// the people of a side are everyone holding a role on its project, explicit or derived from the org, and never its agents
 async function peopleBySide(projectIds: readonly string[]): Promise<Map<string, string[]>> {
   const ids = [...new Set(projectIds)];
   const [members, admins] = await Promise.all([
@@ -49,7 +49,7 @@ async function slugsOf(ids: readonly string[]): Promise<Map<string, string>> {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// cm:why a person is named as the bell names them everywhere else, their display name or else their address; an id no account carries is said as it was given
+// a person is named as the bell names them everywhere else, their display name or else their address; an id no account carries is said as it was given
 async function nameOf(id: string | null): Promise<string> {
   if (!id) return 'someone';
   if (!UUID.test(id)) return id;
@@ -72,7 +72,7 @@ const holdKey = (h: Payload<'channel.threadHeld'>, side: string) =>
 
 const gateKey = (documentId: string) => `channel-gate:${documentId}`;
 
-// cm:guard a delivery is at least once, so a notice already recorded under its dedupe key is not raised twice by a redelivery
+// a delivery is at least once, so a notice already recorded under its dedupe key is not raised twice by a redelivery
 async function told(dedupeKey: string | null | undefined): Promise<boolean> {
   if (!dedupeKey) return false;
   const [row] = await db
@@ -83,7 +83,7 @@ async function told(dedupeKey: string | null | undefined): Promise<boolean> {
   return Boolean(row);
 }
 
-// cm:why each side reads the notice under its own project, and a person on both sides is told once
+// each side reads the notice under its own project, and a person on both sides is told once
 async function tellEachSide(
   sides: readonly string[],
   except: string | null,
@@ -152,7 +152,7 @@ async function gateAsked(p: Payload<'channel.gateAsked'>): Promise<void> {
   });
 }
 
-// cm:why a decided gate is told by what decided it — approved and the number it went out as, or returned and what to change — because the pending title it resolves still says it waits
+// a decided gate is told by what decided it — approved and the number it went out as, or returned and what to change — because the pending title it resolves still says it waits
 async function gateDecided(p: Payload<'channel.gateDecided'>): Promise<void> {
   const who = await nameOf(p.decidedBy);
   const number = p.number ?? 'the document';
@@ -163,7 +163,7 @@ async function gateDecided(p: Payload<'channel.gateDecided'>): Promise<void> {
   await resolveNotifications(gateKey(p.documentId), outcome);
 }
 
-// cm:why a breaking approval files each consumer an item instead, so only a version that owes nobody anything is told as a notice
+// a breaking approval files each consumer an item instead, so only a version that owes nobody anything is told as a notice
 async function versionApproved(p: Payload<'contract.versionApproved'>): Promise<void> {
   if (p.classification === 'breaking') return;
   const ref = `${p.providerSlug}/${p.contractSlug}`;

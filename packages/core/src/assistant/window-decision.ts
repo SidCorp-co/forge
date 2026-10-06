@@ -91,7 +91,7 @@ export async function decide(
   const room = await mayRoomSpeak(r, conversation, venue, messages);
   if ('decision' in room) return room;
 
-  // cm:guard a turn acts as the person whose message it answers, in every shape; a group room
+  // a turn acts as the person whose message it answers, in every shape; a group room
   // once ran as its handle or its org's creator, so a viewer's ask wrote with their role (ISS-17).
   if (!speaker?.authorUserId) return unlinked();
   const resolved = await resolveTurnAuthority({

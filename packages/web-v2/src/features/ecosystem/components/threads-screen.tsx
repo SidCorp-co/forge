@@ -135,7 +135,7 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
   ) : null;
 }
 
-// cm:why the line under a row says who is writing the reply only when core holds that reply: an unsent draft from one of the reader's projects; a master's progress beyond it is not served, so no other line is drawn
+// the line under a row says who is writing the reply only when core holds that reply: an unsent draft from one of the reader's projects; a master's progress beyond it is not served, so no other line is drawn
 function MasterLine({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | null; ctx: Ctx }) {
   if (!draft) return null;
   const who = draft.authoredBy.kind === "agent" ? `${ctx.slug(draft.from)} master` : `${ctx.slug(draft.from)}`;

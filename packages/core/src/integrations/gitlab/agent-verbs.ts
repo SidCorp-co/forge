@@ -140,7 +140,7 @@ export function gitlabAgentVerbs(
         title: args.draft ? `Draft: ${args.title}` : args.title,
         ...(args.body === undefined ? {} : { description: args.body }),
       });
-      // cm:why GitLab computes diff_refs after it answers the create, so a new request can arrive without a base sha; the target branch's head is what that request was opened against
+      // GitLab computes diff_refs after it answers the create, so a new request can arrive without a base sha; the target branch's head is what that request was opened against
       const baseSha =
         made.diff_refs?.base_sha ?? (await branchHead(made.target_branch ?? args.base));
       return {

@@ -69,7 +69,7 @@ async function recordDecided(
   }
 }
 
-// cm:why the gate is decided only by answering its question, inside the answer's transaction, so an approval that the checks refuse leaves the question open and nothing published
+// the gate is decided only by answering its question, inside the answer's transaction, so an approval that the checks refuse leaves the question open and nothing published
 export async function decideChannelGate(tx: Tx, args: GateArgs): Promise<void> {
   await lockKeys(tx, [`channel-doc:${args.documentId}`]);
   const row = await readDocument(tx, args.documentId);

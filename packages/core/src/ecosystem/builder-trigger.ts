@@ -9,7 +9,7 @@ import { membershipsWhere } from './membership-store.js';
 const COMMIT = /^[0-9a-f]{40}$/;
 const NO_COMMIT = /^0{40}$/;
 
-// cm:why a push re-reads the project's own code, so only its default branch counts; a payload that does not name that branch is skipped and said, never read as a push to it
+// a push re-reads the project's own code, so only its default branch counts; a payload that does not name that branch is skipped and said, never read as a push to it
 export async function openPushedRuns(
   tx: Tx,
   input: {
@@ -41,6 +41,6 @@ export async function openPushedRuns(
       userId: m.decidedBy ?? m.invitedBy,
     });
   }
-  // cm:why every active membership now holds an open run, opened here or before, so a redelivered push wakes the master whether or not this attempt opened it
+  // every active membership now holds an open run, opened here or before, so a redelivered push wakes the master whether or not this attempt opened it
   await emitEvent(tx, 'ecosystem.buildOwed', { projectId });
 }

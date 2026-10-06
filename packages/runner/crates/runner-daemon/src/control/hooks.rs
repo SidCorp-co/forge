@@ -137,7 +137,7 @@ pub(crate) fn dispatch_gate_reply(
             // promise is recorded the way `Covered` records it, and a second
             // tool call against the same run is refused.
             if let (Some(run), Some(cause)) = (pending.as_deref(), ctl.drain.draining_for()) {
-                // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
+                // a dispatch carrying no tool call id cannot be limited here: nothing
                 // names it to promise the run to or to tell a second hand-off from a replay, so
                 // that case still fails open once per call, and the drain counts only the one row.
                 if let Some(tool_use) = d.tool_use_id.clone() {

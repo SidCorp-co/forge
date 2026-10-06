@@ -1,4 +1,4 @@
-// cm:why a board is a strict wireframe-v1 document rather than an Excalidraw scene: the run that builds an
+// a board is a strict wireframe-v1 document rather than an Excalidraw scene: the run that builds an
 // issue reads the attached board as its spec, so the shapes come from a closed set with stable ids and
 // bounded geometry. A document that does not fit is refused by name — the code, the shape, the field —
 // never clamped, never dropped, never guessed into the nearest shape that would still render.

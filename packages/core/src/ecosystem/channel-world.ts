@@ -32,7 +32,7 @@ export interface ServedDocument {
   events: EventRow[];
 }
 
-// cm:why a published row is write-once, so withdrawn and superseded are read from its one end event and never written onto it
+// a published row is write-once, so withdrawn and superseded are read from its one end event and never written onto it
 export function serve(row: DocumentRow, events: readonly EventRow[]): ServedDocument {
   const stored = storedAs(documentSchema, row.document, `channel document ${row.id}`);
   const mine = events.filter((e) => e.documentId === row.id);

@@ -56,7 +56,7 @@ const asEdge = (l: StoredLink, ecosystemId: string): EdgeRow => ({
   builtAgainst: l.pinnedVersion,
 });
 
-// cm:why a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything, and an in-project link is in no ecosystem, so only the project's own members read it
+// a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything, and an in-project link is in no ecosystem, so only the project's own members read it
 async function assertLinkReadable(userId: string, link: StoredLink): Promise<void> {
   const access = await effectiveProjectRole(userId, link.projectId);
   if (access && holds(access, 'project.read')) return;
@@ -105,8 +105,8 @@ export async function listBuilderRunsAs(userId: string, projectId: string) {
   return rows.map((row) => recordView({ row, document: storedBuilderRun(row) }));
 }
 
-// cm:why the bus carries each project's latest builder run as its step states and counts only: the findings and their call sites stay behind the run's own read, which the project's members hold
-// cm:why stepsStale says a run's stored steps are not the ones its project's source type derives now, so a run opened against another source is seen and superseded rather than worked
+// the bus carries each project's latest builder run as its step states and counts only: the findings and their call sites stay behind the run's own read, which the project's members hold
+// stepsStale says a run's stored steps are not the ones its project's source type derives now, so a run opened against another source is seen and superseded rather than worked
 async function latestBuilderRuns(rows: StoredRecord[], shown: ReadonlySet<string>) {
   const latest = new Map<string, Awaited<ReturnType<typeof builderSummary>>>();
   for (const row of rows) {
@@ -137,7 +137,7 @@ function currentVersions(rows: Awaited<ReturnType<typeof recordedVersions>>) {
   return latest;
 }
 
-// cm:why each link is checked against its contract's latest recorded version, so the bus says which consumers that version breaks and by which fields and call sites
+// each link is checked against its contract's latest recorded version, so the bus says which consumers that version breaks and by which fields and call sites
 function impactsAgainstLatest(
   links: readonly StoredLink[],
   versions: readonly StoredVersion[],
@@ -160,7 +160,7 @@ function impactsAgainstLatest(
   return out;
 }
 
-// cm:why the bus is the ecosystem as the reader may see it: the steward sees every active member, a member sees what its visibility mode shows, and a link shows where its consumer or provider is the reader's or the mode is all
+// the bus is the ecosystem as the reader may see it: the steward sees every active member, a member sees what its visibility mode shows, and a link shows where its consumer or provider is the reader's or the mode is all
 export async function readBus(userId: string, ecosystemId: string) {
   const { eco, steward } = await readableEcosystem(userId, ecosystemId);
   const graph = await loadGraph([ecosystemId]);

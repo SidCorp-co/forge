@@ -11,7 +11,7 @@ export const jobEventKinds = [
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
 
-// cm:guard core writes these rows itself; a box that could post one would forge an audit row.
+// core writes these rows itself; a box that could post one would forge an audit row.
 export const CORE_WRITTEN_JOB_EVENT_KINDS = [
   'intervention',
   'kill_ack',

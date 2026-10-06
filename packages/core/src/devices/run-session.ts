@@ -171,7 +171,7 @@ export async function openRunSession(args: {
       deviceId: args.deviceId,
     });
   }
-  // cm:guard a run works issues the policy says how to run; a project with none is refused here by
+  // a run works issues the policy says how to run; a project with none is refused here by
   // the same name the job claim uses, before any run, session or lease is written.
   await devicesPorts().requirePolicy(args.projectId);
   // Core issues the owner edge. The box is authenticated as a device and says
@@ -188,7 +188,7 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), and a flow's build without its approved design (ISS-53) are refused as the job claim refuses them
+  // an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), and a flow's build without its approved design (ISS-53) are refused as the job claim refuses them
   const boxRunId = args.boxRunId;
   const identity = {
     type: RUN_SESSION_KIND,

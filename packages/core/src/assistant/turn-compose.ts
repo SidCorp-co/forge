@@ -81,7 +81,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const { req } = ctx;
   const hook = hookOf(ctx);
 
-  // cm:guard a conversation with a person is operational content (`lib/data-egress.ts`, surface
+  // a conversation with a person is operational content (`lib/data-egress.ts`, surface
   // `conversation`): on a no_egress project no turn hands it to a model or a box, and the room is
   // told so by name instead of answered by one
   const gate = await egressDeep(

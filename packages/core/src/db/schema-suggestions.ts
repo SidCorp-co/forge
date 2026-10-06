@@ -33,7 +33,7 @@ export {
   type SuggestionStatus,
 } from '@forge/contracts/suggestions';
 
-// cm:why the assistant only proposes (workflow suggestion-lifecycle): a row against a base revision
+// the assistant only proposes (workflow suggestion-lifecycle): a row against a base revision
 // waits on a person; its effect is written by the accept and points back here, nothing is copied on
 export const suggestions = pgTable(
   'suggestions',
@@ -43,7 +43,7 @@ export const suggestions = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: SUGGESTION_KINDS }).notNull(),
-    // cm:why an exclusive arc of real foreign keys, never a target_type/target_id pair
+    // an exclusive arc of real foreign keys, never a target_type/target_id pair
     requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
       onDelete: 'cascade',
     }),
@@ -58,7 +58,7 @@ export const suggestions = pgTable(
     payload: jsonb('payload'),
     payloadVersion: integer('payload_version').notNull().default(1),
     fingerprint: text('fingerprint').notNull(),
-    // cm:why a reviewer's edit is a new suggestion by the reviewer naming the one it replaced, which
+    // a reviewer's edit is a new suggestion by the reviewer naming the one it replaced, which
     // is rejected in the same write (decision on design suggestion-lifecycle, ISS-117)
     revisesId: uuid('revises_id').references((): AnyPgColumn => suggestions.id),
     status: text('status', { enum: SUGGESTION_STATUSES }).notNull().default('proposed'),
@@ -104,7 +104,7 @@ export const suggestions = pgTable(
       'suggestions_payload_chk',
       sql`${t.payload} IS NOT NULL OR (${t.payloadPurgedAt} IS NOT NULL AND ${t.status} IN ('rejected', 'stale', 'withdrawn'))`,
     ),
-    // cm:why one open row per target, kind and fingerprint (SUGGESTION_DUPLICATE), so a retry or a
+    // one open row per target, kind and fingerprint (SUGGESTION_DUPLICATE), so a retry or a
     // second turn saying the same thing does not queue a twin
     openTwinUq: uniqueIndex('suggestions_open_twin_uq')
       .on(

@@ -136,7 +136,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
   const rows = block.workflowIds.map((id) => ({ id, design: byId.get(id) }));
   return (
     <div className="my-1" data-testid="designs-block">
-      {/* cm:why the analysis's list reads as a labelled count, as the prototype draws it; every later list is the message's own heading */}
+      {/* the analysis's list reads as a labelled count, as the prototype draws it; every later list is the message's own heading */}
       <div className={first ? "py-1.5 text-[11.5px] text-subtle" : "mb-1 font-bold text-fg"}>
         {block.heading}
         {first && ` ${rows.length}`}
@@ -228,7 +228,7 @@ export function StructuredMessage({
   if (card) {
     const batch = batchOf(card.batchId);
     if (!batch) return null;
-    // cm:why once sent, the card collapses into the person's answers message, as the prototype draws it
+    // once sent, the card collapses into the person's answers message, as the prototype draws it
     if (batch.status === "submitted") return null;
     if (batch.status === "superseded") {
       return (

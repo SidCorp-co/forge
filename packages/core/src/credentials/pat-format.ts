@@ -73,6 +73,6 @@ const CORE_NAME_PREFIXES = [
   TURN_DEFAULT_NAME_PREFIX,
 ];
 
-// cm:why a person's token named like a turn token would make their CLI writes read as written through the assistant
+// a person's token named like a turn token would make their CLI writes read as written through the assistant
 export const coreTokenNamePrefixOf = (name: string): string | null =>
   CORE_NAME_PREFIXES.find((p) => name.startsWith(p)) ?? null;

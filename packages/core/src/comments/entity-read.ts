@@ -168,7 +168,7 @@ const ARC_COLUMN = {
   issue: comments.issueId,
 } as const;
 
-// cm:why a comment takes the class of what it sits on, declared once in the egress table: a
+// a comment takes the class of what it sits on, declared once in the egress table: a
 // requirement's and a design's are product, an issue's too, a feedback item's is operational
 const COMMENT_SURFACE = {
   requirement: 'requirement',

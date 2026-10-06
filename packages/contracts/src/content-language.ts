@@ -1,4 +1,4 @@
-// cm:why one declaration of a project's content language (owner, 2026-10-04): the language agents
+// one declaration of a project's content language (owner, 2026-10-04): the language agents
 // write prose in for a project, never the language of code and never Forge's UI chrome. The project
 // document, core's prompt block, REST, MCP and the web settings field all read it from here.
 

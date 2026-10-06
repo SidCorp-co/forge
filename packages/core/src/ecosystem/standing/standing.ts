@@ -69,7 +69,7 @@ export const versionRef = (v: VersionFact): ContractVersionRef => ({
   decidedAt: v.decidedAt?.toISOString() ?? null,
 });
 
-// cm:why `contract/store.ts:currentOf` — the newest approved version is current; a proposed or returned one never is
+// `contract/store.ts:currentOf` — the newest approved version is current; a proposed or returned one never is
 const currentOf = (versions: readonly VersionFact[]) =>
   versions.find((v) => v.approval === 'approved') ?? null;
 
@@ -79,7 +79,7 @@ function pendingOf(versions: readonly VersionFact[], current: VersionFact | null
   return !current || p.recordedAt > current.recordedAt ? p : null;
 }
 
-// cm:guard a provider's window is the due date `contract/announce.ts:fileBreakingIn` stamped on its consumers' items for the current breaking version; a consumer's is its own item's, so both sides read one recorded date and neither recomputes it from today's notice days
+// a provider's window is the due date `contract/announce.ts:fileBreakingIn` stamped on its consumers' items for the current breaking version; a consumer's is its own item's, so both sides read one recorded date and neither recomputes it from today's notice days
 function windowOf(f: ContractFacts, current: VersionFact | null, now: Date): ContractWindow | null {
   if (f.direction === 'consumed') {
     if (!f.change) return null;

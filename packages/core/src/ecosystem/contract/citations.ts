@@ -59,7 +59,7 @@ function changeNotice(d: Extract<Doc, { type: 'change-notice' }>): Citation[] {
   ];
 }
 
-// cm:why a change request proposes behaviour the contract does not have yet and a decision may plan a version not recorded yet, so neither is held to a recorded version's elements
+// a change request proposes behaviour the contract does not have yet and a decision may plan a version not recorded yet, so neither is held to a recorded version's elements
 export function citationsOf(d: Doc, documents: ReadonlyMap<string, Doc>): Citation[] {
   if (d.type === 'change-notice') return changeNotice(d);
   if (d.type === 'rfi') {

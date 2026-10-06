@@ -142,7 +142,7 @@ function ecosystemRow(
   };
 }
 
-// cm:why an ecosystem is the person's when one of their projects is invited to it or active in it, or their org stewards it — the same readers readableEcosystem admits — and every row is one a project of theirs sent or received, as in readRegister
+// an ecosystem is the person's when one of their projects is invited to it or active in it, or their org stewards it — the same readers readableEcosystem admits — and every row is one a project of theirs sent or received, as in readRegister
 export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
   const mine = await readerProjects(userId);
   const orgs = await orgsOf(userId);

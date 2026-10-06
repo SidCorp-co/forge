@@ -33,7 +33,7 @@ function adminOnly(steps: unknown): boolean {
   return options.length > 0 && options.every((o) => o.authority === 'admin');
 }
 
-// cm:why where each carried issue stood when the run ended: its last kernel transition inside the run's window,
+// where each carried issue stood when the run ended: its last kernel transition inside the run's window,
 // else the status the run opened it at, which nothing has moved since
 function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display, end: Date) {
   const opening = metadataObject(metadataObject(b.metadata)[RUN_ISSUE_STATUSES_METADATA_KEY]);
@@ -58,7 +58,7 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
   return { openingStatuses, endStatuses };
 }
 
-// cm:why the idle-issues sweep's finding on the issue (`pipeline/idle-issues.ts:StrandRecord`); a record that
+// the idle-issues sweep's finding on the issue (`pipeline/idle-issues.ts:StrandRecord`); a record that
 // names no time or reason is not one this read can stand a stuck rule on
 function strandOf(raw: unknown): { at: Date; status: string; reason: string } | null {
   const r = metadataObject(raw);

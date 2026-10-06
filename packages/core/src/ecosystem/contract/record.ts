@@ -122,7 +122,7 @@ function documentOf(
   });
 }
 
-// cm:why one lock per contract serialises lands and uploads, so each version is measured against the version that is latest when it is written and never against one a concurrent writer is replacing
+// one lock per contract serialises lands and uploads, so each version is measured against the version that is latest when it is written and never against one a concurrent writer is replacing
 export async function recordVersion(input: RecordInput): Promise<RecordOutcome> {
   const now = input.now ?? new Date();
   const slug = slugOf(input.contractRef);

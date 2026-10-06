@@ -1,4 +1,4 @@
-// cm:why the one failing-streak rule (design automation rev 1, step streak; ISS-112 settled the fires,
+// the one failing-streak rule (design automation rev 1, step streak; ISS-112 settled the fires,
 // ISS-114 moved the rule out of alert A5): admin alert A5 and the automation read model both read a
 // schedule's streak here and judge it with `streakFails`, so an admin and a member see one answer
 

@@ -48,7 +48,7 @@ questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, async (c) => {
   return c.json(body);
 });
 
-// cm:why the one submit endpoint for every questionnaire, onboarding round or BA clarification alike:
+// the one submit endpoint for every questionnaire, onboarding round or BA clarification alike:
 // the thread's owner decides what happens after, never the client
 questionnaireRoutes.post(
   '/:id/questionnaires/:bid/answers',

@@ -222,7 +222,7 @@ conversationRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => 
     participants: await withDisplayNames(participants),
     messages,
     windows,
-    // cm:why a questionnaire block names its batch; the batches ride the detail read so the card
+    // a questionnaire block names its batch; the batches ride the detail read so the card
     // shows its live state and answers with the same socket invalidation as the messages
     questionnaires,
     ...(marks.get(id) ?? { kind: null, threadStatus: null, subjectKey: null }),

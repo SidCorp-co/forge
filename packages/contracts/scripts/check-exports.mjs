@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
-// cm:guard every export resolves to emitted dist — the core image runs Node 22, which cannot load a .ts export, so a src-pointing or unemitted entry crash-loops core at boot instead of failing here (2026-10-05)
+// every export resolves to emitted dist — the core image runs Node 22, which cannot load a .ts export, so a src-pointing or unemitted entry crash-loops core at boot instead of failing here (2026-10-05)
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 // A `*` subpath exports every module under src/, so each one must have been emitted.
 const modules = readdirSync(new URL('../src/', import.meta.url))

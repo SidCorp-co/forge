@@ -172,7 +172,7 @@ export async function readIssueMoveFacts(args: {
   };
 }
 
-// cm:why a person's move is refused as an agent's: issue-lifecycle rev 3 puts the condition on the edge, not the actor (ISS-104 decision)
+// a person's move is refused as an agent's: issue-lifecycle rev 3 puts the condition on the edge, not the actor (ISS-104 decision)
 async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
   try {
     await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`');

@@ -1,6 +1,6 @@
 import type { MessageEntry } from "@/features/session/types";
 
-// cm:edge contract -> packages/core/src/assistant/confab.ts:correctionLine — the exact sentence core appends under a reply that told a refused write as done; a change to its wording there leaves these lines rendered as prose here
+// contract -> packages/core/src/assistant/confab.ts:correctionLine — the exact sentence core appends under a reply that told a refused write as done; a change to its wording there leaves these lines rendered as prose here
 const CORRECTION = /^Correction: (.+) was refused \(([^)\n]*)\); nothing was written\.$/;
 
 export interface Correction {

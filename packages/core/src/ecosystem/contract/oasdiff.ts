@@ -42,7 +42,7 @@ function oasdiffPath(env: NodeJS.ProcessEnv = process.env): string {
 
 const verified = new Map<string, Promise<string>>();
 
-// cm:why a binary of another version measures with other checks, so a land is refused rather than measured by a differ nobody pinned
+// a binary of another version measures with other checks, so a land is refused rather than measured by a differ nobody pinned
 async function verify(bin: string): Promise<string> {
   if (!existsSync(bin)) {
     throw new Error(
@@ -107,7 +107,7 @@ export interface OasdiffEntry {
 
 const MAX_OUTPUT = 64 * 1024 * 1024;
 
-// cm:why the specs are another project's bytes, so external $refs are never followed: a ref to a URL would be a request core makes on the provider's say-so
+// the specs are another project's bytes, so external $refs are never followed: a ref to a URL would be a request core makes on the provider's say-so
 const SAFE = ['--allow-external-refs=false', '-f', 'json'];
 
 export async function runOasdiff(

@@ -1,4 +1,4 @@
-// cm:why one declaration of a project's data policy (decision Q8, owner ruling 2026-10-03 on HOP): the project
+// one declaration of a project's data policy (decision Q8, owner ruling 2026-10-03 on HOP): the project
 // document, core's single egress guard and the web read the levels here; each level's meaning is its badge tip.
 export const SENSITIVE_DATA_LEVELS = ["off", "redact", "no_egress"] as const;
 export type SensitiveDataLevel = (typeof SENSITIVE_DATA_LEVELS)[number];

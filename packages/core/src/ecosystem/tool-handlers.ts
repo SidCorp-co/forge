@@ -48,7 +48,7 @@ const writeOf = (ctx: McpContext, a: Args) => ({
   raw: a.document,
 });
 
-// cm:why every service here is the one its REST route calls, so the door changes and the rule does not: the writer is the token's own user and agency, never a field of the document
+// every service here is the one its REST route calls, so the door changes and the rule does not: the writer is the token's own user and agency, never a field of the document
 export const HANDLERS: Record<
   Exclude<Action, 'bus'>,
   (ctx: McpContext, side: string, a: Args) => Promise<Answer>

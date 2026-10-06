@@ -176,7 +176,7 @@ export const TYPE_LABEL: Record<string, string> = {
 export type GateMode = "publish" | "approve";
 export type ReplyWindowType = "change-notice" | "rfi" | "change-request";
 
-// cm:edge contract -> packages/core/src/ecosystem/workspace-read.ts:readWorkspace — `GET /api/ecosystems/mine`, the person's ecosystems, invitations and threads across them
+// contract -> packages/core/src/ecosystem/workspace-read.ts:readWorkspace — `GET /api/ecosystems/mine`, the person's ecosystems, invitations and threads across them
 export interface WorkspaceEcosystem {
   id: string;
   slug: string;

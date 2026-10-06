@@ -27,7 +27,7 @@ async function consumersOfContract(tx: Tx, providerId: string, slug: string) {
 
 const isBreaking = (v: StoredVersion) => v.document.diff.classification === 'breaking';
 
-// cm:guard a breaking approval files its consumers' items inside its own transaction, so no approval
+// a breaking approval files its consumers' items inside its own transaction, so no approval
 // commits owing an item it did not file; the key makes a retry find the item instead of a twin (E3)
 export async function fileBreakingIn(tx: Tx, a: Approved): Promise<string[]> {
   if (!isBreaking(a.version)) return [];
@@ -53,7 +53,7 @@ export async function fileBreakingIn(tx: Tx, a: Approved): Promise<string[]> {
   return filed;
 }
 
-// cm:why the consumers are read in the approval's transaction, so the notice names the projects that consumed the contract when it was approved
+// the consumers are read in the approval's transaction, so the notice names the projects that consumed the contract when it was approved
 export async function announceApprovedIn(tx: Tx, a: Approved): Promise<void> {
   const consumers = await consumersOfContract(tx, a.provider.id, a.version.contractSlug);
   await emitEvent(tx, 'contract.versionApproved', {

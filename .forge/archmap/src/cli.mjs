@@ -11,7 +11,7 @@ import { collectGraph, loadBaseline, buildReport, PROVIDERS, VENDOR_GLOB, baseli
 import { join, relative, resolve, sep } from 'node:path';
 import { writeFileSync } from 'node:fs';
 
-// cm:edge protocol -> src/check.mjs — collect/evaluate/report live there so the CI gate and the
+// protocol -> src/check.mjs — collect/evaluate/report live there so the CI gate and the
 //   pre-write hook cannot reach different verdicts on the same tree.
 export { baselineKey };
 
@@ -42,9 +42,9 @@ const USAGE = `archmap — architecture conformance from a declared manifest
 Exit: 0 clean · 1 violations · 2 the gate could not run
 `;
 
-// cm:guard the allow-list IS the fail-closed mechanism, and every entry must match a line in
+// the allow-list IS the fail-closed mechanism, and every entry must match a line in
 //   USAGE above — the two are declared adjacent so they cannot drift. An unvalidated flag Set was
-//   the shape the cm:guard below warns about: `--strict-unresolveable` (misspelt) silently
+//   the shape the guard below warns about: `--strict-unresolveable` (misspelt) silently
 //   downgraded the gate the operator asked for and still exited 0.
 const FLAGS = {
   check: new Set(['--json', '--stats', '--strict-unresolvable']),
@@ -54,7 +54,7 @@ const FLAGS = {
   doctor: new Set(),
 };
 
-// cm:guard exit 2 means the gate could not run and is never interchangeable with 1. Every
+// exit 2 means the gate could not run and is never interchangeable with 1. Every
 //   fail-open bug in tools of this kind has the same shape: a broken invocation produces an
 //   empty scope and a green summary.
 const E_OK = 0;
@@ -62,10 +62,10 @@ const E_VIOLATION = 1;
 const E_CANNOT_RUN = 2;
 
 function die(msg) {
-  // cm:guard the prefix is `archmap:`, not `arch:` — coreutils' /usr/bin/arch also prefixes its
+  // the prefix is `archmap:`, not `arch:` — coreutils' /usr/bin/arch also prefixes its
   //   errors with `arch:`, and while this command was named `arch` a user could not tell which
   //   of the two programs had answered them.
-  // cm:guard EVERY line gets the prefix, applied here. The multi-line InstallError messages used to
+  // EVERY line gets the prefix, applied here. The multi-line InstallError messages used to
   //   carry their own `archmap: ` continuation inside the message string, which is correct only when
   //   this function is the printer — `doctor` prints the same message indented inside its DRIFT
   //   block, where a hardcoded prefix landed at column 0 (ISS-8 review round 2, minor).
@@ -110,7 +110,7 @@ export function render(report, opts) {
     out.push(report.policy);
   }
 
-  // cm:why absence gets its own block, never the error/warn labels — SPEC §3 makes it report only,
+  // absence gets its own block, never the error/warn labels — SPEC §3 makes it report only,
   //   and a line that looks like a violation in a CI log is read as one no matter what the exit
   //   code says.
   if (report.absent.length) {
@@ -124,7 +124,7 @@ export function render(report, opts) {
   out.push(
     `${report.blocking.length} blocking · ${report.advisory.length} advisory · ${report.frozen} frozen by baseline · ${report.absentCount} absent`,
   );
-  // cm:guard repeated next to the verdict on purpose. The summary line is the one line a human and a
+  // repeated next to the verdict on purpose. The summary line is the one line a human and a
   //   CI log excerpt actually read, and a warning that only appears in the header scrolls away on any
   //   real report — leaving a verdict over a graph with holes looking exactly like a clean one.
   if (u.above) {
@@ -137,7 +137,7 @@ function pct(ratio) {
   return Math.round(ratio * 1000) / 10;
 }
 
-// cm:why the wording names the FAILURE MODE, not the number. "690 unresolvable" reads as trivia; that
+// the wording names the FAILURE MODE, not the number. "690 unresolvable" reads as trivia; that
 //   a locked contract can pass because its edges are absent is the thing the reader has to act on.
 function unresolvableWarning(u) {
   return [
@@ -162,7 +162,7 @@ export function main(argv) {
   if (!['check', 'graph', 'install', 'doctor', 'lock'].includes(cmd)) die(`unknown command "${cmd}"`);
 
   const rest = args.slice(hasCmd ? 1 : 0);
-  // cm:guard single dash included, not just `--`: there are no short flags and a real path never
+  // single dash included, not just `--`: there are no short flags and a real path never
   //   starts with `-`, so an unchecked `-j` becomes a path root — the same swallow in a second
   //   costume. And this runs BEFORE findRoot(): a repo with no manifest must still be told which
   //   flag was wrong, not handed "no .arch.json" for a typo it can see.
@@ -179,7 +179,7 @@ export function main(argv) {
   const flags = new Set(rest.filter((a) => a.startsWith('-')));
   const paths = rest.filter((a) => !a.startsWith('-'));
 
-  // cm:guard a flag that is in the allow-list but has nothing to act on is still a request the CLI
+  // a flag that is in the allow-list but has nothing to act on is still a request the CLI
   //   did not honour, which is the same fail-open shape as the swallowed typo above. `--compact`
   //   only shapes --json output, so alone it is exit 2, never a silent no-op.
   if (cmd === 'graph' && flags.has('--compact') && !flags.has('--json')) {
@@ -192,13 +192,13 @@ export function main(argv) {
   if (cmd === 'install') return doInstall(root, flags);
   if (cmd === 'doctor') return doDoctor(root);
 
-  // cm:guard the consuming repo's CI runs `check`, not `doctor`, so drift detection that lives only
+  // the consuming repo's CI runs `check`, not `doctor`, so drift detection that lives only
   //   in `doctor` is detection nobody runs — and the copy running the gate is the copy whose
   //   integrity decides whether the verdict means anything.
-  // cm:guard STDERR only, and the exit code is deliberately UNTOUCHED. `graph --json` carries a
+  // STDERR only, and the exit code is deliberately UNTOUCHED. `graph --json` carries a
   //   byte-identical-stdout promise (SPEC §10.4) and a verdict over a dependency graph is not the
   //   place to fail on tooling integrity — `doctor` is the gate for that, and it exits 1.
-  // cm:guard called UNCONDITIONALLY — no predicate about the repo stands between a tampered copy
+  // called UNCONDITIONALLY — no predicate about the repo stands between a tampered copy
   //   and this warning, because three rounds of such predicates each turned out to have a state
   //   that silenced it: a deleted VERSION (round 2), a symlinked vendor dir (round 3), and a
   //   findRoot() that answered with a repo which did not vendor this copy (round 4 — `cd
@@ -206,7 +206,7 @@ export function main(argv) {
   //   auditSelf() decides from the running copy alone and returns null in a source checkout.
   warnSelfDrift(root);
 
-  // cm:guard lock takes a CONTRACT ID where check takes paths, and it scopes to the WHOLE repo
+  // lock takes a CONTRACT ID where check takes paths, and it scopes to the WHOLE repo
   //   regardless. Freezing from a scoped run records only what that scope happened to see and
   //   silently omits the rest, so the next full run reports the omissions as fresh violations —
   //   a baseline that makes the gate louder is the one thing a baseline must never do.
@@ -219,7 +219,7 @@ export function main(argv) {
   try {
     report = buildReport(manifest, graph, loadBaseline(root), { failures, notes });
   } catch (e) {
-    // cm:guard a contract with no evaluator is a gate that COULD NOT RUN, not a clean repo. Exit 2,
+    // a contract with no evaluator is a gate that COULD NOT RUN, not a clean repo. Exit 2,
     //   never 0 — the whole point of ISS-2.
     if (e instanceof ContractError) die(e.message);
     throw e;
@@ -240,10 +240,10 @@ export function main(argv) {
  * Writes the baseline and nothing else. Flipping `status` to `locked` stays a hand edit to
  * `.arch.json`, because §8.3 makes the manifest a governance file no tool amends for you.
  */
-// cm:guard MERGES — every other contract's frozen entries are read back and rewritten unchanged. A
+// MERGES — every other contract's frozen entries are read back and rewritten unchanged. A
 //   whole-file rewrite would silently unfreeze every sibling, and the symptom is a CI run that goes
 //   red on debt nobody touched, which reads as a regression in the code rather than in this command.
-// cm:guard freezes ONE named contract, never "whatever is failing today". `archmap lock` with no id
+// freezes ONE named contract, never "whatever is failing today". `archmap lock` with no id
 //   would be a button that absolves the entire repo, and the first person under deadline pressure
 //   would press it.
 function doLock(root, manifest, graph, paths) {
@@ -264,7 +264,7 @@ function doLock(root, manifest, graph, paths) {
 
   const existing = loadBaseline(root);
   const frozen = {};
-  // cm:guard the sibling entries come back FIRST so a stale key for this contract cannot survive the
+  // the sibling entries come back FIRST so a stale key for this contract cannot survive the
   //   rewrite below. Re-freezing must be able to shrink: a violation that was fixed has to leave the
   //   file, or the baseline only ever grows and `locked` degrades into a permanent amnesty.
   for (const [k, v] of existing.entries) {
@@ -290,7 +290,7 @@ function doLock(root, manifest, graph, paths) {
   return E_OK;
 }
 
-// cm:guard `check` and `graph` share this prelude rather than each carrying a copy. Two copies is
+// `check` and `graph` share this prelude rather than each carrying a copy. Two copies is
 //   how the two surfaces drift onto different scopes — a different exclude list, a different
 //   cannot-run threshold — and an export that does not describe the graph the gate ran over is
 //   worse than no export, because a consumer cannot tell.
@@ -311,7 +311,7 @@ function buildScope(root, paths) {
   const graph = normalize(manifest, results);
   if (graph.files.size === 0) die(`scope matched no files (${roots.join(', ')})`);
 
-  // cm:guard every CONFIGURED provider, not only the ones that returned a graph — the whole point
+  // every CONFIGURED provider, not only the ones that returned a graph — the whole point
   //   is to name the language that is missing, and a provider that died is by definition absent
   //   from `results`. `ok` covers "ran and found nothing" too: a repo with no Go gets go/ok:true,
   //   because the provider answered, and "no Go dependencies" is then a trustworthy answer.
@@ -320,7 +320,7 @@ function buildScope(root, paths) {
   return { manifest, graph, failures, notes, providers, scope: roots.map((r) => toRepoRelative(root, r)) };
 }
 
-// cm:guard a root reaches us as the operator typed it, which may be absolute — and an absolute path
+// a root reaches us as the operator typed it, which may be absolute — and an absolute path
 //   in the document would break both the no-absolute-paths rule and the byte-identical promise, on
 //   the one field whose whole job is to be quotable provenance. Normalised against the repo root,
 //   never echoed raw. '' (the root itself) is '.', matching the default scope.
@@ -329,7 +329,7 @@ function toRepoRelative(root, p) {
   return rel === '' ? '.' : rel;
 }
 
-// cm:why `graph` runs no evaluator, so it has no verdict and can never exit 1 — only 0 or 2 per
+// `graph` runs no evaluator, so it has no verdict and can never exit 1 — only 0 or 2 per
 //   SPEC §10.1. It is a data surface; `archmap check` remains the gate.
 function doGraph(graph, flags, { failures, notes, providers, scope }) {
   const doc = buildGraphDocument(graph, { toolVersion: version(), providers, scope });
@@ -338,7 +338,7 @@ function doGraph(graph, flags, { failures, notes, providers, scope }) {
     return E_OK;
   }
   process.stdout.write(`${flags.has('--compact') ? JSON.stringify(doc) : JSON.stringify(doc, null, 2)}\n`);
-  // cm:guard --json is the surface a pipeline uses, and a pipeline that redirects stdout to a file
+  // --json is the surface a pipeline uses, and a pipeline that redirects stdout to a file
   //   would otherwise see nothing at all when a provider dies. The warning goes to STDERR, so the
   //   document on stdout stays byte-identical and the run stops being silent. `complete: false` in
   //   the document is the machine-readable half of the same signal; this is the half a human
@@ -348,7 +348,7 @@ function doGraph(graph, flags, { failures, notes, providers, scope }) {
   return E_OK;
 }
 
-// cm:guard a provider that FAILED is the largest hole there is — a whole language absent from the
+// a provider that FAILED is the largest hole there is — a whole language absent from the
 //   graph. `providers[]`/`complete` in the document say WHICH language and that it happened; these
 //   lines carry the free-text reason, which stays off the document because it can name an absolute
 //   path or a machine-local tool and would break the byte-identical promise.
@@ -360,7 +360,7 @@ function graphWarnings(doc, failures) {
     for (const f of failures) out.push(`             ${f}`);
     out.push('           archmap check --json reports the same as providerFailures.');
   }
-  // cm:guard the same warning `check` prints. A human eyeballing the export summary over a graph
+  // the same warning `check` prints. A human eyeballing the export summary over a graph
   //   that is mostly holes must not read it as a complete picture either — see SPEC §9.2.
   if (doc.unresolvableStats.above) {
     if (out.length) out.push('');
@@ -385,12 +385,12 @@ function renderGraph(doc, failures, notes) {
   return out.join('\n');
 }
 
-// cm:guard the vantage point is reported ALWAYS, clean or not — this project's documents state
+// the vantage point is reported ALWAYS, clean or not — this project's documents state
 //   their own completeness. The manifest basis is genuinely blind to the SOURCE having moved on,
 //   and a bare "verified" line claims a stronger guarantee than the check actually made.
-// cm:guard the wording says what was COMPARED, never "verified" — a verdict word above a DRIFT block
+// the wording says what was COMPARED, never "verified" — a verdict word above a DRIFT block
 //   reads as a contradiction, and `doctor` prints the vantage point clean or not.
-// cm:guard "no manifest" and "an unreadable manifest" are different diagnoses. The absent case is an
+// "no manifest" and "an unreadable manifest" are different diagnoses. The absent case is an
 //   old release; the corrupt case is a merge conflict in that very file — SPEC §10.5's own stated
 //   trigger — and reporting it as an old release sends the reader after a version they will not find
 //   (ISS-8 review round 2, minor).
@@ -412,11 +412,11 @@ const DRIFT_SHOWN = 10;
 /**
  * The `vendored checker` line: the copy's VERSION stamp, or why there is no stamp to print.
  */
-// cm:guard the fallback describes the COPY, not the stamp. Anything that makes VERSION unreadable —
+// the fallback describes the COPY, not the stamp. Anything that makes VERSION unreadable —
 //   `mkdir .forge/archmap/VERSION` is the reproduced one — left this line saying `absent — run:
 //   archmap install` about a copy that is present, contradicting the DRIFT block two lines below
 //   which names the unreadable stamp correctly (ISS-8 review round 3, finding 5).
-// cm:guard the same reachability rule as the remedy below: a bare `run: archmap install` is advice
+// the same reachability rule as the remedy below: a bare `run: archmap install` is advice
 //   only a source checkout can take, and this line is read from every vantage — so it names WHERE
 //   the command has to be run instead of asking which vantage is reading. Deciding that from the
 //   repo is what round 4's blocker was made of.
@@ -437,7 +437,7 @@ function doDoctor(root) {
     out.push(`  ${p.pkg.padEnd(18)} ${p.found ? 'found' : `MISSING — ${p.why} cannot run`}`);
   }
 
-  // cm:guard skew is the whole point of this verb: CI runs the vendored copy, so a stale one keeps
+  // skew is the whole point of this verb: CI runs the vendored copy, so a stale one keeps
   //   passing while the source has moved. Report it as a failure, never as a note.
   const skewed = d.vendored !== null && !d.vendored.startsWith(d.running) && d.running !== d.vendored;
   if (skewed) {
@@ -445,12 +445,12 @@ function doDoctor(root) {
     out.push(`  SKEW — the repo is pinned to ${d.vendored}, you are running ${d.running}.`);
   }
 
-  // cm:guard content drift is the same weight as version skew, not a lesser note. A copy whose
+  // content drift is the same weight as version skew, not a lesser note. A copy whose
   //   VERSION matches and whose FILES do not is the harder failure of the two, because every
   //   version-based signal reads it as current — which is how six missing modules stayed invisible.
-  // cm:why an unverifiable copy fails here too. "Cannot check" must not read as "clean"; the one
+  // an unverifiable copy fails here too. "Cannot check" must not read as "clean"; the one
   //   command that fixes it is named on the closing line, and it is the same command either way.
-  // cm:guard an audit that could not RUN is exit 2, not exit 1 — "the vendored copy is wrong" and "I
+  // an audit that could not RUN is exit 2, not exit 1 — "the vendored copy is wrong" and "I
   //   could not tell" are different answers, and only the first one is about the repo.
   const unreadable = d.audit.present && d.audit.basis === 'error';
   const drifted = d.audit.present && !d.audit.ok && !unreadable;
@@ -458,7 +458,7 @@ function doDoctor(root) {
     out.push('');
     if (unreadable) {
       out.push(`  DRIFT — the contents of ${VENDOR_DIR} could not be checked at all:`);
-      // cm:guard the message is indented HERE, line by line. An InstallError explains itself in two
+      // the message is indented HERE, line by line. An InstallError explains itself in two
       //   or three lines and no longer carries its own `archmap: ` continuation prefix, which used to
       //   put line 2 at column 0 in the middle of this block.
       for (const l of String(d.audit.error).split('\n')) out.push(`    ${l}`);
@@ -467,7 +467,7 @@ function doDoctor(root) {
     } else {
       out.push(`  DRIFT — the vendored copy does not match: ${driftSummary(d.audit.drift)}.`);
     }
-    // cm:guard the path is SANITISED, not echoed. It can be a MANIFEST.json key, which is untrusted
+    // the path is SANITISED, not echoed. It can be a MANIFEST.json key, which is untrusted
     //   text in a file anyone who can open a PR can edit: a key carrying a newline forged a
     //   correctly-indented "CLEAN — the vendored copy matches: 0 drift." line inside this very block
     //   (ISS-8 review round 2, finding 7). DRIFT_SHOWN caps the number of lines, not their content.
@@ -479,7 +479,7 @@ function doDoctor(root) {
     }
   }
 
-  // cm:guard the copy that PRODUCED this report gets its own block whenever it is not the copy
+  // the copy that PRODUCED this report gets its own block whenever it is not the copy
   //   audited above. Without it, `doctor` run through a vendored copy from a root that copy does not
   //   belong to — a nested .arch.json is enough — printed a clean exit 0 over a tampered binary,
   //   which is this issue's headline failure at the one verb whose whole job is to catch it (ISS-8
@@ -513,11 +513,11 @@ function selfWhy(a) {
   if (a.basis === 'none') {
     return `it cannot vouch for its own contents: ${a.why === 'corrupt' ? `its ${MANIFEST_NAME} is unreadable` : `no ${MANIFEST_NAME}`}.`;
   }
-  // cm:guard sanitised, for the reason the DRIFT block above gives: these paths are manifest keys.
+  // sanitised, for the reason the DRIFT block above gives: these paths are manifest keys.
   return `it does not match its own ${MANIFEST_NAME}: ${driftSummary(a.drift)}.`;
 }
 
-// cm:guard the vantage note and the drift warning are INDEPENDENT statements, and the note never
+// the vantage note and the drift warning are INDEPENDENT statements, and the note never
 //   gates the audit. "The copy running this gate is not the one this repo vendors" is a fact about
 //   which binary the operator invoked; "this copy does not match its own manifest" is a fact about
 //   the bytes. Round 4's blocker was the second question being answered by the first.
@@ -534,7 +534,7 @@ const VANTAGE_NOTE = {
 
 function warnSelfDrift(root) {
   const lines = [...(VANTAGE_NOTE[selfVantage(root)]?.(root) ?? [])];
-  // cm:guard NOTHING in here may escape. This runs on every `check` and `graph` from a vendored copy
+  // NOTHING in here may escape. This runs on every `check` and `graph` from a vendored copy
   //   and it reads and hashes every file in that copy, so it owns new I/O failure modes on the gate's
   //   hot path — and an escaped error exits node 1, which this tool's contract reads as "violations
   //   found", while blanking the stdout `graph --json` promises byte-for-byte. auditSelf() maps its
@@ -548,13 +548,13 @@ function warnSelfDrift(root) {
     emitWarning(lines);
     return;
   }
-  // cm:guard null is a SOURCE checkout — it has no manifest of its own and never claimed one, so
+  // null is a SOURCE checkout — it has no manifest of its own and never claimed one, so
   //   there is nothing to warn about. Only an installed copy reaches the arms below.
   if (a === null || a.ok) {
     emitWarning(lines);
     return;
   }
-  // cm:guard the closing sentence has to match the arm above it. "The verdict below came from code
+  // the closing sentence has to match the arm above it. "The verdict below came from code
   //   that is not what this repo vendored" is a statement of FACT about drift — printed under an arm
   //   that just said it could not tell, it claims knowledge the check does not have, which is the
   //   same over-claim `doctor` dropped when "verified" became "checked" (ISS-8 review round 2, minor).
@@ -565,7 +565,7 @@ function warnSelfDrift(root) {
     lines.push(`WARNING  this vendored copy cannot vouch for its own contents: ${a.why === 'corrupt' ? `its ${MANIFEST_NAME} is unreadable` : `no ${MANIFEST_NAME}`}.`,
       '         Whether the verdict below came from the code this repo vendored is UNKNOWN.');
   } else {
-    // cm:guard sanitised, for the reason doDoctor's DRIFT block gives: these paths are manifest keys.
+    // sanitised, for the reason doDoctor's DRIFT block gives: these paths are manifest keys.
     lines.push(`WARNING  this vendored copy does not match its own ${MANIFEST_NAME} — ${driftSummary(a.drift)}.`,
       ...a.drift.slice(0, 3).map((f) => `         ${f.kind.padEnd(10)} ${displayPath(f.path)}`),
       '         The verdict below came from code that is not what this repo vendored.');
@@ -585,7 +585,7 @@ function doInstall(root, flags) {
   try {
     r = install(root, { force: flags.has('--force') });
   } catch (e) {
-    // cm:guard vendoring that cannot proceed is exit 2 with a sentence, never a stack trace at exit 1
+    // vendoring that cannot proceed is exit 2 with a sentence, never a stack trace at exit 1
     //   — the code this tool reads as "violations found". Refusing to write is one of these: a
     //   vendored copy asked to re-vendor itself, or a vendor path that is a symlink.
     die(e instanceof InstallError ? e.message : `install failed: ${e.message}`);
@@ -593,14 +593,14 @@ function doInstall(root, flags) {
   if (r.already) {
     process.stdout.write(`archmap install: ${VENDOR_DIR} already at ${r.already} — pass --force to rewrite\n`);
   } else {
-    // cm:guard a plain `archmap install` that used to answer "already at 0.1.2 — pass --force" now
+    // a plain `archmap install` that used to answer "already at 0.1.2 — pass --force" now
     //   repairs the copy, and must SAY what was wrong with it. Silently rewriting is the same
     //   information loss in the opposite direction: the operator never learns their committed
     //   checker had drifted, so they never look for how.
     if (r.repaired?.length) {
       process.stdout.write(`archmap install: repaired ${driftSummary(r.repaired)} in ${VENDOR_DIR}\n`);
     } else if (r.repairedBasis === 'error') {
-      // cm:why there is no `basis: 'none'` arm. A vendored copy cannot install itself (it is refused
+      // there is no `basis: 'none'` arm. A vendored copy cannot install itself (it is refused
       //   outright), so every install runs from a source checkout — which recomputes the expected
       //   bytes and therefore reports a missing MANIFEST.json as ordinary `missing` drift on the line
       //   above. The empty-drift no-manifest state is reachable only by `doctor` and by the self-drift
@@ -608,12 +608,12 @@ function doInstall(root, flags) {
       process.stdout.write(`archmap install: rewrote ${VENDOR_DIR}, whose contents could not be checked\n`);
     }
     process.stdout.write(`archmap install: vendored ${r.files.length} files into ${VENDOR_DIR}\n`);
-    // cm:guard SANITISED at this print site too. `removed[]` is walk-derived, so its names are
+    // SANITISED at this print site too. `removed[]` is walk-derived, so its names are
     //   untrusted text from the repo: a committed file called `evil\narchmap install: vendored 0
     //   files into nothing` forged a whole line of install's own output (ISS-8 review round 3,
     //   finding 4 — the rule finding 7 established, applied to the second print site).
     for (const f of r.files) process.stdout.write(`  ${displayPath(f)}\n`);
-    // cm:guard the removal is announced, not silent: whoever re-vendors is the only person who can
+    // the removal is announced, not silent: whoever re-vendors is the only person who can
     //   fix a CI line that still invokes the old shim path, and this is the moment they are looking.
     for (const f of r.removed ?? []) {
       if (f === join(VENDOR_DIR, 'arch')) {
@@ -628,7 +628,7 @@ function doInstall(root, flags) {
     process.stdout.write('global install to the same copy, and pins the repo to a reviewed version.\n');
   }
 
-  // cm:guard a missing peer must be reported HERE, not discovered as an empty graph in CI — the
+  // a missing peer must be reported HERE, not discovered as an empty graph in CI — the
   //   vendored copy has no node_modules of its own, so the resolver has to come from the project
   const missing = r.peers.filter((p) => !p.found);
   if (missing.length > 0) {

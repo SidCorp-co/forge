@@ -22,7 +22,7 @@ export function parseVersion(versioning: Versioning, v: string): Parsed | null {
   return [Number(m[1].replace(/-/g, '')), Number(m[2] ?? 0), 0];
 }
 
-// cm:why a version outside the scheme sorts before every version inside it, so an unparsable builtAgainst is always older and its consumer is always addressed
+// a version outside the scheme sorts before every version inside it, so an unparsable builtAgainst is always older and its consumer is always addressed
 export function compareVersions(versioning: Versioning, a: string, b: string): number {
   const [x, y] = [parseVersion(versioning, a), parseVersion(versioning, b)];
   if (!x || !y) return x ? 1 : y ? -1 : a.localeCompare(b);
@@ -35,7 +35,7 @@ export function compareVersions(versioning: Versioning, a: string, b: string): n
 
 type Bump = 'major' | 'minor' | 'patch';
 
-// cm:why unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing an unknown measurement did not show
+// unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing an unknown measurement did not show
 function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump {
   if (diff.classification === 'breaking' || diff.classification === 'unknown') return 'major';
   return diff.changes.some((c) => c.kind === 'added') ? 'minor' : 'patch';

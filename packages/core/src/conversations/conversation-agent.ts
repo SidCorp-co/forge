@@ -191,7 +191,7 @@ export async function startConversationAgentTurn(
     ? await carryImagesToSession(args.conversationId, session.id, args.images)
     : { ok: true as const, ids: [] };
   if (!carried.ok) {
-    // cm:why the room is told by the caller, naming the file; the stamped marker keeps the bridge
+    // the room is told by the caller, naming the file; the stamped marker keeps the bridge
     // from posting a second, different reply under the same delivery key
     const at = new Date().toISOString();
     await markSessionFailed(session, 'conversation-agent', 'attachment_unreadable', {

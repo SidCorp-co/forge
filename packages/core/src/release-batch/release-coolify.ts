@@ -215,7 +215,7 @@ async function enqueueArmed(
  * except one whose environment deploys itself (`trigger: provider`); a project with nothing to
  * dispatch returns `reason: 'no-integration'` and stamps the skipped substep.
  */
-// cm:flow release/deploy after:stamp — the deploy is a caller's act on a landed change (`forge_coolify_deploy`): the issue path reaches every environment but production before the release stage, and the release run reaches production; a binding reaching production parks for a human unless the project document's production environment deploys on-land
+// release/deploy after:stamp — the deploy is a caller's act on a landed change (`forge_coolify_deploy`): the issue path reaches every environment but production before the release stage, and the release run reaches production; a binding reaching production parks for a human unless the project document's production environment deploys on-land
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;

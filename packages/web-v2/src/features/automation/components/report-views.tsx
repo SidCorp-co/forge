@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why an agent report as the automation read model serves it (ISS-116, design automation rev 1,
+// an agent report as the automation read model serves it (ISS-116, design automation rev 1,
 // steps wait_triage, triage, file and dismiss): its triage state and whom it waits on come from core,
 // and every triage act posts to the one triage door, so a refusal is shown by the code it came back with
 import Link from "next/link";

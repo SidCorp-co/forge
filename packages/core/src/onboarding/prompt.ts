@@ -60,7 +60,7 @@ function questionnaireRules(roundsSent: number) {
 - An accepted recommendation becomes a suggestion or a proposed design revision, never current: say so in its why.`;
 }
 
-// cm:why the pane opens in the device binding's checkout as it stands, which can lag its remote by
+// the pane opens in the device binding's checkout as it stands, which can lag its remote by
 // hundreds of commits; designs drawn from it describe a product that no longer exists
 function landedTree(branch: string | null, onboardingId: string) {
   const ref = branch ? `origin/${branch}` : "the remote's default branch (git remote show origin)";

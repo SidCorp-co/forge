@@ -216,7 +216,7 @@ export const contractVersions = pgTable(
       onDelete: 'restrict',
     }),
     elements: text('elements').array(),
-    // cm:why a version is proposed when recorded and current only once approved; `decided_as` says whether a person or the project's own agent decided, and `before-approval` marks the versions recorded before the gate existed (migration 0348), which were current as recorded
+    // a version is proposed when recorded and current only once approved; `decided_as` says whether a person or the project's own agent decided, and `before-approval` marks the versions recorded before the gate existed (migration 0348), which were current as recorded
     approval: text('approval').notNull().default('proposed'),
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAs: text('decided_as'),

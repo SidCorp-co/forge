@@ -27,7 +27,7 @@ export {
 const inList = (values: readonly string[]) =>
   sql.raw(values.map((v) => `'${v.replace(/'/g, "''")}'`).join(', '));
 
-// cm:why onboarding is a conversation in the chat panel (owner, 2026-10-03): this row is the case
+// onboarding is a conversation in the chat panel (owner, 2026-10-03): this row is the case
 // the thread belongs to, one per project, so the thread, its rounds and its analysis job are read
 // from one place and a second start is refused by name
 export const onboardings = pgTable(
@@ -71,7 +71,7 @@ export const onboardings = pgTable(
   }),
 );
 
-// cm:why a questionnaire is one structured message answered once: the batch is what the submit
+// a questionnaire is one structured message answered once: the batch is what the submit
 // writes against and what a re-analysis supersedes; its items are agent_questions rows (one per
 // decision) carrying batch_id
 export const questionnaireBatches = pgTable(
@@ -84,7 +84,7 @@ export const questionnaireBatches = pgTable(
     conversationId: uuid('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    // cm:why an exclusive arc of real foreign keys: an onboarding round, a BA clarification on a
+    // an exclusive arc of real foreign keys: an onboarding round, a BA clarification on a
     // requirement, or a BA ask in an onboarding's first-requirements room
     onboardingId: uuid('onboarding_id').references(() => onboardings.id, { onDelete: 'cascade' }),
     requirementId: uuid('requirement_id').references(() => requirements.id, {
@@ -144,12 +144,12 @@ export const questionnaireBatches = pgTable(
       'questionnaire_batches_superseded_chk',
       sql`(${t.status} = 'superseded') = (${t.supersededAt} IS NOT NULL)`,
     ),
-    // cm:guard one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits
+    // one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits
     // on its person, so nothing more is asked over it
     openPerConversationUq: uniqueIndex('questionnaire_batches_open_conversation_uq')
       .on(t.conversationId)
       .where(sql`status IN ('open', 'skipped')`),
-    // cm:guard the BA assistant holds at most one open ask per requirement (Q5): a batch is that ask
+    // the BA assistant holds at most one open ask per requirement (Q5): a batch is that ask
     openPerRequirementUq: uniqueIndex('questionnaire_batches_open_requirement_uq')
       .on(t.requirementId)
       .where(sql`status IN ('open', 'skipped') AND requirement_id IS NOT NULL`),

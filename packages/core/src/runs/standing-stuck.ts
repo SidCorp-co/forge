@@ -1,7 +1,7 @@
-// cm:why where a live run stands still (design agent-run-standing rev 1, state stuck; ISS-109): core reads one
+// where a live run stands still (design agent-run-standing rev 1, state stuck; ISS-109): core reads one
 // rule per run from the rows `runs/facts.ts` gathered, so no screen computes stuck. Stuck is the early,
 // reversible signal at `RUN_STUCK_AFTER_MS`; failing a silent run stays the reapers' at their own clocks
-// cm:guard each rule names the one row it stands on; a rule that cannot name its row does not fire
+// each rule names the one row it stands on; a rule that cannot name its row does not fire
 
 import type {
   RunDisagreement,

@@ -3,9 +3,9 @@
 import { Button, useTopBarSlotTargets } from "@/design";
 import { DOCK_TITLE } from "@/features/conversations/components/chat-dock";
 
-// cm:why the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
-// cm:why Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
-// cm:why open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
+// the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
+// Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
+// open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
   return (

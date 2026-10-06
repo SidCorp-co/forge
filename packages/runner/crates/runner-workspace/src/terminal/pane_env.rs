@@ -93,7 +93,7 @@ fn pane_path(
     PanePath { path, missing }
 }
 
-// cm:guard a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
+// a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
 // session server's unit inherits none of this process's environment, so a daemon run under its
 // own `XDG_CONFIG_HOME` hands it on or its panes report to the box's default daemon (ISS-10)
 fn pane_env_from(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<(String, String)> {

@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why a fire as the automation read model serves it (ISS-116, design automation rev 1, steps
+// a fire as the automation read model serves it (ISS-116, design automation rev 1, steps
 // settle and screen): its result, why, and what it produced are counted and joined by core, so the
 // Fires tab and the fire page only lay them out
 import Link from "next/link";

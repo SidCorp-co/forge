@@ -166,14 +166,14 @@ export const agentQuestions = pgTable(
     index('agent_questions_issue_idx').on(t.issueId),
     index('agent_questions_batch_idx').on(t.batchId),
     check('agent_questions_batch_item_chk', sql`(${t.batchId} IS NULL) = (${t.item} IS NULL)`),
-    // cm:guard the BA assistant asks the reporter at most one open question per item (Q5)
+    // the BA assistant asks the reporter at most one open question per item (Q5)
     uniqueIndex('agent_questions_requirement_open_uq')
       .on(t.requirementId)
       .where(sql`${t.status} = 'open' and ${t.requirementId} is not null`),
     uniqueIndex('agent_questions_feedback_open_uq')
       .on(t.feedbackId)
       .where(sql`${t.status} = 'open' and ${t.feedbackId} is not null`),
-    // cm:why a channel document waits at its gate on one open question, so two approvers cannot each publish a copy
+    // a channel document waits at its gate on one open question, so two approvers cannot each publish a copy
     uniqueIndex('agent_questions_channel_gate_open_uq')
       .on(sql`(${t.origin} ->> 'documentId')`)
       .where(sql`${t.status} = 'open' and ${t.origin} ->> 'kind' = 'channel_gate'`),

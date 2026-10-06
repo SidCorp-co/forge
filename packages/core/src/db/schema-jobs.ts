@@ -38,7 +38,7 @@ export const jobTypes = [
   'smoke',
   'release_batch',
   'drive',
-  // cm:why the project-onboarding analysis (ISS-63): an issue-less job whose prompt carries the whole
+  // the project-onboarding analysis (ISS-63): an issue-less job whose prompt carries the whole
   // method, so the runner, which never branches on the type, needs no change
   'onboarding',
 ] as const;

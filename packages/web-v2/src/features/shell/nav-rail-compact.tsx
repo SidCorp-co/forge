@@ -485,7 +485,7 @@ export function NavRailCompact({
         )}
       </div>
 
-      {/* cm:why the footer is the account menu with the expand handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
+      {/* the footer is the account menu with the expand handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
       <div className="mt-auto flex w-full flex-col items-center gap-1.5">
         <div className="flex items-center gap-0.5">
           <Menu

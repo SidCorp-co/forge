@@ -34,7 +34,7 @@ function howTriaged(f: TriageFacts): string {
   return `dismissed ("${f.triageReason ?? ''}")`;
 }
 
-// cm:guard design automation rev 1 (step file; REQ-16 BC-3): a report is triaged once; a second
+// design automation rev 1 (step file; REQ-16 BC-3): a report is triaged once; a second
 // file, dismiss, duplicate or promote is refused naming who triaged it, how and when, and the way
 // back is an explicit reopen
 export function alreadyTriagedRefusal(f: TriageFacts): Refusal | null {
@@ -48,7 +48,7 @@ export function alreadyTriagedRefusal(f: TriageFacts): Refusal | null {
   );
 }
 
-// cm:guard step dismiss: a dismissal says why, so "not work" is never an unexplained click
+// step dismiss: a dismissal says why, so "not work" is never an unexplained click
 function dismissReasonRefusal(reason: string | undefined): Refusal | null {
   if (reason !== undefined && reason.trim() !== '') return null;
   return refusal(
@@ -58,7 +58,7 @@ function dismissReasonRefusal(reason: string | undefined): Refusal | null {
   );
 }
 
-// cm:guard step dismiss: a duplicate points at another report of the same project, never at one
+// step dismiss: a duplicate points at another report of the same project, never at one
 // the caller cannot see, one in another project, or itself
 export function duplicateRefusal(
   f: Pick<TriageFacts, 'id' | 'projectId'>,
@@ -78,7 +78,7 @@ export function duplicateRefusal(
   );
 }
 
-// cm:guard step dismiss: reopening returns a triaged report to new; one that is new already has
+// step dismiss: reopening returns a triaged report to new; one that is new already has
 // nothing to reopen, and a promoted one keeps the feedback item it became as its one target
 export function reopenRefusal(f: TriageFacts): Refusal | null {
   if (f.triage === 'new') {
@@ -119,7 +119,7 @@ export function bulkMoves(f: TriageFacts, act: TriageAgentReportRequest): boolea
   return f.triage === 'new';
 }
 
-// cm:guard ISS-113: a filed report has exactly one target, so the issue it was filed into is not
+// ISS-113: a filed report has exactly one target, so the issue it was filed into is not
 // deleted out from under it; reopening the report first is the way to delete that issue
 export function filedIntoIssueRefusal(issueKey: string, reportIds: readonly string[]): Refusal {
   return refusal(

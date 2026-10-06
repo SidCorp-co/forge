@@ -175,7 +175,7 @@ fn append_line(exclude: &Path, line: &str) -> Result<bool, Refused> {
         error: error.to_string(),
         line: line.to_string(),
     };
-    // cm:why fast path only: a peer's mandatory Windows lock fails this read (os error 33), so any
+    // fast path only: a peer's mandatory Windows lock fails this read (os error 33), so any
     // failure defers to the locked read below, which refuses a real one by name
     if let Ok(held) = std::fs::read(exclude) {
         if holds_line(&held, line) {

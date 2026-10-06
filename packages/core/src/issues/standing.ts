@@ -125,7 +125,7 @@ function forPerson(
 const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
-// cm:why whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
+// whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
 // needs_info or an open human question → a person answers; draft → a person takes it on or drops
 // it; awaiting_release → the master while a criterion no longer passes, else a person approves
 // where the project requires it, else queued for the release; a live lease or a job in flight →
@@ -440,7 +440,7 @@ interface WaveNode {
   blockedBy: readonly string[];
 }
 
-// cm:why a wave is the layer the master can dispatch from: an open issue with no open blocker is
+// a wave is the layer the master can dispatch from: an open issue with no open blocker is
 // wave 0; otherwise one more than its deepest open blocker. A blocker that is settled or done holds
 // nothing back. An issue on a cycle (or downstream of one) has no wave: null, never a guess.
 export function wavesOf(nodes: readonly WaveNode[]): Map<string, number | null> {

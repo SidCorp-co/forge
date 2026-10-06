@@ -8,7 +8,7 @@ export function notifyLocationChange() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENT));
 }
 
-// cm:why Next's router puts back its own history methods, so this wrapper can be bypassed; every
+// Next's router puts back its own history methods, so this wrapper can be bypassed; every
 // writer here calls notifyLocationChange itself, and the patch only catches writes from elsewhere
 let patched = false;
 function patchHistory() {

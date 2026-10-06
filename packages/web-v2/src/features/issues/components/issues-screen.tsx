@@ -18,7 +18,7 @@ interface IssuesScreenProps {
 
 type Mode = "attention" | "module" | "waves" | "table";
 
-// cm:why the view mode is a choice about the whole page, so it sits in the top header (FB-7, ISS-66);
+// the view mode is a choice about the whole page, so it sits in the top header (FB-7, ISS-66);
 // Table keeps the paged list with bulk actions and the assistant's ui.select, which the grouped views
 // do not carry
 function useModes(projectId: string): ViewMode<Mode>[] {
@@ -93,7 +93,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
 
   return (
     <>
-      {/* cm:why no page container: the list is flush with the sidebar edge, and only the toolbar keeps a gutter (ISS-49); the title, the view mode and New issue sit in the top bar */}
+      {/* no page container: the list is flush with the sidebar edge, and only the toolbar keeps a gutter (ISS-49); the title, the view mode and New issue sit in the top bar */}
       <div className="flex min-h-full flex-col pb-6">
         {header}
         {mode === "table" ? (

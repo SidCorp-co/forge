@@ -3,13 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 
-// cm:why archmap never resolves Go imports itself. `go list` already knows the module graph,
+// archmap never resolves Go imports itself. `go list` already knows the module graph,
 //   build tags, replace directives and nested modules; reimplementing that resolution is the same
 //   false-confidence trap the TypeScript provider avoids by shelling out to dependency-cruiser.
 //   What `go list` does NOT report is which FILE holds which import — only per-package totals — so
 //   this provider reads the import block itself and lets `go list` resolve every path.
-// cm:edge contract -> src/graph/normalize.mjs — the shape returned here is the graph contract
-// cm:edge lockstep -> src/install.mjs — MODULES lists every file the vendored copy gets. A provider
+// contract -> src/graph/normalize.mjs — the shape returned here is the graph contract
+// lockstep -> src/install.mjs — MODULES lists every file the vendored copy gets. A provider
 //   missing from that list makes `.forge/archmap/archmap` crash on import, so the gate cannot run.
 const TIMEOUT_MS = 180_000;
 
@@ -23,12 +23,12 @@ const LIST_FORMAT = [
   '{{join .XTestGoFiles ","}}',
 ].join('\t');
 
-// cm:why `timeoutMs` is a parameter here as well as in the ts provider, and why it must be honoured
+// `timeoutMs` is a parameter here as well as in the ts provider, and why it must be honoured
 //   even on a repo with no Go in it. collectGraph runs EVERY provider on every write, so a provider
 //   that quietly keeps its own 180s ceiling can outlive the caller's whole budget on its own — and
 //   on the pre-write surface the caller's budget is what keeps the client from killing the hook.
 export function collect({ root, roots, timeoutMs = TIMEOUT_MS }) {
-  // cm:guard a repo with no go.mod is Go's ABSENCE, not a failed gate — return an empty graph, never
+  // a repo with no go.mod is Go's ABSENCE, not a failed gate — return an empty graph, never
   //   `ok: false`. A provider that reports failure for a language the repo does not use prints a
   //   scary line on every run of every other language, and a gate nobody reads is not a gate.
   if (!existsSync(join(root, 'go.mod'))) {
@@ -42,7 +42,7 @@ export function collect({ root, roots, timeoutMs = TIMEOUT_MS }) {
     maxBuffer: 64 * 1024 * 1024,
   });
 
-  // cm:guard go.mod exists but `go list` could not run: that is exit-2 territory, so it MUST be
+  // go.mod exists but `go list` could not run: that is exit-2 territory, so it MUST be
   //   `ok: false`. Returning an empty graph here would let every contract pass on a Go repo whose
   //   toolchain is missing — the check would be loudest exactly when it knows least.
   if (res.status !== 0 || !res.stdout.trim()) {
@@ -99,7 +99,7 @@ function parseList(stdout, root) {
     const own = split(goFiles).map(rel);
     const all = [...own, ...split(testFiles).map(rel), ...split(xTestFiles).map(rel)];
 
-    // cm:why the edge target is the package's first non-test file, chosen by sort so it is stable
+    // the edge target is the package's first non-test file, chosen by sort so it is stable
     //   across machines. Go imports a PACKAGE, not a file, and the mapper assigns modules by path
     //   glob — so any file in the directory maps to the same module and the module-level verdict is
     //   identical. Emitting one edge per file in the imported package would multiply a single

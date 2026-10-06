@@ -1,4 +1,4 @@
-// cm:edge contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
+// contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
 import { projectGlyph } from "@/features/projects/glyph";
 
@@ -177,7 +177,7 @@ export interface BusRow {
   span: [number, number];
 }
 
-// cm:why a link can point at a contract the provider no longer publishes to this ecosystem; it still gets a row, named as unpublished, so the link never vanishes from the bus
+// a link can point at a contract the provider no longer publishes to this ecosystem; it still gets a row, named as unpublished, so the link never vanishes from the bus
 export function busRows(bus: Bus): BusRow[] {
   const column = new Map(bus.projects.map((p, i) => [p.id, i]));
   const rows = new Map<string, BusRow>();
@@ -202,7 +202,7 @@ export function busRows(bus: Bus): BusRow[] {
 
 export type Verdict = "breaks" | "passes" | "unchecked";
 
-// cm:why Impact is core's check of the contract's latest version against each link's fields used, call sites and outside-contract surface; a link core has no version to check against is unchecked, never passed
+// Impact is core's check of the contract's latest version against each link's fields used, call sites and outside-contract surface; a link core has no version to check against is unchecked, never passed
 export function impactOf(link: BusLink): Verdict {
   return link.impact?.verdict ?? "unchecked";
 }

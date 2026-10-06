@@ -106,7 +106,7 @@ conversationMessageRoutes.post(
         `conversation ${id} is a BA room about a requirement, answered in Assistant mode through its narrow tool set; an Agent turn would reach past it, so this message was not taken in`,
       );
     }
-    // cm:guard Assistant mode with no chat model is refused here by name (503), never taken in and
+    // Assistant mode with no chat model is refused here by name (503), never taken in and
     // answered with an "overloaded" apology the person would retry for ever (REQ-19)
     if (asking === 'assistant') {
       chatModelName();

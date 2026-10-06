@@ -3,16 +3,16 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
-// cm:why this module does NOT resolve modules — principle §2.4 is intact, tsc still does every
+// this module does NOT resolve modules — principle §2.4 is intact, tsc still does every
 //   resolution. It only locates WHERE `compilerOptions.paths` is written. In the TS project-
 //   references layout (the default of `npm create vite` on TS 5+) the root config is
 //   `{ files: [], references: [...] }` and `paths` lives in a referenced child, so handing tsc the
 //   root config alone yields zero alias edges and no error: contracts then pass because the edges
 //   are ABSENT, not because the code obeys them. Measured on a dogfood repo as 111 unresolvable.
-// cm:why hand-rolled instead of `typescript`'s own ts.readConfigFile: typescript is not a declared
+// hand-rolled instead of `typescript`'s own ts.readConfigFile: typescript is not a declared
 //   peer of archmap, so using it needs a resolve-or-fallback branch — two code paths for four
 //   fields. One always-exercised path is worth more here than reusing a loader we cannot rely on.
-// cm:edge contract -> src/providers/ts.mjs — planTsConfig's three modes are that provider's contract
+// contract -> src/providers/ts.mjs — planTsConfig's three modes are that provider's contract
 const MAX_DEPTH = 8;
 const ROOT_CONFIGS = ['tsconfig.json', 'jsconfig.json'];
 
@@ -41,7 +41,7 @@ function isDir(path) {
 export function readJsonc(text) {
   if (typeof text !== 'string') return null;
 
-  // cm:why chunked rather than one regex pass: a `//` or a `,}` INSIDE a string literal is data, and
+  // chunked rather than one regex pass: a `//` or a `,}` INSIDE a string literal is data, and
   //   a global regex cannot tell the two apart. String literals are copied through untouched and the
   //   trailing-comma cut is applied only to the code between them.
   const out = [];
@@ -123,7 +123,7 @@ function resolveExtends(configPath, spec) {
     }
     return null;
   }
-  // cm:guard a package spec (`@tsconfig/node20/tsconfig.json`) is best-effort only: it needs the
+  // a package spec (`@tsconfig/node20/tsconfig.json`) is best-effort only: it needs the
   //   TARGET repo's resolution, and a config living in a dependency we cannot resolve must be
   //   skipped, not thrown. Union-of-targets means a miss costs a candidate, never a wrong answer.
   for (const attempt of [spec, join(spec, 'tsconfig.json')]) {
@@ -180,7 +180,7 @@ export function collectFrom(configPath, seen = new Set(), depth = 0) {
   const co = (config.compilerOptions && typeof config.compilerOptions === 'object')
     ? config.compilerOptions
     : {};
-  // cm:why `paths` targets are absolutised against THEIR OWN declaring config's baseUrl. That is
+  // `paths` targets are absolutised against THEIR OWN declaring config's baseUrl. That is
   //   what makes children with different baseUrl values mergeable at all — one synthesized baseUrl
   //   cannot serve two children that disagree about it.
   const ownBaseUrl = typeof co.baseUrl === 'string' ? resolve(dir, co.baseUrl) : null;
@@ -256,7 +256,7 @@ function addsNothing(merged, own) {
  *                        layout keeps today's byte-identical invocation.
  * - `{ mode: 'merged' }` write `config` somewhere outside the scanned repo and pass that path.
  */
-// cm:guard a monorepo may have NO config at `root` at all — aliases live in each package and the
+// a monorepo may have NO config at `root` at all — aliases live in each package and the
 //   workspace root carries none, so discovery there returns `none` and every aliased import lands in
 //   `unresolvable`, which is DROPPED rather than reported: contracts over that package then pass on
 //   an empty graph. Measured on a pnpm workspace, 1000 unresolvable of 5368 possible edges (18.6%)
@@ -284,12 +284,12 @@ export function planTsConfig(root, declared = null) {
   const paths = {};
   for (const [pattern, targets] of out.patterns) paths[pattern] = targets;
 
-  // cm:why `extends` the root config rather than restating it: that is what carries jsx, allowJs,
+  // `extends` the root config rather than restating it: that is what carries jsx, allowJs,
   //   moduleResolution and the rest, so merging aliases cannot silently change how anything else
   //   resolves. baseUrl is emitted ONLY when the root chain declares one — inventing a baseUrl
   //   would make bare `src/x` specifiers resolve that tsc itself would reject, and an invented edge
   //   fails a contract on nothing. Targets are absolute, so paths needs no baseUrl of its own.
-  // cm:guard the absolute `exclude` is load-bearing: the default excludes resolve relative to the
+  // the absolute `exclude` is load-bearing: the default excludes resolve relative to the
   //   CONFIG's directory (a temp dir), so without it tsc enumerates the scanned repo's node_modules.
   const compilerOptions = { paths };
   if (own.baseUrl) compilerOptions.baseUrl = own.baseUrl;
@@ -303,7 +303,7 @@ export function planTsConfig(root, declared = null) {
     config: {
       extends: rootPath,
       compilerOptions,
-      // cm:guard a config whose include/files matches no input is TS18003 (or TS18002 for a bare
+      // a config whose include/files matches no input is TS18003 (or TS18002 for a bare
       //   `files: []`), which produces empty stdout and no graph at all. `--ts-config` drives
       //   compilerOptions only and never scope, so this include exists purely to keep tsc quiet.
       include: includes.length ? includes : [join(root, '**', '*')],

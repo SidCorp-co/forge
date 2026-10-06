@@ -12,7 +12,7 @@ export const conversationScopeSchema = z.discriminatedUnion('kind', [
 ]);
 export type ConversationScope = z.infer<typeof conversationScopeSchema>;
 
-// cm:guard the home project is where the turn's authority comes from, so an ecosystem scope is taken only for an ecosystem the home project is an active member of; anything else would let a chat read as a side it is not
+// the home project is where the turn's authority comes from, so an ecosystem scope is taken only for an ecosystem the home project is an active member of; anything else would let a chat read as a side it is not
 export async function ecosystemOfScope(
   homeProjectId: string,
   scope: ConversationScope | undefined,

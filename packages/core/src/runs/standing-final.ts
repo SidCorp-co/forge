@@ -77,7 +77,7 @@ function cancelledOutcome(f: RunFacts, flip: KernelFlip | null, rule: string): D
   };
 }
 
-// cm:why a run-session run is done when every issue it carried left it at a status no run owes from where it
+// a run-session run is done when every issue it carried left it at a status no run owes from where it
 // stopped (approved, awaiting_release, closed, dropped) and moved off the status it opened at; anything else
 // went back — the design's handed_back, final, the next attempt a new run
 function sessionClose(f: RunFacts, close: RunHandbackClose | null): Derived {

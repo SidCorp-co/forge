@@ -100,7 +100,7 @@ const ARTIFACT_MEDIA: Record<string, string> = {
   graphql: 'text/plain; charset=utf-8',
 };
 
-// cm:why a mock is generated where it is used, from the stored bytes of one version, never stored itself (data-model review: mocks are a function of the artifact's sha256): this hands a mock server (Prism for OpenAPI, graphql-tools for SDL) exactly those bytes, and says whether the version is current
+// a mock is generated where it is used, from the stored bytes of one version, never stored itself (data-model review: mocks are a function of the artifact's sha256): this hands a mock server (Prism for OpenAPI, graphql-tools for SDL) exactly those bytes, and says whether the version is current
 contractRoutes.get(
   '/:id/contracts/:contract/versions/:version/artifact',
   versionParam,

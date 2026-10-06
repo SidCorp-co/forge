@@ -58,7 +58,7 @@ const parsed = (landed: string): NamedContract | null => {
   return m ? { ref: `${m[1]}/${m[2]}`, contract: m[2] as string, version: m[3] as string } : null;
 };
 
-// cm:guard a landing of work that names a contract names the version it implemented, and that version is current; otherwise the mark is refused CONTRACT_LANDING_UNNAMED or CONTRACT_DRIFT (ISS-60)
+// a landing of work that names a contract names the version it implemented, and that version is current; otherwise the mark is refused CONTRACT_LANDING_UNNAMED or CONTRACT_DRIFT (ISS-60)
 export function landingDriftRefusal(
   landed: readonly string[],
   world: LandingWorld,

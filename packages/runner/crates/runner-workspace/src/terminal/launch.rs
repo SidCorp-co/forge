@@ -20,7 +20,7 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> 
 ///
 /// Each denied pattern is its own argument: a pattern may hold a space (`Bash(git push:*)`), and a
 /// list joined into one argument would be split by the CLI where the policy wrote one entry.
-// cm:edge contract -> packages/core/src/project-config/schema.ts:TOOL_PATTERN — every entry core
+// contract -> packages/core/src/project-config/schema.ts:TOOL_PATTERN — every entry core
 // hands here passed that grammar, which is the one `--disallowed-tools` reads; `--disallowed-tools`
 // narrows the tool SET even under `bypassPermissions` (claude_code.rs says where that was verified).
 pub fn job_argv(

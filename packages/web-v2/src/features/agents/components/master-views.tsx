@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why the project master as masters/standing serves it (ISS-111, design agent-run-standing rev 1, region
+// the project master as masters/standing serves it (ISS-111, design agent-run-standing rev 1, region
 // master): its state, open pass, last pass and slots are core's; the list row, the peek and the master page
 // lay them out, and its passes come from masters/passes
 import Link from "next/link";

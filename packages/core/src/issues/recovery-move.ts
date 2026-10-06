@@ -10,7 +10,7 @@ const RECOVERY_TARGETS = RECOVERY_EXITS.map((t) => `\`${t}\``).join(', ');
 const isRecoveryEdge = (from: IssueStatus, to: IssueStatus) =>
   edgeBetween(ISSUE_MACHINE, from, to, true) !== null;
 
-// cm:guard REQ-2 BC-10: `recovery` reaches only the kernel hand-back of an `in_progress` issue nothing
+// REQ-2 BC-10: `recovery` reaches only the kernel hand-back of an `in_progress` issue nothing
 // holds; `apply-transition.ts` refuses it while anything does, so a live holder is never displaced.
 export function refuseOffRecoveryEdge(from: IssueStatus, to: IssueStatus): void {
   if (isRecoveryEdge(from, to)) return;

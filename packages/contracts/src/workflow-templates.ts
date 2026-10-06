@@ -1,4 +1,4 @@
-// cm:why one entry for the meta-schema and the built-ins, so nothing resolves a project's
+// one entry for the meta-schema and the built-ins, so nothing resolves a project's
 // templates over a registry other than the one the kernel serves
 
 import { BUILTIN_WORKFLOW_TEMPLATES } from './workflow-template-builtins.js';

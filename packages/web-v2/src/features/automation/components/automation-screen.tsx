@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why Development > Automation (ISS-116, prototype #/dev/automation, design automation rev 1 step
+// Development > Automation (ISS-116, prototype #/dev/automation, design automation rev 1 step
 // screen): one area with tabs Schedules, Fires and Reports (`?tab=`), each the shared GroupedList with
 // Needs you first, a peek (`?peek=`) and a full page per row, all read from GET /automation/standing
 import {

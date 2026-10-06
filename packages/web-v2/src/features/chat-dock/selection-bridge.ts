@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why the Issues list owns its row selection as local state; this bridge is the one way the chat's
+// the Issues list owns its row selection as local state; this bridge is the one way the chat's
 // ui.select reaches it, and the absence of a registered list is how ui.select learns it must refuse.
 
 import { useEffect, useRef, useSyncExternalStore } from "react";

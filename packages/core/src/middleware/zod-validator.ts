@@ -79,7 +79,7 @@ export function invalid(hint?: string, code = 'BAD_REQUEST'): Hook {
   return hook;
 }
 
-// cm:why the API contract reads a route's inputs off its middleware, not off a second description
+// the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
   const [target, declaredSchema, hook, ...rest] = args;
   const schema = target === 'query' ? strictQuery(declaredSchema) : declaredSchema;
@@ -99,7 +99,7 @@ export const zValidator = ((...args: Args) => {
 
 const JSON_TYPE = /^application\/([a-z0-9.+-]*\+)?json(\s*;|$)/i;
 
-// cm:guard hono's json validator reads a body of any other content type as `{}`, so an
+// hono's json validator reads a body of any other content type as `{}`, so an
 // all-optional schema would answer 200 having read nothing; a body that is there and is not
 // declared JSON is refused by name instead
 function refuseUndeclaredBodyType<M extends MiddlewareHandler>(middleware: M): M {
@@ -117,7 +117,7 @@ function refuseUndeclaredBodyType<M extends MiddlewareHandler>(middleware: M): M
   }) as M;
 }
 
-// cm:why a body no zod schema can hold (multipart, raw bytes, a signed payload) is still declared,
+// a body no zod schema can hold (multipart, raw bytes, a signed payload) is still declared,
 // so the contract names its media type and the generator can tell it from a body read in secret
 export function rawBody(
   contentType: string,

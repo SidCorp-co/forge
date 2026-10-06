@@ -38,7 +38,7 @@ function partsOf(groups: readonly IssueAttentionGroup[]): OverviewAttentionPart[
   });
 }
 
-// cm:why an issue belongs to the last 14 days when anything wrote to it inside them (its row, its work state or its activity); the stage is its status, and each stage splits by whose turn it is
+// an issue belongs to the last 14 days when anything wrote to it inside them (its row, its work state or its activity); the stage is its status, and each stage splits by whose turn it is
 export function flowOf(rows: readonly IssueStandingRow[], now: Date): OverviewFlow {
   const since = now.getTime() - OVERVIEW_WINDOW_DAYS * DAY_MS;
   const inWindow = rows.filter((r) => new Date(r.standing.touchedAt).getTime() >= since);
@@ -131,7 +131,7 @@ const edgeNode = (e: IssueEdgeRef): OverviewChainNode => ({
   held: false,
 });
 
-// cm:why held means held back by something that is neither a person nor a run: the Stuck attention group
+// held means held back by something that is neither a person nor a run: the Stuck attention group
 export function stuckOf(rows: readonly IssueStandingRow[]): OverviewStuck {
   const open = rows.filter(isOpen);
   const byKey = new Map(open.map((r) => [r.key, r]));

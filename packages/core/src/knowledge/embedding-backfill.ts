@@ -84,7 +84,7 @@ async function backfillItems(): Promise<{ reembedded: number; aborted: boolean }
       ? await knowledgePort('reembedRequirement')(row.requirementId)
       : await knowledgePort('reembedFeedback')(row.feedbackId as string);
     if (status === 'embedded') reembedded++;
-    // cm:why the writer folds an outage into `failed`, so a failure ends the sweep rather than
+    // the writer folds an outage into `failed`, so a failure ends the sweep rather than
     // spending the batch on a provider that is down; the failed row has already moved to the back
     if (status === 'failed') return { reembedded, aborted: true };
     if (status === null) {

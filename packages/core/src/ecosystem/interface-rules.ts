@@ -93,7 +93,7 @@ function builtAgainstRefusals(
   );
 }
 
-// cm:why a project consuming its own contract is the in-project case and names no ecosystem (Q11, 2026-10-03): its UI and its backend share one interface. Naming an ecosystem for it is still SELF_CONSUMPTION, because an ecosystem is where two projects meet, and another project's contract is consumed only inside an ecosystem both share
+// a project consuming its own contract is the in-project case and names no ecosystem (Q11, 2026-10-03): its UI and its backend share one interface. Naming an ecosystem for it is still SELF_CONSUMPTION, because an ecosystem is where two projects meet, and another project's contract is consumed only inside an ecosystem both share
 function ownConsumptionRefusals(
   doc: InterfaceDocument,
   c: InterfaceDocument['consumes'][number],

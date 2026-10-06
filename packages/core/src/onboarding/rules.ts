@@ -20,7 +20,7 @@ export interface LiveJob {
 const runningDetail = (job: LiveJob) =>
   `analysis job ${job.id} is ${job.status} (queued ${job.queuedAt.toISOString()}${job.dispatchedAt ? `, started ${job.dispatchedAt.toISOString()}` : ''}); one onboarding job runs per project at a time. Wait for it to finish.`;
 
-// cm:guard one analysis job per onboarding (may-start): a second start while one runs is
+// one analysis job per onboarding (may-start): a second start while one runs is
 // ONBOARDING_ALREADY_RUNNING naming the running job; a start over a finished onboarding is
 // ONBOARDING_ALREADY_STARTED, because a fresh analysis is a re-analysis a person asks for
 export function startRefusal(
@@ -36,7 +36,7 @@ export function startRefusal(
   };
 }
 
-// cm:guard a re-analysis runs only on an onboarding that exists (ONBOARDING_NOT_STARTED)
+// a re-analysis runs only on an onboarding that exists (ONBOARDING_NOT_STARTED)
 export function reanalyzeRefusal(
   existing: { id: string } | null,
   live: LiveJob | null,
@@ -54,7 +54,7 @@ export function notStarted(): OnboardingRefusal {
   };
 }
 
-// cm:guard a done onboarding takes no more batches or updates (ONBOARDING_DONE) until a person
+// a done onboarding takes no more batches or updates (ONBOARDING_DONE) until a person
 // asks for a re-analysis, which reopens it
 export function doneRefusal(row: { doneAt: Date | null }): OnboardingRefusal | null {
   if (!row.doneAt) return null;
@@ -76,7 +76,7 @@ export const agentWriteRefusal = (facts: PermissionFacts): OnboardingRefusal | n
 export const closeRefusal = (facts: PermissionFacts): OnboardingRefusal | null =>
   permissionRefusal(facts, 'project.write', 'closing onboarding');
 
-// cm:guard a design an update names is a workflow of this project (ONBOARDING_DESIGN_UNKNOWN)
+// a design an update names is a workflow of this project (ONBOARDING_DESIGN_UNKNOWN)
 export function designUnknownRefusals(missing: readonly string[]): OnboardingRefusal[] {
   return missing.map((id) => ({
     code: 'ONBOARDING_DESIGN_UNKNOWN' as const,
@@ -85,7 +85,7 @@ export function designUnknownRefusals(missing: readonly string[]): OnboardingRef
   }));
 }
 
-// cm:guard on a sensitive_data project the data flow is mandatory (which-designs): onboarding is not
+// on a sensitive_data project the data flow is mandatory (which-designs): onboarding is not
 // closed without one (ONBOARDING_DATA_FLOW_MISSING), never skipped
 export function dataFlowRefusal(
   sensitive: boolean,
@@ -100,7 +100,7 @@ export function dataFlowRefusal(
   };
 }
 
-// cm:why a phase's last act is the agent's own questionnaire or its mark_done: that write is the
+// a phase's last act is the agent's own questionnaire or its mark_done: that write is the
 // evidence the job finished, so the job is settled done there. Left to the runner, an issue-less job
 // is concluded failed a quarter hour after its last turn, and until then a submit finds it live and
 // queues no revise job

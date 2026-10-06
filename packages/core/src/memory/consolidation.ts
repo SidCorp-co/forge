@@ -383,7 +383,7 @@ export async function runConsolidationSweep(): Promise<{
   durationMs: number;
 }> {
   const t0 = Date.now();
-  // cm:why every memories row's project exists (cascading foreign key), so the distinct
+  // every memories row's project exists (cascading foreign key), so the distinct
   // project ids of the consolidatable rows are the projects that hold any.
   const projectRows = await db
     .selectDistinct({ projectId: memories.projectId })

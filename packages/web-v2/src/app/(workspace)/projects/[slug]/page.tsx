@@ -137,7 +137,7 @@ export default function ProjectOverviewPage() {
 
   return (
     <>
-    {/* cm:why onboarding is offered, never required: one line above the dashboard, gone once its designs are approved */}
+    {/* onboarding is offered, never required: one line above the dashboard, gone once its designs are approved */}
     <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">

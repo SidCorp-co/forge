@@ -38,7 +38,7 @@ export { REVISION_STATES, type RevisionState } from '@forge/contracts/requiremen
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];
 
-// cm:why the stored status holds only what a person decides (workflow requirement-lifecycle);
+// the stored status holds only what a person decides (workflow requirement-lifecycle);
 // in_delivery and delivered are read-time phases (`requirements/standing.ts:deliveryOf`), never written (Q1)
 export const requirements = pgTable(
   'requirements',
@@ -50,7 +50,7 @@ export const requirements = pgTable(
     reqSeq: integer('req_seq').notNull(),
     title: text('title').notNull(),
     status: text('status', { enum: REQUIREMENT_STATUSES }).notNull().default('draft'),
-    // cm:why the head is the current revision only: a draft or proposed revision is never the head
+    // the head is the current revision only: a draft or proposed revision is never the head
     currentRevision: integer('current_revision'),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
@@ -91,7 +91,7 @@ export const requirements = pgTable(
   }),
 );
 
-// cm:why insert-only evidence: content is written while a revision is a draft and frozen once it is
+// insert-only evidence: content is written while a revision is a draft and frozen once it is
 // proposed; the trigger in migration 0349 refuses anything else as REVISION_IMMUTABLE
 export const requirementRevisions = pgTable(
   'requirement_revisions',
@@ -116,10 +116,10 @@ export const requirementRevisions = pgTable(
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     returnReason: text('return_reason'),
-    // cm:why the accepting signer's own words, kept on the act itself; the reason column above is
+    // the accepting signer's own words, kept on the act itself; the reason column above is
     // the author's, and a re-baseline copies this one, never that one (ISS-84)
     acceptReason: text('accept_reason'),
-    // cm:why an accepted suggestion's effect points back at it (suggestion-lifecycle step accepted)
+    // an accepted suggestion's effect points back at it (suggestion-lifecycle step accepted)
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
     }),
@@ -149,7 +149,7 @@ export const requirementRevisions = pgTable(
   }),
 );
 
-// cm:why a BC code is stable across revisions; a row is one wording of it, live from since_revision
+// a BC code is stable across revisions; a row is one wording of it, live from since_revision
 // until retired_revision, so the criteria of revision n are the rows whose interval holds n
 export const requirementCriteria = pgTable(
   'requirement_criteria',
@@ -235,7 +235,7 @@ export const requirementCriterionSteps = pgTable(
   }),
 );
 
-// cm:why a requirement has its designs before it has issues, so the link cannot be read off workflow_builds
+// a requirement has its designs before it has issues, so the link cannot be read off workflow_builds
 export const requirementWorkflows = pgTable(
   'requirement_workflows',
   {
@@ -282,7 +282,7 @@ export const requirementContracts = pgTable(
   }),
 );
 
-// cm:why the agree is a row, not a column: re-agreeing writes a new baseline and the earlier one
+// the agree is a row, not a column: re-agreeing writes a new baseline and the earlier one
 // stays, so "what was agreed at r4" is a read after r5 is agreed; a re-pin onto newly approved
 // designs is a further row at the same revision (seq 2, 3, …), so the latest is the highest
 // (revision, seq) and an earlier pin set stays readable (ISS-86)
@@ -315,7 +315,7 @@ export const requirementBaselines = pgTable(
   }),
 );
 
-// cm:why a return is a decision that can happen more than once on one revision (proposed, returned,
+// a return is a decision that can happen more than once on one revision (proposed, returned,
 // proposed again), so each is its own insert-only row with who, when and why; the revision's
 // return_reason keeps only the latest for the draft's author to read
 export const requirementReturns = pgTable(
@@ -341,7 +341,7 @@ export const requirementReturns = pgTable(
   }),
 );
 
-// cm:why a defer and an undefer are decisions a requirement can take more than once, so each is
+// a defer and an undefer are decisions a requirement can take more than once, so each is
 // its own insert-only row (`requirement_deferral_guard()`, migration 0362); the head's status says
 // `deferred`, and the latest defer row says from where, why and until when (ISS-85)
 export const requirementDeferrals = pgTable(
@@ -383,7 +383,7 @@ export const requirementDeferrals = pgTable(
   }),
 );
 
-// cm:why one pin per linked design revision or contract version at the agree: an exclusive arc over
+// one pin per linked design revision or contract version at the agree: an exclusive arc over
 // two composite keys, each a real foreign key, so a pinned revision or version cannot be deleted
 export const requirementBaselinePins = pgTable(
   'requirement_baseline_pins',
@@ -397,7 +397,7 @@ export const requirementBaselinePins = pgTable(
     providerProjectId: uuid('provider_project_id'),
     contractSlug: text('contract_slug'),
     contractVersion: text('contract_version'),
-    // cm:why an accepted mockup is pinned beside the designs (ISS-78): the baseline names the rows it
+    // an accepted mockup is pinned beside the designs (ISS-78): the baseline names the rows it
     // was agreed with, and a mockup's bytes never change, so the pin is the row itself
     mockupId: uuid('mockup_id').references((): AnyPgColumn => mockups.id, {
       onDelete: 'no action',

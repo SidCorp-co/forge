@@ -162,7 +162,7 @@ function escapeRegExp(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// cm:why a shorter value is too likely to be ordinary text, so the scrubber does not replace it,
+// a shorter value is too likely to be ordinary text, so the scrubber does not replace it,
 // and a caller that must have a value scrubbed refuses to hand out one this short.
 export const SCRUB_MIN_SECRET_LENGTH = 6;
 
@@ -185,7 +185,7 @@ const HEADER_RE = new RegExp(
 	`\\b(${Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join("|")})(\\s*[:=]\\s*).+`,
 	"gi",
 );
-// cm:why the key may close a JSON string (`"apiKey":`) or an escaped one inside JSON text
+// the key may close a JSON string (`"apiKey":`) or an escaped one inside JSON text
 // (`\\"apiKey\\":`); the value stops at whitespace, a quote, a backslash, a comma, a brace or `&`,
 // so `access_token=...&id=7` keeps its `&id=7`.
 const BODY_RES = Array.from(SCRUB_BODY_KEYS).map(
@@ -217,7 +217,7 @@ export function scrubLogText(
 		.join("\n");
 }
 
-// cm:why ingest payloads are parsed JSON, which holds no cycle, so unlike scrubLogRecord this has no
+// ingest payloads are parsed JSON, which holds no cycle, so unlike scrubLogRecord this has no
 // depth bound: a secret nested past any bound would be stored in plain text.
 /**
  * A copy of a parsed JSON payload with the whole scrubber applied at every depth: secret-named keys
@@ -248,7 +248,7 @@ export function containsSecret(text: string): boolean {
 	return scrubLogText(text) !== text || SECRET_LABEL_PATTERN.test(text);
 }
 
-// cm:why a log record is the caller's own object, so it is copied rather than mutated; a class
+// a log record is the caller's own object, so it is copied rather than mutated; a class
 // instance (an Error, a Date, a Buffer) is kept as it is for its serializer, which scrubs its text.
 /** A copy of a structured log record with secret-named keys filtered and every string scrubbed. */
 export function scrubLogRecord<T>(value: T, depth = 0): T {

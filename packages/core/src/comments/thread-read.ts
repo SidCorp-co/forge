@@ -7,7 +7,7 @@ import { comments } from '../db/schema.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { type CommentThreadRow, commentThreadColumns } from './service.js';
 
-// cm:guard the issue thread reads issue comments only: a row on another target reaching it is an
+// the issue thread reads issue comments only: a row on another target reaching it is an
 // invariant break named here, never a thread entry with no issue
 export function onIssue<T extends { id: string; issueId: string | null }>(
   row: T,

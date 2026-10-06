@@ -36,7 +36,7 @@ const VERDICT_LABEL: Record<Verdict, (l: BusLink) => string> = {
   unchecked: (l) => l.pinnedVersion,
 };
 
-// cm:why the line under a member's name is its builder run while one is running or has failed; nothing else core serves says what that project's master is doing, so otherwise the line is left out rather than guessed
+// the line under a member's name is its builder run while one is running or has failed; nothing else core serves says what that project's master is doing, so otherwise the line is left out rather than guessed
 function headerLine(p: BusProject) {
   const b = p.builder;
   if (!b) return null;

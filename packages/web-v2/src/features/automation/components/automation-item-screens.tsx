@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why each automation page's sticky header is the shared DetailHeader: "← Automation" back to the
+// each automation page's sticky header is the shared DetailHeader: "← Automation" back to the
 // list view it was opened from (or to its schedule, for a fire; to its fire, for a report), the key,
 // the title, the state badge and the one primary act
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";

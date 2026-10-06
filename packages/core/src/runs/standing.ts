@@ -1,4 +1,4 @@
-// cm:why where a run stands, derived from what `runs/facts.ts` read and nothing else (design agent-run-standing
+// where a run stands, derived from what `runs/facts.ts` read and nothing else (design agent-run-standing
 // rev 1, ISS-108; stuck ISS-109): pure, so every rule is a unit test, and the screen never derives a state of its own
 
 import type {

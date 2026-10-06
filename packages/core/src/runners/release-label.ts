@@ -4,7 +4,7 @@ import { logger } from '../lib/logger.js';
 import { claimCapableSql } from './device-cap.js';
 import { runnerLive } from './liveness-sql.js';
 
-// cm:edge contract -> packages/core/src/project-config/release-path.ts:productionOf — the one
+// contract -> packages/core/src/project-config/release-path.ts:productionOf — the one
 // production environment's deploy binding, read off the stored project document.
 /** The non-empty `releaseRunnerLabel` the production deploy binding of this job's project declares. */
 const RELEASE_LABEL_FOR_JOB = sql`(

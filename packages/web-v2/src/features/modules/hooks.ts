@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { modulesApi } from "./api";
 
-// cm:why both reads sit under ["issues","standing"], the prefix the event router already invalidates on
+// both reads sit under ["issues","standing"], the prefix the event router already invalidates on
 // every issue event, so a module's counts follow the issues they are counted from
 const KEY = ["issues", "standing", "modules"] as const;
 

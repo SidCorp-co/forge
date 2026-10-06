@@ -207,7 +207,7 @@ export async function closeRunsInTx(
   return { rows, cascades };
 }
 
-// cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
+// release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
 async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,

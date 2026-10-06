@@ -17,7 +17,7 @@ function Fact({ href, label, value, title }: { href: string; label: string; valu
   );
 }
 
-// cm:why one flat row beside today's dashboard (the prototype keeps the layout and adds only this): both
+// one flat row beside today's dashboard (the prototype keeps the layout and adds only this): both
 // figures come from the needs-you read the menu counts read, so the row, the menu and the lists agree
 export function DeliveryRow({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useNeedsYou(projectId);

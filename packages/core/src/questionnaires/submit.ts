@@ -45,7 +45,7 @@ function answeredStep(
         ? a.choices?.[0]
         : a.choice;
   const choice = { ...step, ...stamp, chosenOptionId: chosen ?? '' };
-  // cm:why a multi item keeps every pick beside the first; the step type names one chosen option
+  // a multi item keeps every pick beside the first; the step type names one chosen option
   return item.control === 'multi'
     ? ({ ...choice, chosenOptionIds: a.choices ?? [] } as QuestionStep)
     : choice;

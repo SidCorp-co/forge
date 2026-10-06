@@ -32,7 +32,7 @@ const DECISIONS = ['approve', 'return'] as const;
 
 type Decision = { decision: 'approve' } | { decision: 'return'; reason: string };
 
-// cm:why each wrong decision body is refused by what is wrong with it: an unknown verb and a return with no reason are different mistakes, and a schema's "Invalid input" names neither
+// each wrong decision body is refused by what is wrong with it: an unknown verb and a return with no reason are different mistakes, and a schema's "Invalid input" names neither
 export function parseDecision(raw: unknown): Decision {
   const body = (
     typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null
@@ -143,7 +143,7 @@ async function runOf(runId: string) {
   return run ?? null;
 }
 
-// cm:why approval is asked for while the run is still open and has shipped nothing; asking on a concluded run would record an approval nothing can act on
+// approval is asked for while the run is still open and has shipped nothing; asking on a concluded run would record an approval nothing can act on
 export async function requestApproval(input: {
   projectId: string;
   runId: string;
@@ -235,8 +235,8 @@ export async function decideApproval(input: {
   return view as ApprovalView;
 }
 
-// cm:guard an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
-// cm:guard on a project whose document sets `release.approval.required`, a run with no approval is refused too, so the rule holds whether or not the master asked; who approved was gated by releases.approve when it was decided
+// an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
+// on a project whose document sets `release.approval.required`, a run with no approval is refused too, so the rule holds whether or not the master asked; who approved was gated by releases.approve when it was decided
 export async function assertApprovalAllowsAttempt(runId: string, projectId: string): Promise<void> {
   const [latest] = await db
     .select({

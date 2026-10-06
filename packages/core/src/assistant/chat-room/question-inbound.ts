@@ -134,7 +134,7 @@ async function replyTo(args: {
   );
   if (!resolution.linked) return resolution.refusal.message;
   try {
-    // cm:why a room reply comes through the assistant's chat door, so a channel gate it decides records via assistant, never web
+    // a room reply comes through the assistant's chat door, so a channel gate it decides records via assistant, never web
     await answerAs({
       questionId: args.questionId,
       answer: chosen.optionId

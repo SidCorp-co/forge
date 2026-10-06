@@ -57,7 +57,7 @@ function latestPerVersion(rows: RunRow[]): RunRow[] {
   return [...byVersion.values()];
 }
 
-// cm:why the column CHECK makes every stored version parse; one that did not would sort last rather
+// the column CHECK makes every stored version parse; one that did not would sort last rather
 // than throw out of a read that lists releases.
 function byVersionDescending(a: string, b: string): number {
   const [va, vb] = [parseReleaseVersion(a), parseReleaseVersion(b)];
@@ -79,8 +79,8 @@ export const issueIdsOf = (meta: Record<string, unknown>): string[] =>
     ? meta.issueIds.filter((x): x is string => typeof x === 'string')
     : [];
 
-// cm:why a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run was aborted or failed
-// cm:why on a project that requires approval, an open run nobody has asked for approval yet waits on it too: no production act is taken before one
+// a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run was aborted or failed
+// on a project that requires approval, an open run nobody has asked for approval yet waits on it too: no production act is taken before one
 export function versionStatus(
   run: Pick<RunRow, 'status' | 'releasedAt' | 'metadata'>,
   latest: Pick<ApprovalView, 'decision'> | null,

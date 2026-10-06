@@ -138,7 +138,7 @@ async function heldAttachmentNames(issueId: string): Promise<Set<string>> {
 
 const NEVER_JUDGED = 'no verdict was recorded for it';
 
-// cm:guard a storefront draft nothing could read back is not earned, unlike a runtime: the
+// a storefront draft nothing could read back is not earned, unlike a runtime: the
 // awaiting_release guard refuses it (VERDICT_UNCORROBORATED), and the hold reads it alike (FB-56)
 const unconfirmedDraft = (pair: CriterionVerdict, standing: VerdictStanding) =>
   pair.at?.kind === 'storefront_draft' && standing === 'uncorroborated';

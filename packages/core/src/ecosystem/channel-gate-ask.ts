@@ -5,7 +5,7 @@ import { insertAskedQuestion } from '../questions/index.js';
 import { GATE_OPTIONS } from './channel-gate.js';
 import type { ChannelDocument } from './channel-schema.js';
 
-// cm:why the approve gate is a question on the sending project with no issue and no session, so it parks no run and holds no lease while it waits
+// the approve gate is a question on the sending project with no issue and no session, so it parks no run and holds no lease while it waits
 export async function askGate(tx: Tx, documentId: string, d: ChannelDocument): Promise<string> {
   if (!d.number) throw new Error(`channel: ${documentId} reached the gate without a number`);
   const slug = new Map((await listProjectHeads(d.to)).map((r) => [r.id, r.slug]));

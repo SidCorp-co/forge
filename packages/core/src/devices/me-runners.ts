@@ -43,7 +43,7 @@ export async function listDeviceAssignments(deviceId: string) {
   const credentialed = await devicesPorts().projectsWithHostCredential([
     ...new Set(rows.map((r) => r.projectId)),
   ]);
-  // cm:why `bind --path` installs the same credential helper a provision does, so it is told the
+  // `bind --path` installs the same credential helper a provision does, so it is told the
   // declared repository (whose host it checks the checkout's origin against) and whether core mints for it
   return declared.map((r) => ({ ...r, hostCredential: credentialed.has(r.projectId) }));
 }

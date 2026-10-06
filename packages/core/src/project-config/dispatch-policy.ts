@@ -96,7 +96,7 @@ export function dispatchStateOf(
   const state = held.document.states[status];
   if (!state) throw policyRefusal('POLICY_STATE_UNDECLARED', projectId, status);
   const profile = held.document.permissions[state.permissions];
-  // cm:guard writePolicy refuses an undefined profile (PERMISSION_PROFILE_UNDEFINED); a stored
+  // writePolicy refuses an undefined profile (PERMISSION_PROFILE_UNDEFINED); a stored
   // document that names one anyway is corrupt, and dispatching it would deny nothing.
   if (!profile) {
     throw new Error(

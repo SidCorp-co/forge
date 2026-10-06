@@ -24,7 +24,7 @@ export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
   };
 }
 
-// cm:guard a token bound to a paired box is the box's, an agent's, whoever holds it (the holder stays `userId`); an unbound token carries its holder's `users.kind`
+// a token bound to a paired box is the box's, an agent's, whoever holds it (the holder stays `userId`); an unbound token carries its holder's `users.kind`
 export function credentialAgency(input: {
   ownerKind: UserKind;
   deviceId: string | null;

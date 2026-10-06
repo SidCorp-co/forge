@@ -1,4 +1,4 @@
-// cm:why one declaration of what a project master is doing (design agent-run-standing rev 1, region master,
+// one declaration of what a project master is doing (design agent-run-standing rev 1, region master,
 // edge master.declared; REQ-15 BC-6, ISS-106): the runner declares its slots and opens and closes each pass,
 // core stores them, and `GET /api/projects/:id/masters/standing` serves them so no screen guesses.
 

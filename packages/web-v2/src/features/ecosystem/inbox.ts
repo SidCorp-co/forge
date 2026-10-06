@@ -30,7 +30,7 @@ export function replyDraft(row: InboxRow, drafts: readonly WorkspaceDraft[]): Wo
   return drafts.find((d) => d.inReplyTo === row.number) ?? null;
 }
 
-// cm:why every view is derived from core's register row and the reader's own projects; nothing here stores a status, so a lapsed due date reads overdue on the next read
+// every view is derived from core's register row and the reader's own projects; nothing here stores a status, so a lapsed due date reads overdue on the next read
 export function inView(view: InboxView, row: InboxRow, mine: ReadonlySet<string>, drafts: readonly WorkspaceDraft[]) {
   const owesMine = row.owner.some((o) => mine.has(o));
   switch (view) {

@@ -1,4 +1,4 @@
-// cm:why process memory, never a column: per-turn view state is not persisted (turn-context.ts's rule).
+// process memory, never a column: per-turn view state is not persisted (turn-context.ts's rule).
 
 import type { UiSnapshot } from '@forge/contracts/ui-actions';
 import { describeUiSnapshot } from '@forge/contracts/ui-actions';

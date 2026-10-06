@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { contractsApi, decideVersion } from "./api";
 
-// cm:why both reads sit under ["issues","standing"], the prefix the event router already invalidates on every issue event, so a contract's waits follow the issues that hold them
+// both reads sit under ["issues","standing"], the prefix the event router already invalidates on every issue event, so a contract's waits follow the issues that hold them
 const KEY = ["issues", "standing", "contracts"] as const;
 
 export function useContractStanding(projectId: string | undefined) {

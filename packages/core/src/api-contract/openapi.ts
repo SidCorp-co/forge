@@ -167,7 +167,7 @@ const UNNAMED_REFINEMENT =
 
 type CheckDef = { check?: string; error?: unknown };
 
-// cm:why JSON Schema has no word for a predicate, so a refine() is named by the message it
+// JSON Schema has no word for a predicate, so a refine() is named by the message it
 // refuses with: what a caller can see of the rule, without inventing the rule itself
 function refinementsOf(checks: unknown[] | undefined): string[] {
   const out: string[] = [];
@@ -191,7 +191,7 @@ function refinementsOf(checks: unknown[] | undefined): string[] {
   return out;
 }
 
-// cm:why zod describes a coerced input by the type it coerces to (z.coerce.number() is
+// zod describes a coerced input by the type it coerces to (z.coerce.number() is
 // `number`), so a coerced date is the string form JSON and a URL can carry; every other type
 // z.toJSONSchema cannot represent is refused rather than widened to `{}`.
 function jsonSchemaOf(input: DeclaredInput): JsonSchema | string {
@@ -375,7 +375,7 @@ function declare(endpoint: Endpoint, declaration: Declaration): void {
   } else endpoint.reads.push(...declaration.reads);
 }
 
-// cm:why Hono runs a route's handlers in registration order and stops at the one that answers,
+// Hono runs a route's handlers in registration order and stops at the one that answers,
 // so middleware registered after a route's last handler never guards or validates it
 function endpointsOf(routes: MountedRoute[], refusals: string[]): Endpoint[] {
   const byKey = new Map<string, Endpoint>();

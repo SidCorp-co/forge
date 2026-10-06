@@ -160,7 +160,7 @@ function survivingRun(a, b) {
 }
 
 /**
- * cm:guard the pairing takes the MOST pairs it can and their similarity only as the tiebreak.
+ * the pairing takes the MOST pairs it can and their similarity only as the tiebreak.
  * Taking the likeliest candidate irrevocably is a different answer: two genuine corrections in one
  * change can refuse each other — one reported lost and the other over budget — while a pairing that
  * satisfies both exists. Augmenting paths, so a pair already held can be given up to buy two.
@@ -274,7 +274,7 @@ function correctionEdges(removed, added) {
 }
 
 /**
- * cm:guard prose a blank line cut off from its bullet is NOT part of the entry — `parseRecord`
+ * prose a blank line cut off from its bullet is NOT part of the entry — `parseRecord`
  * drops it — so an added entry carrying such prose is refused unless the published entry it PAIRS
  * WITH already carried exactly it. Compatibility is an edge the one-to-one matching runs over,
  * never a test on edge existence or on a matching already chosen; scripts/README.md holds the two

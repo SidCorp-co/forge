@@ -14,7 +14,7 @@ export function versionRefusals(doc: LinkWrite, world: LinkWorld, ref: string): 
   ];
 }
 
-// cm:why a module calling its own project's contract is the in-project link and names no ecosystem (Q11, 2026-10-03); naming one for it stays SELF_CONSUMPTION, since an ecosystem is where two projects meet
+// a module calling its own project's contract is the in-project link and names no ecosystem (Q11, 2026-10-03); naming one for it stays SELF_CONSUMPTION, since an ecosystem is where two projects meet
 export function ownLinkRefusals(doc: LinkWrite, world: LinkWorld, ref: string): EcosystemRefusal[] {
   if (doc.ecosystem !== undefined) {
     return [

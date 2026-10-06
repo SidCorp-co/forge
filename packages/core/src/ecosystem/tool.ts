@@ -71,7 +71,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 }
 
 const BUS_REACH = "an ecosystem's bus spans every member project, not the one a token reaches";
-// cm:why each action takes the permission its REST route takes: the project's records are projects:*, and the bus is the account-wide ecosystems:read a project-fenced token does not reach, on /mcp as on REST
+// each action takes the permission its REST route takes: the project's records are projects:*, and the bus is the account-wide ecosystems:read a project-fenced token does not reach, on /mcp as on REST
 export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_ecosystem',
   description: DESCRIPTION,

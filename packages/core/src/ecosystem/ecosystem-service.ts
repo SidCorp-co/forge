@@ -62,7 +62,7 @@ export async function loadEcosystem(id: string): Promise<HeldEcosystem> {
   return heldEcosystem(row);
 }
 
-// cm:why one rule for the id in both directions: core assigns it, so a create names none and an update names exactly the one core assigned; anything else is ECOSYSTEM_ID_IMMUTABLE
+// one rule for the id in both directions: core assigns it, so a create names none and an update names exactly the one core assigned; anything else is ECOSYSTEM_ID_IMMUTABLE
 function parseEcosystem(raw: unknown, id: string, creating: boolean): Checked<EcosystemDocument> {
   const claimed = isRecord(raw) && isRecord(raw.ecosystem) ? raw.ecosystem.id : undefined;
   if (creating && claimed !== undefined) {

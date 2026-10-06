@@ -38,7 +38,7 @@ export {
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// cm:why FB-n (workflow feedback-lifecycle rev 2): the stored status is only what a person decided;
+// FB-n (workflow feedback-lifecycle rev 2): the stored status is only what a person decided;
 // planned and resolved are read from the linked work (Q1). A keyed row is never deleted: a
 // redaction (UC15) empties its text and keeps the row so every link to it still resolves
 export const feedback = pgTable(
@@ -55,7 +55,7 @@ export const feedback = pgTable(
     body: text('body'),
     /** Where it was seen; with no target key it is the screen the item is about. */
     whereSeen: text('where_seen'),
-    // cm:why an exclusive arc of real foreign keys; `no action` so a target is never deleted out
+    // an exclusive arc of real foreign keys; `no action` so a target is never deleted out
     // from under a keyed row, while a project's cascade still removes both
     requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
       onDelete: 'no action',
@@ -72,7 +72,7 @@ export const feedback = pgTable(
     edgeFrom: text('edge_from'),
     edgeTo: text('edge_to'),
     edgeLabel: text('edge_label'),
-    // cm:why the fifth arc member is a provider's contract version, filed by core alone (E3); its
+    // the fifth arc member is a provider's contract version, filed by core alone (E3); its
     // deadline is that version's approval plus the provider's commitment window
     contractProviderProjectId: uuid('contract_provider_project_id').references(() => projects.id, {
       onDelete: 'cascade',
@@ -105,7 +105,7 @@ export const feedback = pgTable(
     redactions: integer('redactions').notNull().default(0),
     redactedAt: timestamp('redacted_at', { withTimezone: true }),
     redactedBy: uuid('redacted_by').references(() => users.id, { onDelete: 'restrict' }),
-    // cm:why one item per consumer per breaking contract version (E3), held by a unique key the filer
+    // one item per consumer per breaking contract version (E3), held by a unique key the filer
     // names, so a retried approval cannot file a twin
     dedupKey: text('dedup_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -180,7 +180,7 @@ export const feedback = pgTable(
   }),
 );
 
-// cm:why a decision is a row, not an overwrite (domain-entities.md "Records and audit"): a re-triage
+// a decision is a row, not an overwrite (domain-entities.md "Records and audit"): a re-triage
 // after a reopen keeps the route it replaced. Insert-only by trigger, removed only with its item
 export const feedbackDecisions = pgTable(
   'feedback_decisions',
@@ -227,7 +227,7 @@ export const feedbackDecisions = pgTable(
   }),
 );
 
-// cm:why a reporter's screenshot is reporter data (UC15): stored beside its item, flagged when the
+// a reporter's screenshot is reporter data (UC15): stored beside its item, flagged when the
 // project's data policy is on, and removed with the bytes on a redaction
 export const feedbackAttachments = pgTable(
   'feedback_attachments',

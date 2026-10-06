@@ -1,4 +1,4 @@
-// cm:why one pass is one master turn, from the nudge that asks for it to the hook that reports the turn
+// one pass is one master turn, from the nudge that asks for it to the hook that reports the turn
 // ended (design agent-run-standing rev 1, region master; ISS-107). The open pass is kept in the ledger so a
 // daemon restart closes exactly the pass it opened, by the id core answered, and never another one.
 
@@ -94,7 +94,7 @@ pub(crate) fn nudged_issue(
     }
 }
 
-// cm:edge contract -> packages/core/src/masters/rules.ts — passAlreadyOpenRefusal names the open pass as
+// contract -> packages/core/src/masters/rules.ts — passAlreadyOpenRefusal names the open pass as
 // `id <uuid>` in its detail, and that is the only place core says which pass it holds open
 pub(crate) fn named_pass_id(detail: &str) -> Option<String> {
     let mut words = detail.split_whitespace();

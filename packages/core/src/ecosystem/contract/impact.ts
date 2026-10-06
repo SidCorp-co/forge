@@ -62,8 +62,8 @@ const OPERATION = /^[A-Z]+ \//;
 const unescapePointer = (s: string) => s.replace(/~1/g, '/').replace(/~0/g, '~');
 const leaf = (f: string) => f.split(/[./]/).filter(Boolean).pop() ?? f;
 
-// cm:why an added or newly required input binds every caller of the surface whatever it reads, so only a removed or changed property a consumer reads narrows the break to that consumer
-// cm:why a change's element is `<operation>/properties/<a>/properties/<b>` from the schema differ, or an operation whose text quotes the property from oasdiff; the part before the first property is the surface, the properties are the fields
+// an added or newly required input binds every caller of the surface whatever it reads, so only a removed or changed property a consumer reads narrows the break to that consumer
+// a change's element is `<operation>/properties/<a>/properties/<b>` from the schema differ, or an operation whose text quotes the property from oasdiff; the part before the first property is the surface, the properties are the fields
 function shapeOf(c: ImpactChange): { surface: string; fields: string[] } {
   const [surface = c.element, ...props] = c.element.split('/properties/');
   const fromPath = props.length ? [props.map(unescapePointer).join('.')] : [];
@@ -76,7 +76,7 @@ function shapeOf(c: ImpactChange): { surface: string; fields: string[] } {
   return { surface, fields: [...new Set([...fromPath, ...(fromPath.length ? [] : quoted)])] };
 }
 
-// cm:why a field matches on its last segment, because a consumer records `issue.status` where the contract says `data/status`: a looser match over-reports a break and never under-reports one
+// a field matches on its last segment, because a consumer records `issue.status` where the contract says `data/status`: a looser match over-reports a break and never under-reports one
 const readsField = (used: readonly string[], field: string) =>
   used.some((u) => u === field || leaf(u) === leaf(field));
 
@@ -85,7 +85,7 @@ const GRAPHQL_PATH =
 const ROOT_PREFIX = /^(?:(?:Query|Mutation|Subscription)\.|(?:query|mutation|subscription)\s+)/;
 const opName = (s: string) => s.replace(ROOT_PREFIX, '');
 
-// cm:why a GraphQL change names the operation it reaches and the field path under it (`Query.products.variants.price`); an argument on the operation itself binds every caller of it, one on a nested field only the callers that select that field
+// a GraphQL change names the operation it reaches and the field path under it (`Query.products.variants.price`); an argument on the operation itself binds every caller of it, one on a nested field only the callers that select that field
 function graphqlShape(c: ImpactChange): { surface: string; fields: string[] } | null {
   if (!c.check?.startsWith('graphql-')) return null;
   const m = GRAPHQL_PATH.exec(c.element);
@@ -96,7 +96,7 @@ function graphqlShape(c: ImpactChange): { surface: string; fields: string[] } | 
   return { surface, fields: path ? [path] : [] };
 }
 
-// cm:why a consumer names what it reads as `operation.field` (`products.title`, with or without its root type); a path under another operation never matches, and a bare field matches on its last segment like any other contract
+// a consumer names what it reads as `operation.field` (`products.title`, with or without its root type); a path under another operation never matches, and a bare field matches on its last segment like any other contract
 function readsGraphqlField(used: readonly string[], op: string, field: string): boolean {
   return used.some((raw) => {
     const u = opName(raw);
@@ -132,7 +132,7 @@ function graphqlBreak(
   };
 }
 
-// cm:why outside-contract surface is in every check (Hyrum's law): the consumer declared no fields for it, so any breaking change at that surface breaks it whatever field it names
+// outside-contract surface is in every check (Hyrum's law): the consumer declared no fields for it, so any breaking change at that surface breaks it whatever field it names
 function breakOf(link: ImpactLink, c: ImpactChange): ImpactBreak | null {
   const graphql = graphqlShape(c);
   if (graphql) return graphqlBreak(link, c, graphql);
@@ -182,7 +182,7 @@ export function linkImpact(
     : { ...base, verdict: 'passes', reason: 'no-breaking-change-touches', breaks: [] };
 }
 
-// cm:why a consumer that declares consumption and holds no link has nothing to be checked against, so it is owed the notice as unmapped rather than dropped
+// a consumer that declares consumption and holds no link has nothing to be checked against, so it is owed the notice as unmapped rather than dropped
 export function recipientsOf(
   declared: readonly string[],
   impacts: readonly LinkImpact[],

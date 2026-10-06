@@ -29,7 +29,7 @@ export interface ThreadFacts {
   replyPending: boolean;
 }
 
-// cm:why an onboarding thread wears its onboarding's own status; any other room waits on the person
+// an onboarding thread wears its onboarding's own status; any other room waits on the person
 // while a batch is open, is in progress while a reply is still being made, and is done otherwise —
 // the prototype's conversation status, so every row of the list carries one (REQ-11 BC-8)
 function threadStatusOf(f: ThreadFacts): OnboardingStatus {

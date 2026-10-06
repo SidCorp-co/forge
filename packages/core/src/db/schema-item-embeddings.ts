@@ -21,7 +21,7 @@ export { ITEM_EMBEDDING_STATUSES, type ItemEmbeddingStatus } from '@forge/contra
 const itemTypeOf = (requirementId: AnyPgColumn, feedbackId: AnyPgColumn): SQL =>
   sql`CASE WHEN ${requirementId} IS NOT NULL THEN 'requirement' WHEN ${feedbackId} IS NOT NULL THEN 'feedback' END`;
 
-// cm:why separate from memories (Q7): a missed source filter on memory recall would leak requirements
+// separate from memories (Q7): a missed source filter on memory recall would leak requirements
 // into it. One row per item holds its head revision only; the arc cascades the row with its item
 export const itemEmbeddings = pgTable(
   'item_embeddings',

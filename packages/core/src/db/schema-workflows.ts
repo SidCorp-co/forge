@@ -27,7 +27,7 @@ export const projectWorkflows = pgTable(
     kind: text('kind').notNull(),
     revision: integer('revision').notNull(),
     document: jsonb('document').notNull(),
-    // cm:why the design lifecycle is the server's, never the document's: the master writes the
+    // the design lifecycle is the server's, never the document's: the master writes the
     // drawing, the approver moves this, so a write cannot carry its own approval
     designStatus: text('design_status'),
     designFingerprint: text('design_fingerprint'),
@@ -54,7 +54,7 @@ export const projectWorkflows = pgTable(
   }),
 );
 
-// cm:why one row per revision a design was put in front of its approver, kept after a later
+// one row per revision a design was put in front of its approver, kept after a later
 // revision supersedes it, so "what changed since the approved one" is a read and never a guess
 export const projectWorkflowDesigns = pgTable(
   'project_workflow_designs',
@@ -72,7 +72,7 @@ export const projectWorkflowDesigns = pgTable(
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
-    // cm:why the issue the design is drawn under, named by its proposer: a return reopens it so its
+    // the issue the design is drawn under, named by its proposer: a return reopens it so its
     // master revises the design, and it is never a build link, which would make it wait on itself
     designIssueId: uuid('design_issue_id').references(() => issues.id, { onDelete: 'set null' }),
   },
@@ -93,7 +93,7 @@ export const projectWorkflowDesigns = pgTable(
   }),
 );
 
-// cm:why an issue names the one workflow it builds, so dispatch can refuse it until that design is
+// an issue names the one workflow it builds, so dispatch can refuse it until that design is
 // approved; the row is the link, and an issue with none is not gated
 export const workflowBuilds = pgTable(
   'workflow_builds',

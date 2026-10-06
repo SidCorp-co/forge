@@ -40,7 +40,7 @@ type AttributionRow = {
   recentlyActive: boolean;
 };
 
-// cm:why closed is shipped and dropped is not work (workflow `issue-lifecycle`); every other status,
+// closed is shipped and dropped is not work (workflow `issue-lifecycle`); every other status,
 // `awaiting_release` and `draft` among them, is open, as `issues/standing-read.ts:scopeCounts` counts.
 type CountedState = 'open' | 'closed' | 'dropped';
 

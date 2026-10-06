@@ -79,7 +79,7 @@ issueActivityRoutes.get(
     return c.json(envelope(withActors, limit));
   },
 );
-// cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
+// ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
 
 export const projectActivityRoutes = new Hono<{ Variables: AuthVars }>();
 projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());

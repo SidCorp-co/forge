@@ -34,7 +34,7 @@ export async function doorOf(tokenId: string | null): Promise<PersonVia> {
   return isTurnTokenName(row.name) ? 'assistant' : 'cli';
 }
 
-// cm:why the credential decides the author, never the body: an agent's token writes via master, a session via web, a turn token via assistant, any other personal token via cli
+// the credential decides the author, never the body: an agent's token writes via master, a session via web, a turn token via assistant, any other personal token via cli
 async function writerFor(cred: ChannelCredential): Promise<Writer> {
   const { userId } = cred;
   if (cred.agency === 'agent') {
@@ -67,7 +67,7 @@ export const writerOfPrincipal = (principal: McpPrincipal): Promise<Writer> =>
 
 export type ChannelNeed = 'read' | 'write';
 
-// cm:why one rule for both doors: any role on the side reads its channel, member or above writes it, and no role is refused before anything is read
+// one rule for both doors: any role on the side reads its channel, member or above writes it, and no role is refused before anything is read
 export async function channelRoleRefusal(
   userId: string,
   projectId: string,

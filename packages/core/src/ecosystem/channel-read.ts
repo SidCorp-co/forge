@@ -19,7 +19,7 @@ export interface PartyView extends ServedDocument {
   hold: ThreadHold | null;
 }
 
-// cm:why the narrow party read: a recipient sees a document only once it is published, the sender sees its own in every state, and nobody sees another pair's
+// the narrow party read: a recipient sees a document only once it is published, the sender sees its own in every state, and nobody sees another pair's
 const sideOf = (row: DocumentRow, projectId: string): PartyView['side'] | null => {
   if (row.fromProjectId === projectId) return 'sender';
   if (row.state === 'published' && row.toProjectIds.includes(projectId)) return 'recipient';
@@ -70,7 +70,7 @@ export interface InboxEntry extends PartyView {
   overdue: boolean;
 }
 
-// cm:why answered and overdue are derived on every read and never stored, so a lapsed due date reads as overdue rather than closing itself
+// answered and overdue are derived on every read and never stored, so a lapsed due date reads as overdue rather than closing itself
 export async function inbox(projectId: string): Promise<InboxEntry[]> {
   const views = (
     await viewsOf(projectId, await documentsWhere(db, { to: projectId, published: true }))
@@ -90,7 +90,7 @@ export async function inbox(projectId: string): Promise<InboxEntry[]> {
   });
 }
 
-// cm:why unanswered is the work a side's master owes: published to it, owing a reply, not yet answered by a published one, on no thread a person holds, and with no reply of its own already waiting at the approve gate, where the next act is a person's
+// unanswered is the work a side's master owes: published to it, owing a reply, not yet answered by a published one, on no thread a person holds, and with no reply of its own already waiting at the approve gate, where the next act is a person's
 export async function unanswered(projectId: string): Promise<InboxEntry[]> {
   const owed = (await inbox(projectId)).filter((e) => e.owesReply && !e.answered && !e.hold);
   if (owed.length === 0) return [];
@@ -114,7 +114,7 @@ export async function threadAs(
   return { thread: number, documents, holds: (await holdsOn(db, [number])).map(holdOf) };
 }
 
-// cm:why a document's standing is the register's own row for it, derived by `rowsOf` over its conversation, so the document page and the register can never disagree about overdue
+// a document's standing is the register's own row for it, derived by `rowsOf` over its conversation, so the document page and the register can never disagree about overdue
 export async function standingOf(view: PartyView): Promise<RegisterRow | null> {
   const number = view.document.number;
   if (!number || !view.thread) return null;

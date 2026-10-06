@@ -87,7 +87,7 @@ export const drizzleConfigStore = {
     return row ?? null;
   },
 
-  // cm:why the document is the slug's and the name's one source; `projects.slug` and `projects.name` are its projection, written in the document's transaction so a lookup by slug, a listing by name and the document never disagree
+  // the document is the slug's and the name's one source; `projects.slug` and `projects.name` are its projection, written in the document's transaction so a lookup by slug, a listing by name and the document never disagree
   async casProject({ projectId, baseRevision, document, userId }: CasInput): Promise<CasResult> {
     const { slug, name } = (document as ProjectDocument).project;
     try {

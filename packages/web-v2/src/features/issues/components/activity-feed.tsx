@@ -80,7 +80,7 @@ function describeUpdate(payload: Record<string, unknown>): React.ReactNode {
   );
 }
 
-// cm:why a move that waived its verdicts writes both its `issue.statusChanged` line and a `record.transition`
+// a move that waived its verdicts writes both its `issue.statusChanged` line and a `record.transition`
 // (ISS-96, ISS-166); the feed draws the move once, from the first
 const DRAWN_ELSEWHERE = new Set(["record.transition"]);
 

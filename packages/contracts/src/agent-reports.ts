@@ -1,4 +1,4 @@
-// cm:why one declaration of the agent-report vocabulary (ISS-93): core's table, REST, MCP and the web
+// one declaration of the agent-report vocabulary (ISS-93): core's table, REST, MCP and the web
 // import the values, the refusal codes and the row shape from here. An agent report is what an
 // agent says about the harness it ran under; a person's report on the product is feedback (FB-n).
 
@@ -29,7 +29,7 @@ export const AGENT_REPORT_TARGETS = [
 	"other",
 ] as const;
 export type AgentReportTarget = (typeof AGENT_REPORT_TARGETS)[number];
-// cm:why design automation rev 1 (steps triage, file, dismiss; ISS-113): what a person decided a
+// design automation rev 1 (steps triage, file, dismiss; ISS-113): what a person decided a
 // report is, with who and when. `filed` has exactly one target, an issue or the feedback item a
 // promote made, so where a report went is the target and never a fifth state
 export const AGENT_REPORT_TRIAGES = [

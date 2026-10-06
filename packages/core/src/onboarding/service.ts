@@ -49,7 +49,7 @@ async function nameOf(userId: string) {
   return (await peopleOf([userId])).get(userId)?.name ?? 'Someone';
 }
 
-// cm:why onboarding is offered, never required (BC-1): start only opens the thread and queues the
+// onboarding is offered, never required (BC-1): start only opens the thread and queues the
 // one analysis job; a project that never starts it works unchanged
 export async function startOnboarding(input: {
   projectId: string;
@@ -108,7 +108,7 @@ export async function startOnboarding(input: {
   return settled(projectId, { created: true });
 }
 
-// cm:why a re-analysis supersedes every open batch (BC-9) and resets the rounds, and never touches
+// a re-analysis supersedes every open batch (BC-9) and resets the rounds, and never touches
 // an approved revision: the new drafts propose new revisions
 export async function reanalyzeOnboarding(input: {
   projectId: string;

@@ -13,7 +13,7 @@ export type HoldOutcome =
   | { ok: true; hold: ThreadHold; held: boolean; parties: string[] }
   | { ok: false; refusals: EcosystemRefusal[] };
 
-// cm:why the side is the project in the path, so a token fenced to one project acts for that side only
+// the side is the project in the path, so a token fenced to one project acts for that side only
 export async function holdOrRelease(args: {
   sideProjectId: string;
   thread: string;

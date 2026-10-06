@@ -4,12 +4,12 @@ import { builtinModules } from 'node:module';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { planTsConfig, collectFrom } from '../providers/tsconfig.mjs';
 
-// cm:why SPEC §2.4 says archmap never resolves TypeScript itself, and this module does not overturn
+// SPEC §2.4 says archmap never resolves TypeScript itself, and this module does not overturn
 //   that: dependency-cruiser still resolves the entire repo. It cannot resolve bytes that are not
 //   on disk yet, and writing them into the scanned tree is forbidden (ts.mjs:119-121) — so this
 //   resolves ONE thing, the specifiers a single pending edit introduces, and hands anything it is
 //   not sure about to the caller as an unresolved blind spot rather than an assumed absence.
-// cm:edge contract -> src/hook/pre-edit.mjs — { resolved, unresolved } is the splice's input
+// contract -> src/hook/pre-edit.mjs — { resolved, unresolved } is the splice's input
 
 const EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -67,7 +67,7 @@ function packageEntry(pkgDir, pkg, spec) {
   return (main && probe(join(pkgDir, main))) || probe(join(pkgDir, 'index'));
 }
 
-// cm:why an installed package is a RESOLVED edge into unmapped territory, not a blind spot. That is
+// an installed package is a RESOLVED edge into unmapped territory, not a blind spot. That is
 //   what dependency-cruiser reports for it (it resolves node_modules, it just does not follow), so
 //   calling it unresolvable here would warn on every first `import react` — and a hook that cries
 //   wolf on ordinary work is a hook someone turns off. A package that is NOT installed, or whose
@@ -79,7 +79,7 @@ function viaNodeModules(root, fromDir, spec) {
   return dir ? packageEntry(dir, pkg, spec) : null;
 }
 
-// cm:why TypeScript's output-extension mapping is applied here. Under `moduleResolution: NodeNext` a
+// TypeScript's output-extension mapping is applied here. Under `moduleResolution: NodeNext` a
 //   source file imports its sibling as `./x.js` and TS resolves that to `x.ts`. Without this every
 //   new cross-directory import in a NodeNext repo lands in `unresolved` — a warn-allow — so the hook
 //   degrades to a warning generator that can never deny, while CI reports the same edge as blocking.
@@ -219,7 +219,7 @@ export function resolvePending({ root, relFile, specs, table = new Map(), patter
   const unresolved = [];
 
   for (const spec of specs) {
-    // cm:guard a core module is not an edge — the ts provider drops `coreModule` deps, so counting
+    // a core module is not an edge — the ts provider drops `coreModule` deps, so counting
     //   one here would put a node built-in in the graph the CI gate never sees.
     if (spec.startsWith('node:') || BUILTIN.has(spec)) continue;
 
@@ -230,7 +230,7 @@ export function resolvePending({ root, relFile, specs, table = new Map(), patter
       const hit = probe(resolve(root, fromDir, spec));
       const rel = hit && toRel(root, hit);
       if (rel) { resolved.push({ spec, to: rel, tier: 'relative' }); continue; }
-      // cm:guard a relative specifier that hits nothing on disk is a genuine hole — the file may be
+      // a relative specifier that hits nothing on disk is a genuine hole — the file may be
       //   about to be written by a later call — so it is reported, not silently discarded.
       unresolved.push(spec);
       continue;

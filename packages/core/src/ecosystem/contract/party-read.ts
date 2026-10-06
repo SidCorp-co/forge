@@ -9,7 +9,7 @@ import { liveEdges } from '../party.js';
 import { projectsWhere } from '../store.js';
 import { type StoredVersion, versionsOf } from './store.js';
 
-// cm:why a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on
+// a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on
 export async function consumedContract(args: {
   userId: string;
   consumerId: string;

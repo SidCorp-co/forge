@@ -1,6 +1,6 @@
 import { type AnyColumn, type SQL, sql } from 'drizzle-orm';
 
-// cm:why a row whose re-embed fails for a reason other than an outage stays NULL; without a mark it
+// a row whose re-embed fails for a reason other than an outage stays NULL; without a mark it
 // stays oldest too, and enough of them fill every batch so nothing behind them is ever retried
 const KEY = 'backfillFailedAt';
 

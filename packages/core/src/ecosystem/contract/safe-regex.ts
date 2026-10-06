@@ -1,7 +1,7 @@
 import { fullFormats } from 'ajv-formats/dist/formats.js';
 import { RE2JS } from 're2js';
 
-// cm:why a provider's pattern runs on RE2's automaton, which matches in time linear in the input, so no pattern a provider writes can backtrack core into a stall
+// a provider's pattern runs on RE2's automaton, which matches in time linear in the input, so no pattern a provider writes can backtrack core into a stall
 class LinearRegExp {
   readonly #re: RE2JS;
   readonly #label: string;
@@ -79,7 +79,7 @@ function linearOrNative(re: RegExp): FormatCheck {
   return (s) => linear.test(s);
 }
 
-// cm:why ajv-formats is core's own vocabulary, but three of its expressions use lookahead RE2 cannot hold; each format runs on RE2 where RE2 can, and every format is held to a bounded string before it runs, so an expression that stays native is never fed one long enough to stall
+// ajv-formats is core's own vocabulary, but three of its expressions use lookahead RE2 cannot hold; each format runs on RE2 where RE2 can, and every format is held to a bounded string before it runs, so an expression that stays native is never fed one long enough to stall
 function boundedFormat(def: unknown): Format | null {
   if (def === true) return true;
   if (def instanceof RegExp) return bounded(linearOrNative(def));

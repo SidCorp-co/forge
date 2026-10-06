@@ -88,7 +88,7 @@ export type TriageOutcome =
   | { ok: true; effect: AgentReportTriageEffect }
   | { ok: false; refusals: Refusal[] };
 
-// cm:why design automation rev 1 (steps triage, file, dismiss; REQ-16 BC-3): every triage act, from
+// design automation rev 1 (steps triage, file, dismiss; REQ-16 BC-3): every triage act, from
 // either door, single or by signal, is this one write: the reports are locked, every rule is read
 // before anything is written, a file creates its draft issue in the same transaction, and each row
 // carries its own triagedBy. A bulk act moves the reports its act applies to and names the rest

@@ -109,7 +109,7 @@ export type BuilderSource =
   | { type: 'repository' }
   | { type: 'storefront'; provider: (typeof STOREFRONT_PROVIDERS)[number] };
 
-// cm:why a project with no document, or `source.type: none`, keeps the repository reading every run had before storefront sources were read; only a declared storefront changes it
+// a project with no document, or `source.type: none`, keeps the repository reading every run had before storefront sources were read; only a declared storefront changes it
 export function builderSourceOf(doc: ProjectDocument | null | undefined): BuilderSource {
   return doc?.source.type === 'storefront'
     ? { type: 'storefront', provider: doc.source.storefront.provider }
@@ -121,7 +121,7 @@ const describeSource = (source: BuilderSource) =>
     ? `a storefront on ${source.provider} (source.type storefront)`
     : 'a repository (source.type git)';
 
-// cm:why a call site is read the way the consumer's own code is held: a repository consumer names a file and line, a storefront consumer an artefact its provider declares; the wrong kind is refused by name, never stored beside the right one
+// a call site is read the way the consumer's own code is held: a repository consumer names a file and line, a storefront consumer an artefact its provider declares; the wrong kind is refused by name, never stored beside the right one
 export function callSiteRefusals(
   sites: readonly { site: CallSite; at: string }[],
   source: BuilderSource,

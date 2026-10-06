@@ -29,7 +29,7 @@ export async function reapOrphanedOneShotRuns(
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getLoopThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  // cm:guard a run session or a master is failed for silence by its own reaper at the session reap, so this
+  // a run session or a master is failed for silence by its own reaper at the session reap, so this
   // sweep may not close its run sooner, or a silent run could never read stuck first (ISS-109)
   const boxSilenceIso = new Date(now.getTime() - SESSION_SILENCE_REAP_MS).toISOString();
   const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);

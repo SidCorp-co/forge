@@ -21,7 +21,7 @@ import {
 } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 
-// cm:edge contract -> packages/core/src/ecosystem/schema.ts:ecosystemDocumentSchema — the form writes ecosystem-v1 whole, so a field core adds or renames there changes here
+// contract -> packages/core/src/ecosystem/schema.ts:ecosystemDocumentSchema — the form writes ecosystem-v1 whole, so a field core adds or renames there changes here
 const SCHEMA = "https://forge.sidcorp.co/schemas/ecosystem-v1.json";
 const WINDOWS: ReplyWindowType[] = ["rfi", "change-request", "change-notice"];
 

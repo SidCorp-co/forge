@@ -16,7 +16,7 @@ interface CriteriaRaw {
   stands: boolean;
 }
 
-// cm:guard a passing verdict on a storefront draft passes only while the source still holds that
+// a passing verdict on a storefront draft passes only while the source still holds that
 // draft: one the source moved past, or cannot be read back, is not counted passing, so the list
 // never says every criterion passed of an issue the release hold keeps (FB-56)
 export async function criteriaOf(

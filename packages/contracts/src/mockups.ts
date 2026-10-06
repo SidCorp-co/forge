@@ -1,4 +1,4 @@
-// cm:why one declaration of the mockup vocabulary (ISS-78): core's table CHECKs, REST, MCP and the web
+// one declaration of the mockup vocabulary (ISS-78): core's table CHECKs, REST, MCP and the web
 // import the kinds, statuses, limits, refusal codes, request schemas and views from here
 
 import { z } from "zod";

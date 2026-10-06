@@ -39,7 +39,7 @@ const ASSISTANT_CHIP = {
   background: "var(--orange-50, #fff7ed)",
 };
 
-// cm:why one row (owner, 2026-10-02): status segment · search · Filter popover · the active filters as removable chips · Clear, with no stacked rows or wrappers above the flush table
+// one row (owner, 2026-10-02): status segment · search · Filter popover · the active filters as removable chips · Clear, with no stacked rows or wrappers above the flush table
 export function IssuesToolbar({
   segments,
   segment,

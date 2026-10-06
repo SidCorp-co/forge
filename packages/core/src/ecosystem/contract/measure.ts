@@ -55,7 +55,7 @@ const undecided = (type: string, why: string): MeasuredChange => ({
   check: `${type}-not-measured`,
 });
 
-// cm:why a type with no differ, and a differ that ran and failed, are both measurements that could not decide, so they record unknown rather than refuse the land; only a differ that is absent refuses, because then nothing was measured at all
+// a type with no differ, and a differ that ran and failed, are both measurements that could not decide, so they record unknown rather than refuse the land; only a differ that is absent refuses, because then nothing was measured at all
 export async function measureChange(
   type: string,
   previous: string,

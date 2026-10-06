@@ -3,7 +3,7 @@ import type { StorefrontDraftReading, StorefrontTargetArgs } from '../index.js';
 import { autoflowLiveRead } from './live-read.js';
 import type { AutoflowConfig } from './types.js';
 
-// cm:why Autoflow keeps one mutable `draft` graph per workflow and mints no id for it
+// Autoflow keeps one mutable `draft` graph per workflow and mints no id for it
 // (`backend-go/internal/backendbuilder/delivery/graphql/schema/backendbuilder.graphql:BackendWorkflow`),
 // so the draft version id is the sha-256 of the graph as core reads it, keys sorted: the same
 // draft always reads as the same id, and any edit to it reads as another.

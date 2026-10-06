@@ -157,7 +157,7 @@ async function prepareWebTurn(
   { credential, speakerUserId, conversationId, handleUserId, authority }: TurnHookContext,
 ): Promise<TurnInputs> {
   const room = await getConversation(conversationId);
-  // cm:guard a hand-off turn acts only in its first-requirements room; anywhere else it is refused
+  // a hand-off turn acts only in its first-requirements room; anywhere else it is refused
   const venueRefusal =
     authority.origin === 'onboarding_handoff' ? handoffVenueRefusal(room?.externalId) : null;
   if (venueRefusal) throw turnOriginRefused(venueRefusal);
@@ -166,7 +166,7 @@ async function prepareWebTurn(
     projectSlug: args.project.slug,
     turn: { conversationId, speakerUserId, handleUserId, ecosystemId: room?.ecosystemId ?? null },
   });
-  // cm:guard a room opened about a requirement answers through the BA door: its persona and its
+  // a room opened about a requirement answers through the BA door: its persona and its
   // narrow tool set only, never the project toolset or the UI actions
   if (room?.requirementId) {
     const key = await requirementKeyOf(room.requirementId);

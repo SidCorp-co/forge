@@ -23,7 +23,7 @@ import {
 
 export const entityCommentRoutes = new Hono<{ Variables: AuthVars }>();
 
-// cm:why the three target paths sit under /:id/requirements/*, /:id/workflows/* and /:id/feedback/*,
+// the three target paths sit under /:id/requirements/*, /:id/workflows/* and /:id/feedback/*,
 // which their own modules already gate; gating them again here would run the PAT admission twice
 entityCommentRoutes.use('/:id/decisions', requireAuth(), assertEmailVerified());
 

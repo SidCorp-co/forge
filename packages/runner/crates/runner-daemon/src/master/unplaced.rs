@@ -226,7 +226,7 @@ impl std::fmt::Display for Unplaced {
 
 /// Why a held conversation is waited out rather than forked, said wherever
 /// the wait is.
-// cm:guard the deliberate choice ISS-1343 asks to be named. `--fork-session` would start a pane at once, and as a second conversation for this project while the first still runs as a background session that can still claim, dispatch and write; two masters for one project is the failure this box is built to prevent, so it waits and says so.
+// the deliberate choice ISS-1343 asks to be named. `--fork-session` would start a pane at once, and as a second conversation for this project while the first still runs as a background session that can still claim, dispatch and write; two masters for one project is the failure this box is built to prevent, so it waits and says so.
 pub(crate) const WAITS_NOT_FORKS: &str = "This box waits for that session to end rather than starting a pane with `--fork-session`: a fork is a second conversation for this project while the first still runs and can still act.";
 
 /// The short id a background-session refusal printed, as a parenthesis.

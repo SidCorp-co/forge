@@ -57,7 +57,7 @@ function draftFinding(
  * The gate's reading of a set of criteria and their latest verdicts. A verdict at or before
  * `reopenedAt` is evidence about a build the reopen rejected, never current.
  */
-// cm:why a storefront draft stands in for a landed commit only where the work lives on a storefront
+// a storefront draft stands in for a landed commit only where the work lives on a storefront
 // (`source.type: "storefront"`), and only once the source read the draft back (ISS-91).
 function evaluateCriteria(
   criteria: readonly CriterionWithVerdict[],

@@ -132,7 +132,7 @@ export async function redispatchConversationAgentTurn(
     return { ok: false, status: 'error' };
   }
 
-  // cm:why the retry is shown the files the person attached, or not run: never answered without them
+  // the retry is shown the files the person attached, or not run: never answered without them
   const carried = meta.images.length
     ? await carryImagesToSession(meta.conversationId, retry.id, meta.images)
     : { ok: true as const, ids: [] };

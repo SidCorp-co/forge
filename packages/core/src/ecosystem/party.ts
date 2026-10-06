@@ -33,7 +33,7 @@ function areCounterparties(graph: PartyGraph, ecosystemId: string, a: string, b:
   );
 }
 
-// cm:why the one place a reader who holds no role on a project is let see any of it
+// the one place a reader who holds no role on a project is let see any of it
 export function sightOf(
   graph: PartyGraph,
   readerProjects: ReadonlySet<string>,

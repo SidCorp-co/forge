@@ -82,7 +82,7 @@ export const conversations = pgTable(
      */
     presence: jsonb('presence').$type<RoomPresence | null>(),
     ecosystemId: uuid('ecosystem_id').references(() => ecosystems.id, { onDelete: 'restrict' }),
-    // cm:why a room opened about a requirement is answered through the BA door with its narrow tool
+    // a room opened about a requirement is answered through the BA door with its narrow tool
     // set; written when the room is opened and never changed
     requirementId: uuid('requirement_id').references(() => requirements.id, {
       onDelete: 'cascade',

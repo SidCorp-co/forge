@@ -40,7 +40,7 @@ export function normalize(manifest, providerResults) {
         fromKind: from.kind,
         toKind: to.kind,
         dynamic: Boolean(e.dynamic),
-        // cm:edge contract -> src/hook/pre-edit.mjs — the import specifier as written, when the
+        // contract -> src/hook/pre-edit.mjs — the import specifier as written, when the
         //   provider knows it. The hook keys its splice on this: edges from the pending file whose
         //   spec survived the edit are kept, the rest are dropped.
         spec: e.spec ?? null,
@@ -59,11 +59,11 @@ export function normalize(manifest, providerResults) {
   };
 }
 
-// cm:why a ratio, not just the count §9.2 already reported. A count says nothing about whether the
+// a ratio, not just the count §9.2 already reported. A count says nothing about whether the
 //   graph is mostly holes: 111 unresolvable reads the same as 11 until you know the denominator, and
 //   a run whose edges are mostly ABSENT must not be able to present itself as a clean gate.
 export const UNRESOLVABLE_RATIO_THRESHOLD = 0.15;
-// cm:guard the absolute floor is what keeps the warning from being noise, and noise on a gate is how
+// the absolute floor is what keeps the warning from being noise, and noise on a gate is how
 //   a gate stops being read: a 2-file repo with one computed `import()` sits at ratio 1.0 forever and
 //   has nothing to fix. Below this count the ratio is not evidence of anything.
 export const UNRESOLVABLE_MIN_COUNT = 10;
@@ -126,7 +126,7 @@ export function moduleClosure(graph) {
  * One witness path from `a` to `b`, so a transitive finding can name the hop that caused it
  * instead of asserting a relationship the reader has to go and discover.
  *
- * cm:guard the neighbour order is SORTED, not the insertion order of `direct`. That set is built by
+ * the neighbour order is SORTED, not the insertion order of `direct`. That set is built by
  *   walking graph.edges, so without this the chosen path among several equally short ones depends
  *   on which file dependency-cruiser happened to list first — and an independence finding's `edge`
  *   IS this path, which makes it the baseline key. Unsorted, moving an import between two files in

@@ -64,12 +64,12 @@ export const agentReports = pgTable(
     // ISS-557 — bare uuid pointing at the agent_session that emitted this report.
     // No hard FK so steward sessions (which have no job row) can link cleanly.
     sessionId: uuid('session_id'),
-    // cm:why ISS-113 (design automation rev 1, step report): the fire whose session filed the report,
+    // ISS-113 (design automation rev 1, step report): the fire whose session filed the report,
     // resolved at submit from the session's `scheduleRunId`, so a fire's reports are a join
     scheduleRunId: uuid('schedule_run_id').references((): AnyPgColumn => scheduleRuns.id, {
       onDelete: 'set null',
     }),
-    // cm:why ISS-113 (steps triage, file, dismiss; reports_table): one triage value with who, when
+    // ISS-113 (steps triage, file, dismiss; reports_table): one triage value with who, when
     // and why replaces `reviewed_at`, which stood for three outcomes; the shape CHECK below holds
     // each value to the columns it owns, so `filed` has exactly one target
     triage: text('triage', { enum: agentReportTriages }).notNull().default('new'),
@@ -80,13 +80,13 @@ export const agentReports = pgTable(
     duplicateOf: uuid('duplicate_of').references((): AnyPgColumn => agentReports.id, {
       onDelete: 'no action',
     }),
-    // cm:why ISS-712: the issue a report was filed INTO, distinct from `issueId`, the SOURCE issue the
+    // ISS-712: the issue a report was filed INTO, distinct from `issueId`, the SOURCE issue the
     // agent was working on. `no action` since ISS-113: deleting that issue would leave a filed report
     // with no target, so the issue delete is refused AGENT_REPORT_FILED_INTO_ISSUE instead
     linkedIssueId: uuid('linked_issue_id').references((): AnyPgColumn => issues.id, {
       onDelete: 'no action',
     }),
-    // cm:why ISS-93: the report's other target, the feedback item it was promoted into; exclusive
+    // ISS-93: the report's other target, the feedback item it was promoted into; exclusive
     // with `linked_issue_id`, one report per item
     feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
       onDelete: 'no action',

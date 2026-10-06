@@ -1,4 +1,4 @@
-// cm:why an agent-facing reference names a public guide, never one project's design, which
+// an agent-facing reference names a public guide, never one project's design, which
 // another project's agent cannot read (ISS-90)
 const GUIDE_SLUGS = [
   'project-settings-and-test-credentials',

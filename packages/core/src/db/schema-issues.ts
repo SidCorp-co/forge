@@ -155,16 +155,16 @@ export const issues = pgTable(
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
-    // cm:why optional: a maintenance issue serves no requirement. planned_revision is the requirement
+    // optional: a maintenance issue serves no requirement. planned_revision is the requirement
     // revision the plan was written against, set when the plan is written (ISS-57)
     requirementId: uuid('requirement_id').references(() => requirements.id),
     plannedRevision: integer('planned_revision'),
-    // cm:why an issue filed as an accepted suggestion's effect points back at it, as a revision does
+    // an issue filed as an accepted suggestion's effect points back at it, as a revision does
     // (workflow suggestion-lifecycle step accepted)
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
     }),
-    // cm:why the fire an issue was filed in (design automation rev 1, step settle; ISS-114): resolved
+    // the fire an issue was filed in (design automation rev 1, step settle; ISS-114): resolved
     // at create through the creating session's fire, or written by the fire that filed it inline, so
     // Fire.produced counts issues by join; a person's own create carries none
     scheduleRunId: uuid('schedule_run_id').references((): AnyPgColumn => scheduleRuns.id, {

@@ -11,7 +11,7 @@ const defaultLevel = isProd ? 'info' : 'debug';
 
 export const logger: Logger = pino({
   level: process.env.LOG_LEVEL ?? defaultLevel,
-  // cm:why the record, its message and an error's text pass the scrubber Sentry uses, so a secret
+  // the record, its message and an error's text pass the scrubber Sentry uses, so a secret
   // is filtered by one list whichever way it leaves the process.
   formatters: { log: (record) => scrubLogRecord(record) },
   hooks: {

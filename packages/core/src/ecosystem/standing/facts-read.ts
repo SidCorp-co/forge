@@ -50,7 +50,7 @@ export type VersionRow = VersionFact & {
   decisionReason: string | null;
 };
 
-// cm:why every consumer's item for one version carries the same due date (`contract/announce.ts:fileBreakingIn` computes it once per approval), so the latest one stands for the provider's window
+// every consumer's item for one version carries the same due date (`contract/announce.ts:fileBreakingIn` computes it once per approval), so the latest one stands for the provider's window
 export async function windowDues(providerId: string): Promise<Map<string, Date>> {
   const found = rowsOf<{ contract_slug: string; contract_version: string; due: string }>(
     await db.execute(sql`

@@ -1,4 +1,4 @@
-// cm:why one module-level store: the assistant's executor (ISS-47), the dock, the page snapshot and the
+// one module-level store: the assistant's executor (ISS-47), the dock, the page snapshot and the
 // canvas read it from different subtrees; the canvas is a read-only view, and only ui.board.draw opens it.
 
 import type { WireframeDoc } from "@forge/contracts/wireframe";

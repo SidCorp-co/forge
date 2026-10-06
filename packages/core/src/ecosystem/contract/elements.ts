@@ -35,7 +35,7 @@ export function elementsOf(type: IndexedType, document: unknown): string[] {
 
 const escapePointer = (k: string) => k.replace(/~/g, '~0').replace(/\//g, '~1');
 
-// cm:why a tool's input properties are elements as `<tool>/properties/<name>`, the shape the schema differ names a property change in, so a consumer can declare the inputs it sends and a semantic change can name one
+// a tool's input properties are elements as `<tool>/properties/<name>`, the shape the schema differ names a property change in, so a consumer can declare the inputs it sends and a semantic change can name one
 function mcpToolElements(document: unknown): string[] {
   return [...(toolsOf(document)?.values() ?? [])].flatMap((t) => {
     const props = at(t.inputSchema, 'properties');
@@ -108,7 +108,7 @@ interface ExampleProblem {
 
 const notIn = (detail: string): ExampleProblem => ({ code: 'EXAMPLE_NOT_IN_CONTRACT', detail });
 
-// cm:why an example the cited schema cannot be compiled for is refused, never waved through: the check is fail-closed like every content check on the channel, and a pattern RE2 cannot run is refused by its own name rather than run on a backtracking engine
+// an example the cited schema cannot be compiled for is refused, never waved through: the check is fail-closed like every content check on the channel, and a pattern RE2 cannot run is refused by its own name rather than run on a backtracking engine
 export function exampleProblem(index: ContractIndex, ex: ContractExample): ExampleProblem | null {
   if (!index.elements.has(ex.element))
     return notIn(`${ex.element} is not an element of this version`);

@@ -4,7 +4,7 @@ import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
-// cm:why the reaper and masters/standing share one "last spoke": the master's beat or a live child's REPORTED beat
+// the reaper and masters/standing share one "last spoke": the master's beat or a live child's REPORTED beat
 // (a child that beat means a live box); never a child's created_at, as prepare mints a queued child at once
 export function masterLastBeatSql(alias: string): SQL {
   const s = sql.raw(alias);

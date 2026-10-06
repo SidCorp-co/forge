@@ -89,7 +89,7 @@ ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
   return answerEcosystem(c, await createEcosystem({ userId: c.get('userId'), raw: document }));
 });
 
-// cm:why the person's ecosystems, the invitations to their projects and every thread one of their projects sent or received, across ecosystems, in one read: the Ecosystem menu, the Threads inbox and the empty state all stand on it
+// the person's ecosystems, the invitations to their projects and every thread one of their projects sent or received, across ecosystems, in one read: the Ecosystem menu, the Threads inbox and the empty state all stand on it
 ecosystemRoutes.get('/mine', async (c) => c.json(await readWorkspace(c.get('userId'))));
 
 ecosystemRoutes.get('/:id', idParam, async (c) => {

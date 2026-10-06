@@ -1,4 +1,4 @@
-// cm:why one declaration of what a comment may sit on and what a decision must carry (ISS-83): core's
+// one declaration of what a comment may sit on and what a decision must carry (ISS-83): core's
 // CHECKs, REST, MCP and the web read these values, so no surface can name a scope another does not know
 
 import { z } from "zod";

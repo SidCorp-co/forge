@@ -53,7 +53,7 @@ function readerOf(full: boolean, sight: ReadonlyMap<string, Sight>) {
   };
 }
 
-// cm:why a fence names the projects a credential acts for: the page is read in full only for one inside it, and as a party only through those, whatever else the person belongs to
+// a fence names the projects a credential acts for: the page is read in full only for one inside it, and as a party only through those, whatever else the person belongs to
 export async function readApiPage(userId: string, projectId: string, fence?: readonly string[]) {
   const [target] = await projectsWhere(db, { ids: [projectId] });
   if (!target) throw notFound(`project ${projectId} does not exist`);

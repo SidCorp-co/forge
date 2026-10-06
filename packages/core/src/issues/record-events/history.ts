@@ -29,7 +29,7 @@ export async function recordHistory(
   query: RecordHistoryQuery,
   executor: Tx = db,
 ): Promise<RecordEntry[]> {
-  // cm:guard ISS-96 — a transition, park or verdict is read only as core wrote it, never from a
+  // ISS-96 — a transition, park or verdict is read only as core wrote it, never from a
   // comment fence or an event a caller posted
   const kernel = query.kinds.filter((kind) => isKernelOnlyRecordKind(kind));
   const told = query.kinds.filter((kind) => !isKernelOnlyRecordKind(kind));

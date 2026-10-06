@@ -14,7 +14,7 @@ export const defaultDockWidth = () =>
 export const clampDockWidth = (w: number) =>
   Math.round(Math.min(DOCK_MAX_WIDTH, Math.max(DOCK_MIN_WIDTH, Number.isFinite(w) ? w : DOCK_DEFAULT_WIDTH)));
 
-// cm:why the dock's scope is the project the rail has selected: a target left over from another project is dropped for a fresh draft in this one, and a room with other people carries no project to drift from
+// the dock's scope is the project the rail has selected: a target left over from another project is dropped for a fresh draft in this one, and a room with other people carries no project to drift from
 export function targetInScope(target: ChatTarget | null, projectId: string | null): ChatTarget | null {
   if (!projectId) return target?.kind === "people" ? target : null;
   if (!target) return { kind: "draft", projectId };

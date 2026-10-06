@@ -308,7 +308,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
 
-  // cm:why a cold start is where core writes the prompt, so it is where the session is told its
+  // a cold start is where core writes the prompt, so it is where the session is told its
   // project's content language and records it; a resumed or pre-built turn keeps what it was told
   const language =
     !resumable && !args.preBuilt

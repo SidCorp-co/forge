@@ -24,7 +24,7 @@ export type OwedComment = {
 const BY_AN_AGENT = (alias: string) =>
   sql.raw(`(${alias}.author_device_id IS NOT NULL OR ${alias}_u.kind = 'agent')`);
 
-// cm:guard owed = a PERSON's `question` comment (ISS-56) on a live issue (not closed, dropped or
+// owed = a PERSON's `question` comment (ISS-56) on a live issue (not closed, dropped or
 // archived) that no agent comment threaded under it answers: parent_id = the question, or, for a
 // question that is itself a reply, a newer agent comment with the same parent. A top-level note or
 // verdict clears nothing. Terminal is out: reopening the issue brings its thread back in.

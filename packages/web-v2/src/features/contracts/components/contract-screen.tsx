@@ -7,7 +7,7 @@ import { CONTRACTS_LIST, contractsHref } from "@/lib/routes/contracts";
 import { ContractAction } from "./contract-bits";
 import { CONTRACT_TABS, ContractPage } from "./contract-detail";
 
-// cm:why the shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Contracts, the ref, the title and the state; the one primary act is whatever the contract waits on the viewer for
+// the shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Contracts, the ref, the title and the state; the one primary act is whatever the contract waits on the viewer for
 export function ContractScreen({ projectId, slug, contractRef }: { projectId: string; slug: string; contractRef: string }) {
   const q = useContractDetail(projectId, contractRef);
   const [tab, setTab] = useUrlTab(CONTRACT_TABS);

@@ -37,7 +37,7 @@ export function sitsOn(arc: CommentArc, scope: CommentScope, targetId: string): 
   return scopeOfArc(arc) === scope && arc[ARC_COLUMNS[scope]] === targetId;
 }
 
-// cm:guard a comment sits on exactly one of issue | requirement | workflow | feedback; the door
+// a comment sits on exactly one of issue | requirement | workflow | feedback; the door
 // refuses any other arc by name before comments_scope_chk would refuse it at the table
 export function scopeRefusal(arc: CommentArc, path = ''): CommentRefusal | null {
   const named = COMMENT_SCOPES.filter((s) => !!arc[ARC_COLUMNS[s]]);
@@ -58,7 +58,7 @@ interface CommentContent {
   decision?: DecisionFields | undefined;
 }
 
-// cm:guard a decision carries what was decided and why as fields, and no other intent carries them,
+// a decision carries what was decided and why as fields, and no other intent carries them,
 // so a reader never has to parse prose to find the reason
 export function contentRefusals(c: CommentContent): CommentRefusal[] {
   const out: CommentRefusal[] = [];
@@ -200,7 +200,7 @@ export function preparedBody(raw: string, format: 'markdown' | 'html' | undefine
   }
 }
 
-// cm:guard decision.node names a node of a workflow, so it sits on a workflow decision only (REQ-17 BC-26)
+// decision.node names a node of a workflow, so it sits on a workflow decision only (REQ-17 BC-26)
 export function nodeDecisionScopeRefusal(
   scope: string,
   targetKey: string,

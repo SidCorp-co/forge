@@ -21,7 +21,7 @@ export interface AttentionGateRow {
   projectName: string;
 }
 
-// cm:why a gate question is listed only for a person whose role on the sending project may choose one of its options, which is the rule `answerQuestion` applies, so the list never offers a decision the answer would refuse
+// a gate question is listed only for a person whose role on the sending project may choose one of its options, which is the rule `answerQuestion` applies, so the list never offers a decision the answer would refuse
 export async function selectChannelGates(userId: string): Promise<AttentionGateRow[]> {
   const rows = await db
     .select({

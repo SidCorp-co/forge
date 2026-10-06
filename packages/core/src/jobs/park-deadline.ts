@@ -9,7 +9,7 @@ import { transition } from '../lifecycle/index.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
-// cm:edge value -> packages/runner/crates/runner-agent/src/claude_code/mod.rs:SESSION_IDLE_TIMEOUT
+// value -> packages/runner/crates/runner-agent/src/claude_code/mod.rs:SESSION_IDLE_TIMEOUT
 // — the runner closes a parked session after this long, so a row parked past it plus the grace has
 // no process behind it.
 const RESIDENCY_SECONDS = 10 * 60;

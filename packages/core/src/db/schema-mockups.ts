@@ -21,7 +21,7 @@ import { actorAgencies } from './schema-vocabulary.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// cm:why a mockup (MK-n, ISS-78) is a proposal about exactly one target, as feedback is about one:
+// a mockup (MK-n, ISS-78) is a proposal about exactly one target, as feedback is about one:
 // a requirement at the revision it was proposed against, a feedback item, or an issue; its bytes
 // live in the one attachment store and never change, a person accepts or returns it, and an
 // accepted requirement mockup is pinned by the next baseline beside the designs; migration 0370's

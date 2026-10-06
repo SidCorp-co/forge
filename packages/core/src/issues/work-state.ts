@@ -3,7 +3,7 @@
  * only writer of the table. The status says who an issue waits on; this row says the run's step,
  * who holds it, the branch and head it built, and the status a park left.
  *
- * cm:edge contract -> packages/core/src/db/schema-issue-work-state.ts — the columns and their checks.
+ * contract -> packages/core/src/db/schema-issue-work-state.ts — the columns and their checks.
  */
 
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';

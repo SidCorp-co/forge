@@ -38,7 +38,7 @@ function evidenceOf(r: FiledReport): string {
     .join('\n\n');
 }
 
-// cm:why design automation rev 1 (step file): filing creates the issue at draft, in the reports'
+// design automation rev 1 (step file): filing creates the issue at draft, in the reports'
 // project, carrying the reports as its evidence, inside the transaction that sets them filed, so a
 // filed report never points at an issue that was not written
 export async function fileIssueIn(

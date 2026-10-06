@@ -23,7 +23,7 @@ export async function recordSecretResolve(jobId: string, audit: SecretResolveAud
   await db.transaction((tx) => appendJobEvent(tx, jobId, SECRET_RESOLVE_KIND, { ...audit }));
 }
 
-// cm:why the audit row names refs, never values, so a value rotated after it was handed out is
+// the audit row names refs, never values, so a value rotated after it was handed out is
 // known only here; the row is what survives a restart, at the value the vault holds now.
 const handedOut = new Map<string, Set<string>>();
 const HANDED_OUT_JOBS_KEPT = 2000;
@@ -60,7 +60,7 @@ async function resolvedRefsByJob(jobIds: readonly string[]): Promise<Map<string,
 async function currentValues(projectId: string, refs: ReadonlySet<string>): Promise<string[]> {
   const wanted = [...refs].map(parseSecretRef).filter((r) => r !== null);
   if (wanted.length === 0) return [];
-  // cm:guard a core that cannot decrypt cannot know the values; it refuses the output rather than
+  // a core that cannot decrypt cannot know the values; it refuses the output rather than
   // storing it unscrubbed.
   if (!jobsPorts().vault.isVaultConfigured()) {
     throw new Error(
@@ -89,7 +89,7 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
     .map((r) => jobsPorts().vault.decryptSecret(r.enc));
 }
 
-// cm:flow testing-secrets/scrub after:audit — the values a job was handed are taken back out of
+// testing-secrets/scrub after:audit — the values a job was handed are taken back out of
 // everything its box posts, before the row is stored or broadcast
 async function secretsHeldByJobs(jobIds: readonly string[]): Promise<string[]> {
   const values = new Set<string>();

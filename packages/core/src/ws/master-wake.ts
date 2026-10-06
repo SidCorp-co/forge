@@ -15,7 +15,7 @@ const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   'awaiting_release',
 ];
 
-// cm:why a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
+// a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
 export const MASTER_WAKE_SOURCES = [
   'issue',
   'answer',
@@ -265,7 +265,7 @@ export function registerMasterWakeSubscribers(): void {
     },
   });
 
-  // cm:guard only a person's comment wakes: a master's own reply is agent-authored, so it can never
+  // only a person's comment wakes: a master's own reply is agent-authored, so it can never
   // wake the master that wrote it, whatever status the issue is at.
   consume('comment.created', {
     name: 'master-wake',

@@ -205,7 +205,7 @@ export async function clearIssueMerge(
   return rows.length > 0;
 }
 
-// cm:why the first target named on a standing mark is the branch the work landed on; a later mark
+// the first target named on a standing mark is the branch the work landed on; a later mark
 // with another target does not move it, as a later stamp does not move merged_at.
 export async function recordMergeTarget(
   executor: MergeRecordExecutor,

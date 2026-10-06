@@ -17,7 +17,7 @@ export const POLICY_STATE_STATUSES: readonly IssueStatus[] = AUTONOMOUS_DRIVER_S
 
 function nonEmpty<T>(values: readonly T[]): [T, ...T[]] {
   const [first, ...rest] = values;
-  // cm:guard an empty list would emit a states object no policy can satisfy; refuse to load.
+  // an empty list would emit a states object no policy can satisfy; refuse to load.
   if (first === undefined) {
     throw new Error(
       'project-config/policy-schema.ts: POLICY_STATE_STATUSES derived empty from AUTONOMOUS_DRIVER_STATUSES; a policy needs at least one dispatchable status.',
@@ -28,7 +28,7 @@ function nonEmpty<T>(values: readonly T[]): [T, ...T[]] {
 
 const profileName = () => z.string().regex(SHORT_NAME);
 
-// cm:edge contract -> packages/runner/crates/runner-workspace/src/terminal.rs:job_argv — the grammar of
+// contract -> packages/runner/crates/runner-workspace/src/terminal.rs:job_argv — the grammar of
 // one `--disallowed-tools` entry a job pane is started with: a built-in tool, optionally with a
 // specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_coolify_deploy`, `mcp__x__*`).
 export const TOOL_PATTERN =

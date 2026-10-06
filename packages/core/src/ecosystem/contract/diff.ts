@@ -55,7 +55,7 @@ export function change(c: MeasuredChange): MeasuredChange {
   };
 }
 
-// cm:why the schema holds 500 changes; the classification is taken over all of them first, and the cut keeps breaking before warning before info and says how many it dropped
+// the schema holds 500 changes; the classification is taken over all of them first, and the cut keeps breaking before warning before info and says how many it dropped
 export function measured(
   tool: DiffTool,
   toolVersion: string,

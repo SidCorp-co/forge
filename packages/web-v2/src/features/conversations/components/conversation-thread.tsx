@@ -197,7 +197,7 @@ function Said({
   newestAgentId?: string;
   firstDesigns?: boolean;
 }) {
-  // cm:why a questionnaire, its answers and a designs list are structured messages a service wrote;
+  // a questionnaire, its answers and a designs list are structured messages a service wrote;
   // they draw from the thread's live data, never through the model-turn renderer
   if (isStructured(message.blocks)) {
     return <StructuredMessage message={message} firstDesigns={firstDesigns === true} />;
@@ -333,7 +333,7 @@ export function ConversationThread({
       {entries.map((entry) => {
         if (entry.kind === "said")
           return (
-            // cm:why a questionnaire collapsed into its answers draws nothing, and an empty entry must not leave a gap
+            // a questionnaire collapsed into its answers draws nothing, and an empty entry must not leave a gap
             <div key={entry.key} className="empty:hidden">
               <Said
                 message={entry.message}

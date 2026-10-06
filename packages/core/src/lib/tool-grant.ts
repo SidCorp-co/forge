@@ -68,7 +68,7 @@ function refuseUnmatchedActions(
     refuse(`it declares a ${noun} for ${extra.join(', ')}, which it does not take`);
 }
 
-// cm:guard the per-action table must name exactly the schema's `action` enum, so an action added
+// the per-action table must name exactly the schema's `action` enum, so an action added
 // to a tool cannot reach the transport undeclared.
 function assertToolDeclaresGrant(tool: GrantedTool): void {
   const refuse = (why: string): never => {
@@ -171,7 +171,7 @@ function reachProblem(entry: unknown, grant: ToolGrantEntry | undefined): string
   return "a reach is 'project', 'public' or `{ account: what }`";
 }
 
-// cm:guard every tool on the transport states whether its work belongs to one project, so a
+// every tool on the transport states whether its work belongs to one project, so a
 // project-fenced token cannot reach account-wide work through a tool that never said.
 function assertToolDeclaresReach(tool: GrantedTool): void {
   const refuse = (why: string): never => {
@@ -225,7 +225,7 @@ function routeFor(tool: GrantedTool, permission: PatPermission): string | undefi
   return routesOf(tool.route).find((r) => patPrefixForPath(r)?.resource === resource);
 }
 
-// cm:guard every permission a tool names is dated by a REST mount it declares under that
+// every permission a tool names is dated by a REST mount it declares under that
 // permission's resource, so a tool cannot take an older epoch than the route serving its rows.
 function assertToolDeclaresRoute(tool: GrantedTool): void {
   const refuse = (why: string): never => {

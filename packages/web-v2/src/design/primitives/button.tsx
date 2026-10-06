@@ -27,7 +27,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const SecondaryOnly = createContext(false);
 
-// cm:why a region beside the page (the Ask Agent dock) never carries a primary action: the page's one
+// a region beside the page (the Ask Agent dock) never carries a primary action: the page's one
 // primary keeps that colour, so a primary asked for inside the region is drawn as a secondary (REQ-11 BC-8)
 export function SecondaryRegion({ children }: { children: ReactNode }) {
   return <SecondaryOnly.Provider value={true}>{children}</SecondaryOnly.Provider>;

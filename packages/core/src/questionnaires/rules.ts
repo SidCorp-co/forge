@@ -20,7 +20,7 @@ const EVIDENCE = /^(\S+:\S+|(REQ|ISS|FB|BC)-\d+\b.*|design \S+.*|workflow \S+.*)
 
 const choiceControls = new Set(['choice', 'multi']);
 
-// cm:guard each item is answerable as posted: ids unique, options only on choice and multi and two
+// each item is answerable as posted: ids unique, options only on choice and multi and two
 // or more, a default naming one of them, a recommendation answered by accept or reject, and
 // evidence that is a file:symbol or a Forge record (QUESTIONNAIRE_ITEM_INVALID)
 export function itemRefusals(items: readonly QuestionnaireItem[]): QuestionnaireRefusal[] {
@@ -74,7 +74,7 @@ export function itemRefusals(items: readonly QuestionnaireItem[]): Questionnaire
   return out;
 }
 
-// cm:guard a follow-up carries only what stayed open: an item answered in an earlier round of the
+// a follow-up carries only what stayed open: an item answered in an earlier round of the
 // same series is not asked again (QUESTIONNAIRE_ITEM_ANSWERED_BEFORE), and a rejected
 // recommendation is never suggested again (QUESTIONNAIRE_RECOMMENDATION_REJECTED)
 export function repeatRefusals(
@@ -101,7 +101,7 @@ export function repeatRefusals(
   return out;
 }
 
-// cm:guard at most QUESTIONNAIRE_MAX_ROUNDS batches per series (QUESTIONNAIRE_ROUNDS_EXHAUSTED); after
+// at most QUESTIONNAIRE_MAX_ROUNDS batches per series (QUESTIONNAIRE_ROUNDS_EXHAUSTED); after
 // the third, open items stay listed on their designs as open questions
 export function roundsRefusal(roundsSent: number): QuestionnaireRefusal | null {
   if (roundsSent < QUESTIONNAIRE_MAX_ROUNDS) return null;
@@ -112,7 +112,7 @@ export function roundsRefusal(roundsSent: number): QuestionnaireRefusal | null {
   };
 }
 
-// cm:guard one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits on its person
+// one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits on its person
 export function alreadyOpenRefusal(
   open: { id: string; round: number; status: QuestionnaireStatus } | null,
 ): QuestionnaireRefusal | null {
@@ -134,7 +134,7 @@ interface BatchState {
   supersededBy: string | null;
 }
 
-// cm:guard a batch is answered once: re-sending is QUESTIONNAIRE_ALREADY_ANSWERED, and an answer to a
+// a batch is answered once: re-sending is QUESTIONNAIRE_ALREADY_ANSWERED, and an answer to a
 // batch a re-analysis replaced is QUESTIONNAIRE_SUPERSEDED naming the batch that replaced it
 export function submitStateRefusal(batch: BatchState, skip: boolean): QuestionnaireRefusal | null {
   if (batch.status === 'superseded') {
@@ -188,7 +188,7 @@ function fits(item: QuestionnaireItem, a: QuestionnaireAnswer): string | null {
   return null;
 }
 
-// cm:guard every answer names an item of the batch still open (QUESTIONNAIRE_ITEM_UNKNOWN), fits its
+// every answer names an item of the batch still open (QUESTIONNAIRE_ITEM_UNKNOWN), fits its
 // control (QUESTIONNAIRE_ANSWER_INVALID), and a send answers at least one (QUESTIONNAIRE_NOTHING_ANSWERED);
 // an unanswered item stays open and an inferred default is never applied for it
 export function answerRefusals(
@@ -247,7 +247,7 @@ export interface QuestionnaireArm {
   firstRequirementsOf: string | null;
 }
 
-// cm:guard a batch names exactly one thread (QUESTIONNAIRE_THREAD_INVALID), the rule the
+// a batch names exactly one thread (QUESTIONNAIRE_THREAD_INVALID), the rule the
 // questionnaire_batches_arc_chk constraint holds at the row
 export function questionnaireArmRefusal(arm: QuestionnaireArm): QuestionnaireRefusal | null {
   const named = [arm.onboardingId, arm.requirementId, arm.firstRequirementsOf].filter(

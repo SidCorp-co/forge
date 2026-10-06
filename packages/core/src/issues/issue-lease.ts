@@ -12,7 +12,7 @@
  *
  * `(project_id, issue_key)` is the identity on every path, take and give-back
  * alike, and `resolveLeaseKey` is where a caller's key becomes that pair.
- * cm:edge naming -> packages/core/src/issues/session-claim.ts — which RUN may write a record.
+ * naming -> packages/core/src/issues/session-claim.ts — which RUN may write a record.
  */
 
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';

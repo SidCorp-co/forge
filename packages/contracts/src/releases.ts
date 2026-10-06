@@ -1,4 +1,4 @@
-// cm:why one declaration of the release read model (REQ-11 BC-6, BC-12, ISS-71): core derives every
+// one declaration of the release read model (REQ-11 BC-6, BC-12, ISS-71): core derives every
 // fact in `release-batch/release-view.ts` and `release-batch/versions.ts`, and the Releases list,
 // peek and page draw them, so a state keeps one badge and nobody derives whom a release waits on in
 // the browser.

@@ -77,7 +77,7 @@ export function ConversationList({
   pageKey?: string | null;
   onSelect: (target: ChatTarget) => void;
 }) {
-  // cm:why every project the person holds a role on, whatever org is active: a room is theirs to find wherever its project sits, and core still fences each read by role (ISS-34 F-4)
+  // every project the person holds a role on, whatever org is active: a room is theirs to find wherever its project sits, and core still fences each read by role (ISS-34 F-4)
   const { data: allProjects } = useProjects();
   const projects = useMemo(() => allProjects ?? [], [allProjects]);
   const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
@@ -88,7 +88,7 @@ export function ConversationList({
   const list = useConversationsAcrossProjects(projectIds, archived);
   const [ecosystemScope, setEcosystemScope] = useState<EcosystemScope | null>(null);
   const [search, setSearch] = useState("");
-  // cm:why the list opens on the project the dock is in; every project is one pick away in the filter
+  // the list opens on the project the dock is in; every project is one pick away in the filter
   const [picked, setPicked] = useState<ConversationFilter | null>(null);
   const filter: ConversationFilter =
     picked ?? (current ? { kind: "project", id: current.id, name: current.name } : EVERY_PROJECT);

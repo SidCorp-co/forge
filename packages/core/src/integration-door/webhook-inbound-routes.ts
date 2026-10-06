@@ -76,7 +76,7 @@ interface ProviderRoute {
   provider: IntegrationProvider;
 }
 
-// cm:why derived from the integration declarations, never listed here: a hand-kept list let a provider that declared a webhook route nowhere while it reported healthy (ISS-1071). A request carrying several provider headers takes the first in registry order.
+// derived from the integration declarations, never listed here: a hand-kept list let a provider that declared a webhook route nowhere while it reported healthy (ISS-1071). A request carrying several provider headers takes the first in registry order.
 function providerHeaderMap(): ProviderRoute[] {
   return listIntegrations()
     .filter((d) => d.capabilities.canReceiveWebhook && d.capabilities.webhookHeader)

@@ -353,7 +353,7 @@ export function checkPolicy(doc: PolicyDocument): ConfigRefusal[] {
   return out;
 }
 
-// cm:guard ctx.policy is checked too, so a caller passing it is never silently ignored; its
+// ctx.policy is checked too, so a caller passing it is never silently ignored; its
 // refusal paths point into the policy document, not the project document.
 export function checkProjectConfig(
   doc: ProjectDocument,
@@ -380,7 +380,7 @@ export function checkProjectConfig(
   return out;
 }
 
-// cm:why a project template is policy over the kernel's built-ins: each is held to the same
+// a project template is policy over the kernel's built-ins: each is held to the same
 // meta-schema and consistency as a built-in, and one a stored design is drawn in cannot be taken
 // out from under it — that design would be read in a vocabulary nobody declares any more
 function checkWorkflowTemplates(
@@ -424,7 +424,7 @@ function checkRetiredApprovers(
   });
 }
 
-// cm:guard a tag that names no language is refused by name: a prompt told to write in it could only
+// a tag that names no language is refused by name: a prompt told to write in it could only
 // guess. The language of what is written is never checked (VISION: kernel-hard-policy-soft).
 export function checkContentLanguage(
   doc: Pick<ProjectDocument, 'contentLanguage'>,

@@ -17,12 +17,12 @@ use runner_platform::subagent_host::{Hosts, Running};
 
 /// How soon after its placement a pane has to be read gone for its exit to
 /// count as early.
-// cm:guard this labels an exit for the journal and never gates a placement. A pane is read gone by the next sweep, up to `POLL_INTERVAL` (30s) after it died, so the window has to cover a pane that died at once and was read one sweep later, with room for a sweep that ran late. Three sweeps' worth does that and still leaves a pane that ran for minutes outside it.
+// this labels an exit for the journal and never gates a placement. A pane is read gone by the next sweep, up to `POLL_INTERVAL` (30s) after it died, so the window has to cover a pane that died at once and was read one sweep later, with room for a sweep that ran late. Three sweeps' worth does that and still leaves a pane that ran for minutes outside it.
 pub const EARLY_EXIT: Duration = Duration::from_secs(90);
 
 /// The early exit, of consecutive ones for one reason, at which the run of them
 /// is named as one condition.
-// cm:guard three, not two: a single exit and its replacement dying the same way once more is an ordinary restart that met the same fault twice. The count only decides what is said, which is why it may be small; it is not the ISS-928 breaker ISS-933 deleted and it must never be read by a placement.
+// three, not two: a single exit and its replacement dying the same way once more is an ordinary restart that met the same fault twice. The count only decides what is said, which is why it may be small; it is not the ISS-928 breaker ISS-933 deleted and it must never be read by a placement.
 pub const NAMED_AFTER: u32 = 3;
 
 /// What Claude Code prints when asked to resume a conversation it is already

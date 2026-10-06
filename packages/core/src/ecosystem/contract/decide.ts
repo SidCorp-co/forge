@@ -25,7 +25,7 @@ type DecideOutcome =
   | { ok: true; version: StoredVersion; filed: string[] }
   | { ok: false; refusals: EcosystemRefusal[] };
 
-// cm:why the REST decision and forge_ecosystem contract_version_decide are one service, so who may decide and what may be decided are the same at both doors
+// the REST decision and forge_ecosystem contract_version_decide are one service, so who may decide and what may be decided are the same at both doors
 export async function decideContractVersion(input: DecideInput): Promise<DecideOutcome> {
   const { projectId, contract, version, decision, actor } = input;
   const reason = input.reason?.trim() ? input.reason.trim() : null;

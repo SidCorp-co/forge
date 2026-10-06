@@ -1,4 +1,4 @@
-// cm:edge contract -> packages/core/src/me/attention-routes.ts:gateItem — core links a gate question to `document(slug, number)`, so that path is part of the API and changes in both places together
+// contract -> packages/core/src/me/attention-routes.ts:gateItem — core links a gate question to `document(slug, number)`, so that path is part of the API and changes in both places together
 
 /** The Threads inbox's views, one per counter at the top of the page. */
 export const INBOX_VIEWS = ["needs-me", "waiting", "overdue", "held", "working", "answered", "closed"] as const;
@@ -13,7 +13,7 @@ const query = (params: Record<string, string | undefined>) => {
   return s ? `?${s}` : "";
 };
 
-// cm:why an ecosystem spans projects from any organization, so its page, the Threads inbox and the create form live at the workspace; a document, its compose form and the API page are a project's own and stay under it
+// an ecosystem spans projects from any organization, so its page, the Threads inbox and the create form live at the workspace; a document, its compose form and the API page are a project's own and stay under it
 export const ecosystemRoutes = {
   list: () => "/ecosystems",
   create: () => "/ecosystems/new",

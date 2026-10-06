@@ -92,7 +92,7 @@ function currentDraftReading(
 
 export type CurrentDrafts = (judged: { workflowId: string; draftVersion: string }) => DraftReading;
 
-// cm:guard a stored corroboration is what the source held when the verdict was written; every
+// a stored corroboration is what the source held when the verdict was written; every
 // reader and every gate reads the draft the source holds now instead, once per workflow, so a
 // moved draft reads superseded and an unreadable one uncorroborated, never the word stored (FB-56)
 export async function readCurrentDrafts(

@@ -1,4 +1,4 @@
-// cm:why the chat assistant drives the page beside it through a CLOSED registry: the model names an
+// the chat assistant drives the page beside it through a CLOSED registry: the model names an
 // action and core forwards it, the browser executes it as the signed-in person, and an action outside
 // this file, or one whose params do not parse, is refused by name — never guessed, never half applied.
 // Every action changes view state only (route, list filter, selection, the board in the dock); none

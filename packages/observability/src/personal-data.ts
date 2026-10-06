@@ -10,7 +10,7 @@ interface PersonalDataScrub {
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
-// cm:why a run of 9 to 19 digits, spaced or dashed, is a phone, national id or card number; a date
+// a run of 9 to 19 digits, spaced or dashed, is a phone, national id or card number; a date
 // or a time holds at most 8 digits, so it is left alone
 const DIGIT_RUN = /\+?\d[\d .-]{6,}\d/g;
 const MIN_DIGITS = 9;
@@ -29,7 +29,7 @@ const NAME_LABELS = [
 	"bn",
 ];
 
-// cm:why a labelled field names a person up to the end of its clause; one already scrubbed stays
+// a labelled field names a person up to the end of its clause; one already scrubbed stays
 const LABELLED = new RegExp(
 	`(^|[\\s(\\[,;])((?:${NAME_LABELS.join("|")})\\s*[:=]\\s*)(?!\\s*\\[name\\])([^\\n,;)\\]]+)`,
 	"giu",
@@ -40,7 +40,7 @@ const GAP = "[^\\S\\n]+";
 const NOT_AFTER_LETTER = "(?<![\\p{L}\\p{M}\\d_])";
 const NOT_BEFORE_LETTER = "(?![\\p{L}\\p{M}])";
 
-// cm:why two to four capitalised words after a patient noun; "Patient" capitalised opens headings
+// two to four capitalised words after a patient noun; "Patient" capitalised opens headings
 // ("Patient Care Coordination"), so the English marker counts only in lower case
 const MARKED = new RegExp(
 	`(^|[\\s(\\[,;])((?:[bB]ệnh nhân|[nN]gười bệnh|patient|BN)${GAP})(${WORD}(?:${GAP}${WORD}){1,3})${NOT_BEFORE_LETTER}`,
@@ -54,7 +54,7 @@ const SURNAMES = [
 	"Phùng", "Quách", "Lương", "Thái", "Kiều", "Diệp", "Triệu", "Lục", "Khúc", "Ông",
 ].flatMap((s) => [s, s.toUpperCase()]);
 
-// cm:why a place, or a common term, that opens with a surname is not a person: matched on the
+// a place, or a common term, that opens with a surname is not a person: matched on the
 // surname and the word after it, in either case
 const NOT_A_NAME = new Set(
 	[

@@ -80,7 +80,7 @@ export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
 const FRAME =
   "flex w-full flex-col rounded-2xl border bg-surface transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]";
 
-// cm:why the hint is a line of its own under the box, never inside the footer row, where it ran over
+// the hint is a line of its own under the box, never inside the footer row, where it ran over
 // the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
 function hintLine(files: StagedFile[], frameWidth: number | null): string | null {
   if (files.length > 0) {

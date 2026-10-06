@@ -23,7 +23,7 @@ import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 
-// cm:guard a comment sits on exactly one target (ISS-83): an exclusive arc of real foreign keys,
+// a comment sits on exactly one target (ISS-83): an exclusive arc of real foreign keys,
 // each cascading with its target, held by comments_scope_chk so no door can write an orphan or a twin
 export const comments = pgTable(
   'comments',
@@ -173,7 +173,7 @@ export const commentAttachmentsRelations = relations(commentAttachments, ({ one 
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// cm:why a comment on a requirement, design or feedback item has no issue to carry an activity row,
+// a comment on a requirement, design or feedback item has no issue to carry an activity row,
 // so its post and every edit are a typed row here holding the content as it stood: an edited
 // decision keeps what it replaced. Insert-only by comment_event_guard(), removed only with its comment
 export const commentEvents = pgTable(

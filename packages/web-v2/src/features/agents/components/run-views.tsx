@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why a run as core's runs read model serves it (ISS-111, design agent-run-standing rev 1): its state,
+// a run as core's runs read model serves it (ISS-111, design agent-run-standing rev 1): its state,
 // group, holder, wait, stuck and outcome are derived in core, so the list row, the peek and the run page
 // only lay those fields out
 import { RUN_FINAL_STATES, type RunState } from "@forge/contracts/run-standing";

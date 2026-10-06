@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 export const MANIFEST_NAME = '.arch.json';
 export const BASELINE_NAME = '.arch.baseline.json';
 
-// cm:why JSON, not YAML: the vendored copy must parse with zero dependencies, and a hand-rolled
+// JSON, not YAML: the vendored copy must parse with zero dependencies, and a hand-rolled
 //   YAML subset is a silent-failure surface in the one file that defines what "correct" means.
 //   Comments live in each contract's `description`, which the report can print as part of the remedy.
 export const CONTRACT_TYPES = [
@@ -17,18 +17,18 @@ export const CONTRACT_TYPES = [
   'absence',
 ];
 
-// cm:guard every type here must have an evaluator registered in src/contracts/index.mjs, or a
+// every type here must have an evaluator registered in src/contracts/index.mjs, or a
 //   manifest naming it validates clean and is then silently never checked. Asserted mechanically
 //   both ways by 'vocabulary: every contract type has an evaluator' in tests/run.mjs — prose alone
 //   did not stop this drifting to 3-of-8 (ISS-2).
-// cm:why RELAXABLE_TYPES, not GRAPH_TYPES: `absence` is graph-backed too, but must never appear in
+// RELAXABLE_TYPES, not GRAPH_TYPES: `absence` is graph-backed too, but must never appear in
 //   `tests.relax` — relaxing a rule for test files is meaningless for a contract that only ever
 //   reports, and would read as "a test file may satisfy it", the opposite of what absence means.
 export const RELAXABLE_TYPES = new Set(['layers', 'forbidden', 'independence', 'boundary', 'fan-out']);
 
 export const STATUSES = ['draft', 'locked'];
 
-// cm:edge lockstep -> schema/arch.schema.json — the editor schema lists the same keys; add to one
+// lockstep -> schema/arch.schema.json — the editor schema lists the same keys; add to one
 //   without the other and the manifest is either refused at runtime or unhinted while writing it.
 export const MANIFEST_KEYS = new Set([
   'version',
@@ -78,7 +78,7 @@ export function loadManifest(root) {
 
   if (raw.version !== 1) fail(`version must be 1, got ${JSON.stringify(raw.version)}`);
 
-  // cm:guard a key this loader does not read must FAIL, never be dropped. The returned object is a
+  // a key this loader does not read must FAIL, never be dropped. The returned object is a
   //   whitelist, so an option the tool stops supporting disappears with no error and no report —
   //   which is how a repo kept `tsConfig` in its manifest for weeks after the reader was removed,
   //   losing alias resolution the whole time while `arch check` stayed green. `$`-prefixed keys are
@@ -175,7 +175,7 @@ function validateContract(c, i, modules) {
       }
       break;
     }
-    // cm:guard both endpoints must be KNOWN modules and neither may be "*". An absence contract
+    // both endpoints must be KNOWN modules and neither may be "*". An absence contract
     //   naming a typo'd module reports "no edge does" forever — a false finding shaped exactly
     //   like a real one, and the one failure mode a report-only check cannot survive.
     case 'absence': {
