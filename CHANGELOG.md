@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation matches the code it cites.** 707 dead `cm:` comment prefixes are gone,
+  citation drift across 25 docs is 131 to 0, and ADR 0010 records that a release number is spent
+  only when the release leaves Forge.
+
 ## [0.4.0-dev.39] - 2026-10-06
 
 Every lint rule blocks, transcripts are stored once, and realtime frames are typed
