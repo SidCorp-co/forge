@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Core now decides when a box places, nudges, replaces or retires a master** (new `POST /api/devices/me/master-session/verdict`). Deploy core first: this runner places nothing without it; older runners still decide locally.
+
 ### Fixed
 
 - **A reopened feedback item can no longer be marked verified by the machine**: verify follows a shipped fix, which a reopened item never has, so its only ways out are back to triage or declined (feedback machine v3).

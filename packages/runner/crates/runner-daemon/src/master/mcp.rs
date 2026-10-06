@@ -25,18 +25,6 @@ pub(crate) fn servers_for_start(
         })
 }
 
-/// ISS-1208 ends a deaf pane only where a replacement would be placed. A
-/// declaration that could not be read withholds the replacement below, so the
-/// pane is left standing rather than ended for a placement that is refused.
-pub(crate) fn replacement_gate(act: CapabilityAct, servers_readable: bool) -> CapabilityAct {
-    match act {
-        CapabilityAct::Replace if !servers_readable => CapabilityAct::LeaveDeaf(
-            "this box could not read the project's declared MCP servers, so no replacement would be placed in its stead",
-        ),
-        other => other,
-    }
-}
-
 /// Whether this box can honestly describe what it is about to hand a pane.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum LaunchRecord {

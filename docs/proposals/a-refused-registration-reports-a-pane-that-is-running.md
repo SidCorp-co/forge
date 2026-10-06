@@ -10,15 +10,15 @@ file was declared held by another run's tree when this one was dispatched.
 
 ## What the daemon says, and what is true
 
-`Unplaced::lead` in `daemon/master.rs` chooses what to say before a reason. Every variant but two
+`Unplaced::lead` in `packages/runner/crates/runner-daemon/src/master/unplaced.rs` chooses what to say before a reason. Every variant but two
 takes the default `no master pane placed`; only `Unplaced::StoodDown` with a pane, and
 `Unplaced::StaleCapability`, carve themselves out — each of those was bought by ISS-1118
 criterion 20, one symptom at a time.
 
 `Unplaced::RegisterFailed` is not one of the two, and it cannot be treated as one by inspection of
-the variant alone, because whether a pane is running is not in the value. `ensure_master` calls
-`master_api::register` **before** it calls `terminal::alive`, so on a sweep that finds a resident
-pane and a refusing core, the daemon emits:
+the variant alone, because whether a pane is running is not in the value. `master/project.rs:adopt_pane`
+calls `master_api::register` for a pane `terminal::alive` found running, so on a sweep that finds a
+resident pane and a refusing core, the daemon emits:
 
 ```
 [master] <slug>: no master pane placed — core refused this box's master registration for it: …
@@ -45,12 +45,10 @@ input to `lead` rather than a property some variants happen to encode — which 
 
 ## What ISS-1233 did take
 
-The other half: `transport/master.rs` and `transport/runners.rs` no longer format a status with
+The other half: `runner-transport/src/master.rs` and `runner-transport/src/runners.rs` no longer format a status with
 `reqwest::StatusCode`'s `Display` or paste a gateway's HTML page, and both now carry
-`transport::CALL_DEADLINE`. The reason string an operator reads through `RegisterFailed` is the
-transport error verbatim, so it is legible now whatever `lead` says in front of it —
-`transport/status.rs`'s `the_unplaced_reason_an_operator_reads_is_the_transport_error_itself` pins
-that coupling.
+`runner_transport::CALL_DEADLINE`. The reason string an operator reads through `RegisterFailed` is the
+transport error verbatim, so it is legible now whatever `lead` says in front of it.
 
 ## Honest costs
 

@@ -105,17 +105,9 @@ The choices inside that, and why:
 
 ### What core takes over
 
-Four decisions the box still takes are each one too-long function kept under a `too_many_lines`
+The decisions the box still takes are each one too-long function kept under a `too_many_lines`
 amnesty, whose reason names its entry here. Each is deleted, not split, once core answers it:
 
-- **Placement** — `packages/runner/crates/runner-daemon/src/master/place.rs:ensure_master`: whether a project gets a
-  master on this box now, and whether it resumes its predecessor's conversation or starts cold.
-  Core already holds the master session (`POST /api/devices/me/master-session`) and the limit
-  (`/api/devices/me/limit`); it answers *place* or *do not place, because*, and the box opens the
-  pane and reports whether a transcript exists.
-- **Retirement** — `packages/runner/crates/runner-daemon/src/master/sweep.rs:sweep`: when an idle, deaf, limited or
-  outdated master is nudged, retired or placed again. Core decides from the pass record
-  (`/master-session/pass`) and the pane facts the box reports; the box ends the pane it is told to.
 - **Recovery verdict** — `recovery::reconcile` (`packages/runner/crates/runner-daemon/src/recovery/mod.rs:reconcile`): at boot,
   whether a run the ledger names is over. The box reports the pid, pane and transcript facts; core
   takes the verdict on the run session (`/api/devices/me/run-sessions/:id`) and closes it.
@@ -131,8 +123,9 @@ amnesty, whose reason names its entry here. Each is deleted, not split, once cor
   claim-hold and revival writers, the `runner:register` switch, and the Claude Code runner's
   issue-job arms (its only job spec is chat).
 - **Decisions core should take are listed, not moved** — in *What core takes over* above. Job and
-  run idle verdicts, master placement and retirement, and the retry of a refused run declaration
-  are each made on the box today. Each needs core to take the verdict first, and then the runner side is deleted. Until then,
+  run idle verdicts and the retry of a refused run declaration are each made on the box today;
+  master placement and retirement moved to core's `POST /api/devices/me/master-session/verdict`
+  (`packages/core/src/masters/verdict.ts:masterVerdict`). Each needs core to take the verdict first, and then the runner side is deleted. Until then,
   the runner suppresses core's own job timeouts by acking a job as soon as its pane opens and
   posting progress every tick.
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them

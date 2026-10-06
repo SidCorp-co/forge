@@ -511,8 +511,6 @@ words: the record is what the next reader has.\n",
 pub(crate) enum PaneState {
     /// No master is up for this project and none could be started.
     Absent,
-    /// A pane was already running and this daemon adopted it.
-    Adopted,
     /// A pane was started with no conversation behind it.
     ColdStarted,
     /// A pane was started on the conversation its predecessor had.
@@ -591,29 +589,6 @@ fn base36(mut n: u64) -> String {
     String::from_utf8(out).expect("base-36 digits are ASCII")
 }
 
-pub(crate) fn resume_for(
-    slug: &str,
-    repo: &std::path::Path,
-    stored: Option<&str>,
-) -> Option<String> {
-    let id = stored.filter(|s| !s.is_empty())?;
-    let Some(path) = conversation_transcript(repo, id) else {
-        tracing::warn!(
-            "[master] {slug}: conversation {id} is recorded for this project but this box cannot say where a transcript for it would live — it has no home directory to look under. Starting cold, so this pane begins with no memory of what its predecessor was doing"
-        );
-        return None;
-    };
-    if path.is_file() {
-        tracing::info!("[master] {slug}: resuming conversation {id}");
-        return Some(id.to_string());
-    }
-    tracing::warn!(
-        "[master] {slug}: conversation {id} is recorded for this project but this box has no transcript for it at {} — starting cold, so this pane begins with no memory of what its predecessor was doing",
-        path.display()
-    );
-    None
-}
-
 pub(crate) fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     let dir = runner_platform::config::base_dir()
         .ok()?
@@ -690,33 +665,5 @@ pub(crate) fn transcript_at(
     match home {
         Some(h) => Some(transcript_under(h, cwd, conversation_id)),
         None => conversation_transcript(cwd, conversation_id),
-    }
-}
-
-/// Why the successor of a pane placed again could not resume its
-/// conversation, or `None` where it could: the conversation its ledger row
-/// records has a transcript where Claude Code keeps one. Placed without it, a
-/// successor starts cold and the work its predecessor was in the middle of is
-/// lost to it, which no build is worth (judge r2, plant at 17:36:18Z).
-pub(crate) fn unresumable(
-    home: Option<&std::path::Path>,
-    repo: &std::path::Path,
-    conversation: Option<&str>,
-) -> Option<String> {
-    let Some(id) = conversation.filter(|c| !c.is_empty()) else {
-        return Some(
-            "this box has recorded no conversation for it, so a successor would start cold, without what it was doing"
-                .into(),
-        );
-    };
-    match transcript_at(home, repo, id) {
-        Some(path) if path.is_file() => None,
-        Some(path) => Some(format!(
-            "its conversation {id} has no transcript at {}, so a successor could not resume it and would start cold, without what it was doing",
-            path.display()
-        )),
-        None => Some(format!(
-            "this box has no home directory to find conversation {id}'s transcript under, so a successor could not be shown to resume it"
-        )),
     }
 }

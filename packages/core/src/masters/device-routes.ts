@@ -8,6 +8,11 @@ import {
   masterPassRequestSchema,
   masterSessionRequestSchema,
 } from '@forge/contracts/master-standing';
+import {
+  MASTER_VERDICT_SHAPE,
+  type MasterVerdict,
+  masterVerdictRequestSchema,
+} from '@forge/contracts/master-verdict';
 import { Hono } from 'hono';
 import { refused } from '../lib/refusal.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -15,6 +20,7 @@ import { strictBody } from '../middleware/zod-validator.js';
 import {
   closeMasterPass,
   declareMasterSession,
+  judgeMaster,
   openMasterPass,
   recordMasterDialog,
 } from './service.js';
@@ -83,5 +89,21 @@ deviceMasterRoutes.post(
       dialog: body.dialog,
     });
     return c.json({ sessionId: body.sessionId, dialog: body.dialog });
+  },
+);
+
+deviceMasterRoutes.post(
+  '/me/master-session/verdict',
+  requireDevice(),
+  strictBody(masterVerdictRequestSchema, MASTER_VERDICT_SHAPE),
+  async (c) => {
+    const body = c.req.valid('json');
+    const verdict = await judgeMaster({
+      deviceId: c.get('device').id,
+      projectId: body.projectId,
+      runnerId: body.runnerId,
+      facts: body.facts,
+    });
+    return c.json(verdict satisfies MasterVerdict);
   },
 );

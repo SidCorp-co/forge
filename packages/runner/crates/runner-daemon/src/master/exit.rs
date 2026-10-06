@@ -106,65 +106,6 @@ pub(crate) fn record_exit(
     }
 }
 
-pub(crate) async fn retire_if_idle(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    activity: &agent_activity::Activities,
-    ledger: &mut Option<Ledger>,
-    tokens: Option<&session_tokens::SessionTokens>,
-    project_id: &str,
-    slug: &str,
-) -> bool {
-    let (Some(led), Some(idle), Some((session_id, name))) = (
-        ledger.as_ref(),
-        masters.idle_for(project_id),
-        masters.get(project_id),
-    ) else {
-        return false;
-    };
-    let kids = match master_exit::children(led, &session_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::warn!("[master] {slug}: ledger unreadable ({e}) — keeping the master");
-            return false;
-        }
-    };
-    let pane = activity.get(&session_id).map(|a| master_exit::Pane::of(&a));
-    let now_ms = agent_activity::now_ms();
-    match master_exit::verdict(idle, pane, &kids, now_ms) {
-        Verdict::Stay(why) => {
-            tracing::debug!("[master] {slug}: keeping {name}: {why:?}");
-            false
-        }
-        Verdict::Exit(quiet) => {
-            tracing::info!(
-                "[master] {slug}: idle — {} — retiring {name}",
-                quiet.reason(now_ms)
-            );
-            // Said, not swallowed. `terminal::kill` answers for the session
-            // being gone (ISS-1208), and the row is closed either way — so a
-            // pane that outlived its retirement is adopted again on the next
-            // sweep, and a reader who is not told that reads this line as the
-            // pane having ended.
-            if let Err(e) = terminal::kill(&name).await {
-                tracing::warn!(
-                    "[master] {slug}: {name} was retired as idle and tmux would not end it: {e} — its row is closed all the same and the next sweep adopts whatever is still running under that name"
-                );
-            }
-            end_master(
-                client,
-                masters,
-                tokens,
-                project_id,
-                &session_id,
-                "idle, children done",
-            )
-            .await;
-            true
-        }
-    }
-}
-
 pub(crate) async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
