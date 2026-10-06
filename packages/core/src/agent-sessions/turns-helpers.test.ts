@@ -67,6 +67,19 @@ describe('canonicalTranscript: a legacy role-shaped entry is refused, never conv
     }
   });
 
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+    'refuses `type: %s`, which only Object.prototype answers for, as no turn role',
+    (type) => {
+      const out = canonicalTranscript([user('a'), { type }]);
+      expect(out.ok).toBe(false);
+      if (!out.ok) {
+        expect(out.index).toBe(1);
+        expect(out.why).toContain(`type: "${type}"`);
+      }
+      expect(() => planTranscriptWrite([], [{ type }])).toThrow(/names no turn role/);
+    },
+  );
+
   it('refuses a transcript that is not an array', () => {
     const out = canonicalTranscript({ type: 'user' });
     expect(out).toEqual({ ok: false, index: -1, why: 'messages is object, not an array' });
