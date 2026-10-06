@@ -10,7 +10,12 @@ import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
-import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
+import {
+  dropCommentMirror,
+  mintCommentQuestion,
+  mirrorCommentRecord,
+  remirrorCommentRecord,
+} from '../issues/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
@@ -213,6 +218,9 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     if (!row) throw new Error('comment insert returned no row');
     const written = onIssue(row);
     const untyped = await mirrorCommentRecord(written, actor, t);
+    // an agent asking a person in the thread is owed an answer: the comment is that Question (ISS-260)
+    const asked =
+      context && byAnAgent && intent === 'question' ? await mintCommentQuestion(written, t) : [];
     const mentioned = context ? await recordMentions(written, context.projectId, t) : [];
     if (context && announce) {
       await emitEvent(t, 'comment.created', {
@@ -234,7 +242,13 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
         mentionedUserIds: mentioned,
       });
     }
-    const warnings = [...prepared.warnings, ...fence, ...untyped, ...(warning ? [warning] : [])];
+    const warnings = [
+      ...prepared.warnings,
+      ...fence,
+      ...untyped,
+      ...asked,
+      ...(warning ? [warning] : []),
+    ];
     return { row: written, warnings, mentioned };
   });
   return result;

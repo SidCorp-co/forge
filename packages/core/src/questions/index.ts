@@ -1,3 +1,10 @@
+export {
+  type AnsweredSince,
+  answeredHoldOf,
+  answeredSince,
+  answeredSinceSql,
+  recordAnswerResume,
+} from './answer-outcome.js';
 export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {
   holdsOpenHumanQuestion,

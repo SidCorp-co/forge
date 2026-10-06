@@ -45,6 +45,11 @@ export {
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { registerDependencyHealth } from './dependency-service.js';
+export {
+  type DesignLandingOutcome,
+  designLandingNotice,
+  markApprovedDesign,
+} from './design-landing.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
@@ -110,6 +115,7 @@ export {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from './record-events/mirror.js';
+export { mintCommentQuestion } from './record-events/question-record.js';
 export type { RecordEvent } from './record-events/store.js';
 export { mirroredEventsFor, recordOfEvent, writeRecordEvent } from './record-events/store.js';
 export { writeIssueRelations } from './relations-service.js';

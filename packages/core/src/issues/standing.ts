@@ -25,7 +25,9 @@ import type {
   IssueWithheldCode,
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { ParkAnsweredView } from '@forge/contracts/park';
 import type { WaitingOn } from '@forge/contracts/standing';
+import { answeredWait } from './answered-wait.js';
 import { landedWait } from './strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
@@ -76,6 +78,8 @@ export interface IssueStandingInput {
   runLive: boolean;
   /** An open `human` question on it (`questions/issue-coupling.ts:holdsOpenHumanQuestion`). */
   owesAnswer: boolean;
+  /** At `needs_info`: the question answered since the park, with what it said and did (ISS-258). */
+  answered?: Pick<ParkAnsweredView, 'hold' | 'resume'> | null;
   /** The move that parked it at `on_hold`: its reason, and whether a run (not a person) made it. */
   park?: { reason: string | null; byAgent: boolean } | null;
   /** A design revision drawn under it that its approver returned and nobody has redrawn. */
@@ -179,6 +183,21 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
   };
 }
 
+/** A park whose question was answered and that did not move: what it still waits on, never an answer owed. */
+function answeredParkTurn(
+  answered: Pick<ParkAnsweredView, 'hold' | 'resume'>,
+  viewer: IssueStandingInput['viewer'],
+): Turn {
+  const w = answeredWait(answered);
+  const rule = `${w.reason} ${w.who}`;
+  if (w.on === 'person') return forPerson(viewer, w.act, rule);
+  if (w.on === 'issue' && w.ref) {
+    return { group: 'stuck', waitingOn: wait('issue', w.ref, w.act, rule, w.ref) };
+  }
+  if (w.on === 'run') return { group: 'moving', waitingOn: wait('run', 'Run', w.act, rule) };
+  return { group: 'stuck', waitingOn: wait('master', 'Master', w.act, rule) };
+}
+
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
 function personTurn(input: IssueStandingInput): Turn | null {
   const { status, viewer } = input;
@@ -198,6 +217,9 @@ function personTurn(input: IssueStandingInput): Turn | null {
     if (parked) return parked;
     const r = forPerson(viewer, 'resume it', 'a person paused it; a person resumes it');
     return { group: 'paused', waitingOn: r.waitingOn };
+  }
+  if (status === 'needs_info' && !input.owesAnswer && input.answered) {
+    return answeredParkTurn(input.answered, viewer);
   }
   if (status === 'needs_info') {
     return forPerson(

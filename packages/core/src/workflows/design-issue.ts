@@ -2,10 +2,11 @@
  * The issue a design is drawn under, and what the approver's decision does to it.
  *
  * Its proposer names it (`propose { issue }`, or `issue` on a write that proposes again); absent, a revision
- * inherits it from the one it supersedes while that issue is still open. It
- * is not a build link: a build waits on the approval, the design issue owes the drawing. So a return
- * hands the drawing back to that issue — reopened where its status allows, the reason posted on it —
- * and every decision wakes the project's master, which is what makes the issue admissible work again.
+ * inherits it from the one it supersedes while that issue is still work, and is refused where it is
+ * not. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
+ * an approval records the revision as that issue's landing (its merged mark), a return hands the
+ * drawing back to it — reopened where its status allows, the reason posted on it — and every
+ * decision wakes the project's master, which is what makes the issue admissible work again.
  */
 
 import type { DesignStatus } from '@forge/contracts/design-status';
@@ -15,7 +16,12 @@ import { sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { transitionIssueStatus } from '../issues/index.js';
+import {
+  type DesignLandingOutcome,
+  designLandingNotice,
+  markApprovedDesign,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';
@@ -23,8 +29,53 @@ import type { WorkflowWriter } from './service.js';
 /** What happened to the design issue, so the decision's answer says it rather than leaving it to a guess. */
 export interface DesignIssueOutcome {
   issueId: string | null;
-  action: 'none' | 'reopened' | 'commented';
+  action: 'none' | 'reopened' | 'commented' | DesignLandingOutcome['action'];
   status: IssueStatus | null;
+  /** On an approval: the merged mark the issue carries after it, and why none was written (ISS-262). */
+  mark?: DesignLandingOutcome['mark'];
+  why?: string | null;
+}
+
+/**
+ * On an approval, the design issue's merged mark records the approved revision, in the decision's
+ * transaction (`issues/design-landing.ts`), with a notice on the issue saying so. Moves no status.
+ */
+export async function recordApprovedDesign(
+  tx: Tx,
+  input: {
+    designIssueId: string | null;
+    flow: string;
+    revision: number;
+    decider: WorkflowWriter;
+  },
+): Promise<DesignIssueOutcome> {
+  if (!input.designIssueId) return { issueId: null, action: 'none', status: null };
+  const actor = { type: 'user' as const, id: input.decider.userId, agency: input.decider.agency };
+  const landed = await markApprovedDesign(tx, {
+    issueId: input.designIssueId,
+    flow: input.flow,
+    revision: input.revision,
+    actor,
+  });
+  const body = designLandingNotice(input, landed);
+  if (body) {
+    await postIssueNotice(
+      {
+        issueId: input.designIssueId,
+        authorId: input.decider.userId,
+        body,
+        announce: { actor, authored: input.decider.agency === 'agent' ? 'agent' : 'human' },
+      },
+      tx,
+    );
+  }
+  return {
+    issueId: input.designIssueId,
+    action: landed.action,
+    status: landed.status as IssueStatus | null,
+    mark: landed.mark,
+    why: landed.why,
+  };
 }
 
 function returnedBody(args: { flow: string; revision: number; reason: string }): string {
@@ -45,23 +96,8 @@ export async function parkedAtDecision(tx: Tx, designIssueId: string | null): Pr
   return status !== undefined && PARK_STATUSES.includes(status);
 }
 
-export async function settleDesignIssue(input: {
-  projectId: string;
-  flow: string;
-  revision: number;
-  decision: DesignDecision;
-  reason: string | null;
-  designIssueId: string | null;
-  /** `parkedAtDecision`'s reading. */
-  parked: boolean;
-  decider: WorkflowWriter;
-}): Promise<DesignIssueOutcome> {
-  return input.decision === 'return'
-    ? handBack(input)
-    : { issueId: input.designIssueId, action: 'none', status: null };
-}
-
-async function handBack(input: {
+/** A return hands the drawing back to its design issue; an approval's mark is `recordApprovedDesign`'s. */
+export async function handBack(input: {
   projectId: string;
   flow: string;
   revision: number;

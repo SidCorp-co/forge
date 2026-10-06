@@ -103,12 +103,16 @@ import {
 import { provideQuestionnairePorts } from './questionnaires/index.js';
 import {
   answerDesignQuestions,
+  answeredHoldOf,
+  answeredSince,
+  answeredSinceSql,
   askParkQuestion,
   holdsOpenHumanQuestion,
   openHumanQuestionIdsOn,
   personOwesAnAnswer,
   provideQuestionPorts,
   reaskSupersededDesignQuestions,
+  recordAnswerResume,
   settleOpenQuestions,
   voidCancelledRunQuestions,
 } from './questions/index.js';
@@ -140,7 +144,8 @@ import { wakeMastersForProject } from './ws/index.js';
 /** A cited file larger than this reads as unreadable rather than as missing. */
 const OBSERVED_FILE_BYTES = 4_000_000;
 
-export function provideWorkPorts(): void {
+/** What the pipeline reads from the modules it may not import. */
+function provideWorkPipelinePorts(): void {
   providePipelinePorts({
     insertJobRow,
     wakeMastersForProject,
@@ -177,10 +182,16 @@ export function provideWorkPorts(): void {
     holdsOpenHumanQuestion,
     personOwesAnAnswer,
     voidCancelledRunQuestions,
+    answeredHoldOf,
+    recordAnswerResume,
     refreshModuleKnowledgeForIssue,
     readEffectivePolicy,
     policyRefusal,
   });
+}
+
+export function provideWorkPorts(): void {
+  provideWorkPipelinePorts();
 
   provideIssuePorts({
     projectCreatorOf,
@@ -189,6 +200,8 @@ export function provideWorkPorts(): void {
     personOwesAnAnswer,
     askParkQuestion,
     openHumanQuestionIdsOn,
+    answeredSince,
+    answeredSinceSql,
     postIssueNotice,
     messageRefusalHttp,
     readProjectDocument,

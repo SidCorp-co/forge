@@ -14,12 +14,32 @@ import { stepsOf, type WorkflowWrite } from './schema.js';
 export const DESIGN_DECISIONS = ['approve', 'return'] as const;
 export type DesignDecision = (typeof DESIGN_DECISIONS)[number];
 
-export const DESIGN_REASON_MAX = 2000;
-
 export interface DesignRefusal {
   code: DesignRefusalCode;
   path: string;
   detail: string;
+}
+
+/** The issue the revision a write supersedes was drawn under, where it is no longer work. */
+export interface LapsedDesignIssue {
+  issueId: string;
+  key: string;
+  status: string;
+}
+
+/**
+ * A write that proposes a revision and names no issue, where the one it supersedes was drawn under
+ * an issue now closed or dropped: storing none would leave a return nothing to reopen (FB-54).
+ */
+export function designIssueLapsedRefusal(
+  workflowId: string,
+  lapsed: LapsedDesignIssue,
+): DesignRefusal & { code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED' } {
+  return {
+    code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED',
+    path: '/issue',
+    detail: `this write proposes a new revision of workflow ${workflowId}'s design and names no issue, and the revision it supersedes was drawn under ${lapsed.key}, which is ${lapsed.status}, so the new one would be drawn under no issue and a return would reopen nothing. Name the issue drawing this revision with \`issue\` (beside \`baseRevision\` on a PUT); nothing was written.`,
+  };
 }
 
 /**

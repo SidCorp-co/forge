@@ -19,13 +19,18 @@ import {
   readBases,
   standingBaseRefusal,
 } from './design-bases.js';
-import { type DesignIssueOutcome, parkedAtDecision, settleDesignIssue } from './design-issue.js';
+import {
+  type DesignIssueOutcome,
+  handBack,
+  parkedAtDecision,
+  recordApprovedDesign,
+} from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
 import { answerDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
-import { assertWriter, storedWorkflow, type WorkflowWriter } from './service.js';
+import { assertWriter, drawingIssueOf, storedWorkflow, type WorkflowWriter } from './service.js';
 import {
   buildOfIssue,
   buildsOf,
@@ -139,7 +144,8 @@ export async function proposeDesign(input: {
   id: string;
   writer: WorkflowWriter;
   revision: number;
-  /** The issue the design is drawn under, by key or uuid; absent, the revision before names it. */
+  /** The issue the design is drawn under, by key or uuid; absent, the revision before names it while
+   *  that issue is still work (`service.ts:drawingIssueOf`). */
   issue?: string | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, writer, revision } = input;
@@ -173,12 +179,14 @@ export async function proposeDesign(input: {
         },
       ];
     }
+    const drawing = await drawingIssueOf(tx, { projectId, workflowId: id, named: designIssueId });
+    if ('refusal' in drawing) return [drawing.refusal];
     await insertDesign(tx, {
       workflowId: id,
       revision: row.revision,
       document: storedWorkflow(row),
       userId: writer.userId,
-      designIssueId,
+      designIssueId: drawing.issueId,
     });
     await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
     return null;
@@ -202,7 +210,12 @@ export async function decideDesignAs(input: {
   if (refusal) return { ok: false, refusals: [refusal] };
   type Decided =
     | { refusals: DesignRefusal[] }
-    | { flow: string; designIssueId: string | null; parked: boolean };
+    | {
+        flow: string;
+        designIssueId: string | null;
+        parked: boolean;
+        approved: DesignIssueOutcome | null;
+      };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -229,6 +242,16 @@ export async function decideDesignAs(input: {
       ...(decision === 'approve' ? { approvedRevision: revision } : {}),
     });
     const parked = await parkedAtDecision(tx, latest?.designIssueId ?? null);
+    // the approved revision is its design issue's deliverable: its mark records it (ISS-262)
+    const approved =
+      decision === 'approve'
+        ? await recordApprovedDesign(tx, {
+            designIssueId: latest?.designIssueId ?? null,
+            flow: row.flow,
+            revision,
+            decider,
+          })
+        : null;
     // the decision is the answer a question waiting on this revision asked for (ISS-254)
     await answerDesignQuestions(tx, {
       workflowId: id,
@@ -245,19 +268,22 @@ export async function decideDesignAs(input: {
       decision,
       issueId: latest?.designIssueId ?? null,
     });
-    return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked };
+    return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked, approved };
   });
   if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };
-  const designIssue = await settleDesignIssue({
-    projectId,
-    flow: outcome.flow,
-    revision,
-    decision,
-    reason,
-    designIssueId: outcome.designIssueId,
-    parked: outcome.parked,
-    decider,
-  });
+  // a return hands the drawing back; an approval's mark was written inside the decision
+  const designIssue =
+    decision === 'return'
+      ? await handBack({
+          projectId,
+          flow: outcome.flow,
+          revision,
+          reason,
+          designIssueId: outcome.designIssueId,
+          parked: outcome.parked,
+          decider,
+        })
+      : (outcome.approved ?? { issueId: outcome.designIssueId, action: 'none', status: null });
   return {
     ok: true,
     design: { ...(await designView(await rowIn(projectId, id), decider)), designIssue },

@@ -78,10 +78,30 @@ as for `merged_at`; a `200` that kept the old landing while the caller was told 
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
 
+## What a design approval writes
+
+A workflow design revision drawn under an issue is that issue's deliverable, so approving it is where
+the work landed. `decideDesignAs` (`packages/core/src/workflows/design-service.ts`) records it in the
+decision's own transaction through `markApprovedDesign` (`packages/core/src/issues/design-landing.ts`),
+whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`:
+
+| shape | the row holds | the approval |
+|---|---|---|
+| `outside_git` | no mark, or a mark somebody's word wrote (`asserted`, `landed`) | stamps `merged_at` and sets `merged_landing` to the approved revision — `repointed` where a mark stood, the landing it replaced named in the notice it posts |
+| `outside_git` | a merge Forge `observed` | keeps it |
+| `git` | no mark | stamps `merged_at` (`asserted`: a git mark names no revision; the notice names it) |
+| `git` | any mark | keeps it |
+
+A dropped or archived issue, and a project with no project document, are not marked; the decision's
+answer says which (`designIssue.action` `none` with its `why`). This is the one place a mark standing
+on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
+propose names a revision that was not yet approved, and the approval is better evidence than that
+word (ISS-262). Like every mark it moves no status.
+
 ## What a mark does to the issue
 
-Nothing beyond the record. Recording a landing — a mark on either door, or the source host's merge
-webhook — writes the merge columns and moves no status and no hold (owner decision 2026-10-04,
+Nothing beyond the record. Recording a landing — a mark on either door, a design approval, or the
+source host's merge webhook — writes the merge columns and moves no status and no hold (owner decision 2026-10-04,
 workflow `issue-lifecycle` rev 8). The run that holds the issue moves it `in_progress` →
 `awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and the
 verdicts the project's `delivery.verdictsRequired` asks for; when the run ends without doing so, the

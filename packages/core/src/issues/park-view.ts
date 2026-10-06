@@ -2,7 +2,13 @@
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
 import { AWAITING_INPUT_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
-import type { IssuePark, ParkOwes, ParkResume, ParkThreadQuestion } from '@forge/contracts/park';
+import type {
+  IssuePark,
+  ParkAnsweredView,
+  ParkOwes,
+  ParkResume,
+  ParkThreadQuestion,
+} from '@forge/contracts/park';
 import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -14,7 +20,7 @@ import {
 } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
-import { openHumanQuestionIdsOn } from './ports.js';
+import { answeredSince, openHumanQuestionIdsOn } from './ports.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
 import { announcesAMove } from './transition-reason.js';
 
@@ -56,6 +62,8 @@ interface ParkInput {
   /** Comments after the boundary that could be a person's reply, oldest first. */
   replies?: readonly ParkComment[];
   openHumanQuestionIds: readonly string[];
+  /** The question row answered since the park was entered, where one was (ISS-258). */
+  answered?: ParkAnsweredView | null;
 }
 
 /**
@@ -117,6 +125,7 @@ function readPark(input: ParkInput): IssuePark | null {
     if (question) readings = question.filter((f) => f.key === 'reading').map((f) => f.value);
   }
   const view: Omit<IssuePark, 'asks' | 'threadQuestion'> = {
+    answered: parked ? (input.answered ?? null) : null,
     shape: parked ? 'park' : 'question',
     status: input.status,
     owes: parked ? owesOf(input.waitingKind) : 'information',
@@ -153,7 +162,9 @@ function threadQuestionOf(
   park: Omit<IssuePark, 'asks' | 'threadQuestion'>,
 ): ParkThreadQuestion | null {
   if (park.shape !== 'park' || park.status !== 'needs_info') return null;
-  if (park.openQuestionIds.length > 0) return null;
+  // a question row carried the ask, open or answered since the park: the reason is no second
+  // question owed in the thread (ISS-258, where an answered row read as an unanswered park)
+  if (park.openQuestionIds.length > 0 || park.answered !== null) return null;
   const prompt = park.reason ?? park.record?.why ?? null;
   if (!prompt && park.readings.length === 0) return null;
   const why = park.record?.why && park.record.why !== prompt ? park.record.why : null;
@@ -234,6 +245,8 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     .where(eq(issueWorkState.issueId, issueId))
     .limit(1);
   const boundary = boundaryOf(moves);
+  const entered = moves[0]?.to === status ? moves[0].at : boundary;
+  const answered = await answeredSince(db, issueId, entered);
   const asEntry = (r: RecordEntry): ParkComment => ({
     id: r.id,
     body: '',
@@ -269,5 +282,6 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     comments: records.map(asEntry),
     replies,
     openHumanQuestionIds,
+    answered,
   });
 }

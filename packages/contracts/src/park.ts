@@ -1,4 +1,5 @@
 import type { IssueStatus } from "./issue-machine.js";
+import type { AnswerHold, AnswerResume } from "./questions.js";
 
 export type ParkOwes = "information" | "decision" | "resource";
 
@@ -40,6 +41,18 @@ export interface IssuePark {
   asks: boolean;
   /** The question a `needs_info` park asked only in the thread; null where a question row carries it. */
   threadQuestion: ParkThreadQuestion | null;
+  /** The question row answered since this park, with what the answer said and did; null where none was. */
+  answered: ParkAnsweredView | null;
+}
+
+/** An answered question row on a park the answer did not end (ISS-258). */
+export interface ParkAnsweredView {
+  questionId: string;
+  answeredAt: string;
+  /** What the answer said the issue still waits on (ISS-257). */
+  hold: AnswerHold | null;
+  /** What the answer did to the park; null where nothing recorded it. */
+  resume: AnswerResume | null;
 }
 
 /** One reading the run wrote, `reading -> outcome`, split into the choice and where it leads. */

@@ -28840,7 +28840,7 @@
                   "reason": {
                     "anyOf": [
                       {
-                        "maxLength": 2000,
+                        "maxLength": 4000,
                         "type": "string"
                       },
                       {
@@ -32407,6 +32407,23 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "stillWaits": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "blockedBy": {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 1000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reason"
+                    ],
+                    "type": "object"
                   },
                   "text": {
                     "type": "string"

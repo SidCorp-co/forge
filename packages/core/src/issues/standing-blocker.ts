@@ -4,6 +4,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { IssueBlocker, IssueEdgeRef } from '@forge/contracts/issue-standing';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { IssuePark, ParkOwes } from '@forge/contracts/park';
+import { answeredWait } from './answered-wait.js';
 import type { PipelineReading } from './pipeline-health-types.js';
 
 const PARK_OWES: Record<ParkOwes, { reason: string; who: string }> = {
@@ -72,6 +73,22 @@ function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlock
     );
   }
   const at = park.resume.at;
+  if (park.answered) {
+    const wait = answeredWait(park.answered);
+    const act =
+      wait.on === 'issue' ? OPEN_BLOCKER : wait.on === 'person' && at ? resumeAct(at) : NO_ACT;
+    return blocker(
+      {
+        tone: wait.on === 'person' ? 'attention' : 'info',
+        reason: wait.reason,
+        whoMustAct: wait.who,
+        act,
+        ...(act.kind === 'resume_park' && at ? { resumeAt: at } : {}),
+        ...(wait.on === 'person' && !at ? { detail: NOTHING_TO_RESUME_AT } : {}),
+      },
+      refs,
+    );
+  }
   if (at) {
     return blocker(
       {
