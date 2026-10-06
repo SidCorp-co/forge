@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.41] - 2026-10-06
+
+Outbox admits every event type; refusals name their code to every forge client
+
+
 ### Fixed
 
 - **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
