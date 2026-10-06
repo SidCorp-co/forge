@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.38] - 2026-10-06
+
+Master state tells the truth, and an aborted release keeps its version
+
+
 ### Fixed
 
 - **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
