@@ -2091,12 +2091,17 @@ async fn release_held_tree(
             why,
             first,
             standing_secs: _,
+            while_its_agent_lives,
         }) => {
             if first {
+                let until = if while_its_agent_lives {
+                    "for as long as that agent lives, and its leases stay out meanwhile because the checkout is its work".to_string()
+                } else {
+                    format!("for the next {}s", terminate::RELEASE_GRACE_SECS)
+                };
                 tracing::warn!(
-                    "[master] run {} could not be released: {why} — trying again each sweep for the next {}s",
-                    r.run_id,
-                    terminate::RELEASE_GRACE_SECS
+                    "[master] run {} could not be released: {why} — trying again each sweep {until}",
+                    r.run_id
                 );
             }
             false

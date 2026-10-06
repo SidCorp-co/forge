@@ -541,6 +541,9 @@ pub enum Release {
         why: String,
         first: bool,
         standing_secs: i64,
+        /// The refusal is a live agent in the checkout, which no window
+        /// decides: it is retried for as long as that agent lives.
+        while_its_agent_lives: bool,
     },
     /// Refused for longer than any retry can help. The leases are back, the run
     /// is over, and the checkout is still on disk with nobody's permission to
@@ -599,17 +602,12 @@ pub async fn release(
             let why = e.to_string();
             let refusal = ledger.note_release_refusal(run_id, &why, now_secs)?;
             let standing_secs = now_secs - refusal.since;
-            let after = if standing_secs >= RELEASE_GRACE_SECS {
-                Decided::ByTheWindow { standing_secs }
-            } else if refusal.attempts >= RELEASE_ATTEMPT_BOUND {
-                Decided::ByTheAttempts {
-                    attempts: refusal.attempts,
-                }
-            } else {
+            let Some(after) = decided(&e, standing_secs, refusal.attempts) else {
                 return Ok(Release::Refusing {
                     why,
                     first: refusal.opened_the_streak,
                     standing_secs,
+                    while_its_agent_lives: matches!(e, Error::AgentInTree(_)),
                 });
             };
             // The leases first and the decision second: a run ended over a
@@ -626,6 +624,29 @@ pub async fn release(
             ledger.conclude_release_refusal(run_id, now_secs, what.by, &why)?;
             Ok(Release::Terminal { why, after, close })
         }
+    }
+}
+
+/// Which bound decides a refusal `refused` that has stood `standing_secs`
+/// over `attempts` attempts, or none while it is retried.
+///
+/// A live agent's process in the checkout is never decided (ISS-1390 E1,
+/// ISS-1378 judging 8012bc54 #1). Decided at the window, it was concluded as
+/// permanent: `Ledger::held_worktrees` then kept the tree from the sweep, and
+/// only a hand `run release` moved it, while each attempt's line said the
+/// directory stayed for the next sweep. The cause ends when the agent does, so
+/// the release is retried until then and that line is true.
+// cm:guard the price of retrying: the run's leases stay out while an agent lives in its checkout, which is the agent's work; an agent that never leaves holds them until somebody ends it, and the first refusal's line names its pid so that somebody can.
+fn decided(refused: &Error, standing_secs: i64, attempts: i64) -> Option<Decided> {
+    if matches!(refused, Error::AgentInTree(_)) {
+        return None;
+    }
+    if standing_secs >= RELEASE_GRACE_SECS {
+        Some(Decided::ByTheWindow { standing_secs })
+    } else if attempts >= RELEASE_ATTEMPT_BOUND {
+        Some(Decided::ByTheAttempts { attempts })
+    } else {
+        None
     }
 }
 
@@ -650,6 +671,31 @@ pub struct Ports<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISS-1390 E1 (ISS-1378 judging 8012bc54 #1): a refusal whose cause is
+    /// a live agent in the checkout is retried for as long as the agent lives,
+    /// whatever the window or the attempts say, and every other refusal is
+    /// still decided by them.
+    #[test]
+    fn a_live_agents_refusal_is_never_decided_and_any_other_still_is() {
+        let past = (RELEASE_GRACE_SECS, RELEASE_ATTEMPT_BOUND);
+        let agent = Error::AgentInTree("a live agent".into());
+        let other = Error::Other("a lock".into());
+        assert_eq!(decided(&agent, past.0, past.1), None);
+        assert_eq!(decided(&agent, 10 * RELEASE_GRACE_SECS, 1), None);
+        assert_eq!(
+            decided(&other, past.0, 1),
+            Some(Decided::ByTheWindow {
+                standing_secs: past.0
+            })
+        );
+        assert_eq!(
+            decided(&other, 0, past.1),
+            Some(Decided::ByTheAttempts { attempts: past.1 })
+        );
+        assert_eq!(decided(&other, past.0 - 1, past.1 - 1), None);
+    }
+
     use crate::runner::ledger::NewRun;
     use std::collections::HashSet;
     use std::path::PathBuf;
