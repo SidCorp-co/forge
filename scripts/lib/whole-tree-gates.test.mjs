@@ -319,6 +319,20 @@ describe('what a run owes after it listed the root', () => {
     expect(gone).toContain('2 listing(s) it made');
   });
 
+  it('names its own globs as what would pass unjudged when it listed nothing (j14)', () => {
+    const why = unjudgedVerdict({
+      file: WALKER_PATH,
+      why: 'its source could not be read (ENOENT)',
+      hits: [hit(`${ROOT}/packages`)],
+      root: ROOT,
+    });
+    expect(why).not.toMatch(/\d+ listing\(s\)/);
+    expect(why).toContain(
+      '; it made no listing covering the repository root, but whatever those calls list would pass unjudged;',
+    );
+    expect(why).toContain('its own `import.meta.glob` calls');
+  });
+
   it('does not take a declaration with a wrong value as a declaration', () => {
     const source = declared('wholetree');
     expect(guardVerdict({ file: WALKER_PATH, source, hits: [hit(ROOT)], root: ROOT })).toContain(
@@ -630,6 +644,59 @@ describe('the guard installed in this very run', () => {
     } finally {
       process.env[LOG_ENV] = saved;
     }
+    expect(childLines().map((l) => l.via)).toEqual([inWorker, inWorker]);
+  });
+
+  /** A worker file that starts `inner` as a worker and posts back what it posts. */
+  const nesting = (inner, options = '{}') =>
+    `import { Worker, parentPort } from 'node:worker_threads'; const w = new Worker(${JSON.stringify(inner)}, ${options}); w.once('message', (m) => parentPort.postMessage(m)); w.once('error', (e) => { throw e; });`;
+  /** `src` written to a file of its own; the caller removes `dir`. */
+  const written = (dir, name, src) => {
+    const file = join(dir, name);
+    writeFileSync(file, src);
+    return file;
+  };
+  const answer = (file, options) =>
+    new Promise((done, fail) => {
+      const w = new Worker(file, options);
+      w.once('message', done);
+      w.once('error', fail);
+    });
+
+  it('lets a worker started inside a watched worker run with the preload once, counting nothing it did not list (j14 c3, c4)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-nested-'));
+    try {
+      const argv = written(
+        dir,
+        'argv.mjs',
+        "import { parentPort } from 'node:worker_threads'; parentPort.postMessage(process.execArgv);",
+      );
+      const pkg = written(
+        dir,
+        'pkg.mjs',
+        `import { readdirSync } from 'node:fs'; import { parentPort } from 'node:worker_threads'; parentPort.postMessage(readdirSync(${JSON.stringify(join(REPO, 'scripts'))}));`,
+      );
+      const execArgv = await answer(written(dir, 'outer-argv.mjs', nesting(argv)));
+      expect(execArgv.filter((a) => a.includes('whole-tree-child.mjs'))).toHaveLength(1);
+      expect(await answer(written(dir, 'outer-pkg.mjs', nesting(pkg)))).toContain('lib');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(vias()).toEqual([]);
+    expect(childLines()).toEqual([]);
+  });
+
+  it('still sees a worker started inside a watched worker list the root, with its env or none (j14 n1)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-nested-'));
+    const root = `import { readdirSync } from 'node:fs'; import { parentPort } from 'node:worker_threads'; parentPort.postMessage(readdirSync(${JSON.stringify(REPO)}));`;
+    try {
+      const inner = written(dir, 'root.mjs', root);
+      await answer(written(dir, 'outer.mjs', nesting(inner)));
+      await answer(written(dir, 'outer-env.mjs', nesting(inner, '{ env: {} }')), { env: {} });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(vias()).toEqual([]);
     expect(childLines().map((l) => l.via)).toEqual([inWorker, inWorker]);
   });
 
