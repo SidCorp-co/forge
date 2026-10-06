@@ -9,6 +9,24 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.74] - 2026-10-06
+
+Design revisions drawn under live issues, longer return reasons, runner stop refusals
+
+### Added
+
+- **A runner box now refuses a run's stop while it leaves work behind.** The run is held while its issue has nothing written since it was taken, its worktree is dirty, or a process it started still runs.
+
+### Changed
+
+- **A design return reason can be as long as a decision.** Approve and return reasons now take up to 4,000 characters, the same limit as decision comments and requirement decisions.
+
+### Fixed
+
+- **A design revision is always drawn under a live issue.** A write proposing a new revision without naming an issue is refused by name when the previous revision's issue is closed or dropped, so returns reach the right issue.
+- **Approving a design records it on the issue that drew it.** That issue's merged mark now names the approved revision, replacing a mark that named only the proposed one, so the next release closes it on true evidence.
+- **`forge-runner api` returns downloads byte for byte, and `run` verbs accept a run's first eight characters.** The run brief also labels each tree's issues and branch, and `api --help` says `-F` posts.
+
 ## [0.4.0-dev.73] - 2026-10-06
 
 Answered questions say what an issue still waits on; agent question comments become Questions
