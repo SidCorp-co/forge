@@ -31,11 +31,11 @@ export const MASTER_PASS_REFUSAL_REASONS = [
 ] as const;
 
 /**
- * How a pass ended, as the box that closed it judged it: `turn_ended` its turn ran and ended;
- * `abandoned_quiet` its master said nothing for the quiet bound; `abandoned_restart` the daemon that
- * opened it restarted; `abandoned_orphan` core held it open with no record on the box;
- * `session_gone` its master session is no longer the box's; `unrecorded` the box could not record the
- * open, so it closed it at once. A pass closed by a runner that predates the field reads `null`.
+ * How a pass ended, as core judged it from the box's facts (`masters/pass-end.ts:passEnd`):
+ * `turn_ended` its turn ran and ended; `abandoned_quiet` its master said nothing for the quiet bound;
+ * `abandoned_restart` the daemon that opened it restarted; `abandoned_orphan` core held it open with
+ * no record on the box; `session_gone` its master session is no longer the box's; `unrecorded` the box
+ * could not record the open. A pass closed before core stored a reason reads `null`.
  */
 export const MASTER_PASS_CLOSE_REASONS = [
 	"turn_ended",
@@ -63,7 +63,6 @@ const MASTER_REFUSAL_CODES = [
 	"MASTER_PASS_ALREADY_OPEN",
 	"MASTER_PASS_NOT_OPEN",
 	"MASTER_SESSION_ENDED",
-	"MASTER_PASS_REFUSED_WITH_WORK",
 ] as const;
 export type MasterRefusalCode = (typeof MASTER_REFUSAL_CODES)[number];
 
@@ -91,17 +90,67 @@ export const MASTER_SESSION_SHAPE = `{ projectId: uuid, name: string (1-120), ma
 
 const passItem = z.string().trim().min(1).max(MASTER_PASS_ITEM_MAX);
 
-export const masterPassSkipSchema = z.strictObject({
-	issueKey: z.string().trim().min(1).max(MASTER_ISSUE_KEY_MAX),
-	refusal: z.string().trim().min(1).max(MASTER_PASS_REFUSAL_MAX),
-});
-export type MasterPassSkip = z.infer<typeof masterPassSkipSchema>;
+/** An issue a pass named and did not dispatch, with the refusal that stopped it. */
+export interface MasterPassSkip {
+	issueKey: string;
+	refusal: string;
+}
 
 export const masterPassRefusalSchema = z.strictObject({
 	reason: z.enum(MASTER_PASS_REFUSAL_REASONS),
 	detail: z.string().trim().min(1).max(MASTER_PASS_REFUSAL_MAX),
 });
 export type MasterPassRefusal = z.infer<typeof masterPassRefusalSchema>;
+
+/**
+ * Who opened the pass the box holds, as the box knows it: this daemon process; one before it, whose
+ * hook counts the pass was measured against are gone; core, which named it held open when the box
+ * asked to open one (`adopted`); or this process, which could not record core's answer
+ * (`unrecorded`).
+ */
+export const MASTER_PASS_OPENERS = [
+	"this_daemon",
+	"earlier_daemon",
+	"adopted",
+	"unrecorded",
+] as const;
+
+const AGE_MS_MAX = 10 * 365 * 24 * 60 * 60_000;
+const ageMs = z.number().int().min(0).max(AGE_MS_MAX);
+
+/** What the box holds about one open pass, for core to judge whether and how it ended. */
+export const masterPassFactsSchema = z.strictObject({
+	openedBy: z.enum(MASTER_PASS_OPENERS),
+	/** Whether the box still serves the project under the session the pass opened in. */
+	served: z.boolean(),
+	openedAgoMs: ageMs,
+	/** What the pane's hooks report since; null where its session has reported nothing. */
+	hooks: z
+		.strictObject({
+			/** Turns its lead began beyond the count the pass was opened at. */
+			turnsSinceOpen: z.number().int().min(0).max(100_000),
+			/** Since the newest turn began; null where none has. */
+			turnBeganAgoMs: ageMs.nullable(),
+			doing: z.enum([
+				"idle",
+				"working",
+				"awaiting_permission",
+				"awaiting_children",
+			]),
+			lastEventAgoMs: ageMs,
+		})
+		.nullable(),
+	/** Since its conversation was last written, children's included; null where it cannot be read. */
+	writtenAgoMs: ageMs.nullable(),
+	/** The issues runs its session declared since it opened. */
+	dispatched: z.array(passItem).max(MASTER_PASS_LIST_MAX),
+	/** What the conversation's own records say since it opened: whether the account answered, and its newest refusal. */
+	record: z.strictObject({
+		worked: z.boolean(),
+		refusal: masterPassRefusalSchema.nullable(),
+	}),
+});
+export type MasterPassFacts = z.infer<typeof masterPassFactsSchema>;
 
 export const masterPassRequestSchema = z.discriminatedUnion("op", [
 	z.strictObject({
@@ -118,19 +167,13 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 		trigger: z.enum(MASTER_PASS_TRIGGERS).optional(),
 	}),
 	z.strictObject({
-		op: z.literal("close"),
+		op: z.literal("settle"),
 		sessionId: z.uuid(),
 		passId: z.uuid(),
-		dispatched: z.array(passItem).max(MASTER_PASS_LIST_MAX),
-		skipped: z.array(masterPassSkipSchema).max(MASTER_PASS_LIST_MAX),
-		parked: z.array(passItem).max(MASTER_PASS_LIST_MAX),
-		refused: masterPassRefusalSchema.nullable().optional(),
-		// Priced amnesty: optional only because a runner older than this sends none, which is stored as
-		// null and read as unstated; it ends once every paired runner sends it.
-		closeReason: z.enum(MASTER_PASS_CLOSE_REASONS).optional(),
+		facts: masterPassFactsSchema,
 	}),
 ]);
-export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[], refused?: { reason: ${MASTER_PASS_REFUSAL_REASONS.join(" | ")}, detail } | null (a refused pass reports no work), closeReason?: ${MASTER_PASS_CLOSE_REASONS.join(" | ")} }`;
+export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "settle", sessionId: uuid, passId: uuid (the id the open answered), facts: { openedBy: ${MASTER_PASS_OPENERS.join(" | ")}, served, openedAgoMs, hooks, writtenAgoMs, dispatched, record } } — see @forge/contracts/master-standing masterPassFactsSchema`;
 
 /** A dialog the master's pane stopped on, as the runner read it; `null` clears it. */
 export const masterDialogRequestSchema = z.strictObject({
@@ -176,7 +219,7 @@ export interface MasterClosedPass extends MasterOpenPass {
 	parked: string[];
 	/** Set when the pass's turn was refused before it ran; such a pass is never idle. */
 	refused: MasterPassRefusal | null;
-	/** How the box judged it ended; null when the runner that closed it predates the field. */
+	/** How core judged it ended; null on a pass closed before core stored a reason. */
 	closeReason: MasterPassCloseReason | null;
 }
 
@@ -184,6 +227,11 @@ export type MasterPassView = MasterOpenPass | MasterClosedPass;
 
 export interface MasterPassResponse {
 	pass: MasterPassView;
+}
+
+/** What a settle answered: the pass, closed where core judged it ended, and why it stands or ended. */
+export interface MasterPassSettleResponse extends MasterPassResponse {
+	because: string;
 }
 
 export interface MasterSessionResponse {

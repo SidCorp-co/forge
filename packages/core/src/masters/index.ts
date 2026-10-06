@@ -1,1 +1,1 @@
-export {};
+export { provideMastersPorts } from './ports.js';

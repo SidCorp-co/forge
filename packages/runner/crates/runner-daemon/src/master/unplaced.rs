@@ -13,46 +13,25 @@ pub(crate) enum Served {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Unplaced {
-    /// The runner row refuses new work, so this sweep placed no pane for it.
-    Draining {
-        status: String,
-    },
-    /// This daemon is inside a handover's closing window, so it admits no new
-    /// work for any project for the seconds that takes (ISS-1379).
-    Restarting {
-        cause: String,
-    },
     /// Core serves this project to this box but nothing here says where the
     /// checkout is.
     NoRepoPath,
-    /// This box has no terminal multiplexer, so it can host no master at all.
-    NoTerminal,
-    /// Core refused the registration this pane's identity comes from.
+    /// Core refused the registration this pane's identity comes from. `pane`
+    /// is the pane already running unregistered, where the refusal met one.
     RegisterFailed {
         detail: String,
+        pane: Option<String>,
     },
     /// The pane could not be given the skill it runs on, so none was started.
-    SkillMissing {
-        detail: String,
-    },
-    NothingAdmissible,
-    /// An owner stood this project's master down, so this box places none
-    /// until somebody stands it up again (ISS-1118).
-    ///
-    /// `pane` is the session running against that stand-down, where one is.
-    /// It is part of the value rather than a second map because the two states
-    /// are two different things to tell an operator, and a value that cannot
-    /// tell them apart cannot report the move from one to the other either.
+    SkillMissing { detail: String },
+    /// An owner stood this project's master down while this box was placing
+    /// its pane, so the pane was withdrawn (ISS-1118). `pane` is the session
+    /// still running against that stand-down, where tmux would not end it.
     StoodDown {
         by: String,
         why: Option<String>,
         slug: String,
         pane: Option<String>,
-    },
-    /// This box could not read whether its owner stood this project down, so
-    /// it placed nothing rather than deciding it was driving.
-    StandingUnreadable {
-        detail: String,
     },
     /// A pane is up for this project and this box cannot hear it: the
     /// capability it holds names a session core has since replaced, so every
@@ -70,17 +49,12 @@ pub(crate) enum Unplaced {
     /// kill-session` is the right remedy HERE and the wrong one on
     /// `forge-runner master status`, where the reader is an operator in a shell
     /// of their own and the runner's socket is not the default server.
-    StaleCapability {
-        session: String,
-        pane: String,
-    },
+    StaleCapability { session: String, pane: String },
     /// Core could not be asked which MCP servers this project declares, so no
     /// pane was started: one started now would carry none of them and no
     /// record would say why (ISS-1235). `detail` names the route and what it
     /// met.
-    ServersUnreadable {
-        detail: String,
-    },
+    ServersUnreadable { detail: String },
     /// The project declares MCP servers and the file handing them to a pane
     /// could not be written into `dir`, so no pane was started for the same
     /// reason. `dir` is what an operator has to make writable.
@@ -91,63 +65,30 @@ pub(crate) enum Unplaced {
     /// Everything before the pane was in place and the capability it would
     /// carry could not be minted, so no pane was started: one without it has
     /// every declaration refused.
-    CapabilityUnminted {
-        detail: String,
-    },
+    CapabilityUnminted { detail: String },
     /// Everything was in place and tmux did not start the pane.
-    PaneUnstarted {
-        detail: String,
-    },
-    /// The pane last placed for this project resumed its conversation and
-    /// exited, printing that Claude Code runs that conversation as a
-    /// background session under the id `short`; `pid` is a process on this
-    /// box naming it now. A pane placed again would exit the same way
-    /// (ISS-1312, F1).
-    ConversationElsewhere {
-        conversation: String,
-        short: Option<String>,
-        pid: u32,
-    },
-    /// As [`Unplaced::ConversationElsewhere`], where this box could not read
-    /// its process table to tell whether a process still names that
-    /// conversation. Not knowing is not its end (ISS-1312, F1).
-    ConversationUnaskable {
-        conversation: String,
-        short: Option<String>,
-    },
-    /// Core withheld a pane for a reason this build has no record of its own
-    /// for, said as core said it (ADR 0009, What core takes over: Placement).
+    PaneUnstarted { detail: String },
+    /// Core withheld a pane, or left a running one undriven, said as core said
+    /// it (ADR 0009, What core takes over: Placement). `pane` is the one left
+    /// running, where core left one.
     Withheld {
         reason: String,
         because: String,
+        pane: Option<String>,
     },
     /// Core could not be asked what to do about this project's master, so the
     /// box placed, ended and nudged nothing: it holds no answer of its own.
-    VerdictUnanswered {
-        detail: String,
-    },
+    VerdictUnanswered { detail: String },
 }
 
 impl std::fmt::Display for Unplaced {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Draining { status } => write!(
-                f,
-                "this box's runner for it is `{status}`, so it starts no work and places no master until that changes"
-            ),
-            Self::Restarting { cause } => write!(
-                f,
-                "this box is handing over to a new build ({cause}), so it starts no work and places no master for any project for the seconds that takes; the new build does"
-            ),
             Self::NoRepoPath => write!(
                 f,
                 "core serves it to this box but nothing here says where its checkout is — bind it, or set the runner's repo_path"
             ),
-            Self::NoTerminal => write!(
-                f,
-                "this box has no tmux, so it can host no master pane for any project"
-            ),
-            Self::RegisterFailed { detail } => write!(
+            Self::RegisterFailed { detail, .. } => write!(
                 f,
                 "core refused this box's master registration for it: {detail}"
             ),
@@ -155,20 +96,12 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "the forge-master skill could not be installed into its checkout: {detail}"
             ),
-            Self::NothingAdmissible => write!(
-                f,
-                "it has nothing claimable and no pane of its own running, so this box started none"
-            ),
             Self::StoodDown {
                 by,
                 why,
                 slug,
                 pane,
             } => stood_down_said(f, by, why.as_deref(), slug, pane.as_deref()),
-            Self::StandingUnreadable { detail } => write!(
-                f,
-                "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
-            ),
             Self::ServersUnreadable { detail } => write!(
                 f,
                 "this box could not read which MCP servers this project declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
@@ -187,29 +120,16 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
             ),
-            Self::ConversationElsewhere {
-                conversation,
-                short,
-                pid,
-            } => write!(
-                f,
-                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session{}, and process {pid} on this box names it now. A pane placed again would exit the same way, so none is placed while a process names that conversation. {WAITS_NOT_FORKS} {}, and once no process names it a pane resuming it is placed on the next sweep whose other gates admit one",
-                short_said(short.as_deref()),
-                pane_exit::remedy(conversation, short.as_deref())
-            ),
-            Self::ConversationUnaskable {
-                conversation,
-                short,
-            } => write!(
-                f,
-                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session{}, and this box cannot read its process table to tell whether one still does. A pane placed again would exit the same way while it does, so none is placed until a sweep reads the whole table and finds no process naming it, or this daemon restarts and forgets the exit. {WAITS_NOT_FORKS} {}",
-                short_said(short.as_deref()),
-                pane_exit::remedy(conversation, short.as_deref())
-            ),
-            Self::Withheld { reason, because } => write!(
-                f,
-                "core withheld a master for it ({reason}): {because}"
-            ),
+            Self::Withheld {
+                reason,
+                because,
+                pane: None,
+            } => write!(f, "core withheld a master for it ({reason}): {because}"),
+            Self::Withheld {
+                reason,
+                because,
+                pane: Some(_),
+            } => write!(f, "core leaves it running and undriven ({reason}): {because}"),
             Self::VerdictUnanswered { detail } => write!(
                 f,
                 "core could not be asked what to do about its master ({detail}), so this box placed, ended and nudged nothing — it decides none of that itself. The next sweep whose verdict reads acts on it"
@@ -253,60 +173,43 @@ fn stood_down_said(
                 }
 }
 
-/// Why a held conversation is waited out rather than forked, said wherever
-/// the wait is.
-// the deliberate choice ISS-1343 asks to be named. `--fork-session` would start a pane at once, and as a second conversation for this project while the first still runs as a background session that can still claim, dispatch and write; two masters for one project is the failure this box is built to prevent, so it waits and says so.
-pub(crate) const WAITS_NOT_FORKS: &str = "This box waits for that session to end rather than starting a pane with `--fork-session`: a fork is a second conversation for this project while the first still runs and can still act.";
-
-/// The short id a background-session refusal printed, as a parenthesis.
-pub(crate) fn short_said(short: Option<&str>) -> String {
-    short.map(|s| format!(" ({s})")).unwrap_or_default()
-}
-
 impl Unplaced {
-    /// What to say before the reason.
-    ///
-    /// Every reason but one is a report that no pane was placed. The
-    /// contradiction is a report that one IS running and this box will not
-    /// drive it, and leading that with "no master pane placed" states the
-    /// opposite of what an operator finds on the box (ISS-1118 criterion 20).
-    pub(crate) fn lead(&self) -> String {
+    /// The pane running for the project as this reason was met, where one is.
+    fn pane(&self) -> Option<&str> {
         match self {
-            Self::StoodDown {
-                pane: Some(pane), ..
-            } => format!("{pane} is RUNNING and this box is not driving it"),
-            Self::StaleCapability { pane, .. } => {
-                format!("{pane} is RUNNING and this box cannot be heard by it")
-            }
-            _ => "no master pane placed".to_string(),
+            Self::StoodDown { pane, .. }
+            | Self::RegisterFailed { pane, .. }
+            | Self::Withheld { pane, .. } => pane.as_deref(),
+            Self::StaleCapability { pane, .. } => Some(pane),
+            _ => None,
         }
     }
 
-    /// Whether this is a state an operator has to act on before the box's two
-    /// answers agree.
+    /// What to say before the reason: one rule, read off whether a pane runs.
     ///
-    /// A pane running against a stand-down is the nine-hour silence ISS-1118
-    /// was filed over; a standing this box could not read is a box that cannot
-    /// say what it is doing; a pane whose capability is stale is the four-hour
-    /// silence ISS-1099 was filed over, and no sweep resolves it. The four that
-    /// refuse a start the project wanted — its servers unreadable or
-    /// unwritable, its capability unminted, its pane unstarted — leave it with
-    /// no master for a fault on this box. Everything else here is a pane absent
-    /// for a reason the box is content with.
+    /// "no master pane placed" in front of a pane that is running states the
+    /// opposite of what an operator finds on the box, and the reflex it buys is
+    /// a daemon restart during live work (ISS-1118 criterion 20, ISS-1233).
+    pub(crate) fn lead(&self) -> String {
+        match self.pane() {
+            Some(pane) => format!("{pane} is RUNNING and this box is not driving it"),
+            None => "no master pane placed".to_string(),
+        }
+    }
+
+    /// Whether an operator has to act before the box's two answers agree: a
+    /// pane running undriven, or a start the project wanted refused by a fault
+    /// on this box. Everything else is a pane absent for a reason core gave.
     pub(crate) fn is_error(&self) -> bool {
-        matches!(
-            self,
-            Self::StoodDown { pane: Some(_), .. }
-                | Self::StandingUnreadable { .. }
-                | Self::StaleCapability { .. }
-                | Self::ServersUnreadable { .. }
-                | Self::ServersUnwritable { .. }
-                | Self::CapabilityUnminted { .. }
-                | Self::PaneUnstarted { .. }
-                | Self::ConversationElsewhere { .. }
-                | Self::ConversationUnaskable { .. }
-                | Self::VerdictUnanswered { .. }
-        )
+        self.pane().is_some()
+            || matches!(
+                self,
+                Self::ServersUnreadable { .. }
+                    | Self::ServersUnwritable { .. }
+                    | Self::CapabilityUnminted { .. }
+                    | Self::PaneUnstarted { .. }
+                    | Self::VerdictUnanswered { .. }
+            )
     }
 }
 

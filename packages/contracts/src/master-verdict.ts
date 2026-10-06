@@ -3,6 +3,7 @@
 // keep, leave, replace, retire or withhold, and the box opens or ends the pane it is told to.
 
 import { z } from "zod";
+import { runSubagentSchema } from "./run-verdict.js";
 
 /** How long a master must have had no work, no turn and no child close before it is retired. */
 export const MASTER_IDLE_BEFORE_RETIRE_SECONDS = 60 * 60;
@@ -15,6 +16,11 @@ const TEXT_MAX = 1000;
 const NAME_LIST_MAX = 200;
 
 const age = z.number().int().min(0).max(AGE_MAX);
+const ageMs = z
+	.number()
+	.int()
+	.min(0)
+	.max(AGE_MAX * 1000);
 const count = z.number().int().min(0).max(COUNT_MAX);
 const text = z.string().trim().min(1).max(TEXT_MAX);
 const names = z.array(text).max(NAME_LIST_MAX);
@@ -38,6 +44,13 @@ export const MASTER_SINCE_NUDGE = [
 ] as const;
 export type MasterSinceNudge = (typeof MASTER_SINCE_NUDGE)[number];
 
+/** What a refused turn's own record says the account refused it over: a quota window, a throttle, a credential. */
+export const MASTER_ACCOUNT_REFUSALS = [
+	"usage_limit",
+	"rate_limit",
+	"auth",
+] as const;
+
 export const masterFactsSchema = z.strictObject({
 	/** The cause of the handover window the daemon is in, or null outside one. */
 	restarting: text.nullable(),
@@ -50,10 +63,8 @@ export const masterFactsSchema = z.strictObject({
 	capability: z.enum(["current", "stale", "unknown"]).nullable(),
 	/** Whether the project's declared MCP servers could be read, which a replacement pane needs; null where no pane is up and none was read. */
 	serversReadable: z.boolean().nullable(),
-	/** What the box was answered this sweep: admissible issues, owed items, a waiting pool job, held job panes. */
+	/** The work only the box holds: a pool job it took this sweep, and the job panes it holds. Admissible issues and owed items are core's own (`masters/owed.ts`). */
 	work: z.strictObject({
-		admissible: count,
-		owed: count,
 		poolWaits: z.boolean(),
 		jobPanes: count,
 	}),
@@ -65,10 +76,15 @@ export const masterFactsSchema = z.strictObject({
 	}),
 	/** Why the pane's build or plugins are not the ones this box would place now; null when current or unjudged. */
 	outdated: text.nullable(),
-	/** The runs the pane holds: whose subagent may still work, and whose is over. */
+	/** The runs the pane holds, each with what its subagent's own evidence says; whether it is over is core's. */
 	holding: z.discriminatedUnion("kind", [
 		z.strictObject({ kind: z.literal("nothing") }),
-		z.strictObject({ kind: z.literal("these"), working: names, over: names }),
+		z.strictObject({
+			kind: z.literal("these"),
+			runs: z
+				.array(z.strictObject({ name: text, subagent: runSubagentSchema }))
+				.max(NAME_LIST_MAX),
+		}),
 		z.strictObject({ kind: z.literal("unknown"), why: text }),
 	]),
 	/** Whether the pane's turn is over, from its hooks or, unheard, its transcript. */
@@ -94,12 +110,19 @@ export const masterFactsSchema = z.strictObject({
 			lastClosedAgoSeconds: age.nullable(),
 		}),
 	}),
-	/** Whether the pane sits behind its account's capacity refusal. */
-	limitHeld: z.boolean(),
+	/** What the pane's own conversation and hooks say about its account's last refusal; core decides whether it holds the pane. */
+	limit: z.strictObject({
+		/** The newest record in the conversation that says anything, where it is a refusal; null where it says the account answered, or none is read. */
+		refusal: z
+			.strictObject({ reason: z.enum(MASTER_ACCOUNT_REFUSALS), agoMs: ageMs })
+			.nullable(),
+		/** Whether the pane's hooks name that conversation: `unheard` where either side is not known. */
+		hooks: z.enum(["same", "other", "unheard"]),
+		/** Since the pane's hooks last reported a turn starting; null where none runs. */
+		turnStartedAgoMs: ageMs.nullable(),
+	}),
 	nudge: z.strictObject({
-		/** A digest of this sweep's admissible and owed work, compared for equality only. */
-		digest: z.string().trim().min(1).max(64),
-		/** The box's last nudge to this master: the work it was about and how long ago. */
+		/** The box's last nudge to this master: the digest core gave the work it was about, and how long ago. */
 		last: z
 			.strictObject({
 				digest: z.string().trim().min(1).max(64),
@@ -117,7 +140,7 @@ export const masterVerdictRequestSchema = z.strictObject({
 	facts: masterFactsSchema,
 });
 export const MASTER_VERDICT_SHAPE =
-	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, holding, turn, idle, limitHeld, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
+	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
 
 /** Why no pane is placed, none ended and none nudged. */
 export const MASTER_WITHHOLD_REASONS = [
@@ -161,3 +184,23 @@ export type MasterVerdict =
 	| { act: "leave"; reason: MasterLeaveReason; because: string }
 	| { act: "keep"; nudge: boolean; drain: boolean; because: string };
 export type MasterVerdictAct = MasterVerdict["act"];
+
+/** The work core read for the project this sweep: what decides a pass, and what the box types or briefs. */
+export interface MasterWork {
+	admissible: number;
+	owed: number;
+	/** A digest of the admissible and owed work; the box echoes it as `facts.nudge.last.digest` once it nudged on it. */
+	digest: string;
+	/** The line the box types into a kept pane it is told to nudge. */
+	nudge: string;
+	/** What a first pass owes, for the brief of a pane placed now; empty where nothing is owed. */
+	owedLine: string;
+	/** The issue a pass opened on this work is about: the one admissible issue, where nothing else is owed. */
+	issueKey: string | null;
+}
+
+/** What `POST /me/master-session/verdict` answers: the verdict, and the work it was judged against. */
+export interface MasterVerdictAnswer {
+	verdict: MasterVerdict;
+	work: MasterWork;
+}

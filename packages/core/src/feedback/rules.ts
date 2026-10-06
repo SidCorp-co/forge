@@ -481,18 +481,19 @@ export function duplicateRefusal(
 export function upgradeTargetRefusal(
   issue: { key: string; status: string },
   held: { id: string; minVersion: string; contractSlug: string } | null,
+  path = '/issue',
 ): FeedbackRefusal | null {
   if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issue.status)) {
     return {
       code: 'CONTRACT_WAIT_ISSUE_FINISHED',
-      path: '/issue',
+      path,
       detail: `${issue.key} is ${issue.status}; a contract change is carried by an issue that will still be dispatched, so it waits on the version and its deadline. Name a live issue or file a new one.`,
     };
   }
   if (held) {
     return {
       code: 'CONTRACT_WAIT_DUPLICATE',
-      path: '/issue',
+      path,
       detail: `${issue.key} already waits on ${held.contractSlug} >= ${held.minVersion} (wait ${held.id}); retract that wait first so this change's version and deadline are written, or file a new issue for it.`,
     };
   }

@@ -13,8 +13,10 @@
 //! branch on `$?` and a program can parse the reason.
 mod build;
 mod exit;
+mod form;
 mod request;
 
 pub use build::{build, RequestSpec, SlugSources};
 pub use exit::{usage_failure, EXIT_TAXONOMY};
-pub use request::run;
+pub use form::FormField;
+pub use request::{run, Body};

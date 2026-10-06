@@ -46,13 +46,12 @@ import {
   contractRoutes,
   contractStandingRoutes,
   contractWaitRoutes,
-  deviceChannelInboxRoutes,
   ecosystemProjectRoutes,
   ecosystemRoutes,
   linkProjectRoutes,
   membershipRoutes,
 } from './ecosystem/routes.js';
-import { deviceFeedbackInboxRoutes, feedbackRoutes } from './feedback/routes.js';
+import { feedbackRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import {
@@ -128,7 +127,7 @@ import {
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
-import { deviceRequirementInboxRoutes, requirementRoutes } from './requirements/routes.js';
+import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
@@ -137,11 +136,7 @@ import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
-import {
-  deviceDesignInboxRoutes,
-  workflowRoutes,
-  workflowTemplateCatalogueRoutes,
-} from './workflows/routes.js';
+import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 
 // The issue router serves its comments too; the comments module adds them here, once, at load.
 registerIssueCommentRoutes(issueRoutes);
@@ -310,10 +305,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceSkillRoutes);
   app.route('/api/devices', deviceMcpServerRoutes);
   app.route('/api/devices', devicePoolRoutes);
-  app.route('/api/devices', deviceChannelInboxRoutes);
-  app.route('/api/devices', deviceRequirementInboxRoutes);
-  app.route('/api/devices', deviceFeedbackInboxRoutes);
-  app.route('/api/devices', deviceDesignInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
 }

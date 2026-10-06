@@ -19,11 +19,13 @@ import {
 } from './devices/index.js';
 import {
   loadContractContext,
+  openRunsOf,
   pathsNamedIn,
   recordContractContext,
   renderContractContext,
+  unansweredDocuments,
 } from './ecosystem/index.js';
-import { reportLinksOf } from './feedback/index.js';
+import { owedTriages, reportLinksOf } from './feedback/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
@@ -45,6 +47,7 @@ import {
   resolveSessionMcpServers,
   scrubJobOutput,
 } from './jobs/index.js';
+import { provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
@@ -78,6 +81,7 @@ import {
   createReleaseBatch,
   loadReleaseRoster,
 } from './release-batch/index.js';
+import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,
@@ -90,6 +94,7 @@ import {
   loadArtifactContext,
   loadPinnedContracts,
   loadRequirementContext,
+  owedDesignRevisions,
   recordArtifactContext,
   renderArtifactContext,
   renderIssueMockups,
@@ -189,6 +194,17 @@ export function provideExecutionPorts(): void {
   });
 
   provideAgentReportsPorts({ reportLinksOf });
+
+  provideMastersPorts({
+    channelOwed: async (projectId) => ({
+      documents: await unansweredDocuments(projectId),
+      builderRuns: await openRunsOf(projectId),
+    }),
+    breakdownsOwed: owedBreakdowns,
+    revisionsOwed: owedRequirementRevisions,
+    triagesOwed: (projectId) => owedTriages(projectId),
+    designsOwed: owedDesignRevisions,
+  });
 
   registerConversationAgentBridge();
 }

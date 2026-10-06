@@ -31,8 +31,9 @@ import {
 } from '../helpers/factories.js';
 
 // F32 / FB-84: a returned design or requirement revision waits on the project's master, so the
-// master is woken for it and its box reads it on every sweep until the next revision is proposed.
-// F37: a closed pass names how it ended, and a master with its own run out is not idle.
+// master is woken for it and core counts it on every verdict its box asks for, naming it on the
+// pass, until the next revision is proposed.
+// F37: a closed pass names how core judged it ended, and a master with its own run out is not idle.
 
 type Who = 'owner' | 'master' | 'box' | 'otherBox';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -40,6 +41,7 @@ let projectId = '';
 let otherProjectId = '';
 let ownerId = '';
 let deviceId = '';
+let runnerId = '';
 let publish: MockInstance;
 
 const design = (): Doc =>
@@ -64,7 +66,7 @@ beforeAll(async () => {
   const agent = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agent, 'member');
   deviceId = await createTestDevice(ownerId);
-  await bindTestRunner(projectId, deviceId);
+  runnerId = await bindTestRunner(projectId, deviceId);
   await bindTestRunner(otherProjectId, deviceId);
   const otherDevice = await createTestDevice(ownerId);
   say = requester(app, {
@@ -131,22 +133,43 @@ const returnDesign = async (id: string, reason: string) =>
     }),
   );
 
-const owedDesigns = async (): Promise<Doc[]> =>
-  ok(await say('box', 'GET', `/api/devices/me/designs/owed?projectId=${projectId}`)).items;
+const verdictFacts = {
+  restarting: null,
+  terminal: true,
+  standing: 'proceed',
+  pane: 'absent',
+  capability: null,
+  serversReadable: true,
+  work: { poolWaits: false, jobPanes: 0 },
+  conversation: { id: null, transcript: 'absent', elsewhere: 'none' },
+  outdated: null,
+  holding: { kind: 'nothing' },
+  turn: { kind: 'ended' },
+  idle: {
+    noWorkForSeconds: 0,
+    pane: null,
+    children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
+  },
+  limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
+  nudge: { last: null, since: 'unreported' },
+};
+
+const askVerdict = (who: Who = 'box') =>
+  say(who, 'POST', '/api/devices/me/master-session/verdict', {
+    projectId,
+    runnerId,
+    facts: verdictFacts,
+  });
+
+/** What core told the box the master is owed besides issues, as the pass is told it. */
+const owedLine = async (): Promise<string> => ok(await askVerdict()).work.owedLine;
 
 describe('a returned design no issue carries is owed to the project master', () => {
-  it('is listed for the box with its flow, revision and reason, and names the master on its read', async () => {
+  it('is named on the pass with its flow, revision and workflow, and names the master on its read', async () => {
     const id = await proposedDesign('owed-flow');
-    expect((await owedDesigns()).map((d) => d.workflowId)).not.toContain(id);
+    expect(await owedLine()).not.toContain(id);
     await returnDesign(id, 'draw the edge proxy, not LE DNS-01');
-    expect(await owedDesigns()).toContainEqual(
-      expect.objectContaining({
-        workflowId: id,
-        flow: 'owed-flow',
-        revision: 1,
-        reason: 'draw the edge proxy, not LE DNS-01',
-      }),
-    );
+    expect(await owedLine()).toContain(`owed-flow r1, workflow ${id}`);
     const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(read.waitingOn).toMatchObject({
       kind: 'agent',
@@ -161,7 +184,7 @@ describe('a returned design no issue carries is owed to the project master', () 
   it('leaves the list once the next revision is proposed', async () => {
     const id = await proposedDesign('revised-flow');
     await returnDesign(id, 'name the consent owner');
-    expect((await owedDesigns()).map((d) => d.workflowId)).toContain(id);
+    expect(await owedLine()).toContain(id);
     const d = design();
     d.project = projectId;
     d.flow = 'revised-flow';
@@ -170,7 +193,7 @@ describe('a returned design no issue carries is owed to the project master', () 
     ok(await say('master', 'PUT', at(`/workflows/${id}`), { baseRevision: 1, document: d }));
     const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(read.status).toBe('proposed');
-    expect((await owedDesigns()).map((x) => x.workflowId)).not.toContain(id);
+    expect(await owedLine()).not.toContain(id);
   });
 
   it('is not listed while a live issue it was drawn under carries the return', async () => {
@@ -180,13 +203,37 @@ describe('a returned design no issue carries is owed to the project master', () 
     );
     const id = await proposedDesign('carried-flow', issue.key ?? issue.id);
     await returnDesign(id, 'split the two pipelines');
-    expect((await owedDesigns()).map((x) => x.workflowId)).not.toContain(id);
+    expect(await owedLine()).not.toContain(id);
   });
 
   it('refuses a box not bound to the project by name', async () => {
-    const res = await say('otherBox', 'GET', `/api/devices/me/designs/owed?projectId=${projectId}`);
+    const res = await askVerdict('otherBox');
     expect(res.status, JSON.stringify(res.json)).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
+  });
+});
+
+// forge-dev 18:38–18:58Z (ISS-291, second half): "forge-master-epod is left running … its project
+// has no admissible work" right after its owner returned a design and promoted six drafts. What the
+// master is owed is core's own read, so the verdict sees both the moment they land.
+describe('a returned design and an admitted issue are work the verdict counts', () => {
+  it('places a master for them where none is up, naming both on the pass', async () => {
+    const before = ok(await askVerdict()).work;
+    const id = await proposedDesign('counted-flow');
+    await returnDesign(id, 'count me');
+    const issue = ok(
+      await say('owner', 'POST', at('/issues'), {
+        title: 'admitted for the master',
+        status: 'open',
+      }),
+      201,
+    );
+    const answer = ok(await askVerdict());
+    expect(answer.work.owed, JSON.stringify(answer.work)).toBeGreaterThan(before.owed);
+    expect(answer.work.admissible, JSON.stringify(answer.work)).toBeGreaterThan(before.admissible);
+    expect(answer.work.owedLine).toContain(`counted-flow r1, workflow ${id}`);
+    expect(answer.verdict).toMatchObject({ act: 'place', nudge: true });
+    expect(issue.status).toBe('open');
   });
 });
 
@@ -203,11 +250,8 @@ async function proposedRequirement(who: 'master' | 'owner', title: string): Prom
   return made.key as string;
 }
 
-const returnedRevisions = async (): Promise<Doc[]> =>
-  ok(await say('box', 'GET', `/api/devices/me/requirements/returned?projectId=${projectId}`)).items;
-
 describe('a returned requirement revision an agent wrote is owed to the project master', () => {
-  it('wakes the master, is listed for the box, and reads as the master revising it', async () => {
+  it('wakes the master, is named on its pass, and reads as the master revising it', async () => {
     const key = await proposedRequirement('master', 'Passes name their close');
     await settleOutbox();
     publish.mockClear();
@@ -219,14 +263,12 @@ describe('a returned requirement revision an agent wrote is owed to the project 
     expect(await wakes('requirement')).toEqual([
       expect.objectContaining({ room: `device:${deviceId}`, key, revision: 1 }),
     ]);
-    expect(await returnedRevisions()).toContainEqual(
-      expect.objectContaining({ key, revision: 1, reason: 'BC-1 is two rules' }),
-    );
+    expect(await owedLine()).toContain(`(${key} r1)`);
     const read = ok(await say('owner', 'GET', at(`/requirements/${key}`)));
     expect(JSON.stringify(read)).toContain('revise returned r1, then propose or drop it');
 
     ok(await say('master', 'POST', at(`/requirements/${key}/revisions/1/propose`), {}));
-    expect((await returnedRevisions()).map((r) => r.key)).not.toContain(key);
+    expect(await owedLine()).not.toContain(`${key} r1`);
   });
 
   it("neither wakes the master nor lists a person's own returned revision", async () => {
@@ -239,7 +281,7 @@ describe('a returned requirement revision an agent wrote is owed to the project 
       }),
     );
     expect(await wakes('requirement')).toEqual([]);
-    expect((await returnedRevisions()).map((r) => r.key)).not.toContain(key);
+    expect(await owedLine()).not.toContain(`${key} r1`);
   });
 });
 
@@ -255,56 +297,61 @@ async function masterSession(): Promise<string> {
 
 const pass = (body: Doc) => say('box', 'POST', '/api/devices/me/master-session/pass', body);
 
-describe('a closed pass names how it ended', () => {
-  it('stores the reason the box sends, and reads null where a box sends none', async () => {
+const settleFacts = (openedBy: string) => ({
+  openedBy,
+  served: true,
+  openedAgoMs: 1_000,
+  hooks: null,
+  writtenAgoMs: null,
+  dispatched: [],
+  record: { worked: false, refusal: null },
+});
+
+describe('a closed pass names how core judged it ended', () => {
+  it('stores the reason core judged from what the box reported', async () => {
     const sessionId = await masterSession();
-    const close = async (extra: Doc) => {
+    const settle = async (openedBy: string) => {
       const opened = ok(await pass({ op: 'open', sessionId, verb: 'dispatch' }), 201).pass;
       return ok(
-        await pass({
-          op: 'close',
-          sessionId,
-          passId: opened.id,
-          dispatched: [],
-          skipped: [],
-          parked: [],
-          ...extra,
-        }),
+        await pass({ op: 'settle', sessionId, passId: opened.id, facts: settleFacts(openedBy) }),
       ).pass;
     };
-    expect((await close({ closeReason: 'abandoned_quiet' })).closeReason).toBe('abandoned_quiet');
-    expect((await close({ closeReason: 'turn_ended' })).closeReason).toBe('turn_ended');
-    expect((await close({})).closeReason).toBeNull();
+    expect((await settle('earlier_daemon')).closeReason).toBe('abandoned_restart');
+    expect((await settle('adopted')).closeReason).toBe('abandoned_orphan');
+    expect((await settle('unrecorded')).closeReason).toBe('unrecorded');
     const listed = ok(await say('owner', 'GET', at('/masters/passes?limit=3'))).items;
-    expect(listed.map((p: Doc) => p.closeReason)).toEqual([null, 'turn_ended', 'abandoned_quiet']);
-    expect(ok(await say('owner', 'GET', at('/masters/standing'))).lastPass.closeReason).toBeNull();
+    expect(listed.map((p: Doc) => p.closeReason)).toEqual([
+      'unrecorded',
+      'abandoned_orphan',
+      'abandoned_restart',
+    ]);
+    expect(ok(await say('owner', 'GET', at('/masters/standing'))).lastPass.closeReason).toBe(
+      'unrecorded',
+    );
   });
 
-  it('refuses a close reason it does not know, naming the field', async () => {
+  it('refuses an opener it does not know, naming the field', async () => {
     const sessionId = await masterSession();
     const opened = ok(await pass({ op: 'open', sessionId, verb: 'dispatch' }), 201).pass;
     const res = await pass({
+      op: 'settle',
+      sessionId,
+      passId: opened.id,
+      facts: settleFacts('gave_up'),
+    });
+    expect(res.status, JSON.stringify(res.json)).toBe(400);
+    expect(JSON.stringify(res.json)).toContain('openedBy');
+    const close = await pass({
       op: 'close',
       sessionId,
       passId: opened.id,
       dispatched: [],
       skipped: [],
       parked: [],
-      closeReason: 'gave_up',
+      closeReason: 'turn_ended',
     });
-    expect(res.status, JSON.stringify(res.json)).toBe(400);
-    expect(JSON.stringify(res.json)).toContain('closeReason');
-    ok(
-      await pass({
-        op: 'close',
-        sessionId,
-        passId: opened.id,
-        dispatched: [],
-        skipped: [],
-        parked: [],
-        closeReason: 'turn_ended',
-      }),
-    );
+    expect(close.status, 'a box closed a pass by its own judgement').toBe(400);
+    ok(await pass({ op: 'settle', sessionId, passId: opened.id, facts: settleFacts('adopted') }));
   });
 
   it('refuses a close reason on a row still open, at the database', async () => {
@@ -317,17 +364,7 @@ describe('a closed pass names how it ended', () => {
         (e: { cause?: { message?: string } }) => e.cause?.message ?? String(e),
       );
     expect(refusedBy).toMatch(/master_passes_close_reason_chk/);
-    ok(
-      await pass({
-        op: 'close',
-        sessionId,
-        passId: opened.id,
-        dispatched: [],
-        skipped: [],
-        parked: [],
-        closeReason: 'turn_ended',
-      }),
-    );
+    ok(await pass({ op: 'settle', sessionId, passId: opened.id, facts: settleFacts('adopted') }));
   });
 });
 

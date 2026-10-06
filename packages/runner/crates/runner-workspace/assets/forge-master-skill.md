@@ -178,6 +178,10 @@ call is refused before it runs, in these words:
 
 > Refused: nothing on this box has been told about the work you are handing out.
 
+`forge-runner run brief <run id>` then prints the brief for that run — its issues, the project's base
+branch, its tree, what every other tree holds, the method it reads — so the facts in it are read by
+the box, not typed by you. Add the project's standing rules below it, and nothing else.
+
 One declaration, one dispatch. A declaration you decide not to use is closed with
 `forge-runner run close`, and until you close it the next dispatch is refused, naming it.
 

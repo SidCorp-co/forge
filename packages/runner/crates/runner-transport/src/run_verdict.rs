@@ -34,10 +34,26 @@ pub struct Facts {
     pub has_session: bool,
     pub activity: Option<Activity>,
     pub session_over_for_ms: Option<u64>,
+    pub subagent: Subagent,
     pub transcript: Transcript,
     pub release_decided: bool,
     pub release_refused: bool,
     pub close: Option<CloseMarks>,
+}
+
+/// What a subagent's own evidence says, with no bound: one of core's
+/// `RUN_SUBAGENT_EVIDENCE`, and its silence in ms.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Subagent {
+    pub kind: &'static str,
+    pub silent_ms: Option<u64>,
+}
+
+impl From<(&'static str, Option<u64>)> for Subagent {
+    fn from((kind, silent_ms): (&'static str, Option<u64>)) -> Self {
+        Self { kind, silent_ms }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -3,6 +3,7 @@ import {
   MASTER_PASS_SHAPE,
   MASTER_SESSION_SHAPE,
   type MasterPassResponse,
+  type MasterPassSettleResponse,
   type MasterSessionResponse,
   masterDialogRequestSchema,
   masterPassRequestSchema,
@@ -10,7 +11,7 @@ import {
 } from '@forge/contracts/master-standing';
 import {
   MASTER_VERDICT_SHAPE,
-  type MasterVerdict,
+  type MasterVerdictAnswer,
   masterVerdictRequestSchema,
 } from '@forge/contracts/master-verdict';
 import { Hono } from 'hono';
@@ -18,11 +19,11 @@ import { refused } from '../lib/refusal.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import {
-  closeMasterPass,
   declareMasterSession,
   judgeMaster,
   openMasterPass,
   recordMasterDialog,
+  settleMasterPass,
 } from './service.js';
 
 export const deviceMasterRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -62,18 +63,14 @@ deviceMasterRoutes.post(
       if (!opened.ok) return refused(c, opened.refusals, 'MASTER_REFUSED');
       return c.json({ pass: opened.pass } satisfies MasterPassResponse, 201);
     }
-    const closed = await closeMasterPass({
+    const settled = await settleMasterPass({
       deviceId,
       sessionId: body.sessionId,
       passId: body.passId,
-      dispatched: body.dispatched,
-      skipped: body.skipped,
-      parked: body.parked,
-      refused: body.refused ?? null,
-      closeReason: body.closeReason ?? null,
+      facts: body.facts,
     });
-    if (!closed.ok) return refused(c, closed.refusals, 'MASTER_REFUSED');
-    return c.json({ pass: closed.pass } satisfies MasterPassResponse);
+    if (!settled.ok) return refused(c, settled.refusals, 'MASTER_REFUSED');
+    return c.json(settled.settled satisfies MasterPassSettleResponse);
   },
 );
 
@@ -98,12 +95,12 @@ deviceMasterRoutes.post(
   strictBody(masterVerdictRequestSchema, MASTER_VERDICT_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
-    const verdict = await judgeMaster({
+    const answer = await judgeMaster({
       deviceId: c.get('device').id,
       projectId: body.projectId,
       runnerId: body.runnerId,
       facts: body.facts,
     });
-    return c.json(verdict satisfies MasterVerdict);
+    return c.json(answer satisfies MasterVerdictAnswer);
   },
 );

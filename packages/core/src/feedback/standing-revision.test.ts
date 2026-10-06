@@ -9,7 +9,7 @@ const reader: StandingViewer = {
 };
 
 const planned = (stage: Parameters<typeof revisionStageOf>[0]) =>
-  feedbackStandingOf('planned', 'revision', null, 'Reporter', reader, revisionStageOf(stage))
+  feedbackStandingOf('planned', 'revision', [], 'Reporter', reader, revisionStageOf(stage))
     .waitingOn;
 
 describe('a revision-routed item waits on whoever owes the next act of its revision', () => {
@@ -68,7 +68,7 @@ describe('a revision-routed item waits on whoever owes the next act of its revis
 
   it('names no stage it cannot read: a revision route with no suggestion read falls back to the proposal', () => {
     expect(revisionStageOf(null)).toBeNull();
-    const w = feedbackStandingOf('planned', 'revision', null, 'Reporter', reader, null).waitingOn;
+    const w = feedbackStandingOf('planned', 'revision', [], 'Reporter', reader, null).waitingOn;
     expect(w.kind).toBe('person');
   });
 });

@@ -215,7 +215,7 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
   return c.json({ documents: inboxView(entries), returned: entries.length });
 });
 
-// What this side owes a reply to, the read `GET /api/devices/me/channel/unanswered` gives a box,
+// What this side owes a reply to, the read its master's verdict counts (`masters/owed.ts`),
 // reachable by a person's session or token holding the channel read.
 channelProjectRoutes.get('/:id/channel/unanswered', projectParam, async (c) => {
   const { id } = c.req.valid('param');

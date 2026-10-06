@@ -4983,40 +4983,6 @@
         ]
       }
     },
-    "/api/devices/me/channel/unanswered": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
     "/api/devices/me/checkout-heads/{requestId}": {
       "post": {
         "parameters": [
@@ -5094,108 +5060,6 @@
         "x-forge-validated": [
           "json",
           "param"
-        ]
-      }
-    },
-    "/api/devices/me/comments/unanswered": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/designs/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/feedback/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
         ]
       }
     },
@@ -5335,51 +5199,6 @@
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/issues/admissible": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
           "query"
         ]
       }
@@ -5698,111 +5517,172 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "closeReason": {
-                        "enum": [
-                          "turn_ended",
-                          "abandoned_quiet",
-                          "abandoned_restart",
-                          "abandoned_orphan",
-                          "session_gone",
-                          "unrecorded"
-                        ],
-                        "type": "string"
-                      },
-                      "dispatched": {
-                        "items": {
-                          "maxLength": 200,
-                          "minLength": 1,
-                          "type": "string"
+                      "facts": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dispatched": {
+                            "items": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "maxItems": 200,
+                            "type": "array"
+                          },
+                          "hooks": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "doing": {
+                                    "enum": [
+                                      "idle",
+                                      "working",
+                                      "awaiting_permission",
+                                      "awaiting_children"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "lastEventAgoMs": {
+                                    "maximum": 315360000000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "turnBeganAgoMs": {
+                                    "anyOf": [
+                                      {
+                                        "maximum": 315360000000,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "turnsSinceOpen": {
+                                    "maximum": 100000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "turnsSinceOpen",
+                                  "turnBeganAgoMs",
+                                  "doing",
+                                  "lastEventAgoMs"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "openedAgoMs": {
+                            "maximum": 315360000000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "openedBy": {
+                            "enum": [
+                              "this_daemon",
+                              "earlier_daemon",
+                              "adopted",
+                              "unrecorded"
+                            ],
+                            "type": "string"
+                          },
+                          "record": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "refusal": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "detail": {
+                                        "maxLength": 1000,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "reason": {
+                                        "enum": [
+                                          "usage_limit",
+                                          "rate_limit",
+                                          "auth"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "reason",
+                                      "detail"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "worked": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "worked",
+                              "refusal"
+                            ],
+                            "type": "object"
+                          },
+                          "served": {
+                            "type": "boolean"
+                          },
+                          "writtenAgoMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
                         },
-                        "maxItems": 200,
-                        "type": "array"
+                        "required": [
+                          "openedBy",
+                          "served",
+                          "openedAgoMs",
+                          "hooks",
+                          "writtenAgoMs",
+                          "dispatched",
+                          "record"
+                        ],
+                        "type": "object"
                       },
                       "op": {
-                        "const": "close",
+                        "const": "settle",
                         "type": "string"
-                      },
-                      "parked": {
-                        "items": {
-                          "maxLength": 200,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 200,
-                        "type": "array"
                       },
                       "passId": {
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                         "type": "string"
                       },
-                      "refused": {
-                        "anyOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "detail": {
-                                "maxLength": 1000,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "reason": {
-                                "enum": [
-                                  "usage_limit",
-                                  "rate_limit",
-                                  "auth"
-                                ],
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "reason",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
                       "sessionId": {
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                         "type": "string"
-                      },
-                      "skipped": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "issueKey": {
-                              "maxLength": 64,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            "refusal": {
-                              "maxLength": 1000,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "issueKey",
-                            "refusal"
-                          ],
-                          "type": "object"
-                        },
-                        "maxItems": 200,
-                        "type": "array"
                       }
                     },
                     "required": [
                       "op",
                       "sessionId",
                       "passId",
-                      "dispatched",
-                      "skipped",
-                      "parked"
+                      "facts"
                     ],
                     "type": "object"
                   }
@@ -5918,20 +5798,55 @@
                                 "const": "these",
                                 "type": "string"
                               },
-                              "over": {
+                              "runs": {
                                 "items": {
-                                  "maxLength": 1000,
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "maxItems": 200,
-                                "type": "array"
-                              },
-                              "working": {
-                                "items": {
-                                  "maxLength": 1000,
-                                  "minLength": 1,
-                                  "type": "string"
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "name": {
+                                      "maxLength": 1000,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "subagent": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "enum": [
+                                            "no_turn_end",
+                                            "host_ended",
+                                            "resumed",
+                                            "awaiting_reply",
+                                            "turn_ended",
+                                            "unreadable",
+                                            "tail_unreadable"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "silentMs": {
+                                          "anyOf": [
+                                            {
+                                              "maximum": 315360000000,
+                                              "minimum": 0,
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "silentMs"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "subagent"
+                                  ],
+                                  "type": "object"
                                 },
                                 "maxItems": 200,
                                 "type": "array"
@@ -5939,8 +5854,7 @@
                             },
                             "required": [
                               "kind",
-                              "working",
-                              "over"
+                              "runs"
                             ],
                             "type": "object"
                           },
@@ -6062,17 +5976,70 @@
                         ],
                         "type": "object"
                       },
-                      "limitHeld": {
-                        "type": "boolean"
+                      "limit": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "hooks": {
+                            "enum": [
+                              "same",
+                              "other",
+                              "unheard"
+                            ],
+                            "type": "string"
+                          },
+                          "refusal": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "agoMs": {
+                                    "maximum": 315360000000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "reason": {
+                                    "enum": [
+                                      "usage_limit",
+                                      "rate_limit",
+                                      "auth"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "reason",
+                                  "agoMs"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "turnStartedAgoMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "refusal",
+                          "hooks",
+                          "turnStartedAgoMs"
+                        ],
+                        "type": "object"
                       },
                       "nudge": {
                         "additionalProperties": false,
                         "properties": {
-                          "digest": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          },
                           "last": {
                             "anyOf": [
                               {
@@ -6113,7 +6080,6 @@
                           }
                         },
                         "required": [
-                          "digest",
                           "last",
                           "since"
                         ],
@@ -6219,17 +6185,7 @@
                       "work": {
                         "additionalProperties": false,
                         "properties": {
-                          "admissible": {
-                            "maximum": 100000,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
                           "jobPanes": {
-                            "maximum": 100000,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "owed": {
                             "maximum": 100000,
                             "minimum": 0,
                             "type": "integer"
@@ -6239,8 +6195,6 @@
                           }
                         },
                         "required": [
-                          "admissible",
-                          "owed",
                           "poolWaits",
                           "jobPanes"
                         ],
@@ -6260,7 +6214,7 @@
                       "holding",
                       "turn",
                       "idle",
-                      "limitHeld",
+                      "limit",
                       "nudge"
                     ],
                     "type": "object"
@@ -6756,74 +6710,6 @@
         ]
       }
     },
-    "/api/devices/me/requirements/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/requirements/returned": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
     "/api/devices/me/run-sessions": {
       "post": {
         "requestBody": {
@@ -7247,6 +7133,40 @@
                           }
                         ]
                       },
+                      "subagent": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "no_turn_end",
+                              "host_ended",
+                              "resumed",
+                              "awaiting_reply",
+                              "turn_ended",
+                              "unreadable",
+                              "tail_unreadable"
+                            ],
+                            "type": "string"
+                          },
+                          "silentMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "silentMs"
+                        ],
+                        "type": "object"
+                      },
                       "thisBoot": {
                         "type": "boolean"
                       },
@@ -7317,6 +7237,7 @@
                       "hasSession",
                       "activity",
                       "sessionOverForMs",
+                      "subagent",
                       "transcript",
                       "releaseDecided",
                       "releaseRefused",
@@ -19940,9 +19861,23 @@
                     "type": "string"
                   },
                   "issue": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    ]
                   },
                   "kind": {
                     "enum": [

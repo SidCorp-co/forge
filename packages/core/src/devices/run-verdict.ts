@@ -7,6 +7,7 @@ import {
   type RunFacts,
   type RunHostEnd,
   type RunStanding,
+  type RunSubagent,
   type RunVerdict,
 } from '@forge/contracts/run-verdict';
 
@@ -94,6 +95,39 @@ export function exitCause(activity: RunFacts['activity']): RunExitCause | null {
     case 'awaiting_permission':
       return null;
   }
+}
+
+/**
+ * Why a subagent is over, or null while it may still be working: the process it ran in is gone, or
+ * it ended a turn, or was handed an entry, and nothing followed for the silence a run is allowed.
+ * It may still be resumed, so this ends nothing by itself: it is what a master's successor inherits,
+ * and what the box says once about a run it keeps.
+ */
+export function subagentOver(subagent: RunSubagent): string | null {
+  const silent = subagent.silentMs ?? 0;
+  switch (subagent.kind) {
+    case 'host_ended':
+      return `the Claude Code process its subagent ran in was read gone ${minutes(silent)}m ago, and nothing has been heard from its subagent since`;
+    case 'turn_ended':
+      return silent >= RUN_SILENT_BEFORE_EXIT_MS
+        ? `its subagent ended a turn ${minutes(silent)}m ago and wrote nothing after it`
+        : null;
+    case 'awaiting_reply':
+      return silent >= RUN_SILENT_BEFORE_EXIT_MS
+        ? `its subagent ended a turn, and the entry handed to it after that, written ${minutes(silent)}m ago, has had no reply`
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** Whether the box owes a line on why it keeps a subagent: it reads over, or its transcript cannot say. */
+function keptSaid(subagent: RunSubagent): boolean {
+  return (
+    subagentOver(subagent) !== null ||
+    subagent.kind === 'unreadable' ||
+    subagent.kind === 'tail_unreadable'
+  );
 }
 
 const EXIT_BECAUSE: Record<RunExitCause, string> = {
@@ -231,7 +265,7 @@ export function runVerdict(f: RunFacts, issues: RunIssues): RunVerdict {
         act: 'keep',
         beat: f.hasSession,
         reparent: false,
-        sayKept: true,
+        sayKept: keptSaid(f.subagent),
         because:
           "a subagent under a live master ends with its master's close or its issues going over, never with its own silence",
       };

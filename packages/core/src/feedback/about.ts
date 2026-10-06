@@ -54,7 +54,12 @@ export async function reportLinksOf(
           id: r.id,
           key: feedbackKey(r.fbSeq),
           phase: phaseIn(r, linked),
-          route: route ? { route: route.route, key: route.key } : null,
+          route: route
+            ? {
+                route: route.route,
+                carriers: route.carriers.flatMap((c) => (c.key ? [c.key] : [])),
+              }
+            : null,
         },
       ];
     }),

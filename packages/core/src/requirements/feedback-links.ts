@@ -22,7 +22,7 @@ type LinkRow = {
 // ISS-79: the one answer to "which feedback is about this requirement", read by the detail,
 // the standing's counts and the Feedback list's `requirement` filter alike, so the three never
 // disagree. An item belongs to a requirement through its target (the requirement, one of its issues,
-// a linked design, or a release that shipped one of its issues) or through its route (the issue, the
+// a linked design, or a release that shipped one of its issues) or through its route (any issue, the
 // revision suggestion or the draft requirement that carries it); the first path in that order names it
 export async function feedbackLinksOf(
   projectId: string,
@@ -51,7 +51,8 @@ export async function feedbackLinksOf(
        WHERE f.project_id = ${projectId} AND i.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, i.requirement_id, 'route', 5
-        FROM feedback f JOIN issues i ON i.id = f.routed_issue_id
+        FROM feedback f JOIN feedback_route_issues c ON c.feedback_id = f.id
+        JOIN issues i ON i.id = c.issue_id
        WHERE f.project_id = ${projectId} AND i.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, s.requirement_id, 'route', 5

@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{status, CoreClient, CALL_DEADLINE};
 use runner_platform::error::Result;
@@ -71,11 +71,65 @@ impl std::fmt::Display for PassError {
 #[derive(Debug, Clone, Deserialize)]
 struct PassReply {
     pass: PassRow,
+    #[serde(default)]
+    because: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PassRow {
     id: String,
+    #[serde(default)]
+    close_reason: Option<String>,
+    #[serde(default)]
+    ended_at: Option<String>,
+}
+
+/// What the box holds about one open pass, for core to judge whether and how
+/// it ended (`@forge/contracts/master-standing` `masterPassFactsSchema`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassFacts {
+    /// `this_daemon`, `earlier_daemon`, `adopted` or `unrecorded`.
+    pub opened_by: &'static str,
+    pub served: bool,
+    pub opened_ago_ms: u64,
+    pub hooks: Option<PassHooks>,
+    pub written_ago_ms: Option<u64>,
+    pub dispatched: Vec<String>,
+    pub record: PassRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassHooks {
+    pub turns_since_open: u64,
+    pub turn_began_ago_ms: Option<u64>,
+    /// `idle`, `working`, `awaiting_permission` or `awaiting_children`.
+    pub doing: &'static str,
+    pub last_event_ago_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassRecord {
+    pub worked: bool,
+    pub refusal: Option<PassRefusal>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PassRefusal {
+    /// `usage_limit`, `rate_limit` or `auth`.
+    pub reason: &'static str,
+    pub detail: String,
+}
+
+/// What core answered a settle: the reason it closed the pass with, or `None`
+/// where it still stands, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settled {
+    pub closed: Option<String>,
+    pub because: String,
 }
 
 pub async fn open_pass(
@@ -92,53 +146,37 @@ pub async fn open_pass(
         "issueKey": issue_key,
         "trigger": trigger,
     });
-    pass_call(client, body).await
+    pass_call(client, body).await.map(|r| r.pass.id)
 }
 
-/// `reason` is how this box judged the pass ended, one of core's
-/// `MASTER_PASS_CLOSE_REASONS` (`turn_ended`, `abandoned_quiet`, …), stored on
-/// the pass so an abandoned one never reads like one whose turn ended.
-pub async fn close_pass(
+/// Ask core whether the pass ended, from what this box holds about it; core
+/// closes it where it did (`masters/pass-end.ts:passEnd`).
+pub async fn settle_pass(
     client: &CoreClient,
     session_id: &str,
     pass_id: &str,
-    dispatched: &[String],
-    refused: Option<(&str, &str)>,
-    reason: &str,
-) -> std::result::Result<String, PassError> {
-    pass_call(
-        client,
-        close_body(session_id, pass_id, dispatched, refused, reason),
-    )
-    .await
-}
-
-/// The close as sent: `dispatched` is the caller's list exactly, never blanked
-/// for a refusal. A refused close that carries work is core's to refuse by name
-/// (`MASTER_PASS_REFUSED_WITH_WORK`), not this body's to make look empty.
-pub(crate) fn close_body(
-    session_id: &str,
-    pass_id: &str,
-    dispatched: &[String],
-    refused: Option<(&str, &str)>,
-    close_reason: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "op": "close",
+    facts: &PassFacts,
+) -> std::result::Result<Settled, PassError> {
+    let body = serde_json::json!({
+        "op": "settle",
         "sessionId": session_id,
         "passId": pass_id,
-        "dispatched": dispatched,
-        "skipped": [],
-        "parked": [],
-        "refused": refused.map(|(reason, detail)| serde_json::json!({ "reason": reason, "detail": detail })),
-        "closeReason": close_reason,
+        "facts": facts,
+    });
+    let reply = pass_call(client, body).await?;
+    Ok(Settled {
+        closed: reply
+            .pass
+            .ended_at
+            .map(|_| reply.pass.close_reason.unwrap_or_default()),
+        because: reply.because.unwrap_or_default(),
     })
 }
 
 async fn pass_call(
     client: &CoreClient,
     body: serde_json::Value,
-) -> std::result::Result<String, PassError> {
+) -> std::result::Result<PassReply, PassError> {
     const WHAT: &str = "master-session/pass";
     let resp = client
         .post("/api/devices/me/master-session/pass")
@@ -156,7 +194,6 @@ async fn pass_call(
     let text = resp.text().await.unwrap_or_default();
     if (200..300).contains(&code) {
         return serde_json::from_str::<PassReply>(&text)
-            .map(|r| r.pass.id)
             .map_err(|e| PassError::Unreached(format!("{WHAT} decode: {e}")));
     }
     Err(pass_refusal(code, &text)
@@ -229,33 +266,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_refused_close_carries_the_dispatched_list_it_was_given() {
-        let dispatched = vec!["ISS-1".to_string(), "ISS-2".to_string()];
-        let body = close_body(
-            "s",
-            "p",
-            &dispatched,
-            Some(("usage_limit", "limit")),
-            "turn_ended",
-        );
+    fn a_settle_is_sent_in_the_shape_core_validates() {
+        let facts = PassFacts {
+            opened_by: "this_daemon",
+            served: true,
+            opened_ago_ms: 5,
+            hooks: Some(PassHooks {
+                turns_since_open: 1,
+                turn_began_ago_ms: Some(4),
+                doing: "idle",
+                last_event_ago_ms: 1,
+            }),
+            written_ago_ms: None,
+            dispatched: vec!["ISS-1".into()],
+            record: PassRecord {
+                worked: false,
+                refusal: Some(PassRefusal {
+                    reason: "usage_limit",
+                    detail: "limit".into(),
+                }),
+            },
+        };
         assert_eq!(
-            body["dispatched"],
-            serde_json::json!(["ISS-1", "ISS-2"]),
-            "a refused close blanked the ledger's dispatched list: {body}"
+            serde_json::to_value(&facts).unwrap(),
+            serde_json::json!({
+                "openedBy": "this_daemon",
+                "served": true,
+                "openedAgoMs": 5,
+                "hooks": { "turnsSinceOpen": 1, "turnBeganAgoMs": 4, "doing": "idle", "lastEventAgoMs": 1 },
+                "writtenAgoMs": null,
+                "dispatched": ["ISS-1"],
+                "record": { "worked": false, "refusal": { "reason": "usage_limit", "detail": "limit" } }
+            })
         );
-        assert_eq!(body["refused"]["reason"], "usage_limit");
-    }
-
-    #[test]
-    fn a_close_that_ran_sends_no_refusal() {
-        let body = close_body("s", "p", &[], None, "turn_ended");
-        assert_eq!(body["dispatched"], serde_json::json!([]));
-        assert!(body["refused"].is_null());
-    }
-
-    #[test]
-    fn a_close_names_how_the_box_judged_it_ended() {
-        let body = close_body("s", "p", &[], None, "abandoned_quiet");
-        assert_eq!(body["closeReason"], "abandoned_quiet");
     }
 }

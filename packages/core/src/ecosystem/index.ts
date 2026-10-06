@@ -9,5 +9,7 @@ export { contractProviderGate } from './contract/waits-live.js';
 export { contractHolding } from './contract-holding.js';
 export { interfaceContractsOf } from './interface-contracts.js';
 export { ecosystemJsonSchemas } from './json-schema.js';
+export { openRunsOf } from './link-service.js';
 export { isActiveMember } from './membership-store.js';
+export { unansweredDocuments } from './owed.js';
 export { registerSourcePushReactions } from './source-push.js';

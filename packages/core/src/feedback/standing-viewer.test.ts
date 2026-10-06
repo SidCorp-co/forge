@@ -11,7 +11,7 @@ const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
 
 describe('an untriaged item waits on whoever can triage it, read for this viewer', () => {
   it('names a holder of feedback.approve, not You, for a viewer who cannot triage', () => {
-    const s = feedbackStandingOf('new', null, null, 'Reporter', viewer(), null);
+    const s = feedbackStandingOf('new', null, [], 'Reporter', viewer(), null);
     expect(s.waitingOn.kind).toBe('person');
     expect(s.waitingOn.who).toBe('A holder of feedback.approve');
     expect(s.attentionGroup).toBe('waiting');
@@ -21,7 +21,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
     const s = feedbackStandingOf(
       'reopened',
       null,
-      null,
+      [],
       'Reporter',
       viewer({ canTriage: true }),
       null,
@@ -31,7 +31,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
   });
 
   it('names the project master for an item it owes a triage, whoever reads it', () => {
-    const s = feedbackStandingOf('new', null, null, 'Reporter', viewer({ canTriage: true }), null, {
+    const s = feedbackStandingOf('new', null, [], 'Reporter', viewer({ canTriage: true }), null, {
       masterOwesTriage: true,
       carrierRelease: null,
     });
@@ -47,7 +47,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
 
 describe('an item planned on an issue at the release gate names who releases it', () => {
   const planned = (release: 'none' | 'approval' | 'manual' | 'automatic', v = viewer()) =>
-    feedbackStandingOf('planned', 'issue', 'ISS-9', 'Reporter', v, null, {
+    feedbackStandingOf('planned', 'issue', ['ISS-9'], 'Reporter', v, null, {
       masterOwesTriage: false,
       carrierRelease: release,
     });

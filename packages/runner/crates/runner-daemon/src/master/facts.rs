@@ -21,9 +21,7 @@ pub(crate) struct Seen {
     /// Read only where a pane is up; a placement reads its own.
     pub(crate) servers: Option<ServersRead>,
     pub(crate) restarting: Option<String>,
-    pub(crate) held: Option<master_limit::Refusal>,
     pub(crate) last_said: Option<master_limit::Decisive>,
-    pub(crate) digest: u64,
 }
 
 /// A pane found up, registered with core, and what this box can say about
@@ -188,16 +186,15 @@ fn holding_wire(holding: &Holding) -> wire::Holding {
     match holding {
         Holding::Nothing => wire::Holding::Nothing,
         Holding::Unknown(why) => wire::Holding::Unknown { why: why.clone() },
-        Holding::These(runs) => {
-            let (over, working): (Vec<_>, Vec<_>) = runs.iter().partition(|r| r.ended.is_some());
-            wire::Holding::These {
-                working: working.iter().map(|r| name(r)).collect(),
-                over: over
-                    .iter()
-                    .map(|r| format!("{} — {}", name(r), r.ended.as_deref().unwrap_or_default()))
-                    .collect(),
-            }
-        }
+        Holding::These(runs) => wire::Holding::These {
+            runs: runs
+                .iter()
+                .map(|r| wire::HeldRun {
+                    name: name(r),
+                    subagent: r.subagent.wire().into(),
+                })
+                .collect(),
+        },
     }
 }
 
@@ -268,34 +265,55 @@ pub(crate) fn idle_facts(
 pub(crate) fn nudge_facts(
     masters: &Masters,
     project_id: &str,
-    digest: u64,
     seen: Option<&agent_activity::Activity>,
 ) -> wire::NudgeFacts {
     let last = masters.last_nudge(project_id);
+    let prompts = last.as_ref().and_then(|n| n.prompts);
     wire::NudgeFacts {
-        digest: digest.to_string(),
         last: last.map(|n| wire::LastNudge {
-            digest: n.digest.to_string(),
             ago_seconds: n.at.elapsed().as_secs(),
+            digest: n.digest,
         }),
-        since: since_nudge(seen, last.and_then(|n| n.prompts)).wire(),
+        since: since_nudge(seen, prompts).wire(),
     }
 }
 
-/// The work core answered this box this sweep, counted.
-pub(crate) struct Answered<'a> {
-    pub(crate) admissible: &'a [AdmissibleIssue],
-    pub(crate) inbox: &'a [UnansweredDocument],
-    pub(crate) pool_waits: bool,
-    pub(crate) job_panes: usize,
+/// The newest refusal in the pane's own conversation, and what its hooks say
+/// against it: whether it holds the pane is core's (`masters/verdict.ts:limitHeld`).
+pub(crate) fn limit_facts(
+    newest: Option<&master_limit::Decisive>,
+    conversation: Option<&str>,
+    seen: Option<&agent_activity::Activity>,
+    now_ms: i64,
+) -> wire::Limit {
+    let ago = |at_ms: i64| u64::try_from(now_ms.saturating_sub(at_ms)).unwrap_or(0);
+    let refusal = newest.and_then(|d| match &d.verdict {
+        master_limit::Verdict::Refused(r) => Some(wire::LimitRefusal {
+            reason: r.reason.wire(),
+            ago_ms: ago(d.at.saturating_mul(1000) + i64::from(d.millis)),
+        }),
+        _ => None,
+    });
+    let heard = seen.and_then(|s| s.conversation.as_deref());
+    let hooks = match (heard, conversation) {
+        (Some(heard), Some(read)) if heard != read => "other",
+        (Some(_), Some(_)) => "same",
+        _ => "unheard",
+    };
+    wire::Limit {
+        refusal,
+        hooks,
+        turn_started_ago_ms: seen.and_then(|s| s.turn_started_at).map(ago),
+    }
 }
 
 /// Every fact core's verdict reads, as one request body.
 pub(crate) fn facts_of(
     seen: &Seen,
-    answered: &Answered<'_>,
+    work: &Work,
     judged: Option<(String, wire::Holding, wire::Turn)>,
     idle: wire::Idle,
+    limit: wire::Limit,
     nudge: wire::NudgeFacts,
     repo: &std::path::Path,
 ) -> wire::Facts {
@@ -311,10 +329,8 @@ pub(crate) fn facts_of(
         capability: seen.adopted.as_ref().map(|a| a.capability.wire()),
         servers_readable: seen.servers.as_ref().map(std::result::Result::is_ok),
         work: wire::Work {
-            admissible: answered.admissible.len(),
-            owed: answered.inbox.len(),
-            pool_waits: answered.pool_waits,
-            job_panes: answered.job_panes,
+            pool_waits: work.pool_waits,
+            job_panes: work.job_panes,
         },
         conversation: wire::Conversation {
             id: seen.stored_conversation.clone(),
@@ -325,7 +341,53 @@ pub(crate) fn facts_of(
         holding,
         turn,
         idle,
-        limit_held: seen.held.is_some(),
+        limit,
         nudge,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_core::agent_activity::{Activities, Event, Report};
+
+    const T0: i64 = 1_791_280_800;
+
+    fn refused_at(at: i64, millis: u32) -> master_limit::Decisive {
+        let line = format!(
+            r#"{{"type":"assistant","isApiErrorMessage":true,"apiErrorStatus":429,"error":"rate_limit","timestamp":"2026-10-06T10:00:00.{millis:03}Z","uuid":"r","message":{{"model":"<synthetic>","content":[]}},"quotaLimits":{{"status":"rejected","resetsAt":{}}}}}"#,
+            at + 3600
+        );
+        master_limit::newest_record(&line, at).expect("a refusal record reads")
+    }
+
+    /// The box reports the refusal and the hooks raw; whether they hold the
+    /// pane is `masters/verdict.ts:limitHeld`.
+    #[test]
+    fn a_refusal_is_reported_with_its_age_and_whose_conversation_the_hooks_name() {
+        let newest = refused_at(T0, 250);
+        let a = Activities::new();
+        let seen = a.record(
+            "s",
+            Report {
+                event: Event::PromptSubmitted,
+                at: (T0 + 10) * 1000,
+                subject: None,
+                conversation: Some("c1"),
+                transcript: None,
+            },
+        );
+        let now = (T0 + 60) * 1000;
+        let limit = limit_facts(Some(&newest), Some("c1"), Some(&seen), now);
+        let refusal = limit.refusal.expect("the refusal was not reported");
+        assert_eq!(refusal.reason, "usage_limit");
+        assert_eq!(refusal.ago_ms, 59_750);
+        assert_eq!(limit.hooks, "same");
+        assert_eq!(limit.turn_started_ago_ms, Some(50_000));
+        assert_eq!(
+            limit_facts(Some(&newest), Some("c2"), Some(&seen), now).hooks,
+            "other"
+        );
+        assert_eq!(limit_facts(None, None, None, now).hooks, "unheard");
     }
 }

@@ -30,15 +30,33 @@ pub struct Facts {
     pub holding: Holding,
     pub turn: Turn,
     pub idle: Idle,
-    pub limit_held: bool,
+    pub limit: Limit,
     pub nudge: NudgeFacts,
+}
+
+/// What the pane's own conversation and hooks say about its account's last
+/// refusal; whether that holds the pane is core's.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Limit {
+    pub refusal: Option<LimitRefusal>,
+    /// `same`, `other` or `unheard`.
+    pub hooks: &'static str,
+    pub turn_started_ago_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LimitRefusal {
+    /// `usage_limit`, `rate_limit` or `auth`.
+    pub reason: &'static str,
+    pub ago_ms: u64,
+}
+
+/// The work only the box holds; what the project owes its master is core's.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Work {
-    pub admissible: usize,
-    pub owed: usize,
     pub pool_waits: bool,
     pub job_panes: usize,
 }
@@ -57,13 +75,16 @@ pub struct Conversation {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Holding {
     Nothing,
-    These {
-        working: Vec<String>,
-        over: Vec<String>,
-    },
-    Unknown {
-        why: String,
-    },
+    These { runs: Vec<HeldRun> },
+    Unknown { why: String },
+}
+
+/// A run the pane holds, and what its subagent's own evidence says.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldRun {
+    pub name: String,
+    pub subagent: super::run_verdict::Subagent,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,7 +123,6 @@ pub struct Children {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NudgeFacts {
-    pub digest: String,
     pub last: Option<LastNudge>,
     /// One of core's `MASTER_SINCE_NUDGE`.
     pub since: &'static str,
@@ -142,13 +162,34 @@ pub enum Verdict {
     /// The pane is this project's master; type a nudge into it or not.
     /// `drain`: it is outdated and its replacement waits on the runs it holds,
     /// so the box admits no new run declaration from it until they run out.
-    /// Absent from a core older than the field, which never drains.
     Keep {
         nudge: bool,
-        #[serde(default)]
         drain: bool,
         because: String,
     },
+}
+
+/// The work core read for the project this sweep, which the box types or
+/// briefs as it is told and echoes back as the digest of its last nudge.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwedWork {
+    pub admissible: usize,
+    pub owed: usize,
+    pub digest: String,
+    /// The line typed into a kept pane core says to nudge.
+    pub nudge: String,
+    /// What a first pass owes, for the brief of a pane placed now.
+    pub owed_line: String,
+    /// The issue a pass opened on this work is about, where core names one.
+    pub issue_key: Option<String>,
+}
+
+/// What core answered: its verdict, and the work it judged it against.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Answer {
+    pub verdict: Verdict,
+    pub work: OwedWork,
 }
 
 pub async fn verdict(
@@ -156,7 +197,7 @@ pub async fn verdict(
     project_id: &str,
     runner_id: &str,
     facts: &Facts,
-) -> Result<Verdict> {
+) -> Result<Answer> {
     let body = serde_json::json!({
         "projectId": project_id,
         "runnerId": runner_id,
@@ -174,9 +215,10 @@ mod tests {
 
     #[test]
     fn an_act_this_build_does_not_know_is_refused_rather_than_read_as_another() {
-        let known: Verdict =
-            serde_json::from_str(r#"{"act":"keep","nudge":true,"because":"work changed"}"#)
-                .expect("keep decodes");
+        let known: Verdict = serde_json::from_str(
+            r#"{"act":"keep","nudge":true,"drain":false,"because":"work changed"}"#,
+        )
+        .expect("keep decodes");
         assert_eq!(
             known,
             Verdict::Keep {
@@ -199,13 +241,17 @@ mod tests {
     #[test]
     fn facts_are_sent_in_the_shape_core_validates() {
         let holding = serde_json::to_value(Holding::These {
-            working: vec!["r1".into()],
-            over: vec![],
+            runs: vec![HeldRun {
+                name: "r1".into(),
+                subagent: ("turn_ended", Some(5)).into(),
+            }],
         })
         .unwrap();
         assert_eq!(
             holding,
-            serde_json::json!({ "kind": "these", "working": ["r1"], "over": [] })
+            serde_json::json!({ "kind": "these", "runs": [
+                { "name": "r1", "subagent": { "kind": "turn_ended", "silentMs": 5 } }
+            ] })
         );
         let turn = serde_json::to_value(Turn::InTurn {
             what: "busy".into(),
