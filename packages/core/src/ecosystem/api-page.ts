@@ -7,7 +7,7 @@ import { loadGraph } from './graph.js';
 import { commitmentsSetter, loadInterface } from './interface-service.js';
 import type { EdgeRow } from './interface-store.js';
 import { activeEcosystemIdsOf } from './membership-store.js';
-import { edgeVisible, liveEdges, type Sight, sightOf } from './party.js';
+import { edgeVisible, liveEdges, offeredSight, type Sight, sightOf } from './party.js';
 import type { InterfaceDocument, Publication } from './schema.js';
 import { type ProjectRow, projectsWhere, readEcosystems, recordedVersions } from './store.js';
 
@@ -41,7 +41,11 @@ function publicationsOf(
   });
 }
 
-function readerOf(full: boolean, sight: ReadonlyMap<string, Sight>) {
+function readerOf(
+  full: boolean,
+  sight: ReadonlyMap<string, Sight>,
+  offered: ReadonlyMap<string, string[]>,
+) {
   if (full) return { access: 'project' as const };
   return {
     access: 'party' as const,
@@ -50,8 +54,14 @@ function readerOf(full: boolean, sight: ReadonlyMap<string, Sight>) {
       visibility: s.mode,
       projects: s.via,
     })),
+    offered: [...offered]
+      .filter(([ecosystem]) => !sight.has(ecosystem))
+      .map(([ecosystem, projects]) => ({ ecosystem, projects })),
   };
 }
+
+const publishedTo = (doc: InterfaceDocument | undefined) =>
+  new Set(Object.values(doc?.publishes ?? {}).flatMap((p) => p.ecosystems));
 
 // a fence names the projects a credential acts for: the page is read in full only for one inside it, and as a party only through those, whatever else the person belongs to
 export async function readApiPage(userId: string, projectId: string, fence?: readonly string[]) {
@@ -61,33 +71,37 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
   const full =
     (access ? holds(access, 'project.read') : false) && (!fence || fence.includes(projectId));
   const targetEcos = (await activeEcosystemIdsOf(db, [projectId])).map((m) => m.ecosystemId);
-  const graph = await loadGraph(targetEcos);
+  const [graph, held] = await Promise.all([loadGraph(targetEcos), loadInterface(projectId)]);
   const reader = full ? new Set([projectId]) : await readerProjects(userId, fence);
   const sight = full ? new Map<string, Sight>() : sightOf(graph, reader, projectId);
-  if (!full && sight.size === 0) {
+  const offered = full
+    ? new Map<string, string[]>()
+    : offeredSight(graph, reader, projectId, publishedTo(held?.document));
+  if (!full && sight.size === 0 && offered.size === 0) {
     throw forbidden(
-      `project ${projectId} is readable here only by its members and by the projects it publishes to or consumes from in an ecosystem`,
+      `project ${projectId} is readable here only by its members, by the projects it publishes to or consumes from in an ecosystem, and, for the contracts it publishes, by the active members of an ecosystem they are published to`,
     );
   }
   const visible = new Set(full ? targetEcos : sight.keys());
+  const shown = new Set([...visible, ...offered.keys()]);
   const edges = liveEdges(graph).filter(
     (e: EdgeRow) =>
       (e.providerProjectId === projectId || e.consumerProjectId === projectId) &&
       visible.has(e.ecosystemId) &&
       (full || edgeVisible(graph, e, reader)),
   );
-  const [held, setBy, versionRows, ecos, others] = await Promise.all([
-    loadInterface(projectId),
+  const [setBy, versionRows, ecos, others] = await Promise.all([
     commitmentsSetter(projectId),
     recordedVersions(db, [projectId]),
-    readEcosystems(db, [...visible]),
+    readEcosystems(db, [...shown]),
     projectsWhere(db, {
       ids: [...new Set(edges.flatMap((e) => [e.consumerProjectId, e.providerProjectId]))],
     }),
   ]);
   const named = new Map(others.map((p) => [p.id, { id: p.id, slug: p.slug, name: p.name }]));
   const versions = new Map<string, string[]>();
-  for (const v of versionRows)
+  // a version the provider has not approved is not yet its word, so only its members read it
+  for (const v of versionRows.filter((r) => full || r.approval === 'approved'))
     versions.set(v.contractSlug, [...(versions.get(v.contractSlug) ?? []), v.version]);
   const consumers = (slug: string, ecosystems: readonly string[]) =>
     edges
@@ -104,7 +118,7 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
       }));
   return {
     project: { id: target.id, slug: target.slug, name: target.name },
-    reader: readerOf(full, sight),
+    reader: readerOf(full, sight, offered),
     declared: held !== null,
     ecosystems: ecos.map((e) => {
       const d = heldEcosystem(e).document;
@@ -115,9 +129,7 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
         visibility: d.visibility.members,
       };
     }),
-    publishes: held
-      ? publicationsOf(target, held.document, visible, full, versions, consumers)
-      : [],
+    publishes: held ? publicationsOf(target, held.document, shown, full, versions, consumers) : [],
     consumes: edges
       .filter((e) => e.consumerProjectId === projectId)
       .map((e) => ({

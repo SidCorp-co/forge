@@ -90,6 +90,12 @@ The box sees an open run in the same sweep (\`builderRuns\` beside the channel's
    HEAD; a storefront project reads what its provider holds (on \`autoflow\`, its workflows, routes and
    nodes). Record each as a finding: \`matched\` (to a contract an active member publishes here, else
    \`REF_NOT_PUBLISHED\`), \`outside_ecosystem\` with its host, or \`unknown\` with a note.
+   What the members publish here is read as this project, before it consumes anything:
+   \`GET /api/projects/:id/ecosystems\` names each membership's \`peers\` and the contracts each publishes
+   in that ecosystem at its \`current\` approved version; \`GET /api/projects/<provider>/contracts/<contract>/versions\`,
+   \`…/versions/<version>\` (its \`elements\`) and \`…/versions/<version>/artifact\` (the bytes) answer an
+   active member of an ecosystem the contract is published to with its approved versions only, and
+   anyone else \`FORBIDDEN\`.
 3. For each matched use, write the link (\`POST /api/projects/:id/links\`, or \`PUT\` an existing one) from the module that calls it,
    with its call sites, and name the link's id in the run's \`links\`. A call site is the shape the
    project's source holds, and the other shape is refused \`CALL_SITE_KIND_MISMATCH\`:

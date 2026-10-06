@@ -172,13 +172,16 @@ export async function projectsWhere(
 export async function recordedVersions(
   tx: Tx,
   providerIds: readonly string[],
-): Promise<{ providerProjectId: string; contractSlug: string; version: string }[]> {
+): Promise<
+  { providerProjectId: string; contractSlug: string; version: string; approval: string }[]
+> {
   if (providerIds.length === 0) return [];
   return tx
     .select({
       providerProjectId: contractVersions.providerProjectId,
       contractSlug: contractVersions.contractSlug,
       version: contractVersions.version,
+      approval: contractVersions.approval,
     })
     .from(contractVersions)
     .where(inArray(contractVersions.providerProjectId, [...providerIds]))

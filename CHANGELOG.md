@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fellow ecosystem member reads a published contract before consuming it.** Its approved
+  versions, elements and artifact, the provider's API page and `GET /api/projects/:id/ecosystems`
+  peers answer it; a proposed version stays the provider's own.
+
 ## [0.4.0-dev.45] - 2026-10-06
 
 Dev panes run their own runner, upgraded checkouts convert, unreadable contracts refused

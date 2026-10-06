@@ -52,6 +52,22 @@ export function sightOf(
   return out;
 }
 
+// a contract published to an ecosystem is offered to every active member of it, whatever the ecosystem shows of the rest: a fellow member reads it to decide to consume it, so it is read before any edge exists
+export function offeredSight(
+  graph: PartyGraph,
+  readerProjects: ReadonlySet<string>,
+  target: string,
+  publishedTo: ReadonlySet<string>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const ecosystemId of publishedTo) {
+    if (!isActive(graph, ecosystemId, target)) continue;
+    const via = [...readerProjects].filter((p) => p !== target && isActive(graph, ecosystemId, p));
+    if (via.length > 0) out.set(ecosystemId, via);
+  }
+  return out;
+}
+
 export function visibleMembers(
   graph: PartyGraph,
   readerProjects: ReadonlySet<string>,
