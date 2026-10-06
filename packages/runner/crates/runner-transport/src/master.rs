@@ -102,16 +102,27 @@ pub async fn close_pass(
     dispatched: &[String],
     refused: Option<(&str, &str)>,
 ) -> std::result::Result<String, PassError> {
-    let body = serde_json::json!({
+    pass_call(client, close_body(session_id, pass_id, dispatched, refused)).await
+}
+
+/// The close as sent: `dispatched` is the caller's list exactly, never blanked
+/// for a refusal. A refused close that carries work is core's to refuse by name
+/// (`MASTER_PASS_REFUSED_WITH_WORK`), not this body's to make look empty.
+pub(crate) fn close_body(
+    session_id: &str,
+    pass_id: &str,
+    dispatched: &[String],
+    refused: Option<(&str, &str)>,
+) -> serde_json::Value {
+    serde_json::json!({
         "op": "close",
         "sessionId": session_id,
         "passId": pass_id,
-        "dispatched": if refused.is_some() { &[][..] } else { dispatched },
+        "dispatched": dispatched,
         "skipped": [],
         "parked": [],
         "refused": refused.map(|(reason, detail)| serde_json::json!({ "reason": reason, "detail": detail })),
-    });
-    pass_call(client, body).await
+    })
 }
 
 async fn pass_call(
@@ -201,4 +212,28 @@ pub async fn clear_limit(client: &CoreClient) -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_close_carries_the_dispatched_list_it_was_given() {
+        let dispatched = vec!["ISS-1".to_string(), "ISS-2".to_string()];
+        let body = close_body("s", "p", &dispatched, Some(("usage_limit", "limit")));
+        assert_eq!(
+            body["dispatched"],
+            serde_json::json!(["ISS-1", "ISS-2"]),
+            "a refused close blanked the ledger's dispatched list: {body}"
+        );
+        assert_eq!(body["refused"]["reason"], "usage_limit");
+    }
+
+    #[test]
+    fn a_close_that_ran_sends_no_refusal() {
+        let body = close_body("s", "p", &[], None);
+        assert_eq!(body["dispatched"], serde_json::json!([]));
+        assert!(body["refused"].is_null());
+    }
 }

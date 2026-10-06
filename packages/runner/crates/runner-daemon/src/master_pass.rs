@@ -112,28 +112,60 @@ pub(crate) fn named_pass_id(detail: &str) -> Option<String> {
     None
 }
 
-/// The refusal the master's account wrote for a turn started at or after
-/// `opened_at`, read off the conversation's own records: a pass whose turn was
-/// refused before it ran is closed refused, never as an idle pass.
-pub(crate) fn refusal_since(
-    newest: Option<&crate::master_limit::Decisive>,
-    opened_at: i64,
-) -> Option<(&'static str, String)> {
-    let d = newest?;
-    if d.at < opened_at {
-        return None;
-    }
-    match &d.verdict {
-        crate::master_limit::Verdict::Refused(r) => Some((r.reason.wire(), r.detail.clone())),
-        _ => None,
-    }
+/// What the conversation's own records say about the turn a pass covers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TurnRecord {
+    /// The account answered at least once at or after the pass opened.
+    pub worked: bool,
+    /// The newest refusal the account wrote at or after the pass opened.
+    pub refusal: Option<(&'static str, String)>,
 }
 
-fn refusal_of(seen: Option<&Activity>, opened_at: i64) -> Option<(&'static str, String)> {
-    let path = seen?.transcript.as_deref()?;
-    let tail = crate::master_limit::read_tail(std::path::Path::new(path))?;
-    let newest = crate::master_limit::newest_record(&tail, crate::master_limit::now_unix());
-    refusal_since(newest.as_ref(), opened_at)
+/// Every decisive record in `tail` dated at or after `opened_at`, folded into
+/// whether the turn ran and the newest refusal it met. Each line is read as a
+/// tail of its own, so a refusal written AFTER real work is seen beside it
+/// rather than in its place.
+pub(crate) fn turn_since(tail: &str, opened_at: i64, now_unix: i64) -> TurnRecord {
+    let mut turn = TurnRecord::default();
+    for line in tail.lines().rev() {
+        let Some(d) = crate::master_limit::newest_record(line, now_unix) else {
+            continue;
+        };
+        if d.at < opened_at {
+            continue;
+        }
+        match d.verdict {
+            crate::master_limit::Verdict::Worked => turn.worked = true,
+            crate::master_limit::Verdict::Refused(r) if turn.refusal.is_none() => {
+                turn.refusal = Some((r.reason.wire(), r.detail));
+            }
+            _ => {}
+        }
+    }
+    turn
+}
+
+/// The refusal a pass closes with: only one inside which nothing ran — no
+/// answer from the account and no run declared in the ledger. A refusal met
+/// after work is the end of a turn that ran, and the pass closes as one.
+pub(crate) fn refused_pass(
+    turn: &TurnRecord,
+    dispatched: &[String],
+) -> Option<(&'static str, String)> {
+    if turn.worked || !dispatched.is_empty() {
+        return None;
+    }
+    turn.refusal.clone()
+}
+
+fn turn_of(seen: Option<&Activity>, opened_at: i64) -> TurnRecord {
+    let Some(path) = seen.and_then(|s| s.transcript.as_deref()) else {
+        return TurnRecord::default();
+    };
+    let Some(tail) = crate::master_limit::read_tail(std::path::Path::new(path)) else {
+        return TurnRecord::default();
+    };
+    turn_since(&tail, opened_at, crate::master_limit::now_unix())
 }
 
 async fn settle(
@@ -141,7 +173,7 @@ async fn settle(
     led: &mut Ledger,
     pass: &MasterPass,
     why: &str,
-    refused: Option<(&'static str, String)>,
+    turn: &TurnRecord,
 ) -> bool {
     let dispatched = match led.issues_declared_since(&pass.session_id, pass.opened_at) {
         Ok(keys) => keys,
@@ -154,6 +186,7 @@ async fn settle(
             return false;
         }
     };
+    let refused = refused_pass(turn, &dispatched);
     let refused_ref = refused.as_ref().map(|(r, d)| (*r, d.as_str()));
     let gone = match master_api::close_pass(
         client,
@@ -172,13 +205,22 @@ async fn settle(
                     pass.pass_id,
                     pass.verb
                 ),
-                None => tracing::info!(
-                    "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — {why}",
-                    pass.project_id,
-                    pass.pass_id,
-                    pass.verb,
-                    dispatched.len()
-                ),
+                None => match &turn.refusal {
+                    Some((reason, detail)) => tracing::warn!(
+                        "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — its turn ran and then met a refusal ({reason}: {detail}); {why}",
+                        pass.project_id,
+                        pass.pass_id,
+                        pass.verb,
+                        dispatched.len()
+                    ),
+                    None => tracing::info!(
+                        "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — {why}",
+                        pass.project_id,
+                        pass.pass_id,
+                        pass.verb,
+                        dispatched.len()
+                    ),
+                },
             }
             true
         }
@@ -219,6 +261,23 @@ pub(crate) async fn reconcile(
     process: &str,
     only: Option<&str>,
 ) {
+    // Unprompted passes open first, so a turn that began and ended between two
+    // ticks is opened and closed by this same reconcile rather than missed.
+    for (project_id, session_id) in masters.live_sessions() {
+        if only.is_some_and(|id| id != project_id) {
+            continue;
+        }
+        open_unprompted(
+            client,
+            masters,
+            activity,
+            led,
+            process,
+            &project_id,
+            &session_id,
+        )
+        .await;
+    }
     let passes = match led.master_passes() {
         Ok(p) => p,
         Err(e) => {
@@ -235,10 +294,12 @@ pub(crate) async fn reconcile(
         let settled = match judge(pass, process, live.as_deref(), seen.as_ref()) {
             Judged::Open => false,
             Judged::TurnEnded => {
-                let refused = refusal_of(seen.as_ref(), pass.opened_at);
-                settle(client, led, pass, "the turn it covers has ended", refused).await
+                let turn = turn_of(seen.as_ref(), pass.opened_at);
+                settle(client, led, pass, "the turn it covers has ended", &turn).await
             }
-            Judged::Abandoned(a) => settle(client, led, pass, a.why(), None).await,
+            Judged::Abandoned(a) => {
+                settle(client, led, pass, a.why(), &TurnRecord::default()).await
+            }
         };
         if settled {
             if let Some(seen) = seen.as_ref() {
@@ -246,39 +307,39 @@ pub(crate) async fn reconcile(
             }
         }
     }
-    for (project_id, session_id) in masters.live_sessions() {
-        if only.is_some_and(|id| id != project_id) {
-            continue;
-        }
-        open_unprompted(
-            client,
-            masters,
-            activity,
-            led,
-            process,
-            &project_id,
-            &session_id,
-        )
-        .await;
-    }
 }
 
-/// The prompt count to record as an unprompted pass's start, where `seen`
-/// shows a turn running that no open pass covers and that began after the
-/// last pass settled. `None` otherwise.
+/// An unprompted pass's start: the prompt count before its turn and the unix
+/// second that turn's prompt was submitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UnpromptedTurn {
+    pub prompts_before: u64,
+    pub started_at: i64,
+}
+
+/// The start to record for an unprompted pass, where `seen` shows a prompt
+/// submitted after the last pass settled that no open pass covers — whether
+/// its turn still runs or has already ended, so a turn shorter than a tick is
+/// recorded too. `None` otherwise.
 pub(crate) fn unprompted_turn(
     pass_open: bool,
     seen: Option<&Activity>,
     settled_at: Option<u64>,
-) -> Option<u64> {
+) -> Option<UnpromptedTurn> {
     if pass_open {
         return None;
     }
     let seen = seen?;
-    if !matches!(seen.doing(), Doing::Working | Doing::AwaitingPermission) {
+    if seen.prompts <= settled_at.unwrap_or(0) {
         return None;
     }
-    (seen.prompts > settled_at.unwrap_or(0)).then(|| seen.prompts.saturating_sub(1))
+    // `prompts` and `prompted_at` are written by the same PromptSubmitted, so a
+    // count above zero always carries its time.
+    let prompted_ms = seen.prompted_at?;
+    Some(UnpromptedTurn {
+        prompts_before: seen.prompts.saturating_sub(1),
+        started_at: prompted_ms.div_euclid(1000),
+    })
 }
 
 /// Open a pass for a turn the master started without a nudge from this box,
@@ -297,7 +358,7 @@ async fn open_unprompted(
         Err(_) => return,
     };
     let seen = activity.get(session_id);
-    let Some(prompts) = unprompted_turn(
+    let Some(turn) = unprompted_turn(
         pass_open,
         seen.as_ref(),
         masters.prompts_settled(project_id, session_id),
@@ -312,9 +373,9 @@ async fn open_unprompted(
                 pass_id,
                 verb: NUDGE_VERB.to_string(),
                 issue_key: None,
-                opened_at: now_secs(),
+                opened_at: turn.started_at,
                 opened_by: process.to_string(),
-                prompts_at_nudge: Some(prompts),
+                prompts_at_nudge: Some(turn.prompts_before),
             };
             if let Err(e) = led.open_master_pass(&row) {
                 tracing::error!(
@@ -331,7 +392,7 @@ async fn open_unprompted(
         }
         Err(PassError::Refused { code, detail }) => {
             // Settled as seen so the same turn is not asked about every tick.
-            masters.note_prompts_settled(project_id, session_id, prompts + 1);
+            masters.note_prompts_settled(project_id, session_id, turn.prompts_before + 1);
             tracing::warn!(
                 "[master] {project_id}: opening an unprompted pass was refused {code}: {detail}"
             );
@@ -479,5 +540,150 @@ fn adopt_orphan(led: &mut Ledger, nudged: &Nudged<'_>, detail: &str) {
             row.project_id,
             row.pass_id
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_core::agent_activity::{Event, Report};
+
+    // 2026-10-06T10:00:00Z
+    const T0: i64 = 1_791_280_800;
+
+    fn worked(at: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","timestamp":"{at}","uuid":"w","message":{{"model":"claude-opus-5-5","content":[]}}}}"#
+        )
+    }
+
+    fn limit(at: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","isApiErrorMessage":true,"apiErrorStatus":429,"error":"rate_limit","timestamp":"{at}","uuid":"r","message":{{"model":"<synthetic>","content":[{{"type":"text","text":"You've hit your limit"}}]}},"quotaLimits":{{"status":"rejected","resetsAt":{}}}}}"#,
+            T0 + 3600
+        )
+    }
+
+    fn report(a: &Activities, event: Event, at_ms: i64) -> Activity {
+        a.record(
+            "s",
+            Report {
+                event,
+                at: at_ms,
+                subject: None,
+                conversation: Some("c"),
+                transcript: None,
+            },
+        )
+    }
+
+    #[test]
+    fn a_429_after_work_in_the_same_pass_closes_it_as_ran() {
+        let tail = [
+            worked("2026-10-06T10:00:10Z"),
+            limit("2026-10-06T10:00:20Z"),
+        ]
+        .join("\n");
+        let turn = turn_since(&tail, T0, T0 + 30);
+        assert!(turn.worked);
+        assert_eq!(turn.refusal.as_ref().map(|r| r.0), Some("usage_limit"));
+        assert_eq!(
+            refused_pass(&turn, &[]),
+            None,
+            "a pass whose turn ran was closed refused"
+        );
+    }
+
+    #[test]
+    fn a_429_after_a_ledger_dispatch_closes_the_pass_as_ran() {
+        let tail = limit("2026-10-06T10:00:20Z");
+        let turn = turn_since(&tail, T0, T0 + 30);
+        let dispatched = vec!["ISS-A".to_string(), "ISS-B".to_string()];
+        assert_eq!(
+            refused_pass(&turn, &dispatched),
+            None,
+            "a pass that declared runs was closed refused"
+        );
+    }
+
+    #[test]
+    fn a_turn_refused_before_anything_ran_closes_refused() {
+        let tail = [
+            worked("2026-10-06T09:59:00Z"),
+            limit("2026-10-06T10:00:02Z"),
+        ]
+        .join("\n");
+        let turn = turn_since(&tail, T0, T0 + 30);
+        assert!(
+            !turn.worked,
+            "work from before the pass was counted inside it"
+        );
+        assert_eq!(refused_pass(&turn, &[]).map(|r| r.0), Some("usage_limit"));
+    }
+
+    #[test]
+    fn a_refusal_from_before_the_pass_opened_is_not_its_own() {
+        let tail = limit("2026-10-06T09:59:59Z");
+        let turn = turn_since(&tail, T0, T0 + 30);
+        assert_eq!(turn, TurnRecord::default());
+        assert_eq!(refused_pass(&turn, &[]), None);
+    }
+
+    #[test]
+    fn a_turn_that_ended_before_the_tick_still_opens_an_unprompted_pass() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000 + 250);
+        let seen = report(&a, Event::Stopped, T0 * 1000 + 2000);
+        assert_eq!(seen.doing(), Doing::Idle);
+        assert_eq!(
+            unprompted_turn(false, Some(&seen), None),
+            Some(UnpromptedTurn {
+                prompts_before: 0,
+                started_at: T0
+            }),
+            "a turn shorter than one tick got no pass"
+        );
+    }
+
+    #[test]
+    fn an_unprompted_pass_opens_at_the_prompt_not_when_the_tick_noticed() {
+        let a = Activities::new();
+        let seen = report(&a, Event::PromptSubmitted, (T0 - 4) * 1000);
+        let turn = unprompted_turn(false, Some(&seen), None).expect("a running turn opens a pass");
+        assert_eq!(turn.started_at, T0 - 4);
+        // The refusal that turn met two seconds in is inside the pass it opened.
+        let tail = limit("2026-10-06T09:59:58Z");
+        let met = turn_since(&tail, turn.started_at, T0);
+        assert_eq!(refused_pass(&met, &[]).map(|r| r.0), Some("usage_limit"));
+    }
+
+    #[test]
+    fn a_settled_turn_or_an_open_pass_opens_no_unprompted_pass() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000);
+        let seen = report(&a, Event::Stopped, T0 * 1000 + 1000);
+        assert_eq!(unprompted_turn(false, Some(&seen), Some(1)), None);
+        assert_eq!(unprompted_turn(true, Some(&seen), None), None);
+        assert_eq!(unprompted_turn(false, None, None), None);
+    }
+
+    #[test]
+    fn a_short_unprompted_pass_is_judged_ended_in_the_reconcile_that_opened_it() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000);
+        let seen = report(&a, Event::Stopped, T0 * 1000 + 1500);
+        let turn = unprompted_turn(false, Some(&seen), None)
+            .expect("a turn shorter than one tick got no pass");
+        let row = MasterPass {
+            project_id: "p".into(),
+            session_id: "s".into(),
+            pass_id: "x".into(),
+            verb: NUDGE_VERB.into(),
+            issue_key: None,
+            opened_at: turn.started_at,
+            opened_by: "me".into(),
+            prompts_at_nudge: Some(turn.prompts_before),
+        };
+        assert_eq!(judge(&row, "me", Some("s"), Some(&seen)), Judged::TurnEnded);
     }
 }
