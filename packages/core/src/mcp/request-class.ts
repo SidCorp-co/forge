@@ -66,7 +66,8 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
 export function writeCallsOf(envelope: unknown): string[] {
   if (Array.isArray(envelope)) return envelope.flatMap(writeCallsOf);
   if (classifyMcpEnvelope(envelope) === 'read') return [];
-  if (!envelope || typeof envelope !== 'object') return ['a request that is not a JSON-RPC envelope'];
+  if (!envelope || typeof envelope !== 'object')
+    return ['a request that is not a JSON-RPC envelope'];
   const { method, params } = envelope as { method?: unknown; params?: unknown };
   if (typeof method !== 'string') return ['a request with no method'];
   if (method !== 'tools/call') return [method];

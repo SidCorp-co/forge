@@ -12,10 +12,16 @@ import { sessionInbox } from '../db/schema-session-inbox.js';
 import { accountActor, readWorkState, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
+import { SEND_UNDELIVERED_DEADLINE_MS } from '../lib/session-send-deadline.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
-import { type LoopScope, requestSessionSend, resolveSessionSend } from './ports.js';
+import {
+  type LoopScope,
+  postIssueNoticeOnce,
+  requestSessionSend,
+  resolveSessionSend,
+} from './ports.js';
 
 async function resumableIssue(issueId: string) {
   const [issue] = await db
@@ -162,6 +168,35 @@ export function registerAnswerResume(): void {
 }
 
 /**
+ * An answer a live session never confirmed past the declared deadline is not waited on any
+ * longer: the issue says so, by name, once, and the park moves on like a gone session's.
+ */
+async function sayAnswerUndelivered(
+  inbox: typeof sessionInbox.$inferSelect,
+  issueId: string,
+  authorId: string,
+): Promise<void> {
+  const minutes = Math.round(SEND_UNDELIVERED_DEADLINE_MS / 60_000);
+  logger.warn(
+    { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq },
+    'answer-resume: the answer was never confirmed by the session that asked, past the deadline',
+  );
+  const marker = `answer-undelivered:${inbox.agentSessionId}:${inbox.seq}`;
+  const body =
+    `Your answer was not confirmed by the session that asked within ${minutes} minutes ` +
+    '(the pane refused it or the box said nothing), so the issue moves on without that session: ' +
+    'the answer is acted on by a new run instead. (' +
+    marker +
+    ')';
+  await postIssueNoticeOnce({
+    issueId,
+    authorId,
+    body,
+    marker,
+  });
+}
+
+/**
  * Hop 3d — the answer that never reached anyone.
  *
  * `deliverToPark` hands an answer to a runner and returns; it cannot know
@@ -196,7 +231,8 @@ export async function resumeLapsedAnswers(
   let resumed = 0;
   for (const { inbox, issueId, authorId } of rows) {
     const { outcome } = await resolveSessionSend(inbox, now.getTime());
-    if (outcome !== 'gone' || !issueId || !authorId) continue;
+    if ((outcome !== 'gone' && outcome !== 'undelivered') || !issueId || !authorId) continue;
+    if (outcome === 'undelivered') await sayAnswerUndelivered(inbox, issueId, authorId);
     const issue = await resumableIssue(issueId);
     if (!issue) continue;
     if (!(await resumeUnasked(issue, authorId))) continue;

@@ -17,7 +17,13 @@ vi.mock('../credentials/pat-principal.js', () => ({
 vi.mock('../credentials/mcp-audit.js', () => ({ writeMcpAudit: () => {} }));
 vi.mock('../credentials/ports.js', () => ({ tokenChanged: async () => {} }));
 vi.mock('./rate-limit.js', () => ({
-  consumeRateLimit: async () => ({ allowed: true, max: 10, remaining: 9, resetMs: 1000, windowMs: 60000 }),
+  consumeRateLimit: async () => ({
+    allowed: true,
+    max: 10,
+    remaining: 9,
+    resetMs: 1000,
+    windowMs: 60000,
+  }),
   getClientIp: () => null,
 }));
 
