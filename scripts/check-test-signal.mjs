@@ -28,7 +28,6 @@ import {
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
-import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
 
@@ -138,9 +137,6 @@ if (parsed.error) {
   process.exit(2);
 }
 const mode = parsed.mode;
-
-if (mode !== '--staged' && suspendedWithoutTests(ROOT, 'test-signal: 0 test file(s)'))
-  process.exit(0);
 
 const files = mode === '--staged' ? collectStaged() : collectAll();
 if (mode !== '--staged' && files.length === 0) {

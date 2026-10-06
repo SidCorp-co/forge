@@ -19,14 +19,12 @@ export const CHECKS = [
     axis: 'behaviour',
     label: 'test-signal',
     cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
-    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-signal: (\d+) test file/m,
   },
   {
     axis: 'behaviour',
     label: 'test-reachability',
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
-    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-reachability: (\d+) tracked test file/m,
     needs: ['deps'],
     unit: 'test files',
@@ -35,7 +33,6 @@ export const CHECKS = [
     axis: 'behaviour',
     label: 'whole-tree-gates',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
-    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
     unit: 'test files',
   },

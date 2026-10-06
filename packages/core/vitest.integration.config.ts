@@ -1,18 +1,35 @@
+import { cpus } from 'node:os';
 import { defineConfig } from 'vitest/config';
+
+// One throwaway Postgres per run (tests/helpers/global-setup.ts) and one database per file cloned
+// from its migrated template (tests/helpers/file-database.ts), so files run in parallel safely.
+function workers(): number {
+  const override = process.env.VITEST_MAX_WORKERS;
+  if (override !== undefined && override !== '') {
+    if (!/^[1-9][0-9]*$/.test(override)) {
+      throw new Error(
+        `VITEST_MAX_WORKERS="${override}" is not a worker count for vitest.integration.config.ts. ` +
+          'It takes a positive whole number such as 4, or is left unset so the machine decides.',
+      );
+    }
+    return Number(override);
+  }
+  return Math.max(1, Math.min(6, Math.floor((cpus().length || 1) / 3)));
+}
 
 export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     environment: 'node',
-    // cm:hack ISS-172 until:QA phase on dev — the suites and their global setup are removed; the QA phase rewrites them against
-    // current source, since the removed ones have drifted (docs/proposals/the-removed-test-suites-are-rewritten-not-restored.md)
+    fsModuleCache: true,
+    globalSetup: ['./tests/helpers/global-setup.ts'],
     // The guard fails a test that lists the repository root without declaring it (ISS-1314).
-    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],
+    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs', './tests/helpers/file-database.ts'],
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',
     fileParallelism: true,
-    maxWorkers: 1,
+    maxWorkers: workers(),
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
