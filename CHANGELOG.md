@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.57] - 2026-10-06
+
+Core integration suites run on dev again; release-hold and session-write races fixed
+
 ### Fixed
 
 - Two racing release sweeps write one hold, not two; two agents updating one issue's session state can no longer both succeed against the same earlier read.
