@@ -51,7 +51,7 @@ export function usePromoteFeedback(projectId: string) {
   });
 }
 
-/** Triage, decline, verify, reopen or delete reporter data; the answer is the item as it reads next. */
+/** Triage, retarget, decline, verify, reopen or delete reporter data; the answer is the item as it reads next. */
 export function useFeedbackAction(projectId: string, key: string) {
   const qc = useQueryClient();
   const invalidate = useInvalidate(projectId);

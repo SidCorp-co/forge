@@ -103,6 +103,7 @@ export const FEEDBACK_DECISIONS = [
 	"redacted",
 	"promoted",
 	"routed",
+	"retargeted",
 ] as const;
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
@@ -156,6 +157,7 @@ export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
 	redacted: "Reporter data deleted",
 	routed: "Route written",
 	promoted: "Promoted from an agent report",
+	retargeted: "Target changed",
 };
 
 export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
@@ -254,6 +256,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_TARGET_UNKNOWN",
 	"FEEDBACK_TARGET_NOT_IN_PROJECT",
 	"FEEDBACK_TARGET_NOT_ONE",
+	"FEEDBACK_TARGET_UNCHANGED",
+	"FEEDBACK_TARGET_CORE_FILED",
 	"FEEDBACK_ROUTE_TARGET_MISMATCH",
 	"FEEDBACK_ROUTE_INCOMPLETE",
 	"FEEDBACK_ANSWER_MISSING",
@@ -372,6 +376,20 @@ export type PromoteAgentReportRequest = z.infer<
 	typeof promoteAgentReportRequestSchema
 >;
 export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
+
+/**
+ * `POST …/feedback/:fb/retarget`: what the item is about, corrected by a holder of feedback.approve.
+ * Exactly one target, resolved and refused as at create; `reason` is the approver's note.
+ */
+export const feedbackRetargetRequestSchema = z.strictObject({
+	...feedbackTargetFields,
+	reason: reason.optional(),
+});
+export type FeedbackRetargetRequest = z.infer<
+	typeof feedbackRetargetRequestSchema
+>;
+export const FEEDBACK_RETARGET_SHAPE =
+	"{ exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), reason? }";
 
 /** `POST …/feedback/:fb/reopen`: the reason the reporter gives. */
 export const feedbackReasonRequestSchema = z.strictObject({ reason });
@@ -517,6 +535,8 @@ export interface FeedbackView extends FeedbackSummary {
 		reopen: boolean;
 		askVerify: boolean;
 		redact: boolean;
+		/** Correct what the item is about, at any phase; never on an item core filed about a contract version. */
+		retarget: boolean;
 	};
 	sensitive: boolean;
 }

@@ -76,6 +76,57 @@ export function targetCountRefusal(
   return null;
 }
 
+/** What a retarget is checked against: the item as it stands and the target it asks for. */
+export interface RetargetFacts {
+  key: string;
+  /** The target it has, as a reader names it (REQ-3, ISS-12, a version, a flow, the screen text). */
+  current: { type: string; key: string; node: string | null };
+  next: { type: string; key: string; node: string | null };
+  /** Set when core filed the item against a provider's contract version (E3). */
+  contract: string | null;
+  redacted: boolean;
+  /** On an item routed as a revision: the requirement its suggestion revises, and the one the new target is about. */
+  revision: { revises: string | null; nextRequirement: string | null } | null;
+}
+
+// ISS-264: a target is corrected at any phase, so an item filed about a screen moves to the
+// requirement that later records its rule; what it can never be moved off or onto is named
+export function retargetRefusal(f: RetargetFacts): FeedbackRefusal | null {
+  if (f.contract) {
+    return refusal(
+      'FEEDBACK_TARGET_CORE_FILED',
+      '',
+      `${f.key} was filed by core about contract version ${f.contract}, and its deadline is that version's; it is not moved. Decline it, or file a new item about the target you mean.`,
+    );
+  }
+  const same =
+    f.current.type === f.next.type &&
+    f.current.key === f.next.key &&
+    f.current.node === f.next.node;
+  if (same) {
+    return refusal(
+      'FEEDBACK_TARGET_UNCHANGED',
+      `/${f.next.type}`,
+      `${f.key} is already about ${f.next.type} ${f.next.key}${f.next.node ? ` (${f.next.node})` : ''}; name the target it should move to.`,
+    );
+  }
+  if (f.next.type === 'screen' && f.redacted) {
+    return refusal(
+      'FEEDBACK_ALREADY_REDACTED',
+      '/screen',
+      `${f.key}'s reporter data was deleted, and a screen named in words is reporter data; retarget it to a requirement, issue, release or workflow instead.`,
+    );
+  }
+  if (f.revision && f.revision.revises !== f.revision.nextRequirement) {
+    return refusal(
+      'FEEDBACK_ROUTE_TARGET_MISMATCH',
+      `/${f.next.type}`,
+      `${f.key} is routed as a revision of ${f.revision.revises ?? 'no requirement'}, and ${f.next.type} ${f.next.key} is about ${f.revision.nextRequirement ?? 'no requirement'}; retarget it to that requirement or one of its issues.`,
+    );
+  }
+  return null;
+}
+
 // a decline carries the reason the reporter reads, from new, triaged or reopened
 export function declineRefusal(
   status: FeedbackStatus,

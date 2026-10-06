@@ -13,7 +13,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
-\`route\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
+\`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -27,6 +27,22 @@ into FB-n when it is product feedback after all.
   a second promotion is \`FEEDBACK_SOURCE_ALREADY_PROMOTED\`, another project's report
   \`FEEDBACK_SOURCE_NOT_IN_PROJECT\`, a report already curated into an issue
   \`FEEDBACK_SOURCE_ROUTED_ELSEWHERE\`.
+
+### Correcting what an item is about
+- \`retarget\` \`{ requirement | issue | release | workflow | screen, node?, reason? }\` moves the item to
+  another target, so an item filed about a screen moves to the requirement that later records its
+  rule, and that requirement then lists it. It takes \`feedback.approve\` (\`PERMISSION_FORBIDDEN\`
+  without it) and is open at every phase, verified and declined included; status, route and phase
+  are left as they were.
+- The target is named and refused exactly as at create (\`FEEDBACK_TARGET_NOT_ONE\`,
+  \`FEEDBACK_TARGET_UNKNOWN\`, \`FEEDBACK_TARGET_NOT_IN_PROJECT\`, and a \`node\` only beside a workflow).
+  A REQ-n or ISS-n key is read inside the item's own project.
+- Also refused: the target the item already has (\`FEEDBACK_TARGET_UNCHANGED\`), an item core filed about
+  a contract version (\`FEEDBACK_TARGET_CORE_FILED\`), an item routed as a revision moved off the
+  requirement its suggestion revises (\`FEEDBACK_ROUTE_TARGET_MISMATCH\`), and a screen for an item whose
+  reporter data was deleted (\`FEEDBACK_ALREADY_REDACTED\`).
+- Leaving a screen keeps the screen text as where the item was seen. Each move is a \`retargeted\`
+  decision naming the new target and the one it replaced, with the approver's \`reason\`.
 
 ### Stored status against the phase you read
 Each stored status is a person's decision: \`new\`, \`triaged\`, \`reopened\`, \`verified\`, \`declined\`.
@@ -85,8 +101,8 @@ route, declining included, closes the open question.
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
-- Every triage, decline, verify, reopen, redaction and promotion is kept as its own decision record, so
-  a re-triage keeps the history.
+- Every triage, decline, verify, reopen, redaction, promotion and retarget is kept as its own decision
+  record, so a re-triage keeps the history.
 
 ### Sensitive projects
 On a project whose data policy is \`redact\` or \`no_egress\`, the title, body, where-seen text, answer and

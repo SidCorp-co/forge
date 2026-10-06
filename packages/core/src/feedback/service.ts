@@ -147,7 +147,8 @@ export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<str
   return row.id;
 }
 
-async function nodeColumns(
+/** A workflow node's columns, checked against that workflow's design; a node without a workflow is refused. */
+export async function nodeColumns(
   projectId: string,
   workflowId: string | null,
   node: NodeRef | undefined,
