@@ -5,8 +5,8 @@
 
 import type { OnboardingView } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { appendMessagesIn, type TxOnly } from '../conversations/index.js';
-import { db } from '../db/client.js';
+import { appendMessagesIn } from '../conversations/index.js';
+import { db, type TxOnly } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import type { Refusal } from '../lib/refusal.js';
 import {

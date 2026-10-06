@@ -8,7 +8,7 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { patIsLive } from '../credentials/pat-live.js';
-import { db as defaultDb } from '../db/client.js';
+import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
@@ -17,7 +17,7 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import type { Executor, TxOnly } from './db-executor.js';
+import type { Executor } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
 
 interface ParticipantRow {
@@ -335,7 +335,7 @@ interface RemoveParticipantArgs {
 export async function removeParticipant(args: RemoveParticipantArgs): Promise<void> {
   if (args.tx) return removeWithin(args.tx, args);
   const dbi = args.db ?? defaultDb;
-  return dbi.transaction((tx) => removeWithin(tx as unknown as Executor, args));
+  return dbi.transaction((tx) => removeWithin(tx, args));
 }
 
 async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<void> {

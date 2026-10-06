@@ -1,8 +1,8 @@
 "use client";
 
 import { Icon } from "@/design";
-import type { AboutKind } from "../ask-about";
-import { useChatDock } from "../dock";
+import type { AboutKind } from "./ask-about";
+import { useChatDock } from "./dock";
 
 export function AskAboutThis({ kind, refId }: { kind: AboutKind; refId: string }) {
   const dock = useChatDock();

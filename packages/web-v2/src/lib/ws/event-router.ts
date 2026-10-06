@@ -1,16 +1,10 @@
 "use client";
 
+import type { WsFrame } from "@forge/contracts/ws-frames";
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
-
-interface EventEnvelope {
-	event: string;
-	// biome-ignore lint/suspicious/noExplicitAny: heterogeneous payloads
-	data: any;
-	timestamp: string;
-}
 
 /**
  * Dispatch a WS event to React Query cache invalidations. Keys must match
@@ -18,12 +12,11 @@ interface EventEnvelope {
  * hook modules — renaming one side without the other silently breaks
  * realtime updates.
  */
-export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
+export function routeEvent(env: WsFrame, qc: QueryClient): void {
 	const { event, data } = env;
 	switch (event) {
 		case "issue.created":
-		case "issue.updated":
-		case "issue.deleted": {
+		case "issue.updated": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
@@ -75,12 +68,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "conversation.progress": {
 			if (!data?.conversationId || typeof data.rev !== "number") return;
-			if (data.replaced && data.entry?.id) {
+			const { replaced, entry } = data;
+			if (replaced && entry?.id) {
 				qc.setQueryData(
 					["conversations", data.conversationId, "withdrawn"],
 					(prev: Record<string, unknown> | undefined) => ({
 						...prev,
-						[data.entry.id]: data.replaced.draft,
+						[entry.id]: replaced.draft,
 					}),
 				);
 			}
@@ -92,7 +86,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "conversation.accepted": {
-			if (!data?.conversationId || !data?.clientToken) {
+			const { clientToken } = data;
+			if (!data?.conversationId || !clientToken) {
 				if (data?.conversationId) {
 					scheduleInvalidation(qc, ["conversations", data.conversationId]);
 				}
@@ -102,7 +97,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 				["conversations", data.conversationId, "accepted"],
 				(prev: Record<string, unknown> | undefined) => ({
 					...prev,
-					[data.clientToken]: { messageId: data.messageId, seq: data.seq },
+					[clientToken]: { messageId: data.messageId, seq: data.seq },
 				}),
 			);
 			scheduleInvalidation(qc, ["conversations", data.conversationId]);
@@ -299,7 +294,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "pat.created":
 		case "pat.revoked":
-		case "pat.fence_changed":
 		case "pat.used": {
 			// ISS-160 — keep the /settings/tokens list in sync. The `pat.used`
 			// event is throttled to 1/min/token in the dispatcher; we still

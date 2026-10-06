@@ -1,7 +1,4 @@
 export { SidebarProvider, useSidebarContext } from './sidebar-context';
-export { useRecents } from './recents';
-export { usePinnedViews } from './pinned-views';
-export { buildShareLink, decodeFilter, decodeNumber } from './deep-link';
 export {
   WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS, ecosystemHref, activeSlug,
   buildActiveKey, buildBottomActiveKey, bottomTabItems, resolveRailSlug,

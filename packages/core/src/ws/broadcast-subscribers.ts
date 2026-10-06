@@ -1,10 +1,15 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
 import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 import { runStatusView } from '../pipeline/index.js';
 
 const pub = (room: string, event: string, data: unknown) =>
+  roomManager.publish(room, { event, data });
+
+/** A frame web's event router reads, checked against the payload it expects. */
+const frame = <E extends WsFrameName>(room: string, event: E, data: WsFramePayloads[E]) =>
   roomManager.publish(room, { event, data });
 
 /**
@@ -22,14 +27,14 @@ function on<T extends ConsumedBy<'ws-broadcast'>>(
 export function registerWsBroadcastSubscribers(): void {
   // every open view of either side refetches the edge
   on('issue.dependency.changed', (p) => {
-    pub(projectRoom(p.projectId), 'dependencyChanged', {
+    frame(projectRoom(p.projectId), 'dependencyChanged', {
       fromIssueId: p.fromIssueId,
       toIssueId: p.toIssueId,
     });
   });
 
   on('issue.transitioned', (p) => {
-    pub(projectRoom(p.projectId), 'issue.statusChanged', {
+    frame(projectRoom(p.projectId), 'issue.statusChanged', {
       issueId: p.id,
       from: p.from,
       to: p.to,
@@ -40,7 +45,7 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('issue.created', (p) => {
-    pub(projectRoom(p.projectId), 'issue.created', {
+    frame(projectRoom(p.projectId), 'issue.created', {
       issueId: p.issueId,
       projectId: p.projectId,
       actorId: p.actor.id,
@@ -48,7 +53,7 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('issue.updated', (p) => {
-    pub(projectRoom(p.projectId), 'issue.updated', {
+    frame(projectRoom(p.projectId), 'issue.updated', {
       issueId: p.issueId,
       projectId: p.projectId,
       fields: p.fields,
@@ -56,8 +61,19 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
+  // an open thread refetches its comments and the issue's activity
+  for (const type of ['comment.created', 'comment.updated', 'comment.deleted'] as const) {
+    on(type, (p) => {
+      frame(projectRoom(p.projectId), type, {
+        issueId: p.issueId,
+        projectId: p.projectId,
+        commentId: p.commentId,
+      });
+    });
+  }
+
   on('notification.created', (p) => {
-    pub(userRoom(p.userId), 'notification.created', {
+    frame(userRoom(p.userId), 'notification.created', {
       notificationId: p.notificationId,
       userId: p.userId,
       projectId: p.projectId,
@@ -89,14 +105,14 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('notification.read', (p) => {
-    pub(userRoom(p.userId), 'notification.read', {
+    frame(userRoom(p.userId), 'notification.read', {
       notificationId: p.notificationId,
       userId: p.userId,
     });
   });
 
   on('user.preferencesChanged', (p) => {
-    pub(userRoom(p.userId), 'user.preferencesChanged', {
+    frame(userRoom(p.userId), 'user.preferencesChanged', {
       userId: p.userId,
       theme: p.theme,
       language: p.language,
@@ -125,7 +141,7 @@ export function registerWsBroadcastSubscribers(): void {
 
   // Device reported provision progress → project room live stepper.
   on('runner.provisionStatus', (p) => {
-    pub(projectRoom(p.projectId), 'runner.provision', {
+    frame(projectRoom(p.projectId), 'runner.provision', {
       runnerId: p.runnerId,
       deviceId: p.deviceId,
       projectId: p.projectId,
@@ -135,11 +151,15 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('integration.changed', (p) => {
-    pub(projectRoom(p.projectId), 'integration.changed', p);
+    frame(projectRoom(p.projectId), 'integration.changed', p);
   });
 
   on('credential.tokenChanged', (p) => {
-    pub(userRoom(p.userId), `pat.${p.change}`, { tokenId: p.tokenId, userId: p.userId, ts: p.ts });
+    frame(userRoom(p.userId), `pat.${p.change}`, {
+      tokenId: p.tokenId,
+      userId: p.userId,
+      ts: p.ts,
+    });
   });
 
   on('runner.changed', (p) => {
@@ -175,7 +195,7 @@ export function registerWsBroadcastSubscribers(): void {
     name: 'run-status-broadcast',
     handle: async (p) => {
       const run = await runStatusView(p.id);
-      if (run) pub(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+      if (run) frame(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
     },
   });
 

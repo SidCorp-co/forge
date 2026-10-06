@@ -332,11 +332,29 @@ fn forget_strays(repo: &Path, still: &[PathBuf]) {
         .retain(|p, _| !roots.iter().any(|r| p.starts_with(r)) || still.contains(p));
 }
 
+/// `git worktree remove --force` on one tree: `None` when git took it, else the first line git
+/// said when it would not, or that it could not be spawned.
+async fn git_worktree_remove(repo: &Path, p: &Path) -> Option<String> {
+    match git(
+        repo,
+        &["worktree", "remove", "--force", &p.to_string_lossy()],
+    )
+    .await
+    {
+        Some(o) if o.status.success() => None,
+        Some(o) => Some(
+            String::from_utf8_lossy(&o.stderr)
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("git exited non-zero and said nothing")
+                .to_string(),
+        ),
+        None => Some("`git worktree remove` could not be spawned".to_string()),
+    }
+}
+
 /// [`reap_repo`], with the reading and the signalling supplied.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one reap pass over a checkout; the steps share its census (ISS-218 amnesty)"
-)]
 pub async fn reap_repo_clearing(
     repo: &Path,
     min_age: Duration,
@@ -406,24 +424,7 @@ pub async fn reap_repo_clearing(
             // all (ISS-1250) — so the remover says which one it took and by
             // which of its two routes, and says what git answered when it would
             // not take one (consult 27dbdd F3).
-            let refused = match git(
-                repo,
-                &["worktree", "remove", "--force", &p.to_string_lossy()],
-            )
-            .await
-            {
-                Some(o) if o.status.success() => None,
-                Some(o) => Some(
-                    String::from_utf8_lossy(&o.stderr)
-                        .lines()
-                        .map(str::trim)
-                        .find(|l| !l.is_empty())
-                        .unwrap_or("git exited non-zero and said nothing")
-                        .to_string(),
-                ),
-                None => Some("`git worktree remove` could not be spawned".to_string()),
-            };
-            let Some(refusal) = refused else {
+            let Some(refusal) = git_worktree_remove(repo, &p).await else {
                 tracing::info!(
                     "[worktree-reap] removed {} — no run in the ledger holds it, it is older than \
                      {}s, and it holds no work",

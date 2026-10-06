@@ -27,7 +27,7 @@ export async function openRequirementRoom(projectId: string, req: string, userId
   const existing = await requirementRoomOf(requirement.id, userId);
   if (existing) return { conversation: await getConversation(existing), reused: true as const };
   const conversation = await db.transaction(async (handle) => {
-    const tx = handle as unknown as typeof db;
+    const tx = handle;
     const room = await openConversationIn(tx, {
       adapter: 'web',
       externalId: randomUUID(),
@@ -56,7 +56,7 @@ export interface OpenWebConversationInput {
 export async function openWebConversation(input: OpenWebConversationInput) {
   const { userId } = input;
   return db.transaction(async (handle) => {
-    const tx = handle as unknown as typeof db;
+    const tx = handle;
     const room = await openConversationIn(tx, {
       adapter: 'web',
       externalId: randomUUID(),
@@ -121,7 +121,7 @@ export async function removeRoomParticipant(
 ): Promise<void> {
   await withMembershipLock(id, actor, async (tx) => {
     const leaving = await participantLabel(tx, id, participantId);
-    await removeParticipant({ conversationId: id, participantId, tx: tx as never });
+    await removeParticipant({ conversationId: id, participantId, tx });
     if (leaving) await settleShape(tx, id, { ...leaving, verb: 'left' });
   });
 }

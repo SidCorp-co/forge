@@ -1,5 +1,5 @@
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import type { TxOnly } from '../db/client.js';
 import { issueDependencies, issues } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 
@@ -8,9 +8,6 @@ export interface UnblockedDependent {
   issSeq: number;
   projectId: string | null;
 }
-
-// biome-ignore lint/suspicious/noExplicitAny: the drizzle tx generic is not exported in a usable form
-type Tx = PgTransaction<any, any, any>;
 
 const liveEdge = or(
   isNull(issueDependencies.validUntil),
@@ -23,7 +20,7 @@ const liveEdge = or(
  * drops the expiry alongside the status flip.
  */
 export async function expireBlocksEdgesOnDrop(
-  tx: Tx,
+  tx: TxOnly,
   projectId: string,
   issueId: string,
 ): Promise<UnblockedDependent[]> {

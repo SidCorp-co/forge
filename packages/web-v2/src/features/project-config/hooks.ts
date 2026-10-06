@@ -3,8 +3,8 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { configApi } from "./config-api";
-import type { V1Write, V1Written } from "./config-types";
+import { configApi } from "./api";
+import type { V1Write, V1Written } from "./types";
 
 export const releaseReadinessKey = (id: string | undefined) =>
 	["project", id, "release-readiness"] as const;

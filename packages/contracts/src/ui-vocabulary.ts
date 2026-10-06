@@ -113,7 +113,7 @@ export const STATE_READINGS = {
 		warn: ["Warning", "you", "!"],
 		crit: ["Critical", "err", "!"],
 	},
-	/** An environment's deployment reading (web `project-settings/config-types.ts`). */
+	/** An environment's deployment reading (web `project-config/types.ts`). */
 	deployment: {
 		deployed: ["Deployed", "ready", "✓"],
 		deploying: ["Deploying", "run", "●"],
@@ -124,7 +124,7 @@ export const STATE_READINGS = {
 		running: ["Running", "run", "●"],
 		succeeded: ["Succeeded", "ready", "✓"],
 	},
-	/** A runtime probe (web `project-settings/config-types.ts`). */
+	/** A runtime probe (web `project-config/types.ts`). */
 	probe: {
 		confirmed: ["Confirmed", "ready", "✓"],
 		mismatch: ["Mismatch", "err", "×"],
@@ -399,7 +399,7 @@ export const ENUM_LABELS = {
 		user_cancelled: "Cancelled by a person",
 		unclassified: "Unclassified",
 	},
-	/** What an environment reading stands on (web `project-settings/config-types.ts`). */
+	/** What an environment reading stands on (web `project-config/types.ts`). */
 	environmentEvidence: {
 		"runtime-confirmed": "Confirmed at runtime",
 		"runtime-mismatch": "Runtime mismatch",
@@ -407,14 +407,14 @@ export const ENUM_LABELS = {
 		"deployment-record": "Deployment record",
 		none: "None",
 	},
-	/** Why an environment's state is unknown (web `project-settings/config-types.ts`). */
+	/** Why an environment's state is unknown (web `project-config/types.ts`). */
 	environmentCause: {
 		external: "Deployed outside Forge",
 		"no-record": "No deployment record",
 		"adapter-error": "Platform adapter error",
 		"binding-refused": "Binding refused",
 	},
-	/** What a deployment delivered (web `project-settings/config-types.ts`). */
+	/** What a deployment delivered (web `project-config/types.ts`). */
 	artifactKind: {
 		"container-image": "Container image",
 		theme: "Theme",

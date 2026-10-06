@@ -8,7 +8,7 @@
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { handleNameForProject } from '../credentials/agent-account.js';
-import { db as defaultDb } from '../db/client.js';
+import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import {
   type ConversationAdapter,
@@ -17,7 +17,7 @@ import {
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { actorFor, can, holds, projectResource } from '../permissions/index.js';
-import type { Executor, TxOnly } from './db-executor.js';
+import type { Executor } from './db-executor.js';
 import { existingProjectHandle } from './handles.js';
 import { conversationTransport } from './ports.js';
 import { appendMessagesIn } from './store.js';
@@ -122,7 +122,7 @@ function shapeFollows(adapter: ConversationAdapter): boolean {
  * Move a room's shape to match who is now in it.
  */
 export async function settleShape(
-  tx: Executor,
+  tx: TxOnly,
   conversationId: string,
   change?: MembershipChange,
 ): Promise<'direct' | 'group' | null> {
@@ -144,7 +144,7 @@ export async function settleShape(
   if (change) {
     const who = change.kind === 'handle' ? `@${change.label}` : change.label;
     const now = target === 'group' ? 'a group' : 'a one-to-one chat';
-    await appendMessagesIn(tx as unknown as TxOnly, {
+    await appendMessagesIn(tx, {
       conversationId,
       messages: [
         {

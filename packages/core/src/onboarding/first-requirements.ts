@@ -19,9 +19,8 @@ import {
   openConversationIn,
   openOrExtendWindow,
   settleShape,
-  type TxOnly,
 } from '../conversations/index.js';
-import { db } from '../db/client.js';
+import { db, type TxOnly } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { suggestions } from '../db/schema-suggestions.js';
@@ -184,7 +183,7 @@ function caseBrief(designs: readonly { flow: string; title: string }[]): string 
 }
 
 async function openCaseIn(tx: TxOnly, row: OnboardingRow, brief: string): Promise<string | null> {
-  const handle = tx as unknown as typeof db;
+  const handle = tx;
   await lockXact(tx, 'onboarding', firstRequirementsVenue(row.id));
   const venue = firstRequirementsVenue(row.id);
   if (await findConversation('web', venue, handle)) return null;

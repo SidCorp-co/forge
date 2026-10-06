@@ -31,15 +31,16 @@ import {
   type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useToast } from "@/providers/toast-provider";
-import { useRecents, buildShareLink } from "@/features/shell";
+import { useRecents } from "@/lib/navigation/recents";
+import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
 import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
-import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
+import { useCancelRun, usePauseRun, useResumeRun } from "@/features/run-control/hooks";
+import { useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
-import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
+import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
 import type {
   PipelineIssueRow,
   PipelineRunStepSummary,
@@ -78,7 +79,7 @@ const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
-  const { toast } = useToast();
+  const copyShareLink = useCopyShareLink();
   const router = useRouter();
   const { push: pushRecent } = useRecents();
   const runQ = useRun(runId ?? undefined, open);
@@ -103,11 +104,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
 
   function copyLink() {
     if (!runId) return;
-    const url = buildShareLink(`/ops?run=${runId}`);
-    navigator.clipboard?.writeText(url).then(
-      () => toast({ title: "Link copied", description: url, tone: "success" }),
-      () => toast({ title: "Couldn't copy link", tone: "error" }),
-    );
+    copyShareLink(`/ops?run=${runId}`);
   }
   const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
@@ -145,9 +142,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
     cancel.mutate(runId);
   }
 
-  const notSupported = (action: string) =>
-    toast({ tone: "info", title: `${action} isn't supported yet` });
-
   function openIssue() {
     if (!slug || !taskIssueId) return;
     onClose();
@@ -166,10 +160,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   if (runId) {
     menuItems.push({ label: "Copy link", icon: "link", onSelect: copyLink });
   }
-  menuItems.push(
-    { label: "Rerun", icon: "rerun", onSelect: () => notSupported("Rerun") },
-    { label: "Fork", icon: "fork", onSelect: () => notSupported("Fork") },
-  );
   // NOTE: abort lives on the first-class "Stop now" control below (ISS-376), so
   // there is exactly one abort affordance — no duplicate "Cancel run" here.
 

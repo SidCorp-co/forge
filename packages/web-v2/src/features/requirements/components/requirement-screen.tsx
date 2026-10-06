@@ -1,9 +1,9 @@
 "use client";
 
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
-import { useChatDockDoor } from "@/features/conversations/dock";
+import { useChatDockDoor } from "@/features/chat-dock/dock";
 import { useRequirement } from "../hooks";
-import { REQUIREMENTS_LIST, requirementsHref } from "../routes";
+import { REQUIREMENTS_LIST, requirementsHref } from "../../../lib/routes/requirements";
 import { PrimaryActions, useAssistantDoor } from "./requirement-actions";
 import { RequirementPage, useRequirementTab } from "./requirement-detail";
 

@@ -9,7 +9,10 @@ use super::*;
 /// starts resuming the same conversation; leave it running otherwise, and say
 /// once why (ISS-1379). Answers whether an outdated pane was left running, so
 /// the sweep does not nudge it.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one daemon registry the verdict reads; a struct carrying them would only rename the list"
+)]
 pub(crate) async fn outdated_resident(
     client: &CoreClient,
     masters: &Arc<Masters>,
@@ -89,7 +92,10 @@ pub(crate) struct Outdated {
 /// the ledger's `outdated` column is written to match either way.
 /// `home` is where the successor's `--resume` would look for the transcript,
 /// `None` for this user's own, which is where it looks in production.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one daemon registry the verdict reads; a struct carrying them would only rename the list"
+)]
 pub(crate) fn judge_resident(
     led: &Ledger,
     masters: &Masters,

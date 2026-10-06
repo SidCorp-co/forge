@@ -23,7 +23,7 @@ import { PendingBadge, summaryOf } from "@/features/suggestions/components/sugge
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import { useCreateRequirement, useRequirements } from "../hooks";
-import { REQUIREMENTS_LIST, requirementHref } from "../routes";
+import { REQUIREMENTS_LIST, requirementHref } from "../../../lib/routes/requirements";
 import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
 import { revisionText } from "./standing-bits";

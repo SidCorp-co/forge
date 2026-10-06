@@ -4,8 +4,8 @@ import { Badge, Banner, PageSectionTitle, enumLabel, ErrorState, MonoTag, Status
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
-import { useEffectiveConfig, useEnvironmentState } from "../config-hooks";
-import type { EffectiveLayer, EnvironmentState, ProbeOutcome } from "../config-types";
+import { useEffectiveConfig, useEnvironmentState } from "../../project-config/hooks";
+import type { EffectiveLayer, EnvironmentState, ProbeOutcome } from "../../project-config/types";
 
 const LAYER_TEXT: Record<EffectiveLayer, string> = {
 	project: "project document",

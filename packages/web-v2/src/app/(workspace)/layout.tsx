@@ -22,8 +22,6 @@ import { NotificationsBell } from "@/features/notifications/components/notificat
 import {
   useSidebarContext,
   SidebarProvider,
-  useRecents,
-  usePinnedViews,
   MobileNavDrawer,
   WORKSPACE_ITEMS,
   SECONDARY_DESTINATIONS,
@@ -39,8 +37,10 @@ import {
   useRailProjectData,
   CurrentProjectProvider,
 } from "@/features/shell";
+import { useRecents } from "@/lib/navigation/recents";
+import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
-import { ChatDockProvider, useChatDockState } from "@/features/conversations/dock";
+import { ChatDockProvider, useChatDockState } from "@/features/chat-dock/dock";
 import { useNeedsYou } from "@/features/needs-you/hooks";
 import { useDesignsAwaitingCount } from "@/features/workflows/hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";

@@ -113,4 +113,17 @@ describe('a runner push reaches its room only through the outbox', () => {
       { room: 'device:d-1', event: 'device.revoked', data: { deviceId: 'd-1' } },
     ]);
   });
+
+  it('tells an open thread each comment move, as the frame web routes', async () => {
+    for (const type of ['comment.created', 'comment.updated', 'comment.deleted']) {
+      await handlers.get(type)?.({ issueId: 'i-1', projectId: 'p-1', commentId: 'c-1', body: 'x' });
+    }
+    expect(published).toEqual(
+      ['comment.created', 'comment.updated', 'comment.deleted'].map((event) => ({
+        room: 'project:p-1',
+        event,
+        data: { issueId: 'i-1', projectId: 'p-1', commentId: 'c-1' },
+      })),
+    );
+  });
 });

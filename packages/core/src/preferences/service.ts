@@ -10,7 +10,7 @@
 
 import type { AuthRefusalCode } from '@forge/contracts/auth';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
-import { db as defaultDb } from '../db/client.js';
+import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
 import {
   type PreferenceChangeActor,
@@ -103,12 +103,12 @@ export async function writeAssistantPreferences(args: {
   patch: AssistantPreferencePatch;
   actor: PreferenceActor;
   conversationId?: string | null | undefined;
-  db?: typeof defaultDb;
+  db?: typeof defaultDb | TxOnly;
 }): Promise<AssistantPreferences> {
   const dbi = args.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
-    await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
-    const before = await readAssistantPreferences(args.userId, tx as unknown as Tx);
+    await lockPreferences(tx, args.userId);
+    const before = await readAssistantPreferences(args.userId, tx);
     const patch: AssistantPreferencePatch = {
       ...(args.patch.answerStyle !== undefined ? { answerStyle: args.patch.answerStyle } : {}),
       ...(args.patch.assistantInstructions !== undefined
@@ -190,12 +190,12 @@ export async function restorePreferenceChange(args: {
   userId: string;
   changeId: string;
   actor: PreferenceActor;
-  db?: typeof defaultDb;
+  db?: typeof defaultDb | TxOnly;
 }): Promise<AssistantPreferences | null> {
   const dbi = args.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
-    await lockPreferences(tx as unknown as typeof defaultDb, args.userId);
-    const t = tx as unknown as Tx;
+    await lockPreferences(tx, args.userId);
+    const t = tx;
     const [change] = await t
       .select()
       .from(preferenceChanges)
@@ -235,7 +235,7 @@ export async function restorePreferenceChange(args: {
       userId: args.userId,
       patch,
       actor: args.actor,
-      db: tx as unknown as typeof defaultDb,
+      db: tx,
     });
   });
 }

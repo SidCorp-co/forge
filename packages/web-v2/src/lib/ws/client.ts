@@ -1,15 +1,9 @@
 'use client';
 
+import type { WsFrame } from '@forge/contracts/ws-frames';
 import { WS_URL } from '@/lib/api/client';
 
-interface Envelope {
-  event: string;
-  // biome-ignore lint/suspicious/noExplicitAny: server-side event payloads are heterogeneous
-  data: any;
-  timestamp: string;
-}
-
-type Listener = (env: Envelope) => void;
+type Listener = (env: WsFrame) => void;
 
 export interface SocketOpen {
   first: boolean;
@@ -75,7 +69,7 @@ class ForgeWebSocket {
 
     ws.onmessage = (e) => {
       try {
-        const env = JSON.parse(e.data) as Envelope;
+        const env = JSON.parse(e.data) as WsFrame;
         for (const listener of this.listeners) {
           try {
             listener(env);

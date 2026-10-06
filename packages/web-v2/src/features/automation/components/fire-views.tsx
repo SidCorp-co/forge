@@ -27,11 +27,11 @@ import {
   WaitingOn,
 } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFireDetail } from "../hooks";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "../routes";
+import { fireHref, reportHref, scheduleHref, sessionHref } from "../../../lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
 import { fireWhy, fmtDuration, producedLine, shortId } from "../view";
 

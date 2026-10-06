@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Input, Popover } from "@/design";
-import { usePinnedViews } from "@/features/shell";
+import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { useMemo, useRef, useState } from "react";
 
 /** Pin the list as it is filtered now, under a name; a pinned view unpins in one click. */

@@ -6,7 +6,7 @@
 import { ErrorState, PeekHead, PeekPanel, type PeekState, ProjectLoader, rememberListOrigin, StatusBadge } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useRequirement } from "../hooks";
-import { REQUIREMENTS_LIST } from "../routes";
+import { REQUIREMENTS_LIST } from "../../../lib/routes/requirements";
 import { PrimaryActions } from "./requirement-actions";
 import { RequirementFacts } from "./requirement-facts";
 import { RequirementBanner } from "./standing-bits";

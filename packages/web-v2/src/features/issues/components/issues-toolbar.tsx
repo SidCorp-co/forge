@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, Icon, Input, Popover, SegmentedControl, type SegmentOption } from "@/design";
-import { useAssistantSetFilter } from "@/features/conversations/ui-actions/assistant-filters";
+import { useAssistantSetFilter } from "@/features/chat-dock/assistant-filters";
 import { cn } from "@/lib/utils/cn";
 import { type ReactNode, useRef, useState } from "react";
 import type { IssueFilter } from "../types";

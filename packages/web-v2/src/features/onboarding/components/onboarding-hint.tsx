@@ -6,7 +6,7 @@
 
 import type { OnboardingHint as Hint, OnboardingStateResponse } from "@forge/contracts/onboarding";
 import { LEGEND } from "@/design";
-import { useChatDock } from "@/features/conversations/dock";
+import { useChatDock } from "@/features/chat-dock/dock";
 import { refusalsOf } from "@/lib/api/refusals";
 import { formatApiError } from "@/lib/api/error";
 import { useJoinOnboarding, useOnboardingState, useReanalyze, useStartOnboarding } from "../hooks";

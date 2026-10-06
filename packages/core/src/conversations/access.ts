@@ -5,7 +5,7 @@
 // routers ask the same ones rather than each keeping a copy (ISS-1011).
 
 import { eq } from 'drizzle-orm';
-import { db as defaultDb } from '../db/client.js';
+import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import type { Executor } from './db-executor.js';
@@ -73,11 +73,10 @@ export async function writableConversation(id: string, userId: string): Promise<
 export async function withMembershipLock<T>(
   id: string,
   userId: string,
-  run: (tx: Executor, room: ConversationRow, scope: string[]) => Promise<T>,
+  run: (tx: TxOnly, room: ConversationRow, scope: string[]) => Promise<T>,
   db: typeof defaultDb = defaultDb,
 ): Promise<T> {
-  return db.transaction(async (handle) => {
-    const tx = handle as unknown as Executor;
+  return db.transaction(async (tx) => {
     await tx
       .select({ id: conversations.id })
       .from(conversations)

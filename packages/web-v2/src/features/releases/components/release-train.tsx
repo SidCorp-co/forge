@@ -4,7 +4,7 @@ import { RELEASE_PROOF_LABELS, RELEASE_PROOF_TONES, RELEASE_STATE_LABELS, RELEAS
 import Link from "next/link";
 import { LEGEND, MarkStrip, ViewHeading } from "@/design";
 import { cn } from "@/lib/utils/cn";
-import { releaseHref } from "../routes";
+import { releaseHref } from "../../../lib/routes/releases";
 import type { ReleaseContentGroup, ReleaseSummary } from "../types";
 
 const SHOWN = 6;

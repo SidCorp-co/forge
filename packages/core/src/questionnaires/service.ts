@@ -11,7 +11,7 @@ import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type TxOnly } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
@@ -19,12 +19,7 @@ import { logger } from '../lib/logger.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
-import {
-  announceConversationChange,
-  appendMessagesIn,
-  handleForProject,
-  type TxOnly,
-} from './ports.js';
+import { announceConversationChange, appendMessagesIn, handleForProject } from './ports.js';
 import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
 import {
   alreadyOpenRefusal,

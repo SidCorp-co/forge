@@ -10,8 +10,8 @@ import type {
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
 import { and, eq, inArray } from 'drizzle-orm';
-import { appendMessagesIn, type TxOnly } from '../conversations/index.js';
-import { db } from '../db/client.js';
+import { appendMessagesIn } from '../conversations/index.js';
+import { db, type TxOnly } from '../db/client.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';

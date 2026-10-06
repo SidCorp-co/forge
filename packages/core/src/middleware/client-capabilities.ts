@@ -4,7 +4,7 @@
  * unrecognised token is ignored, because the two sides ship on their own clocks.
  */
 
-import type { Context } from 'hono';
+import type { HonoRequest } from 'hono';
 
 const CLIENT_CAPABILITIES_HEADER = 'x-forge-capabilities';
 
@@ -22,8 +22,8 @@ function parseClientCapabilities(raw: string | null | undefined): ClientCapabili
   return declared.length > 0 ? new Set(declared) : NO_CAPABILITIES;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: every door's Variables shape, read-only on the header
-export function clientCapabilities(c: Context<any>): ClientCapabilities {
+/** Any door's context: only the request header is read. */
+export function clientCapabilities(c: { req: Pick<HonoRequest, 'header'> }): ClientCapabilities {
   return parseClientCapabilities(c.req.header(CLIENT_CAPABILITIES_HEADER));
 }
 

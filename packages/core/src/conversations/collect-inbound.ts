@@ -86,7 +86,7 @@ export async function collectInboundMessage<Frame>(
       },
       tx,
     );
-    await inbound.withinCollection?.(tx as unknown as Executor, {
+    await inbound.withinCollection?.(tx, {
       conversationId: conversation.id,
       seq: row.seq,
     });

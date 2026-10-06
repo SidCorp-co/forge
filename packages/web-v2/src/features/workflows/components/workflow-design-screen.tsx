@@ -5,7 +5,7 @@ import { useEntityDecisions } from "@/features/comments/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
-import { WORKFLOWS_LIST, workflowsHref } from "../routes";
+import { WORKFLOWS_LIST, workflowsHref } from "../../../lib/routes/workflows";
 import { ApproveAction, DecisionError, decidableRevision, ReturnControl } from "./design-decision";
 import { shownDesign, useDesignTab, WorkflowDesignPage } from "./workflow-design-page";
 import { DesignPill } from "./workflow-parts";

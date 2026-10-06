@@ -15,9 +15,9 @@ import {
   type SelectOption,
 } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
-import { usePreferences, useUpdatePreferences } from "../hooks";
+import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
 import { AssistantPreferencesCard } from "./assistant-preferences-card";
-import type { LanguagePref, ThemePref } from "../types";
+import type { LanguagePref, ThemePref } from "@/features/preferences/types";
 
 const THEME_OPTIONS: SelectOption[] = [
   { value: "system", label: "System" },

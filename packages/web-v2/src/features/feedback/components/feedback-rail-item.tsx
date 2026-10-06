@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { StatusBadge } from "@/design";
-import { feedbackHref } from "../routes";
+import { feedbackHref } from "../../../lib/routes/feedback";
 import type { FeedbackPhase } from "../types";
 
 export function FeedbackRailItem({

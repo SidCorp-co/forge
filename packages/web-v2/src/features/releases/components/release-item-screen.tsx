@@ -2,7 +2,7 @@
 
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useRelease } from "../hooks";
-import { RELEASES_LIST, releasesListHref } from "../routes";
+import { RELEASES_LIST, releasesListHref } from "../../../lib/routes/releases";
 import { ReleaseActions } from "./release-actions";
 import { ReleasePage } from "./release-page";
 

@@ -28,7 +28,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useContractStanding } from "../hooks";
-import { CONTRACTS_LIST, contractHref } from "../routes";
+import { CONTRACTS_LIST, contractHref } from "../../../lib/routes/contracts";
 import type { ContractStandingRow } from "../types";
 import { versionLine, WindowText } from "./contract-bits";
 import { ContractPeek } from "./contract-peek";

@@ -1,7 +1,6 @@
 import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
-import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
-import { buildShareLink } from "@/features/shell";
-import { useToast } from "@/providers/toast-provider";
+import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRouter } from "next/navigation";
 import type { IssueDetail, IssueStatus } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
@@ -33,17 +32,13 @@ export function IssueActions({
   onStarted: () => void;
 }) {
   const router = useRouter();
-  const { toast } = useToast();
+  const copyShareLink = useCopyShareLink();
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const openSessions = () => router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   function copyLink() {
-    const url = buildShareLink(`/projects/${slug}/issues/${linkId}`);
-    navigator.clipboard?.writeText(url).then(
-      () => toast({ title: "Link copied", description: url, tone: "success" }),
-      () => toast({ title: "Couldn't copy link", tone: "error" }),
-    );
+    copyShareLink(`/projects/${slug}/issues/${linkId}`);
   }
 
   const moreItems: MenuItem[] = [

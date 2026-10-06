@@ -1073,9 +1073,6 @@
     "agent-accounts": {
       "serves": ["REQ-27"]
     },
-    "agent-reports": {
-      "serves": ["REQ-16"]
-    },
     "agents": {
       "serves": ["REQ-15", "agent-run-standing"]
     },
@@ -1088,8 +1085,14 @@
     "automation": {
       "serves": ["REQ-16", "automation#screen"]
     },
+    "board": {
+      "serves": ["via:conversations", "via:mockups"]
+    },
     "chat": {
       "serves": ["REQ-19"]
+    },
+    "chat-dock": {
+      "serves": ["via:conversations"]
     },
     "comments": {
       "serves": ["REQ-3"]
@@ -1165,6 +1168,12 @@
     "pipeline": {
       "serves": ["REQ-1", "issue-delivery#act-build"]
     },
+    "preferences": {
+      "serves": ["REQ-27"]
+    },
+    "project-config": {
+      "serves": ["via:project-settings"]
+    },
     "project-dashboard": {
       "serves": ["REQ-11"]
     },
@@ -1188,11 +1197,11 @@
         "requirement-lifecycle#dropped"
       ]
     },
+    "run-control": {
+      "serves": ["via:pipeline"]
+    },
     "runners": {
       "serves": ["REQ-15"]
-    },
-    "schedules": {
-      "serves": ["REQ-16"]
     },
     "session": {
       "serves": ["REQ-15", "personal-data-flow#ds-transcripts"]

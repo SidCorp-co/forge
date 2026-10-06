@@ -1,5 +1,5 @@
-import type { V1Document } from "./config-types";
-import { schemaUrl } from "./document-edit";
+import type { V1Document } from "../project-config/types";
+import { schemaUrl } from "../project-config/document-edit";
 
 export function projectTemplate(project: { id: string; slug: string; name: string }): V1Document {
 	return {

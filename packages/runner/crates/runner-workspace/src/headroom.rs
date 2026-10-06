@@ -515,7 +515,10 @@ fn ranked(reading: &Reading) -> (u8, u64) {
 /// here rather than taken, and it ends the day a box is measured running this
 /// against one (consult 825bfe F1).
 #[cfg(unix)]
-#[allow(clippy::useless_conversion)]
+#[expect(
+    clippy::useless_conversion,
+    reason = "statvfs field widths differ by platform (u32 blocks on macOS, u64 on Linux); the conversion is useless on some and needed on others"
+)]
 pub fn read(at: &Path) -> Reading {
     match nix::sys::statvfs::statvfs(at) {
         Ok(fs) => {

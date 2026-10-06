@@ -1,3 +1,4 @@
+import type { Preferences } from "@/features/preferences/types";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
   AssistantPreferences,
@@ -7,23 +8,11 @@ import type {
   PatToken,
   PatTokenCreated,
   PreferenceChange,
-  Preferences,
 } from "./types";
 
 export const NOTIFICATIONS_PAGE_SIZE = 25;
 
 export const settingsApi = {
-  getPreferences: () => apiClient<Preferences>(`/auth/me/preferences`),
-
-  updatePreferences: (
-    patch: Partial<
-      Pick<Preferences, "theme" | "language" | "notifyOnMention" | "activeOrgId">
-    >,
-  ) =>
-    apiClient<Preferences>(`/auth/me/preferences`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    }),
   getAssistantPreferences: () =>
     apiClient<Preferences & AssistantPreferences>(`/auth/preferences`),
   updateAssistantPreferences: (patch: Partial<AssistantPreferences>) =>

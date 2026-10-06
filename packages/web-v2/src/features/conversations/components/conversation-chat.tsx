@@ -296,6 +296,7 @@ export function ConversationChat({
             <ThreadDataProvider
               value={{
                 projectId,
+                projectSlug: projectRow?.slug,
                 conversationId: resolvedId ?? "",
                 kind: roomQ.data?.kind ?? null,
                 questionnaires: roomQ.data?.questionnaires ?? [],

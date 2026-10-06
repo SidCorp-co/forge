@@ -6,8 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
 import { automationKey } from "@/features/automation/hooks";
-import { schedulesApi } from "./api";
-import type { ScheduleInput } from "./types";
+import { schedulesApi } from "./schedule-api";
+import type { ScheduleInput } from "./schedule-types";
 
 export function useSchedules(projectId: string | undefined) {
   return useQuery({

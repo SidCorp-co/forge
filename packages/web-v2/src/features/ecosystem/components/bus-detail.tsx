@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
-import { contractHref, contractsHref } from "@/features/contracts/routes";
+import { contractHref, contractsHref } from "@/lib/routes/contracts";
 import {
   type Bus,
   type BusLink,

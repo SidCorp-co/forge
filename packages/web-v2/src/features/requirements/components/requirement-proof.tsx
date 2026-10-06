@@ -12,7 +12,7 @@ import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark }
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
-import { issueHref } from "@/features/issues/routes";
+import { issueHref } from "@/lib/routes/issues";
 import { diffColours } from "./standing-bits";
 
 const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as IssueStatus] ?? s;

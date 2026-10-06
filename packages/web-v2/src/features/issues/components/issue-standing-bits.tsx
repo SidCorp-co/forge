@@ -28,10 +28,10 @@ import {
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { feedbackHref } from "@/features/feedback/routes";
-import { requirementHref } from "@/features/requirements/routes";
+import { feedbackHref } from "@/lib/routes/feedback";
+import { requirementHref } from "@/lib/routes/requirements";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
-import { issueHref } from "../routes";
+import { issueHref } from "../../../lib/routes/issues";
 
 export const issueBadge = (r: Pick<IssueStandingRow, "status" | "standing">) => (
   <StatusBadge family="issue" value={r.status} step={r.standing.step} tone={r.standing.tone} />

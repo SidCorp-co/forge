@@ -3,14 +3,14 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader, rememberListOrigin, Tooltip } from "@/design";
-import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { useProjectDocument } from "@/features/project-config/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { catalogue, systemContextOf, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
-import { WORKFLOWS_LIST, workflowHref } from "../routes";
+import { WORKFLOWS_LIST, workflowHref } from "../../../lib/routes/workflows";
 import type { WorkflowRecord } from "../types";
 import { SystemOverviewRegion } from "./system-overview";
 import { HealthSummaryChips } from "./health-parts";

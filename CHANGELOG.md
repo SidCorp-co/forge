@@ -16,6 +16,10 @@
 
 ### Fixed
 
+- **Comments refresh live, and realtime frames are typed.** An open thread hears each comment
+  move; web reads frames through a shared contract; web features import one way only, held by
+  archmap.
+
 - **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
   turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
   PATH, and `master status` names its socket.
