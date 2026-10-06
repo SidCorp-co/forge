@@ -20,8 +20,4 @@ export const runsApi = {
   passes: (projectId: string, limit = 50) => apiClient<MasterPassList>(`${projectPath(projectId)}/masters/passes?limit=${limit}`),
 
   charter: (projectId: string) => apiClient<MasterCharter>(`${projectPath(projectId)}/master-charter`),
-
-  /** `POST /api/pipeline-runs/:id/cancel`. */
-  cancel: (runId: string) =>
-    apiClient<unknown>(`/pipeline-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: JSON.stringify({}) }),
 };

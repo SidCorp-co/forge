@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatApiError } from "@/lib/api/error";
+import { RUNS_STANDING_ROOT } from "@/features/agents/hooks";
+import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { runControlApi } from "./api";
+import { type CancelRunResult, runControlApi } from "./api";
 
-/** Shared run-control mutation factory: invalidate the run list + the run
- *  detail on success, toast on success/error. */
+/** Shared run-control mutation factory: invalidate every run read (pipeline runs and the runs read model)
+ *  on success, toast on success/error. */
 function useRunControl<T>(
   fn: (id: string) => Promise<T>,
   successMessage: string,
@@ -20,12 +21,13 @@ function useRunControl<T>(
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
       qc.invalidateQueries({ queryKey: ["projects", "health"] });
+      qc.invalidateQueries({ queryKey: [RUNS_STANDING_ROOT] });
       toast({ title: successMessage, tone: "success" });
       const extra = followUp?.(data);
       if (extra) toast({ ...extra, tone: "error" });
     },
     onError: (err) => {
-      toast({ title: "Run control failed", description: formatApiError(err), tone: "error" });
+      toast({ title: "Run control failed", description: formatRefusal(err), tone: "error" });
     },
   });
 }
@@ -39,7 +41,12 @@ export function useResumeRun() {
 export function useCancelRun() {
   return useRunControl((id) => runControlApi.cancel(id), "Run cancelled", (r) =>
     r.parkRefused
-      ? { title: "The issue was not put on hold", description: r.parkRefused.detail }
+      ? { title: "The issue was not put on hold", description: parkRefusalText(r) ?? "" }
       : null,
   );
+}
+
+/** A cancel's refused park, said by its code and detail; null when the park went through or was not asked. */
+export function parkRefusalText(r: CancelRunResult | undefined): string | null {
+  return r?.parkRefused ? `${r.parkRefused.code}: ${r.parkRefused.detail}` : null;
 }

@@ -2,6 +2,7 @@
 
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
+import { agentsListHref } from "@/lib/routes/agents";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStuckRuns } from "../hooks";
 import { QuestionsPane } from "./questions-pane";
@@ -17,8 +18,12 @@ const TABS = [
 ];
 
 export function AgentsScreen({ access }: { access: AgentsAccess }) {
-  const [tab, setTab] = useUrlTab(AGENTS_TABS);
-  const focusQuestionId = new URLSearchParams(useLocationSearch()).get("q");
+  const [urlTab, setTab] = useUrlTab(AGENTS_TABS);
+  const params = new URLSearchParams(useLocationSearch());
+  const focusQuestionId = params.get("q");
+  // `?issue=` names whose sessions to list, so a link carrying only it lands on that tab.
+  const issueId = params.get("issue");
+  const tab: AgentsTab = issueId && !params.has("tab") ? "sessions" : urlTab;
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
@@ -28,12 +33,19 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "questions" ? <QuestionsPane scope={access} focusQuestionId={focusQuestionId} /> : null}
-      {tab === "sessions" ? <SessionsTab projectId={access.projectId} /> : null}
+      {tab === "sessions" ? <SessionsTab projectId={access.projectId} slug={access.slug} issueId={issueId} /> : null}
     </div>
   );
 }
 
 /** The sessions tab reads each row against the runs core holds stuck, which this feature owns. */
-function SessionsTab({ projectId }: { projectId: string }) {
-  return <SessionsScreen projectId={projectId} stuck={useStuckRuns(projectId)} />;
+function SessionsTab({ projectId, slug, issueId }: { projectId: string; slug: string; issueId: string | null }) {
+  return (
+    <SessionsScreen
+      key={issueId ?? "all"}
+      projectId={projectId}
+      issueFilter={issueId ? { issueId, clearHref: `${agentsListHref(slug)}?tab=sessions` } : null}
+      stuck={useStuckRuns(projectId)}
+    />
+  );
 }

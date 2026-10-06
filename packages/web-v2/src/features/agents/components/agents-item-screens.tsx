@@ -20,7 +20,7 @@ export function RunItemScreen({ access, runId }: { access: AgentsAccess; runId: 
         keyTitle={runId}
         title={r ? runName(r) : "Run"}
         badge={r ? <StatusBadge family="runStanding" value={r.state} /> : null}
-        action={r ? <RunActions r={r} slug={access.slug} projectId={access.projectId} canWrite={access.canWrite} /> : null}
+        action={r ? <RunActions r={r} slug={access.slug} canWrite={access.canWrite} /> : null}
       />
       <RunPage projectId={access.projectId} slug={access.slug} runId={runId} />
     </div>

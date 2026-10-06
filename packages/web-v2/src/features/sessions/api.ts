@@ -7,6 +7,8 @@ export interface ListSessionsOpts {
   projectId?: string;
   status?: string;
   metadataType?: string;
+  /** One issue's sessions only; core refuses an id that is not a uuid. */
+  issueId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -16,6 +18,7 @@ export const sessionsApi = {
     projectId,
     status,
     metadataType,
+    issueId,
     page = 1,
     pageSize = SESSIONS_PAGE_SIZE,
   }: ListSessionsOpts) => {
@@ -23,6 +26,7 @@ export const sessionsApi = {
     if (projectId) params.set("projectId", projectId);
     if (status) params.set("status", status);
     if (metadataType) params.set("metadataType", metadataType);
+    if (issueId) params.set("issueId", issueId);
     return apiClientList<SessionRow>(`/agent-sessions?${params}`);
   },
 

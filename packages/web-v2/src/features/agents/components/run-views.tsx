@@ -40,7 +40,8 @@ import { enumLabel, type StatusFamily, statusReading } from "@/design/vocabulary
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
-import { useCancelRun, useRunDetail } from "../hooks";
+import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
+import { useRunDetail } from "../hooks";
 import { masterHref, runHref } from "@/lib/routes/agents";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
 import { actorName, fmtTime, leaseLeft, runBanner, runKey, runName, stamp, stepLabel, waitingView } from "../view";
@@ -229,8 +230,9 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
 }
 
 /** The one primary act a run offers, and cancel beside it for a writer while it is live. */
-export function RunActions({ r, slug, projectId, canWrite }: { r: RunStanding; slug: string; projectId: string; canWrite: boolean }) {
-  const cancel = useCancelRun(projectId);
+export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string; canWrite: boolean }) {
+  const cancel = useCancelRun();
+  const parkRefused = parkRefusalText(cancel.data);
   const live = r.outcome === null;
   const w = r.waitingOn;
   const answer = w.kind === "you" ? w.act : null;
@@ -253,6 +255,11 @@ export function RunActions({ r, slug, projectId, canWrite }: { r: RunStanding; s
           {formatRefusal(cancel.error)}
         </span>
       ) : null}
+      {parkRefused ? (
+        <span className="text-12-5 text-danger" data-testid="run-cancel-park-refused">
+          {`The run is cancelled, but the issue was not put on hold. ${parkRefused}`}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -260,14 +267,12 @@ export function RunActions({ r, slug, projectId, canWrite }: { r: RunStanding; s
 export function RunPeek({
   r,
   slug,
-  projectId,
   canWrite,
   peek,
   onOpenFull,
 }: {
   r: RunStanding;
   slug: string;
-  projectId: string;
   canWrite: boolean;
   peek: PeekState;
   onOpenFull: () => void;
@@ -279,7 +284,7 @@ export function RunPeek({
         itemKey={runKey(r)}
         badge={<StatusBadge family="runStanding" value={r.state} />}
         title={r.title}
-        action={<RunActions r={r} slug={slug} projectId={projectId} canWrite={canWrite} />}
+        action={<RunActions r={r} slug={slug} canWrite={canWrite} />}
       />
       <div className="px-[18px] pb-3">
         <RunPath r={r} />

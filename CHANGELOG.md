@@ -13,6 +13,9 @@
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
   project admins, never the project room; reads gate on the `kind` column, not a `metadata.type`
   nothing has written since ISS-1136.
+- **Cancel run says when the issue was not put on hold.** Agents / Runs shares the pipeline's one
+  cancel, naming a refused park by code and detail. An issue's session links open Sessions filtered
+  to that issue.
 
 ## [0.4.0-dev.43] - 2026-10-06
 

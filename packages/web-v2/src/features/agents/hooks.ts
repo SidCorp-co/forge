@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { type StuckRuns, stuckRunsOf } from "@/features/sessions/types";
 import { runsApi } from "./api";
@@ -9,7 +9,8 @@ import type { RunStandingScope } from "./types";
 const RUNS_POLL_MS = 20_000;
 
 /** Every key the runs read model answers under; a write that moves a run invalidates it. */
-export const runsKey = (projectId: string | undefined) => ["runs-standing", projectId] as const;
+export const RUNS_STANDING_ROOT = "runs-standing";
+export const runsKey = (projectId: string | undefined) => [RUNS_STANDING_ROOT, projectId] as const;
 
 export function useRunStanding(projectId: string | undefined, scope: RunStandingScope) {
   return useQuery({
@@ -52,14 +53,6 @@ export function useMasterCharter(projectId: string | undefined, enabled: boolean
     queryKey: [...runsKey(projectId), "charter"],
     queryFn: () => runsApi.charter(projectId as string),
     enabled: enabled && !!projectId,
-  });
-}
-
-export function useCancelRun(projectId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (runId: string) => runsApi.cancel(runId),
-    onSettled: () => qc.invalidateQueries({ queryKey: runsKey(projectId) }),
   });
 }
 
