@@ -57,6 +57,8 @@ const CHECKS = [
     reads: 'every test file for whole-tree declarations, across packages',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
+    // It loads core's TypeScript for the globs and each package's vitest for the configurations.
+    needs: ['deps'],
     unit: 'test files',
   },
   {

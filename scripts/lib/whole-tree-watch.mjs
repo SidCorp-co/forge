@@ -117,6 +117,20 @@ export function armed(name, args, at, log) {
   return out;
 }
 
+/** A worker's `env` armed with the log and the preload as `armed()` arms a child's; under
+ * `SHARE_ENV` the worker reads the test's own `process.env`, so that is re-armed instead. */
+export function armedWorkerEnv(env, log) {
+  if (env === workerThreads.SHARE_ENV) {
+    process.env.NODE_OPTIONS = withPreload(process.env.NODE_OPTIONS);
+    process.env[LOG_ENV] = log;
+    return env;
+  }
+  const out = { ...(env ?? process.env) };
+  out.NODE_OPTIONS = withPreload(out.NODE_OPTIONS);
+  out[LOG_ENV] = log;
+  return out;
+}
+
 /** An `envPairs` list with the preload first in `NODE_OPTIONS` and the log set, as a child reads it. */
 function armedPairs(pairs, log) {
   const env = Object.fromEntries(
@@ -237,11 +251,13 @@ function install(state) {
     const at = callSite();
     if (entries.length > 0) state.onListing(entries.map(({ program, ...e }) => ({ ...e, at })));
   };
-  const asRoot = (via) => tell([{ dir: ROOT, via: `${via}, so counted as the root` }]);
+  const asRoot = (via) =>
+    tell([{ dir: ROOT, via: `${via}, so counted as the root`, unseen: true }]);
   const unreadable = (name) => [
     {
       dir: ROOT,
       via: `${name}() with an argument the guard cannot place (not a path, or a glob climbing after a wildcard), so counted as the root`,
+      unseen: true,
     },
   ];
   const fsRead = (name, args) => {
@@ -355,9 +371,10 @@ function install(state) {
       if (startup !== null)
         asRoot(`Worker() with the startup module \`${startup}\`, which runs before the watch`);
       const execArgv = ['--import', PRELOAD, ...(options.execArgv ?? process.execArgv)];
+      const env = armedWorkerEnv(options.env, state.log);
       if (options.eval && isScript(code))
-        super(`require(${JSON.stringify(fileURLToPath(PRELOAD))});\n${code}`, options);
-      else super(code, { ...options, execArgv });
+        super(`require(${JSON.stringify(fileURLToPath(PRELOAD))});\n${code}`, { ...options, env });
+      else super(code, { ...options, execArgv, env });
       state.workers.add(this);
       this.once('exit', () => state.workers.delete(this));
     }

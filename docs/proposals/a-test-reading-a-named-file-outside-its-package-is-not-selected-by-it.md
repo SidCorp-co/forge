@@ -83,7 +83,9 @@ What the guard records lives inside the test's process too, so a test that edits
 defended: its hits, and the log its children write to. A log found missing, shorter than a read of
 it, or holding a line that is no record counts as the root, but one the test empties before the
 guard first reads it cannot be told from one nothing wrote to, and a sentinel the test can read it
-can write back.
+can write back. The route to the log is armed rather than trusted: every child and worker the watch
+starts is handed the log whatever environment the test gave it, and a preload that still finds none
+stops its process or worker before the first line rather than letting it run unwatched.
 
 So "every undeclared test that lists the root is refused" cannot be met by observation.
 ISS-1314's criterion 8 was corrected to the routes the guard observes, with criterion 19 for what
@@ -93,6 +95,7 @@ it cannot read.
 |---|---|
 | Kernel-level tracing | Closing native code needs every directory enumeration traced (strace, seccomp or eBPF on `getdents64`) and attributed to the one test file that caused it. That means one file per process, and a Linux-only gate. |
 | Nothing closes delegation from inside | A listing made by a process the test did not start is visible only to that process. The honest guard for it is the declaration itself, written by whoever knows what the service reads. |
+| A record the test cannot write | Closing the edited record needs the hits and the log kept where the test's process cannot reach them: a recorder in a process the guard starts before any test code, which the watch only forwards to. That is a process and a round trip per listing, and a test in the forwarding process can still drop or forge what it forwards, so only the kernel-level tracing above closes it whole. Until then the declaration is the cheaper way out for any test that would reach for `Symbol.for('forge.whole-tree-guard')`. |
 
 ### A program git runs from the machine's own configuration
 

@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { Worker } from 'node:worker_threads';
+import { SHARE_ENV, Worker } from 'node:worker_threads';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import {
   coversRoot,
@@ -44,6 +44,7 @@ import {
   runDirOf,
   spawnCwd,
   suiteMessage,
+  unjudgedVerdict,
   vitestSetup,
 } from './whole-tree-gates.mjs';
 import { subprocessListing } from './whole-tree-shell.mjs';
@@ -280,6 +281,42 @@ describe('what a run owes after it listed the root', () => {
     expect(guardVerdict({ file: WALKER_PATH, source, hits: [hit(ROOT)], root: ROOT })).toBeNull();
     const inside = [hit(`${ROOT}/packages/core`)];
     expect(guardVerdict({ file: WALKER_PATH, source: '', hits: inside, root: ROOT })).toBeNull();
+  });
+
+  it('says once that a listing it could not read was counted as the root (j13)', () => {
+    const counted = {
+      dir: ROOT,
+      via: 'execFileSync() running `ls` is not git, grep or node, so counted as listing the repository root',
+      at: 'packages/core/src/x.test.ts:3',
+      unseen: true,
+    };
+    const why = guardVerdict({ file: WALKER_PATH, source: '', hits: [counted], root: ROOT });
+    expect(why).toContain(
+      `${WALKER_PATH} execFileSync() running \`ls\` is not git, grep or node, so counted as listing the repository root (called at packages/core/src/x.test.ts:3), so its input`,
+    );
+    expect(why).not.toContain('listed the repository root');
+  });
+
+  it('refuses a file it cannot judge, naming why, whatever it listed (j13)', () => {
+    const unnamed = unjudgedVerdict({
+      file: null,
+      why: 'vitest named no test file',
+      hits: [],
+      root: ROOT,
+    });
+    expect(unnamed).toMatch(/^whole-tree-gates: a test file: vitest named no test file, so /);
+    const gone = unjudgedVerdict({
+      file: WALKER_PATH,
+      why: 'its source could not be read (ENOENT)',
+      hits: [hit(ROOT), hit('/'), hit(`${ROOT}/packages`)],
+      root: ROOT,
+    });
+    expect(gone).toMatch(
+      new RegExp(
+        `^whole-tree-gates: ${WALKER_PATH}: its source could not be read \\(ENOENT\\), so `,
+      ),
+    );
+    expect(gone).toContain('2 listing(s) it made');
   });
 
   it('does not take a declaration with a wrong value as a declaration', () => {
@@ -561,6 +598,90 @@ describe('the guard installed in this very run', () => {
     rmSync(dir, { recursive: true, force: true });
     const logged = childLines();
     expect(logged.map((l) => l.dir)).toEqual([REPO]);
+  });
+
+  /** A worker on `code`, a file unless `options.eval`, run to its exit or its error. */
+  const runWorker = (code, options) =>
+    new Promise((done, fail) => new Worker(code, options).on('exit', done).on('error', fail));
+  const listsRoot = `require('node:fs').readdirSync(${JSON.stringify(REPO)});`;
+  const inWorker = expect.stringMatching(/^readdirSync\(\) in worker \d+ of process \d+$/);
+
+  it('watches a worker handed its own env, empty or not, file or eval (j13)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-worker-env-'));
+    const file = join(dir, 'lists.cjs');
+    writeFileSync(file, listsRoot);
+    try {
+      await runWorker(file, { env: {} });
+      await runWorker(file, { env: { NODE_ENV: 'test' } });
+      await runWorker(listsRoot, { eval: true, env: { NODE_ENV: 'test' } });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(childLines().map((l) => l.via)).toEqual([inWorker, inWorker, inWorker]);
+  });
+
+  it('watches a worker started after the test deleted the log from its env, shared or copied (j13)', async () => {
+    const saved = process.env[LOG_ENV];
+    delete process.env[LOG_ENV];
+    try {
+      await runWorker(listsRoot, { eval: true });
+      delete process.env[LOG_ENV];
+      await runWorker(listsRoot, { eval: true, env: SHARE_ENV });
+    } finally {
+      process.env[LOG_ENV] = saved;
+    }
+    expect(childLines().map((l) => l.via)).toEqual([inWorker, inWorker]);
+  });
+
+  it('reads a program a worker with its own env spawns (j13 s5)', async () => {
+    const code = `require('node:child_process').execFileSync('ls', [${JSON.stringify(REPO)}], { stdio: 'ignore' });`;
+    await runWorker(code, { eval: true, env: { PATH: process.env.PATH } });
+    expect(childLines().map((l) => l.via)).toEqual([
+      expect.stringMatching(
+        /^execFileSync\(\) running `ls` is not git, grep or node.* in worker \d+ of process \d+$/,
+      ),
+    ]);
+  });
+
+  it('names a listing the watch counted as the root once, with no listing added after it (j13)', () => {
+    execFileSync('ls', [REPO], { stdio: 'ignore' });
+    process.binding('fs');
+    const why = guardVerdict({ file: 'x.test.ts', source: '', hits: covering(), root: REPO });
+    expect(covering()).toHaveLength(2);
+    expect(why).not.toMatch(/counted as[^;]*listed the repository root/);
+    expect(why).toMatch(/so counted as listing the repository root \(called at /);
+  });
+
+  it('refuses to run a Node child or a worker the preload reaches with no log, rather than run it unwatched', async () => {
+    const watch = globalThis[Symbol.for('forge.whole-tree-watch')];
+    const saved = { log: watch.log, env: process.env[LOG_ENV] };
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-nolog-'));
+    const ran = join(dir, 'ran');
+    const marks = `require('node:fs').writeFileSync(${JSON.stringify(ran)}, '');`;
+    let child;
+    let failed;
+    watch.log = '';
+    try {
+      child = spawnSync(process.execPath, ['-e', marks], { encoding: 'utf8' });
+      failed = await runWorker(marks, { eval: true }).then(
+        () => null,
+        (e) => e,
+      );
+    } finally {
+      watch.log = saved.log;
+      process.env[LOG_ENV] = saved.env;
+    }
+    const ranAtAll = existsSync(ran);
+    rmSync(dir, { recursive: true, force: true });
+    expect(ranAtAll).toBe(false);
+    expect(child.status).not.toBe(0);
+    expect(child.stderr).toMatch(
+      /whole-tree guard: child process \d+ loaded the preload with no FORGE_WHOLE_TREE_LOG/,
+    );
+    expect(String(failed?.message)).toMatch(
+      /whole-tree guard: worker \d+ of process \d+ loaded the preload with no FORGE_WHOLE_TREE_LOG/,
+    );
+    state.hits = [];
   });
 
   it('counts a program it cannot see into as the root, wherever it runs (a non-Node shell script)', () => {
@@ -865,6 +986,37 @@ describe('a run of a file that lists the root', () => {
     expect(out).toMatch(/a\.test\.mjs 1 worker thread\(s\) were still running when the file ended/);
     expect(out).not.toMatch(/b\.test\.mjs[^\n]*were still running/);
     expect(r.status).toBe(1);
+  }, 60_000);
+
+  it('fails one whose own source is gone by its end, rather than dropping what it listed (j13)', () => {
+    writeFileSync(
+      join(dir, 'vanishes.test.mjs'),
+      [
+        "import { readdirSync, rmSync } from 'node:fs';",
+        "import { fileURLToPath } from 'node:url';",
+        "it('lists and leaves', () => { readdirSync(process.env.WT_ROOT); rmSync(fileURLToPath(import.meta.url)); });",
+      ].join('\n'),
+    );
+    const r = vitest('vanishes.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /whole-tree-gates: [^\n]*vanishes\.test\.mjs: its source could not be read \(ENOENT\)/,
+    );
+  }, 60_000);
+
+  it('fails one vitest names no test path for, rather than dropping what it listed (j13)', () => {
+    writeFileSync(
+      join(dir, 'unnamed.test.mjs'),
+      [
+        "import { readdirSync } from 'node:fs';",
+        "it('lists and unnames', () => { readdirSync(process.env.WT_ROOT); expect.setState({ testPath: undefined }); });",
+      ].join('\n'),
+    );
+    const r = vitest('unnamed.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /whole-tree-gates: a test file: vitest named no test file at its end/,
+    );
   }, 60_000);
 
   it('fails one whose child log was removed, since what its processes listed is then unknown', () => {

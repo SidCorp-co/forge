@@ -143,15 +143,15 @@ export function logLines(bytes, offset) {
   };
 }
 
-/**
- * What a test's run owes when it listed a directory covering the repository root: nothing when its
- * source declares a whole-tree input, and otherwise a refusal naming the file, each listing, where
- * it was called from, and the line to add. `hits` are `{ dir, via, at }`, `dir` absolute.
- */
+/** What a run owes for its `{ dir, via, at, unseen }` hits covering the root: nothing if declared,
+ * else a refusal naming the file, each listing, its call site and the line to add. An `unseen`
+ * hit's `via` already says it was counted as the root. */
 export function guardVerdict({ file, source, hits, root }) {
   const covering = hits.filter((h) => coversRoot(root, h.dir));
   if (covering.length === 0 || declaresWholeTree(source)) return null;
   const shown = covering.slice(0, 3).map((h) => {
+    const at = h.at ? ` (called at ${h.at})` : '';
+    if (h.unseen) return `${h.via}${at}`;
     const canonical = physical(h.dir);
     const where =
       h.dir === root
@@ -159,13 +159,23 @@ export function guardVerdict({ file, source, hits, root }) {
         : canonical === null || canonical === (physical(root) ?? root)
           ? `the repository root, as ${h.dir}`
           : `${h.dir}, above the repository root`;
-    return `${h.via} listed ${where}${h.at ? ` (called at ${h.at})` : ''}`;
+    return `${h.via} listed ${where}${at}`;
   });
   const more = covering.length > 3 ? `, and ${covering.length - 3} more` : '';
   return (
     `whole-tree-gates: ${file} ${shown.join('; ')}${more}, so its input is the whole tree and not ` +
     'the paths its job is selected by, and a change outside them skips it — add a line ' +
     '`// @gate-input whole-tree` (or ` * @gate-input whole-tree` in its opening docblock) so it runs on every change'
+  );
+}
+
+/** The refusal for a file whose source the guard cannot read, whose listings would otherwise pass. */
+export function unjudgedVerdict({ file, why, hits, root }) {
+  const listed = hits.filter((h) => coversRoot(root, h.dir)).length;
+  return (
+    `whole-tree-gates: ${file ?? 'a test file'}: ${why}, so the guard cannot read its declaration ` +
+    `or its own globs, and the ${listed} listing(s) it made covering the repository root would ` +
+    'pass unjudged; it is refused rather than passed'
   );
 }
 
@@ -389,6 +399,7 @@ export function globListings({ source, file, root, ts }) {
             ? {
                 dir: root,
                 via: `${call} (${why}, so counted as the root)`,
+                unseen: true,
                 at,
                 call,
                 line,

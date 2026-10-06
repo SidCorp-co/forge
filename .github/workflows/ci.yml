@@ -16,11 +16,12 @@ name: CI
 #      fires. If you find yourself disabling it, you're papering over real
 #      drift; fix the lockfile instead.
 
-# The branch set this workflow gates is written three times — twice here and once in the `proved`
-# step below — because `on:` cannot read a variable. `conformance-audit` R11 holds the three to one
-# answer. `dev` is here for the base branch this repository is moving to under `releaseModel:
-# promote`; `main` stays, because under that model it is the branch a promotion lands on and every
-# check a promotion owes is one a pull request into `dev` already ran (ISS-1304).
+# The branch set this workflow gates is written four times — the two triggers here, the dispatch
+# input's options, and the `proved` step below — because `on:` cannot read a variable.
+# `conformance-audit` R11 holds the four to one answer. `dev` is here for the base branch this
+# repository is moving to under `releaseModel: promote`; `main` stays, because under that model it
+# is the branch a promotion lands on and every check a promotion owes is one a pull request into
+# `dev` already ran (ISS-1304).
 on:
   push:
     branches: [main, dev]
@@ -33,13 +34,18 @@ on:
   # The same heavy jobs on a branch before it lands, which a pull request no longer runs:
   # `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. `base` is required and
   # has no default, because GitHub cannot know where a dispatched branch lands and every
-  # delta-scoped gate measures against it (`scripts/lib/base-branch.mjs`).
+  # delta-scoped gate measures against it (`scripts/lib/base-branch.mjs`). It is a choice of the
+  # gated branches, so a mistyped base is refused at dispatch instead of spending every heavy job;
+  # `conformance-audit` R11 holds its options to the branch set above.
   workflow_dispatch:
     inputs:
       base:
-        description: 'The branch this work lands on (main or dev); the gates measure against it'
+        description: 'The branch this work lands on; the gates measure against it'
         required: true
-        type: string
+        type: choice
+        options:
+          - main
+          - dev
 
 # A pull request's newer run cancels its older one. A push run is never cancelled: since ISS-1370
 # the heavy jobs run only there, and a landing cancelled by the next one would be measured by
@@ -358,10 +364,14 @@ jobs:
           echo "why: $why"
           echo "pull_request run already proved this tree: $proved"
       # A scheduled run has no pushed range to diff, and its jobs select on the event instead.
+      # A dispatched run diffs against the base it names: left unset, the filter compares with
+      # the default branch, which is not where a branch dispatched with `base=dev` lands. Every
+      # other event keeps the filter's own default (empty `base`).
       - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name != 'schedule'
         with:
+          base: ${{ github.event_name == 'workflow_dispatch' && inputs.base || '' }}
           # NB: dorny/paths-filter treats `!pattern` entries as separate
           # positive matchers ("match files NOT matching pattern"), not as
           # subtractions from the match set. With the default
@@ -540,6 +550,7 @@ jobs:
       # are `true`: clippy links nothing, and that vendored C is built for real by
       # `runner-platforms` and runner-release.yml.
       - name: Cross-target clippy for Windows and macOS
+        id: cross
         working-directory: packages/runner
         shell: bash
         env:
@@ -564,8 +575,11 @@ jobs:
       # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
       # Windows does not compile the module. Clippy denies warnings, here, in runner-release.yml's
       # check job and in scripts/check-runner-gates.mjs alike: a lint that only warns is read by
-      # nobody, and five stood on main that way.
+      # nobody, and five stood on main that way. It runs whether or not the cross-target step
+      # failed, so a push that breaks both platforms and Linux shows all of it in one run; a
+      # cross-target step that never ran means the setup above it failed, and then neither does.
       - name: Lockfile sync + fmt + clippy + test
+        if: ${{ !cancelled() && steps.cross.outcome != 'skipped' }}
         working-directory: packages/runner
         shell: bash
         env:

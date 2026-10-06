@@ -678,9 +678,11 @@ the merge target for any change taking the default base. For a local run aimed a
 `GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
 
 `branchSetFaults(ciYamlText, target)` is the other half, and `conformance-audit` R11 runs it: a
-workflow trigger cannot read a variable, so the branches CI gates are written three times over —
-the push trigger, the pull-request trigger, and the step deciding a tree a pull request already
-proved. The three must name one set, and the merge target must be in it.
+workflow trigger cannot read a variable, so the branches CI gates are written four times over —
+the push trigger, the pull-request trigger, the step deciding a tree a pull request already proved,
+and the `options` of the `workflow_dispatch` input `base`. The four must name one set, and the
+merge target must be in it. A `base` that is free text rather than a `choice` is refused by name:
+it admits a mistyped branch, which still spends every heavy job.
 
 ## check-migration-order.mjs — a migration is ordered against the set, not against `main`
 
@@ -941,8 +943,10 @@ That failure has no test in it.
 CI on PR #457 reported `1 file failed` with the file itself reading
 `3 tests | 3 skipped`, no assertion anywhere in the job, and a three-frame stack: `env.ts:137` →
 `db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by
-`packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` carries no
-`setupFiles`, which is where it bit.
+`packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` does not name that
+file, which is where it bit. Its only setup file is the root-walk guard
+(`scripts/lib/whole-tree-guard.mjs`), which supplies none of the variables
+`packages/core/src/config/env.ts` requires.
 
 This checker is what keeps the two lazy, because the property is invisible in a green run: one new
 module-scope read puts the side effect back for every module downstream of the file that does it,

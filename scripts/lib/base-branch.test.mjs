@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -307,13 +307,20 @@ describe('baseRef', () => {
   });
 });
 
-const WORKFLOW = (push, pull, proved) => `name: CI
+const WORKFLOW = (push, pull, proved, dispatch = push) => `name: CI
 
 on:
   push:
     branches: [${push}]
   pull_request:
     branches: [${pull}]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'The branch this work lands on'
+        required: true
+        type: choice
+        options: [${dispatch}]
 
 jobs:
   changes:
@@ -331,13 +338,22 @@ jobs:
 `;
 
 describe('ciBranches', () => {
-  it('reads all three lists out of one workflow', () => {
+  it('reads all four lists out of one workflow', () => {
     const text = WORKFLOW('main, dev', 'main, dev', 'refs/heads/main|refs/heads/dev');
     expect(ciBranches(text)).toEqual({
       push: ['main', 'dev'],
       pullRequest: ['main', 'dev'],
       proved: ['main', 'dev'],
+      dispatch: { type: 'choice', options: ['main', 'dev'] },
     });
+  });
+
+  it('reads the dispatch options written as a block list', () => {
+    const text = WORKFLOW('main', 'main', 'refs/heads/main').replace(
+      '        options: [main]\n',
+      '        options:\n          - main\n          - dev\n',
+    );
+    expect(ciBranches(text).dispatch).toEqual({ type: 'choice', options: ['main', 'dev'] });
   });
 
   it('reads a trigger written as a block list', () => {
@@ -368,24 +384,57 @@ describe('branchSetFaults', () => {
     expect(branchSetFaults(text)).toEqual([]);
   });
 
-  it('names all three lists when one of them is short', () => {
+  it('names all four lists when one of them is short', () => {
     const text = WORKFLOW('main, dev', 'main', 'refs/heads/main|refs/heads/dev');
     const faults = branchSetFaults(text);
     expect(faults).toContain('on.push.branches: dev,main');
     expect(faults).toContain('on.pull_request.branches: main');
     expect(faults).toContain(`the \`${PROVED_STEP}\` step: dev,main`);
+    expect(faults).toContain('on.workflow_dispatch.inputs.base options: dev,main');
   });
 
-  it('refuses three agreeing lists that leave the merge target out', () => {
+  it('names the dispatch options when they alone disagree', () => {
+    const text = WORKFLOW('main, dev', 'main, dev', 'refs/heads/main|refs/heads/dev', 'main');
+    expect(branchSetFaults(text)).toContain('on.workflow_dispatch.inputs.base options: main');
+  });
+
+  it('refuses a dispatch base that is free text, naming its type', () => {
+    const text = WORKFLOW('main', 'main', 'refs/heads/main')
+      .replace('type: choice', 'type: string')
+      .replace('        options: [main]\n', '');
+    expect(branchSetFaults(text)).toEqual([
+      expect.stringMatching(
+        /^on\.workflow_dispatch\.inputs\.base: type string, which takes any text/,
+      ),
+    ]);
+  });
+
+  it('refuses four agreeing lists that leave the merge target out', () => {
     const text = WORKFLOW('main', 'main', 'refs/heads/main');
     expect(branchSetFaults(text, 'main')).toEqual([]);
     expect(branchSetFaults(text, 'dev')).toEqual([
-      'all three name main, and the merge target `dev` is not among them',
+      'all four name main, and the merge target `dev` is not among them',
     ]);
   });
 
   it('names a list it could not find at all', () => {
     const text = WORKFLOW('main', 'main', 'refs/heads/main').replace(PROVED_STEP, 'renamed step');
     expect(branchSetFaults(text)).toEqual([`the \`${PROVED_STEP}\` step: not found`]);
+    const undispatched = WORKFLOW('main', 'main', 'refs/heads/main').replace(
+      / {2}workflow_dispatch:[\s\S]*?options: \[main\]\n/,
+      '',
+    );
+    expect(branchSetFaults(undispatched)).toEqual([
+      'on.workflow_dispatch.inputs.base options: not found',
+    ]);
+  });
+
+  it('agrees with the repository’s own ci.yml', () => {
+    const text = readFileSync(
+      join(import.meta.dirname, '..', '..', '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    expect(ciBranches(text).dispatch?.type).toBe('choice');
+    expect(branchSetFaults(text)).toEqual([]);
   });
 });
