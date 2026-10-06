@@ -26,7 +26,8 @@ import {
   readTranscriptMeta,
   shortenPath,
 } from "../../run-report";
-import { type ConversationItem, deriveFilesChanged } from "../../types";
+import { deriveFilesChanged } from "../../derive";
+import type { ConversationItem } from "../../types";
 import { BlockerCard } from "./blocker-card";
 import { DiffLens } from "./diff-lens";
 import { StepStrip } from "./step-strip";

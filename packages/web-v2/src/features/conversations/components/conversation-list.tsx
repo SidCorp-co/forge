@@ -65,6 +65,49 @@ function ecosystemsReading(q: ReturnType<typeof useProjectEcosystems>, hasProjec
   return { ecosystems, note: ecosystems.length ? null : "This project is an active member of no ecosystem" };
 }
 
+function filterMenu(o: {
+  projects: Array<{ id: string; name: string }>;
+  ecosystems: Array<{ id: string; name: string }>;
+  filter: ConversationFilter;
+  archived: boolean;
+  onPick: (f: ConversationFilter) => void;
+  onArchived: () => void;
+}): MenuItem[] {
+  const { filter } = o;
+  const from = "Show conversations from";
+  return [
+    { group: from, label: "Every project", checked: filter.kind === "all", onSelect: () => o.onPick(EVERY_PROJECT) },
+    ...o.projects.map((p) => ({
+      group: from,
+      label: p.name,
+      checked: filter.kind === "project" && filter.id === p.id,
+      onSelect: () => o.onPick({ kind: "project", id: p.id, name: p.name }),
+    })),
+    ...o.ecosystems.map((e) => ({
+      group: "Ecosystem",
+      label: e.name,
+      checked: filter.kind === "ecosystem" && filter.id === e.id,
+      onSelect: () => o.onPick({ kind: "ecosystem", id: e.id, name: e.name }),
+    })),
+    { group: "Other", label: "Archived", icon: "archive", checked: o.archived, onSelect: o.onArchived },
+  ];
+}
+
+function FilterTrigger({ filtered, label }: { filtered: boolean; label: string }) {
+  return (
+    <span className="relative inline-flex">
+      <IconButton
+        icon="filter"
+        variant="secondary"
+        aria-label={filtered ? `Filter conversations, showing ${label}` : "Filter conversations"}
+        aria-pressed={filtered}
+        className={cn(filtered && "border-accent bg-accent-tint text-accent-text")}
+      />
+      {filtered && <span aria-hidden className="absolute -right-0.5 -top-0.5 size-2 rounded-pill bg-accent" />}
+    </span>
+  );
+}
+
 export function ConversationList({
   projectId,
   conversationId,
@@ -142,27 +185,7 @@ export function ConversationList({
     },
   ];
 
-  const filterItems: MenuItem[] = [
-    {
-      group: "Show conversations from",
-      label: "Every project",
-      checked: filter.kind === "all",
-      onSelect: () => setPicked(EVERY_PROJECT),
-    },
-    ...projects.map((p) => ({
-      group: "Show conversations from",
-      label: p.name,
-      checked: filter.kind === "project" && filter.id === p.id,
-      onSelect: () => setPicked({ kind: "project", id: p.id, name: p.name }),
-    })),
-    ...ecosystems.map((e) => ({
-      group: "Ecosystem",
-      label: e.name,
-      checked: filter.kind === "ecosystem" && filter.id === e.id,
-      onSelect: () => setPicked({ kind: "ecosystem", id: e.id, name: e.name }),
-    })),
-    { group: "Other", label: "Archived", icon: "archive", checked: archived, onSelect: () => setArchived((v) => !v) },
-  ];
+  const filterItems = filterMenu({ projects, ecosystems, filter, archived, onPick: setPicked, onArchived: () => setArchived((v) => !v) });
   const filterLabel = [filter.kind === "all" ? "every project" : filter.name, archived ? "archived" : null]
     .filter(Boolean)
     .join(" · ");
@@ -208,20 +231,7 @@ export function ConversationList({
           />
           <Menu
             align="right"
-            trigger={
-              <span className="relative inline-flex">
-                <IconButton
-                  icon="filter"
-                  variant="secondary"
-                  aria-label={filtered ? `Filter conversations, showing ${filterLabel}` : "Filter conversations"}
-                  aria-pressed={filtered}
-                  className={cn(filtered && "border-accent bg-accent-tint text-accent-text")}
-                />
-                {filtered && (
-                  <span aria-hidden className="absolute -right-0.5 -top-0.5 size-2 rounded-pill bg-accent" />
-                )}
-              </span>
-            }
+            trigger={<FilterTrigger filtered={filtered} label={filterLabel} />}
             items={filterItems}
           />
         </div>

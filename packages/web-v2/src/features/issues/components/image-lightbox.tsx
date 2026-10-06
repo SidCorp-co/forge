@@ -35,23 +35,7 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export function ImageLightbox({
-  images,
-  index,
-  onClose,
-  onIndexChange,
-}: {
-  images: LightboxImage[];
-  /** Index into `images` of the currently shown image. */
-  index: number;
-  onClose: () => void;
-  onIndexChange: (next: number) => void;
-}) {
-  const count = images.length;
-  const current = images[index];
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
+function useZoomPan(index: number, go: (delta: number) => void) {
   // Zoom/pan transform for the current image. `scale === 1` means "fit", and
   // panning is disabled. Reset whenever the image changes (see effect below).
   const [scale, setScale] = useState(1);
@@ -75,14 +59,6 @@ export function ImageLightbox({
     setOffset({ x: 0, y: 0 });
   }, []);
 
-  const go = useCallback(
-    (delta: number) => {
-      if (count <= 1) return;
-      onIndexChange((index + delta + count) % count);
-    },
-    [count, index, onIndexChange],
-  );
-
   const zoomBy = useCallback((delta: number) => {
     setScale((s) => {
       const next = clamp(s + delta, MIN_SCALE, MAX_SCALE);
@@ -96,28 +72,6 @@ export function ImageLightbox({
   useEffect(() => {
     resetZoom();
   }, [index]);
-
-  useEffect(() => {
-    restoreRef.current = document.activeElement as HTMLElement;
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") go(1);
-      else if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
-      else if (e.key === "-") zoomBy(-ZOOM_STEP);
-      else if (e.key === "0") resetZoom();
-    };
-    document.addEventListener("keydown", onKey);
-    // Lock background scroll while the gallery is open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-      restoreRef.current?.focus?.();
-    };
-  }, [onClose, go, zoomBy, resetZoom]);
 
   // ── Pointer gestures (mouse + touch unified): pan when zoomed, pinch with two
   // fingers, swipe-to-navigate when at fit scale, double-tap/click to toggle.
@@ -205,6 +159,178 @@ export function ImageLightbox({
     else setScale(2);
   }, [zoomed, resetZoom]);
 
+  return {
+    scale,
+    offset,
+    zoomed,
+    moving: dragStart.current?.moved ?? false,
+    zoomBy,
+    resetZoom,
+    onPointerDown,
+    onPointerMove,
+    endPointer,
+    onWheel,
+    toggleZoom,
+  };
+}
+
+const GLYPH =
+  "flex size-9 items-center justify-center rounded-md leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] disabled:opacity-30 sm:size-8";
+
+function LightboxHeader({
+  image,
+  index,
+  count,
+  scale,
+  zoomBy,
+  resetZoom,
+  onClose,
+}: {
+  image: LightboxImage;
+  index: number;
+  count: number;
+  scale: number;
+  zoomBy: (delta: number) => void;
+  resetZoom: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <header className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="fg-body-sm truncate" title={image.name}>
+          {image.name}
+        </span>
+        {count > 1 && (
+          <span className="fg-caption flex-none text-white/60">
+            {index + 1} / {count}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-none items-center gap-0.5 sm:gap-1">
+        {/* Zoom controls. Glyph buttons keep us off the (minus-less) icon set. */}
+        <button
+          type="button"
+          onClick={() => zoomBy(-ZOOM_STEP)}
+          disabled={scale <= MIN_SCALE}
+          aria-label="Zoom out"
+          className={`${GLYPH} text-lg`}
+        >
+          &minus;
+        </button>
+        <button
+          type="button"
+          onClick={resetZoom}
+          aria-label="Reset zoom"
+          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomBy(ZOOM_STEP)}
+          disabled={scale >= MAX_SCALE}
+          aria-label="Zoom in"
+          className={`${GLYPH} text-lg`}
+        >
+          +
+        </button>
+        <a
+          href={image.href}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="fg-caption ml-1 hidden rounded-md px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+        >
+          Open original
+        </a>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className={`${GLYPH} text-xl`}
+        >
+          &times;
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index: number; onPick: (i: number) => void }) {
+  return (
+    <div className="flex flex-none justify-start gap-2 overflow-x-auto px-3 py-2 sm:justify-center sm:px-4 sm:py-3">
+      {images.map((img, i) => (
+        <button
+          key={img.id}
+          type="button"
+          onClick={() => onPick(i)}
+          aria-label={`View ${img.name}`}
+          aria-current={i === index}
+          className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
+            i === index
+              ? "border-cobalt-400"
+              : "border-transparent opacity-60 hover:opacity-100"
+          }`}
+        >
+          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
+          <img
+            src={img.href}
+            alt={img.name}
+            className="size-11 object-cover sm:size-14"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function ImageLightbox({
+  images,
+  index,
+  onClose,
+  onIndexChange,
+}: {
+  images: LightboxImage[];
+  /** Index into `images` of the currently shown image. */
+  index: number;
+  onClose: () => void;
+  onIndexChange: (next: number) => void;
+}) {
+  const count = images.length;
+  const current = images[index];
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const go = useCallback(
+    (delta: number) => {
+      if (count <= 1) return;
+      onIndexChange((index + delta + count) % count);
+    },
+    [count, index, onIndexChange],
+  );
+  const { scale, offset, zoomed, moving, zoomBy, resetZoom, ...gesture } = useZoomPan(index, go);
+
+  useEffect(() => {
+    restoreRef.current = document.activeElement as HTMLElement;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "+" || e.key === "=") zoomBy(ZOOM_STEP);
+      else if (e.key === "-") zoomBy(-ZOOM_STEP);
+      else if (e.key === "0") resetZoom();
+    };
+    document.addEventListener("keydown", onKey);
+    // Lock background scroll while the gallery is open.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      restoreRef.current?.focus?.();
+    };
+  }, [onClose, go, zoomBy, resetZoom]);
+
   if (!current) return null;
 
   return createPortal(
@@ -223,64 +349,7 @@ export function ImageLightbox({
         else e.stopPropagation();
       }}
     >
-      {/* Top bar: name, counter, zoom controls, open-original, close. */}
-      <header className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="fg-body-sm truncate" title={current.name}>
-            {current.name}
-          </span>
-          {count > 1 && (
-            <span className="fg-caption flex-none text-white/60">
-              {index + 1} / {count}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-none items-center gap-0.5 sm:gap-1">
-          {/* Zoom controls. Glyph buttons keep us off the (minus-less) icon set. */}
-          <button
-            type="button"
-            onClick={() => zoomBy(-ZOOM_STEP)}
-            disabled={scale <= MIN_SCALE}
-            aria-label="Zoom out"
-            className="flex size-9 items-center justify-center rounded-md text-lg leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] disabled:opacity-30 sm:size-8"
-          >
-            &minus;
-          </button>
-          <button
-            type="button"
-            onClick={resetZoom}
-            aria-label="Reset zoom"
-            className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            {Math.round(scale * 100)}%
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomBy(ZOOM_STEP)}
-            disabled={scale >= MAX_SCALE}
-            aria-label="Zoom in"
-            className="flex size-9 items-center justify-center rounded-md text-lg leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] disabled:opacity-30 sm:size-8"
-          >
-            +
-          </button>
-          <a
-            href={current.href}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="fg-caption ml-1 hidden rounded-md px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
-          >
-            Open original
-          </a>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex size-9 items-center justify-center rounded-md text-xl leading-none text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:size-8"
-          >
-            &times;
-          </button>
-        </div>
-      </header>
+      <LightboxHeader image={current} index={index} count={count} scale={scale} zoomBy={zoomBy} resetZoom={resetZoom} onClose={onClose} />
 
       {/* Stage. */}
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 pb-2 sm:px-4">
@@ -297,12 +366,12 @@ export function ImageLightbox({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: the pointer pan and zoom surface; the header's zoom buttons are its keyboard equivalent */}
         <div
           className="flex h-full w-full touch-none select-none items-center justify-center"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endPointer}
-          onPointerCancel={endPointer}
-          onWheel={onWheel}
-          onDoubleClick={toggleZoom}
+          onPointerDown={gesture.onPointerDown}
+          onPointerMove={gesture.onPointerMove}
+          onPointerUp={gesture.endPointer}
+          onPointerCancel={gesture.endPointer}
+          onWheel={gesture.onWheel}
+          onDoubleClick={gesture.toggleZoom}
         >
           {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img
@@ -312,7 +381,7 @@ export function ImageLightbox({
             className="max-h-full max-w-full object-contain will-change-transform"
             style={{
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-              transition: dragStart.current?.moved ? "none" : "transform 120ms ease-out",
+              transition: moving ? "none" : "transform 120ms ease-out",
               cursor: zoomed ? "grab" : "zoom-in",
             }}
           />
@@ -329,32 +398,7 @@ export function ImageLightbox({
         )}
       </div>
 
-      {/* Thumbnail strip — only when there is more than one image. */}
-      {count > 1 && (
-        <div className="flex flex-none justify-start gap-2 overflow-x-auto px-3 py-2 sm:justify-center sm:px-4 sm:py-3">
-          {images.map((img, i) => (
-            <button
-              key={img.id}
-              type="button"
-              onClick={() => onIndexChange(i)}
-              aria-label={`View ${img.name}`}
-              aria-current={i === index}
-              className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
-                i === index
-                  ? "border-cobalt-400"
-                  : "border-transparent opacity-60 hover:opacity-100"
-              }`}
-            >
-              {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
-              <img
-                src={img.href}
-                alt={img.name}
-                className="size-11 object-cover sm:size-14"
-              />
-            </button>
-          ))}
-        </div>
-      )}
+      {count > 1 && <Thumbnails images={images} index={index} onPick={onIndexChange} />}
     </div>,
     document.body,
   );

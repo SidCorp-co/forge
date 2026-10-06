@@ -2,7 +2,7 @@
 
 // below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
 import { useEffect } from "react";
-import { Icon, type IconName, ProjectMark } from "@/design";
+import { Icon, type IconName, ProjectMark, isNavGroup } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
@@ -13,7 +13,6 @@ import {
   type ProjectBadges,
   SECONDARY_DESTINATIONS,
   WORKSPACE_ITEMS,
-  isProjGroup,
   projectMenu,
 } from "../nav-model";
 
@@ -144,7 +143,7 @@ export function MobileNavDrawer({
         {railProjectName ?? "This project"}
       </span>
       {projectMenu(badges).map((e) =>
-        isProjGroup(e) ? (
+        isNavGroup(e) ? (
           <div key={e.key} className="flex flex-col">
             <span className="flex items-center gap-2.5 px-2.5 py-2 text-13-5 font-semibold text-muted">
               <Icon name={e.icon} size={18} />

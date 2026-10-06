@@ -6,7 +6,8 @@
 import { Icon, type IconName } from "@/design";
 import { useDisclosure } from "../disclosure";
 import { formatResultBody, summarizeResult } from "../result-summary";
-import { buildFileDiff, getToolLabel, splitHunk, toolKind, type FileDiff, type ToolCallData } from "../types";
+import { buildFileDiff, splitHunk, type FileDiff } from "../derive";
+import { getToolLabel, toolKind, type ToolCallData } from "../types";
 
 const KIND_ICON: Record<ReturnType<typeof toolKind>, IconName> = {
   edit: "branch",

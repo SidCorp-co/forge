@@ -42,7 +42,8 @@ import {
   useSession,
   useSessionTurnPages,
 } from "../hooks";
-import { deriveAgentTasks, parseTurns } from "../types";
+import { deriveAgentTasks } from "../derive";
+import { parseTurns } from "../types";
 import { SessionComposer } from "./session-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
@@ -61,18 +62,15 @@ interface SessionScreenProps {
 
 export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const router = useRouter();
-  const copyShareLink = useCopyShareLink();
   const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
   const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
   const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
-  const goBack = projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined;
 
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
-
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   const loadedId = session?.id;
@@ -88,10 +86,6 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     });
   }, [loadedId, sessionTitle, projectSlug, pushRecent]);
 
-  function copyLink() {
-    if (!projectSlug) return;
-    copyShareLink(`/projects/${projectSlug}/agents/${sessionId}`);
-  }
   // Subscribe to the project room once we know the project — the event-router
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
   useRoom(session ? projectRoom(session.projectId) : null);
@@ -110,8 +104,6 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const regenerate = useRegenerateTurn(sessionId);
   const fork = useForkSession(sessionId);
   const editTurn = useEditTurn(sessionId);
-  const cancel = useCancelSession();
-  const rerun = useRerunSession();
 
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
@@ -195,139 +187,23 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     />
   );
 
-  // Overflow menu — Branch/View runner machine/Copy link (ISS-351). Branching forks from the
-  // newest turn, so it is offered only when the newest turn is loaded.
-  const menuItems = [
-    ...(lastTurnId
-      ? [
-          {
-            label: "Branch this conversation",
-            icon: "fork" as const,
-            onSelect: () => handleFork(lastTurnId),
-          },
-        ]
-      : []),
-    ...(session.deviceId
-      ? [
-          {
-            label: "View runner machine",
-            icon: "server" as const,
-            onSelect: () => router.push("/runners"),
-          },
-        ]
-      : []),
-    {
-      label: "Copy link",
-      icon: "link" as const,
-      onSelect: copyLink,
-    },
-  ];
 
-  const railToggle = (
-    <IconButton
-      icon={railCollapsed ? "chevronLeft" : "panelLeft"}
-      aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
-      aria-pressed={railCollapsed}
-      className="hidden min-h-11 min-w-11 lg:inline-flex"
-      onClick={() => setRailCollapsed((c) => !c)}
-    />
-  );
 
   return (
     <div className={`flex flex-col min-h-dvh`}>
-      <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {goBack && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="arrowRight"
-              className="min-h-11 rotate-180"
-              aria-label="Back to sessions"
-              onClick={goBack}
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
-              <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <StatusChip
-                status={statusToChip(display)}
-                stage={sessionStep(session.metadata) ?? undefined}
-                size="sm"
-                domain="session"
-              />
-              {taskCount > 0 && (
-                <Badge tone="neutral">
-                  {taskCount} {taskCount === 1 ? "task" : "tasks"}
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {live ? (
-              <Button
-                variant="danger"
-                size="sm"
-                icon="stop"
-                className="min-h-11"
-                loading={cancel.isPending}
-                onClick={() => cancel.mutate(sessionId)}
-              >
-                Stop
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="rerun"
-                className="min-h-11"
-                loading={rerun.isPending}
-                onClick={() =>
-                  rerun.mutate(sessionId, {
-                    onSuccess: (r) => projectSlug && goToSession(r.id),
-                  })
-                }
-              >
-                Rerun
-              </Button>
-            )}
-            {issueId && projectSlug && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="list"
-                className="min-h-11"
-                onClick={() =>
-                  router.push(`/projects/${projectSlug}/issues/${issueId}`)
-                }
-              >
-                Open issue
-              </Button>
-            )}
-            <Menu
-              align="right"
-              items={menuItems}
-              trigger={
-                <IconButton
-                  icon="more"
-                  aria-label="Session actions"
-                  className="min-h-11 min-w-11"
-                />
-              }
-            />
-            <IconButton
-              icon="rows"
-              aria-label="Show context"
-              className="min-h-11 min-w-11 lg:hidden"
-              onClick={() => setRailOpen(true)}
-            />
-            {railToggle}
-          </div>
-        </div>
-      </header>
+      <SessionHeader
+        session={session}
+        display={display}
+        live={live}
+        taskCount={taskCount}
+        projectSlug={projectSlug}
+        lastTurnId={lastTurnId}
+        onFork={handleFork}
+        onOpenSession={goToSession}
+        railCollapsed={railCollapsed}
+        onToggleRail={() => setRailCollapsed((c) => !c)}
+        onOpenRail={() => setRailOpen(true)}
+      />
 
       {isRun ? (
         <>
@@ -426,5 +302,176 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         </>
       )}
     </div>
+  );
+}
+
+function SessionHeader({
+  session,
+  display,
+  live,
+  taskCount,
+  projectSlug,
+  lastTurnId,
+  onFork,
+  onOpenSession,
+  railCollapsed,
+  onToggleRail,
+  onOpenRail,
+}: {
+  session: NonNullable<ReturnType<typeof useSession>["data"]>;
+  display: ReturnType<typeof deriveSessionDisplayStatus>;
+  live: boolean;
+  taskCount: number;
+  projectSlug: string | undefined;
+  lastTurnId: string | undefined;
+  onFork: (turnId: string) => void;
+  onOpenSession: (id: string) => void;
+  railCollapsed: boolean;
+  onToggleRail: () => void;
+  onOpenRail: () => void;
+}) {
+  const router = useRouter();
+  const copyShareLink = useCopyShareLink();
+  const cancel = useCancelSession();
+  const rerun = useRerunSession();
+  const issueId = session.metadata?.issueId;
+  const goBack = projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined;
+  function copyLink() {
+    if (!projectSlug) return;
+    copyShareLink(`/projects/${projectSlug}/agents/${session.id}`);
+  }
+
+  // Overflow menu — Branch/View runner machine/Copy link (ISS-351). Branching forks from the
+  // newest turn, so it is offered only when the newest turn is loaded.
+  const menuItems = [
+    ...(lastTurnId
+      ? [
+          {
+            label: "Branch this conversation",
+            icon: "fork" as const,
+            onSelect: () => onFork(lastTurnId),
+          },
+        ]
+      : []),
+    ...(session.deviceId
+      ? [
+          {
+            label: "View runner machine",
+            icon: "server" as const,
+            onSelect: () => router.push("/runners"),
+          },
+        ]
+      : []),
+    {
+      label: "Copy link",
+      icon: "link" as const,
+      onSelect: copyLink,
+    },
+  ];
+
+  const railToggle = (
+    <IconButton
+      icon={railCollapsed ? "chevronLeft" : "panelLeft"}
+      aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
+      aria-pressed={railCollapsed}
+      className="hidden min-h-11 min-w-11 lg:inline-flex"
+      onClick={onToggleRail}
+    />
+  );
+
+  return (
+    <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {goBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="arrowRight"
+            className="min-h-11 rotate-180"
+            aria-label="Back to sessions"
+            onClick={goBack}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
+            <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <StatusChip
+              status={statusToChip(display)}
+              stage={sessionStep(session.metadata) ?? undefined}
+              size="sm"
+              domain="session"
+            />
+            {taskCount > 0 && (
+              <Badge tone="neutral">
+                {taskCount} {taskCount === 1 ? "task" : "tasks"}
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {live ? (
+            <Button
+              variant="danger"
+              size="sm"
+              icon="stop"
+              className="min-h-11"
+              loading={cancel.isPending}
+              onClick={() => cancel.mutate(session.id)}
+            >
+              Stop
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="rerun"
+              className="min-h-11"
+              loading={rerun.isPending}
+              onClick={() =>
+                rerun.mutate(session.id, {
+                  onSuccess: (r) => projectSlug && onOpenSession(r.id),
+                })
+              }
+            >
+              Rerun
+            </Button>
+          )}
+          {issueId && projectSlug && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="list"
+              className="min-h-11"
+              onClick={() =>
+                router.push(`/projects/${projectSlug}/issues/${issueId}`)
+              }
+            >
+              Open issue
+            </Button>
+          )}
+          <Menu
+            align="right"
+            items={menuItems}
+            trigger={
+              <IconButton
+                icon="more"
+                aria-label="Session actions"
+                className="min-h-11 min-w-11"
+              />
+            }
+          />
+          <IconButton
+            icon="rows"
+            aria-label="Show context"
+            className="min-h-11 min-w-11 lg:hidden"
+            onClick={onOpenRail}
+          />
+          {railToggle}
+        </div>
+      </div>
+    </header>
   );
 }

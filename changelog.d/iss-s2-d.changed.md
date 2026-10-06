@@ -1,0 +1,1 @@
+**The sidebar is one rail at both widths.** Its project switcher lists only the active organization's projects at either width, a folded group shows its rows' counts, and the retired `/projects/:slug/ecosystem/contracts` addresses no longer redirect.

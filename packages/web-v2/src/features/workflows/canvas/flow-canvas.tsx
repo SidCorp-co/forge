@@ -3,16 +3,44 @@
 import type { Node, Viewport } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { type Language, SearchBox, ViewBar, WalkBar } from "./controls";
+import { type Language, ViewBar } from "./controls";
 import { EDGE_TYPES } from "./edges";
 import { Frame } from "./frame";
-import { pathOf, readCanvas, searchSteps, walkOrder } from "./model";
+import { readCanvas } from "./model";
 import { type BandRowData, NODE_TYPES, type StepNodeData } from "./nodes";
-import { DetailPanel, type Selection } from "./panel";
 import { hue, tint } from "./style";
 import { useCanvasLayout } from "./use-canvas-layout";
+import { focusChrome, useStepFocus } from "./step-focus";
 import { buildView, type Lod, lodOf } from "./view";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
+
+function nearestCentre(positions: ReadonlyMap<string, { x: number; y: number; width: number; height: number }>, vp: Viewport, el: HTMLElement): string | null {
+  let best: string | null = null;
+  let bd = Number.POSITIVE_INFINITY;
+  for (const [k, p] of positions) {
+    const cx = (p.x + p.width / 2) * vp.zoom + vp.x - el.clientWidth / 2;
+    const cy = (p.y + p.height / 2) * vp.zoom + vp.y - el.clientHeight / 2;
+    if (cx * cx + cy * cy < bd) {
+      bd = cx * cx + cy * cy;
+      best = k;
+    }
+  }
+  return best;
+}
+
+function nodeColor(n: Node) {
+  if (n.type === "bandRow") {
+    const d = n.data as BandRowData;
+    return tint(d.colour, d.odd ? 14 : 22, "var(--bg-surface)");
+  }
+  if (n.type === "band") return "var(--fg-subtle)";
+  return hue((n.data as StepNodeData).type.colour);
+}
+function nodeStroke(n: Node) {
+  if (n.type !== "step") return "transparent";
+  const d = n.data as StepNodeData;
+  return d.on ? "var(--accent)" : d.hit ? "var(--wf-hit)" : "transparent";
+}
 
 /** A design laid out by ELK from its template: bands, stages and steps, levels of detail by zoom. */
 export function FlowCanvas(props: WorkflowCanvasProps) {
@@ -20,15 +48,12 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const rf = useReactFlow();
   const c = useMemo(() => readCanvas(doc, template), [doc, template]);
   const banded = c.bands.length > 0;
-  const order = useMemo(() => walkOrder(c), [c]);
+  const f = useStepFocus(c);
+  const { focus, hits, walk } = f;
   const [language, setLanguage] = useState<Language>("business");
   const [lod, setLod] = useState<Lod>(1);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const [selection, setSelection] = useState<Selection>(null);
-  const [walk, setWalk] = useState<number | null>(null);
-  const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
-  const [query, setQuery] = useState("");
   const [zoom, setZoom] = useState(1);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -37,27 +62,19 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     () => `${language}|${view.nodes.map((n) => (n.kind === "step" ? `${n.key}:${n.full ? 1 : 0}` : n.key)).join(",")}`,
     [language, view],
   );
-  const hits = useMemo(() => new Set(searchSteps(c, query)), [c, query]);
-  const selectedStep = selection && "step" in selection ? selection.step : null;
-  const selectedEdge = selection && "edge" in selection ? selection.edge : null;
-  const focus = useMemo(() => {
-    if (selectedStep) return pathOf(c, selectedStep);
-    const e = selectedEdge ? c.edges.find((x) => x.id === selectedEdge || `agg:${x.from}>${x.to}` === selectedEdge) : null;
-    return e ? { nodes: new Set([e.from, e.to]), edges: new Set([e.id]) } : null;
-  }, [c, selectedStep, selectedEdge]);
   const decoration = useMemo(
     () => ({
-      selected: selectedStep,
-      selectedEdge,
+      selected: f.step,
+      selectedEdge: f.edge,
       relNodes: focus?.nodes ?? null,
       relEdges: focus?.edges ?? null,
       hits,
-      visited: walk === null ? new Set<string>() : new Set(visited),
+      visited: walk === null ? new Set<string>() : new Set(f.visited),
       contract: language === "contract",
       diff,
       health,
     }),
-    [selectedStep, selectedEdge, focus, hits, walk, visited, language, diff, health],
+    [f.step, f.edge, focus, hits, walk, f.visited, language, diff, health],
   );
 
   const layout = useCanvasLayout({
@@ -82,17 +99,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const centerAnchor = useCallback(() => {
     const el = wrap.current;
     if (!el || !layout.positions) return null;
-    const vp = rf.getViewport();
-    let best: string | null = null;
-    let bd = Number.POSITIVE_INFINITY;
-    for (const [k, p] of layout.positions) {
-      const cx = (p.x + p.width / 2) * vp.zoom + vp.x - el.clientWidth / 2;
-      const cy = (p.y + p.height / 2) * vp.zoom + vp.y - el.clientHeight / 2;
-      if (cx * cx + cy * cy < bd) {
-        bd = cx * cx + cy * cy;
-        best = k;
-      }
-    }
+    const best = nearestCentre(layout.positions, rf.getViewport(), el);
     if (!best) return null;
     const band = view.nodes.find((n) => n.key === best);
     return layout.anchorFor(band?.kind === "band" ? (c.bands.find((b) => b.id === band.band)?.steps ?? [best]) : [best]);
@@ -123,7 +130,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     const band = c.bandOf.get(id);
     const needBand = banded && band !== undefined && (!expanded.has(band) || lod === 0);
     const needOpen = lod < 2 && !open.has(id);
-    setSelection({ step: id });
+    f.setSelection({ step: id });
     if (needBand || needOpen) {
       layout.keep(centerAnchor());
       if (needBand && band) setExpanded((prev) => new Set([...prev, band]));
@@ -133,31 +140,15 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     layout.center(id, needBand || needOpen);
   };
 
-  const walkTo = (i: number) => {
-    if (i < 0) return;
-    if (i >= order.length) {
-      setWalk(order.length);
-      setSelection(null);
-      return;
-    }
-    const id = order[i] as string;
-    setWalk(i);
-    setVisited((prev) => new Set([...prev, id]));
-    reveal(id);
-  };
-  const walkStop = () => {
-    setWalk(null);
-    setVisited(new Set());
-    setSelection(null);
-  };
+  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, health });
 
   const clickStep = (id: string) => {
-    if (selectedStep === id && lod < 2 && open.has(id)) {
+    if (f.step === id && lod < 2 && open.has(id)) {
       layout.keep(layout.anchorFor([id]));
       setOpen((prev) => new Set([...prev].filter((x) => x !== id)));
       return;
     }
-    setSelection({ step: id });
+    f.setSelection({ step: id });
     if (lod < 2 && !open.has(id)) {
       layout.keep(layout.anchorFor([id]));
       setOpen((prev) => new Set([...prev, id]));
@@ -180,7 +171,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       openBands(bands, e.src.map((s) => s.from));
       return;
     }
-    setSelection({ edge: e.src[0]?.id ?? key });
+    f.setSelection({ edge: e.src[0]?.id ?? key });
   };
 
   const onMove = (_: unknown, vp: Viewport) => {
@@ -218,21 +209,6 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     }
   };
 
-
-  const nodeColor = (n: Node) => {
-    if (n.type === "bandRow") {
-      const d = n.data as BandRowData;
-      return tint(d.colour, d.odd ? 14 : 22, "var(--bg-surface)");
-    }
-    if (n.type === "band") return "var(--fg-subtle)";
-    return hue((n.data as StepNodeData).type.colour);
-  };
-  const nodeStroke = (n: Node) => {
-    if (n.type !== "step") return "transparent";
-    const d = n.data as StepNodeData;
-    return d.on ? "var(--accent)" : d.hit ? "var(--wf-hit)" : "transparent";
-  };
-
   return (
     <Frame
       layout="flow"
@@ -244,37 +220,17 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       nodeTypes={NODE_TYPES}
       edgeTypes={EDGE_TYPES}
       ready={layout.ready}
-      dim={Boolean(focus)}
       zoom={zoom}
       minZoom={0.2}
       maxZoom={2}
       onNodeClick={(n) => onNodeClick(null, n)}
       onEdgePick={pickEdge}
-      onPaneClick={() => setSelection(null)}
       onMove={(vp) => onMove(null, vp)}
       onFit={() => void rf.fitView({ duration: 240, padding: 0.08 })}
-      onEscape={() => (walk !== null ? walkStop() : setSelection(null))}
-      onArrow={(dir) => {
-        if (walk !== null && walk < order.length) walkTo(walk + dir);
-      }}
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
       toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} />}
-      search={<SearchBox c={c} hits={[...hits]} query={query} onQuery={setQuery} onPick={reveal} />}
-      walkBar={walk !== null && walk < order.length ? <WalkBar at={walk} total={order.length} onWalk={walkTo} onStop={walkStop} /> : null}
-      panel={
-        <DetailPanel
-          canvas={c}
-          selection={selection}
-          walk={walk === null ? null : { order, at: walk }}
-          decision={props.decision}
-          onClose={() => (walk !== null ? walkStop() : setSelection(null))}
-          onWalk={walkTo}
-          onStep={reveal}
-          onEdge={(id) => setSelection({ edge: id })}
-          health={health}
-        />
-      }
+      {...frameFocus}
     />
   );
 }

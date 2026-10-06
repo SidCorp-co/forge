@@ -220,12 +220,3 @@ function isCursorPage<T>(
   const b = body as { items?: unknown; total?: unknown; nextCursor?: unknown };
   return Array.isArray(b.items) && typeof b.total === "number" && "nextCursor" in b;
 }
-
-/**
- * Unwrap a Strapi-style `{ data: T }` envelope. Agent API responses wrap
- * payloads in `{ data: ... }` for legacy compat; use this at call sites
- * instead of `res.data` to make the unwrap intent explicit and centralized.
- */
-export function unwrap<T>(res: { data: T }): T {
-  return res.data;
-}
