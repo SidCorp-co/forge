@@ -49,9 +49,12 @@ says when, or \`failsBy\` says that no silence reaper times the run out. A run t
 running again. A person wait is never stuck.
 
 ### The project master
-\`…/masters/standing\` answers the master's state (\`in_pass\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots: \`inUse\` counts the job panes
-\`max\` (the box's max_job_panes) caps, and \`runs\` the runs the box declared beside them, which no cap holds. A run's
+\`…/masters/standing\` answers the master's state (\`in_pass\`, \`runs_out\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
+pass, its last closed pass (dispatched, skipped with each refusal, parked, and \`closeReason\`: how the box judged it ended)
+and its slots: \`inUse\` counts the job panes
+\`max\` (the box's max_job_panes) caps, and \`runs\` the runs the box declared beside them, which no cap holds.
+\`runsOut\` counts the runs this project's master declared that are still live; between passes with one out the state is
+\`runs_out\`, never \`idle\`. A run's
 claim times it only where the claim was taken in that run's own worktree. \`waiting_person\` is a pane
 stopped on a dialog the box reported; \`waitingOn\` names it, and every run that pane hosts reads waiting on a person too.
 \`…/masters/passes\` pages the stored passes newest first, each with its \`trigger\` (\`nudge\`, or \`unprompted\` for a

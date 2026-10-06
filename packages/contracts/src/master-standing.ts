@@ -30,8 +30,27 @@ export const MASTER_PASS_REFUSAL_REASONS = [
 	"auth",
 ] as const;
 
+/**
+ * How a pass ended, as the box that closed it judged it: `turn_ended` its turn ran and ended;
+ * `abandoned_quiet` its master said nothing for the quiet bound; `abandoned_restart` the daemon that
+ * opened it restarted; `abandoned_orphan` core held it open with no record on the box;
+ * `session_gone` its master session is no longer the box's; `unrecorded` the box could not record the
+ * open, so it closed it at once. A pass closed by a runner that predates the field reads `null`.
+ */
+export const MASTER_PASS_CLOSE_REASONS = [
+	"turn_ended",
+	"abandoned_quiet",
+	"abandoned_restart",
+	"abandoned_orphan",
+	"session_gone",
+	"unrecorded",
+] as const;
+export type MasterPassCloseReason = (typeof MASTER_PASS_CLOSE_REASONS)[number];
+
+/** `runs_out`: no pass is open, and runs this master declared are still out (`runsOut`). */
 export const MASTER_STATES = [
 	"in_pass",
+	"runs_out",
 	"idle",
 	"waiting_person",
 	"silent",
@@ -106,9 +125,12 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 		skipped: z.array(masterPassSkipSchema).max(MASTER_PASS_LIST_MAX),
 		parked: z.array(passItem).max(MASTER_PASS_LIST_MAX),
 		refused: masterPassRefusalSchema.nullable().optional(),
+		// Priced amnesty: optional only because a runner older than this sends none, which is stored as
+		// null and read as unstated; it ends once every paired runner sends it.
+		closeReason: z.enum(MASTER_PASS_CLOSE_REASONS).optional(),
 	}),
 ]);
-export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[], refused?: { reason: ${MASTER_PASS_REFUSAL_REASONS.join(" | ")}, detail } | null (a refused pass reports no work) }`;
+export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[], refused?: { reason: ${MASTER_PASS_REFUSAL_REASONS.join(" | ")}, detail } | null (a refused pass reports no work), closeReason?: ${MASTER_PASS_CLOSE_REASONS.join(" | ")} }`;
 
 /** A dialog the master's pane stopped on, as the runner read it; `null` clears it. */
 export const masterDialogRequestSchema = z.strictObject({
@@ -154,6 +176,8 @@ export interface MasterClosedPass extends MasterOpenPass {
 	parked: string[];
 	/** Set when the pass's turn was refused before it ran; such a pass is never idle. */
 	refused: MasterPassRefusal | null;
+	/** How the box judged it ended; null when the runner that closed it predates the field. */
+	closeReason: MasterPassCloseReason | null;
 }
 
 export type MasterPassView = MasterOpenPass | MasterClosedPass;
@@ -191,6 +215,8 @@ export interface MasterStanding {
 	pass: MasterOpenPass | null;
 	lastPass: MasterClosedPass | null;
 	slots: MasterSlots | null;
+	/** Live run sessions this project's master declared on its box (`forge-runner run declare`), still out. */
+	runsOut: number;
 	lastBeatAt: string | null;
 	silentAfterSeconds: number;
 	/** Set while state is waiting_person: the pane is stopped on a dialog only a person answers. */

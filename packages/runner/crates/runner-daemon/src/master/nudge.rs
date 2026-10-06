@@ -219,7 +219,55 @@ pub(crate) async fn read_inbox(
     owed.extend(read_comment_inbox(client, masters, project_id, slug).await);
     owed.extend(read_requirement_inbox(client, masters, project_id, slug).await);
     owed.extend(read_feedback_inbox(client, masters, project_id, slug).await);
+    owed.extend(owed_or_said(
+        masters,
+        slug,
+        &format!("{project_id}#designs"),
+        "design",
+        "which returned designs owe a revision",
+        "a returned design is not revised",
+        design_inbox::owed(client, project_id).await,
+    ));
+    owed.extend(owed_or_said(
+        masters,
+        slug,
+        &format!("{project_id}#returned-requirements"),
+        "returned requirement",
+        "which returned requirement revisions owe a revise",
+        "a returned revision is not revised",
+        requirement_inbox::returned(client, project_id).await,
+    ));
     owed
+}
+
+/// What one inbox read answered, or nothing for this pass with its failure said
+/// once per cause and its recovery once, keyed by `key`.
+fn owed_or_said(
+    masters: &Arc<Masters>,
+    slug: &str,
+    key: &str,
+    inbox: &str,
+    what: &str,
+    until: &str,
+    read: runner_platform::error::Result<Vec<UnansweredDocument>>,
+) -> Vec<UnansweredDocument> {
+    match read {
+        Ok(owed) => {
+            if masters.note_inbox_read(key, None) {
+                tracing::info!("[master] {slug}: the {inbox} inbox reads again");
+            }
+            owed
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if masters.note_inbox_read(key, Some(why.clone())) {
+                tracing::warn!(
+                    "[master] {slug}: cannot read {what} ({why}) — this pass is decided without them, and {until} until the read succeeds"
+                );
+            }
+            Vec::new()
+        }
+    }
 }
 
 /// Which feedback items owe this project's master a triage, as core answers it.

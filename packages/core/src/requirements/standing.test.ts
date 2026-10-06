@@ -122,4 +122,19 @@ describe('whose turn an open draft revision is', () => {
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'propose or drop r1' });
   });
+
+  // F32: a returned revision says it was returned, and its master is the one woken to revise it
+  it('names a returned agent revision as the master revising it, carried to its passes', () => {
+    const base = draftBy('agent');
+    const s = deriveStanding({
+      ...base,
+      revisions: base.revisions.map((r) => ({ ...r, returned: true })),
+    });
+    expect(s.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: 'Master',
+      act: 'revise returned r1, then propose or drop it',
+    });
+    expect(s.waitingOn.rule).toMatch(/core wakes it on the return/);
+  });
 });

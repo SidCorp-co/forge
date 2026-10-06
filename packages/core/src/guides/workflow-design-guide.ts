@@ -34,8 +34,10 @@ names the workflow it builds is not dispatched while that design is not approved
 3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
    waits, \`returned\` carries the approver's reason, \`approved\` names the revision. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
-   \`proposesWorkflow\`, so the issue is admissible work again. A returned design is revised by writing
-   it again, which proposes the revision; there is nothing to re-send.
+   \`proposesWorkflow\`, so the issue is admissible work again. A return no live issue carries is the
+   master's own work: its box reads it on every sweep (\`GET /api/devices/me/designs/owed\`) and names it on
+   the pass until the next revision is proposed. A returned design is revised by writing it again, which
+   proposes the revision; there is nothing to re-send.
 4. **Link the build.** File the issues that build it, then link each one (\`POST …/workflows/:workflow/builds\`). Until the design is
    approved those issues are out of the admissible list, and a run or job claimed for one is refused
    \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`GET /api/issues/:id\` shows why under \`buildsWorkflow\`. Linking

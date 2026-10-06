@@ -64,6 +64,7 @@ deviceMasterRoutes.post(
       skipped: body.skipped,
       parked: body.parked,
       refused: body.refused ?? null,
+      closeReason: body.closeReason ?? null,
     });
     if (!closed.ok) return refused(c, closed.refusals, 'MASTER_REFUSED');
     return c.json({ pass: closed.pass } satisfies MasterPassResponse);

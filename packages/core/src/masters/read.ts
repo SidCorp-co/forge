@@ -3,6 +3,7 @@ import type {
   MasterClosedPass,
   MasterOpenPass,
   MasterPaneDialog,
+  MasterPassCloseReason,
   MasterPassList,
   MasterPassRefusal,
   MasterPassSkip,
@@ -46,9 +47,10 @@ interface PassRow {
   skipped: MasterPassSkip[];
   parked: string[];
   refusal: MasterPassRefusal | null;
+  close_reason: MasterPassCloseReason | null;
 }
 
-export const PASS_COLUMNS = sql`id, master_session_id, verb, issue_key, trigger, started_at, ended_at, dispatched, skipped, parked, refusal`;
+export const PASS_COLUMNS = sql`id, master_session_id, verb, issue_key, trigger, started_at, ended_at, dispatched, skipped, parked, refusal, close_reason`;
 
 export function openPassOf(row: PassRow): MasterOpenPass {
   return {
@@ -69,6 +71,7 @@ export function closedPassOf(row: PassRow & { ended_at: string | Date }): Master
     skipped: row.skipped,
     parked: row.parked,
     refused: row.refusal,
+    closeReason: row.close_reason,
   };
 }
 
@@ -123,6 +126,22 @@ async function slotsHeld(deviceId: string): Promise<{ jobPanes: number; runs: nu
             AND ${NOT_PARKED})::int AS runs`),
   );
   return { jobPanes: row?.jobs ?? 0, runs: row?.runs ?? 0 };
+}
+
+// the runs this project's master declared and still has out: live run sessions of this project on
+// its box, the same predicate `slotsHeld` counts box-wide, so a master between passes with its own run
+// out never reads idle
+async function runsOutOf(projectId: string, deviceId: string): Promise<number> {
+  const [row] = rowsOf<{ runs: number }>(
+    await db.execute(sql`
+      SELECT count(*)::int AS runs FROM agent_sessions s
+       WHERE s.device_id = ${deviceId}
+         AND s.project_id = ${projectId}
+         AND s.kind = ${RUN_SESSION_KIND}
+         AND s.status IN (${list(LIVE_SESSION_STATUSES)})
+         AND ${NOT_PARKED}`),
+  );
+  return row?.runs ?? 0;
 }
 
 interface MasterRow {
@@ -182,6 +201,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       since: null,
       pass: null,
       slots: null,
+      runsOut: 0,
       lastBeatAt: null,
       waitingOn: null,
     };
@@ -190,14 +210,24 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     master.device_id && master.device_name !== null
       ? { id: master.device_id, name: master.device_name }
       : null;
-  const [pass, held] = await Promise.all([
+  const [pass, held, runsOut] = await Promise.all([
     readOpenPass(db, master.id),
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
+    master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
   ]);
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
   return {
     ...base,
-    state: master.silent ? 'silent' : waitingOn ? 'waiting_person' : pass ? 'in_pass' : 'idle',
+    state: master.silent
+      ? 'silent'
+      : waitingOn
+        ? 'waiting_person'
+        : pass
+          ? 'in_pass'
+          : runsOut > 0
+            ? 'runs_out'
+            : 'idle',
+    runsOut,
     waitingOn,
     sessionId: master.id,
     name: master.title,
