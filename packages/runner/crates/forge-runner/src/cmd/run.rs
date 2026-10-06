@@ -15,6 +15,8 @@
 //! reported success would let the master dispatch believing its work is
 //! recorded when nothing is, which is the exact silence this issue exists to end.
 
+mod brief;
+
 use clap::{Args as ClapArgs, Subcommand};
 use runner_core::ledger::Ledger;
 use runner_daemon::{control, session_tokens};
@@ -35,6 +37,15 @@ pub enum Command {
     /// Have the next sweep try again to release a run whose release this box
     /// gave up on.
     Release(ReleaseArgs),
+    /// Print the brief to dispatch a declared run with: its issues, project,
+    /// base branch, tree, what the other trees hold, and the method it reads.
+    Brief(BriefArgs),
+}
+
+#[derive(ClapArgs)]
+pub struct BriefArgs {
+    /// The run id `run declare` answered.
+    pub run_id: String,
 }
 
 #[derive(ClapArgs)]
@@ -176,12 +187,22 @@ fn socket() -> anyhow::Result<std::path::PathBuf> {
     Ok(path)
 }
 
-pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
+pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     // Not a pane's verb and not the daemon's: an operator types this one at a
     // shell, so it reads the ledger directly rather than asking for a control
     // capability no shell was issued.
     if let Command::Release(o) = &args.cmd {
         return release(&o.run_id);
+    }
+    // A read of the ledger, core and git, made as the person: no control capability is asked for,
+    // and nothing is written anywhere.
+    if let Command::Brief(o) = &args.cmd {
+        let client = match super::api::rest_client(&ctx)? {
+            Ok(c) => c,
+            Err(why) => anyhow::bail!("{why}"),
+        };
+        println!("{}", brief::brief(&client, &o.run_id).await?);
+        return Ok(());
     }
     let sock = socket()?;
     let token = session_tokens::token_from_env().map_err(|e| {
@@ -197,7 +218,9 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         Command::Close(c) => {
             control::request_run_close(&sock, &token, &c.run_id, c.reason.as_deref()).await?
         }
-        Command::Release(_) => unreachable!("answered above, before the socket is opened"),
+        Command::Release(_) | Command::Brief(_) => {
+            unreachable!("answered above, before the socket is opened")
+        }
     };
     if !reply.ok {
         anyhow::bail!(
@@ -211,7 +234,9 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         Command::Declare(_) => println!("{}", declared_id(reply.job_id)?),
         Command::Choice(c) => println!("run {} recorded as {}", c.run_id, c.choice),
         Command::Close(c) => println!("run {} closed", c.run_id),
-        Command::Release(_) => unreachable!("answered above, before the socket is opened"),
+        Command::Release(_) | Command::Brief(_) => {
+            unreachable!("answered above, before the socket is opened")
+        }
     }
     Ok(())
 }

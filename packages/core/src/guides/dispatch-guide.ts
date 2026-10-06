@@ -14,7 +14,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`.",
-  version: 1,
+  version: 2,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -75,16 +75,22 @@ to separate runs, and the second waits for the first to land.
   tree holds waits for that tree to land.
 - **The brief** names the issue's key and uuid, the project, the tree, its branch and head, the base
   branch, what the other trees hold, the method to read (${guideRef('issue-flow')}), and the
-  project's standing rules a run cannot read on its own. Nothing else goes in it.
+  project's standing rules a run cannot read on its own. Nothing else goes in it. The box prints
+  every fact but the standing rules (§6), so none of them is typed by hand.
 
 ### 6. Declare, record, dispatch
 1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree>\` writes the box's row
    and answers the run's id. A dispatch with nothing declared is refused by the box.
-2. A \`wave\` record on the headline: \`POST /api/issues/:id/events\` naming the members, the role and
+2. \`forge-runner run brief <run id>\` prints that run's brief: its issues with their uuids, the
+   project, the base branch read from the project, its tree, branch and head, what every other
+   tree holds against \`origin/<baseBranch>\`, and the method. A run the box never declared, one
+   already ended, or a checkout with no \`origin/<baseBranch>\` ref is refused by name. The
+   project's standing rules are added below it.
+3. A \`wave\` record on the headline: \`POST /api/issues/:id/events\` naming the members, the role and
    the tree. **Written once.** Where the call's answer is unclear (\`forge-runner api\` exit 10,
    \`DELIVERY_UNKNOWN\`), read \`?kind=wave\` back before writing again — a resend is a second
    record of one dispatch.
-3. Dispatch through a shipped role, the brief as the whole message.
+4. Dispatch through a shipped role, the brief as the whole message.
 
 ### 7. Fold
 Every report is folded: what landed, what was filed, what a restart is owed for, what a run declined

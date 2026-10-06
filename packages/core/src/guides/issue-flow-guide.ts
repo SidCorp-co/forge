@@ -16,7 +16,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 1,
+  version: 2,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -105,8 +105,9 @@ count for it; the brief says when the owner has ruled otherwise for this run.
 Judge each criterion at the head you will land and write its verdict as you judge it:
 \`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence }\`,
 the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment's
-name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first), a URL, or a
-path inside the repository at that commit. A path on your own machine is refused. \`skipped\` cites nothing and
+name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
+box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the
+repository at that commit. A path on your own machine is refused. \`skipped\` cites nothing and
 says what was out of reach.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red

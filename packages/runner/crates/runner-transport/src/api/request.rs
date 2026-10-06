@@ -3,15 +3,23 @@
 
 use serde_json::Value;
 
-use crate::api::exit::{classify, transport_failure, Outcome};
+use crate::api::exit::{classify, transport_failure, usage_failure, Outcome};
+use crate::api::form::{encode, read_parts, FormField};
 use crate::CoreClient;
+
+/// What a request carries: JSON text, or form fields whose files are read when it is sent.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Body {
+    Json(String),
+    Form(Vec<FormField>),
+}
 
 /// One `forge-runner api` invocation, already parsed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Request {
     pub method: String,
     pub path: String,
-    pub body: Option<String>,
+    pub body: Option<Body>,
     pub project_slug: Option<String>,
     pub headers: Vec<(String, String)>,
     /// Print the status line and response headers to stderr.
@@ -77,10 +85,28 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
     for (k, v) in &req.headers {
         rb = rb.header(k.as_str(), v.as_str());
     }
-    if let Some(body) = &req.body {
-        rb = rb
-            .header("Content-Type", "application/json")
-            .body(body.clone());
+    match &req.body {
+        Some(Body::Json(json)) => {
+            rb = rb
+                .header("Content-Type", "application/json")
+                .body(json.clone());
+        }
+        Some(Body::Form(fields)) => {
+            let parts = match read_parts(fields) {
+                Ok(parts) => parts,
+                Err(message) => {
+                    let (outcome, stderr) = usage_failure(&message);
+                    return Response {
+                        stdout: String::new(),
+                        stderr,
+                        outcome,
+                    };
+                }
+            };
+            let (content_type, bytes) = encode(&parts);
+            rb = rb.header("Content-Type", content_type).body(bytes);
+        }
+        None => {}
     }
 
     let resp = match rb.send().await {

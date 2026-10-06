@@ -5,13 +5,16 @@
 //! `process::exit` is a decision nothing can test.
 
 use crate::api::exit::is_json;
-use crate::api::request::Request;
+use crate::api::form::{parse_field, FormField};
+use crate::api::request::{Body, Request};
 
 /// The arguments, with `--data -` already resolved to the text it read.
 pub struct RequestSpec<'a> {
     pub path: &'a str,
     pub method: Option<&'a str>,
     pub data: Option<&'a str>,
+    /// `-F` arguments: each `name=@path` or `name=value`, sent as one `multipart/form-data` body.
+    pub form: &'a [String],
     pub project: Option<&'a str>,
     pub headers: &'a [String],
     pub include: bool,
@@ -32,6 +35,17 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
             return Err("--data is not valid JSON".to_string());
         }
     }
+    if spec.data.is_some() && !spec.form.is_empty() {
+        return Err(
+            "--data and -F are two bodies, and a request carries one: --data sends JSON, -F sends multipart/form-data — an attachment route takes -F file=@<path>"
+                .to_string(),
+        );
+    }
+    let form = spec
+        .form
+        .iter()
+        .map(|arg| parse_field(arg))
+        .collect::<Result<Vec<FormField>, String>>()?;
 
     let mut headers = Vec::new();
     for h in spec.headers {
@@ -54,15 +68,24 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
         ));
     }
 
-    let method = spec
-        .method
-        .map(str::to_string)
-        .unwrap_or_else(|| if spec.data.is_some() { "POST" } else { "GET" }.to_string());
+    let method = spec.method.map(str::to_string).unwrap_or_else(|| {
+        if spec.data.is_some() || !form.is_empty() {
+            "POST"
+        } else {
+            "GET"
+        }
+        .to_string()
+    });
+    let body = match (spec.data, form.is_empty()) {
+        (Some(json), _) => Some(Body::Json(json.to_string())),
+        (None, false) => Some(Body::Form(form)),
+        (None, true) => None,
+    };
 
     Ok(Request {
         method,
         path: spec.path.to_string(),
-        body: spec.data.map(str::to_string),
+        body,
         project_slug: spec
             .project
             .map(str::to_string)
@@ -90,5 +113,65 @@ fn default_slug(slugs: &SlugSources<'_>) -> Option<String> {
     match slugs.bindings {
         [only] => Some(only.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec<'a>(data: Option<&'a str>, form: &'a [String]) -> RequestSpec<'a> {
+        RequestSpec {
+            path: "issues/x/attachments",
+            method: None,
+            data,
+            form,
+            project: None,
+            headers: &[],
+            include: false,
+        }
+    }
+
+    const NO_SLUG: SlugSources<'static> = SlugSources {
+        env: None,
+        bindings: &[],
+    };
+
+    #[test]
+    fn a_form_is_a_post_carrying_its_fields() {
+        let form = vec!["file=@shot.png".to_string()];
+        let req = build(&spec(None, &form), &NO_SLUG).unwrap();
+        assert_eq!(req.method, "POST");
+        assert_eq!(
+            req.body,
+            Some(Body::Form(vec![FormField::File {
+                name: "file".into(),
+                path: "shot.png".into(),
+                mime: None
+            }]))
+        );
+    }
+
+    #[test]
+    fn json_and_a_form_together_are_refused_by_name() {
+        let form = vec!["file=@shot.png".to_string()];
+        let why = build(&spec(Some("{}"), &form), &NO_SLUG).unwrap_err();
+        assert!(why.contains("--data and -F"), "{why}");
+    }
+
+    #[test]
+    fn a_malformed_field_refuses_the_whole_request() {
+        let form = vec!["file=@shot.png".to_string(), "shot.png".to_string()];
+        let why = build(&spec(None, &form), &NO_SLUG).unwrap_err();
+        assert!(why.contains("`shot.png`"), "{why}");
+    }
+
+    #[test]
+    fn json_alone_is_sent_as_before() {
+        let req = build(&spec(Some("{\"a\":1}"), &[]), &NO_SLUG).unwrap();
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.body, Some(Body::Json("{\"a\":1}".into())));
+        let get = build(&spec(None, &[]), &NO_SLUG).unwrap();
+        assert_eq!((get.method.as_str(), get.body), ("GET", None));
     }
 }
