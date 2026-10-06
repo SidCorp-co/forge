@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A fellow ecosystem member reads a published contract before consuming it.** Its approved
+  versions, elements and artifact, the provider's API page and `GET /api/projects/:id/ecosystems`
+  peers answer it; a proposed version stays the provider's own.
 - **Live updates reach the lists they name.** Tokens and Settings notifications refresh live; every
   runner frame names its project, so a created, deleted or stale runner updates Runners at once.
   Copy link without a clipboard shows the link.

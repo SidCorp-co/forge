@@ -149,7 +149,12 @@ export interface ApiPage {
   project: NamedProject;
   reader:
     | { access: "project" }
-    | { access: "party"; via: { ecosystem: string; visibility: string; projects: string[] }[] };
+    | {
+        access: "party";
+        via: { ecosystem: string; visibility: string; projects: string[] }[];
+        /** Ecosystems this page is read through only for what it publishes there, before any consumption. */
+        offered: { ecosystem: string; projects: string[] }[];
+      };
   declared: boolean;
   ecosystems: { id: string; slug: string; name: string; visibility: string }[];
   publishes: ApiPagePublication[];

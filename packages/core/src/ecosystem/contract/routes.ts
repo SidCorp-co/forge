@@ -10,12 +10,18 @@ import {
 } from '../../middleware/auth.js';
 import { notFound } from '../../middleware/route-errors.js';
 import { invalid, zValidator } from '../../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/index.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion, decidedView } from './decide.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
-import { consumedContract, consumedVersions } from './party-read.js';
+import {
+  type ContractReader,
+  consumedContract,
+  consumedVersions,
+  contractReader,
+  versionForParty,
+  versionsFor,
+} from './party-read.js';
 import { publishContractVersion } from './publish.js';
 import { approvalView, currentOf, readArtifact, versionsOf } from './store.js';
 import { SOURCE_REF } from './version-schema.js';
@@ -68,28 +74,45 @@ const uploadBody = zValidator(
   ),
 );
 
+// a party is shown the published diff of an approved version, never the commit, the person that decided it, or a version the provider has not approved
+async function versionsShown(userId: string, id: string, contract: string) {
+  const reader = await contractReader(userId, id, contract);
+  return { reader, versions: versionsFor(reader, await versionsOf(db, [id], contract)) };
+}
+
+const unrecorded = (reader: ContractReader, contract: string, id: string, version: string) =>
+  notFound(
+    `${contract} of project ${id} has no ${reader.access === 'party' ? 'approved' : 'recorded'} version "${version}"`,
+  );
+
 contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const versions = await versionsOf(db, [id], contract);
+  const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
+  const current = currentOf(versions)?.version ?? null;
+  if (reader.access === 'party') {
+    return c.json({ reader, versions: versions.map(versionForParty), current });
+  }
   return c.json({
     versions: versions.map((v) => v.document),
-    current: currentOf(versions)?.version ?? null,
+    current,
     approvals: Object.fromEntries(versions.map((v) => [v.version, approvalView(v)])),
   });
 });
 
 contractRoutes.get('/:id/contracts/:contract/versions/:version', versionParam, async (c) => {
   const { id, contract, version } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const versions = await versionsOf(db, [id], contract);
+  const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
   const hit = versions.find((v) => v.version === version);
-  if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
+  if (!hit) throw unrecorded(reader, contract, id, version);
+  const current = currentOf(versions)?.version ?? null;
+  if (reader.access === 'party') {
+    return c.json({ reader, version: versionForParty(hit), elements: hit.elements, current });
+  }
   return c.json({
     version: hit.document,
     elements: hit.elements,
     approval: approvalView(hit),
-    current: currentOf(versions)?.version ?? null,
+    current,
   });
 });
 
@@ -106,9 +129,9 @@ contractRoutes.get(
   versionParam,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-    const hit = (await versionsOf(db, [id], contract)).find((v) => v.version === version);
-    if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
+    const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
+    const hit = versions.find((v) => v.version === version);
+    if (!hit) throw unrecorded(reader, contract, id, version);
     const text = hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null;
     const media = ARTIFACT_MEDIA[hit.contractType];
     if (text === null || !media) {

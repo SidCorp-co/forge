@@ -13,6 +13,7 @@ import { interfaceView, loadInterface, writeInterface } from './interface-servic
 import { listInterfaceRevisions } from './interface-store.js';
 import { membershipDocument } from './membership-rules.js';
 import { membershipsWhere } from './membership-store.js';
+import { ecosystemPeers } from './peer-read.js';
 import { serialiseRevisions } from './routes.js';
 import { readEcosystems } from './store.js';
 import { CONTEXT_ARGS, CONTEXT_SHAPE } from './tool-args.js';
@@ -94,14 +95,12 @@ ecosystemProjectRoutes.get('/:id/ecosystems', idParam, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const memberships = await membershipsWhere({ projectIds: [id] });
-  const ecos = new Map(
-    (
-      await readEcosystems(
-        db,
-        memberships.map((m) => m.ecosystemId),
-      )
-    ).map((e) => [e.id, heldEcosystem(e).document]),
-  );
+  const ecosystemIds = memberships.map((m) => m.ecosystemId);
+  const [rows, peers] = await Promise.all([
+    readEcosystems(db, ecosystemIds),
+    ecosystemPeers(id, ecosystemIds),
+  ]);
+  const ecos = new Map(rows.map((e) => [e.id, heldEcosystem(e).document]));
   return c.json({
     memberships: memberships.map((m) => {
       const eco = ecos.get(m.ecosystemId);
@@ -118,6 +117,7 @@ ecosystemProjectRoutes.get('/:id/ecosystems', idParam, async (c) => {
               channel: eco.channel.code,
             }
           : null,
+        peers: peers.get(m.ecosystemId) ?? [],
       };
     }),
     returned: memberships.length,

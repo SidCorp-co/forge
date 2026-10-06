@@ -116,7 +116,10 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
 
       {page.reader.access === "party" ? (
         <p className="fg-caption">
-          You read this as a party, through {page.reader.via.flatMap((v) => v.projects).length} of your projects; what is internal to {slug} is not shown.
+          You read this as a party, through{" "}
+          {new Set([...page.reader.via, ...page.reader.offered].flatMap((v) => v.projects)).size} of
+          your projects; what is internal to {slug} is not shown, and a proposed version is not listed
+          until {slug} approves it.
         </p>
       ) : null}
     </div>
