@@ -790,7 +790,11 @@ mod tests {
     #[tokio::test]
     async fn a_residency_core_ended_is_reported_closed_even_where_nothing_is_resident() {
         let (client, seen) = fake_core(200, "").await;
-        let runner = Arc::new(ClaudeCodeRunner::new("http://127.0.0.1:9", "device-token", 1));
+        let runner = Arc::new(ClaudeCodeRunner::new(
+            "http://127.0.0.1:9",
+            "device-token",
+            1,
+        ));
         handle_close(&client, runner, "s-1").await;
         let patches = patches(&seen);
         assert_eq!(
