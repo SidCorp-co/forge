@@ -3,7 +3,7 @@
 
 import type { JobCancel, JobChange, JobFrameName } from '@forge/contracts/outbox-events';
 import { sessionAudienceById } from '../agent-sessions/index.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { EphemeralTarget } from '../lib/ephemeral.js';
 import { emitEvent } from '../outbox/index.js';
 
@@ -33,14 +33,18 @@ export async function jobEphemeralTarget(
   return audience.projectWide ? { projectId: job.projectId } : { userIds: audience.userIds };
 }
 
-/** A job moved: its readers are told, with the project named so the project's run list refreshes. */
+/**
+ * A job moved: its readers are told, with the project named so the project's run list refreshes.
+ * Given the transaction that moved it, the frame commits with the move or not at all.
+ */
 export async function pushJobChanged(
   job: JobRef,
   event: JobFrameName,
   data: JobChange,
+  tx: Tx = db,
 ): Promise<void> {
   const audience = await jobAudience(job);
-  await emitEvent(db, 'job.changed', {
+  await emitEvent(tx, 'job.changed', {
     projectId: job.projectId,
     jobId: job.id,
     deviceId: job.deviceId,

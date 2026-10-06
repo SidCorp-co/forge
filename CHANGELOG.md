@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
+  to the job's readers inside its own transaction; the runner no longer listens for
+  `job.cancelRequested`, a frame it never receives.
 - **The Agents run list refreshes live when a job or run moves.** Every job frame names its
   project; a job of a person's own chat, log lines included, reaches only its readers, never the
   project room.
