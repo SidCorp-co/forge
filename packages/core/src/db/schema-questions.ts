@@ -13,6 +13,7 @@ import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
+import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 
 import { sql } from 'drizzle-orm';
 import {
@@ -67,6 +68,10 @@ type StepCommon = {
   answeredBy?: string;
   note?: string;
   sensitive?: boolean;
+  /** What the answer said the issue still waits on (ISS-257). */
+  hold?: AnswerHold;
+  /** What the answer did to the issue it stopped, written by the answer resume (ISS-258). */
+  resume?: AnswerResume;
 };
 
 export type ChoiceStep = StepCommon & {

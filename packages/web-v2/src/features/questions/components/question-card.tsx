@@ -7,10 +7,14 @@
 // them BECAUSE it is shared: whoever mounts it supplies only a way to send and a
 // pending flag, so neither caller can reconstruct a round or re-derive a lock.
 
+import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
+import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
 import { useState } from "react";
 import {
   Badge,
   Button,
+  Checkbox,
+  Input,
   PageSection,
   PageSectionBody,
   PageSectionHeader,
@@ -24,6 +28,7 @@ import {
   type AgentQuestion,
   type AnswerInput,
   currentRoundOf,
+  type GivenAnswer,
   earlierRoundsOf,
   isChoiceStep,
   type OptionAuthority,
@@ -223,6 +228,92 @@ export function outcomeOf(question: AgentQuestion): string | null {
   return null;
 }
 
+/** What the answer said the issue still waits on, as the answered card shows it. */
+export function holdLine(hold: AnswerHold | undefined): string | null {
+  if (!hold) return null;
+  return hold.blockedBy
+    ? `Still waits on ${hold.blockedBy.key}: ${hold.reason}`
+    : `Still waits: ${hold.reason}`;
+}
+
+const statusWord = (status: string) =>
+  ISSUE_STATUS_LABELS[status as keyof typeof ISSUE_STATUS_LABELS] ?? status;
+
+/** What the answer did to the issue it stopped, in a reader's words; null until core recorded it. */
+export function resumeLine(resume: AnswerResume | undefined): string | null {
+  switch (resume?.kind) {
+    case undefined:
+      return null;
+    case "resumed":
+      return `The issue went back to ${statusWord(resume.to)}.`;
+    case "sent_to_run":
+      return "The answer went to the run that asked; it moves the issue on.";
+    case "box_reads":
+      return "A box is reading this answer back; its run moves the issue on.";
+    case "other_question":
+      return "The issue still waits on another open question.";
+    case "held":
+      return "The issue stays parked, as this answer said.";
+    case "no_left_status":
+      return "Nothing recorded where the issue picks up again — move it on from its status.";
+    case "staged":
+      return "This project does not move an issue on an answer — resume it from its status.";
+    case "refused":
+      return `The issue did not move on: ${resume.code} — ${resume.detail}`;
+  }
+}
+
+interface WaitDraft {
+  on: boolean;
+  reason: string;
+  blockedBy: string;
+}
+
+const NO_WAIT: WaitDraft = { on: false, reason: "", blockedBy: "" };
+
+/**
+ * An answer that does not release its issue: what it still waits on, and the issue whose blocks
+ * edge holds it, sent with the answer as `stillWaits` (ISS-257).
+ */
+function StillWaitsFields({
+  draft,
+  fault,
+  onChange,
+}: {
+  draft: WaitDraft;
+  fault: string | null;
+  onChange: (next: WaitDraft) => void;
+}) {
+  return (
+    <div className="space-y-2" data-testid="still-waits">
+      <Checkbox
+        checked={draft.on}
+        onChange={(on) => onChange({ ...draft, on })}
+        label="The issue still waits after this answer"
+      />
+      {draft.on && (
+        <div className="space-y-2 pl-7">
+          <Field label="What it still waits on" required error={fault ?? undefined}>
+            <Textarea
+              rows={2}
+              value={draft.reason}
+              placeholder="e.g. both design revisions approved"
+              onChange={(e) => onChange({ ...draft, reason: e.target.value })}
+            />
+          </Field>
+          <Field label="Blocked by issue" hint="Optional. Its blocks edge releases this issue once it settles.">
+            <Input
+              value={draft.blockedBy}
+              placeholder="ISS-12"
+              onChange={(e) => onChange({ ...draft, blockedBy: e.target.value })}
+            />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface QuestionCardProps {
   question: AgentQuestion;
   /** Send one answer. The card builds the whole input; the caller only transports it. */
@@ -251,6 +342,28 @@ export function QuestionCard({
   const earlier = earlierRoundsOf(question);
   const hidden = earlier.length === 0 ? roundCountOf(question) - 1 : 0;
   const firstEnabledId = answerable ? (question.options.find((o) => !o.locked)?.id ?? null) : null;
+  const [wait, setWait] = useState<WaitDraft>(NO_WAIT);
+  const [waitFault, setWaitFault] = useState<string | null>(null);
+  const holds = answerable && question.issueId !== null;
+  const hold = holdLine(current?.hold);
+  const resume = resumeLine(current?.resume);
+
+  const send = (round: number, given: GivenAnswer) => {
+    if (holds && wait.on && !wait.reason.trim()) {
+      setWaitFault("Say what the issue still waits on, or untick the box.");
+      return;
+    }
+    setWaitFault(null);
+    const blockedBy = wait.blockedBy.trim();
+    onAnswer({
+      questionId: question.id,
+      round,
+      ...given,
+      ...(holds && wait.on
+        ? { stillWaits: { reason: wait.reason.trim(), ...(blockedBy ? { blockedBy } : {}) } }
+        : {}),
+    });
+  };
 
   return (
     <PageSection
@@ -292,6 +405,7 @@ export function QuestionCard({
           <div className="space-y-2">
             <p className="fg-caption text-subtle">Round {current.round}</p>
             {current.prompt && <p className="fg-body text-fg">{current.prompt}</p>}
+            {holds && <StillWaitsFields draft={wait} fault={waitFault} onChange={setWait} />}
             {question.answerShape === "choice" ? (
               question.options.map((option) => (
                 <OptionRow
@@ -301,9 +415,7 @@ export function QuestionCard({
                   answerable={answerable}
                   pending={pending}
                   first={option.id === firstEnabledId}
-                  onChoose={(optionId) =>
-                    onAnswer({ questionId: question.id, optionId, round: current.round })
-                  }
+                  onChoose={(optionId) => send(current.round, { optionId })}
                 />
               ))
             ) : answerable ? (
@@ -312,9 +424,7 @@ export function QuestionCard({
                 needed={question.needed}
                 locked={question.locked}
                 pending={pending}
-                onAnswer={(text) =>
-                  onAnswer({ questionId: question.id, text, round: current.round })
-                }
+                onAnswer={(text) => send(current.round, { text })}
               />
             ) : (
               question.needed && <p className="fg-caption text-muted">Needed: {question.needed}</p>
@@ -323,6 +433,12 @@ export function QuestionCard({
         )}
 
         {outcome && <p className="fg-body-sm text-muted">{outcome}</p>}
+        {hold && <p className="fg-body-sm text-fg">{hold}</p>}
+        {resume && (
+          <p className="fg-caption text-muted" data-testid="answer-resume">
+            {resume}
+          </p>
+        )}
       </PageSectionBody>
     </PageSection>
   );

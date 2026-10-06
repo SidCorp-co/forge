@@ -55,7 +55,11 @@ issue standing) and the row chip each read status OR marker.
 - **Out of `needs_info` on an answer.** On an autonomous project, `pipeline/answer-resume.ts` moves
   the issue once its last open question is answered, and not before: back to the status the park
   left (`issue_work_state.left_status`), never a guessed one. A park that recorded none waits for a
-  person to move it, and an answer at any other rung moves nothing.
+  person to move it, and an answer at any other rung moves nothing. An answer carrying `stillWaits`
+  keeps the park where it is, unless it names a blocker whose `blocks` edge withholds the status the
+  park returns to (`pipeline/answer-resume.ts:answerThePark`). What each answer did is recorded on
+  its answered round as `resume`, a refused move included, and the park view and the standing word
+  it (`issues/answered-wait.ts:answeredWait`).
 - **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
   the marker at its rung: its next move is a person's, so it is not wedged.
 
@@ -66,6 +70,7 @@ issue standing) and the row chip each read status OR marker.
 | `mintParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on every agent or device park to `needs_info` | it runs inside that park |
 | `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` | yes | no |
 | `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing | no |
+| An agent's `intent: question` comment | `mintCommentQuestion` (`packages/core/src/issues/record-events/question-record.ts`), called by `packages/core/src/comments/service.ts:insertComment` | yes, on an issue that is not terminal; the row is keyed by the comment's id, so a comment that also carries a question record asks once | no |
 | `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/`, mined in core by `mintRecordQuestion` (`packages/core/src/issues/record-events/question-record.ts`) | yes, since FF-2 — when an agent writes the comment, on an issue that is not terminal, addressed to someone other than `agent`, `run`, `master` or `self`; the row is keyed by the comment's id | no |
 
 The last is the half this repo cannot gate: the plugin writes a `forge-record: question` comment,

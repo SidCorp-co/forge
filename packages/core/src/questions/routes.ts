@@ -98,6 +98,24 @@ const answerBody = z.object({
     .string({ error: 'note must be a string' })
     .max(1000, { error: 'note is at most 1000 characters' })
     .optional(),
+  stillWaits: z
+    .object(
+      {
+        reason: z
+          .string({ error: 'stillWaits.reason must be a string' })
+          .max(1000, { error: 'stillWaits.reason is at most 1000 characters' }),
+        blockedBy: z
+          .string({ error: 'stillWaits.blockedBy must be an issue key or id' })
+          .max(200)
+          .optional(),
+      },
+      {
+        error:
+          'stillWaits is { reason, blockedBy? }: what the issue still waits on after this answer',
+      },
+    )
+    .strict()
+    .optional(),
 });
 
 const notFound = (what: 'question' | 'issue' = 'question') =>
@@ -246,6 +264,7 @@ questionRoutes.post(
         agency: restActor(c).agency,
         via: await doorOfRequest(c),
         ...(body.note === undefined ? {} : { note: body.note }),
+        ...(body.stillWaits === undefined ? {} : { stillWaits: body.stillWaits }),
       }),
     );
   },

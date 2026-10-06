@@ -110,6 +110,7 @@ export {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from './record-events/mirror.js';
+export { mintCommentQuestion } from './record-events/question-record.js';
 export type { RecordEvent } from './record-events/store.js';
 export { mirroredEventsFor, recordOfEvent, writeRecordEvent } from './record-events/store.js';
 export { writeIssueRelations } from './relations-service.js';

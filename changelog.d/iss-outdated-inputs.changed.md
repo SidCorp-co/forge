@@ -1,1 +1,0 @@
-**A master is outdated when what it runs on changed, not when the runner was rebuilt.** The box records the skill, hooks, environment, MCP config, launch line, plugins and wire a pane got; core drains only for a changed one.

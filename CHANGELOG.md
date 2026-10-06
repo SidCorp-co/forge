@@ -9,6 +9,33 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.73] - 2026-10-06
+
+Answered questions say what an issue still waits on; agent question comments become Questions
+
+### Added
+
+- **An answer can say the issue still waits.** The answer panel takes what it waits on and an optional blocking issue; the issue stays parked, or returns behind that issue's blocks edge, instead of becoming dispatchable.
+- **An agent's question comment is a question a person answers.** It appears in the issue's decision panel, waiting on a person, and is answered there or through the questions route.
+
+### Fixed
+
+- **An answered park names what it still waits on.** Each answer records what it did to its issue, and a park it did not move no longer reads as owed an answer; a refused resume shows its reason.
+
+## [0.4.0-dev.72] - 2026-10-06
+
+Masters restart only when their inputs change; core judges disk headroom
+
+### Added
+
+- **A runner box now prints a run's brief and uploads evidence itself.** `forge-runner run brief <run id>` reads the project's base branch and the other trees; `forge-runner api -F file=@<path>` sends a file to an attachment route.
+
+### Changed
+
+- **A master is outdated when what it runs on changed, not when the runner was rebuilt.** The box records the skill, hooks, environment, MCP config, launch line, plugins and wire a pane got; core drains only for a changed one.
+- **Core now judges a box's disk headroom and serves its checkout orientation.** The heartbeat carries both scratch axes, shown per device; a box writes only the orientation core sends; the lease read drops issueOver/issueResting; config key claude_mode is retired.
+- **The sidebar is one rail at both widths.** Its project switcher lists only the active organization's projects at either width, a folded group shows its rows' counts, and the retired `/projects/:slug/ecosystem/contracts` addresses no longer redirect.
+
 ## [0.4.0-dev.71] - 2026-10-06
 
 Feedback items track every issue carrying them; core judges master pass outcomes
