@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.39] - 2026-10-06
+
+Every lint rule blocks, transcripts are stored once, and realtime frames are typed
+
+
 ### Changed
 
 - **Comments refresh live, and realtime frames are typed.** An open thread hears each comment
