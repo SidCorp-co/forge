@@ -213,6 +213,30 @@ describe('a returned design no issue carries is owed to the project master', () 
   });
 });
 
+// forge-dev 18:38–18:58Z (ISS-291, second half): "forge-master-epod is left running … its project
+// has no admissible work" right after its owner returned a design and promoted six drafts. What the
+// master is owed is core's own read, so the verdict sees both the moment they land.
+describe('a returned design and an admitted issue are work the verdict counts', () => {
+  it('places a master for them where none is up, naming both on the pass', async () => {
+    const before = ok(await askVerdict()).work;
+    const id = await proposedDesign('counted-flow');
+    await returnDesign(id, 'count me');
+    const issue = ok(
+      await say('owner', 'POST', at('/issues'), {
+        title: 'admitted for the master',
+        status: 'open',
+      }),
+      201,
+    );
+    const answer = ok(await askVerdict());
+    expect(answer.work.owed, JSON.stringify(answer.work)).toBeGreaterThan(before.owed);
+    expect(answer.work.admissible, JSON.stringify(answer.work)).toBeGreaterThan(before.admissible);
+    expect(answer.work.owedLine).toContain(`counted-flow r1, workflow ${id}`);
+    expect(answer.verdict).toMatchObject({ act: 'place', nudge: true });
+    expect(issue.status).toBe('open');
+  });
+});
+
 async function proposedRequirement(who: 'master' | 'owner', title: string): Promise<string> {
   const made = ok(
     await say(who, 'POST', at('/requirements'), {
