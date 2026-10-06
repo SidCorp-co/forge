@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.50] - 2026-10-06
+
+Breakdowns carry contract waits; consumers adopt additive contract versions in one act
+
+
 ### Fixed
 
 - **A breakdown files its issues' contract waits, and an accepted revision suggestion is proposed.**
