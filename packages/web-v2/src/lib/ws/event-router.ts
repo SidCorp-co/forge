@@ -5,6 +5,9 @@ import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 
+/** The Agents run list's root key (agents `RUNS_STANDING_ROOT`); a job or run move invalidates it. */
+const RUNS_STANDING_ROOT = "runs-standing";
+
 /**
  * Dispatch a WS event to React Query cache invalidations. Every key must
  * prefix one a feature hook declares: a key no query holds refreshes nothing,
@@ -103,21 +106,19 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 		// A live log line; no screen holds a job's log, so it refreshes nothing.
 		case "job.event":
 			return;
-		case "job.assigned":
 		case "job.completed":
 		case "job.failed":
 		case "job.resumed":
-		case "job.cancelled": {
+		case "job.cancelled":
+		case "job.cancelRequested": {
 			scheduleInvalidation(qc, ["admin", "ops"]);
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
-			// NOTE: the active-runner snapshot is refreshed via
-			// `issue.pipelineHealth.changed` (which carries projectId and fires on
-			// the same completions). These job.* payloads carry only jobId, and
-			// `job.assigned` rides the device room — not the project room — so
-			// there's nothing reliable to key an active-runners invalidation on here.
+			// the Agents run list (agents `runsKey`) and the runners the job held
+			scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
+			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			return;
 		}
 		case "pipeline_run.status_changed": {
@@ -129,15 +130,14 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			if (data?.runId) {
 				scheduleInvalidation(qc, ["pipeline-run", data.runId]);
 			}
+			scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
 			// The cancel cascade flips agent_sessions too.
 			if (data?.status === "cancelled") {
 				scheduleInvalidation(qc, ["agent-sessions"]);
 			}
 			// A run reaching a terminal status frees its runner — refresh the
 			// active-runner snapshot so the busy → idle flip reflects live.
-			if (data?.projectId) {
-				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
-			}
+			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			return;
 		}
 		case "user.preferencesChanged": {
@@ -345,6 +345,7 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["projects"],
 	["agent-sessions"],
 	["agent-session"],
+	[RUNS_STANDING_ROOT],
 	["conversations"],
 	["attention"],
 	["pulse"],

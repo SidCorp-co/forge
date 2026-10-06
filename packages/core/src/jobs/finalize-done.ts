@@ -55,13 +55,11 @@ export async function publishFinished(
   opts: { clearRunnerHealth: boolean } = { clearRunnerHealth: status === 'done' },
 ): Promise<void> {
   await syncAgentSessionLifecycle(row, status);
-  await pushJobChanged({
-    projectId: row.projectId,
+  await pushJobChanged(row, status === 'done' ? 'job.completed' : 'job.cancelled', {
     jobId: row.id,
-    deviceId: row.deviceId,
-    event: status === 'done' ? 'job.completed' : 'job.cancelled',
-    data: { jobId: row.id, status, exitCode },
-    rooms: ['project'],
+    projectId: row.projectId,
+    status,
+    exitCode,
   });
   if (opts.clearRunnerHealth) {
     void clearRunnerLimit(row.runnerId, row.projectId);

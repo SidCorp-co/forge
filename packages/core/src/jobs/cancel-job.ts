@@ -8,7 +8,7 @@ import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
-import { pushJobChanged } from './job-push.js';
+import { pushJobCancel, pushJobChanged } from './job-push.js';
 import { refuseJob } from './refusals.js';
 
 /**
@@ -65,13 +65,10 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    await pushJobChanged({
-      projectId: updated.projectId,
+    await pushJobChanged(updated, 'job.cancelled', {
       jobId: updated.id,
-      deviceId: updated.deviceId,
-      event: 'job.cancelled',
-      data: { jobId: updated.id, status: 'cancelled' },
-      rooms: ['project'],
+      projectId: updated.projectId,
+      status: 'cancelled',
     });
 
     if (updated.issueId) {
@@ -98,22 +95,14 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
   if (!updated) throw notFound('job not found');
 
   if (updated.deviceId) {
-    await pushJobChanged({
-      projectId: updated.projectId,
-      jobId: updated.id,
-      deviceId: updated.deviceId,
-      event: 'job.cancel',
-      data: { jobId: updated.id },
-      rooms: ['device'],
-    });
+    await pushJobCancel(
+      { id: updated.id, projectId: updated.projectId, deviceId: updated.deviceId },
+      { jobId: updated.id, projectId: updated.projectId },
+    );
   }
-  await pushJobChanged({
-    projectId: updated.projectId,
+  await pushJobChanged(updated, 'job.cancelRequested', {
     jobId: updated.id,
-    deviceId: updated.deviceId,
-    event: 'job.cancelRequested',
-    data: { jobId: updated.id },
-    rooms: ['project'],
+    projectId: updated.projectId,
   });
 
   return {

@@ -67,13 +67,12 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
   );
   // the publish finalizeFailedJob ends with, without its retry or hold: there is nothing to retry
   await syncAgentSessionLifecycle(settled, 'failed');
-  await pushJobChanged({
-    projectId: settled.projectId,
+  await pushJobChanged(settled, 'job.failed', {
     jobId: settled.id,
-    deviceId: settled.deviceId,
-    event: 'job.failed',
-    data: { jobId: settled.id, status: 'failed', exitCode: settled.exitCode, error: settled.error },
-    rooms: ['project'],
+    projectId: settled.projectId,
+    status: 'failed',
+    exitCode: settled.exitCode,
+    error: settled.error,
   });
   if (settled.issueId) await publishPipelineHealthChanged(settled.projectId, [settled.issueId]);
   return true;

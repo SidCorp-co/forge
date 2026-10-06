@@ -33,11 +33,19 @@ vi.mock('../pipeline/index.js', () => ({
   emitPipelineWedge: vi.fn(),
   resolvePipelineWedge: vi.fn(),
 }));
+vi.mock('../agent-sessions/index.js', () => ({
+  sessionAudienceById: vi.fn(async (id: string) =>
+    id === 's-private'
+      ? { projectWide: false, userIds: ['u-owner', 'u-admin'] }
+      : { projectWide: true, userIds: [] },
+  ),
+}));
 
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
 const { broadcastRunnerChanged } = await import('../runners/apply-runner-limit.js');
 const { pushDevice } = await import('../devices/push.js');
 const { runRunnerStaleSweep } = await import('../runners/stale-detector.js');
+const { jobEphemeralTarget, pushJobCancel, pushJobChanged } = await import('../jobs/job-push.js');
 
 /** Hands every event written so far to the consumer registered for its type, as the worker would. */
 async function deliver(): Promise<void> {
@@ -147,5 +155,63 @@ describe('a runner push reaches its room only through the outbox', () => {
         data: { issueId: 'i-1', projectId: 'p-1', commentId: 'c-1' },
       })),
     );
+  });
+
+  it('names the project in every job frame, so the Agents run list refreshes', async () => {
+    const job = { id: 'j-1', projectId: 'p-1', deviceId: 'd-1', agentSessionId: null };
+    await pushJobChanged(job, 'job.completed', {
+      jobId: 'j-1',
+      projectId: 'p-1',
+      status: 'done',
+      exitCode: 0,
+    });
+    await deliver();
+    expect(published).toEqual([
+      {
+        room: 'project:p-1',
+        event: 'job.completed',
+        data: { jobId: 'j-1', projectId: 'p-1', status: 'done', exitCode: 0 },
+      },
+    ]);
+  });
+
+  it("tells a job of a person's own chat to its readers by name, never to the project room", async () => {
+    const job = { id: 'j-2', projectId: 'p-1', deviceId: 'd-1', agentSessionId: 's-private' };
+    await pushJobChanged(job, 'job.failed', { jobId: 'j-2', projectId: 'p-1', status: 'failed' });
+    await deliver();
+    expect(published.map((p) => p.room)).toEqual(['user:u-owner', 'user:u-admin']);
+    expect(await jobEphemeralTarget(job)).toEqual({ userIds: ['u-owner', 'u-admin'] });
+    expect(await jobEphemeralTarget({ ...job, agentSessionId: null })).toEqual({
+      projectId: 'p-1',
+    });
+  });
+
+  it("asks only the job's box to stop it", async () => {
+    await pushJobCancel(
+      { id: 'j-3', projectId: 'p-1', deviceId: 'd-1' },
+      { jobId: 'j-3', projectId: 'p-1', reason: 'loop' },
+    );
+    await deliver();
+    expect(published).toEqual([
+      {
+        room: 'device:d-1',
+        event: 'job.cancel',
+        data: { jobId: 'j-3', projectId: 'p-1', reason: 'loop' },
+      },
+    ]);
+  });
+
+  it('refuses by name a job frame written before its audience was recorded', async () => {
+    expect(() =>
+      handlers.get('job.changed')?.({
+        projectId: 'p-1',
+        jobId: 'j-4',
+        deviceId: null,
+        event: 'job.completed',
+        data: { jobId: 'j-4' },
+        rooms: ['project'],
+      }),
+    ).toThrow(/SESSION_FRAME_AUDIENCE_MISSING: job.completed carries no userIds/);
+    expect(published).toEqual([]);
   });
 });

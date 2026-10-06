@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **The Agents run list refreshes live when a job or run moves.** Every job frame names its
+  project; a job of a person's own chat, log lines included, reaches only its readers, never the
+  project room.
 - **A fellow ecosystem member reads a published contract before consuming it.** Its approved
   versions, elements and artifact, the provider's API page and `GET /api/projects/:id/ecosystems`
   peers answer it; a proposed version stays the provider's own.

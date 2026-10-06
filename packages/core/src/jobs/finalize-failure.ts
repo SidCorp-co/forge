@@ -175,18 +175,12 @@ export async function finalizeFailedJob(
     retryPending: retry.scheduled === true,
   });
 
-  await pushJobChanged({
-    projectId: updated.projectId,
+  await pushJobChanged(updated, 'job.failed', {
     jobId: updated.id,
-    deviceId: updated.deviceId,
-    event: 'job.failed',
-    rooms: ['project'],
-    data: {
-      jobId: updated.id,
-      status: 'failed',
-      exitCode: updated.exitCode,
-      error: updated.error,
-    },
+    projectId: updated.projectId,
+    status: 'failed',
+    exitCode: updated.exitCode,
+    error: updated.error,
   });
 
   // ISS-164 — refresh pipelineHealth for the linked issue (activeSession

@@ -61,6 +61,30 @@ export interface RunnerChange {
 	type?: string;
 }
 
+/** The job frames a browser is told; `job.cancel` is the box's command and never reaches one. */
+export type JobFrameName =
+	| "job.cancelled"
+	| "job.cancelRequested"
+	| "job.failed"
+	| "job.completed"
+	| "job.resumed";
+
+/** What a job move tells its readers: always which job and which project, so web can refresh that project's run list. */
+export interface JobChange {
+	jobId: string;
+	projectId: string;
+	status?: string;
+	exitCode?: number | null;
+	error?: string | null;
+}
+
+/** A box asked to stop one of its jobs. */
+export interface JobCancel {
+	jobId: string;
+	projectId: string;
+	reason?: string;
+}
+
 /**
  * The route a merge stamp arrived by (github-merge-sequence `m-stamp`): the host's webhook
  * (`event`), Forge's own merge (`kernel`), a mark whose commit Forge read from the repository or its
@@ -439,21 +463,27 @@ export interface OutboxEventPayloads {
 		data: RunnerChange;
 		runnerRoom: boolean;
 	};
-	/** A job moved, or its box is asked to stop it; `rooms` names who is told. */
-	"job.changed": {
-		projectId: string;
-		jobId: string;
-		deviceId: string | null;
-		event:
-			| "job.cancelled"
-			| "job.cancel"
-			| "job.cancelRequested"
-			| "job.failed"
-			| "job.completed"
-			| "job.resumed";
-		data: Record<string, unknown>;
-		rooms: ReadonlyArray<"project" | "device">;
-	};
+	/**
+	 * A job moved, told to its project's room — or, for a job of a person's own chat, only to the rooms
+	 * of `userIds`, the chat's readers — or its box is asked to stop it (`job.cancel`, the box's room only).
+	 */
+	"job.changed":
+		| {
+				projectId: string;
+				jobId: string;
+				deviceId: string;
+				event: "job.cancel";
+				data: JobCancel;
+		  }
+		| {
+				projectId: string;
+				jobId: string;
+				deviceId: string | null;
+				event: JobFrameName;
+				data: JobChange;
+				projectWide: boolean;
+				userIds: string[];
+		  };
 	/**
 	 * An agent session was opened or changed status. A project-wide session is told to its project's
 	 * room and its box's; a person's own chat only to the rooms of `userIds`, the people who may read it.
