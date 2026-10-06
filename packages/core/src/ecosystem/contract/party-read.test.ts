@@ -145,7 +145,11 @@ const version = (v: string, approval: string) => ({
     diff: { tool: 'oasdiff', classification: 'non-breaking', changes: [] },
   },
 });
-const VERSIONS = [version('3.1.0', 'proposed'), version('3.0.0', 'approved')];
+const VERSIONS = [
+  version('3.1.0', 'proposed'),
+  version('3.0.0', 'approved'),
+  version('2.0.0', 'returned'),
+];
 vi.mock('../store.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../store.js')>();
   const named = (id: string) => ({ id, slug: `p-${id.slice(-2)}`, name: `P ${id.slice(-2)}` });
@@ -183,13 +187,16 @@ function app() {
   return a;
 }
 interface Answer {
-  publishes: { slug: string; versions: string[]; consumers: object[] }[];
+  publishes: {
+    slug: string;
+    versions: { version: string; approval: string }[];
+    consumers: object[];
+  }[];
   consumes: object[];
   reader: { access: string };
-  versions: { contractVersion: string }[];
+  versions: { contractVersion: string; approval?: { state: string; decidedBy: string | null } }[];
   current: string | null;
   elements: string[];
-  approvals: Record<string, { decidedBy: string | null }>;
   error: { message: string };
   memberships: { peers: { project: { id: string }; publishes: object[] }[] }[];
 }
@@ -217,7 +224,7 @@ describe('a fellow member of an ecosystem a contract is published to reads it be
     const { status, body } = await get(`/${PROVIDER}/api-page`);
     expect(status, JSON.stringify(body)).toBe(200);
     expect(body.publishes.map((p) => p.slug)).toEqual([CONTRACT]);
-    expect(body.publishes[0]?.versions).toEqual(['3.0.0']);
+    expect(body.publishes[0]?.versions).toEqual([{ version: '3.0.0', approval: 'approved' }]);
     expect(body.publishes[0]?.consumers).toEqual([]);
     expect(body.consumes).toEqual([]);
     expect(body.reader.access).toBe('party');
@@ -292,11 +299,26 @@ describe('a project outside every ecosystem the contract is published to', () =>
 });
 
 describe('a member of the provider', () => {
-  it('still reads every version, proposed included, with its approval', async () => {
+  it('still reads every version, proposed included, each row carrying its own decision', async () => {
     state.reads = [PROVIDER];
     const list = await get(`/${PROVIDER}/contracts/${CONTRACT}/versions`);
     expect(list.status).toBe(200);
-    expect(list.body.versions.map((v) => v.contractVersion)).toEqual(['3.1.0', '3.0.0']);
-    expect(list.body.approvals['3.0.0']?.decidedBy).toBe('person-1');
+    expect(list.body.versions.map((v) => [v.contractVersion, v.approval?.state])).toEqual([
+      ['3.1.0', 'proposed'],
+      ['3.0.0', 'approved'],
+      ['2.0.0', 'returned'],
+    ]);
+    expect(list.body.versions[1]?.approval?.decidedBy).toBe('person-1');
+  });
+
+  it('reads the api page with each version beside its decision, never a bare name', async () => {
+    state.reads = [PROVIDER];
+    const page = await get(`/${PROVIDER}/api-page`);
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    expect(page.body.publishes[0]?.versions).toEqual([
+      { version: '2.0.0', approval: 'returned' },
+      { version: '3.0.0', approval: 'approved' },
+      { version: '3.1.0', approval: 'proposed' },
+    ]);
   });
 });

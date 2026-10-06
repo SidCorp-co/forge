@@ -11,6 +11,12 @@ import { edgeVisible, liveEdges, offeredSight, type Sight, sightOf } from './par
 import type { InterfaceDocument, Publication } from './schema.js';
 import { type ProjectRow, projectsWhere, readEcosystems, recordedVersions } from './store.js';
 
+/** A recorded version beside its decision, so a reader of the page never takes a name for an approval. */
+interface PublishedVersion {
+  version: string;
+  approval: string;
+}
+
 const artifactKind = (p: Publication) => (p.artifact === null ? 'none' : 'upload');
 
 function publicationsOf(
@@ -18,7 +24,7 @@ function publicationsOf(
   doc: InterfaceDocument,
   visible: ReadonlySet<string>,
   full: boolean,
-  versions: ReadonlyMap<string, string[]>,
+  versions: ReadonlyMap<string, PublishedVersion[]>,
   consumers: (slug: string, ecosystems: readonly string[]) => object[],
 ) {
   return Object.entries(doc.publishes).flatMap(([slug, p]) => {
@@ -99,10 +105,13 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
     }),
   ]);
   const named = new Map(others.map((p) => [p.id, { id: p.id, slug: p.slug, name: p.name }]));
-  const versions = new Map<string, string[]>();
+  const versions = new Map<string, PublishedVersion[]>();
   // a version the provider has not approved is not yet its word, so only its members read it
   for (const v of versionRows.filter((r) => full || r.approval === 'approved'))
-    versions.set(v.contractSlug, [...(versions.get(v.contractSlug) ?? []), v.version]);
+    versions.set(v.contractSlug, [
+      ...(versions.get(v.contractSlug) ?? []),
+      { version: v.version, approval: v.approval },
+    ]);
   const consumers = (slug: string, ecosystems: readonly string[]) =>
     edges
       .filter(

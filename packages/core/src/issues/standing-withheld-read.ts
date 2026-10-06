@@ -1,0 +1,100 @@
+/**
+ * Why the admissible list withholds a takeable issue, asked of the gates that withhold it — the
+ * dispatch policy, the design gate, the contract-wait gate — for the standing read and for the
+ * REST issue list, so the two cannot disagree about one row.
+ */
+
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssueWithheld } from '@forge/contracts/issue-standing';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { idList, rowsOf } from '../db/raw-sql.js';
+import { isRefusal } from '../lib/refusal.js';
+import { assertContractWaitsSettledForIssue, contractWaitUnsettledSql } from './contract-waits.js';
+import { assertDesignApprovedForIssue, designUnapprovedSql, policyGapsOf } from './ports.js';
+
+/** A row with the two gate predicates already read. */
+export interface GatedRow {
+  id: string;
+  status: IssueStatus;
+  design_unapproved: boolean;
+  contract_unsettled: boolean;
+}
+
+const gateDetail = async (ask: () => Promise<void>): Promise<string | null> => {
+  try {
+    await ask();
+    return null;
+  } catch (err) {
+    if (isRefusal(err)) return err.refusals.map((r) => r.detail).join(' ');
+    throw err;
+  }
+};
+
+/**
+ * Why the admissible list withholds each takeable row, asked of the gates that withhold it (the
+ * policy, the design gate, the contract-wait gate), first that holds; a row that is not withheld is
+ * absent. A gate is asked again only for the rows its predicate already held, so a page asks none.
+ */
+export async function withheldOf(
+  projectId: string,
+  raws: readonly GatedRow[],
+): Promise<Map<string, IssueWithheld>> {
+  const out = new Map<string, IssueWithheld>();
+  const takeable = raws.filter((r) => TAKEABLE_STATUSES.includes(r.status));
+  if (takeable.length === 0) return out;
+  const gapOf = await policyGapsOf(projectId);
+  for (const r of takeable) {
+    const gap = gapOf(r.status);
+    if (gap) {
+      out.set(r.id, gap);
+      continue;
+    }
+    if (r.design_unapproved) {
+      const detail = await gateDetail(() => assertDesignApprovedForIssue(projectId, r.id));
+      if (detail !== null) {
+        out.set(r.id, { code: 'WORKFLOW_DESIGN_NOT_APPROVED', detail });
+        continue;
+      }
+    }
+    if (r.contract_unsettled) {
+      const detail = await gateDetail(() => assertContractWaitsSettledForIssue(projectId, r.id));
+      if (detail !== null) out.set(r.id, { code: 'CONTRACT_WAIT_UNSETTLED', detail });
+    }
+  }
+  return out;
+}
+
+/**
+ * The same withholding for rows another read already holds (the REST issue list `forge next` ranks
+ * from): one query for the two gate predicates over the takeable rows, then `withheldOf`. A row the
+ * admissible list leaves out says why on the list too, so no reader ranks an issue every dispatch
+ * door refuses.
+ */
+export async function withheldAmong(
+  projectId: string,
+  rows: readonly { id: string; status: IssueStatus }[],
+): Promise<Map<string, IssueWithheld>> {
+  const takeable = rows.filter((r) => TAKEABLE_STATUSES.includes(r.status));
+  if (takeable.length === 0) return new Map();
+  const flags = rowsOf<{ id: string; design_unapproved: boolean; contract_unsettled: boolean }>(
+    await db.execute(sql`
+      SELECT i.id,
+             ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
+             ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled
+        FROM issues i
+       WHERE i.project_id = ${projectId} AND i.id IN (${idList(takeable.map((r) => r.id))})
+    `),
+  );
+  const held = new Map(flags.map((f) => [f.id, f]));
+  return withheldOf(
+    projectId,
+    takeable.map((r) => ({
+      id: r.id,
+      status: r.status,
+      design_unapproved: held.get(r.id)?.design_unapproved === true,
+      contract_unsettled: held.get(r.id)?.contract_unsettled === true,
+    })),
+  );
+}
