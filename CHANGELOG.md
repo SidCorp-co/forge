@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The tmux pane test can no longer pass without running.** Where tmux is missing it fails naming
+  tmux, unless `FORGE_TEST_SKIP_TMUX=1` skips it out loud; CI installs tmux on Linux and macOS.
+
 ## [0.4.0-dev.48] - 2026-10-06
 
 Agent sessions read true, and pane agents run the daemon's own forge-runner
