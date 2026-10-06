@@ -21,13 +21,15 @@ export async function failJobFromRunner(
   deviceId: string,
 ) {
   const error = await scrubJobOutput([job.id], input.error);
-  // A person asked to cancel this job, and its process is over however it ended: that is the
-  // cancel taking effect, not a failure to retry.
+  // A person asked to cancel this job, and its box has ended its work on it however that came
+  // about: that is the cancel taking effect, not a failure to retry. The box reports before it
+  // closes the pane (`pool_jobs::conclude`), so a pane that will not close outlives this answer
+  // under a terminal job, as it does under `failed`, and the box closes it at its next tick.
   if (job.cancellationRequested) {
     const cancelled = await settleConfirmedCancel({
       jobId: job.id,
       deviceId,
-      reason: `cancel confirmed: the runner reported the job's process over (${error})`,
+      reason: `cancel taken: the runner reported the job over (${error})`,
       error,
     });
     if (!cancelled) throw refuseJob('INVALID_STATE', 'job state changed mid-request');

@@ -117,8 +117,9 @@ async function announceCancelled(row: JobRow): Promise<void> {
 
 /**
  * A dispatched job a person asked to cancel, settled `cancelled` once the box it was dispatched
- * to says its process is over: a kill-ack `killed`, or a failure report. Until then the job stays
- * `dispatched`, because its process may still be running. Answers the settled row, or null where
+ * to says it is done with it: a kill-ack `killed`, which follows the process's close, or a
+ * failure report, which the box sends as it closes it. Until then the job stays `dispatched`,
+ * because nothing has ended its work. Answers the settled row, or null where
  * the job is not a dispatched, cancel-requested job on `deviceId` — which the caller's own path
  * then answers.
  */
