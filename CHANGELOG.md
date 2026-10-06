@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.42] - 2026-10-06
+
+Release numbers stay spent, head reads honour the repository, building runs read as building
+
+
 ### Fixed
 
 - **An undelivered reply shows a reason, not a driver error.** The window keeps a coded sentence; the
