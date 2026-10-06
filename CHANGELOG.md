@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.37] - 2026-10-06
+
+Standing tells the truth, the UI goes flat, and bind provisions its checkout
+
+
 ### Fixed
 
 - **The lint budget prints how many files it scanned.** Verify read the count of files with lint
