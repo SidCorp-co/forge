@@ -24,7 +24,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-multi-channel":
     "Two live deploy bindings are declared, and a release run records ONE check of ONE address — so closing the batch on it would claim a delivery nobody looked at. Cutting a release is refused by name until then. Retire one of the two, or keep both and cut this project's releases by hand.",
   "release-target":
-    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or declare an empty release chain.",
+    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, press \"This project ships nothing\" on the Repository tab.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":

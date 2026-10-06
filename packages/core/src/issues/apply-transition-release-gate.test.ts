@@ -259,6 +259,8 @@ describe('a project that declares a release it cannot land', () => {
 
     expect(String(err)).toContain(PROJECT_ID);
     expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
-    expect(String(err)).toContain('declare an empty release chain');
+    expect(String(err)).toContain(
+      'press "This project ships nothing" on its Repository settings tab',
+    );
   });
 });
