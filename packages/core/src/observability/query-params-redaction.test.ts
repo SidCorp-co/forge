@@ -105,6 +105,14 @@ describe('redactQueryParams', () => {
     expect(redactQueryParams(driver.message, outer)).toBe(REDACTED);
   });
 
+  it('walks an Error left in a payload as what it would serialize as', () => {
+    const body = { code: 'CONFLICT', details: { error: duplicate() } };
+    const text = JSON.stringify(redactQueryParams(body));
+    expect(text).not.toContain(HASH);
+    expect(text).not.toContain(EMAIL);
+    expect(text).toContain('insert into');
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);

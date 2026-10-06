@@ -114,14 +114,20 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return Object.prototype.toString.call(v) === '[object Object]';
 }
 
-function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
-  if (typeof value === 'string') return redactText(value, chain);
-  if (depth > MAX_DEPTH) return value;
-  if (Array.isArray(value)) {
-    const next = value.map((v) => redactValue(v, chain, depth + 1));
-    return next.some((v, i) => v !== value[i]) ? next : value;
-  }
-  if (!isRecord(value)) return value;
+function mergeChains(a: ChainReading | null, b: ChainReading): ChainReading {
+  if (!a) return b;
+  return {
+    renderings: [...a.renderings, ...b.renderings],
+    values: [...a.values, ...b.values],
+    driverMessages: [...a.driverMessages, ...b.driverMessages],
+  };
+}
+
+function redactRecord(
+  value: Record<string, unknown>,
+  chain: ChainReading | null,
+  depth: number,
+): Record<string, unknown> | null {
   const failedQuery = typeof value.query === 'string';
   const driverError =
     typeof value.code === 'string' &&
@@ -138,14 +144,31 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
     if (out !== v) changed = true;
     next[key] = out;
   }
-  return changed ? next : value;
+  return changed ? next : null;
+}
+
+function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
+  if (typeof value === 'string') return redactText(value, chain);
+  if (depth > MAX_DEPTH) return value;
+  if (Array.isArray(value)) {
+    const next = value.map((v) => redactValue(v, chain, depth + 1));
+    return next.some((v, i) => v !== value[i]) ? next : value;
+  }
+  // An Error left in a payload serializes as its enumerable properties, which for a failed query
+  // are `query`, `params` and `cause`: it is walked as that, against its own chain as well.
+  if (value instanceof Error) {
+    const own = value as unknown as Record<string, unknown>;
+    return redactRecord(own, mergeChains(chain, readChain(value)), depth) ?? value;
+  }
+  if (!isRecord(value)) return value;
+  return redactRecord(value, chain, depth) ?? value;
 }
 
 /**
  * `value` with every bound parameter of a failed SQL statement replaced by `[Redacted]`, the same
  * reference where there was none. `err`, the error `value` was made from, lets the statement and
  * the driver's reason survive; without it a failed query's text is redacted to its end. An `Error`
- * is not walked: serialize it first.
+ * inside `value` that carries one comes back as the plain object it would serialize as.
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
   const chain = err === undefined ? null : readChain(err);

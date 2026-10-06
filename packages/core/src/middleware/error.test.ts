@@ -94,6 +94,12 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
       cause: { code: 'CONFLICT', details: { reason: failedInsert().message } },
     });
   });
+  app.get('/failed-query-error-in-details', () => {
+    throw new HTTPException(409, {
+      message: 'conflict',
+      cause: { code: 'CONFLICT', details: { error: failedInsert() } },
+    });
+  });
   app.notFound(notFoundHandler);
   app.onError(handler);
   return app;
@@ -181,14 +187,16 @@ describe('error middleware', () => {
     expect(body.code).not.toBe('ENOENT');
   });
 
-  it.each(['/failed-query', '/failed-query-http', '/failed-query-details'])(
-    "answers %s with none of the failed query's bound params outside production",
-    async (path) => {
-      const text = await (await makeApp().request(path)).text();
-      expect(text).not.toMatch(LEAKS);
-      expect(text).toContain('[Redacted]');
-    },
-  );
+  it.each([
+    '/failed-query',
+    '/failed-query-http',
+    '/failed-query-details',
+    '/failed-query-error-in-details',
+  ])("answers %s with none of the failed query's bound params outside production", async (path) => {
+    const text = await (await makeApp().request(path)).text();
+    expect(text).not.toMatch(LEAKS);
+    expect(text).toContain('[Redacted]');
+  });
 
   it('names an unhandled failed query by its statement in the non-production details', async () => {
     const body = (await (await makeApp().request('/failed-query')).json()) as {
@@ -201,15 +209,17 @@ describe('error middleware', () => {
 });
 
 describe('error middleware in production', () => {
-  it.each(['/failed-query', '/failed-query-http', '/failed-query-details'])(
-    "answers %s with none of the failed query's bound params",
-    async (path) => {
-      vi.stubEnv('NODE_ENV', 'production');
-      vi.resetModules();
-      const prod = await import('./error.js');
-      vi.unstubAllEnvs();
-      const text = await (await makeApp(prod.errorHandler).request(path)).text();
-      expect(text).not.toMatch(LEAKS);
-    },
-  );
+  it.each([
+    '/failed-query',
+    '/failed-query-http',
+    '/failed-query-details',
+    '/failed-query-error-in-details',
+  ])("answers %s with none of the failed query's bound params", async (path) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.resetModules();
+    const prod = await import('./error.js');
+    vi.unstubAllEnvs();
+    const text = await (await makeApp(prod.errorHandler).request(path)).text();
+    expect(text).not.toMatch(LEAKS);
+  });
 });
