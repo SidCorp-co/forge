@@ -1,0 +1,174 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/workflow-v2.json",
+  "version": 2,
+  "project": "5e1d7c3a-2b4f-4a6e-9c8d-0f1e2a3b4c5d",
+  "flow": "post-discharge",
+  "kind": "flow",
+  "title": "Post-discharge follow-up",
+  "summary": "A discharged patient who needs follow-up becomes one case with an owner and an SLA, and the outcome feeds back into what the rule reads.",
+  "template": {
+    "id": "operational-flow",
+    "version": 1
+  },
+  "writtenBy": {},
+  "steps": [
+    {
+      "id": "his",
+      "does": "The hospital HIS records the discharge.",
+      "after": [],
+      "node": {
+        "type": "SOURCE",
+        "label": "Hospital HIS",
+        "owner": "hospital IT"
+      }
+    },
+    {
+      "id": "discharged",
+      "does": "patient.discharged arrives from the HIS.",
+      "after": ["his"],
+      "node": {
+        "type": "EVENT",
+        "label": "Patient discharged",
+        "event": "patient.discharged",
+        "payload": ["patient.id", "episode.id"]
+      }
+    },
+    {
+      "id": "context",
+      "does": "The episode risk and care team are read.",
+      "after": [],
+      "node": {
+        "type": "CONTEXT",
+        "label": "Know the patient",
+        "inputs": ["episode.id"],
+        "outputs": ["episode.risk", "care_team"]
+      }
+    },
+    {
+      "id": "followup-rule",
+      "does": "A high-risk discharge needs follow-up within 48 hours.",
+      "after": ["discharged", "context"],
+      "node": {
+        "type": "RULE",
+        "label": "Decide follow-up",
+        "inputs": ["episode.risk"],
+        "conditions": [
+          {
+            "when": "episode.risk == high",
+            "result": "follow-up required"
+          }
+        ],
+        "outputs": ["followup_required"]
+      }
+    },
+    {
+      "id": "case",
+      "does": "One follow-up case is opened for the episode.",
+      "after": ["followup-rule"],
+      "node": {
+        "type": "CASE",
+        "label": "Open follow-up case",
+        "owner": "care coordinator"
+      }
+    },
+    {
+      "id": "call-task",
+      "does": "The coordinator is asked to call within 48 hours.",
+      "after": ["case"],
+      "node": {
+        "type": "TASK",
+        "label": "Call the patient",
+        "owner": "care coordinator",
+        "sla": "48h",
+        "idempotency": "one call task per case"
+      }
+    },
+    {
+      "id": "call",
+      "does": "The coordinator calls the patient.",
+      "after": ["call-task"],
+      "node": {
+        "type": "ACTION",
+        "label": "Call made",
+        "owner": "care coordinator"
+      }
+    },
+    {
+      "id": "outcome",
+      "does": "The call is recorded as reached, unreachable or declined.",
+      "after": ["call"],
+      "node": {
+        "type": "OUTCOME",
+        "label": "Record the result",
+        "values": ["reached", "unreachable", "declined"]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "his",
+      "to": "discharged",
+      "label": "ADT discharge",
+      "payload": ["patient.id", "episode.id"],
+      "onFailure": "retry the feed, then raise to IT"
+    },
+    {
+      "from": "discharged",
+      "to": "followup-rule",
+      "label": "Is follow-up needed?",
+      "payload": ["episode.id"],
+      "onFailure": "hold the event for re-run"
+    },
+    {
+      "from": "context",
+      "to": "followup-rule",
+      "label": "Risk and care team",
+      "payload": ["episode.risk"],
+      "onFailure": "decide without risk: follow up"
+    },
+    {
+      "from": "followup-rule",
+      "to": "case",
+      "label": "Follow-up required",
+      "payload": ["patient.id", "episode.id"],
+      "onFailure": "create_attention_item",
+      "condition": "followup_required == true",
+      "action": "create_or_update_case",
+      "mapping": {
+        "patient_id": "patient.id",
+        "episode_id": "episode.id"
+      },
+      "idempotency": "one active case per discharge episode"
+    },
+    {
+      "from": "case",
+      "to": "call-task",
+      "label": "Assign the call",
+      "payload": ["case.id"],
+      "onFailure": "leave the case unassigned and flag it"
+    },
+    {
+      "from": "call-task",
+      "to": "call",
+      "label": "Coordinator calls",
+      "payload": ["case.id", "patient.phone"],
+      "onFailure": "retry next working day"
+    },
+    {
+      "from": "call",
+      "to": "outcome",
+      "label": "Call result",
+      "payload": ["call.result"],
+      "onFailure": "record unreachable"
+    },
+    {
+      "kind": "feeds-back",
+      "from": "outcome",
+      "to": "context",
+      "reevaluates": "the patient context the rule reads",
+      "payload": ["call.outcome"],
+      "idempotency": "one re-evaluation per outcome",
+      "onFailure": "create_attention_item"
+    }
+  ]
+}
