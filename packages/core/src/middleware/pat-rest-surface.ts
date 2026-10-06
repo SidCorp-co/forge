@@ -63,6 +63,9 @@ export async function beginPatRequest(
       cause: { code: 'INVALID_TOKEN' },
     });
   }
+  if (excluded?.admits === 'device' && principal.deviceId !== null) {
+    return admitTheBox(c, token, principal);
+  }
   if (excluded) {
     throw new HTTPException(403, {
       message:
@@ -96,6 +99,25 @@ export async function beginPatRequest(
   };
   c.set(PAT_REQUEST_VAR, resolution);
   return { principal: resolution.principal, scope: resolution.scope };
+}
+
+/**
+ * A device exclusion is the box's own plane, and the box's credential is what
+ * it names: the route's device gate decides it, not the grant. Without this a
+ * guard mounted ahead of that route would refuse the box before its gate ran.
+ */
+function admitTheBox(
+  c: Context,
+  token: string,
+  principal: PatPrincipal,
+): { principal: PatPrincipal; scope: PatScope } {
+  const resolution: PatRequestResolution = {
+    token,
+    principal,
+    scope: { projectIds: patEffectiveProjectIds(principal), tokenId: principal.tokenId },
+  };
+  c.set(PAT_REQUEST_VAR, resolution);
+  return { principal, scope: resolution.scope };
 }
 
 /**
