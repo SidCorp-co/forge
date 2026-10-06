@@ -8,16 +8,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
+  turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
+  PATH, and `master status` names its socket.
+
 ## [0.4.0-dev.37] - 2026-10-06
 
 Standing tells the truth, the UI goes flat, and bind provisions its checkout
 
 
 ### Fixed
-
-- **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
-  turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
-  PATH, and `master status` names its socket.
 
 - **The lint budget prints how many files it scanned.** Verify read the count of files with lint
   debt as the scanned count, so a tree with no lint debt left read as a check that never ran.
