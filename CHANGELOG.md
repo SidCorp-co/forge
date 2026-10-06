@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The bell badge counts the open rows it lists; a resolved notice drops its unread dot; a requirement waits on its unapproved designs rather than offer a refused Agree; a drawer stays open when a control inside took Escape.
+
 ## [0.4.0-dev.57] - 2026-10-06
 
 Core integration suites run on dev again; release-hold and session-write races fixed
