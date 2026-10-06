@@ -151,7 +151,7 @@ jobLifecycleDeviceRoutes.post(
         ? await settleConfirmedCancel({
             jobId: id,
             deviceId: device.id,
-            reason: 'cancel confirmed: the runner killed the job\'s process',
+            reason: "cancel confirmed: the runner killed the job's process",
           })
         : null;
 

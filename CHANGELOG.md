@@ -10,7 +10,7 @@
 
 ### Fixed
 
-- **Cancelling a running pool job now stops it.** Its session closes and its runner slot frees as soon as the box hears the cancel, and the job reads cancelled rather than failed. A box that missed the cancel learns it at its next check-in.
+- **Cancelling a running pool job now stops it.** Its session closes and its runner slot frees once the box hears the cancel, and the job reads cancelled, not failed. A box that missed it learns at its next check-in.
 
 ## [0.4.0-dev.59] - 2026-10-06
 
