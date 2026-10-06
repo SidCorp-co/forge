@@ -1,9 +1,6 @@
 /**
- * A6, a box whose declaration gate is failing open. The box decides the verdict
- * (`daemon/degraded.rs`, ISS-1192) and sends it on every heartbeat into
- * `devices.gate_report`. This alert makes that verdict reach a person through the
- * Tier 1 push path, rather than sitting in `forge-runner status` until somebody
- * thinks to run it (ISS-1324).
+ * A6: a box reporting its declaration gate `failing_open` on the heartbeat. The verdict
+ * is the box's (`daemon/degraded.rs`); this only pushes it to a person (ISS-1324).
  */
 
 import { sql } from 'drizzle-orm';
@@ -11,17 +8,10 @@ import { db } from '../db/client.js';
 import { type DeviceGate, readDeviceGate } from '../devices/gate-report.js';
 import type { AdminAlert } from './types.js';
 
-/**
- * Past this, a stored report is no longer the box's present condition. A box
- * that stopped heartbeating leaves its last report behind, and alerting on that
- * report would page someone about a gate that may already be deciding. The web
- * banner uses the same bound (`features/runners/types.ts:REPORT_FRESH_FOR_MS`).
- */
+/** Older than this, a report is not the box's present condition (`REPORT_FRESH_FOR_MS` in web). */
 export const GATE_REPORT_FRESH_MS = 10 * 60_000;
 
-/** `alert-queries.ts:ENTITY_LIMIT`, which every Tier 1 alert's entity list is capped at;
- *  `count` stays the true total (`AdminAlert.count`). Restated here because that module
- *  imports this one. */
+/** `alert-queries.ts:ENTITY_LIMIT`, restated because that module imports this one. */
 export const GATE_ALERT_ENTITY_LIMIT = 20;
 
 export interface GateAlertRow {
