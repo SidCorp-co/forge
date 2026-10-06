@@ -156,4 +156,4 @@ export {
   UNWEIGHED,
   type Weighing,
 } from './weighing.js';
-export { readWorkState, setWorkStep } from './work-state.js';
+export { readWorkState, restartStepsForNewRun, setWorkStep } from './work-state.js';

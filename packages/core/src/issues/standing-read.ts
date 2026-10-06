@@ -98,9 +98,19 @@ interface IssueRowRaw {
   moving: boolean;
   owes_answer: boolean;
   holds_dependents: boolean;
+  park_entry: { reason: string | null; agency: string; actorType: string } | null;
+  design_returned: { flow: string; revision: number } | null;
   design_unapproved: boolean;
   contract_unsettled: boolean;
 }
+
+// The design revision drawn under this issue that its approver returned and nobody has redrawn yet.
+const designReturnedUnderSql = (issueId: SQL) => sql`(
+  SELECT jsonb_build_object('flow', w.flow, 'revision', d.revision)
+    FROM project_workflow_designs d JOIN project_workflows w ON w.id = d.workflow_id
+   WHERE d.design_issue_id = ${issueId} AND d.decision = 'return'
+     AND w.design_status = 'returned' AND d.revision = w.revision
+   ORDER BY d.decided_at DESC LIMIT 1)`;
 
 function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
   if (scope === 'one') return sql`AND i.iss_seq = ${key}`;
@@ -122,6 +132,12 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
              ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
              ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
+             CASE WHEN i.status = 'on_hold' THEN (
+               SELECT jsonb_build_object('reason', kt.reason, 'agency', kt.actor_agency, 'actorType', kt.actor_type)
+                 FROM kernel_transitions kt
+                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = 'on_hold'
+                ORDER BY kt.created_at DESC LIMIT 1) END AS park_entry,
+             ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
@@ -239,6 +255,13 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     lease: leaseOf(r.lease, f.now),
     inFlight: r.moving,
     owesAnswer: r.owes_answer,
+    park: r.park_entry
+      ? {
+          reason: r.park_entry.reason,
+          byAgent: r.park_entry.agency === 'agent' || r.park_entry.actorType !== 'user',
+        }
+      : null,
+    designReturned: r.design_returned,
     blockedBy: f.edges.filter((e) => e.toId === r.id).map((e) => edgeEnd(e, 'from', f.key)),
     blocks: f.edges.filter((e) => e.fromId === r.id).map((e) => edgeEnd(e, 'to', f.key)),
     criteria: {

@@ -66,7 +66,9 @@ runStandingRoutes.get(
   zValidator(
     'param',
     runParam,
-    invalid('invalid path: /api/projects/<project uuid>/runs/standing/<pipeline run uuid>'),
+    invalid(
+      'invalid path: /api/projects/<project uuid>/runs/standing/<pipeline run uuid or box run id>',
+    ),
   ),
   zValidator('query', noQuery),
   async (c) => {
@@ -76,7 +78,7 @@ runStandingRoutes.get(
     const detail = await readRunStanding(projectId, runId, userId ? { userId } : null);
     if (!detail) {
       throw notFound(
-        `run ${runId} is not a run of this project: no pipeline run with that id, or it is a chat or a master's own run, which this list does not serve`,
+        `run ${runId} is not a run of this project: no pipeline run and no box declaration with that id, or it is a chat or a master's own run, which this list does not serve`,
       );
     }
     return c.json(

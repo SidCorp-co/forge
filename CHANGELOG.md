@@ -10,6 +10,10 @@
 
 ### Changed
 
+- **Standing tells the truth about refused runs, parks and designs.** A refused declaration reads
+  queued behind its refusal; a new run restarts the step; agent parks, returned designs and stale
+  bases name what they wait on; question records ask.
+
 - **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
   rewritten to `agent-reports:*`, every notification carries a severity, and seven unset env
   knobs plus dead metric and speaker reads are deleted.

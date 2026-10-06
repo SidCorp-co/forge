@@ -1,7 +1,8 @@
 /**
  * The issue a design is drawn under, and what the approver's decision does to it.
  *
- * Its proposer names it (`propose { issue }`), and a revision a write proposes again inherits it. It
+ * Its proposer names it (`propose { issue }`, or `issue` on a write that proposes again); absent, a revision
+ * inherits it from the one it supersedes while that issue is still open. It
  * is not a build link: a build waits on the approval, the design issue owes the drawing. So a return
  * hands the drawing back to that issue — reopened where its status allows, the reason posted on it —
  * and every decision wakes the project's master, which is what makes the issue admissible work again.

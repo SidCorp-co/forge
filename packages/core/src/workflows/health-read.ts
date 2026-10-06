@@ -11,6 +11,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { designApproverRefusal } from './design.js';
+import { standingBaseRefusal } from './design-bases.js';
 import { designWaitingOn } from './design-standing.js';
 import {
   buildsOf,
@@ -27,6 +28,7 @@ import { type HealthViewer, openFeedbackOf } from './health-ports.js';
 import { deriveHealth, type HealthFacts, type PlannedTarget } from './health-rules.js';
 import { rootedOf } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
+import { workflowsOf } from './store.js';
 import { templateOf } from './template-check.js';
 
 interface WorkflowRow {
@@ -48,14 +50,16 @@ interface ProjectHealthContext {
   templates: ReturnType<typeof resolveProjectTemplates>['templates'];
   feedback: Awaited<ReturnType<typeof openFeedbackOf>>;
   names: Map<string, { name: string | null }>;
+  held: Awaited<ReturnType<typeof workflowsOf>>;
 }
 
 async function contextOf(projectId: string, viewer: HealthViewer): Promise<ProjectHealthContext> {
-  const [doc, slugRows, feedback, facts] = await Promise.all([
+  const [doc, slugRows, feedback, facts, held] = await Promise.all([
     readProjectDocument(projectId),
     db.execute(sql`SELECT slug FROM projects WHERE id = ${projectId}`),
     openFeedbackOf(viewer, projectId),
     permissionFactsOf(viewer.userId, projectId),
+    workflowsOf(db, projectId),
   ]);
   const workflows = doc?.document.workflows;
   return {
@@ -67,6 +71,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
     templates: resolveProjectTemplates(workflows?.templates ?? []).templates,
     feedback,
     names: new Map(),
+    held,
   };
 }
 
@@ -113,6 +118,7 @@ async function healthOfRow(ctx: ProjectHealthContext, w: WorkflowRow): Promise<W
               approvedRevision: w.approved_revision,
               latest: { revision: w.revision, author: null },
               canDecide: ctx.canDecide,
+              baseUnapproved: standingBaseRefusal(Number(open.revision), open.document, ctx.held),
             }),
           }
         : null,

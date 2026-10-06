@@ -241,8 +241,22 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   return null;
 }
 
+// A box's declaration core refused: queued, since nothing holds a lease, behind the refusal it was answered with.
+function declaredBehindOf(f: RunFacts): Derived | null {
+  const refused = f.run.declarationRefusal;
+  if (!refused || f.session?.status !== 'queued') return null;
+  const rule = `the box declared this run and core refuses to admit it (${refused.code}, ${refused.attempts} attempt(s), last ${refused.at.toISOString()}): ${refused.detail}`;
+  return {
+    state: 'queued',
+    since: f.session.createdAt,
+    rule,
+    outcome: null,
+    waitingOn: { kind: 'gate', gate: refused.gate, resumesAt: null, rule },
+  };
+}
+
 export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
-  const waited = personWaitOf(f, ctx) ?? gateWaitOf(f, ctx);
+  const waited = declaredBehindOf(f) ?? personWaitOf(f, ctx) ?? gateWaitOf(f, ctx);
   if (waited) return waited;
   const job = f.job;
   const s = f.session;

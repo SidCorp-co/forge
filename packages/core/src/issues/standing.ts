@@ -74,6 +74,10 @@ export interface IssueStandingInput {
   inFlight: boolean;
   /** An open `human` question on it (`questions/issue-coupling.ts:holdsOpenHumanQuestion`). */
   owesAnswer: boolean;
+  /** The move that parked it at `on_hold`: its reason, and whether a run (not a person) made it. */
+  park?: { reason: string | null; byAgent: boolean } | null;
+  /** A design revision drawn under it that its approver returned and nobody has redrawn. */
+  designReturned?: { flow: string; revision: number } | null;
   /** Live `blocks` edges into this issue (expired edges are left out by the reader). */
   blockedBy: readonly StandingEdge[];
   /** Live `blocks` edges out of it. */
@@ -132,6 +136,47 @@ const held = (lease: IssueLeaseView | null) =>
 // master slot.
 type Turn = { group: IssueAttentionGroup; waitingOn: IssueWaitingOn };
 
+const clip = (text: string, max: number) =>
+  text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+
+// An on_hold a run set down waits on what the run named, never on "a person paused it" (HOP run
+// 2026-10-05, ISS-1 and ISS-33): a question it asked, the blocker that holds it, or the park's reason.
+function agentParkTurn(input: IssueStandingInput): Turn | null {
+  const park = input.park;
+  if (!park?.byAgent) return null;
+  const why = park.reason?.trim() || 'the run named no reason';
+  if (input.owesAnswer) {
+    const r = forPerson(
+      input.viewer,
+      'answer a question',
+      `a run parked it on_hold and asked a question only a person can answer: ${why}`,
+    );
+    return { group: 'paused', waitingOn: r.waitingOn };
+  }
+  const blocker = input.blockedBy.find((b) => b.holds);
+  if (blocker) {
+    return {
+      group: 'paused',
+      waitingOn: wait(
+        'issue',
+        blocker.key,
+        blockerAct(blocker.status),
+        `a run parked it on_hold behind ${blocker.key}, which still holds it: ${why}`,
+        blocker.key,
+      ),
+    };
+  }
+  return {
+    group: 'paused',
+    waitingOn: wait(
+      'master',
+      'Master',
+      `resume once: ${clip(why, 80)}`,
+      `a run parked it on_hold: ${why}; the master resumes it once that clears`,
+    ),
+  };
+}
+
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
 function personTurn(input: IssueStandingInput): Turn | null {
   const { status, viewer } = input;
@@ -147,6 +192,8 @@ function personTurn(input: IssueStandingInput): Turn | null {
     };
   }
   if (status === 'on_hold') {
+    const parked = agentParkTurn(input);
+    if (parked) return parked;
     const r = forPerson(viewer, 'resume it', 'a person paused it; a person resumes it');
     return { group: 'paused', waitingOn: r.waitingOn };
   }
@@ -307,6 +354,19 @@ function turnOf(input: IssueStandingInput): Turn {
   if (running) return runningTurn(input);
   const blocker = input.blockedBy.find((b) => b.holds);
   if (blocker) return blockerTurn(blocker);
+  const returned = input.designReturned;
+  if (returned && TAKEABLE_STATUSES.includes(input.status)) {
+    return {
+      group: 'queued',
+      waitingOn: wait(
+        'run',
+        'Next run',
+        `revise design ${returned.flow} · revision ${returned.revision} returned`,
+        `its approver returned design ${returned.flow} revision ${returned.revision}, drawn under this issue: what it owes is the revised design, which a run writes and proposes again, not a judgement of what landed`,
+        returned.flow,
+      ),
+    };
+  }
   const landed = landedWait(input.status, { merged: input.merged, step: input.step });
   if (landed) {
     return { group: 'queued', waitingOn: wait('judge', landed.who, landed.act, landed.reason) };

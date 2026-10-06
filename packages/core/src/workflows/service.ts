@@ -5,13 +5,14 @@ import {
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import { db, type Tx } from '../db/client.js';
+import { resolveIssueRouteRef } from '../issues/index.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { bindRefusalsIn } from './bind-check.js';
 import { designApproverRefusal, designFingerprint, designStatusAfterWrite } from './design.js';
-import { baseRefusals } from './design-bases.js';
+import { baseRefusals, standingBaseRefusal } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
 import {
   checkWorkflow,
@@ -23,6 +24,7 @@ import {
 } from './rules.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import {
+  buildOfIssue,
   insertDesign,
   insertWorkflow,
   lockWorkflows,
@@ -156,15 +158,28 @@ export async function createWorkflow(input: {
   });
 }
 
+async function issueOfProject(projectId: string, ref: string, userId: string): Promise<string> {
+  const issue = await resolveIssueRouteRef(ref, projectId, userId);
+  if (issue.projectId !== projectId) {
+    throw notFound(`issue ${ref} is not an issue of project ${projectId}`);
+  }
+  return issue.id;
+}
+
 export async function updateWorkflow(input: {
   projectId: string;
   id: string;
   writer: WorkflowWriter;
   baseRevision: number | null;
   raw: unknown;
+  /** The issue a write that proposes the design again is drawn under; absent, it is inherited. */
+  issue?: string | undefined;
 }): Promise<WorkflowOutcome> {
   const { projectId, id, writer, baseRevision, raw } = input;
   await assertWriter(writer, projectId);
+  const designIssueId = input.issue
+    ? await issueOfProject(projectId, input.issue, writer.userId)
+    : undefined;
   const parsed = parseWorkflow(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
@@ -187,6 +202,15 @@ export async function updateWorkflow(input: {
       }),
       ...baseRefusals(doc, await workflowsOf(tx, projectId)),
       ...(await bindRefusalsIn(tx, doc)),
+      ...(designIssueId && (await buildOfIssue(tx, designIssueId))?.workflowId === id
+        ? [
+            {
+              code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD' as const,
+              path: '/issue',
+              detail: `${input.issue} builds workflow ${id}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
+            },
+          ]
+        : []),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {
@@ -210,6 +234,7 @@ export async function updateWorkflow(input: {
         revision: next.revision,
         document: doc,
         userId: writer.userId,
+        designIssueId,
       });
     }
     return {
@@ -253,7 +278,8 @@ function listedView(
   row: StoredWorkflow,
   canDecide: boolean,
   writerName: string | undefined,
-  returnReason?: string | null,
+  returnReason: string | null | undefined,
+  held: readonly StoredWorkflow[],
 ) {
   const view = workflowView(row, storedWorkflow(row), writerName, returnReason);
   const reading = designListReadingOf(
@@ -263,6 +289,10 @@ function listedView(
       approvedRevision: row.approvedRevision,
       latest: { revision: row.revision, author: view.writerName },
       canDecide,
+      baseUnapproved:
+        row.designStatus === 'proposed'
+          ? standingBaseRefusal(row.revision, row.document, held)
+          : null,
     },
     row.revision,
   );
@@ -271,16 +301,17 @@ function listedView(
 
 /** The list and the single read answer one view: writer name, return reason and the viewer's acts. */
 async function listedViews(userId: string, projectId: string, rows: readonly StoredWorkflow[]) {
-  const [names, reasons, canDecide] = await Promise.all([
+  const [names, reasons, canDecide, held] = await Promise.all([
     userNames(rows.map((r) => r.writtenByUser)),
     returnReasonsOf(
       db,
       rows.filter((r) => r.designStatus === 'returned').map((r) => r.id),
     ),
     mayDecideDesigns(userId, projectId),
+    rows.some((r) => r.designStatus === 'proposed') ? workflowsOf(db, projectId) : [],
   ]);
   return rows.map((row) =>
-    listedView(row, canDecide, names.get(row.writtenByUser), reasons.get(row.id)),
+    listedView(row, canDecide, names.get(row.writtenByUser), reasons.get(row.id), held),
   );
 }
 
