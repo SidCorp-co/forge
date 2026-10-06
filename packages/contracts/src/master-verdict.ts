@@ -3,6 +3,7 @@
 // keep, leave, replace, retire or withhold, and the box opens or ends the pane it is told to.
 
 import { z } from "zod";
+import { runSubagentSchema } from "./run-verdict.js";
 
 /** How long a master must have had no work, no turn and no child close before it is retired. */
 export const MASTER_IDLE_BEFORE_RETIRE_SECONDS = 60 * 60;
@@ -77,10 +78,15 @@ export const masterFactsSchema = z.strictObject({
 	}),
 	/** Why the pane's build or plugins are not the ones this box would place now; null when current or unjudged. */
 	outdated: text.nullable(),
-	/** The runs the pane holds: whose subagent may still work, and whose is over. */
+	/** The runs the pane holds, each with what its subagent's own evidence says; whether it is over is core's. */
 	holding: z.discriminatedUnion("kind", [
 		z.strictObject({ kind: z.literal("nothing") }),
-		z.strictObject({ kind: z.literal("these"), working: names, over: names }),
+		z.strictObject({
+			kind: z.literal("these"),
+			runs: z
+				.array(z.strictObject({ name: text, subagent: runSubagentSchema }))
+				.max(NAME_LIST_MAX),
+		}),
 		z.strictObject({ kind: z.literal("unknown"), why: text }),
 	]),
 	/** Whether the pane's turn is over, from its hooks or, unheard, its transcript. */

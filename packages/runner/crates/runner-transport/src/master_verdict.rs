@@ -76,13 +76,16 @@ pub struct Conversation {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Holding {
     Nothing,
-    These {
-        working: Vec<String>,
-        over: Vec<String>,
-    },
-    Unknown {
-        why: String,
-    },
+    These { runs: Vec<HeldRun> },
+    Unknown { why: String },
+}
+
+/// A run the pane holds, and what its subagent's own evidence says.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldRun {
+    pub name: String,
+    pub subagent: super::run_verdict::Subagent,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -218,13 +221,17 @@ mod tests {
     #[test]
     fn facts_are_sent_in_the_shape_core_validates() {
         let holding = serde_json::to_value(Holding::These {
-            working: vec!["r1".into()],
-            over: vec![],
+            runs: vec![HeldRun {
+                name: "r1".into(),
+                subagent: ("turn_ended", Some(5)).into(),
+            }],
         })
         .unwrap();
         assert_eq!(
             holding,
-            serde_json::json!({ "kind": "these", "working": ["r1"], "over": [] })
+            serde_json::json!({ "kind": "these", "runs": [
+                { "name": "r1", "subagent": { "kind": "turn_ended", "silentMs": 5 } }
+            ] })
         );
         let turn = serde_json::to_value(Turn::InTurn {
             what: "busy".into(),

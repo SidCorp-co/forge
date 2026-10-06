@@ -5,6 +5,7 @@ import {
   type MasterSinceNudge,
   type MasterVerdict,
 } from '@forge/contracts/master-verdict';
+import { subagentOver } from '../devices/index.js';
 
 /** What core contributes beside the box's facts: its runner row's status and its master's pass record. */
 export interface MasterRecord {
@@ -154,6 +155,19 @@ export interface OutdatedHold {
   drain: boolean;
 }
 
+/** The runs a pane holds, split by whether core reads each one's subagent as over, and why. */
+function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: string[] } {
+  const working: string[] = [];
+  const over: string[] = [];
+  if (holding.kind !== 'these') return { working, over };
+  for (const run of holding.runs) {
+    const ended = subagentOver(run.subagent);
+    if (ended === null) working.push(run.name);
+    else over.push(`${run.name} — ${ended}`);
+  }
+  return { working, over };
+}
+
 /** Null where the pane is current, unjudged or absent. */
 export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
   if (facts.pane !== 'alive' || facts.outdated === null) return null;
@@ -162,9 +176,10 @@ export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
     heldBy.push('its project has no admissible work, so a successor would have nothing to take up');
   }
   const { holding, turn } = facts;
-  if (holding.kind === 'these' && holding.working.length > 0) {
+  const { working } = heldRuns(holding);
+  if (working.length > 0) {
     heldBy.push(
-      `it holds ${holding.working.length} open run(s) whose subagent may still be working: ${holding.working.join('; ')}`,
+      `it holds ${working.length} open run(s) whose subagent may still be working: ${working.join('; ')}`,
     );
   }
   if (holding.kind === 'unknown') heldBy.push(holding.why);
@@ -180,8 +195,7 @@ export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
 /** An outdated pane nothing holds is replaced, resuming its conversation; null where something holds it. */
 function outdatedReplace(facts: MasterFacts, hold: OutdatedHold): MasterVerdict | null {
   if (hold.heldBy.length > 0) return null;
-  const { holding } = facts;
-  const inherited = holding.kind === 'these' ? holding.over : [];
+  const inherited = heldRuns(facts.holding).over;
   return {
     act: 'replace',
     reason: 'outdated',

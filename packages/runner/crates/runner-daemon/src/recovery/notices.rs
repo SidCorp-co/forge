@@ -358,14 +358,20 @@ pub(crate) fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
                 .join(", ")
         })
         .unwrap_or_default();
+    let ago = |ms: i64| ms / 60_000;
     let observed = match evidence {
-        subagent_end::Evidence::Quiet { silent_ms } => format!(
+        subagent_end::Evidence::TurnEnded { silent_ms } => format!(
             "its subagent ended a turn {}m ago and has written nothing since",
-            silent_ms / 60_000
+            ago(silent_ms)
         ),
-        subagent_end::Evidence::Unanswered { .. } | subagent_end::Evidence::HostEnded { .. } => {
-            subagent_end::held_because(evidence, path)
-        }
+        subagent_end::Evidence::AwaitingReply { silent_ms } => format!(
+            "its subagent ended a turn, and the entry handed to it after that, written {}m ago, has had no reply",
+            ago(silent_ms)
+        ),
+        subagent_end::Evidence::HostEnded { silent_ms } => format!(
+            "the Claude Code process its subagent ran in was read gone {}m ago, and nothing has been heard from its subagent since",
+            ago(silent_ms)
+        ),
         _ => format!(
             "its subagent ended a turn and this box cannot read its transcript ({}), so it cannot tell whether it resumed",
             path.unwrap_or("no path was recorded")

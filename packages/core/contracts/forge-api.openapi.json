@@ -5917,20 +5917,55 @@
                                 "const": "these",
                                 "type": "string"
                               },
-                              "over": {
+                              "runs": {
                                 "items": {
-                                  "maxLength": 1000,
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "maxItems": 200,
-                                "type": "array"
-                              },
-                              "working": {
-                                "items": {
-                                  "maxLength": 1000,
-                                  "minLength": 1,
-                                  "type": "string"
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "name": {
+                                      "maxLength": 1000,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "subagent": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "kind": {
+                                          "enum": [
+                                            "no_turn_end",
+                                            "host_ended",
+                                            "resumed",
+                                            "awaiting_reply",
+                                            "turn_ended",
+                                            "unreadable",
+                                            "tail_unreadable"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "silentMs": {
+                                          "anyOf": [
+                                            {
+                                              "maximum": 315360000000,
+                                              "minimum": 0,
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "silentMs"
+                                      ],
+                                      "type": "object"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "subagent"
+                                  ],
+                                  "type": "object"
                                 },
                                 "maxItems": 200,
                                 "type": "array"
@@ -5938,8 +5973,7 @@
                             },
                             "required": [
                               "kind",
-                              "working",
-                              "over"
+                              "runs"
                             ],
                             "type": "object"
                           },
@@ -7304,6 +7338,40 @@
                           }
                         ]
                       },
+                      "subagent": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "no_turn_end",
+                              "host_ended",
+                              "resumed",
+                              "awaiting_reply",
+                              "turn_ended",
+                              "unreadable",
+                              "tail_unreadable"
+                            ],
+                            "type": "string"
+                          },
+                          "silentMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "silentMs"
+                        ],
+                        "type": "object"
+                      },
                       "thisBoot": {
                         "type": "boolean"
                       },
@@ -7374,6 +7442,7 @@
                       "hasSession",
                       "activity",
                       "sessionOverForMs",
+                      "subagent",
                       "transcript",
                       "releaseDecided",
                       "releaseRefused",

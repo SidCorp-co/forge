@@ -32,6 +32,16 @@ function facts(over: Partial<MasterFacts> = {}): MasterFacts {
 }
 
 const online = { runnerStatus: 'online', passOpen: false };
+const working = { kind: 'resumed' as const, silentMs: 0 };
+const ended = { kind: 'host_ended' as const, silentMs: 60_000 };
+/** A pane holding runs: the first names' subagents still working, the rest read over. */
+const holds = (live: string[], over: string[] = []): MasterFacts['holding'] => ({
+  kind: 'these',
+  runs: [
+    ...live.map((name) => ({ name, subagent: working })),
+    ...over.map((name) => ({ name, subagent: ended })),
+  ],
+});
 const alive = (over: Partial<MasterFacts> = {}) =>
   facts({ pane: 'alive', capability: 'current', ...over });
 const noWork = { admissible: 0, owed: 0, poolWaits: false, jobPanes: 0 };
@@ -176,10 +186,7 @@ describe('outdated: replace once nothing it holds is working', () => {
   const outdated = 'placed under 1.0.0, this box runs 1.1.0';
 
   it('replaces, resuming its conversation, and names the runs its successor inherits', () => {
-    const v = masterVerdict(
-      alive({ outdated, holding: { kind: 'these', working: [], over: ['r1 (ISS-1)'] } }),
-      online,
-    );
+    const v = masterVerdict(alive({ outdated, holding: holds([], ['r1 (ISS-1)']) }), online);
     expect(v).toMatchObject({ act: 'replace', reason: 'outdated', resume: 'conv-1', nudge: true });
     expect(v.because).toContain('r1 (ISS-1)');
   });
@@ -190,7 +197,7 @@ describe('outdated: replace once nothing it holds is working', () => {
         outdated,
         work: noWork,
         idle: { ...quietHour, noWorkForSeconds: 0 },
-        holding: { kind: 'these', working: ['r2 (ISS-2)'], over: ['r1'] },
+        holding: holds(['r2 (ISS-2)'], ['r1']),
         turn: { kind: 'in_turn', what: 'its hooks say a turn is running' },
         conversation: { id: null, transcript: 'absent', elsewhere: 'none' },
       }),
@@ -227,7 +234,7 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
   const busy = {
     outdated,
     work: { ...noWork, owed: 6 },
-    holding: { kind: 'these' as const, working: ['r7 (ISS-7)'], over: [] },
+    holding: holds(['r7 (ISS-7)']),
   };
 
   it('owed feedback reaches an outdated master that holds a working run: kept and nudged', () => {
@@ -277,12 +284,36 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
   });
 
   it('once its runs are over and its turn ended it is replaced, its successor nudged', () => {
-    expect(
-      masterVerdict(
-        alive({ ...busy, holding: { kind: 'these', working: [], over: ['r7'] } }),
-        online,
-      ),
-    ).toMatchObject({ act: 'replace', reason: 'outdated', nudge: true });
+    expect(masterVerdict(alive({ ...busy, holding: holds([], ['r7']) }), online)).toMatchObject({
+      act: 'replace',
+      reason: 'outdated',
+      nudge: true,
+    });
+  });
+});
+
+describe('holding: whether a held run is over is read by core from its subagent evidence', () => {
+  const outdated = 'placed under 1.0.0, this box runs 1.1.0';
+  const held = (subagent: {
+    kind: 'turn_ended' | 'awaiting_reply' | 'no_turn_end';
+    silentMs: number;
+  }) =>
+    masterVerdict(
+      alive({ outdated, holding: { kind: 'these', runs: [{ name: 'r1 (ISS-1)', subagent }] } }),
+      online,
+    );
+
+  it('a subagent silent past the hour after its turn or an unanswered entry is over', () => {
+    for (const kind of ['turn_ended', 'awaiting_reply'] as const) {
+      expect(held({ kind, silentMs: HOUR * 1000 - 1 })).toMatchObject({ act: 'keep' });
+      const v = held({ kind, silentMs: HOUR * 1000 });
+      expect(v).toMatchObject({ act: 'replace', reason: 'outdated' });
+      expect(v.because).toContain('r1 (ISS-1) — its subagent ended a turn');
+    }
+  });
+
+  it('a subagent that has ended no turn is working however long ago it was declared', () => {
+    expect(held({ kind: 'no_turn_end', silentMs: 9 * HOUR * 1000 })).toMatchObject({ act: 'keep' });
   });
 });
 

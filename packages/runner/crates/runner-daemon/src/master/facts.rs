@@ -187,16 +187,15 @@ fn holding_wire(holding: &Holding) -> wire::Holding {
     match holding {
         Holding::Nothing => wire::Holding::Nothing,
         Holding::Unknown(why) => wire::Holding::Unknown { why: why.clone() },
-        Holding::These(runs) => {
-            let (over, working): (Vec<_>, Vec<_>) = runs.iter().partition(|r| r.ended.is_some());
-            wire::Holding::These {
-                working: working.iter().map(|r| name(r)).collect(),
-                over: over
-                    .iter()
-                    .map(|r| format!("{} — {}", name(r), r.ended.as_deref().unwrap_or_default()))
-                    .collect(),
-            }
-        }
+        Holding::These(runs) => wire::Holding::These {
+            runs: runs
+                .iter()
+                .map(|r| wire::HeldRun {
+                    name: name(r),
+                    subagent: r.subagent.wire().into(),
+                })
+                .collect(),
+        },
     }
 }
 

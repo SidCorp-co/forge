@@ -157,7 +157,10 @@ describe('POST /api/devices/me/master-session/verdict', () => {
       capability: 'current',
       work: { admissible: 0, owed: 6, poolWaits: false, jobPanes: 0 },
       outdated: 'placed under 1.0.0, this box runs 1.1.0',
-      holding: { kind: 'these', working: ['r7 (FB-89)'], over: [] },
+      holding: {
+        kind: 'these',
+        runs: [{ name: 'r7 (FB-89)', subagent: { kind: 'resumed', silentMs: 0 } }],
+      },
       nudge: { digest: 'd9', last: null, since: 'unreported' },
     });
     expect(ok(await verdict({ projectId, runnerId, facts: outdated }))).toMatchObject({
@@ -170,7 +173,13 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(first).toMatchObject({ why: 'placed under 1.0.0, this box runs 1.1.0', draining: true });
     expect(first.heldBy.join(' ')).toContain('r7 (FB-89)');
 
-    const later = facts({ ...outdated, holding: { kind: 'these', working: ['r8'], over: [] } });
+    const later = facts({
+      ...outdated,
+      holding: {
+        kind: 'these',
+        runs: [{ name: 'r8', subagent: { kind: 'resumed', silentMs: 0 } }],
+      },
+    });
     ok(await verdict({ projectId, runnerId, facts: later }));
     const second = ok(await standing()).outdated;
     expect(second.since, 'since moved while the pane stayed outdated').toBe(first.since);

@@ -78,6 +78,7 @@ function facts(over: Doc = {}): Doc {
     hasSession: true,
     activity: null,
     sessionOverForMs: null,
+    subagent: { kind: 'no_turn_end', silentMs: 0 },
     transcript: { kind: 'none' },
     releaseDecided: false,
     releaseRefused: false,
