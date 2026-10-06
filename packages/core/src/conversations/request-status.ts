@@ -10,7 +10,13 @@
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { nothingPostedStatus, uncertainStatus } from './fallback-replies.js';
+import {
+  isTurnFailureCode,
+  nothingPostedStatus,
+  type ReplyLanguage,
+  type TurnFailureCode,
+  uncertainStatus,
+} from './fallback-replies.js';
 import {
   type ConversationTransport,
   type ConversationVenue,
@@ -30,6 +36,8 @@ interface ExplicitAnchor {
   receivedAt: Date;
   /** The label the transport shows for whoever asked. */
   authorLabel: string | null;
+  /** What they asked with: the status answers in its language. */
+  text: string;
 }
 
 /**
@@ -53,7 +61,12 @@ export function explicitAnchor(
               (m.replyToExternalId !== null && sentByHandle.has(m.replyToExternalId)),
           );
   if (!pick) return null;
-  return { messageId: pick.externalId, receivedAt: pick.createdAt, authorLabel: pick.authorLabel };
+  return {
+    messageId: pick.externalId,
+    receivedAt: pick.createdAt,
+    authorLabel: pick.authorLabel,
+    text: pick.content,
+  };
 }
 
 type TerminalStatus = 'nothing-posted' | 'uncertain';
@@ -110,6 +123,9 @@ interface PostStatusArgs {
   decision: ConversationWindowDecision;
   /** The handle the status speaks as. */
   handleName: string;
+  language: ReplyLanguage;
+  /** The code of the failure the status reports, so the reader is told what failed. */
+  failure: TurnFailureCode | null;
   /** The window's own reservation; a false means the claim moved on and nothing is posted. */
   reserve: () => Promise<boolean>;
   log?: Record<string, unknown>;
@@ -128,8 +144,8 @@ async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   }
   const text =
     args.status === 'nothing-posted'
-      ? nothingPostedStatus(args.handleName)
-      : uncertainStatus(args.handleName);
+      ? nothingPostedStatus(args.handleName, args.language, args.failure)
+      : uncertainStatus(args.handleName, args.language);
   try {
     const receipt = await args.transport.deliver(args.venue, codeAuthored(text), {
       anchor: args.anchor.messageId,
@@ -163,6 +179,8 @@ export interface RequestTrack {
   anchor: ExplicitAnchor | null;
   venue: ConversationVenue | null;
   handleName: string | null;
+  /** The language the asker wrote in, else the project's content language. */
+  language: ReplyLanguage;
   /** Whether a status went out for this window already — one per window, whichever path posts it. */
   posted: boolean;
   /**
@@ -172,7 +190,14 @@ export interface RequestTrack {
 }
 
 export function newRequestTrack(): RequestTrack {
-  return { anchor: null, venue: null, handleName: null, posted: false, outcomeKnown: false };
+  return {
+    anchor: null,
+    venue: null,
+    handleName: null,
+    language: 'en',
+    posted: false,
+    outcomeKnown: false,
+  };
 }
 
 interface WindowRef {
@@ -203,6 +228,8 @@ export async function statusAfterThrow(
       deliveryKey,
       decision: 'unreachable',
       handleName: track.handleName,
+      language: track.language,
+      failure: null,
       reserve: () => reserveDelivery(window.id, claim),
       log: { windowId: window.id },
     });
@@ -213,6 +240,11 @@ export async function statusAfterThrow(
     );
     return null;
   }
+}
+
+function failureOf(detail: unknown): TurnFailureCode | null {
+  const code = (detail as { code?: unknown } | null | undefined)?.code;
+  return isTurnFailureCode(code) ? code : null;
 }
 
 /**
@@ -240,6 +272,8 @@ export async function withTerminalStatus<
     deliveryKey: args.deliveryKey,
     decision: routed.decision,
     handleName: track.handleName,
+    language: track.language,
+    failure: failureOf(routed.detail),
     reserve: () => reserveDelivery(args.window.id, args.claim),
     log: { windowId: args.window.id },
   });

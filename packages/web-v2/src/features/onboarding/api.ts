@@ -6,7 +6,8 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 
 export const onboardingApi = {
   state: (projectId: string) => apiClient<OnboardingStateResponse>(base(projectId)),
-  start: (projectId: string) => apiClient<OnboardingResponse>(`${base(projectId)}/start`, post({})),
+  start: (projectId: string, request?: string) =>
+    apiClient<OnboardingResponse>(`${base(projectId)}/start`, post(request ? { request } : {})),
   reanalyze: (projectId: string, reason?: string) =>
     apiClient<OnboardingResponse>(`${base(projectId)}/reanalyze`, post(reason ? { reason } : {})),
   join: (projectId: string) => apiClient<OnboardingResponse>(`${base(projectId)}/join`, post({})),

@@ -40,3 +40,24 @@ export type ConversationRefusalCode =
 export const CONVERSATION_REFUSAL_STATUSES = {
 	ASSISTANT_MODEL_NOT_CONFIGURED: 503,
 } as const satisfies RefusalStatuses<ConversationRefusalCode>;
+
+/**
+ * Why a chat turn ended with no answer: the code a window records (decision unreachable) and the
+ * status a reader is told names. A failure, never a silence the turn chose.
+ */
+export const ASSISTANT_TURN_FAILURE_CODES = [
+	"ASSISTANT_TURN_TIMED_OUT",
+	"ASSISTANT_TURN_FAILED",
+] as const;
+
+export type AssistantTurnFailureCode =
+	(typeof ASSISTANT_TURN_FAILURE_CODES)[number];
+
+export function isAssistantTurnFailureCode(
+	code: unknown,
+): code is AssistantTurnFailureCode {
+	return (
+		typeof code === "string" &&
+		(ASSISTANT_TURN_FAILURE_CODES as readonly string[]).includes(code)
+	);
+}

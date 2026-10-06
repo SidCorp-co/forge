@@ -1,11 +1,11 @@
 // Composing one turn's reply: the egress gate, the transport's hooks, the model, and the screen.
 
-import { codeAuthored, recordSilence } from '../conversations/index.js';
+import { codeAuthored, recordSilence, turnFailureReason } from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { correctFalseClaims } from './confab.js';
-import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
+import { STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import {
   type ExternalChatTurnArgs,
   type ExternalChatTurnResult,
@@ -37,6 +37,24 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
     reason,
   });
   return { send: false, reason, ended: 'declined' };
+}
+
+/** A turn that ended in an error: a coded failure the window records, never a silence it chose. */
+function failed(ctx: TurnContext, result: ExternalChatTurnResult): TurnReply {
+  const code =
+    ctx.abort.signal.reason === TURN_TIMED_OUT
+      ? 'ASSISTANT_TURN_TIMED_OUT'
+      : 'ASSISTANT_TURN_FAILED';
+  logger.warn(
+    { ...ctx.req.log, code, error: result.error },
+    'conversations: the turn ended in an error before it answered',
+  );
+  return {
+    send: false,
+    ended: 'failed',
+    code,
+    reason: turnFailureReason(code, ctx.req.handleName),
+  };
 }
 
 const said = (text: string): TurnReply => ({
@@ -155,7 +173,7 @@ async function settleFirst(
 ): Promise<ExternalChatTurnResult | TurnReply> {
   let result = first;
   if (capture) {
-    if (result.terminal !== 'done') return silence(ctx, result.error ?? result.terminal);
+    if (result.terminal !== 'done') return failed(ctx, result);
     const captured = capture.captured();
     if (captured === null) return silence(ctx, 'tool-not-called');
     result = { ...result, reply: captured };
@@ -163,8 +181,9 @@ async function settleFirst(
   result = { ...result, reply: correctFalseClaims(result.reply, first.toolCalls).text };
 
   if (!ctx.req.mayDecline) return result;
-  if (result.terminal !== 'done' || result.reply.trim().length === 0) {
-    return { send: false, reason: result.error ?? 'empty-reply', ended: 'declined' };
+  if (result.terminal !== 'done') return failed(ctx, result);
+  if (result.reply.trim().length === 0) {
+    return { send: false, reason: 'empty-reply', ended: 'declined' };
   }
   if (!declinedTurn(result.reply)) return result;
   const tail = declinedTail(result.reply);
@@ -193,6 +212,7 @@ async function screenReply(
     door: req.door,
     projectId: req.venue.projectId,
     handleName: req.handleName,
+    language: req.replyLanguage ?? 'en',
     first: result,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),

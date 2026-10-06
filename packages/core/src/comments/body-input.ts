@@ -1,3 +1,4 @@
+import { decisionFieldsSchema } from '@forge/contracts/comments';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyRefusalHttp, rethrowBodyInvalid } from '../body/http-error.js';
@@ -21,12 +22,14 @@ const formatField = z.enum(BODY_FORMATS).optional();
  */
 const intentField = z.string().max(64).optional();
 
+/** An issue comment: a body, or for a decision its fields, from which the body is written. */
 export const commentCreateSchema = z
   .object({
-    body: commentBodyField,
+    body: commentBodyField.optional(),
     format: formatField,
     parentId: z.uuid().optional(),
     intent: intentField,
+    decision: decisionFieldsSchema.optional(),
   })
   .strict();
 

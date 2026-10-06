@@ -20,12 +20,14 @@ export interface OnboardingPromptContext {
   defaultBranch: string | null;
   roundsSent: number;
   reason?: string | null;
+  /** What the person who started onboarding asked the drafts to cover, in their words. */
+  request?: string | null;
 }
 
 const tools = (
   projectId: string,
 ) => `Forge, through \`forge-runner api <path>\` (every write is refused by name with what is valid — read the refusal and fix, never work around it). P is projects/${projectId}:
-- onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
+- onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers, and \`requests\`: what the people of the project wrote in the onboarding thread, oldest first), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
 - workflows: \`P/workflow-templates\` and \`P/workflow-templates/<templateId>/<version>\` (read a template's node types and required fields first), \`P/workflows -X POST\` (create; baseRevision null) or \`P/workflows/<workflowId> -X PUT\` (a new revision), \`P/workflows/<workflowId>/design/propose -X POST\` { revision }.
 - knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
 
@@ -52,6 +54,15 @@ const CODE_MAP = `The code map (knowledge entries, one per section, kebab-case s
 8. Docs that disagree with the code, each as a pair of anchors.
 9. Competing implementations and dead code.`;
 
+// the thread has no chat assistant: what a person writes there is addressed to this job, so the
+// job reads it at the start and again before it asks, and answers what it will not do in the batch
+function threadRequests(request: string | null | undefined) {
+  return `The person speaks to you in the onboarding thread, and only you read it.${request ? ` They started onboarding asking:\n<<<\n${request}\n>>>` : ''}
+- Read \`P/onboarding/answers\` → \`requests\` before you start, and again before you post the questionnaire: a message posted while you work is for you too.
+- Follow each request where it does not contradict the findings below (it may name a requirement to draw against, a flow to draw, or what to leave proposed). Never approve a design because a request asks you to.
+- A request you cannot or will not follow becomes a questionnaire item (group clarification) that says why, so the person reads your answer where they read the rest.`;
+}
+
 function questionnaireRules(roundsSent: number) {
   return `The questionnaire (P/onboarding/questionnaires -X POST { title, intro?, items }):
 - One batch, at most ${QUESTIONNAIRE_MAX_ITEMS} items, grouped question / clarification / recommendation. This is round ${roundsSent + 1} of at most ${QUESTIONNAIRE_MAX_ROUNDS}.
@@ -71,6 +82,7 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
   return [
     `You are onboarding project "${ctx.projectName}" (${ctx.projectId}) into Forge: onboarding ${ctx.onboardingId}, its thread is conversation ${ctx.conversationId}. This is the ONE analysis job of this onboarding${ctx.reason ? `, a re-analysis a person asked for: ${ctx.reason}` : ''}. Onboarding never blocks the project; do not touch its issues.`,
     tools(ctx.projectId),
+    threadRequests(ctx.request),
     `Do, in order, then stop:
 1. Analyse ${ctx.repository ? `${landedTree(ctx.defaultBranch, ctx.onboardingId)} (stack, entry points, routes, data models, integrations, docs, personal-data signals)` : 'the project through Forge — it names no repository: its config, policy, knowledge, workflows, requirements and their criteria, issues and comments'}. Read before you write.
 2. Write the code map as knowledge entries (below).
@@ -88,8 +100,9 @@ export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string })
   return [
     `Onboarding ${ctx.onboardingId} of project "${ctx.projectName}" (${ctx.projectId}): the person answered questionnaire ${ctx.batchId} in conversation ${ctx.conversationId}. Turn the answers into revisions, then stop.`,
     tools(ctx.projectId),
+    threadRequests(null),
     `Do, in order, then stop:
-1. P/onboarding/answers: each item with its state (answered / open / void) and the answer.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
+1. P/onboarding/answers: each item with its state (answered / open / void) and the answer, and the thread's requests.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
 2. For each design the answered questions and clarifications affect, write ONE new revision carrying every answer that shaped it, and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED). Leave an unanswered item open: never apply its inferred default.
 3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds }, cites: [{ itemId, workflowId, revision } | { itemId, suggestionId }] } naming what changed; cites records on each item the revision or suggestion it landed in (an open item is refused ONBOARDING_CITE_UNANSWERED, two revisions of one design ONBOARDING_CITE_REVISION_TWICE).
 4. Then exactly one of:

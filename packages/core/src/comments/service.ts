@@ -1,4 +1,4 @@
-import type { CommentRefusalCode } from '@forge/contracts/comments';
+import type { CommentRefusalCode, DecisionFields } from '@forge/contracts/comments';
 import {
   COMMENT_INTENTS,
   type CommentIntent,
@@ -31,6 +31,8 @@ export type CommentThreadRow = {
   stage: string | null;
   parentId: string | null;
   intent: CommentIntent;
+  /** What a decision decided and why, as fields; null on every other comment. */
+  decision: DecisionFields | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -46,6 +48,7 @@ export const commentThreadColumns = {
   stage: comments.stage,
   parentId: comments.parentId,
   intent: comments.intent,
+  decision: comments.decision,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
 } as const;
@@ -67,6 +70,8 @@ export type NewComment = {
    * same way; absent is decided by `defaultIntent` and the caller is warned.
    */
   intent?: string | null | undefined;
+  /** A decision's fields, stored beside the body that writes them out. */
+  decision?: DecisionFields | null | undefined;
   /**
    * Who the door says posted it: given, the comment's `comment.created` outbox event is written in
    * its transaction. A notice Forge posts on its own act passes none and emits no event.
@@ -76,6 +81,19 @@ export type NewComment = {
 
 /** A written comment, whatever the sanitizer removed on the way in, and who it mentioned. */
 export type WrittenComment = { row: CommentThreadRow; warnings: string[]; mentioned: string[] };
+
+/** A decision's fields as the body every reader of the thread reads. */
+export function decisionBody(d: DecisionFields): string {
+  return [
+    `**Decision:** ${d.decision}`,
+    `**Reason:** ${d.reason}`,
+    d.options?.length ? `**Options weighed:** ${d.options.join('; ')}` : null,
+    d.authority ? `**Authority:** ${d.authority}` : null,
+    d.reversedWhen ? `**Reversed when:** ${d.reversedWhen}` : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n\n');
+}
 
 /** A comment intent outside the closed set, refused by name with the valid set. */
 export function intentRefusal(intent: unknown, path = '/intent'): RefusalError {

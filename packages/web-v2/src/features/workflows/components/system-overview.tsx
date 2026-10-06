@@ -5,7 +5,7 @@ import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
 import { Button, HoverCard, Icon, Input, rememberListOrigin } from "@/design";
-import { useOpenOnboarding } from "@/features/onboarding/components/onboarding-hint";
+import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useWriteProjectDocument } from "@/features/project-config/hooks";
 import type { V1Read } from "@/features/project-config/types";
@@ -177,14 +177,15 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
 }
 
 /**
- * One quiet line when the project has no system-context design yet. On Workflows it offers onboarding
- * (ISS-63), which drafts that design first; the dashboard carries onboarding's own line, so it does not.
+ * One quiet line when the project has no system-context design yet. On Workflows it offers to ask for
+ * the designs (onboarding, ISS-63), confirmed before its job runs; the dashboard carries onboarding's
+ * own line, so it does not.
  */
 function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) {
   const state = useOnboardingState(quiet ? undefined : projectId);
-  const { open, pending, error } = useOpenOnboarding(projectId);
-  const action = state.data?.hint?.action ?? "start";
-  const refusal = error ? (refusalsOf(error)[0]?.detail ?? formatApiError(error)) : null;
+  const { ask, dialog, pending, error } = useAskForDesigns(projectId);
+  const hint = state.data?.hint;
+  const action = hint?.action ?? "start";
   return (
     <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label="System overview" data-testid="system-overview" data-empty>
       <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-13-5">
@@ -193,26 +194,27 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
           <span className="text-muted">Workflows shows what the system is once its system-context design is drawn.</span>
         ) : (
           <>
-            <span className="text-muted">Onboarding drafts it first, from the code and a few questions.</span>
+            <span className="text-muted">One analysis job can draft it from the code, with the key designs, and ask what it cannot tell.</span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-auto p-0 text-13-5 font-semibold text-link hover:bg-transparent hover:underline"
               loading={pending}
-              onClick={() => void open(action).catch(() => undefined)}
+              onClick={() => ask(action)}
               data-testid="start-onboarding"
             >
-              {action === "start" ? "Start onboarding" : "Open onboarding"}
+              {hint?.actionLabel ?? "Ask for designs"}
             </Button>
           </>
         )}
       </p>
-      {refusal ? (
+      {error ? (
         <p role="alert" className="mt-1 text-12 text-red">
-          {refusal}
+          {error}
         </p>
       ) : null}
+      {dialog}
     </section>
   );
 }

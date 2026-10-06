@@ -38,6 +38,13 @@ export const issueDetailApi = {
       body: JSON.stringify(parentId ? { body, parentId } : { body }),
     }),
 
+  /** A ruling recorded as a decision: core writes the body from the fields, so every reader of the thread reads it. */
+  recordDecision: (id: string, decision: { decision: string; reason: string }) =>
+    apiClient<CommentNode>(`/issues/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ intent: "decision", decision }),
+    }),
+
   uploadCommentAttachment: (commentId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

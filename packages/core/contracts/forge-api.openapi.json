@@ -9739,6 +9739,150 @@
                       "the comment body is whitespace only — write the sentence somebody is meant to read"
                     ]
                   },
+                  "decision": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "authority": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "decision": {
+                        "maxLength": 4000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "layer": {
+                                "enum": [
+                                  "planned",
+                                  "observed"
+                                ],
+                                "type": "string"
+                              },
+                              "marker": {
+                                "enum": [
+                                  "has_problem",
+                                  "wrong",
+                                  "outdated",
+                                  "not_in_design",
+                                  "remove_proposed",
+                                  "needs_update",
+                                  "upcoming"
+                                ],
+                                "type": "string"
+                              },
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "layer": {
+                                "enum": [
+                                  "planned",
+                                  "observed"
+                                ],
+                                "type": "string"
+                              },
+                              "marker": {
+                                "enum": [
+                                  "has_problem",
+                                  "wrong",
+                                  "outdated",
+                                  "not_in_design",
+                                  "remove_proposed",
+                                  "needs_update",
+                                  "upcoming"
+                                ],
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "options": {
+                        "items": {
+                          "maxLength": 1000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 20,
+                        "type": "array"
+                      },
+                      "reason": {
+                        "maxLength": 4000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reversedWhen": {
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "decision",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
                   "format": {
                     "enum": [
                       "markdown",
@@ -9756,9 +9900,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "body"
-                ],
                 "type": "object"
               }
             }
@@ -22558,7 +22699,13 @@
             "application/json": {
               "schema": {
                 "additionalProperties": false,
-                "properties": {},
+                "properties": {
+                  "request": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
                 "type": "object"
               }
             }

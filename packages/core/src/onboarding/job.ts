@@ -21,7 +21,7 @@ export async function enqueueJob(
   row: OnboardingRow,
   phase: OnboardingJobPhase,
   createdBy: string,
-  extra: { batchId?: string; reason?: string | null } = {},
+  extra: { batchId?: string; reason?: string | null; request?: string | null } = {},
 ): Promise<string> {
   const [project] = await db
     .select({ name: projects.name })
@@ -38,6 +38,7 @@ export async function enqueueJob(
     defaultBranch: source.defaultBranch,
     roundsSent: row.roundsSent,
     reason: extra.reason ?? null,
+    request: extra.request ?? null,
   };
   const run = await openOneShotRun({
     projectId: row.projectId,

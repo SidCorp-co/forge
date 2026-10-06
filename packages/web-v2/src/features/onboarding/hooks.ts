@@ -20,7 +20,7 @@ export function useOnboardingState(projectId: string | undefined) {
 export function useStartOnboarding(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => onboardingApi.start(projectId),
+    mutationFn: (request?: string) => onboardingApi.start(projectId, request),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
       qc.invalidateQueries({ queryKey: ["conversations", "list"] });
@@ -39,7 +39,7 @@ export function useJoinOnboarding(projectId: string) {
 export function useReanalyze(projectId: string, conversationId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => onboardingApi.reanalyze(projectId),
+    mutationFn: (reason?: string) => onboardingApi.reanalyze(projectId, reason),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: onboardingKey(projectId) });
       if (conversationId) qc.invalidateQueries({ queryKey: ["conversations", conversationId] });

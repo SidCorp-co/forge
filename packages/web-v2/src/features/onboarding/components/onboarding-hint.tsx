@@ -7,42 +7,13 @@
 import type { OnboardingHint as Hint, OnboardingStateResponse } from "@forge/contracts/onboarding";
 import { LEGEND } from "@/design";
 import { useChatDock } from "@/features/chat-dock/dock";
-import { refusalsOf } from "@/lib/api/refusals";
-import { formatApiError } from "@/lib/api/error";
-import { useJoinOnboarding, useOnboardingState, useReanalyze, useStartOnboarding } from "../hooks";
+import { useOnboardingState } from "../hooks";
+import { useAskForDesigns } from "./ask-for-designs";
 
 const TONE: Record<Hint["tone"], { bg: string; dot: string }> = {
   ...LEGEND,
   attention: { bg: LEGEND.you.bg, dot: LEGEND.err.dot },
 };
-
-/**
- * Opens the project's onboarding thread in the panel: start it, or join it, then show the room.
- * A refused start or join is the hook's `error`, shown by name; `open` never rejects.
- */
-export function useOpenOnboarding(projectId: string) {
-  const dock = useChatDock();
-  const start = useStartOnboarding(projectId);
-  const join = useJoinOnboarding(projectId);
-  const reanalyze = useReanalyze(projectId, undefined);
-  const open = async (action: Hint["action"]) => {
-    const act = action === "start" ? start : action === "reanalyze" ? reanalyze : join;
-    for (const other of [start, join, reanalyze]) if (other !== act) other.reset();
-    const res = await act.mutateAsync().catch(() => null);
-    if (res) dock?.show({ kind: "room", projectId, conversationId: res.onboarding.conversationId });
-    return res !== null;
-  };
-  return {
-    open,
-    pending: start.isPending || join.isPending || reanalyze.isPending,
-    error: start.error ?? join.error ?? reanalyze.error,
-  };
-}
-
-/** The line a refused start or join shows: the refusal's own detail, else the error's message. */
-export function refusalLine(error: unknown): string | null {
-  return error ? (refusalsOf(error)[0]?.detail ?? formatApiError(error)) : null;
-}
 
 const FIRST_WORDS: Record<NonNullable<OnboardingStateResponse["firstRequirements"]>["status"], (n: number) => string> = {
   pending: () => "the BA assistant is drafting them from the approved designs",
@@ -73,11 +44,10 @@ function FirstRequirementsLine({ projectId, first }: { projectId: string; first:
 
 export function OnboardingHint({ projectId, projectName }: { projectId: string; projectName: string }) {
   const q = useOnboardingState(projectId);
-  const { open, pending, error } = useOpenOnboarding(projectId);
+  const { ask, dialog, pending, error } = useAskForDesigns(projectId);
   const hint = q.data?.hint;
   if (!hint) return <FirstRequirementsLine projectId={projectId} first={q.data?.firstRequirements ?? null} />;
   const t = TONE[hint.tone];
-  const refusal = refusalLine(error);
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="onboarding-hint">
       <div className="flex items-baseline gap-2 text-[13.5px] text-fg">
@@ -88,7 +58,8 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
             type="button"
             className="font-medium text-link hover:underline disabled:opacity-60"
             disabled={pending}
-            onClick={() => void open(hint.action)}
+            onClick={() => ask(hint.action)}
+            data-testid="onboarding-hint-action"
           >
             {hint.actionLabel}
           </button>
@@ -100,7 +71,7 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
                 className="text-link hover:underline disabled:opacity-60"
                 disabled={pending}
                 title="Runs one new analysis job and replaces any open batch; approved revisions are never overwritten."
-                onClick={() => void open("reanalyze")}
+                onClick={() => ask("reanalyze")}
               >
                 Re-analyze
               </button>
@@ -114,11 +85,12 @@ export function OnboardingHint({ projectId, projectName }: { projectId: string; 
         </span>
         Master {projectName}
       </p>
-      {refusal && (
+      {error && (
         <p role="alert" className="mt-1 pl-4 text-[12px] text-[color:var(--red-600)]">
-          {refusal}
+          {error}
         </p>
       )}
+      {dialog}
     </div>
   );
 }

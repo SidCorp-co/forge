@@ -7,4 +7,4 @@ export {
 } from './first-requirements.js';
 export { afterOnboardingSubmit } from './job.js';
 export { provideOnboardingPorts } from './ports.js';
-export { onboardingStatusesOf } from './read.js';
+export { onboardingRoomOf, onboardingStatusesOf } from './read.js';

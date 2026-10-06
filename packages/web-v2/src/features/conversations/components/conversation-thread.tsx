@@ -30,7 +30,9 @@ import {
   type ConversationWindow,
   type ConversationProgressEntry,
   type OutboxMessage,
+  silenceSentence,
   threadEntries,
+  turnFailureOf,
   undeliveredReplyOf,
 } from "../types";
 
@@ -207,8 +209,8 @@ function Said({
     return (
       <div className="flex items-start gap-2 text-muted">
         <Icon name="dot" size={13} className="mt-1 flex-none" />
-        <p className="fg-body-sm italic">
-          The agent said nothing here — {message.silenceReason}
+        <p className="fg-body-sm italic" title={message.silenceReason} data-testid="thread-silence-row">
+          {silenceSentence(message.silenceReason)}
         </p>
       </div>
     );
@@ -355,6 +357,13 @@ export function ConversationThread({
           );
         }
         if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
+        if (entry.kind === "handed") {
+          return (
+            <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-handed-to-job">
+              Sent to the onboarding job: {entry.reason}.
+            </p>
+          );
+        }
         if (entry.kind === "progress")
           return (
             <div key={entry.key}>
@@ -369,16 +378,19 @@ export function ConversationThread({
             </div>
           );
         const undelivered = undeliveredReplyOf(entry.detail);
+        const failure = turnFailureOf(entry.detail);
         return (
           <div
             key={entry.key}
             data-testid="thread-silence"
             className="rounded-md border border-line bg-surface px-3 py-2"
           >
-            <p className="fg-body-sm text-muted" title={`decision: ${entry.decision}`}>
+            <p className="fg-body-sm text-muted" title={failure ? failure.code : `decision: ${entry.decision}`}>
               {undelivered
                 ? `This reply was never delivered — ${undelivered.reason}`
-                : SILENCE_REASON[entry.decision]}
+                : failure
+                  ? `${failure.reason} (${failure.code})`
+                  : SILENCE_REASON[entry.decision]}
             </p>
             {undelivered && (
               <p className="fg-body-sm mt-1 whitespace-pre-wrap" data-testid="thread-undelivered-reply">

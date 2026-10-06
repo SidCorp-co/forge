@@ -10,9 +10,9 @@
 import {
   codeAuthored,
   conversationTransport,
-  errorFallbackReply,
   openConversation,
   recordDeliveredReply,
+  turnFailureReason,
 } from '../conversations/index.js';
 import {
   CHAT_TURN_MENU,
@@ -23,9 +23,9 @@ import {
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
+import { STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
-import { composeReply, silence } from './turn-compose.js';
+import { composeReply } from './turn-compose.js';
 import {
   type ConversationTurnRequest,
   REPLY_NOT_DELIVERED,
@@ -95,6 +95,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const reply = await composeWithin(req, conversation.id);
   if ('kind' in reply) return reply;
   if (!reply.send) {
+    if (reply.ended === 'failed') return { kind: 'failed', code: reply.code, reason: reply.reason };
     return { kind: reply.ended ?? 'diverted', reason: reply.reason };
   }
   return deliverReply(req, transport, conversation.id, reply);
@@ -107,7 +108,7 @@ async function composeWithin(
 ): Promise<TurnReply | TurnOutcome> {
   const abort = new AbortController();
   const credential = turnCredentialHolder(req.authority);
-  const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
+  const timer = setTimeout(() => abort.abort(TURN_TIMED_OUT), TURN_TIMEOUT_MS);
   timer.unref?.();
   const onExternalStop = () => abort.abort(STOPPED_BY_A_PERSON);
   req.externalStop?.addEventListener('abort', onExternalStop, { once: true });
@@ -141,14 +142,18 @@ async function composeWithin(
       tags: { area: 'conversations', phase, timed_out: String(timedOut) },
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
-    if (req.sendMode === 'tool' || req.fallbacks === 'silence') return silence(ctx, 'turn-failed');
     const unconfigured = isRefusal(err)
       ? err.refusals.find((r) => r.code === 'ASSISTANT_MODEL_NOT_CONFIGURED')
       : undefined;
-    const text = unconfigured
-      ? `${unconfigured.code}: ${unconfigured.detail}`
-      : errorFallbackReply(req.handleName);
-    return { send: true, message: codeAuthored(text), screenReplaced: true };
+    if (unconfigured && req.sendMode !== 'tool' && req.fallbacks !== 'silence') {
+      const text = `${unconfigured.code}: ${unconfigured.detail}`;
+      return { send: true, message: codeAuthored(text), screenReplaced: true };
+    }
+    const code =
+      timedOut || abort.signal.reason === TURN_TIMED_OUT
+        ? 'ASSISTANT_TURN_TIMED_OUT'
+        : 'ASSISTANT_TURN_FAILED';
+    return { send: false, ended: 'failed', code, reason: turnFailureReason(code, req.handleName) };
   } finally {
     clearTimeout(timer);
     req.externalStop?.removeEventListener('abort', onExternalStop);

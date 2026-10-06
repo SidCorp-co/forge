@@ -3,6 +3,8 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader, rememberListOrigin, Tooltip } from "@/design";
+import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
+import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useProjectDocument } from "@/features/project-config/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
@@ -162,6 +164,28 @@ function Designs({
   );
 }
 
+/** No design yet: the owner asks for the first ones here, confirmed before the job that draws them runs. */
+function NoWorkflows({ projectId }: { projectId: string }) {
+  const hint = useOnboardingState(projectId).data?.hint;
+  const { ask, dialog, error } = useAskForDesigns(projectId);
+  const action = hint?.action ?? "start";
+  return (
+    <div className="px-7 py-10 max-md:px-4" data-testid="no-workflows">
+      <EmptyState
+        title="No workflow has been drawn"
+        message="The project's master draws each workflow from the code. Ask for the first designs and they arrive proposed for your review."
+        action={{ label: action === "start" ? "Ask for designs" : (hint?.actionLabel ?? "Open onboarding"), onClick: () => ask(action) }}
+      />
+      {error ? (
+        <p role="alert" className="text-center text-12 text-red">
+          {error}
+        </p>
+      ) : null}
+      {dialog}
+    </div>
+  );
+}
+
 /**
  * Workflows: what the system is on the left (one line, its facts and its system-context design on the
  * shared canvas), every design the project draws on the right, grouped by what it is for. A project with
@@ -219,9 +243,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
       <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
       {overview}
       {all.length === 0 ? (
-        <div className="px-7 py-10 max-md:px-4">
-          <EmptyState title="No workflow has been drawn" message="The project's master draws each workflow; none has been written for this project yet." />
-        </div>
+        <NoWorkflows projectId={projectId} />
       ) : (
         <Designs all={all} slug={slug} templates={templates} narrow={false} />
       )}

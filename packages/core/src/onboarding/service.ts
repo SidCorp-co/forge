@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import {
   addPerson,
+  appendMessagesIn,
   deleteConversation,
   openConversationIn,
   settleShape,
@@ -17,7 +18,7 @@ import {
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { onboardings } from '../db/schema-onboarding.js';
-import type { EgressReader } from '../lib/data-egress.js';
+import { type EgressReader, egressAs } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
@@ -36,7 +37,7 @@ import {
   systemLine,
 } from './act.js';
 import { enqueueJob } from './job.js';
-import { liveJobOf, onboardingOf, onboardingView } from './read.js';
+import { liveJobOf, onboardingOf, onboardingView, threadRequestsOf } from './read.js';
 import { notStarted, personActRefusal, reanalyzeRefusal, startRefusal } from './rules.js';
 
 async function committedRow(projectId: string) {
@@ -50,10 +51,12 @@ async function nameOf(userId: string) {
 }
 
 // onboarding is offered, never required (BC-1): start only opens the thread and queues the
-// one analysis job; a project that never starts it works unchanged
+// one analysis job; a project that never starts it works unchanged. What the person asked for is
+// their first message in the thread, so the job reads it where it reads every later one
 export async function startOnboarding(input: {
   projectId: string;
   actor: OnboardingActor;
+  request?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   const who = await refusalFor(actor, projectId, (f) => personActRefusal(f, 'starting onboarding'));
@@ -93,11 +96,19 @@ export async function startOnboarding(input: {
       room.id,
       `${starter} started onboarding · one analysis job reads the code`,
     );
+    if (input.request) {
+      await appendMessagesIn(tx, {
+        conversationId: room.id,
+        messages: [{ role: 'user', content: input.request, authorUserId: actor.userId }],
+      });
+    }
     return null;
   });
   if (refused) return { ok: false, refusals: refused };
   try {
-    await enqueueJob(await committedRow(projectId), 'analyse', actor.userId);
+    await enqueueJob(await committedRow(projectId), 'analyse', actor.userId, {
+      request: input.request ?? null,
+    });
   } catch (err) {
     // An onboarding with no analysis job behind it would refuse every later start; the room goes,
     // and its onboarding row with it (cascade), so the start can be asked again.
@@ -191,9 +202,18 @@ export async function readAnswers(projectId: string, actor: OnboardingActor & Eg
   const questionnaires = await batchesOfConversation(row.conversationId);
   const out = await questionnairesAs(actor, projectId, questionnaires);
   if (!out.ok) return { ok: false as const, refusals: [out.refusal] };
+  const requests = await egressAs(
+    actor,
+    projectId,
+    'conversation',
+    await threadRequestsOf(row.conversationId),
+    `onboarding thread ${row.conversationId}`,
+  );
+  if (!requests.ok) return { ok: false as const, refusals: [requests.refusal] };
   return {
     ok: true as const,
     onboarding: await onboardingView(db, row),
     questionnaires: out.value,
+    requests: requests.value,
   };
 }
