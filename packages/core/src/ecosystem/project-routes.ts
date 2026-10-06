@@ -6,6 +6,7 @@ import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { adoptVersion } from './adopt-service.js';
 import { readApiPage } from './api-page.js';
 import { readContractContext } from './contract/run-context-service.js';
 import { heldEcosystem } from './ecosystem-service.js';
@@ -15,6 +16,7 @@ import { membershipDocument } from './membership-rules.js';
 import { membershipsWhere } from './membership-store.js';
 import { ecosystemPeers } from './peer-read.js';
 import { serialiseRevisions } from './routes.js';
+import { CONTRACT_REF } from './schema.js';
 import { readEcosystems } from './store.js';
 import { CONTEXT_ARGS, CONTEXT_SHAPE } from './tool-args.js';
 
@@ -58,6 +60,43 @@ ecosystemProjectRoutes.put(
     });
     if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
     return c.json({ ...(await interfaceView(id, outcome.held)), created: outcome.created });
+  },
+);
+
+const ADOPT_BODY = z.strictObject({
+  contract: z.string().regex(CONTRACT_REF),
+  version: z.string().min(1).max(40),
+});
+
+// the consumer moves its consumption of an additive version and every link to it in one act; the requirements left stale are named for a person's re-pin, never re-pinned here
+ecosystemProjectRoutes.post(
+  '/:id/interface/adopt',
+  idParam,
+  zValidator(
+    'json',
+    ADOPT_BODY,
+    invalid(
+      'the body is { contract: <provider slug>/<contract slug>, version: the approved version to adopt }',
+      'ECOSYSTEM_ARGUMENT_INVALID',
+    ),
+  ),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const actor = restActor(c);
+    const { contract, version } = c.req.valid('json');
+    const outcome = await adoptVersion({
+      projectId: id,
+      writer: { userId: actor.id, agency: actor.agency },
+      contract,
+      version,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
+    return c.json({
+      ...(await interfaceView(id, outcome.held)),
+      adopted: { contract, version },
+      moved: outcome.moved,
+      staleRequirements: outcome.staleRequirements,
+    });
   },
 );
 

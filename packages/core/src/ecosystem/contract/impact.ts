@@ -157,6 +157,17 @@ function breakOf(link: ImpactLink, c: ImpactChange): ImpactBreak | null {
   };
 }
 
+/** Each removal among `changes` that takes away a field the link reads, at whatever level the differ put it. */
+export function fieldsRemovedFor(
+  link: ImpactLink,
+  changes: readonly ImpactChange[],
+): ImpactBreak[] {
+  return changes
+    .filter((c) => c.kind === 'removed')
+    .map((c) => breakOf(link, c))
+    .filter((b): b is ImpactBreak => b !== null && b.fields.length > 0);
+}
+
 export function linkImpact(
   versioning: Versioning,
   version: string,

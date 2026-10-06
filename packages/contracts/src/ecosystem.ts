@@ -107,6 +107,16 @@ const CONTRACT_REFUSAL_CODES = [
 	"CONTRACT_ARTIFACT_NOT_MOCKABLE",
 ] as const;
 
+/** What `POST /api/projects/:id/interface/adopt` refuses before it moves a consumption and its links to an additive version. */
+export const ADOPT_REFUSAL_CODES = [
+	"ADOPT_CONTRACT_NOT_CONSUMED",
+	"ADOPT_VERSION_BEHIND_PIN",
+	"ADOPT_VERSION_BREAKING",
+	"ADOPT_VERSION_UNMEASURED",
+	"ADOPT_FIELD_MISSING",
+] as const;
+export type AdoptRefusalCode = (typeof ADOPT_REFUSAL_CODES)[number];
+
 export const CONTRACT_APPROVAL_REFUSAL_CODES = [
 	"CONTRACT_VERSION_NOT_PROPOSED",
 	"CONTRACT_DECISION_REASON_MISSING",
@@ -146,6 +156,7 @@ export const ECOSYSTEM_REFUSAL_CODES = [
 	...CONTRACT_REFUSAL_CODES,
 	...CONTRACT_APPROVAL_REFUSAL_CODES,
 	...LINK_REFUSAL_CODES,
+	...ADOPT_REFUSAL_CODES,
 ] as const;
 export type EcosystemRefusalCode = (typeof ECOSYSTEM_REFUSAL_CODES)[number];
 export const ECOSYSTEM_REFUSAL_STATUSES = {

@@ -1,6 +1,10 @@
 export { dropAsDuplicateIn } from './acceptance.js';
 export { latestBaselineIn } from './baselines.js';
-export { provideInterfaceContracts } from './contract-links.js';
+export {
+  provideInterfaceContracts,
+  type StaleContractPin,
+  staleOnContract,
+} from './contract-links.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';

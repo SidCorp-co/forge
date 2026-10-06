@@ -8,10 +8,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A consumer adopts an additive contract version in one act.** `POST /api/projects/:id/interface/adopt`
+  moves its interface and every link to the version, refusing by name a breaking or unmeasured
+  step or a missing field, and names requirements left to re-pin.
+
 ## [0.4.0-dev.49] - 2026-10-06
 
 Masters stop being re-woken for held rows; waits name the right party
-
 
 ### Fixed
 

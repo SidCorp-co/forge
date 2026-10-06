@@ -85,7 +85,7 @@ export async function loadInterface(projectId: string): Promise<HeldInterface | 
   return row ? heldInterface(row, projectId) : null;
 }
 
-async function buildWorld(
+export async function buildWorld(
   tx: Tx,
   self: ProjectRow,
   providers: readonly ProjectRow[],
@@ -144,7 +144,7 @@ async function buildWorld(
   };
 }
 
-function edgesOf(
+export function edgesOf(
   doc: InterfaceDocument,
   self: string,
   providers: readonly ProjectRow[],

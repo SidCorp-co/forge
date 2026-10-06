@@ -163,7 +163,19 @@ async function gateDecided(p: Payload<'channel.gateDecided'>): Promise<void> {
   await resolveNotifications(gateKey(p.documentId), outcome);
 }
 
-// a breaking approval files each consumer an item instead, so only a version that owes nobody anything is told as a notice
+/**
+ * What the bell tells a consumer of an approved version that is not breaking: an additive one is
+ * adopted in one act (feedback-triage `breaking`), which moves the interface and the links and names
+ * the requirements a person re-pins; any other owes this project nothing.
+ */
+export function versionNoticeBody(p: Payload<'contract.versionApproved'>, side: string): string {
+  const ref = `${p.providerSlug}/${p.contractSlug}`;
+  const measured = `${p.providerSlug} approved ${p.version} of ${ref}, measured ${p.classification}`;
+  if (p.classification !== 'non-breaking') return `${measured}; nothing this project does is owed.`;
+  return `${measured}. Adopt it in one act, POST /api/projects/${side}/interface/adopt { contract: "${ref}", version: "${p.version}" }: it moves the interface and every link to ${p.version} where each field a link uses is still in it, and names each requirement left for a person to re-pin.`;
+}
+
+// a breaking approval files each consumer an item instead, so only a version that is not breaking is told as a notice
 async function versionApproved(p: Payload<'contract.versionApproved'>): Promise<void> {
   if (p.classification === 'breaking') return;
   const ref = `${p.providerSlug}/${p.contractSlug}`;
@@ -175,7 +187,7 @@ async function versionApproved(p: Payload<'contract.versionApproved'>): Promise<
       projectId: side,
       type: 'contract_version_published',
       title: `${ref} ${p.version} is published`,
-      body: `${p.providerSlug} approved ${p.version} of ${ref}, measured ${p.classification}; nothing this project does is owed.`,
+      body: versionNoticeBody(p, side),
       dedupeKey: `contract-published:${p.projectId}/${p.contractSlug}@${p.version}:${side}`,
     }),
   );
