@@ -131,7 +131,25 @@ describe('GET /me/issues/admissible', () => {
       items: [{ issueId: ISSUE, status: 'draft' }],
       count: 1,
     });
-    expect(readAdmissibleIssues).toHaveBeenCalledWith({ deviceId: 'dev-1', projectId });
+    expect(readAdmissibleIssues).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      projectId,
+      refused: [],
+    });
+  });
+
+  it('names a project whose stored pipelineConfig is refused beside the items (ISS-1368)', async () => {
+    const named = { projectId: 'p-bad', code: 'PIPELINE_CONFIG_UNREADABLE', message: 'refused' };
+    readAdmissibleIssues.mockImplementationOnce(async (args: unknown) => {
+      (args as { refused: unknown[] }).refused.push(named);
+      return [{ issueId: ISSUE, status: 'draft' }];
+    });
+    const res = await app.request('/api/devices/me/issues/admissible', { headers: AUTH });
+    expect(await res.json()).toEqual({
+      items: [{ issueId: ISSUE, status: 'draft' }],
+      count: 1,
+      refused: [named],
+    });
   });
 
   it('401s without a device token', async () => {

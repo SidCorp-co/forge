@@ -104,12 +104,11 @@ describe('admitGithubIssue (ISS-1076)', () => {
     });
   });
 
-  it('a truthy non-boolean does not open the door', async () => {
+  it('a non-boolean is refused by name, not read as a closed door (ISS-1368)', async () => {
     selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: 'false' } } } }]);
-    expect(await admitGithubIssue(PROJECT)).toEqual({
-      admitted: false,
-      reason: 'github-intake-closed',
-    });
+    await expect(admitGithubIssue(PROJECT)).rejects.toThrow(
+      /pipelineConfig\.githubIntake\.enabled: Invalid input: expected boolean/,
+    );
   });
 
   it('open door, intake gate off → admitted at open', async () => {

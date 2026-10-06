@@ -197,7 +197,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
     }): Promise<TurnInputs> => {
       const s = await readSeed();
       setPhase('mcp');
-      external = await buildExternalMcpToolsets(s.agentConfig);
+      external = await buildExternalMcpToolsets(route.projectId, s.agentConfig);
       setPhase('images');
       const fast = await prepareFastTurn({
         route,

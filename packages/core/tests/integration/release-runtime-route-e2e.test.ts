@@ -21,7 +21,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { RELEASE_LABEL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const SERVED = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 const OLDER = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
@@ -246,27 +246,8 @@ describe('a row held before the route existed is carried by the next sweep', () 
 });
 
 describe('a project nothing can read is told once', () => {
-  /** A live binding through a provider whose deployments name no commit. */
-  async function bindUnreporting(): Promise<void> {
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main',
-             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
-       WHERE id = ${projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'epodsystem', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (${connectionId}, ${projectId}, 'epodsystem', 'deploy', ARRAY['live']::text[], true,
-              ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL })}::jsonb)
-    `);
-  }
-
   it('holds every owing row with the unrouted hold, commenting the oldest alone', async () => {
-    await bindUnreporting();
+    await fx.bindUnreporting();
     const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const newest = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
@@ -287,7 +268,7 @@ describe('a project nothing can read is told once', () => {
   }, 30_000);
 
   it('moves the one comment to the next oldest once the oldest leaves the gate', async () => {
-    await bindUnreporting();
+    await fx.bindUnreporting();
     const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const next = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const last = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
@@ -302,7 +283,7 @@ describe('a project nothing can read is told once', () => {
   }, 30_000);
 
   it('answers one project-level blocker naming what is missing, in place of the per-row one', async () => {
-    await bindUnreporting();
+    await fx.bindUnreporting();
     const later = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const earlier = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
@@ -323,7 +304,7 @@ describe('a project nothing can read is told once', () => {
 
   // Judge r2 finding 1: beside rows owing nothing, the card sent a person to a judging run.
   it('names the route, not a judging run, where only some waiting rows owe a criterion', async () => {
-    await bindUnreporting();
+    await fx.bindUnreporting();
     const owing = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const free = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     await harness.db.execute(sql`UPDATE issues SET acceptance_criteria = NULL WHERE id = ${free}`);
@@ -341,7 +322,7 @@ describe('a project nothing can read is told once', () => {
 
   // Judge finding 4: an epodsystem project cannot deploy through Coolify, so it is not told to.
   it('offers a project bound through a provider that reports nothing only a route it can take', async () => {
-    await bindUnreporting();
+    await fx.bindUnreporting();
     const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
 

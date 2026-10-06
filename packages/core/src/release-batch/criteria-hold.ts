@@ -95,10 +95,19 @@ export async function criteriaHold(
     criteria: r.unearned.map((c) => c.criterion),
   }));
   if (owing.length === waiting.length) {
-    // One project-level reason, not one per row, where no run could clear any of them (ISS-1346).
+    // One project-level reason, not one per row, where no run could clear any of them (ISS-1346);
+    // a row owing only a declared runtime is held on it, as the sweep holds it (ISS-1368).
     if (serving.kind === 'undeclared') {
       const { missing, route } = serving;
-      out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held }, 'roster'));
+      const onRuntime = new Set(owing.filter((r) => !r.owed.deployment).map((r) => r.issueId));
+      const unrouted = held.filter((h) => !onRuntime.has(h.issueId));
+      const runtimeHeld = held.filter((h) => onRuntime.has(h.issueId));
+      if (unrouted.length > 0) {
+        out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held: unrouted }, 'roster'));
+      }
+      if (runtimeHeld.length > 0) {
+        out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held: runtimeHeld }, 'roster'));
+      }
       return;
     }
     out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));

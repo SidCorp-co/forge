@@ -3178,6 +3178,14 @@
   earlier commit counts once production runs a later one containing it, and a runner-only change is
   weighed against the runner build (ISS-1368).
 
+- **A held release says only what it waits on**: the runtimes the change runs in, how to bring a
+  runner back, which read failed, what a non-GitHub repository allows. Runtime paths with stray
+  spaces or backslashes are refused (ISS-1368).
+
+- **A stored pipeline configuration the schema refuses is refused by name**: each read names the
+  project, the key and the valid shape instead of running the project unconfigured, and every such
+  project is reported at boot (ISS-1368).
+
 - **The CI jobs that run after the merge can run on a branch before it lands**:
   `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks
   for want of a base branch (ISS-1370).

@@ -3,8 +3,8 @@ import { standingSentence, verdictStanding } from '../issues/verdict-standing.js
 import { runnerHoldClause } from '../release-batch/blocker-sentences.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import type { RunnerHold } from '../runners/ineligible.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 import {
-  criteriaHold,
   cutFailedHold,
   readReleaseHold,
   refusalHold,
@@ -13,10 +13,12 @@ import {
   saidKey,
   saidOf,
   sameReleaseHold,
+  unreadableHoldOf,
   withoutAges,
   withoutReadingTimes,
   withoutResetDrift,
 } from './release-hold.js';
+import { criteriaHold } from './release-hold-criteria.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 const HOST = 'https://app.test/build-info';
@@ -39,7 +41,7 @@ const REPORT = {
   issueId: 'iss-1',
   broken: [],
   serving: live(),
-  runtimes: [],
+  owed: { deployment: true, declared: [], unread: null },
   uncorroborated: [],
   unearned: [
     {
@@ -463,21 +465,15 @@ describe('no hold sentence names the retired commit endpoint (ISS-1346)', () => 
   });
 });
 
-describe('the hold beside a declared runtime (ISS-1368)', () => {
-  it('names a declared runtime beside an unreadable deployment, and does not let it earn unchecked', () => {
-    const why = 'runner device box reports no build commit';
-    const runner = { kind: 'unreadable' as const, why, hosts: ['box'], readAt: READ_AT };
-    const reason = criteriaHold({
-      ...REPORT,
-      serving: { kind: 'unreadable', why: 'down', hosts: [HOST], readAt: READ_AT },
-      runtimes: [{ name: 'runner', paths: ['packages/runner'], serving: runner }],
-    }).reason;
-    expect(reason).toContain(
-      'A criterion held in a declared runtime earns only at a build it is running',
-    );
-    expect(reason).toContain(
-      `the \`runner\` runtime, under \`packages/runner\`: nothing could be read`,
-    );
-    expect(reason).toContain(why);
+describe('a refused stored pipelineConfig holds on what is refused (ISS-1368)', () => {
+  it('names the refused key, and does not send the person to releaseRuntimes', () => {
+    const path = 'pipelineConfig.autoProdDeploy';
+    const refused = [{ path, message: 'expected boolean', key: 'autoProdDeploy', stored: 'true' }];
+    const hold = unreadableHoldOf(new PipelineConfigUnreadable('p-1', refused), 'declaration');
+
+    expect(hold.code).toBe('RELEASE_CRITERIA_UNREADABLE');
+    expect(hold.reason).toContain(path);
+    expect(hold.reason).not.toContain('releaseRuntimes');
+    expect(hold.waitingFor).toBe("this project's stored `pipelineConfig` to be corrected");
   });
 });

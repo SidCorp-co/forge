@@ -2,6 +2,8 @@ import { eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 
 const DEFAULT_MAX_RESUME_TOKENS = 150_000;
 
@@ -25,13 +27,14 @@ export async function loadResumeBounds(
         .limit(1);
       ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
     }
-    const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+    const pc = readableStoredPipelineConfig(projectId, ac.pipelineConfig);
     const maxTokens =
       typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
         ? pc.maxResumeTokens
         : DEFAULT_MAX_RESUME_TOKENS;
     return { maxResumeTokens: maxTokens };
   } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) throw err;
     logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
     return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS };
   }

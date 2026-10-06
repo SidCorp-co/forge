@@ -318,7 +318,7 @@ describe('unearnedCriteriaReports', () => {
         unearned: [],
         broken: [],
         serving: LIVE,
-        runtimes: [],
+        owed: { deployment: true, declared: [], unread: null },
         uncorroborated: [],
       },
     ]);

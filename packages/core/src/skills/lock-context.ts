@@ -3,6 +3,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { readStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import {
   type LockedSkillsDeclaration,
   readLockedSkills,
@@ -24,9 +25,8 @@ export async function projectLockContext(projectId: string): Promise<ProjectLock
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const agentConfig = row?.agentConfig as Record<string, unknown> | undefined;
-  const cfg = agentConfig?.pipelineConfig as Record<string, unknown> | undefined;
-  return { declared: readLockedSkills(cfg) };
+  const stored = (row?.agentConfig as { pipelineConfig?: unknown } | null)?.pipelineConfig;
+  return { declared: readLockedSkills(readStoredPipelineConfig(projectId, stored)) };
 }
 
 /**

@@ -44,7 +44,7 @@ const defaultDeps: LiveSourceDeps = {
 };
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
-function hostOf(repoUrl: string): string {
+export function hostOf(repoUrl: string): string {
   const u = repoUrl.trim();
   try {
     if (u.includes('://')) return new URL(u).hostname || u;

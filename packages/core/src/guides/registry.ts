@@ -44,7 +44,7 @@ Two tools, two different jobs — mixing them up is the single most common Forge
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
-3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
+3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`), **GET it first, then send \`pipelineConfig\` naming ONLY the keys you changed (\`null\` deletes one) beside \`pipelineConfigBase\`, the \`pipelineConfig\` that \`get\` answered** (the REST door takes the same pair as \`{ base, patch }\`). A key the patch does not name is untouched at any depth, and a complete document sent instead is refused by name (ISS-1170). A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
 4. \`environments.preview: null\` means this project HAS no preview side — a one-box project saying so, not a setting somebody forgot. Test against \`environments.live\` and don't invent a staging host. Equally, an empty \`environments.live.url\` is not permission to guess one: nothing in Forge derives a hostname from another.
 5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
 
@@ -537,8 +537,9 @@ dispatches. So:
 - **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
   those are written by the clarify and plan steps, on an autonomous one by the driver's own
   clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`)
-  without reading it first. These are replace-not-merge; send a complete entry.
+- **wholesale-config-clobber** — sending a complete \`pipelineConfig\` entry instead of a patch
+  beside the base it was read against: the document is no longer replaced wholesale, and a resent key whose value
+  moved is refused by name rather than silently winning (ISS-1170).
 - **skip-recall** — see above.
 - **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
   no recorded learning.

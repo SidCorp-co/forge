@@ -3,6 +3,7 @@ import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { landingShapeOf, landingShortfall } from './landing-evidence.js';
@@ -63,7 +64,9 @@ const STRICT_CRITERIA = criteriaWith((id, executor) =>
 );
 
 /**
- * What the project declared for the status being entered, or an empty list.
+ * What the project declared for the status being entered, or an empty list. A stored document the
+ * schema refuses is refused here as everywhere (ISS-1368): read as declaring nothing, it would
+ * let every status write skip what the project declared.
  *
  * Read by the caller BEFORE the transaction, never inside it: a `projects`
  * SELECT inside every status transition's transaction is what ISS-863 removed
@@ -77,6 +80,7 @@ export async function resolveDeclaredEntryCriteria(
     const config = await readPipelineConfig(projectId);
     return config?.statusEntryCriteria?.[toStatus] ?? [];
   } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) throw err;
     logger.warn({ err, projectId, toStatus }, 'entry_criteria.read_failed');
     return [];
   }

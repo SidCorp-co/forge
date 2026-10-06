@@ -43,7 +43,7 @@ import {
   readDeviceIssueLease,
   resolveLeaseKey,
 } from '../issues/issue-lease.js';
-import { readAdmissibleIssues } from './admissible.js';
+import { type RefusedAdmission, readAdmissibleIssues } from './admissible.js';
 import {
   prepareJobForMaster,
   releaseAllHeldBySession,
@@ -90,8 +90,9 @@ devicePoolRoutes.get(
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const items = await readAdmissibleIssues({ deviceId: c.get('device').id, projectId });
-    return c.json({ items, count: items.length });
+    const refused: RefusedAdmission[] = [];
+    const items = await readAdmissibleIssues({ deviceId: c.get('device').id, projectId, refused });
+    return c.json({ items, count: items.length, ...(refused.length > 0 ? { refused } : {}) });
   },
 );
 

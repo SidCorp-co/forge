@@ -19,10 +19,12 @@ import {
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
+import { PipelineConfigUnreadable } from '../../pipeline/pipeline-config-unreadable.js';
 import {
   DEFAULT_NO_PROGRESS_ROUNDS,
   resolveNoProgressRounds,
 } from '../../pipeline/reopen-policy.js';
+import { readableStoredPipelineConfig } from '../../pipeline/stored-pipeline-config.js';
 import {
   type KnowledgeObligation,
   missingProjectKnowledge,
@@ -241,11 +243,9 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    const ac =
-      (row?.agentConfig as {
-        pipelineConfig?: { states?: typeof states };
-      } | null) ?? null;
-    states = ac?.pipelineConfig?.states ?? {};
+    const ac = (row?.agentConfig as { pipelineConfig?: unknown } | null) ?? null;
+    const pc = readableStoredPipelineConfig(projectId, ac?.pipelineConfig);
+    states = (pc.states as typeof states | undefined) ?? {};
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
     environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
@@ -255,7 +255,8 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) throw err;
     // defaults → full ladder, empty {{project:}} resolver
   }
 

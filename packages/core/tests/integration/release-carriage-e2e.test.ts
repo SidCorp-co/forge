@@ -255,7 +255,7 @@ describe('a served descendant carries the judged commit', () => {
 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
-    expect(reason).toContain('returned HTTP 404');
+    expect(reason).toContain('returned HTTP 404: No common ancestor between these commits.');
   }, 30_000);
 });
 
@@ -348,14 +348,189 @@ describe('a runner-only change is weighed against the runner it runs in', () => 
 
     const hold = await fx.holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNREADABLE');
-    expect(String(hold?.reason)).toContain('releaseRuntimes is not a valid declaration');
+    expect(String(hold?.reason)).toContain('pipelineConfig.releaseRuntimes.0.paths.0');
 
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
     const readiness = await loadReleaseReadiness(projectId);
     const unevaluated = readiness?.blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
-    expect(unevaluated?.details).toMatchObject({ check: 'criteria' });
+    expect(unevaluated?.details).toMatchObject({ check: 'auto-release' });
     expect(JSON.stringify(unevaluated?.details)).toContain(
-      'releaseRuntimes is not a valid declaration',
+      'pipelineConfig.releaseRuntimes.0.paths.0',
     );
+  }, 30_000);
+});
+
+/** A landing at JUDGED that changed only a core file. */
+function coreOnlyLanding(): void {
+  repo.parents.set(JUDGED, PARENT);
+  repo.compare.set(`${PARENT}...${JUDGED}`, { status: 'ahead', files: ['packages/core/x.ts'] });
+}
+
+describe('a hold names what the issue owes and what clears it', () => {
+  it('names only the deployment for a core-only change, though a declared runtime reads nothing', async () => {
+    await declareRunner();
+    coreOnlyLanding();
+    await serveCore(BEHIND);
+    repo.compare.set(`${JUDGED}...${BEHIND}`, { status: 'behind', files: [] });
+    repo.compare.set(`${BEHIND}...${JUDGED}`, { status: 'ahead', files: ['packages/core/x.ts'] });
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const reason = String((await fx.holdOf(id))?.reason);
+    expect(reason).toContain(`judged at ${JUDGED}, which is not a commit this project is serving`);
+    expect(reason).toContain(`\`${BEHIND}\` at`);
+    expect(reason).not.toContain('`runner` runtime');
+    expect(reason).not.toContain('reports no build commit');
+  }, 30_000);
+
+  it('names only the runner runtime for a runner-only change, never the deployment', async () => {
+    await declareRunner();
+    runnerOnlyLanding();
+    await serveCore(DESCENDANT);
+    repo.compare.set(`${JUDGED}...${DESCENDANT}`, { status: 'ahead', files: [] });
+    await runnersRun(LACKING);
+    repo.compare.set(`${JUDGED}...${LACKING}`, { status: 'behind', files: [] });
+    repo.compare.set(`${LACKING}...${JUDGED}`, { status: 'ahead', files: [RUNNER_FILE] });
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const hold = await fx.holdOf(id);
+    const reason = String(hold?.reason);
+    expect(reason).toContain('the `runner` runtime, under `packages/runner`');
+    expect(reason).not.toContain('the deployment:');
+    expect(reason).not.toContain(DESCENDANT);
+    expect(String(hold?.waitingFor)).not.toContain('the running deployment');
+  }, 30_000);
+
+  it('gives the route where no runner of the project is online', async () => {
+    await declareRunner();
+    runnerOnlyLanding();
+    await serveCore(DESCENDANT);
+    repo.compare.set(`${JUDGED}...${DESCENDANT}`, { status: 'ahead', files: [] });
+    await harness.db.execute(sql`
+      UPDATE devices d SET status = 'offline'
+        FROM runners r WHERE r.device_id = d.id AND r.project_id = ${projectId}
+    `);
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const hold = await fx.holdOf(id);
+    const reason = String(hold?.reason);
+    expect(reason).toContain('no runner device of this project is online');
+    expect(reason).toContain('bring one of this project’s runners online on a build that carries');
+    expect(reason).toContain('the next sweep weighs it again with no new verdict');
+    expect(String(hold?.waitingFor)).toContain('runners');
+  }, 30_000);
+
+  it('names the stored declaration and its path, not the verdicts, where it no longer parses', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = jsonb_set(agent_config, '{pipelineConfig,releaseRuntimes}', '[{"name":"runner","paths":["packages/runner/**"],"servedBy":"project-runners"}]'::jsonb)
+       WHERE id = ${projectId}
+    `);
+    await serveCore(DESCENDANT);
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const hold = await fx.holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNREADABLE');
+    const reason = String(hold?.reason);
+    expect(reason).not.toMatch(/^The verdicts/);
+    expect(reason).toContain('releaseRuntimes.0.paths.0');
+    expect(String(hold?.waitingFor)).toContain('stored `pipelineConfig`');
+  }, 30_000);
+
+  it('refuses a stored path with a leading space by name when the release reads it', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = jsonb_set(agent_config, '{pipelineConfig,releaseRuntimes}', '[{"name":"runner","paths":[" packages/runner"],"servedBy":"project-runners"}]'::jsonb)
+       WHERE id = ${projectId}
+    `);
+    await serveCore(DESCENDANT);
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const hold = await fx.holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNREADABLE');
+    expect(String(hold?.reason)).toContain('" packages/runner"');
+  }, 30_000);
+
+  it('tells a project whose repository is not on GitHub what its host allows, not to bind GitHub', async () => {
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET active = false WHERE project_id = ${projectId} AND provider = 'github'
+    `);
+    await harness.db.execute(sql`
+      UPDATE projects SET repo_url = 'git@gitlab.com:sidcorp/sid-desk.git' WHERE id = ${projectId}
+    `);
+    await serveCore(BEHIND);
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const reason = String((await fx.holdOf(id))?.reason);
+    expect(reason).toContain('gitlab.com');
+    expect(reason).not.toContain('bind a repository on its Integrations page');
+    expect(reason).toContain(`\`${BEHIND}\``);
+  }, 30_000);
+
+  it('keeps the GitHub binding advice for a project whose repository is on GitHub', async () => {
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET active = false WHERE project_id = ${projectId} AND provider = 'github'
+    `);
+    await harness.db.execute(sql`
+      UPDATE projects SET repo_url = 'git@github.com:SidCorp-co/forge.git' WHERE id = ${projectId}
+    `);
+    await serveCore(BEHIND);
+    const id = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    expect(String((await fx.holdOf(id))?.reason)).toContain('Integrations page');
+  }, 30_000);
+});
+
+describe('a project nothing can read for its deployment, with a declared runner runtime', () => {
+  it('holds a runner-only row on the runner it owes, and only a row owing the deployment as unrouted', async () => {
+    await fx.bindUnreporting();
+    await declareRunner();
+    runnerOnlyLanding();
+    await runnersRun(LACKING);
+    repo.compare.set(`${JUDGED}...${LACKING}`, { status: 'behind', files: [] });
+    repo.compare.set(`${LACKING}...${JUDGED}`, { status: 'ahead', files: [RUNNER_FILE] });
+    const runnerOnly = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+    const CORE_LANDING = '2222222222222222222222222222222222222222';
+    repo.parents.set(CORE_LANDING, PARENT);
+    repo.compare.set(`${PARENT}...${CORE_LANDING}`, {
+      status: 'ahead',
+      files: ['packages/core/x.ts'],
+    });
+    const coreOnly = await fx.judgedRow(CORE_LANDING, '2026-10-01T10:00:00Z');
+
+    await sweep();
+
+    const runnerHold = await fx.holdOf(runnerOnly);
+    expect(runnerHold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(String(runnerHold?.reason)).toContain('the `runner` runtime, under `packages/runner`');
+    expect(String(runnerHold?.reason)).not.toContain('epodsystem');
+    expect((await fx.holdOf(coreOnly))?.code).toBe('RELEASE_RUNTIME_UNROUTED');
+
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+    (await import('../../src/release-batch/carriage.js')).forgetCarriage();
+    const readiness = await loadReleaseReadiness(projectId);
+    const heldUnder = (code: string) =>
+      (
+        (
+          readiness?.blockers.find((b) => b.code === code)?.details as
+            | { held?: Array<{ issueId: string }> }
+            | undefined
+        )?.held ?? []
+      ).map((h) => h.issueId);
+    expect(heldUnder('RELEASE_CRITERIA_UNEARNED')).toEqual([runnerOnly]);
+    expect(heldUnder('RELEASE_RUNTIME_UNROUTED')).toEqual([coreOnly]);
   }, 30_000);
 });

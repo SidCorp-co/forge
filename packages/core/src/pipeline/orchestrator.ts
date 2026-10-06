@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -9,7 +10,9 @@ import {
   dispatchDriveManual,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
-import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
+import type { PipelineConfig } from './pipeline-config-schema.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
+import { readStoredPipelineConfig, refusedPipelineKeys } from './stored-pipeline-config.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';
 
@@ -28,11 +31,40 @@ async function loadPipelineConfig(
   if (!row) return { cfg: null, projectCreatedBy: null };
   if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
   return {
-    cfg: parsed.success ? parsed.data : null,
+    cfg: readStoredPipelineConfig(projectId, ac.pipelineConfig),
     projectCreatedBy: row.createdBy ?? null,
   };
+}
+
+export interface UnreadablePipelineConfig {
+  readonly projectId: string;
+  readonly message: string;
+}
+
+/**
+ * Every unarchived project whose stored pipelineConfig the schema refuses, each logged and reported
+ * by name: run once at boot, so a document a deploy's schema no longer reads is named at the first
+ * read after that deploy rather than at whichever read reaches it first.
+ */
+export async function reportUnreadablePipelineConfigs(): Promise<UnreadablePipelineConfig[]> {
+  const rows = await db
+    .select({ id: projects.id, agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(isNull(projects.archivedAt));
+  const named: UnreadablePipelineConfig[] = [];
+  for (const row of rows) {
+    const stored = (row.agentConfig as { pipelineConfig?: unknown } | null)?.pipelineConfig;
+    const refused = refusedPipelineKeys(stored);
+    if (refused.length === 0) continue;
+    const err = new PipelineConfigUnreadable(row.id, refused);
+    logger.error({ projectId: row.id, refused }, err.message);
+    if (isSentryEnabled()) {
+      Sentry.captureException(err, { tags: { area: 'pipeline-config', projectId: row.id } });
+    }
+    named.push({ projectId: row.id, message: err.message });
+  }
+  return named;
 }
 
 /**
@@ -78,6 +110,9 @@ export async function reEnqueueForIssue(args: {
  * Register only in the main process boot block — it touches the DB and pg-boss.
  */
 export function registerPipelineOrchestrator(bus: HooksBus): void {
+  void reportUnreadablePipelineConfigs().catch((err: unknown) =>
+    logger.error({ err }, 'orchestrator: the boot read of stored pipeline configs failed'),
+  );
   bus.on(
     'transition',
     async (payload) => {

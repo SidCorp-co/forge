@@ -19,6 +19,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
@@ -73,7 +74,7 @@ export interface PreparedJob {
  * How long a resident session may sit idle. The process model is no longer sent
  * with it: every job runs duplex, and ISS-941 dropped the constant that said so.
  */
-async function sessionSettingsOf(projectId: string): Promise<{
+export async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
   settings: { sessionResidencySeconds?: number };
 }> {
@@ -82,10 +83,8 @@ async function sessionSettingsOf(projectId: string): Promise<{
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const cfg = (row?.agentConfig ?? {}) as {
-    pipelineConfig?: { sessionResidencySeconds?: unknown };
-  };
-  const secs = cfg.pipelineConfig?.sessionResidencySeconds;
+  const cfg = (row?.agentConfig ?? {}) as { pipelineConfig?: unknown };
+  const secs = readableStoredPipelineConfig(projectId, cfg.pipelineConfig).sessionResidencySeconds;
   return {
     agentConfig: row?.agentConfig ?? null,
     settings: {

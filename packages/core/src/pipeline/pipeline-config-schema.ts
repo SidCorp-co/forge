@@ -159,27 +159,41 @@ export const poolBacklogSchema = z
 export type PoolBacklogConfig = z.infer<typeof poolBacklogSchema>;
 
 const RUNTIME_PATH_SHAPE =
-  'a path relative to the repository root, such as `packages/runner` or `packages/runner/`: no leading `/` or `./`, no `..` segment, no wildcard';
+  'a path relative to the repository root, such as `packages/runner` or `packages/runner/`: segments separated by `/`, no leading `/` or `./`, no `..` or `.` segment, no wildcard, no backslash, no whitespace at either end of a segment';
 
 const RUNTIME_PATH_REFUSAL = `a release runtime path is ${RUNTIME_PATH_SHAPE}`;
 
+/** What is wrong with a runtime path, or null. Each shape is refused, never trimmed into the one
+ *  that was meant: a path matching no file claims nothing while its author believes otherwise. */
+function runtimePathFault(p: string): string | null {
+  if (p === '') return 'is empty';
+  if (p.startsWith('/')) return 'starts with `/`';
+  if (p.startsWith('./')) return 'starts with `./`';
+  if (p.includes('\\'))
+    return 'holds a backslash, and a repository path separates its segments with `/`';
+  if (/[*?[\]]/.test(p)) return 'holds a wildcard';
+  const segments = p.split('/');
+  const last = segments.length - 1;
+  if (segments.some((seg) => seg !== seg.trim())) {
+    return 'has a segment that begins or ends with whitespace';
+  }
+  if (segments.some((seg) => seg === '..' || seg === '.')) return 'has a `..` or `.` segment';
+  if (segments.some((seg, i) => seg === '' && i !== last)) return 'has an empty segment';
+  return null;
+}
+
 const runtimePathSchema = z
   .string()
-  .min(1, { message: RUNTIME_PATH_REFUSAL })
   .max(200, { message: `${RUNTIME_PATH_REFUSAL}, of at most 200 characters` })
-  .refine(
-    (p) =>
-      !p.startsWith('/') &&
-      !p.startsWith('./') &&
-      !/[*?[\]]/.test(p) &&
-      p
-        .split('/')
-        .every(
-          (segment, i, all) =>
-            segment !== '..' && segment !== '.' && (segment !== '' || i === all.length - 1),
-        ),
-    { message: RUNTIME_PATH_REFUSAL },
-  );
+  .superRefine((p, ctx) => {
+    const fault = runtimePathFault(p);
+    if (fault) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `\`${JSON.stringify(p)}\` ${fault}; ${RUNTIME_PATH_REFUSAL}`,
+      });
+    }
+  });
 
 /** A path's own spelling, as a prefix that owns the files under it. */
 export function runtimePathPrefix(path: string): string {
