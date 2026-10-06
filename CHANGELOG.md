@@ -15,6 +15,9 @@
 - **Forking a private agent chat is the owner's.** Another writer is refused
   `AGENT_CHAT_OWNER_FORBIDDEN` with no transcript; a fork belongs to its caller. Regenerate replays
   its prompt once, on a cold start. A `constructor` entry type is refused `UNREPRESENTABLE_ENTRY`.
+- **A chat turn core refuses is failed by its code.** Only `SESSION_TERMINATED` or `SESSION_CANCELLED`
+  stops a turn quietly; `SEQ_TAKEN_BY_CORE` and every other 4xx mark the session failed, naming the
+  code, instead of dropping the rest of the turn.
 
 ## [0.4.0-dev.42] - 2026-10-06
 

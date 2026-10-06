@@ -34,20 +34,6 @@ pub fn normalize_path(path: &str) -> String {
     format!("/api/{rest}")
 }
 
-/// Core's problem body carries the code at the top level and under
-/// `error.code`, the two always equal (`contracts/src/refusal.ts:ProblemBody`);
-/// either is read, so a core from before or after that envelope answers.
-/// Anything else (a proxy's HTML 502, an empty body) yields `None` and the
-/// status decides.
-fn body_code(body: &str) -> Option<String> {
-    let parsed = serde_json::from_str::<Value>(body).ok()?;
-    parsed
-        .get("code")
-        .or_else(|| parsed.get("error").and_then(|e| e.get("code")))?
-        .as_str()
-        .map(str::to_string)
-}
-
 /// The machine-readable half of a failure, on stderr beside the human half.
 fn failure_json(outcome: &Outcome, status: Option<u16>, message: &str) -> String {
     let mut obj = serde_json::Map::new();
@@ -118,7 +104,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         }
     }
     let text = resp.text().await.unwrap_or_default();
-    let outcome = classify(status, body_code(&text).as_deref());
+    let outcome = classify(status, crate::status::refusal_code(&text).as_deref());
 
     if outcome.exit_code == 0 {
         return Response {

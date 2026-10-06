@@ -34,7 +34,7 @@ use crate::Runner; // UNRESOLVED
 use crate::RunnerEvent; // UNRESOLVED
 use crate::TurnCredential; // UNRESOLVED
 use runner_platform::error::{Error, Result};
-use runner_transport::agent_sessions::{self, SessionPatch};
+use runner_transport::agent_sessions::{self, SessionPatch, WriteFailure};
 use runner_transport::CoreClient;
 use runner_workspace::refresh;
 
@@ -485,10 +485,6 @@ async fn consume(
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
 
-    enum Terminal {
-        Done,
-        Failed(String),
-    }
     let mut terminal: Option<Terminal> = None;
 
     loop {
@@ -509,21 +505,21 @@ async fn consume(
                 if pending.is_empty() { continue; }
                 match agent_sessions::post_events(client, session_id, &pending).await {
                     Ok(()) => pending.clear(),
-                    Err(e) if e.to_string().contains("SESSION_TERMINATED") => {
-                        tracing::info!("[chat {session_id}] session terminated by user — stopping stream");
+                    Err(WriteFailure::Ended { code, said }) => {
+                        tracing::info!("[chat {session_id}] core ended this session ({code}) — stopping stream: {said}");
                         return;
                     }
-                    Err(e) if agent_sessions::is_refused(&e) => {
+                    Err(refused @ WriteFailure::Refused { .. }) => {
                         let msg = format!(
-                            "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {e}"
+                            "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {refused}"
                         );
                         tracing::error!("[chat {session_id}] {msg}");
                         patch_failed(client, session_id, claude_sid.clone(), &msg).await;
                         return;
                     }
-                    Err(e) => {
+                    Err(unreached @ WriteFailure::Unreached(_)) => {
                         // Transport or 5xx, already retried: keep the batch and try again next tick.
-                        tracing::warn!("[chat {session_id}] stream events: {e}");
+                        tracing::warn!("[chat {session_id}] stream events: {unreached}");
                     }
                 }
             }
@@ -532,6 +528,10 @@ async fn consume(
 
     if !pending.is_empty() {
         if let Err(e) = agent_sessions::post_events(client, session_id, &pending).await {
+            if let WriteFailure::Ended { code, said } = &e {
+                tracing::info!("[chat {session_id}] core ended this session ({code}) before the last lines landed: {said}");
+                return;
+            }
             let msg = format!(
                 "[TRANSCRIPT_INCOMPLETE] this turn's transcript was not delivered in full ({} line(s) pending at the end): {e}",
                 pending.len()
@@ -543,18 +543,48 @@ async fn consume(
         pending.clear();
     }
 
+    close_turn(client, session_id, terminal, claude_sid, runtime_state).await;
+}
+
+/// How the CLI's own stream ended, as far as this turn saw it.
+enum Terminal {
+    Done,
+    Failed(String),
+}
+
+/// The turn's one terminal write, once every line has landed: `completed`, or
+/// `failed` naming why. A completion core refuses by name is recorded as the
+/// turn's failure rather than left for the reaper to call generic.
+async fn close_turn(
+    client: &CoreClient,
+    session_id: &str,
+    terminal: Option<Terminal>,
+    claude_sid: Option<String>,
+    runtime_state: Option<String>,
+) {
     match terminal {
         Some(Terminal::Done) => {
             let patch = SessionPatch {
                 status: Some("completed".into()),
                 claude_session_id: claude_sid.clone(),
-                runtime_state: runtime_state.clone(),
+                runtime_state,
                 turn_error: None,
             };
-            if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
-                tracing::warn!("[chat {session_id}] final patch: {e}");
-            } else {
-                tracing::info!("[chat {session_id}] turn done");
+            match agent_sessions::write_session(client, session_id, &patch).await {
+                Ok(()) => tracing::info!("[chat {session_id}] turn done"),
+                Err(WriteFailure::Ended { code, said }) => {
+                    tracing::info!("[chat {session_id}] core ended this session ({code}) before the turn closed: {said}");
+                }
+                Err(refused @ WriteFailure::Refused { .. }) => {
+                    let msg = format!(
+                        "[TURN_CLOSE_REFUSED] core refused this turn's completion: {refused}"
+                    );
+                    tracing::error!("[chat {session_id}] {msg}");
+                    patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+                }
+                Err(unreached @ WriteFailure::Unreached(_)) => {
+                    tracing::warn!("[chat {session_id}] final patch: {unreached}");
+                }
             }
         }
         Some(Terminal::Failed(err)) => {
@@ -571,11 +601,6 @@ async fn consume(
             .await;
         }
     }
-
-    // The PATCH above is a terminal write, so core has already revoked this
-    // session's token — only unattended, single-turn sessions ever hold one.
-    // Dropping the entry keeps a long-lived daemon from carrying one dead
-    // credential per session it has ever served.
 }
 
 fn is_partial_stream_event(line: &Value) -> bool {
@@ -595,11 +620,24 @@ async fn patch_failed(
         runtime_state: Some("closed".into()),
     };
     // A session-state write is kernel input: a failure core did not take is
-    // said, and tried once more, never dropped. The second refusal is left to
-    // core's zombie reaper, and this line is where the turn's real error stays.
+    // said, never dropped. Only an unanswered write is tried once more — a
+    // refusal names the same bytes again — and what is still not taken is left
+    // to core's zombie reaper, with this line where the turn's real error stays.
     for attempt in 1..=2 {
-        match agent_sessions::patch_session(client, session_id, &patch).await {
+        match agent_sessions::write_session(client, session_id, &patch).await {
             Ok(()) => return,
+            Err(WriteFailure::Ended { code, .. }) => {
+                tracing::info!(
+                    "[chat {session_id}] core had already ended this session ({code}), so this turn's failure is not recorded there: {error}"
+                );
+                return;
+            }
+            Err(e @ WriteFailure::Refused { .. }) => {
+                tracing::error!(
+                    "[chat {session_id}] core refused this turn's failure ({e}), so the session stays open at core until its reaper ends it under a generic reason. The failure it carried: {error}"
+                );
+                return;
+            }
             Err(e) if attempt == 1 => {
                 tracing::warn!(
                     "[chat {session_id}] core did not take this turn's failure ({e}); trying once more. The failure it carried: {error}"
@@ -607,8 +645,208 @@ async fn patch_failed(
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
             Err(e) => tracing::error!(
-                "[chat {session_id}] core refused this turn's failure twice ({e}), so the session stays open at core until its reaper ends it under a generic reason. The failure it carried: {error}"
+                "[chat {session_id}] core did not answer this turn's failure twice ({e}), so the session stays open at core until its reaper ends it under a generic reason. The failure it carried: {error}"
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The stream loop against a fake core that answers on a real socket, so
+    //! what is under test is the status and body core sends, not a stub of the
+    //! transport.
+    use super::*;
+    use std::sync::Mutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// One request the fake core received: method, path and body.
+    type Seen = Arc<Mutex<Vec<(String, String, String)>>>;
+
+    /// A fake core whose `/events` answers `events_status` with a refusal
+    /// envelope carrying `code` at the top level and under `error`, as
+    /// `contracts/src/refusal.ts:ProblemBody` does; every PATCH is taken.
+    async fn fake_core(events_status: u16, code: &'static str) -> (CoreClient, Seen) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Seen = Arc::default();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let (method, path, body) = read_request(&mut sock).await;
+                let (status, reply) = if path.ends_with("/events") {
+                    let envelope = serde_json::json!({
+                        "code": code,
+                        "message": "refused",
+                        "error": { "code": code, "message": "refused" },
+                    });
+                    (events_status, envelope.to_string())
+                } else {
+                    (200, "{}".to_string())
+                };
+                log.lock().unwrap().push((method, path, body));
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    reply.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.write_all(reply.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (CoreClient::new(format!("http://{addr}"), "token"), seen)
+    }
+
+    async fn read_request(sock: &mut tokio::net::TcpStream) -> (String, String, String) {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let header_end = loop {
+            let n = sock.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                break buf.len();
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break i + 4;
+            }
+        };
+        let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
+        let length = head
+            .lines()
+            .find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.eq_ignore_ascii_case("content-length")
+                    .then(|| v.trim().parse::<usize>().ok())?
+            })
+            .unwrap_or(0);
+        while buf.len() < header_end + length {
+            let n = sock.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+        }
+        let mut first = head.split_whitespace();
+        let method = first.next().unwrap_or_default().to_string();
+        let path = first.next().unwrap_or_default().to_string();
+        let end = (header_end + length).min(buf.len());
+        let body = String::from_utf8_lossy(&buf[header_end..end]).to_string();
+        (method, path, body)
+    }
+
+    /// One stdout line queued, the sender held open so only the flush tick
+    /// can deliver it, and the loop given until it returns.
+    async fn stream_one_line(client: &CoreClient) {
+        let (tx, rx) = mpsc::channel::<RunnerEvent>(8);
+        tx.send(RunnerEvent::Stdout(
+            serde_json::json!({ "type": "assistant" }),
+        ))
+        .await
+        .unwrap();
+        let ran = tokio::time::timeout(Duration::from_secs(10), consume(client, "s1", 0, rx)).await;
+        drop(tx);
+        assert!(ran.is_ok(), "the stream loop never returned");
+    }
+
+    /// One stdout line and the turn's end queued together, so the line goes
+    /// out in the final flush rather than on a tick.
+    async fn finish_with_one_line(client: &CoreClient) {
+        let (tx, rx) = mpsc::channel::<RunnerEvent>(8);
+        tx.send(RunnerEvent::Stdout(
+            serde_json::json!({ "type": "assistant" }),
+        ))
+        .await
+        .unwrap();
+        tx.send(RunnerEvent::Done).await.unwrap();
+        drop(tx);
+        let ran = tokio::time::timeout(Duration::from_secs(10), consume(client, "s1", 0, rx)).await;
+        assert!(ran.is_ok(), "the stream loop never returned");
+    }
+
+    fn patches(seen: &Seen) -> Vec<Value> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, _, _)| m == "PATCH")
+            .map(|(_, _, b)| serde_json::from_str(b).unwrap())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_seq_clash_core_refuses_marks_the_session_failed_by_its_code() {
+        let (client, seen) = fake_core(409, "SEQ_TAKEN_BY_CORE").await;
+        stream_one_line(&client).await;
+        let patches = patches(&seen);
+        let failed = patches
+            .iter()
+            .find(|p| p["status"] == "failed")
+            .unwrap_or_else(|| {
+                panic!(
+                    "a 409 SEQ_TAKEN_BY_CORE ended the turn with no failure written: {patches:?}"
+                )
+            });
+        let said = failed["turnError"].as_str().unwrap_or_default();
+        assert!(
+            said.contains("SEQ_TAKEN_BY_CORE"),
+            "the failure does not name the code core refused by: {said}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_core_has_terminated_stops_the_stream_without_a_write() {
+        let (client, seen) = fake_core(422, "SESSION_TERMINATED").await;
+        stream_one_line(&client).await;
+        assert_eq!(patches(&seen), Vec::<Value>::new());
+    }
+
+    #[tokio::test]
+    async fn a_session_the_user_cancelled_stops_the_stream_without_a_write() {
+        let (client, seen) = fake_core(409, "SESSION_CANCELLED").await;
+        stream_one_line(&client).await;
+        assert_eq!(patches(&seen), Vec::<Value>::new());
+    }
+
+    #[tokio::test]
+    async fn a_422_naming_any_other_code_is_a_failure_not_a_termination() {
+        let (client, seen) = fake_core(422, "SESSION_STALE").await;
+        stream_one_line(&client).await;
+        let patches = patches(&seen);
+        let failed = patches.iter().find(|p| p["status"] == "failed");
+        assert!(
+            failed.is_some_and(|p| p["turnError"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("SESSION_STALE")),
+            "a 422 SESSION_STALE did not mark the session failed by name: {patches:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_final_flush_core_refuses_names_the_code_in_the_failure() {
+        let (client, seen) = fake_core(409, "SEQ_TAKEN_BY_CORE").await;
+        finish_with_one_line(&client).await;
+        let patches = patches(&seen);
+        assert_eq!(
+            patches.len(),
+            1,
+            "one failure write, no completion: {patches:?}"
+        );
+        assert_eq!(patches[0]["status"], "failed");
+        let said = patches[0]["turnError"].as_str().unwrap_or_default();
+        assert!(
+            said.contains("SEQ_TAKEN_BY_CORE"),
+            "the final flush's failure does not name the code: {said}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_final_flush_into_a_terminated_session_writes_nothing_more() {
+        let (client, seen) = fake_core(422, "SESSION_TERMINATED").await;
+        finish_with_one_line(&client).await;
+        assert_eq!(patches(&seen), Vec::<Value>::new());
     }
 }

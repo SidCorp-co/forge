@@ -335,12 +335,7 @@ const NO_LEASE_STANDS_UNDER_KEY: [&str; 2] =
 /// serve this route says nothing about any lease, and reading that as `not
 /// held` marks a lease returned while it is still standing.
 fn no_lease_stands_under_key(body: &str) -> Option<&'static str> {
-    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
-    // A 400 arrives in the refusal envelope from ISS-186 on; a 404, and an older core, name it at the top.
-    let code = parsed
-        .pointer("/error/code")
-        .or_else(|| parsed.get("code"))?
-        .as_str()?;
+    let code = status::refusal_code(body)?;
     NO_LEASE_STANDS_UNDER_KEY
         .into_iter()
         .find(|known| *known == code)
