@@ -28,10 +28,6 @@ export const MASTER_WAKE_SOURCES = [
 ] as const;
 type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
-function isMasterWakeStatus(status: IssueStatus): boolean {
-  return MASTER_WAKE_STATUSES.includes(status);
-}
-
 export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string | null;
@@ -174,7 +170,7 @@ export function registerMasterWakeSubscribers(): void {
   consume('issue.transitioned', {
     name: 'master-wake',
     handle: async (p) => {
-      if (!isMasterWakeStatus(p.to)) return;
+      if (!MASTER_WAKE_STATUSES.includes(p.to)) return;
       await wakeMastersForProject({ projectId: p.projectId, issueId: p.id, status: p.to });
     },
   });
@@ -182,7 +178,7 @@ export function registerMasterWakeSubscribers(): void {
   consume('issue.created', {
     name: 'master-wake',
     handle: async (p) => {
-      if (!isMasterWakeStatus(p.status)) return;
+      if (!MASTER_WAKE_STATUSES.includes(p.status)) return;
       await wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.status });
     },
   });
@@ -226,7 +222,7 @@ export function registerMasterWakeSubscribers(): void {
         version: p.version,
       });
       for (const r of released) {
-        if (r.held || !isMasterWakeStatus(r.status as IssueStatus)) continue;
+        if (r.held || !MASTER_WAKE_STATUSES.includes(r.status as IssueStatus)) continue;
         await wakeMastersForProject({
           projectId: r.projectId,
           issueId: r.issueId,

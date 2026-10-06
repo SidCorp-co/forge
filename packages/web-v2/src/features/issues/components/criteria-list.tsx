@@ -5,14 +5,15 @@
 
 import { PageSectionTitle, EmptyPanelLine, StatusBadge, statusReading, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { type CriterionRow, criterionBadge, identityPhrase, useCriteria } from "../criteria";
+import { criterionStandingOf, identityPhraseOf } from "@forge/contracts/verdict-identity";
+import { type CriterionRow, useCriteria } from "../criteria";
 
 function tooltipOf(row: CriterionRow): string {
   const v = row.latest;
   if (!v) return "No verdict recorded yet";
   const by = v.authorAgency === "agent" ? "an agent" : "a person";
   const parts = [
-    `${v.verdict === "short" ? "Pass, short of the wording" : statusReading("criterion", v.verdict).label} · ${identityPhrase(v)}`,
+    `${v.verdict === "short" ? "Pass, short of the wording" : statusReading("criterion", v.verdict).label} · ${identityPhraseOf(v)}`,
     v.reason ? `Reason: ${v.reason}` : null,
     `By ${by}, ${new Date(v.createdAt).toLocaleString()}`,
   ];
@@ -42,7 +43,7 @@ export function CriteriaList({ issueId }: { issueId: string }) {
               <span className="min-w-0 flex-1 whitespace-pre-wrap">{row.statement}</span>
               <Tooltip label={tooltipOf(row)} multiline>
                 <span data-testid={`criterion-${row.n}-verdict`}>
-                  <StatusBadge family="criterion" value={criterionBadge(row.latest)} />
+                  <StatusBadge family="criterion" value={criterionStandingOf(row.latest)} />
                 </span>
               </Tooltip>
             </li>

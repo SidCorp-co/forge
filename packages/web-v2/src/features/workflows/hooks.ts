@@ -60,7 +60,7 @@ export function useHealthOverlay(health: WorkflowHealth | undefined, surface: He
       on: overlayOn(overlayParam, surface),
       onToggle: (on: boolean) => setOverlay(on ? "on" : "off"),
       layer: layerOf(layerParam, observed),
-      onLayer: (l) => setLayer(l),
+      onLayer: setLayer,
       observed,
       nodes,
       edges,

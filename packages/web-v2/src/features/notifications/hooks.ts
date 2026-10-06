@@ -38,7 +38,7 @@ function useInvalidateNotifications() {
 export function useMarkRead() {
   const invalidate = useInvalidateNotifications();
   return useMutation({
-    mutationFn: (id: string) => notificationsApi.markRead(id),
+    mutationFn: notificationsApi.markRead,
     onSuccess: invalidate,
   });
 }

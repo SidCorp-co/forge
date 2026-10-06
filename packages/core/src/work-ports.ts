@@ -290,7 +290,7 @@ export function provideWorkPorts(): void {
       latestRunsOfIssues(projectId, issueIds, { userId: viewer.userId }),
   });
 
-  provideLabelPorts({ listFeedbackAs: (viewer, projectId) => listFeedbackAs(viewer, projectId) });
+  provideLabelPorts({ listFeedbackAs });
 
   provideOnboardingPorts({ runWaitingOf });
 

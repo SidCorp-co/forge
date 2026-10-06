@@ -1,8 +1,7 @@
 // ISS-55 — an issue's criteria as rows (`GET /api/issues/:id/criteria`), each with its latest
 // verdict, folded to the criterion standing whose badge reads the same on every screen.
 
-import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
-import { criterionStandingOf, identityPhraseOf, type StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
+import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 
@@ -31,13 +30,6 @@ export interface CriterionRow {
   requirementCriterionId: string | null;
   latest: CriterionVerdict | null;
 }
-
-/** The one reading each state takes on every screen is contracts' `CRITERION_STANDINGS`. */
-type CriterionBadge = CriterionStanding;
-
-export const criterionBadge = (latest: CriterionVerdict | null): CriterionBadge => criterionStandingOf(latest);
-
-export const identityPhrase = (v: CriterionVerdict): string => identityPhraseOf(v);
 
 export function useCriteria(issueId: string | undefined) {
   return useQuery({

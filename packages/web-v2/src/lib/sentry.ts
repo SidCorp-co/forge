@@ -23,7 +23,7 @@ export function installSentryErrorTracking(): boolean {
     beforeSend: scrubSentryEvent,
   });
   provideErrorTracker({
-    captureException: (err, context) => Sentry.captureException(err, context),
+    captureException: Sentry.captureException,
   });
   installed = true;
   return true;

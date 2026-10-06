@@ -128,7 +128,7 @@ export const useUpdateLabel = (id: string | undefined) =>
 
 export const useDeleteLabel = (id: string | undefined) =>
 	useToastedMutation({
-		mutationFn: (labelId: string) => projectSettingsApi.deleteLabel(labelId),
+		mutationFn: projectSettingsApi.deleteLabel,
 		invalidates: [labels(id), project(id), ["issues"]],
 		saved: "Deleted",
 		failed: "Couldn't delete",
