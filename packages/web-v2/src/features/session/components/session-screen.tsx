@@ -22,7 +22,7 @@ import {
 } from "@/features/sessions/types";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRecents } from "@/lib/navigation/recents";
-import { formatApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -170,7 +170,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
         <div className="grid flex-1 place-items-center">
           <ErrorState
             title="Couldn't load session"
-            message={formatApiError(sessionQ.error)}
+            message={formatRefusal(sessionQ.error)}
             onRetry={() => sessionQ.refetch()}
           />
         </div>
@@ -181,7 +181,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const turnsError = turnsQ.isError ? (
     <ErrorState
       title={items.length ? "Couldn't refresh this session's turns" : "Couldn't load this session's turns"}
-      message={formatApiError(turnsQ.error)}
+      message={formatRefusal(turnsQ.error)}
       onRetry={() => turnsQ.refetch()}
       mascot={items.length === 0}
     />

@@ -1,4 +1,3 @@
-import { RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
@@ -21,6 +20,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
+import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
 import { peopleOf } from '../lib/people.js';
 import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
 import { runStandingOf, type StandingContext } from './standing.js';
@@ -194,7 +194,7 @@ export async function latestRunsOfIssues(
       SELECT DISTINCT ON (i.id) i.id AS issue_id, r.id AS run_id
         FROM issues i
         JOIN pipeline_runs r ON r.project_id = i.project_id
-         AND (r.issue_id = i.id OR r.metadata -> ${RUN_GROUP_METADATA_KEY} ? ('ISS-' || i.iss_seq))
+         AND (r.issue_id = i.id OR ${runGroupHolds(sql`r.metadata`, canonicalIssueKeySql(sql`i.iss_seq`))})
        WHERE i.project_id = ${projectId} AND i.id::text IN (${inList(issueIds)})
          AND ${RUN_SCOPE_SQL}
        ORDER BY i.id, r.started_at DESC, r.id`),

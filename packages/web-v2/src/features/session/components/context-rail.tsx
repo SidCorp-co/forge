@@ -38,6 +38,7 @@ import { useStuckRuns } from "@/features/agents/hooks";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
+import { formatRefusal } from "@/lib/api/error";
 import { useRun } from "@/features/pipeline/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
@@ -106,7 +107,7 @@ export function ContextRail({
     : runQ.data
       ? runGateNote(runQ.data.gateAtOpen)
       : runQ.isError
-        ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
+        ? runGateUnfetched(formatRefusal(runQ.error))
         : null;
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 

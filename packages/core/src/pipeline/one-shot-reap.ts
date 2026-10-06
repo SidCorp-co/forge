@@ -19,6 +19,16 @@ import {
 import { closeRunIfOneShotInTx } from './runs.js';
 import type { SweepScope } from './sweeper.js';
 
+// A person's chat sits idle before its first turn and after an abort: it waits on that person, no
+// runner owes it a beat, so silence there is no runner death (qa-live1 2026-10-06: a chat never sent
+// read failed heartbeat_timeout, "The runner died mid-run", four minutes after it was opened). Its run
+// stays open; the next turn is written under it. An unattended chat has no person to wait on.
+const PERSON_CHAT_BETWEEN_TURNS = sql`(
+  s.kind = 'chat'
+  AND s.status = 'idle'
+  AND (s.metadata ->> 'unattended') IS DISTINCT FROM 'true'
+)`;
+
 export interface OneShotRunReapResult {
   reaped: number;
 }
@@ -64,6 +74,7 @@ export async function reapOrphanedOneShotRuns(
               )
             )
             OR ${parkedOnAHuman(sql`s.id`)}
+            OR ${PERSON_CHAT_BETWEEN_TURNS}
           )
       )
       ${projectClause}

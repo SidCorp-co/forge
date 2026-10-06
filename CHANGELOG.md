@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **Agent sessions read true.** The session screen shows each refusal as `CODE: sentence`;
+  `agent-sessions?issueId=` lists run sessions through their run group; a person's idle chat is
+  no longer failed `heartbeat_timeout` as a runner death.
 - **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
   to the job's readers inside its own transaction; the runner no longer listens for
   `job.cancelRequested`, a frame it never receives.

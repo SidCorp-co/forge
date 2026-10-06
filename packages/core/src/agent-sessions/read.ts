@@ -9,6 +9,7 @@ import {
   projects,
   usageRecords,
 } from '../db/schema.js';
+import { sessionWorksIssue } from '../lib/issue-run-group.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { ownerPrivateChatSql } from './session-access.js';
 import { transcriptLength } from './turns-helpers.js';
@@ -92,7 +93,7 @@ type AgentSessionQuery = {
 export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
   const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
-  if (q.issueId) conds.push(sql`${agentSessions.metadata}->>'issueId' = ${q.issueId}`);
+  if (q.issueId) conds.push(sessionWorksIssue(q.issueId));
   if (q.privateChatsOf !== null) {
     conds.push(sql`(NOT ${ownerPrivateChatSql} OR ${agentSessions.userId} = ${q.privateChatsOf})`);
   }
@@ -234,7 +235,7 @@ export async function listAgentSessionsPage(f: AgentSessionListFilter) {
   }
   if (f.status) conditions.push(eq(agentSessions.status, f.status));
   if (f.kind) conditions.push(eq(agentSessions.kind, f.kind));
-  if (f.issueId) conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${f.issueId}`);
+  if (f.issueId) conditions.push(sessionWorksIssue(f.issueId));
   if (f.privateChatsOf !== null) {
     conditions.push(
       sql`(NOT ${ownerPrivateChatSql} OR ${agentSessions.userId} = ${f.privateChatsOf})`,
