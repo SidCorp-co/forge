@@ -55,8 +55,11 @@ against an old schema. `node scripts/check-migration-order.mjs` prints the numbe
 yours: branches each deriving their number from one base all land on the same one, and whichever
 merges first silently kills the rest.
 
-**Changelog entries are capped at 40 words** by `check-release-record`. Entries of 59, 156 and 235
-words have each been refused.
+**A changelog entry is a file of its own**, `changelog.d/<branch>.<section>.md` (section `added`,
+`changed`, `fixed`, `removed` or `security`), holding one entry that opens with a bold lead — never a
+line in `CHANGELOG.md`, which holds released sections only; the release folds the files in. Entries
+are capped at 40 words by `check-release-record`. Entries of 59, 156 and 235 words have each been
+refused.
 
 ## Reporting a security vulnerability
 

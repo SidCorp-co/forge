@@ -91,8 +91,8 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
-      # The release record: CHANGELOG.md keeps the `## [Unreleased]` heading its five readers
-      # parse for, and an entry published there is not removed without a declared reason.
+      # The release record: CHANGELOG.md holds released sections only, an unreleased entry is a
+      # changelog.d/ fragment, and an entry published in either is not removed without a declared reason.
       # 3df9a8e9 removed 1,034 lines of it inside a commit about docs pointers and all twelve
       # gates passed — every axis owned a property of the code and none owned the record.
       - run: node scripts/check-release-record.mjs

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Cuts the CLOUD release: bumps the version files in lockstep, promotes the
-# changelog's `[Unreleased]` section, commits, tags and pushes.
+# Cuts the CLOUD release: bumps the version files in lockstep, folds the
+# changelog.d/ fragments into a new CHANGELOG.md version section and deletes
+# them, commits, tags and pushes.
 #
 # Two lines, told apart by the version alone. X.Y.Z and X.Y.Z-rc.N are cut on
 # main and tagged vX.Y.Z here. X.Y.Z-dev.N is a dev release: cut on dev, its
@@ -25,7 +26,7 @@ VERSION_JSON_FILES=(
 )
 
 RECORD=CHANGELOG.md
-UNRELEASED='## [Unreleased]'
+FRAGMENTS=changelog.d
 
 die() { printf '\ncut-release: %s\n' "$*" >&2; exit 1; }
 
@@ -73,12 +74,14 @@ for f in "${VERSION_JSON_FILES[@]}"; do [ -f "$f" ] || die "version file missing
 # ---- step 1: the section must have something in it ------------------------
 # A version section with no bullets is a release that says nothing shipped, and
 # the What's New feed renders it as an empty card.
-UNREL_BODY=$(awk -v h="$UNRELEASED" '
-  $0 == h {inside=1; next}
-  /^## / {inside=0}
-  inside {print}' "$RECORD")
-grep -q '^[-*+] ' <<<"$UNREL_BODY" || die "$RECORD has no bullets under \`$UNRELEASED\` — nothing to promote"
-BULLETS=$(grep -c '^[-*+] ' <<<"$UNREL_BODY")
+# Every file there but its README.md is a fragment; a malformed one is refused by the writer below.
+FRAGMENT_FILES=()
+for f in "$FRAGMENTS"/*; do
+  if [ -f "$f" ] && [ "$f" != "$FRAGMENTS/README.md" ]; then FRAGMENT_FILES+=("$f"); fi
+done
+BULLETS=${#FRAGMENT_FILES[@]}
+[ "$BULLETS" -gt 0 ] || die "no fragments under $FRAGMENTS/ — nothing to release"
+grep -q '^## \[Unreleased\]' "$RECORD" && die "$RECORD still carries \`## [Unreleased]\`; move its entries to $FRAGMENTS/<name>.<section>.md and delete the heading"
 
 # ---- step 2: atomic version bump ------------------------------------------
 # Written to a staging directory and verified to agree BEFORE anything moves, so
@@ -94,14 +97,14 @@ SEEN=$(for f in "${VERSION_JSON_FILES[@]}"; do jq -r .version "$STAGE/$f"; done 
 [ "$(wc -l <<<"$SEEN")" -eq 1 ] && [ "$SEEN" = "$NEW" ] || die "staged files disagree about the version: $(tr '\n' ' ' <<<"$SEEN")"
 for f in "${VERSION_JSON_FILES[@]}"; do mv "$STAGE/$f" "$f"; done
 
-# ---- step 3: promote the section ------------------------------------------
-# The new `[Unreleased]` is flat on purpose: `###` headings belong to a cut
-# section, and check-release-record fails a heading repeated inside one.
+# ---- step 3: write the section ---------------------------------------------
+# Each fragment becomes one bullet under its `###` section and is deleted, so the
+# release commit is the one place an entry moves from $FRAGMENTS/ to $RECORD.
 DATE=$(date -u +%F)
-node scripts/lib/promote-unreleased.mjs "$RECORD" "$NEW" "$DATE" "$HEADLINE" || die "could not promote $UNRELEASED in $RECORD"
+node scripts/lib/assemble-release.mjs "$RECORD" "$FRAGMENTS" "$NEW" "$DATE" "$HEADLINE" >/dev/null || die "could not write [$NEW] into $RECORD from $FRAGMENTS/"
 
 # ---- step 4: commit and tag -----------------------------------------------
-git add -- "${VERSION_JSON_FILES[@]}" "$RECORD"
+git add -- "${VERSION_JSON_FILES[@]}" "$RECORD" "${FRAGMENT_FILES[@]}"
 git commit -q -m "Release $TAG" -m "$HEADLINE"
 if [ "$RELEASE_BRANCH" = main ]; then
   git tag "$TAG"
@@ -129,7 +132,7 @@ fi
 cat <<EOF
 
   cut $TAG  ($(git rev-parse --short HEAD))
-  $BULLETS bullet(s) promoted into [$NEW] - $DATE
+  $BULLETS fragment(s) written into [$NEW] - $DATE and deleted
   $(printf '%s' "${#VERSION_JSON_FILES[@]}") version file(s) at $NEW
   $PUSHED
 

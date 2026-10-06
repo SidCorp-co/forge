@@ -1,8 +1,19 @@
+import {
+  FRAGMENT_DIR,
+  fragmentFiles,
+  fragmentPath,
+  normaliseEntry,
+  readFragment,
+  SECTIONS,
+} from './changelog-fragments.mjs';
+import { CORRECTION_SPAN, correctionEdges, matchEdges } from './entry-correction.mjs';
 import { withoutComments, withoutFences } from './markdown.mjs';
+
+export { CORRECTION_SPAN };
 
 const RELEASE_HEADING = /^##\s+\[([^\]]+)\]/;
 
-/** The heading every writer of the record appends under, and every cutter promotes. */
+/** The heading CHANGELOG.md no longer carries: unreleased entries are `changelog.d/` fragments. */
 export const UNRELEASED = 'Unreleased';
 
 /**
@@ -27,24 +38,23 @@ const BULLET = /^[-*+]\s+(.*)$/;
 const HEADING = /^#{1,6}\s/;
 const SUBSECTION_HEADING = /^###\s+(.+?)\s*$/;
 
-export function normaliseEntry(text) {
-  return text.replace(/\s+/g, ' ').trim();
-}
-
 /**
- * Every release entry in the record, as a set of normalised texts.
+ * Every release entry in the record, as a set of normalised texts, and — separately — any entry
+ * still written under a `## [Unreleased]` heading, with the `###` section it sat in.
  *
- * Position-independent on purpose: `forge-cut-release` promotes `## [Unreleased]` to
- * `## [X.Y.Z]` and opens a fresh empty one, which moves every entry under a new heading
- * without losing any. A per-section or positional comparison would turn the next release
- * cut red.
+ * Position-independent on purpose: a release moves entries from `changelog.d/` fragments into a
+ * new version section without losing any, and a correction may touch an entry in any section. A
+ * per-section or positional comparison would turn the next release cut red.
  */
 export function parseRecord(text) {
   const sections = [];
   const entries = new Set();
   const repeatedSubsections = [];
   const orphans = new Map();
+  const unreleased = [];
+  const sectionOf = new Map();
   let inSection = false;
+  let subsectionTitle = null;
   let open = null;
   let seenSubsections = null;
   let last = null;
@@ -55,6 +65,9 @@ export function parseRecord(text) {
     if (normalised) {
       entries.add(normalised);
       last = normalised;
+      sectionOf.set(normalised, sections.at(-1));
+      if (sections.at(-1) === UNRELEASED)
+        unreleased.push({ entry: normalised, section: subsectionTitle });
     }
     open = null;
   };
@@ -66,6 +79,7 @@ export function parseRecord(text) {
       last = null;
       sections.push(heading[1].trim());
       inSection = true;
+      subsectionTitle = null;
       seenSubsections = new Set();
       continue;
     }
@@ -75,6 +89,7 @@ export function parseRecord(text) {
       const subsection = inSection ? SUBSECTION_HEADING.exec(line) : null;
       if (subsection) {
         const title = subsection[1];
+        subsectionTitle = title;
         if (seenSubsections.has(title)) {
           repeatedSubsections.push({ section: sections.at(-1), title });
         } else seenSubsections.add(title);
@@ -101,7 +116,7 @@ export function parseRecord(text) {
   }
   flush();
 
-  return { sections, entries, repeatedSubsections, orphans };
+  return { sections, entries, repeatedSubsections, orphans, unreleased, sectionOf };
 }
 
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
@@ -113,164 +128,6 @@ function forgiven(amnesty) {
     if (entry && reason) out.set(entry, reason);
   }
   return out;
-}
-
-/**
- * The share of the longer entry's words that must survive, in order, for one entry to read as an
- * edit of another rather than as an unrelated addition beside a deletion. Measured over this
- * record's own 572 entries; the figures are in scripts/README.md beside the span's.
- */
-const SAME_ENTRY_SURVIVAL = 0.5;
-
-/**
- * Words one correction may move in each direction: at most this many of the published entry's words
- * gone, at most this many new ones standing where they were. Absolute rather than a share, because
- * a share of a long entry is buyable with background prose at any threshold. Measured, and why no
- * share stands in for it: scripts/README.md under `check-release-record.mjs`.
- */
-export const CORRECTION_SPAN = 16;
-
-/** Words of `a` that `b` also holds, ignoring order — an exact ceiling on the ordered run below. */
-function sharedWords(a, b) {
-  const spare = new Map();
-  for (const word of a) spare.set(word, (spare.get(word) ?? 0) + 1);
-  let shared = 0;
-  for (const word of b) {
-    const left = spare.get(word) ?? 0;
-    if (left > 0) {
-      spare.set(word, left - 1);
-      shared += 1;
-    }
-  }
-  return shared;
-}
-
-/** Longest run of words appearing in both, in order, not necessarily adjacent. */
-function survivingRun(a, b) {
-  let prev = new Uint32Array(b.length + 1);
-  let row = new Uint32Array(b.length + 1);
-  for (let i = 1; i <= a.length; i += 1) {
-    for (let j = 1; j <= b.length; j += 1) {
-      row[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], row[j - 1]);
-    }
-    [prev, row] = [row, prev];
-    row.fill(0);
-  }
-  return prev[b.length];
-}
-
-/**
- * the pairing takes the MOST pairs it can and their similarity only as the tiebreak.
- * Taking the likeliest candidate irrevocably is a different answer: two genuine corrections in one
- * change can refuse each other — one reported lost and the other over budget — while a pairing that
- * satisfies both exists. Augmenting paths, so a pair already held can be given up to buy two.
- */
-function bestMatching(edges, leftCount, rightCount) {
-  const matchedFrom = new Int32Array(rightCount).fill(-1);
-  if (edges.length === 0) return matchedFrom;
-
-  const adjacency = Array.from({ length: leftCount }, () => []);
-  const weights = new Map();
-  // A pair is worth 1 and its similarity a fraction of one no number of pairs can add up to.
-  const tiebreak = 1 / (leftCount + rightCount + 1);
-  for (const { left, right, share } of edges) {
-    adjacency[left].push(right);
-    weights.set(left * rightCount + right, 1 + share * tiebreak);
-  }
-  const weightOf = (left, right) => weights.get(left * rightCount + right);
-
-  const matchedTo = new Int32Array(leftCount).fill(-1);
-  for (;;) {
-    const end = augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, rightCount });
-    if (end === null) return matchedFrom;
-    for (let right = end.right; right !== -1; ) {
-      const left = end.cameFromLeft[right];
-      const previous = end.cameFromRight[left];
-      matchedTo[left] = right;
-      matchedFrom[right] = left;
-      right = previous;
-    }
-  }
-}
-
-/**
- * One augmenting step of the above: the highest-gain alternating path from a free removed entry to
- * a free added one, relaxed until nothing moves because it may run back through pairs already
- * taken. Null when the matching cannot grow, which is its maximum.
- */
-function augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, rightCount }) {
-  const costLeft = new Float64Array(leftCount).fill(Number.POSITIVE_INFINITY);
-  const costRight = new Float64Array(rightCount).fill(Number.POSITIVE_INFINITY);
-  const cameFromLeft = new Int32Array(rightCount).fill(-1);
-  const cameFromRight = new Int32Array(leftCount).fill(-1);
-  for (let left = 0; left < leftCount; left += 1) if (matchedTo[left] === -1) costLeft[left] = 0;
-
-  for (let pass = 0; pass <= leftCount + rightCount; pass += 1) {
-    let moved = false;
-    for (let left = 0; left < leftCount; left += 1) {
-      if (costLeft[left] === Number.POSITIVE_INFINITY) continue;
-      for (const right of adjacency[left]) {
-        if (matchedTo[left] === right) continue;
-        const cost = costLeft[left] - weightOf(left, right);
-        if (cost < costRight[right] - 1e-9) {
-          costRight[right] = cost;
-          cameFromLeft[right] = left;
-          moved = true;
-        }
-      }
-    }
-    for (let right = 0; right < rightCount; right += 1) {
-      const left = matchedFrom[right];
-      if (left === -1 || costRight[right] === Number.POSITIVE_INFINITY) continue;
-      const cost = costRight[right] + weightOf(left, right);
-      if (cost < costLeft[left] - 1e-9) {
-        costLeft[left] = cost;
-        cameFromRight[left] = right;
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-
-  let best = -1;
-  for (let right = 0; right < rightCount; right += 1) {
-    if (matchedFrom[right] !== -1 || costRight[right] === Number.POSITIVE_INFINITY) continue;
-    if (best === -1 || costRight[right] < costRight[best]) best = right;
-  }
-  return best === -1 ? null : { right: best, cameFromLeft, cameFromRight };
-}
-
-function matchEdges(edges, removed, added) {
-  const matchedFrom = bestMatching(edges, removed.length, added.length);
-  const paired = new Map();
-  for (const [right, after] of added.entries()) {
-    if (matchedFrom[right] !== -1) paired.set(after, removed[matchedFrom[right]]);
-  }
-  return paired;
-}
-
-/** Every removed/added pair the rule above admits, before the matching picks among them. */
-function correctionEdges(removed, added) {
-  const edges = [];
-  for (const [left, before] of removed.entries()) {
-    const was = before.split(' ');
-    for (const [right, after] of added.entries()) {
-      const now = after.split(' ');
-      const longest = Math.max(was.length, now.length);
-      const floor = longest * SAME_ENTRY_SURVIVAL;
-      if (Math.min(was.length, now.length) <= floor) continue;
-      if (Math.abs(was.length - now.length) > CORRECTION_SPAN) continue;
-      const shared = sharedWords(was, now);
-      if (shared <= floor || Math.max(was.length, now.length) - shared > CORRECTION_SPAN) continue;
-      const survived = survivingRun(was, now);
-      if (survived <= floor) continue;
-      if (was.length - survived > CORRECTION_SPAN || now.length - survived > CORRECTION_SPAN) {
-        continue;
-      }
-      edges.push({ left, right, share: survived / longest });
-    }
-  }
-  return edges;
 }
 
 /**
@@ -314,12 +171,83 @@ function overBudgetEntries(added, edited) {
   return over;
 }
 
+/** Fragments as read: `{ file, text }` each, to `{ path, entry, section, problems }`. */
+function readAll(files) {
+  return fragmentFiles(files ?? []).map(({ file, text }) => ({
+    path: `${FRAGMENT_DIR}/${file}`,
+    ...readFragment(file, text),
+  }));
+}
+
 /**
- * Judge the record at HEAD against the same record at the base revision.
+ * The refusal for a `## [Unreleased]` heading in CHANGELOG.md: a writer following the guidance
+ * this replaced. Each entry it holds is named with the fragment path it belongs in, so the fix is a
+ * move rather than a search.
+ */
+function unreleasedViolation(now, fragmentName) {
+  if (!now.sections.includes(UNRELEASED)) return null;
+  const moves = now.unreleased.map(({ entry, section }, i) => {
+    const suffix = now.unreleased.length > 1 ? `-${i + 1}` : '';
+    const known = SECTIONS.includes(section) ? section : 'Fixed';
+    return `${fragmentPath(`${fragmentName}${suffix}`, known)} ← ${opening(entry, 10)}`;
+  });
+  return {
+    rule: 'unreleased-in-record',
+    detail:
+      `CHANGELOG.md carries a \`## [${UNRELEASED}]\` heading. It holds released sections only: an ` +
+      `unreleased entry is a file of its own, \`${FRAGMENT_DIR}/<name>.<section>.md\`, which no other ` +
+      `branch writes, and the release writer folds it into the version section. An entry written ` +
+      `under [${UNRELEASED}] is what git's merge moved into an already-released section on every ` +
+      `release from dev.56 to dev.62. Delete the heading` +
+      (moves.length > 0 ? ' and move each entry under it into the fragment named:' : '.'),
+    removed: moves,
+  };
+}
+
+/** Every way a fragment at HEAD is not one, by path. */
+function fragmentViolations(fragments) {
+  return fragments
+    .filter((f) => f.problems.length > 0)
+    .map((f) => ({
+      rule: 'fragment-shape',
+      detail:
+        `\`${f.path}\` ${f.problems.join('; ')}. A fragment is \`${FRAGMENT_DIR}/<name>.<section>.md\` ` +
+        `(section one of ${SECTIONS.map((x) => x.toLowerCase()).join(', ')}) holding one entry: a bold ` +
+        `lead and at most ${ENTRY_WORD_BUDGET} words, with no bullet marker and no heading.`,
+    }));
+}
+
+/**
+ * Entries this change added into a version section the base already held: not a correction of a
+ * published entry, and not under [Unreleased] (refused on its own above). That is the merge that
+ * slid a branch's entry under a release cut beside it. A version section new at HEAD is a release
+ * — one or several, as a promotion carries — so its entries are not counted here.
+ */
+function directWrites({ added, edited, now, was, fragmentName }) {
+  const released = new Set(was.sections.filter((s) => s !== UNRELEASED));
+  const direct = added.filter(
+    (entry) => released.has(now.sectionOf.get(entry)) && !edited.has(entry),
+  );
+  if (direct.length === 0) return null;
+  return {
+    rule: 'entry-outside-a-fragment',
+    detail:
+      `${direct.length} new entr${direct.length === 1 ? 'y was' : 'ies were'} written into a version ` +
+      `section CHANGELOG.md had already released. Only a release writes there, from fragments; write ` +
+      `each as \`${fragmentPath(fragmentName)}\` (or .added / .changed / .removed / .security) and take ` +
+      `it out of CHANGELOG.md:`,
+    removed: direct.map((entry) => `[${now.sectionOf.get(entry)}] ${entry}`),
+  };
+}
+
+/**
+ * Judge the record at HEAD — CHANGELOG.md and the `changelog.d/` fragments beside it — against the
+ * same pair at the base revision. `fragments.head` / `fragments.base` are `{ file, text }` lists;
+ * `fragmentName` is what a refusal names as the fragment to write (the branch, normally).
  *
  * `code`: 0 the record holds · 1 it was broken · 2 the judgement could not be made.
  */
-export function judge({ head, base, amnesty }) {
+export function judge({ head, base, amnesty, fragments = {}, fragmentName = '<your-branch>' }) {
   if (typeof head !== 'string') {
     return { code: 2, reason: 'CHANGELOG.md is unreadable at HEAD' };
   }
@@ -328,17 +256,8 @@ export function judge({ head, base, amnesty }) {
   }
 
   const now = parseRecord(head);
-  const violations = [];
-
-  if (!now.sections.includes(UNRELEASED)) {
-    violations.push({
-      rule: 'structure',
-      detail:
-        `CHANGELOG.md carries no \`## [${UNRELEASED}]\` heading. Five readers need it: the in-app ` +
-        `What's New feed, the release step, the release cutter, the batch release plan, and the ` +
-        `release-notes schema. Without it the feed renders blank instead of failing.`,
-    });
-  }
+  const nowFragments = readAll(fragments.head);
+  const violations = [unreleasedViolation(now, fragmentName), ...fragmentViolations(nowFragments)];
 
   for (const { section, title } of now.repeatedSubsections) {
     violations.push({
@@ -350,21 +269,27 @@ export function judge({ head, base, amnesty }) {
     });
   }
 
+  const nowEntries = new Set([...now.entries, ...nowFragments.map((f) => f.entry).filter(Boolean)]);
+  const entryCount = nowEntries.size;
   if (base === null) {
-    return violations.length > 0
-      ? { code: 1, violations, entries: now.entries.size, sections: now.sections.length }
+    const found = violations.filter(Boolean);
+    return found.length > 0
+      ? { code: 1, violations: found, entries: entryCount, sections: now.sections.length }
       : { code: 2, reason: 'no base revision to compare the record against' };
   }
 
   const was = parseRecord(base);
-  const removed = [...was.entries].filter((entry) => !now.entries.has(entry));
-  const added = [...now.entries].filter((entry) => !was.entries.has(entry));
+  const wasFragments = readAll(fragments.base);
+  const wasEntries = new Set([...was.entries, ...wasFragments.map((f) => f.entry).filter(Boolean)]);
+  const removed = [...wasEntries].filter((entry) => !nowEntries.has(entry));
+  const added = [...nowEntries].filter((entry) => !wasEntries.has(entry));
 
   const edges = correctionEdges(removed, added).filter(orphanCompatible(now, was, removed, added));
   const edited = matchEdges(edges, removed, added);
   const orphaned = added
     .filter((entry) => now.orphans.has(entry) && !edited.has(entry))
     .map((entry) => ({ entry, prose: now.orphans.get(entry) }));
+  violations.push(directWrites({ added, edited, now, was, fragmentName }));
   for (const { entry, prose } of orphaned) {
     violations.push({
       rule: 'structure',
@@ -384,7 +309,7 @@ export function judge({ head, base, amnesty }) {
       rule: 'no-silent-loss',
       detail: `${unpardoned.length} release entr${unpardoned.length === 1 ? 'y' : 'ies'} present at the base revision ${
         unpardoned.length === 1 ? 'is' : 'are'
-      } gone from CHANGELOG.md`,
+      } gone from CHANGELOG.md and ${FRAGMENT_DIR}/`,
       removed: unpardoned,
     });
   }
@@ -415,10 +340,11 @@ export function judge({ head, base, amnesty }) {
     });
   }
 
+  const found = violations.filter(Boolean);
   return {
-    code: violations.length > 0 ? 1 : 0,
-    violations,
-    entries: now.entries.size,
+    code: found.length > 0 ? 1 : 0,
+    violations: found,
+    entries: entryCount,
     sections: now.sections.length,
   };
 }

@@ -63,10 +63,11 @@ branch it deploys from, and the promotions that reach it — see
 `docs/releases/`, and no per-version file: the `record` axis owns that document and a second copy of
 the same fact is the defect ADR 0003 was written against.
 
-Cutting a release turns the `[Unreleased]` heading into a version heading carrying **the number the
-allocator gave** and the date the release shipped, and opens a fresh empty `[Unreleased]` above it.
-The entries do not move or get rewritten on the way — they were written for a reader when the work
-landed, and the release only stamps them.
+An entry not yet released is a file of its own under `changelog.d/`, written when the work landed.
+Cutting a release folds every one of them into a new version heading carrying **the number the
+allocator gave** and the date the release shipped, and deletes the files in the same commit. The
+entries are not rewritten on the way — they were written for a reader when the work landed, and the
+release only stamps them.
 
 A release that reaches its tag step and cannot cut the tag gets **no heading**. It is reported
 unfinished rather than released, so no version heading ever names work that is not out.

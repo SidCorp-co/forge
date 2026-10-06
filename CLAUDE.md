@@ -61,7 +61,8 @@ the shared ones out from the root, and `packages/runner` is cargo. Read them the
 Every gate but the four `$postMerge` names blocks the merge from `ci-passed`, and **that, not
 this file, is why they hold** — every threshold, baseline and refusal is enforced by a checker
 `pnpm verify` runs, so none is restated here. Six axes: form, knowledge, relations, behaviour,
-language, record. `record` owns `CHANGELOG.md`. An axis measures at its weakest gate, and
+language, record. `record` owns `CHANGELOG.md` and `changelog.d/`: an unreleased entry is its own
+file, `changelog.d/<branch>.<section>.md`, never a line in `CHANGELOG.md`. An axis measures at its weakest gate, and
 `.forge/conformance.json` declares each one's level, owner, reason and priced amnesty.
 
 **Do not add a rule to an axis another already owns** — the one rule no checker can enforce,

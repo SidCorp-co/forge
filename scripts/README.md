@@ -773,18 +773,38 @@ Commit `3df9a8e9` removed **1,034 lines, added 0** — the whole `[Unreleased]` 
 version section and the style header — inside a commit about closing 94 dangling docs pointers whose
 message never named the file. Twelve gates ran on it and every one passed.
 
-Three rules:
+The record is two places: `CHANGELOG.md`, which holds released version sections only, and
+`changelog.d/`, which holds each unreleased entry as a file of its own,
+`changelog.d/<name>.<section>.md` — the name the branch or issue that writes it, the section one of
+`added`, `changed`, `fixed`, `removed`, `security`. `scripts/cut-release.sh` folds the fragments into
+the new version section through `lib/assemble-release.mjs` and deletes them in the release commit.
+
+**Why fragments.** While unreleased entries were lines under `## [Unreleased]`, a release inserting
+its version heading under that line and a branch appending an entry below it edited neighbouring
+lines of one file. Git's merge then either conflicted or put the branch's entry into the section the
+release had just cut — every release from dev.56 to dev.62, six hand repairs in a day, and one run
+skipped its entry because the file was held by another tree.
+
+<!-- doc-citation: unchecked `newsfragments/` `.changes/unreleased/` `.changeset/` — the fragment directories of towncrier, changie and changesets, in their own repositories -->
+One change, one file at a path no other branch writes, is the shape towncrier (`newsfragments/`), changie (`.changes/unreleased/`) and
+changesets (`.changeset/`) all settled on; none of them was taken because the release writer was a
+dozen lines of the same job and this gate is the larger part, which none of them carries.
+
+Rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
+| `unreleased-in-record` | `CHANGELOG.md` carries a `## [Unreleased]` heading — a writer following the guidance fragments replaced. Each entry under it is named with the fragment path to move it to |
+| `entry-outside-a-fragment` | an entry this change adds sits in a version section the base revision already held, and is not a correction of a published entry — the merge that slid a branch's entry under a release. A version section new at HEAD is a release, or several in a promotion, and passes |
+| `fragment-shape` | a file under `changelog.d/` is not named `<name>.<section>.md`, is empty, holds a heading, a list marker or a second paragraph, or does not open with a bold lead |
+| `structure` | one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
 | `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
-Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
-is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
-release cut moves every entry under a new heading without losing one, and a positional comparison
-would turn the next release red. Normalising whitespace is what stops a hard-wrap reflow reading as
+Entries are compared as a **set of whitespace-normalised texts, position-independent**, across
+both places: every bullet in `CHANGELOG.md` and every fragment. That is what lets a release move an
+entry from `changelog.d/` into a version section without losing one, and why deleting a fragment
+nothing released is a loss like any other; a positional comparison would turn the next release red. Normalising whitespace is what stops a hard-wrap reflow reading as
 30 deletions.
 
 ### A correction is an edit, not a deletion and a new entry
@@ -796,7 +816,7 @@ the other. No published entry could be corrected at all, which is what held `mai
 job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
 only edit that would fix it was the one edit the gate refused.
 
-`matchEdges` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
+`matchEdges` in `lib/entry-correction.mjs` matches each removed entry to at most one added entry.
 **Two entries are the same entry when more than half the words of the longer one survive into the
 other in order, AND the change moved at most `CORRECTION_SPAN` words each way** — at most that many
 of the published entry's words gone, at most that many new ones standing where they were. A paired
@@ -897,8 +917,9 @@ at all, and `entry-budget` has no amnesty at all.
 node scripts/check-release-record.mjs      # 0 the record holds · 1 it was broken · 2 could not run
 ```
 
-The verdict half is in `lib/release-record.mjs` so it can be tested without a git tree; the CLI
-reads git and exits.
+The verdict half is in `lib/release-record.mjs`, the fragment shape in `lib/changelog-fragments.mjs`
+and the correction pairing in `lib/entry-correction.mjs`, so each can be tested without a git tree;
+the CLI reads git and exits.
 
 ## check-source-language.mjs — English-only source policy
 
