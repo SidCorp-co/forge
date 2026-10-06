@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.55] - 2026-10-06
+
+Onboarding confirm carries the owner's request; coded chat turn errors; recorded issue decisions
+
 ### Fixed
 
 - Owners ask for designs through a confirm step carrying their request to the onboarding job, which alone reads that room; a failed chat turn says one coded sentence in the asker's language; issues take recorded decisions.
