@@ -328,6 +328,9 @@ mod tests {
             std::fs::write(at, body).unwrap();
             run(&seed, &["add", "--", path]);
         }
+        // `* -text` is committed so every checkout or worktree of this repo, including ones the product cuts, restores the committed bytes whatever `core.autocrlf` the box ships (Windows: true).
+        std::fs::write(seed.join(".gitattributes"), "* -text\n").unwrap();
+        run(&seed, &["add", "--", ".gitattributes"]);
         run(&seed, &["commit", "-q", "-m", "one"]);
         let bare = root.join("origin.git");
         run(
@@ -346,6 +349,8 @@ mod tests {
             &[
                 "clone",
                 "-q",
+                "-c",
+                "core.autocrlf=false",
                 bare.to_str().unwrap(),
                 checkout.to_str().unwrap(),
             ],

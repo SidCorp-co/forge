@@ -765,6 +765,13 @@ mod start_tests {
         let seed = root.join("seed");
         std::fs::create_dir_all(seed.join(".forge")).unwrap();
         git(&seed, &["init", "-q"]);
+        // `* -text` is committed so every checkout or worktree of this repo, including ones the product cuts, restores the committed bytes whatever `core.autocrlf` the box ships (Windows: true).
+        std::fs::write(
+            seed.join(".gitattributes"),
+            "* -text
+",
+        )
+        .unwrap();
         std::fs::write(seed.join(ORIENTATION), orientation_body(PROD, "forge-dev")).unwrap();
         std::fs::write(
             seed.join("CLAUDE.md"),
@@ -776,7 +783,14 @@ mod start_tests {
         let co = root.join("co");
         git(
             root,
-            &["clone", "-q", seed.to_str().unwrap(), co.to_str().unwrap()],
+            &[
+                "clone",
+                "-q",
+                "-c",
+                "core.autocrlf=false",
+                seed.to_str().unwrap(),
+                co.to_str().unwrap(),
+            ],
         );
         git(&co, &["update-index", "--skip-worktree", ORIENTATION]);
         std::fs::write(co.join(ORIENTATION), orientation_body(DEV, "forge")).unwrap();

@@ -251,6 +251,20 @@ pub fn untracked_generated(repo: &Path) -> Option<String> {
         .filter(|b| is_generated(b))
 }
 
+/// A checkout's path as a `claudeMdExcludes` glob root: forward slashes, no trailing one, and no
+/// `\\?\` verbatim prefix. `std::fs::canonicalize` returns that prefix on Windows, and a pattern
+/// written `//?/C:/…` names no path a session ever loads from. The docs say only that "patterns are
+/// matched against absolute file paths using glob syntax", with every example written with `/`
+/// (code.claude.com/docs/en/memory, "Exclude specific CLAUDE.md files"), so `/` is the one separator
+/// the pattern is written in.
+fn glob_root(path: &str) -> String {
+    let path = match path.strip_prefix("\\\\?\\UNC\\") {
+        Some(unc) => format!("\\\\{unc}"),
+        None => path.strip_prefix("\\\\?\\").unwrap_or(path).to_string(),
+    };
+    path.replace('\\', "/").trim_end_matches('/').to_string()
+}
+
 /// The `claudeMdExcludes` globs keeping the checkout's and every nested
 /// worktree's `.forge/orientation.md` from loading, under the checkout's path
 /// as given and, where a symlink makes it differ, as resolved.
@@ -267,8 +281,7 @@ fn exclusions(repo: &Path) -> Result<Vec<String>, Refused> {
     Ok(roots
         .iter()
         .flat_map(|root| {
-            let root = root.to_string_lossy().replace('\\', "/");
-            let root = root.trim_end_matches('/').to_string();
+            let root = glob_root(&root.to_string_lossy());
             [
                 format!("{root}/{ORIENTATION}"),
                 format!("{root}/.claude/worktrees/*/{ORIENTATION}"),
@@ -478,9 +491,12 @@ pub(crate) mod claude_load {
                 .filter_map(|p| p.as_str().map(str::to_string))
                 .collect();
         let excluded = |p: &Path| {
-            excludes
-                .iter()
-                .any(|g| glob(g.as_bytes(), p.to_string_lossy().as_bytes()))
+            excludes.iter().any(|g| {
+                glob(
+                    g.as_bytes(),
+                    p.to_string_lossy().replace('\\', "/").as_bytes(),
+                )
+            })
         };
         let mut dirs: Vec<&Path> = cwd
             .ancestors()
@@ -629,6 +645,24 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_checkout_path_is_written_as_a_forward_slash_glob_root() {
+        for (given, want) in [
+            (
+                "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\forge-orient-1-co",
+                "C:/Users/RUNNER~1/AppData/Local/Temp/forge-orient-1-co",
+            ),
+            (
+                "\\\\?\\C:\\Users\\runneradmin\\Temp\\co\\",
+                "C:/Users/runneradmin/Temp/co",
+            ),
+            ("\\\\?\\UNC\\srv\\share\\co", "//srv/share/co"),
+            ("/home/dev/co", "/home/dev/co"),
+        ] {
+            assert_eq!(glob_root(given), want, "{given}");
+        }
+    }
+
+    #[test]
     fn a_checkout_an_older_runner_held_under_skip_worktree_is_converted_on_the_next_provision() {
         let prod = orientation_body(PROD, "forge-dev");
         let imports = format!("{FORGE_IMPORT}\n\n# Forge\n");
@@ -699,6 +733,9 @@ mod tests {
             git(&repo, &["add", "--", path]);
         }
         if !files.is_empty() {
+            // `* -text` is committed so every checkout or worktree of this repo, including ones the product cuts, restores the committed bytes whatever `core.autocrlf` the box ships (Windows: true).
+            std::fs::write(repo.join(".gitattributes"), "* -text\n").unwrap();
+            git(&repo, &["add", "--", ".gitattributes"]);
             git(&repo, &["commit", "-q", "-m", "committed"]);
         }
         repo

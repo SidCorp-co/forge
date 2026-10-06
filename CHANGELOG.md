@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- **A Windows local-path repository now binds.** `forge-runner bind` read a `C:\...` source document as a host and refused a matching local origin; drive paths, `file:///C:/`, mixed separators and `\\?\` now name one place on every platform.
 - **A release no longer reads lost when its master pane is replaced.** A pool job's session opens
   as its own root, not under the master it was held by, so ending that master leaves the running
   release untouched.
