@@ -3140,10 +3140,24 @@
   put the question on the issue at each status (ISS-1385).
 
 - **A pane placed after a reboot finds `forge-runner`, `forge`, `claude` and `node`.** The runner
-  builds the pane's PATH, and places no pane that would lack one (ISS-1390).
+  builds the pane's PATH, and places no pane that would lack one; `forge-runner master status`
+  names the missing program (ISS-1390).
 
 - **`forge-runner doctor` reports each bound checkout's folder trust**, and a master that stopped on
-  the trust dialog is reported as that (ISS-1382).
+  the trust dialog is reported as that, also when it closed itself by answering it (ISS-1382).
+
+- **A checkout an agent is still working in is released once that agent finishes**, rather than
+  given up after five minutes and left for a hand `forge-runner run release` (ISS-1390).
+
+- **A run left open from before a reboot is closed by the box**, so its master is no longer left
+  holding work it cannot close (ISS-1390).
+
+- **A subagent its master resumes is reported as resumed, not as started**, and a run is still
+  taken by the subagent dispatched for it when the box cannot read its role list (ISS-1390).
+
+- **A master that keeps exiting for one reason is reported once, with what the exits shared**
+  rather than one exit's request id; a pid no longer splits a reason. Hand update probation reads
+  as a condition (ISS-1390).
 
 - **A run's checkout is no longer taken while its agent works in it, nor by another run's
   release.** A master's helper no longer takes a declared run. An update that will not start is

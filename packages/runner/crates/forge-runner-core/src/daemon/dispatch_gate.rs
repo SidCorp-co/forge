@@ -37,8 +37,9 @@ pub struct Dispatch {
     pub subagent_type: Option<String>,
     /// This tool call's own id, which is what a declaration is promised to.
     pub tool_use_id: Option<String>,
-    /// The subagent a master's `SendMessage` resumes, which starts no new
-    /// subagent and so sends no `SubagentStart`.
+    /// The subagent a master's `SendMessage` resumes. It starts no new
+    /// subagent, though Claude Code still fires `SubagentStart` for it as it
+    /// resumes (ISS-1378 judging 8012bc54 #2).
     pub resumes: Option<String>,
     /// The transcript of the conversation that made this tool call, beside
     /// which Claude Code keeps each of its subagents' own.
@@ -131,9 +132,17 @@ pub fn claims_the_run(
         );
     };
     let Some(roles) = roles else {
+        // The gate let the dispatch through without the inventory and promised
+        // the run to it, naming its role: the subagent that starts as that
+        // role is the one the master dispatched for the run (ISS-1378 judging
+        // 8012bc54 #4). Without a promise there is nothing to match.
+        if promised_role == Some(role) {
+            return Ok(());
+        }
         return Err(format!(
-            "the roles this box's plugin copy ships could not be read, so whether `{role}` is the \
-             run's cannot be told and it is not taken for the run's"
+            "the roles this box's plugin copy ships could not be read and no dispatch naming \
+             `{role}` was promised the run, so whether `{role}` is the run's cannot be told and it \
+             is not taken for the run's"
         ));
     };
     if !roles.contains(role) {
@@ -610,6 +619,14 @@ mod tests {
         let why = claims_the_run(None, Some(&r), None).expect_err("no type");
         assert!(why.contains("cannot be told"), "{why}");
         let why = claims_the_run(Some("forge:runner"), None, None).expect_err("no roles");
+        assert!(why.contains("cannot be told"), "{why}");
+        assert_eq!(
+            claims_the_run(Some("forge:runner"), None, Some("forge:runner")),
+            Ok(()),
+            "with no inventory, the role the promised dispatch named is the run's"
+        );
+        let why = claims_the_run(Some("forge:reviewer"), None, Some("forge:runner"))
+            .expect_err("another role under no inventory");
         assert!(why.contains("cannot be told"), "{why}");
     }
 }

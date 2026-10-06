@@ -213,6 +213,17 @@ fn a_hand_update_keeps_the_build_it_replaced_and_starts_the_new_one_on_probation
 
     let said = update_by_hand(&exe, &home);
     assert!(said.contains(&format!("→ {version}")), "installed: {said}");
+    // The probation is a condition on what has not happened yet, and the line
+    // says it as one rather than as a failure already met (ISS-1378 judging,
+    // 8012bc54 #3).
+    assert!(
+        said.contains(&format!(
+            "serves on probation: if it starts {} times without staying up {}s, it is put back to",
+            probation::LIMIT,
+            probation::PERIOD.as_secs()
+        )),
+        "{said}"
+    );
     assert!(
         std::fs::read_to_string(&exe)
             .unwrap()

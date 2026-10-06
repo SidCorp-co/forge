@@ -58,7 +58,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         update::Applied::Installed(o) => {
             println!("✔ updated {} → {}", o.from, o.to);
             println!(
-                "  {} serves on probation: started {} times without staying up {}s, it is put back to {}",
+                "  {} serves on probation: if it starts {} times without staying up {}s, it is put back to {}",
                 o.to,
                 update::probation::LIMIT,
                 update::probation::PERIOD.as_secs(),

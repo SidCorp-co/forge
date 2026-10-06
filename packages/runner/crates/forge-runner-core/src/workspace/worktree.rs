@@ -425,10 +425,19 @@ pub async fn remove_at_clearing(
     why: &str,
     clearing: &Clearing<'_>,
 ) -> Result<()> {
-    match clearing.clear(worktree).await.verdict(worktree) {
+    let ending = clearing.clear(worktree).await;
+    let agent = matches!(
+        ending,
+        crate::workspace::worktree_processes::Ending::Live { .. }
+    );
+    match ending.verdict(worktree) {
         Verdict::Refuse(said) => {
             tracing::warn!("[worktree] {repo}: {said}");
-            return Err(Error::Other(said));
+            return Err(if agent {
+                Error::AgentInTree(said)
+            } else {
+                Error::Other(said)
+            });
         }
         // The level is the verdict's, because a removal that ended something
         // and one that only said how complete its reading was are not the
@@ -1286,6 +1295,10 @@ pub(crate) mod tests {
         )
         .await
         .expect_err("a live agent's checkout is not given back");
+        assert!(
+            matches!(refused, Error::AgentInTree(_)),
+            "ISS-1390 E1: the release can tell a live agent's refusal from any other: {refused:?}"
+        );
 
         let said = refused.to_string();
         assert!(
