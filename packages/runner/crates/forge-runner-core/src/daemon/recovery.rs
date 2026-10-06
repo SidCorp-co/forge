@@ -221,6 +221,17 @@ pub async fn reconcile(
             run.incarnation = Incarnation::Exited;
             run.ended_by = Some(ENDED_BY_BOX.to_string());
             run.ended_reason = Some(reason);
+        } else if let Some(reason) = ended_with_its_boot(&run, boot_id) {
+            ledger.end_run(&run.run_id, ENDED_BY_BOX, &reason)?;
+            tracing::warn!(
+                "[recovery] run {} ({}) under master session {} ended: {reason}",
+                run.run_id,
+                run.project_id.as_deref().unwrap_or("no project"),
+                crate::runner::ledger::short_id(&run.master_session_id)
+            );
+            run.incarnation = Incarnation::Exited;
+            run.ended_by = Some(ENDED_BY_BOX.to_string());
+            run.ended_reason = Some(reason);
         }
         let pid_refuted = match run.pid {
             Some(pid) => procs.is_gone(pid).await,
@@ -505,6 +516,30 @@ fn unbound_past_the_bound(run: &Run, boot_id: &str, now_secs: i64) -> Option<i64
         && run.boot_id == boot_id
         && age >= UNBOUND_BEFORE_END_SECS)
         .then_some(age)
+}
+
+/// Why `run` is ended by the box, where it was declared under a boot of this
+/// box that has since ended.
+///
+/// Every process of that boot ended with it, the agent this run was bound to
+/// and the master that declared it included, so nothing of the run is running.
+/// Nothing else ended such a row: its master, resumed into the same
+/// conversation after the reboot, holds a new session and is refused its
+/// close, and the other-boot rules keep its checkout without ending it (ISS-1385
+/// comment e9fb60dd, three rows on 2026-10-06). Ending it is not reclaiming on
+/// a pid of that boot, which may name another process now; its checkout stays
+/// where those rules leave it. A boot this box cannot read ends nothing.
+fn ended_with_its_boot(run: &Run, boot_id: &str) -> Option<String> {
+    (run.ended_by.is_none()
+        && !boot_id.is_empty()
+        && !run.boot_id.is_empty()
+        && run.boot_id != boot_id)
+        .then(|| {
+            format!(
+                "declared under boot {}, and this box has rebooted since (it is boot {boot_id}), so every process of that boot, this run's agent and its master included, ended with it; the box ended it, its session and its leases go back by the close loop, and its issues can be declared again",
+                run.boot_id
+            )
+        })
 }
 
 fn unbound_reason(age_secs: i64) -> String {
@@ -930,10 +965,11 @@ fn say_standing(
                 format!("Its checkout {} is still held", run.worktree_path.display())
             };
             tracing::error!(
-                "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it \
-                 was declared under boot {} and this box is boot {}, and a run from another boot \
-                 is never reclaimed here, because its process and its pane cannot be read from \
-                 this one. {left}. Said once, not every sweep",
+                "[recovery] run {} ({issues}) is partially closed ({holds}): it was declared \
+                 under boot {} and this box is boot {}, so the box has ended it and its session \
+                 and its leases go back by the close loop, but its checkout is never released \
+                 here, because a process or a pane of another boot cannot be read from this one. \
+                 {left}. Said once, not every sweep",
                 run.run_id,
                 run.boot_id,
                 boot_id
@@ -3873,6 +3909,55 @@ mod tests {
         }
     }
 
+    /// ISS-1385 comment e9fb60dd: a run declared before a reboot stayed
+    /// open with nothing left to end it. Its master, resumed into the same
+    /// conversation under a new session, was refused its close, and every
+    /// process of that boot, its agent included, ended with the boot. The box
+    /// ends it; where the box cannot tell its boot, it ends nothing.
+    #[test]
+    fn a_run_declared_before_the_box_rebooted_is_ended_by_the_box() {
+        let sweep = |led: &mut Ledger, boot: &str| {
+            block_on(async {
+                reconcile(
+                    led,
+                    boot,
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &SessionCoreStillHolds,
+                        leases: &Leases(Mutex::new(HashSet::new())),
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap()
+            })
+        };
+        let scratch = Scratch::new("ended-boot");
+        let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let run_id = led.unclosed_runs().unwrap()[0].run_id.clone();
+
+        sweep(&mut led, "");
+        assert_eq!(
+            led.run(&run_id).unwrap().unwrap().ended_by,
+            None,
+            "a box that cannot read its boot cannot tell that one ended"
+        );
+
+        sweep(&mut led, "boot-later");
+        let run = led.run(&run_id).unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some(ENDED_BY_BOX));
+        let why = run.ended_reason.unwrap_or_default();
+        assert!(
+            why.contains("boot-a") && why.contains("boot-later"),
+            "the reason names both boots: {why}"
+        );
+    }
+
     #[test]
     fn a_run_from_another_boot_is_named_stuck_once_and_not_every_sweep() {
         let scratch = Scratch::new("foreign-boot");
@@ -3906,7 +3991,7 @@ mod tests {
         for said in [
             "boot-a",
             "boot-later",
-            "will stay so",
+            "its checkout is never released here",
             &wt.display().to_string(),
         ] {
             assert!(
