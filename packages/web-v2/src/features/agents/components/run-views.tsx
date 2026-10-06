@@ -41,7 +41,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
-import { useRunDetail } from "../hooks";
+import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
 import { masterHref, runHref } from "@/lib/routes/agents";
 import type { RunEvent, RunStanding, RunStandingDetail } from "../types";
 import { actorName, fmtTime, leaseLeft, runBanner, runKey, runName, stamp, stepLabel, waitingView } from "../view";
@@ -229,9 +229,11 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
   );
 }
 
+const RUNS_READS = [[RUNS_STANDING_ROOT]] as const;
+
 /** The one primary act a run offers, and cancel beside it for a writer while it is live. */
 export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string; canWrite: boolean }) {
-  const cancel = useCancelRun();
+  const cancel = useCancelRun(RUNS_READS);
   const parkRefused = parkRefusalText(cancel.data);
   const live = r.outcome === null;
   const w = r.waitingOn;
