@@ -123,11 +123,38 @@ fn hosted(host: &str, path: &str) -> Option<Place> {
     (!host.is_empty() && !path.is_empty()).then_some(Place::Hosted { host, path })
 }
 
+/// A Windows absolute path in any spelling git or a document gives it: `C:\x`, `C:/x`, `\\server\share`.
+/// Recognised by shape rather than by `Path::is_absolute`, which is `false` for these on Linux and
+/// macOS, so one comparison serves every platform.
+fn is_windows_absolute(s: &str) -> bool {
+    let b = s.as_bytes();
+    (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'/' | b'\\'))
+        || s.starts_with("\\\\")
+}
+
+/// A path as one spelling: a Windows path loses its `\\?\` verbatim prefix (what `canonicalize`
+/// prepends), its separators become `/` and its drive letter is upper-cased, so `C:\a/b`,
+/// `c:/a/b` and `\\?\C:\a\b` are the same place. Any other path is left as written, since
+/// `\` is an ordinary file-name byte on Unix.
+fn normalised(s: &str) -> String {
+    let s = s.strip_prefix("\\\\?\\").unwrap_or(s);
+    if !is_windows_absolute(s) {
+        return s.to_string();
+    }
+    let mut out = s.replace('\\', "/");
+    if out.as_bytes()[1] == b':' {
+        out[..1].make_ascii_uppercase();
+    }
+    out
+}
+
 fn local(path: &std::path::Path, base: &std::path::Path) -> Place {
-    let joined = if path.is_absolute() {
-        path.to_path_buf()
+    let text = normalised(&path.to_string_lossy());
+    let given = std::path::PathBuf::from(&text);
+    let joined = if given.is_absolute() || is_windows_absolute(&text) {
+        given
     } else {
-        base.join(path)
+        base.join(given)
     };
     Place::Local(joined.canonicalize().unwrap_or(joined))
 }
@@ -136,7 +163,7 @@ fn local(path: &std::path::Path, base: &std::path::Path) -> Place {
 /// absolute local path.
 fn declared_place(repository: &str) -> Option<Place> {
     let r = repository.trim();
-    if r.starts_with('/') {
+    if r.starts_with('/') || is_windows_absolute(r) {
         return Some(local(std::path::Path::new(r), std::path::Path::new("/")));
     }
     if let Some((authority, path)) = r.split_once(':') {
@@ -157,7 +184,15 @@ fn remote_place(url: &str, checkout: &std::path::Path) -> Option<Place> {
         return None;
     }
     if let Some(path) = url.strip_prefix("file://") {
+        // `file:///C:/x` carries the drive after the URL's own leading `/`
+        let path = match path.strip_prefix('/') {
+            Some(rest) if is_windows_absolute(rest) => rest,
+            _ => path,
+        };
         return Some(local(std::path::Path::new(path), checkout));
+    }
+    if is_windows_absolute(url) {
+        return Some(local(std::path::Path::new(url), checkout));
     }
     if let Some((_, rest)) = url.split_once("://") {
         let (authority, path) = rest.split_once('/')?;
@@ -413,6 +448,25 @@ mod tests {
             Some("../remotes/epodsystem-core.git")
         )
         .is_ok());
+    }
+
+    #[test]
+    fn a_windows_path_is_one_place_in_every_spelling() {
+        let checkout = std::path::Path::new("/nowhere");
+        let doc = "C:\\Users\\r\\Temp\\forge-bind-1\\remotes/epodsystem-core.git";
+        let want = declared_place(doc);
+        assert!(matches!(want, Some(Place::Local(_))), "{want:?}");
+        for origin in [
+            doc,
+            "c:/Users/r/Temp/forge-bind-1/remotes/epodsystem-core.git",
+            "file:///C:/Users/r/Temp/forge-bind-1/remotes/epodsystem-core.git",
+            "file://C:\\Users\\r\\Temp\\forge-bind-1\\remotes\\epodsystem-core.git",
+            "\\\\?\\C:\\Users\\r\\Temp\\forge-bind-1\\remotes\\epodsystem-core.git",
+        ] {
+            assert_eq!(remote_place(origin, checkout), want, "{origin}");
+        }
+        let a = assignment(doc, false);
+        assert!(checkout_credential_host("epod", checkout, &a, Some(doc)).is_ok());
     }
 
     #[test]

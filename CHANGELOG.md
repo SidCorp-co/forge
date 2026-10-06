@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- **A Windows local-path repository now binds.** `forge-runner bind` read a `C:\...` source document as a host and refused a matching local origin; drive paths, `file:///C:/`, mixed separators and `\\?\` now name one place on every platform.
 - **The tmux pane test can no longer pass without running.** Where tmux is missing it fails naming
   tmux, unless `FORGE_TEST_SKIP_TMUX=1` skips it out loud; CI installs tmux on Linux and macOS.
 
