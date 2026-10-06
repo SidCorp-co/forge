@@ -145,7 +145,7 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
                 ) : null}
                 {r.reason ? (
                   <details className="mt-1">
-                    <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">Reason</summary>
+                    <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{r.decision === "approve" ? "Approval note" : "Reason"}</summary>
                     <p className="mt-1 whitespace-pre-wrap break-words text-12-5 text-fg">{r.reason}</p>
                   </details>
                 ) : null}
@@ -167,7 +167,7 @@ interface DesignPageProps {
   decisionCount?: number;
   tab: DesignTab;
   onTab: (t: DesignTab) => void;
-  returnControl?: ReactNode;
+  noteControl?: ReactNode;
   walkDecision?: ReactNode;
 }
 
@@ -181,7 +181,7 @@ export function shownDesign(d: WorkflowDesign, record: WorkflowRecord) {
   return { shown, shownRevision, approved: canDiff ? approved : null };
 }
 
-export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, returnControl, walkDecision }: DesignPageProps) {
+export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, noteControl, walkDecision }: DesignPageProps) {
   const [changes, setChanges] = useState(false);
   const { shown, shownRevision, approved } = shownDesign(d, record);
   const health = useWorkflowHealth(projectId, record.document.id).data;
@@ -199,7 +199,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
     <>
       <DetailMobileTitle itemKey={record.document.flow} title={shown.title} badge={badge} />
       <DesignBanner d={d} className="px-6 py-2.5 max-md:px-4">
-        {returnControl}
+        {noteControl}
         {d.status === "proposed" && health ? <OrphanedTraces traces={health.orphanedTraces} revision={d.proposedRevision} /> : null}
       </DesignBanner>
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="design-tabs" />

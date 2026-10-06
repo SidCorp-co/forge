@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import type { useDesignDecision } from "../hooks";
-import type { WorkflowDesign } from "../types";
+import type { DesignDecisionBody, WorkflowDesign } from "../types";
 
 type Decide = ReturnType<typeof useDesignDecision>;
 
@@ -24,39 +24,60 @@ export function ApproveAction({ revision, decide }: { revision: number | null; d
   );
 }
 
-// Return is the secondary act, so it sits in the banner that names the turn it answers, never beside the header's Approve
-export function ReturnControl({ revision, decide }: { revision: number | null; decide: Decide }) {
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
+type NoteMode = "approve" | "return";
+
+const NOTE_MODES: Record<NoteMode, { open: string; label: string; placeholder: string; submit: string; testid: string }> = {
+  approve: {
+    open: "Approve with a note",
+    label: "Conditions of this approval",
+    placeholder: "What the master still owes, or a deviation you accept",
+    submit: "Approve",
+    testid: "design-approve-note",
+  },
+  return: { open: "Return with reason", label: "Why it goes back", placeholder: "What the master should change", submit: "Return", testid: "design-return" },
+};
+
+// The acts that carry text sit in the banner that names the turn they answer, never beside the header's one-click Approve: an approval with its conditions, or a return with its reason, one box open at a time
+export function DecisionNoteControl({ revision, decide }: { revision: number | null; decide: Decide }) {
+  const [mode, setMode] = useState<NoteMode | null>(null);
+  const [text, setText] = useState("");
   if (revision === null) return null;
-  if (!open) {
+  if (mode === null) {
     return (
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-auto w-fit p-0 text-12-5 font-semibold text-link hover:bg-transparent hover:underline"
-        onClick={() => setOpen(true)}
-        data-testid="design-return-open"
-      >
-        Return with reason
-      </Button>
+      <span className="flex flex-wrap gap-x-3 gap-y-1">
+        {(["approve", "return"] as const).map((m) => (
+          <Button
+            key={m}
+            size="sm"
+            variant="ghost"
+            className="h-auto w-fit p-0 text-12-5 font-semibold text-link hover:bg-transparent hover:underline"
+            onClick={() => setMode(m)}
+            data-testid={`${NOTE_MODES[m].testid}-open`}
+          >
+            {NOTE_MODES[m].open}
+          </Button>
+        ))}
+      </span>
     );
   }
+  const m = NOTE_MODES[mode];
+  const reason = text.trim();
+  const body: DesignDecisionBody = mode === "approve" ? { revision, decision: "approve", reason } : { revision, decision: "return", reason };
   return (
-    <span className="grid w-full max-w-[560px] basis-full gap-2" data-testid="design-return">
-      <Textarea aria-label="Why it goes back" placeholder="What the master should change" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
+    <span className="grid w-full max-w-[560px] basis-full gap-2" data-testid={m.testid}>
+      <Textarea aria-label={m.label} placeholder={m.placeholder} value={text} onChange={(e) => setText(e.target.value)} rows={2} />
       <span className="flex gap-1.5">
-        <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="secondary" onClick={() => setMode(null)}>
           Cancel
         </Button>
         <Button
           size="sm"
-          variant="secondary"
-          disabled={reason.trim().length === 0 || decide.isPending}
-          onClick={() => decide.mutate({ revision, decision: "return", reason: reason.trim() })}
-          data-testid="design-return-submit"
+          variant={mode === "approve" ? "primary" : "secondary"}
+          disabled={reason.length === 0 || decide.isPending}
+          onClick={() => decide.mutate(body)}
+          data-testid={`${m.testid}-submit`}
         >
-          Return rev {revision}
+          {m.submit} rev {revision}
         </Button>
       </span>
     </span>

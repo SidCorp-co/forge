@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **An approval can carry the approver's note.** An approver writes the conditions of a design's approval on the approval, such as a revision still owed or an accepted deviation. The revision shows it; the master and the build read it.
+
 ## [0.4.0-dev.58] - 2026-10-06
 
 Low and medium feedback now wakes the master for triage

@@ -221,9 +221,16 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
         </Fact>
         <Fact label="Approved" testId="fact-approved">
           {approved ? (
-            <span title={approved.decidedAt ? `Approved ${formatStamp(approved.decidedAt)}` : undefined}>
-              Rev {approved.revision}
-              {approved.decidedByName ? ` by ${approved.decidedByName}` : ""}
+            <span className="grid min-w-0 basis-full gap-0.5">
+              <span title={approved.decidedAt ? `Approved ${formatStamp(approved.decidedAt)}` : undefined}>
+                Rev {approved.revision}
+                {approved.decidedByName ? ` by ${approved.decidedByName}` : ""}
+              </span>
+              {approved.reason ? (
+                <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approved.reason} data-testid="fact-approved-note">
+                  {approved.reason}
+                </span>
+              ) : null}
             </span>
           ) : d.approvedRevision !== null ? (
             <span>Rev {d.approvedRevision}</span>

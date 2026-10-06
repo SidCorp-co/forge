@@ -32,23 +32,13 @@ once a harness is back.
 ## The core integration reds at removal
 
 CI run 37195972829 at dev `7983b6f11` (2026-10-04): 75 failed tests in 15 files, 287 files passing.
-The integration harness and the release, record, retention, session-context and live-reach suites
-are rewritten against dev source; these remain:
-
-| File (`packages/core/tests/integration/`) | Failed |
-|---|---|
-| `ecosystem-channel-e2e.test.ts` | 11 |
-| `ecosystem-channel-notify-e2e.test.ts` | 10 |
-| `workflow-design-wake-e2e.test.ts` | 3 |
-| `ecosystem-links-e2e.test.ts` | 2 |
-
-Main's nightly CI (run 37238894756) was green over the same files, so these are dev drift, not a
-shared defect.
+Every one of those files has since been rewritten against dev source: the last four,
+`ecosystem-channel-e2e`, `ecosystem-channel-notify-e2e`, `workflow-design-wake-e2e` and
+`ecosystem-links-e2e`, pass whole at dev `224d42172` (2026-10-07, 65 tests).
 
 ## Honest costs
 
 - Every drifted test is read against the code it now covers and rewritten, which costs more than a
   restore would have.
-- The 21 web popover reds and the integration reds still listed above stay unjudged until their
-  rewrite lands.
+- The 21 web popover reds stay unjudged until the web harness and their rewrite land.
 - A restore would be cheaper and would fail for the wrong reason, on symbols dev no longer has.

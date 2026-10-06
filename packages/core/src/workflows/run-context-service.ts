@@ -27,7 +27,11 @@ const designRowOf = (r: Record<string, unknown>): TracedDesignRow => ({
   workflowRevision: Number(r.revision),
   approvedRevision: r.given_revision == null ? null : Number(r.given_revision),
   revisionRow: r.has_row
-    ? { document: r.document, decision: (r.decision as string | null) ?? null }
+    ? {
+        document: r.document,
+        decision: (r.decision as string | null) ?? null,
+        reason: (r.reason as string | null) ?? null,
+      }
     : null,
 });
 
@@ -49,7 +53,7 @@ async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
   if (issue?.requirement_id) return pinnedDesignsOf(issue);
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision AS given_revision,
-           d.workflow_id IS NOT NULL AS has_row, d.document, d.decision
+           d.workflow_id IS NOT NULL AS has_row, d.document, d.decision, d.reason
     FROM workflow_builds wb
     JOIN project_workflows w ON w.id = wb.workflow_id
     LEFT JOIN project_workflow_designs d
@@ -66,7 +70,7 @@ async function pinnedDesignsOf(issue: Record<string, unknown>): Promise<TracedDe
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision,
            p.design_revision AS given_revision,
-           d.workflow_id IS NOT NULL AS has_row, d.document, d.decision
+           d.workflow_id IS NOT NULL AS has_row, d.document, d.decision, d.reason
     FROM requirement_baseline_pins p
     JOIN project_workflows w ON w.id = p.workflow_id
     LEFT JOIN project_workflow_designs d

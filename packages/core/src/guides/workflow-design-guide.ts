@@ -32,7 +32,10 @@ names the workflow it builds is not dispatched while that design is not approved
    inherits the superseded revision's issue while that issue is still open, and none once it is closed. The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
 3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
-   waits, \`returned\` carries the approver's reason, \`approved\` names the revision. A return reopens
+   waits, \`returned\` carries the approver's reason, \`approved\` names the revision. An approval may
+   carry its approver's note on that revision's \`reason\` — the conditions it was given under, such as a
+   revision still owed or a deviation accepted — so read it before linking or building, and a build job is
+   given it with the approved revision. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflow\`, so the issue is admissible work again. A returned design is revised by writing
    it again, which proposes the revision; there is nothing to re-send.
