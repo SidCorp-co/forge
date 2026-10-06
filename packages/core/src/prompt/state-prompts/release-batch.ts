@@ -60,8 +60,10 @@ a step you could not complete, a procedure that does not fit what you actually f
   The roster then stays at the gate held for that person, and no automatic release or schedule cuts
   it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
   what stopped you, and the next cut takes the roster again.
-→ If you pushed this release's tag before aborting, pass \`"tagged":true\`: the version is then
-  spent. Without it, a batch that shipped nothing hands its version back to the next one.
+→ Say what you pushed: \`"pushed":false\` only when NOTHING of this release left the box — no
+  release commit on any branch and no tag. The version then goes back to the next batch. If you
+  pushed either, or cannot tell, pass \`"pushed":true\` or leave it out: the version stays spent,
+  because a second batch wearing it would collide with what you pushed.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy

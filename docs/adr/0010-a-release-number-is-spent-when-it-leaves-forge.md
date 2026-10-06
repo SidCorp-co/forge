@@ -20,10 +20,12 @@ anything.
 
 **A cut number is spent when it may exist outside Forge**, and only then. The allocator,
 `packages/core/src/release-batch/version-store.ts:highestSpentVersion`, counts a release row's
-number when the run shipped, is still in flight, recorded a promotion or a finish, or its abort
-said it pushed its tag. A batch that ended with none of those hands its number back, and the next
-batch wears it. The ended row keeps `release_version` as the number it tried, so the history still
-shows the attempt.
+number when the run shipped, is still in flight, or recorded a promotion or a finish. Any other
+ended row stays spent too unless it is **proven** unspent: its release job never reached a box, or
+its abort said `pushed:false` (no release commit on any branch, no tag). A run that pushed and then
+died says nothing, so silence keeps the number. A proven-unspent row hands its number back, and the
+next batch wears it. The ended row keeps `release_version` as the number it tried, so the history
+still shows the attempt.
 
 - **What 0001 protects still holds.** A number that left Forge, as a tag, a promotion or a served
   build, is never worn twice: every one of those conditions keeps it spent.
@@ -39,7 +41,9 @@ shows the attempt.
 - A gap in the sequence now means a release that left Forge and then failed, never a batch that
   aborted inside it.
 - Two rows can carry the same `release_version`: one ended and unshipped, one that wore the number
-  afterwards. The version history shows the newest run per version
-  (`packages/core/src/release-batch/versions.ts`).
-- An abort that pushed its tag must say so (`tagged`), or its number is handed back while the tag
-  exists. That is the one input this rule trusts the release run to report.
+  afterwards. Every reader resolves a version to the run that shipped it, else the newest
+  (`packages/core/src/pipeline/release-runs.ts:runWearingVersion`).
+- `pushed:false` on an abort is the one input this rule trusts the release run to report, and it
+  can only hand a number back, never spend one. A later abort cannot take back a push an earlier
+  one reported or left unsaid. An abort that leaves it out spends the number, so a release that
+  aborts before any push and forgets to say so leaves a gap, never a collision.

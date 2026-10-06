@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
+  version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
+  reference resolves to the shipped run.
+
 ## [0.4.0-dev.39] - 2026-10-06
 
 Every lint rule blocks, transcripts are stored once, and realtime frames are typed

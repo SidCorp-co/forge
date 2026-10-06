@@ -1,10 +1,11 @@
 // Where a release's version lives, and the only writer of it.
 //
-// TWO READERS, not interchangeable. `highestSpentVersion` spans every release row whose number left
-// Forge or may still: it shipped, it is still in flight, it recorded a promotion or a finish, or its
-// abort said it pushed its tag. A batch that ended with none of those hands its number back, so the
-// next batch wears it; the ended row keeps `release_version` as the number it tried (ISS-234's
-// dev.35 and dev.36). The precedent is semantic-release, changesets and release-please, which all
+// TWO READERS, not interchangeable. `highestSpentVersion` spans every release row whose number may
+// exist outside Forge, and an ended row counts unless it is PROVEN unspent: its job never reached a
+// box, or its abort said `pushed:false` (no branch, no tag). A run that pushed and then died says
+// nothing, so silence keeps the number. A proven-unspent row hands its number back and the next batch
+// wears it; the ended row keeps `release_version` as the number it tried (ISS-234's dev.35 and
+// dev.36). The precedent is semantic-release, changesets and release-please, which all
 // derive the next version from the last one published and keep no allocator. `currentReleaseVersion`
 // answers what is SERVING and reads the ship stamp, because `cancelConcludedRun` flips a `completed`
 // run to `cancelled` while its bytes are still live. The partial unique index is only the backstop.
@@ -48,16 +49,25 @@ interface ReleaseRowReading {
 }
 
 /**
- * What makes a cut number spent, beside the ship stamp: a row still live, or one that put something
- * outside Forge before it ended. Read on the row and its ledger, never stored: an ended row that
- * matches none of these never left Forge, so nothing outside it can disagree with handing it back.
+ * Whether a run's release job was ever taken by a box. A job a master holds counts: its pane may be
+ * starting. A run with no such job never ran its procedure, so nothing it did can be outside Forge.
+ */
+const REACHED_A_BOX = sql`EXISTS (
+  SELECT 1 FROM jobs j
+  WHERE j.pipeline_run_id = r.id AND (j.dispatched_at IS NOT NULL OR j.held_by IS NOT NULL)
+)`;
+
+/**
+ * What makes a cut number spent. Read on the row and its ledger, never stored. A shipped, live,
+ * finished or promoted row is spent whatever else it says; any other ended row is spent unless it
+ * proves nothing left Forge, because a pushed commit or tag is invisible from here.
  */
 const NUMBER_SPENT = sql`(
   r.release_released_at IS NOT NULL
   OR r.status NOT IN ('cancelled', 'failed')
   OR r.metadata ? 'finish'
-  OR r.metadata -> 'abort' ->> 'tagged' = 'true'
   OR EXISTS (SELECT 1 FROM release_attempts a WHERE a.run_id = r.id)
+  OR (${REACHED_A_BOX} AND r.metadata -> 'abort' ->> 'pushed' IS DISTINCT FROM 'false')
 )`;
 
 // ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,

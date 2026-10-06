@@ -18,6 +18,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix, isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { runWearingVersion } from '../pipeline/index.js';
 import { type Row, rowIn } from './read.js';
 import type { TargetFields } from './rules.js';
 
@@ -118,14 +119,16 @@ export async function requirementRefIn(
 }
 
 async function releaseRefIn(projectId: string, ref: string, path: string) {
-  const [row] = await db
-    .select({ id: pipelineRuns.id, projectId: pipelineRuns.projectId })
-    .from(pipelineRuns)
-    .where(
-      isUuid(ref)
-        ? eq(pipelineRuns.id, ref)
-        : and(eq(pipelineRuns.projectId, projectId), eq(pipelineRuns.releaseVersion, ref.trim())),
-    );
+  const row = isUuid(ref)
+    ? (
+        await db
+          .select({ id: pipelineRuns.id, projectId: pipelineRuns.projectId })
+          .from(pipelineRuns)
+          .where(eq(pipelineRuns.id, ref))
+      )[0]
+    : await runWearingVersion(projectId, ref.trim()).then(
+        (run) => run && { id: run.id, projectId },
+      );
   if (!row)
     return unknownTarget(path, `${ref} names no release of this project; name its version.`);
   if (row.projectId !== projectId)

@@ -160,5 +160,5 @@ REPAIR FORWARD, and never roll back. You may push a fix and deploy again. You ma
 
 Where you cannot repair forward inside this run: \`abort\` with the reason, and comment on each issue with what failed and what state production is in. The abort closes nothing, and its answer says where each issue now is. Rolling back is a human decision and this is how you hand it to one.
 
-When what stopped you is a person's to fix (a credential this box lacks, an access grant, a decision), add \`"blocker":{"owes":"human","waitingFor":"<what they must do>"}\` to the abort: the roster stays at the gate held for that person, and no automatic release cuts it again until they act. If you pushed this release's tag, add \`"tagged":true\`; a batch that shipped nothing otherwise hands its version back to the next one.${declared}`;
+When what stopped you is a person's to fix (a credential this box lacks, an access grant, a decision), add \`"blocker":{"owes":"human","waitingFor":"<what they must do>"}\` to the abort: the roster stays at the gate held for that person, and no automatic release cuts it again until they act. Add \`"pushed":false\` only when nothing of this release left the box (no release commit on any branch, no tag): the version then goes back to the next batch. If you pushed either or cannot tell, leave it out and the version stays spent.${declared}`;
 }

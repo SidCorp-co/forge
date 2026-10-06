@@ -282,7 +282,7 @@ type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
   blocker?: AbortBlocker | undefined;
-  tagged?: boolean | undefined;
+  pushed?: boolean | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -297,7 +297,7 @@ export async function abortReleaseBatch(
     by: actorUserId,
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
     blocker: options.blocker,
-    tagged: options.tagged,
+    pushed: options.pushed,
   });
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
