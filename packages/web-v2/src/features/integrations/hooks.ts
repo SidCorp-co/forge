@@ -351,7 +351,7 @@ export function useUpdateConnection() {
 export function useTestConnection() {
   const invalidate = useInvalidateConnections();
   return useMutation({
-    mutationFn: (id: string) => integrationConnectionsApi.test(id),
+    mutationFn: integrationConnectionsApi.test,
     onSettled: invalidate,
   });
 }
@@ -361,7 +361,7 @@ export function useRemoveConnection() {
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (id: string) => integrationConnectionsApi.remove(id),
+    mutationFn: integrationConnectionsApi.remove,
     onSuccess: () => {
       invalidate();
       toast({ title: "Connection removed", tone: "success" });

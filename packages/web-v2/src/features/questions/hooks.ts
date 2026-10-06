@@ -39,7 +39,7 @@ export function useAnswerQuestion(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (input: AnswerInput) => questionsApi.answer(input),
+    mutationFn: questionsApi.answer,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
@@ -113,7 +113,7 @@ export function useAnswerProjectQuestion(projectId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (input: AnswerInput) => questionsApi.answer(input),
+    mutationFn: questionsApi.answer,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
       qc.invalidateQueries({ queryKey: ["attention"] });

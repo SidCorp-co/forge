@@ -148,7 +148,7 @@ provideKnowledgePorts({
   reembedFeedback: embedFeedback,
 });
 provideMemoryIssueReads({
-  displayIds: (issueIds) => issueDisplayIds(issueIds),
+  displayIds: issueDisplayIds,
   relationEdges: async (issueIds, projectId) => {
     const relations = await loadIssueRelationsForIssues(issueIds, projectId);
     return new Map([...relations].map(([id, r]) => [id, allRelationDigests(r)]));

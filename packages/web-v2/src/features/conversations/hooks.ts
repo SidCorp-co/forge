@@ -4,7 +4,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useCallback, useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { conversationsApi, type OpenConversationArgs } from "./api";
+import { conversationsApi } from "./api";
 import type {
   ConversationDetail,
   ConversationMembership,
@@ -83,7 +83,7 @@ export function useDraftAgentMode(projectId: string | undefined, enabled: boolea
 export function useOpenConversation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: OpenConversationArgs) => conversationsApi.open(args),
+    mutationFn: conversationsApi.open,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 }
@@ -199,7 +199,7 @@ export function useUploadAttachment() {
 export function useStopConversation() {
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (conversationId: string) => conversationsApi.stop(conversationId),
+    mutationFn: conversationsApi.stop,
     onError: (err) =>
       toast({ title: "Couldn't stop this answer", description: formatApiError(err), tone: "error" }),
   });

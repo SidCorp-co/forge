@@ -2,9 +2,10 @@
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../db/client.js';
+import { loadOrgRole } from '../lib/authz.js';
 import { emitEvent } from '../outbox/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
-import { notFound, stewardRole } from './access.js';
+import { notFound } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { openedRun } from './builder-run-rules.js';
 import {
@@ -56,7 +57,7 @@ export async function supersedeBuilderRun(input: {
   const eco = await loadEcosystem(row.ecosystemId);
   const denied = supersederRefusal(
     await permissionFactsOf(actor.userId, projectId),
-    await stewardRole(eco.stewardOrgId, actor.userId),
+    await loadOrgRole(eco.stewardOrgId, actor.userId),
   );
   if (denied) return refusedWith(denied);
   const closed = notOpenRefusal(runId, storedBuilderRun(row));

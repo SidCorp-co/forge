@@ -48,7 +48,7 @@ export function useRevokeDevice() {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: (id: string) => runnersApi.revokeDevice(id),
+		mutationFn: runnersApi.revokeDevice,
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
 			toast({ title: "Device revoked", tone: "success" });

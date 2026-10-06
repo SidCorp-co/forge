@@ -23,19 +23,17 @@ const GATES = [
   { label: 'test', argv: ['cargo', 'test', '--workspace'] },
 ];
 
-const git = (args) => gitOut(args);
-
 /** Why the scope could not be computed, set beside the `no-base` sentinel below. */
 let noBase = null;
 
 function changedCrateFiles() {
-  if (git(['rev-parse', '--git-dir']) === null) return 'no-git';
+  if (gitOut(['rev-parse', '--git-dir']) === null) return 'no-git';
   const target = baseRef(ROOT);
   if (target.refusal) {
     noBase = target.refusal;
     return 'no-base';
   }
-  const base = git(['merge-base', target.ref, 'HEAD'])?.trim();
+  const base = gitOut(['merge-base', target.ref, 'HEAD'])?.trim();
   if (!base) {
     noBase =
       `\`git merge-base ${target.ref} HEAD\` did not answer, so the changed set cannot be scoped —\n` +
@@ -43,10 +41,11 @@ function changedCrateFiles() {
     return 'no-base';
   }
   const files = new Set();
-  for (const l of (git(['diff', '--name-only', base, '--', 'packages/runner']) ?? '').split('\n')) {
+  const diffed = gitOut(['diff', '--name-only', base, '--', 'packages/runner']) ?? '';
+  for (const l of diffed.split('\n')) {
     if (l.trim()) files.add(l.trim());
   }
-  for (const l of (git(['status', '--porcelain', '--', 'packages/runner']) ?? '').split('\n')) {
+  for (const l of (gitOut(['status', '--porcelain', '--', 'packages/runner']) ?? '').split('\n')) {
     const p = l.slice(3).trim();
     if (p) files.add(p);
   }
@@ -69,7 +68,7 @@ if (changed !== null && changed.size === 0) {
 
 const count = changed
   ? changed.size
-  : (git(['ls-files', '--', 'packages/runner']) ?? '').split('\n').filter(Boolean).length;
+  : (gitOut(['ls-files', '--', 'packages/runner']) ?? '').split('\n').filter(Boolean).length;
 
 const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8' });
 if (cargo.error || cargo.status !== 0) {

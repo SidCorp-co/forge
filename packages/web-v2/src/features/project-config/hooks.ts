@@ -17,7 +17,7 @@ const keys = {
 	secrets: (id: string | undefined) => ["project", id, "secrets"] as const,
 	effective: (id: string | undefined) => ["project", id, "config-effective"] as const,
 	environments: (id: string | undefined) => ["project", id, "environment-state"] as const,
-	readiness: (id: string | undefined) => releaseReadinessKey(id),
+	readiness: releaseReadinessKey,
 };
 
 /** A mutation that refreshes `invalidates` and toasts `saved` on success. With `failed` it toasts the

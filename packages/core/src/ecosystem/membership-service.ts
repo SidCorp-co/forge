@@ -1,8 +1,9 @@
 import { db } from '../db/client.js';
+import { loadOrgRole } from '../lib/authz.js';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
+import { assertStewardAdmin, forbidden, notFound, readerProjects } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
@@ -168,14 +169,14 @@ export async function readableMembership(userId: string, membershipId: string) {
   const row = await readMembership(db, membershipId);
   if (!row) throw notFound(`membership ${membershipId} does not exist`);
   const eco = await loadEcosystem(row.ecosystemId);
-  if (await stewardRole(eco.stewardOrgId, userId)) return row;
+  if (await loadOrgRole(eco.stewardOrgId, userId)) return row;
   if ((await readerProjects(userId)).has(row.projectId)) return row;
   throw forbidden(`membership ${membershipId} is readable by its steward org and its project`);
 }
 
 export async function readableEcosystem(userId: string, ecosystemId: string) {
   const eco = await loadEcosystem(ecosystemId);
-  if (await stewardRole(eco.stewardOrgId, userId)) return { eco, steward: true };
+  if (await loadOrgRole(eco.stewardOrgId, userId)) return { eco, steward: true };
   const mine = await readerProjects(userId);
   const open = await membershipsWhere({ ecosystemIds: [ecosystemId], projectIds: [...mine] });
   if (open.some((m) => m.state === 'invited' || m.state === 'active'))

@@ -13,7 +13,7 @@ export const logger: Logger = pino({
   level: process.env.LOG_LEVEL ?? defaultLevel,
   // the record, its message and an error's text pass the scrubber Sentry uses, so a secret
   // is filtered by one list whichever way it leaves the process.
-  formatters: { log: (record) => scrubLogRecord(record) },
+  formatters: { log: scrubLogRecord },
   hooks: {
     logMethod(args, method) {
       method.apply(

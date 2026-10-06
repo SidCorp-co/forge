@@ -62,7 +62,7 @@ export function useOperatorWorkspaces(window: OperatorWindow, sort: OperatorWork
 export function useReapJob() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (jobId: string) => operatorApi.reapJob(jobId),
+    mutationFn: operatorApi.reapJob,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "ops"] });
     },

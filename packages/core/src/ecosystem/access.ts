@@ -1,5 +1,4 @@
 import { db } from '../db/client.js';
-import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { requireOrgHeld } from '../permissions/index.js';
@@ -11,18 +10,11 @@ export { forbidden, notFound } from '../middleware/route-errors.js';
 export const refusedBy = (refusal: EcosystemRefusal) =>
   new RefusalError([refusal], 'ECOSYSTEM_REFUSED');
 
-export async function stewardRole(
-  stewardOrgId: string,
-  userId: string | undefined,
-): Promise<OrgMemberRole | null> {
-  return loadOrgRole(stewardOrgId, userId);
-}
-
 export async function assertStewardAdmin(
   stewardOrgId: string,
   userId: string | undefined,
 ): Promise<void> {
-  requireOrgHeld(stewardOrgId, await stewardRole(stewardOrgId, userId), 'org.admin');
+  requireOrgHeld(stewardOrgId, await loadOrgRole(stewardOrgId, userId), 'org.admin');
 }
 
 // a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it

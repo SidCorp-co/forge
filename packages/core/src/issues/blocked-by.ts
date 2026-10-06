@@ -190,8 +190,6 @@ function issueBlocked(held: BlockedIssue[], door: string): RefusalError {
   );
 }
 
-const isTakeable = (status: IssueStatus) => TAKEABLE_STATUSES.includes(status);
-
 type TakenIssue = {
   id: string;
   projectId: string;
@@ -205,7 +203,7 @@ async function blockedOf(
   executor: Pick<Tx, 'execute'>,
   issue: TakenIssue,
 ): Promise<BlockedIssue | null> {
-  if (!isTakeable(issue.status)) return null;
+  if (!TAKEABLE_STATUSES.includes(issue.status)) return null;
   const blockers = await unsettledBlockersOf(executor, issue);
   return blockers.length > 0 ? { issueKey: issue.issueKey, blockers } : null;
 }
@@ -248,7 +246,7 @@ export async function refuseHeldTake(
   door: string,
 ): Promise<void> {
   const [issue] = await readTaken(executor, sql`i.id = ${issueId}`);
-  if (!issue || !isTakeable(issue.status)) return;
+  if (!issue || !TAKEABLE_STATUSES.includes(issue.status)) return;
   const held = await blockedOf(executor, issue);
   if (held) throw issueBlocked([held], door);
   await assertDesignApprovedForIssue(issue.projectId, issue.id, executor);

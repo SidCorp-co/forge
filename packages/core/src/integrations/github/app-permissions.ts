@@ -21,12 +21,10 @@ export const APP_PERMISSIONS: Readonly<Record<string, PermissionLevel>> = {
 /** The webhook events the App subscribes to; each needs a permission listed above. */
 export const APP_EVENTS = ['pull_request', 'pull_request_review', 'check_run', 'push'] as const;
 
-const rank = (level: PermissionLevel) => PERMISSION_LEVELS.indexOf(level);
-
 /** Whether a grant at `held` covers a call that needs `needed`. */
 function levelSatisfies(held: string | undefined, needed: PermissionLevel): boolean {
   const at = PERMISSION_LEVELS.indexOf(held as PermissionLevel);
-  return at >= 0 && at >= rank(needed);
+  return at >= 0 && at >= PERMISSION_LEVELS.indexOf(needed);
 }
 
 /** Which of the required permissions a grant does not cover, and what it holds instead. */

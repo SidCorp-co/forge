@@ -102,7 +102,7 @@ function McpServerRow({
     if (!entry.bindingId) return;
     setResult(null);
     test.mutate(entry.bindingId, {
-      onSuccess: (r) => setResult(r),
+      onSuccess: setResult,
       onError: (err) => setResult({ errorMessage: formatApiError(err) }),
     });
   }

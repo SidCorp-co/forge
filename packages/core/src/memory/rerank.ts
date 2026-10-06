@@ -72,9 +72,8 @@ function buildGradePrompt(query: string, text: string): string {
 
 /** Candidates by grade, strongest first; equal grades keep their fused (RRF) order. */
 function orderByGrade<T>(candidates: T[], grades: RerankGrade[]): T[] {
-  const rank = (g: RerankGrade) => RERANK_GRADES.indexOf(g);
   return candidates
-    .map((c, i) => ({ c, i, r: rank(grades[i] as RerankGrade) }))
+    .map((c, i) => ({ c, i, r: RERANK_GRADES.indexOf(grades[i] as RerankGrade) }))
     .sort((a, b) => b.r - a.r || a.i - b.i)
     .map((x) => x.c);
 }

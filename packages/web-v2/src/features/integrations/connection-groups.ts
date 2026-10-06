@@ -42,11 +42,6 @@ export interface ConnectionGroup {
   off: number;
 }
 
-/** What to call an app on the directory; never invented — the key is true. */
-export function appLabel(provider: string): string {
-  return providerLabel(provider);
-}
-
 export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): ConnectionGroup[] {
   const byProvider = new Map<string, ConnectionGroup>();
   for (const connection of items) {
@@ -54,7 +49,7 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): Connect
     if (!group) {
       group = {
         provider: connection.provider,
-        label: appLabel(connection.provider),
+        label: providerLabel(connection.provider),
         connections: [],
         needsAttention: 0,
         off: 0,

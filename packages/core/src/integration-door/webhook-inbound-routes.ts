@@ -160,7 +160,7 @@ webhookInboundRoutes.post(
         // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
         // outbox in the transaction that settles the delivery, and the module owning each effect
         // consumes it.
-        emitFacts: (tx, facts) => emitEvents(tx, facts),
+        emitFacts: emitEvents,
       });
       return c.json({
         accepted: true,

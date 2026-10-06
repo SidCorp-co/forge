@@ -55,8 +55,6 @@ export const projectResource = (projectId: string): ProjectResource => ({
 
 export const orgResource = (orgId: string): OrgResource => ({ type: 'org', id: orgId });
 
-const isExplicit = (permission: Permission) => TOKEN_EXPLICIT_PERMISSIONS.includes(permission);
-
 /** Whether a grant names a permission that excludes `permission` (`TOKEN_GRANT_EXCLUSIONS`). */
 export function grantExcludes(
   grant: readonly string[] | null | undefined,
@@ -74,7 +72,8 @@ function tokenAdmits(permission: Permission): boolean {
   if (permissionVerb(permission) !== 'read' && token.scopes && !token.scopes.includes('write')) {
     return false;
   }
-  if (isExplicit(permission)) return token.grant?.includes(permission) ?? false;
+  if (TOKEN_EXPLICIT_PERMISSIONS.includes(permission))
+    return token.grant?.includes(permission) ?? false;
   return true;
 }
 
@@ -115,7 +114,7 @@ export function permissionRefusal(
   const excluded = scope && grantExcludes(scope.grant, permission);
   const token = excluded
     ? ` This token's grant names ${scope.grant?.filter((g) => (TOKEN_GRANT_EXCLUSIONS[g as Permission] ?? []).includes(permission)).join(', ')}, and a token naming that never holds ${permission}: an observer credential cannot write or decide the design it reads.`
-    : scope && isExplicit(permission)
+    : scope && TOKEN_EXPLICIT_PERMISSIONS.includes(permission)
       ? ` A token holds ${permission} only where its own grant names it.`
       : '';
   return {

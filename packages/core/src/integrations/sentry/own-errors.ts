@@ -31,10 +31,10 @@ export function installSentryErrorTracking(): boolean {
     beforeSend: sentryBeforeSend,
   });
   provideErrorTracker({
-    captureException: (err, context) => Sentry.captureException(err, context),
-    captureMessage: (message, context) => Sentry.captureMessage(message, context),
-    addBreadcrumb: (step) => Sentry.addBreadcrumb(step),
-    flush: (timeoutMs) => Sentry.flush(timeoutMs),
+    captureException: Sentry.captureException,
+    captureMessage: Sentry.captureMessage,
+    addBreadcrumb: Sentry.addBreadcrumb,
+    flush: Sentry.flush,
   });
   installed = true;
   return true;

@@ -195,8 +195,6 @@ export function AttentionScreen() {
     scoped.channelGates.length +
     scoped.offlineRunners.length;
 
-  const open = (link: string) => router.push(link);
-
   if (isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
@@ -242,10 +240,10 @@ export function AttentionScreen() {
               />
             </section>
           ))}
-          <Group title="Channel gates" items={scoped.channelGates} onOpen={open} />
-          <Group title="Mentions" items={scoped.mentions} onOpen={open} />
-          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
-          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
+          <Group title="Channel gates" items={scoped.channelGates} onOpen={router.push} />
+          <Group title="Mentions" items={scoped.mentions} onOpen={router.push} />
+          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={router.push} />
+          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={router.push} />
         </div>
       )}
     </PageContainer>
