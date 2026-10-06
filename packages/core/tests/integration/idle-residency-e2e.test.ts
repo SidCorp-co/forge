@@ -26,7 +26,13 @@ afterAll(async () => {
   await closeWorld();
 });
 
-async function chat(beatAgoMs: number, runtimeState: string, now: Date): Promise<string> {
+async function chat(
+  beatAgoMs: number,
+  runtimeState: string,
+  now: Date,
+  status = 'completed',
+  kind = 'chat',
+): Promise<string> {
   const runId = randomUUID();
   const sessionId = randomUUID();
   const beat = new Date(now.getTime() - beatAgoMs).toISOString();
@@ -34,8 +40,8 @@ async function chat(beatAgoMs: number, runtimeState: string, now: Date): Promise
     INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${projectId}, 'interactive', 'running')
   `);
   await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, runtime_state, last_heartbeat_at)
-    VALUES (${sessionId}, ${projectId}, ${ownerId}, ${runId}, 'chat', 'completed', ${deviceId}, ${runtimeState}, ${beat}::timestamptz)
+    INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, runtime_state, last_heartbeat_at, claude_session_id)
+    VALUES (${sessionId}, ${projectId}, ${ownerId}, ${runId}, ${kind}, ${status}, ${deviceId}, ${runtimeState}, ${beat}::timestamptz, ${randomUUID()})
   `);
   return sessionId;
 }
@@ -54,6 +60,13 @@ async function closesTold(sessionId: string): Promise<number> {
 async function runtimeOf(sessionId: string): Promise<string | null> {
   const [row] = await rows<{ s: string | null }>(
     sql`SELECT runtime_state AS s FROM agent_sessions WHERE id = ${sessionId}`,
+  );
+  return row?.s ?? null;
+}
+
+async function statusOf(sessionId: string): Promise<string | null> {
+  const [row] = await rows<{ s: string | null }>(
+    sql`SELECT status || coalesce('/' || failure_reason, '') AS s FROM agent_sessions WHERE id = ${sessionId}`,
   );
   return row?.s ?? null;
 }
@@ -83,5 +96,37 @@ describe('closeIdleResidents: core takes the idle verdict on a resident chat ses
     await closeIdleResidents(now, { projectId });
     expect(await closesTold(lapsed)).toBe(0);
     expect(await runtimeOf(lapsed)).toBe('closed');
+  });
+});
+
+describe('one residency clock: a whole loop-monitor pass over a resident chat session', () => {
+  it('leaves a chat parked 20 min, whose box has not answered agent:close, to the idle verdict', async () => {
+    const { runLoopMonitor } = await import('../../src/jobs/loop-monitor.js');
+    const now = new Date();
+    const parked = await chat(20 * MIN, 'awaiting_input', now);
+    await runLoopMonitor(now, { projectId });
+    expect(await statusOf(parked)).toBe('completed');
+    expect(await runtimeOf(parked)).toBe('awaiting_input');
+    expect(await closesTold(parked)).toBe(1);
+  });
+
+  it('neither fails nor closes a chat whose next turn was dispatched 20 min ago and is still running', async () => {
+    const { runLoopMonitor } = await import('../../src/jobs/loop-monitor.js');
+    const now = new Date();
+    // A turn moves the row to running and stamps its beat; the runtime state stays the one the box
+    // reported at the end of the turn before, until this turn's own end is reported.
+    const turn = await chat(20 * MIN, 'awaiting_input', now, 'running');
+    await runLoopMonitor(now, { projectId });
+    expect(await statusOf(turn)).toBe('running');
+    expect(await closesTold(turn)).toBe(0);
+  });
+
+  it('still fails a job-linked park an older runner left 20 min past its last beat', async () => {
+    const { runLoopMonitor } = await import('../../src/jobs/loop-monitor.js');
+    const now = new Date();
+    const park = await chat(20 * MIN, 'awaiting_input', now, 'running', 'pipeline');
+    await runLoopMonitor(now, { projectId });
+    expect(await statusOf(park)).toBe('failed/residency_expired');
+    expect(await closesTold(park)).toBe(0);
   });
 });

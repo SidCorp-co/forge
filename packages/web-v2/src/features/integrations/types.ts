@@ -14,8 +14,7 @@ export interface SentryTarget {
   notes?: string;
 }
 
-/** Non-secret Sentry config stored in the connection `config`. `targets[]` is
- *  the labelled list (ISS-526); the top-level slugs are legacy back-compat. */
+/** Non-secret Sentry config stored in the connection `config`: the host and its labelled targets (ISS-526). */
 export interface SentryConfig {
   host: string;
   targets?: SentryTarget[];

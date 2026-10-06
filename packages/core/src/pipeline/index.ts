@@ -22,10 +22,6 @@ export {
 } from './deploy-lock.js';
 export { insertAndEnqueueJob } from './enqueue-helper.js';
 export {
-  type FailureCause,
-  resolveFailureCause,
-} from './failure-causes.js';
-export {
   CLASSIFIER_VERSION,
   classifyFailure,
   deriveActionFromKind,

@@ -1,3 +1,4 @@
+import { resolveFailureCause } from '@forge/contracts/failure-causes';
 import type {
   RunActor,
   RunHandbackClose,
@@ -8,7 +9,6 @@ import {
   type AgentSessionStatus,
   CANCELLED_AGENT_SESSION_STATUSES,
 } from '@forge/contracts/session-machine';
-import { resolveFailureCause } from '../pipeline/index.js';
 import {
   type Derived,
   iso,

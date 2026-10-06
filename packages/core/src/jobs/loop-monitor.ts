@@ -54,7 +54,7 @@ export interface LoopMonitorResult {
   sessions: ZombieSessionReapResult;
   /** Jobs failed because their linked session is terminal (`session_lost`). */
   sessionLostJobs: JobAxisReapResult;
-  /** parks closed because no process answered for them past the residency and its grace. */
+  /** Job-linked parks an older runner left, failed past the residency and its grace. */
   expiredParks: number;
   /** Resident chat sessions past their residency whose box was told to close them. */
   idleResidents: number;

@@ -1,0 +1,1 @@
+**A chat turn running past 15 minutes is no longer failed as an expired residency.** A resident chat has one residency clock, the idle verdict, which reads only a session between turns, never one with a turn in flight.

@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-// Typed shape for the agent_sessions.pipeline_control jsonb column. Pre-Epic-3
-// rows wrote a free-form jsonb merge; this schema normalises the contract so
-// downstream consumers (admin dashboard, runners) can rely on field names.
-// Legacy rows tolerate `pipelineControlSchema.partial().parse()` on read.
+// The shape of the agent_sessions.pipeline_control jsonb column, which the column is typed as.
 export const pipelineControlSchema = z
 	.object({
 		paused: z.boolean(),

@@ -1,5 +1,5 @@
+import type { FailureCause } from '@forge/contracts/failure-causes';
 import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
-import type { FailureCause } from './failure-causes.js';
 import {
   BOX_SATURATION_PATTERNS,
   CC_STARTUP_PATTERNS,
