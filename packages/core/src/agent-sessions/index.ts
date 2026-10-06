@@ -10,7 +10,7 @@ export {
   sessionRoleRefusal,
   undeliveredTurnCause,
 } from './interactive-credential.js';
-export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
+export { liveMasterSessionId } from './master-owner.js';
 export { provideAgentSessionsPorts } from './ports.js';
 export { publishSessionRecoveryChanged } from './recovery-publish.js';
 export {

@@ -1,6 +1,6 @@
 /**
- * Who owns a session, from the session's own row. Deliberately thin: devices and jobs both ask, and
- * `devices/master-session.ts` cycles through the pipeline-runs graph.
+ * Who owns a run session, from the master's own row. Deliberately thin: `devices/master-session.ts`
+ * cycles through the pipeline-runs graph.
  */
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, notInArray } from 'drizzle-orm';
@@ -25,31 +25,4 @@ export async function liveMasterSessionId(args: {
     )
     .limit(1);
   return row?.id ?? null;
-}
-
-/**
- * The named session, but only if it is a master of this project and box.
- *
- * The id's shape proves nothing: a uuid resolving to a chat session is as wrong
- * an answer as one resolving to no row, and a foreign key accepts both.
- */
-export async function masterSessionIfOwned(args: {
-  sessionId: string;
-  projectId: string;
-  deviceId?: string | null;
-}): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id, deviceId: agentSessions.deviceId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.projectId, args.projectId),
-        eq(agentSessions.kind, MASTER_SESSION_KIND),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  if (args.deviceId != null && row.deviceId !== args.deviceId) return null;
-  return row.id;
 }
