@@ -172,7 +172,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     for (const n of NOT_LIVE) {
       ids.set(
         n,
-        await issue({ projectId: desk.id, seq: n, sha: n === 442 ? OBSERVED : undefined }),
+        await issue({ projectId: desk.id, seq: n, ...(n === 442 ? { sha: OBSERVED } : {}) }),
       );
     }
     const shipped = await issue({ projectId: desk.id, seq: 400 });
