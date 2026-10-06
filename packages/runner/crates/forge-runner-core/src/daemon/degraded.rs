@@ -564,6 +564,7 @@ mod tests {
             agent_id: Some("agent-7".into()),
             subagent_type: Some("forge:runner".into()),
             tool_use_id: Some("toolu_09".into()),
+            ..Default::default()
         };
         mark(
             dir.path(),
