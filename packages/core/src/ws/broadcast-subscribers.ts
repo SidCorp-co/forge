@@ -1,6 +1,7 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
+import { refuser } from '../lib/refusal.js';
 import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 import { runStatusView } from '../pipeline/index.js';
@@ -24,10 +25,15 @@ function on<T extends ConsumedBy<'ws-broadcast'>>(
   consume(type, { name: 'ws-broadcast' as OutboxConsumerOf<T>, handle: publish });
 }
 
+const refuseFrame = refuser('SESSION_FRAME_AUDIENCE_MISSING');
+
 /** A session frame written before its audience was recorded names no readers; refused by name rather than guessed project-wide. */
 function assertAudience(event: string, userIds: unknown): void {
   if (!Array.isArray(userIds)) {
-    throw new Error(`SESSION_FRAME_AUDIENCE_MISSING: ${event} carries no userIds; it was written by a build older than the private-chat audience`);
+    throw refuseFrame(
+      'SESSION_FRAME_AUDIENCE_MISSING',
+      `${event} carries no userIds; it was written by a build older than the private-chat audience`,
+    );
   }
 }
 
