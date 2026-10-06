@@ -181,6 +181,11 @@ pub struct GateMemory {
     promised: std::collections::HashMap<String, Promise>,
     #[cfg(unix)]
     allowed: std::collections::HashSet<String>,
+    /// Subagents a master resumed with `SendMessage` whose `SubagentStart`
+    /// has not been heard yet: a resume fires one too, and what it says of
+    /// the subagent is that it was resumed, not that it started.
+    #[cfg(unix)]
+    resumed: std::collections::HashSet<String>,
 }
 
 /// What the gate promised a pending declaration to: the tool call, and the
@@ -749,6 +754,11 @@ fn dispatch_gate_reply(
     // subagent it reaches already exists. It is where that subagent is heard
     // to take on the work its master declared.
     if let (None, Some(child)) = (d.agent_id.as_deref(), d.resumes.as_deref()) {
+        ctl.promises
+            .lock()
+            .expect("promises poisoned")
+            .resumed
+            .insert(child.to_string());
         bind_resumed(ctl, child, d.transcript_path.as_deref(), session_id);
         return gate_allows(None);
     }
@@ -851,21 +861,24 @@ fn dispatch_gate_reply(
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
                 return refused;
             }
+            // The promise is recorded the way `Covered` records it, so the
+            // subagent that starts as the role this call named binds the run
+            // (ISS-1378 judging 8012bc54 #4): with the inventory unread it was
+            // never bound and the box ended its run at 60m as never bound.
             // Failing open for a run declared before the drain admits nothing
-            // new only while that run is spent once, so while draining the
-            // promise is recorded the way `Covered` records it, and a second
-            // tool call against the same run is refused.
-            if let (Some(run), Some(cause)) = (pending.as_deref(), ctl.drain.draining_for()) {
-                // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
-                // names it to promise the run to or to tell a second hand-off from a replay, so
-                // that case still fails open once per call, and the drain counts only the one row.
-                if let Some(tool_use) = d.tool_use_id.clone() {
-                    if let Some(spent) = memory
-                        .promised
-                        .get(run)
-                        .map(|p| &p.tool_use)
-                        .filter(|t| **t != tool_use)
-                    {
+            // new only while that run is spent once, so while draining a
+            // second tool call against the same run is refused.
+            // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
+            // names it to promise the run to or to tell a second hand-off from a replay, so
+            // that case still fails open once per call, and the drain counts only the one row.
+            if let (Some(run), Some(tool_use)) = (pending.as_deref(), d.tool_use_id.clone()) {
+                let spent = memory
+                    .promised
+                    .get(run)
+                    .map(|p| p.tool_use.clone())
+                    .filter(|t| *t != tool_use);
+                match (spent, ctl.drain.draining_for()) {
+                    (Some(spent), Some(cause)) => {
                         tracing::warn!(
                             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
                         );
@@ -873,14 +886,18 @@ fn dispatch_gate_reply(
                             "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
                         ));
                     }
-                    memory.promised.insert(
-                        run.to_string(),
-                        Promise {
-                            tool_use: tool_use.clone(),
-                            role: d.subagent_type.clone(),
-                        },
-                    );
-                    memory.allowed.insert(tool_use);
+                    // Promised to an earlier call already, which keeps it.
+                    (Some(_), None) => {}
+                    (None, _) => {
+                        memory.promised.insert(
+                            run.to_string(),
+                            Promise {
+                                tool_use: tool_use.clone(),
+                                role: d.subagent_type.clone(),
+                            },
+                        );
+                        memory.allowed.insert(tool_use);
+                    }
                 }
             }
             if let Some(dir) = dir.as_deref() {
@@ -983,6 +1000,12 @@ fn bind_declared(
     lead: Option<&str>,
 ) {
     let Some(child) = agent_id else { return };
+    let resumed = ctl
+        .promises
+        .lock()
+        .expect("promises poisoned")
+        .resumed
+        .remove(child);
     let transcript = lead
         .map(Path::new)
         .filter(|p| p.is_absolute())
@@ -1038,7 +1061,8 @@ fn bind_declared(
             }
             Err(why) => {
                 tracing::info!(
-                    "[control] subagent {child} started under master session {session_id} and is not run {}'s: {why}. The run stays unbound for the subagent dispatched for it",
+                    "[control] subagent {child} {} under master session {session_id} and is not run {}'s: {why}. The run stays unbound for the subagent dispatched for it",
+                    if resumed { "was resumed" } else { "started" },
                     run.run_id
                 );
                 turned_away = Some((run.run_id, why));
@@ -1056,7 +1080,9 @@ fn bind_declared(
                 "[control] subagent {child} is already run {run_id}, so its start is a replay"
             )
         }
-        StartKind::Undeclared => undeclared_child(ctl, child, agent_type, turned_away.as_ref()),
+        StartKind::Undeclared => {
+            undeclared_child(ctl, child, agent_type, turned_away.as_ref(), resumed)
+        }
         StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
     }
 }
@@ -1071,7 +1097,11 @@ fn agent_type_beside(transcript: &Path) -> Option<String> {
 }
 
 /// The master resumed subagent `child` with `SendMessage`, which starts no
-/// subagent and so fires no `SubagentStart`. Where the master holds a declared
+/// new subagent. Claude Code still fires `SubagentStart` as the subagent
+/// resumes (gate-marks on sid-xeon-1, ISS-1378 judging 8012bc54 #2), and
+/// [`bind_declared`] answers that with the same decision; binding here, at the
+/// tool call, is what holds where the resume reaches the box first. Where the
+/// master holds a declared
 /// run that nothing has bound or been promised, and `child` is of a role this
 /// box ships and answers to no open run, it binds that run here.
 ///
@@ -1274,6 +1304,7 @@ fn undeclared_child(
     child: &str,
     agent_type: Option<&str>,
     declared: Option<&(String, String)>,
+    resumed: bool,
 ) {
     let Some(role) = agent_type else {
         tracing::debug!("[control] subagent {child} answers to no declared run");
@@ -1288,14 +1319,19 @@ fn undeclared_child(
         tracing::debug!("[control] subagent {child} ({role}) answers to no declared run");
         return;
     }
+    let how = if resumed {
+        "was resumed as"
+    } else {
+        "started as"
+    };
     let (detail, owed) = match declared {
         None => (
-            format!("subagent {child} started as `{role}` with nothing declared for it"),
+            format!("subagent {child} {how} `{role}` with nothing declared for it"),
             "The master was required to run `forge-runner run declare` first.".to_string(),
         ),
         Some((run_id, why)) => (
             format!(
-                "subagent {child} started as `{role}`, and the run its master declared, {run_id}, is not its: {why}"
+                "subagent {child} {how} `{role}`, and the run its master declared, {run_id}, is not its: {why}"
             ),
             format!(
                 "The master did declare run {run_id}; it was for another dispatch, and it stays unbound for that one."
@@ -2858,7 +2894,7 @@ mod tests {
 
     /// Judge iss-1378-a823d04f, run b229ea3b: a master that answers its
     /// declaration by resuming a subagent of a shipped role with
-    /// `SendMessage`, which fires no `SubagentStart`, binds the run to it, and
+    /// `SendMessage` binds the run to it at the tool call, and
     /// the resume is never refused. A helper resumed the same way does not.
     #[cfg(unix)]
     #[test]
@@ -2998,6 +3034,80 @@ mod tests {
             said.role.as_deref(),
             Some("forge:runner"),
             "the role is a field a reader can filter on, not only a phrase in a sentence"
+        );
+    }
+
+    /// ISS-1378 judging (8012bc54 #2): a `SendMessage` resume fires
+    /// `SubagentStart` too, so a resumed subagent that answers to nothing
+    /// declared is named as resumed, not as started.
+    #[cfg(unix)]
+    #[test]
+    fn a_resumed_subagent_with_nothing_declared_is_named_as_resumed() {
+        let (ctl, _t, scratch) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        let lead = scratch.join("conv.jsonl");
+        started_as(&lead, "a4301aac9619978a0", "forge:runner");
+
+        assert!(dispatch_gate_reply(&ctl, resuming("a4301aac9619978a0", &lead), "sess-a").ok);
+        bind_declared(
+            &ctl,
+            Some("a4301aac9619978a0"),
+            Some("forge:runner"),
+            "sess-a",
+            0,
+            Some(&lead.to_string_lossy()),
+        );
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        let detail = undeclared.last.unwrap_or_default().detail;
+        assert!(
+            detail.contains("subagent a4301aac9619978a0 was resumed as `forge:runner`")
+                && !detail.contains("started as"),
+            "{detail}"
+        );
+
+        bind_declared(
+            &ctl,
+            Some("afresh0000000000"),
+            Some("forge:runner"),
+            "sess-a",
+            0,
+            None,
+        );
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        let detail = undeclared.last.unwrap_or_default().detail;
+        assert!(
+            detail.contains("subagent afresh0000000000 started as `forge:runner`"),
+            "a start that followed no resume is still a start: {detail}"
+        );
+    }
+
+    /// ISS-1378 judging (8012bc54 #4): where this box cannot read which roles
+    /// it ships, the gate lets a dispatch through, and the subagent that
+    /// starts as the role that dispatch named is the run's. Before, it was
+    /// never bound and the box ended its run at 60m as never bound.
+    #[cfg(unix)]
+    #[test]
+    fn with_no_role_inventory_the_promised_role_still_binds_its_run() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let run_id = declare_seven(&ctl);
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+        for (child, role) in [("helper-1", "general-purpose"), ("rev-1", "forge:reviewer")] {
+            bind_declared(&ctl, Some(child), Some(role), "sess-a", 0, None);
+            assert_eq!(
+                bound_to(&ctl, &run_id).agent_id,
+                None,
+                "{role} is not the run's"
+            );
+        }
+        bind_declared(&ctl, Some("run-1"), Some("forge:runner"), "sess-a", 0, None);
+        assert_eq!(
+            bound_to(&ctl, &run_id).agent_id.as_deref(),
+            Some("run-1"),
+            "the role the dispatch named binds the run it was let through for"
         );
     }
 
