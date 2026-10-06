@@ -140,6 +140,49 @@ pub enum Tokenless {
     Unknown(String),
 }
 
+/// Where a process stands against the runner's tmux server, read from its
+/// `$TMUX`, the runner's socket and, only where the two match, its tmux
+/// session name. The one reading both the capability check and the dialog
+/// rule take, so the two cannot place the same process differently.
+enum OnServer {
+    NotOurs,
+    Session { name: String, socket: PathBuf },
+    Unknown(String),
+}
+
+fn on_server(
+    tmux: Option<&str>,
+    runner_socket: Option<&Path>,
+    session_name: impl FnOnce(&Path) -> Result<String, String>,
+) -> OnServer {
+    let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
+        return OnServer::NotOurs;
+    };
+    let mut parts = tmux.rsplitn(3, ',');
+    let (Some(_session), Some(_pid), Some(socket)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return OnServer::Unknown(format!(
+            "$TMUX is `{tmux}`, which is not the `<socket>,<pid>,<session>` tmux sets"
+        ));
+    };
+    let Some(runner) = runner_socket else {
+        return OnServer::Unknown(
+            "the runner's tmux socket could not be resolved, so whether this process runs on it is unknown"
+                .to_string(),
+        );
+    };
+    if !same_file(Path::new(socket), runner) {
+        return OnServer::NotOurs;
+    }
+    match session_name(runner) {
+        Ok(name) => OnServer::Session {
+            name,
+            socket: runner.to_path_buf(),
+        },
+        Err(why) => OnServer::Unknown(why),
+    }
+}
+
 /// Classify a process from its `$TMUX`, the runner's tmux socket, and — only
 /// where the two match — its tmux session name and the record naming it.
 pub fn tokenless(
@@ -148,35 +191,17 @@ pub fn tokenless(
     session_name: impl FnOnce(&Path) -> Result<String, String>,
     recorded_for: impl FnOnce(&str) -> Result<Option<session_tokens::Minted>, String>,
 ) -> Tokenless {
-    let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
-        return Tokenless::NotOurs;
-    };
-    let mut parts = tmux.rsplitn(3, ',');
-    let (Some(_session), Some(_pid), Some(socket)) = (parts.next(), parts.next(), parts.next())
-    else {
-        return Tokenless::Unknown(format!(
-            "$TMUX is `{tmux}`, which is not the `<socket>,<pid>,<session>` tmux sets"
-        ));
-    };
-    let Some(runner) = runner_socket else {
-        return Tokenless::Unknown(
-            "the runner's tmux socket could not be resolved, so whether this process runs on it is unknown"
-                .to_string(),
-        );
-    };
-    if !same_file(Path::new(socket), runner) {
-        return Tokenless::NotOurs;
-    }
-    let pane = match session_name(runner) {
-        Ok(pane) => pane,
-        Err(why) => return Tokenless::Unknown(why),
+    let (pane, socket) = match on_server(tmux, runner_socket, session_name) {
+        OnServer::NotOurs => return Tokenless::NotOurs,
+        OnServer::Unknown(why) => return Tokenless::Unknown(why),
+        OnServer::Session { name, socket } => (name, socket),
     };
     match recorded_for(&pane) {
         Ok(Some(minted)) => Tokenless::LostMint {
             pane,
             project: minted.project,
             slug: minted.slug,
-            socket: runner.to_path_buf(),
+            socket,
         },
         Ok(None) => Tokenless::Unrecorded { pane },
         Err(why) => Tokenless::Unknown(why),
@@ -382,28 +407,10 @@ pub fn dialog_caller(
     runner_socket: Option<&Path>,
     session_name: impl FnOnce(&Path) -> Result<String, String>,
 ) -> DialogCaller {
-    let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
-        return DialogCaller::NotOurs;
-    };
-    let mut parts = tmux.rsplitn(3, ',');
-    let (Some(_session), Some(_pid), Some(socket)) = (parts.next(), parts.next(), parts.next())
-    else {
-        return DialogCaller::Unknown(format!(
-            "$TMUX is `{tmux}`, which is not the `<socket>,<pid>,<session>` tmux sets"
-        ));
-    };
-    let Some(runner) = runner_socket else {
-        return DialogCaller::Unknown(
-            "the runner's tmux socket could not be resolved, so whether this process runs on it is unknown"
-                .to_string(),
-        );
-    };
-    if !same_file(Path::new(socket), runner) {
-        return DialogCaller::NotOurs;
-    }
-    match session_name(runner) {
-        Ok(name) => DialogCaller::Session(name),
-        Err(why) => DialogCaller::Unknown(why),
+    match on_server(tmux, runner_socket, session_name) {
+        OnServer::NotOurs => DialogCaller::NotOurs,
+        OnServer::Session { name, .. } => DialogCaller::Session(name),
+        OnServer::Unknown(why) => DialogCaller::Unknown(why),
     }
 }
 
