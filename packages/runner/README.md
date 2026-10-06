@@ -170,8 +170,13 @@ and slug), and changes no tracked file (`crates/runner-workspace/src/orientation
   instance's. This is the case of a repository worked from two Forge instances, such as forge-core on
   dev and on prod. A committed orientation this instance would write byte for byte, imported by the
   committed `CLAUDE.md`, gets nothing added.
-- **A checkout an older runner held under `skip-worktree`** is converted by the next provision or
-  workspace refresh: the mark is lifted and the committed file restored. An untracked
+- **Every daemon start writes it again** into every bound checkout, under that checkout's provision
+  lock (`crates/runner-workspace/src/orientation_record.rs`), so a box that upgrades onto a build
+  that moves the orientation converges without a re-bind. A second start writes nothing.
+  `forge-runner status` prints each checkout's last outcome under `orient`, and names any not
+  converted with why.
+- **A checkout an older runner held under `skip-worktree`** is converted by the next daemon start,
+  provision or workspace refresh: the mark is lifted and the committed file restored. An untracked
   `.forge/orientation.md` an older runner generated is removed.
 - A committed `CLAUDE.local.md` or `.claude/settings.local.json` is refused
   `PROVISION_WOULD_REWRITE_TRACKED`, and local settings that are not a JSON object

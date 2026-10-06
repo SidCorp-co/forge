@@ -7,6 +7,8 @@
 //!   `projects_root/<slug>` (M4)
 //! - `skill_sync` — server-driven `.claude/skills/<name>/` seeding (ISS-278)
 //! - `orientation`— the checkout's orientation in `CLAUDE.local.md` on provision
+//! - `orientation_record` — every bound checkout's orientation written at daemon start, and recorded
+//! - `record_file` — the versioned JSON records `forge-runner status` reads back
 //! - `provision`  — workspace provisioning (clone + skills + .mcp.json) on bind
 //! - `plugin_sync`— device-level shared-skill plugin channel (ISS-739)
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
@@ -24,9 +26,11 @@ pub mod hook_install;
 pub mod master_skill;
 pub mod mcp;
 pub mod orientation;
+pub mod orientation_record;
 pub mod pairing;
 pub mod plugin_sync;
 pub mod provision;
+pub mod record_file;
 pub mod refresh;
 pub mod repo_cred;
 pub mod salvage;

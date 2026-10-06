@@ -28,7 +28,8 @@
 //!     and a repository that starts committing the path would refuse the pull.
 //!
 //! A checkout an older runner held under `skip-worktree` is converted on the
-//! next provision or refresh: the mark lifted, the committed bytes restored.
+//! next daemon start ([`crate::orientation_record`]), provision or refresh:
+//! the mark lifted, the committed bytes restored.
 //! A committed orientation this instance would write byte for byte, imported by
 //! the committed `CLAUDE.md`, is the checkout's own and nothing is added. A
 //! tracked `CLAUDE.local.md` or local settings file is refused by name.
@@ -188,10 +189,11 @@ fn tracked(repo: &Path, path: &str) -> bool {
 }
 
 /// Make git ignore `path` before it is written there, by an anchored line in
-/// the checkout's exclude file.
-fn ignore(repo: &Path, path: &'static str) -> Result<(), Refused> {
+/// the checkout's exclude file. Whether that line had to be added.
+fn ignore(repo: &Path, path: &'static str) -> Result<bool, Refused> {
     match git_exclude::ensure_ignored_by(repo, path, path, &format!("/{path}")) {
-        Ok(Ignored::Yes { .. } | Ignored::NoGit) => Ok(()),
+        Ok(Ignored::Yes { added }) => Ok(added.is_some()),
+        Ok(Ignored::NoGit) => Ok(false),
         Err(e) => Err(Refused::NotIgnored {
             path,
             detail: e.to_string(),
@@ -316,11 +318,12 @@ fn excluded_in(settings: Option<&str>, ours: &[String]) -> Result<Option<String>
 }
 
 /// Keep a committed orientation, in the checkout and in every worktree nested
-/// under it, from loading beside this checkout's.
-fn exclude_committed(repo: &Path) -> Result<(), Refused> {
+/// under it, from loading beside this checkout's. Whether anything was written.
+fn exclude_committed(repo: &Path) -> Result<bool, Refused> {
     let not = |detail: String| Refused::NotExcluded { detail };
-    match git_exclude::ensure_ignored(repo, SETTINGS) {
-        Ok(_) => {}
+    let ignored_now = match git_exclude::ensure_ignored(repo, SETTINGS) {
+        Ok(Ignored::Yes { added }) => added.is_some(),
+        Ok(Ignored::NoGit) => false,
         Err(git_exclude::Refused::Tracked) => {
             return Err(Refused::WouldRewriteTracked {
                 path: SETTINGS,
@@ -328,13 +331,13 @@ fn exclude_committed(repo: &Path) -> Result<(), Refused> {
             })
         }
         Err(e) => return Err(not(e.to_string())),
-    }
+    };
     let path = repo.join(SETTINGS);
     let existing = std::fs::read_to_string(&path).ok();
     let Some(next) = excluded_in(existing.as_deref(), &exclusions(repo)?)
         .map_err(|e| not(format!("{SETTINGS} was left as it stands: {e}")))?
     else {
-        return Ok(());
+        return Ok(ignored_now);
     };
     let io = |e: std::io::Error| Refused::Io {
         path: SETTINGS,
@@ -348,21 +351,23 @@ fn exclude_committed(repo: &Path) -> Result<(), Refused> {
     std::fs::rename(&tmp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         io(e)
-    })
+    })?;
+    Ok(true)
 }
 
 /// Make `body` this checkout's orientation: the committed one excluded first,
 /// so a failure leaves none loading rather than two, then `body` written into
-/// the Forge block of `CLAUDE.local.md`.
-pub fn hold(repo: &Path, body: &str) -> Result<(), Refused> {
+/// the Forge block of `CLAUDE.local.md`. Whether any file was changed: `false`
+/// is a checkout that already held exactly this, which a second call always is.
+pub fn hold(repo: &Path, body: &str) -> Result<bool, Refused> {
     if tracked(repo, LOCAL) {
         return Err(Refused::WouldRewriteTracked {
             path: LOCAL,
             why: "this checkout's orientation would have to be written into it",
         });
     }
-    exclude_committed(repo)?;
-    ignore(repo, LOCAL)?;
+    let mut changed = exclude_committed(repo)?;
+    changed |= ignore(repo, LOCAL)?;
     let existing = std::fs::read_to_string(repo.join(LOCAL)).unwrap_or_default();
     let rest = without_import_block(&existing).unwrap_or(&existing);
     let block = block(body);
@@ -373,16 +378,18 @@ pub fn hold(repo: &Path, body: &str) -> Result<(), Refused> {
     };
     if next != existing {
         write(repo, LOCAL, &next)?;
+        changed = true;
     }
     if untracked_generated(repo).is_some() {
-        if let Err(e) = std::fs::remove_file(repo.join(ORIENTATION)) {
-            tracing::warn!(
+        match std::fs::remove_file(repo.join(ORIENTATION)) {
+            Ok(()) => changed = true,
+            Err(e) => tracing::warn!(
                 "[orientation] {}: the untracked {ORIENTATION} an older runner generated was not removed: {e}",
                 repo.display()
-            );
+            ),
         }
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn write(repo: &Path, path: &'static str, body: &str) -> Result<(), Refused> {
@@ -397,16 +404,38 @@ fn write(repo: &Path, path: &'static str, body: &str) -> Result<(), Refused> {
     std::fs::write(at, body).map_err(io)
 }
 
+/// What writing a checkout's orientation did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Oriented {
+    /// The checkout already held exactly this orientation; nothing was written.
+    Current,
+    /// A file was written: a first orientation, another project's, or another build's.
+    Written,
+    /// An older runner held the committed orientation under skip-worktree; the
+    /// mark is lifted and the committed file restored. Carries what to record.
+    Converted(String),
+}
+
+impl Oriented {
+    /// What a provision result records, where there is anything to say.
+    pub fn note(&self) -> Option<&str> {
+        match self {
+            Oriented::Converted(note) => Some(note),
+            Oriented::Current | Oriented::Written => None,
+        }
+    }
+}
+
 /// Write project `slug`'s orientation for this checkout, converting one an
-/// older runner held under skip-worktree. `Ok(Some(note))` says what the
-/// provision result should record. The caller reports a refusal on the
-/// provision and goes on: the checkout works without orientation, and says why
-/// it has none.
+/// older runner held under skip-worktree. Idempotent: a second call over what
+/// the first left answers [`Oriented::Current`] and writes nothing. The caller
+/// reports a refusal and goes on: the checkout works without orientation, and
+/// says why it has none.
 pub fn write_orientation(
     repo_path: &Path,
     project_id: &str,
     slug: &str,
-) -> Result<Option<String>, Refused> {
+) -> Result<Oriented, Refused> {
     let body = orientation_body(project_id, slug);
     let note = lift_skip_worktree(repo_path)?.map(|_| {
         format!("{ORIENTATION} was held under skip-worktree by an older runner; the mark is lifted and the committed file restored, so a pull that moves it is no longer refused, and project {slug}'s orientation is in {LOCAL}")
@@ -418,10 +447,12 @@ pub fn write_orientation(
             == Some(body.as_str());
     let imported = std::fs::read_to_string(repo_path.join("CLAUDE.md"))
         .is_ok_and(|s| s.lines().any(|l| l.trim() == FORGE_IMPORT));
-    if !(committed_is_ours && imported) {
-        hold(repo_path, &body)?;
-    }
-    Ok(note)
+    let changed = !(committed_is_ours && imported) && hold(repo_path, &body)?;
+    Ok(match note {
+        Some(note) => Oriented::Converted(note),
+        None if changed => Oriented::Written,
+        None => Oriented::Current,
+    })
 }
 
 /// What Claude Code (2.1.290) puts in front of a session started in `cwd`, a

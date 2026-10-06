@@ -22,6 +22,7 @@ use tokio::process::Command;
 use crate::git_cred;
 use crate::mcp;
 use crate::orientation;
+use crate::orientation_record;
 use crate::skill_sync;
 use crate::trust;
 use runner_platform::config::Config;
@@ -236,7 +237,7 @@ async fn hold_checkout(
 
 /// What a provisioner does when another process on this box holds the checkout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Contended {
+pub(crate) enum Contended {
     /// The daemon's sweep: the holder reports this provision, and the next sweep sees the outcome.
     LeaveIt,
     /// `bind`: the person asked for this checkout, so the call waits for the holder and then runs
@@ -253,7 +254,7 @@ fn checkout_lock_path(lock_dir: &Path, repo_path: &Path) -> PathBuf {
 
 /// The held lock on `repo_path`'s provision, released when dropped; `None` where another process
 /// holds it and `contended` says to leave it; or why the lock could not be taken at all.
-async fn checkout_lock(
+pub(crate) async fn checkout_lock(
     lock_dir: &Path,
     repo_path: &Path,
     contended: Contended,
@@ -289,16 +290,22 @@ async fn checkout_lock(
 
 /// Write the checkout's orientation, answering what its provision result records.
 fn orient(repo_path: &Path, p: &Provision) -> Option<String> {
-    match orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
-        Ok(None) => None,
-        Ok(Some(note)) => {
-            tracing::info!("[provision] {}: orientation: {note}", p.slug);
-            Some(format!("orientation: {note}"))
-        }
-        Err(e) => {
-            tracing::warn!("[provision] {}: orientation: {e}", p.slug);
-            Some(format!("orientation: {e}"))
-        }
+    let said = orientation::write_orientation(repo_path, &p.project_id, &p.slug);
+    let entry = orientation_record::Entry::now(
+        &p.slug,
+        repo_path,
+        orientation_record::Point::Provision,
+        orientation_record::Outcome::of(&said),
+    );
+    orientation_record::log(&entry);
+    orientation_record::save(
+        runner_platform::config::config_dir().as_deref(),
+        vec![entry],
+        orientation_record::Merge::Upsert,
+    );
+    match said {
+        Ok(oriented) => oriented.note().map(|note| format!("orientation: {note}")),
+        Err(e) => Some(format!("orientation: {e}")),
     }
 }
 
