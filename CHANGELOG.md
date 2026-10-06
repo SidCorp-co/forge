@@ -10,6 +10,9 @@
 
 ### Changed
 
+- **A newly gated scope's first freeze is not read as debt that grew.** The size ratchet compares
+  only scopes its checker already measured at the base; web-v2's first freeze passes, growth fails.
+
 - **Every lint rule blocks.** Biome warnings are errors; the empty lint, boundary and trace
   baselines are deleted; web-v2 length is ratcheted; the unused code-quality linter is gone;
   dependencies take their patches.

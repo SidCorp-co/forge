@@ -184,7 +184,7 @@ function areaTotals(m, only) {
   return out;
 }
 
-function compareDown(before, now) {
+function compareDown(before, now, _root, firstFreeze = new Set()) {
   const b = counts(before);
   const n = counts(now);
   const covered = new Set([...b.keys()].map(area));
@@ -193,6 +193,9 @@ function compareDown(before, now) {
   const nowBy = areaTotals(n, only);
   const faults = [];
   for (const [a, tn] of nowBy) {
+    // A scope the checker did not measure at the base revision freezes its debt for the first
+    // time here: that is a new measurement, not debt that grew.
+    if (firstFreeze.has(a)) continue;
     const tb = wasBy.get(a) ?? 0;
     if (tn > tb) faults.push(`frozen total for ${a || '.'} rose ${tb} -> ${tn}`);
   }
@@ -253,6 +256,17 @@ function compareTighten(before, now, root) {
 
 const COMPARE = { down: compareDown, shrink: compareShrink, tighten: compareTighten };
 
+/** The scopes `decl.scopesFrom`'s checker measures at HEAD and did not measure at `rev`. */
+function firstFrozenScopes(root, rev, decl) {
+  if (!decl.scopesFrom) return new Set();
+  const cwds = (doc) =>
+    new Set((doc?.checkers?.[decl.scopesFrom]?.scopes ?? []).map((sc) => String(sc?.cwd ?? '')));
+  const was = cwds(readAt(root, rev, '.forge/conformance.json'));
+  return new Set(
+    [...cwds(readAt(root, 'HEAD', '.forge/conformance.json'))].filter((c) => !was.has(c)),
+  );
+}
+
 /**
  * Judge one declared baseline against the same file at `rev`.
  *
@@ -266,7 +280,7 @@ export function ratchetFault(root, rev, decl) {
   if (before === null) return null;
   const now = readAt(root, 'HEAD', decl.path);
   if (now === null) return `${decl.path} is declared but unreadable at HEAD`;
-  const faults = COMPARE[decl.improves](before, now, root);
+  const faults = COMPARE[decl.improves](before, now, root, firstFrozenScopes(root, rev, decl));
   if (faults.length === 0) return null;
   const shown = faults.slice(0, 3).join(' · ');
   const more = faults.length > 3 ? ` (+${faults.length - 3} more)` : '';

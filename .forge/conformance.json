@@ -19,7 +19,8 @@
       "baseline": {
         "path": ".forge/size-baseline.json",
         "keyBy": "path",
-        "improves": "down"
+        "improves": "down",
+        "scopesFrom": "size-budget"
       }
     },
     "knowledge": {
