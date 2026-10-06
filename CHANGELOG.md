@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.63] - 2026-10-06
+
+Core decides master placement and retirement; boxes report facts and obey
+
 ### Changed
 
 - **Core now decides when a box places, nudges, replaces or retires a master** (new `POST /api/devices/me/master-session/verdict`). Deploy core first: this runner places nothing without it; older runners still decide locally.
