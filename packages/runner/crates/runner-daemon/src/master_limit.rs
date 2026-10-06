@@ -242,20 +242,6 @@ pub(crate) fn newest_record(tail: &str, now_unix: i64) -> Option<Decisive> {
     None
 }
 
-/// The quota refusal a record carries, and nothing for any other verdict.
-///
-/// A usage window or a provider throttle is capacity, which an operator can
-/// restore out of band and only a turn that tries can see restored. A
-/// credential refusal is not capacity and is not answered by asking again.
-pub(crate) fn quota_refusal(d: &Decisive) -> Option<&Refusal> {
-    match &d.verdict {
-        Verdict::Refused(r) if matches!(r.reason, Reason::UsageLimit | Reason::RateLimit) => {
-            Some(r)
-        }
-        _ => None,
-    }
-}
-
 pub(crate) fn read_tail(path: &std::path::Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;

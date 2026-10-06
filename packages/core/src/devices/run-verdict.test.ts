@@ -26,6 +26,7 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
     hasSession: true,
     activity: null,
     sessionOverForMs: null,
+    subagent: { kind: 'no_turn_end', silentMs: MIN },
     transcript: { kind: 'none' },
     releaseDecided: false,
     releaseRefused: false,
@@ -37,7 +38,8 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
 const live: RunIssues = { over: [false], rests: [false] };
 const over: RunIssues = { over: [true], rests: [true] };
 const unknown: RunIssues = { over: [null], rests: [null] };
-const subagent = (o: Partial<RunFacts> = {}) => facts({ process: 'none', ...o });
+const subagent = (o: Partial<RunFacts> = {}) =>
+  facts({ process: 'none', subagent: { kind: 'turn_ended', silentMs: HOUR }, ...o });
 const closed = (o: Partial<NonNullable<RunFacts['close']>> = {}) => ({
   sessionTerminal: true,
   checkoutReturned: false,
@@ -138,6 +140,17 @@ describe('a run under a live master', () => {
       beat: true,
       sayKept: true,
     });
+  });
+  it('says why it keeps a subagent only once its evidence reads over or unreadable', () => {
+    const kept = (kind: RunFacts['subagent']['kind'], silentMs: number | null) =>
+      runVerdict(subagent({ subagent: { kind, silentMs } }), unknown);
+    for (const kind of ['turn_ended', 'awaiting_reply'] as const) {
+      expect(kept(kind, HOUR - 1)).toMatchObject({ act: 'keep', sayKept: false });
+      expect(kept(kind, HOUR)).toMatchObject({ act: 'keep', sayKept: true });
+    }
+    expect(kept('host_ended', 0)).toMatchObject({ act: 'keep', sayKept: true });
+    expect(kept('unreadable', null)).toMatchObject({ act: 'keep', sayKept: true });
+    expect(kept('no_turn_end', 9 * HOUR)).toMatchObject({ act: 'keep', sayKept: false });
   });
   it('closes a subagent whose every issue is over at core', () => {
     expect(runVerdict(subagent(), over)).toMatchObject({ act: 'close', end: null });

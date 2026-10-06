@@ -22,6 +22,7 @@ type Who = 'owner' | 'member' | 'viewer' | 'box';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let box = '';
+let runnerId = '';
 let publish: MockInstance;
 const ids = { target: '', low: '', high: '', medium: '', carrierKey: '', carrier: '' };
 
@@ -39,7 +40,7 @@ beforeAll(async () => {
   await addProjectMember(projectId, member, 'member');
   await addProjectMember(projectId, viewer, 'viewer');
   box = await createTestDevice(owner);
-  await bindTestRunner(projectId, box);
+  runnerId = await bindTestRunner(projectId, box);
   const { issueDeviceCredential } = await import('../../src/devices/credential.js');
   say = requester(app, {
     owner: await signUserToken(owner),
@@ -83,9 +84,36 @@ async function feedbackWakes(): Promise<Doc[]> {
     .map((e) => ({ room: e.room, ...e.data }));
 }
 
-async function owedList(): Promise<Doc[]> {
-  const read = ok(await say('box', 'GET', `/api/devices/me/feedback/owed?projectId=${projectId}`));
-  return read.items.map((i: Doc) => ({ key: i.key, severity: i.severity }));
+/** The feedback keys core names on the master's pass as owed a triage, in the order it names them. */
+async function owedTriages(): Promise<string[]> {
+  const answer = ok(
+    await say('box', 'POST', '/api/devices/me/master-session/verdict', {
+      projectId,
+      runnerId,
+      facts: {
+        restarting: null,
+        terminal: true,
+        standing: 'proceed',
+        pane: 'absent',
+        capability: null,
+        serversReadable: true,
+        work: { poolWaits: false, jobPanes: 0 },
+        conversation: { id: null, transcript: 'absent', elsewhere: 'none' },
+        outdated: null,
+        holding: { kind: 'nothing' },
+        turn: { kind: 'ended' },
+        idle: {
+          noWorkForSeconds: 0,
+          pane: null,
+          children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
+        },
+        limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
+        nudge: { last: null, since: 'unreported' },
+      },
+    }),
+  );
+  const named = /owes? a triage \(([^)]*)\)/.exec(answer.work.owedLine as string);
+  return named?.[1]?.split(', ') ?? [];
 }
 
 describe('with no live master, an untriaged item waits on a holder of feedback.approve', () => {
@@ -137,11 +165,7 @@ describe('with a live master, every untriaged item is owed to it, most severe fi
     expect(await feedbackWakes()).toEqual([
       expect.objectContaining({ room: `device:${box}`, projectId, severity: 'medium' }),
     ]);
-    expect(await owedList()).toEqual([
-      { key: ids.high, severity: 'high' },
-      { key: ids.medium, severity: 'medium' },
-      { key: ids.low, severity: 'low' },
-    ]);
+    expect(await owedTriages()).toEqual([ids.high, ids.medium, ids.low]);
   });
 
   it.each(['low', 'medium', 'high'] as const)(

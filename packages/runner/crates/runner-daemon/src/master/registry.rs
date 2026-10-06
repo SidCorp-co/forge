@@ -62,9 +62,6 @@ pub(crate) struct Registry {
     /// Consecutive early exits of each project's pane for one reason, which
     /// decide only what the journal says (ISS-1343).
     pub(crate) exits: HashMap<String, pane_exit::Tally>,
-    /// Why each project's channel inbox could not be read on the last sweep,
-    /// so a core that does not answer it is said once and not every pass.
-    pub(crate) inbox_unread: HashMap<String, String>,
     /// What this box last said about each project's outdated pane, so the
     /// account is given once per pane and reason rather than once a sweep
     /// (ISS-1379).
@@ -227,16 +224,6 @@ impl Masters {
         }
     }
 
-    /// Remember why the inbox read failed (`None`: it succeeded), answering
-    /// whether that is news since the last sweep.
-    pub(crate) fn note_inbox_read(&self, project_id: &str, failed: Option<String>) -> bool {
-        let mut reg = self.0.lock().expect("masters poisoned");
-        match failed {
-            Some(why) => reg.inbox_unread.insert(project_id.to_string(), why.clone()) != Some(why),
-            None => reg.inbox_unread.remove(project_id).is_some(),
-        }
-    }
-
     /// Whether what this sweep found about the project's outdated pane is news,
     /// and remember it either way. `None` is a pane that is current or gone.
     pub(crate) fn note_outdated(&self, project_id: &str, said: Option<String>) -> bool {
@@ -346,16 +333,16 @@ impl Masters {
     /// The box's own record of its last nudge to this project's master.
     pub(crate) fn last_nudge(&self, project_id: &str) -> Option<Nudge> {
         let reg = self.0.lock().expect("masters poisoned");
-        reg.live.get(project_id).and_then(|m| m.last_nudge)
+        reg.live.get(project_id).and_then(|m| m.last_nudge.clone())
     }
 
     /// Record a nudge core asked for: the work it was about, now, and the
     /// prompt count its pane had reported by then.
-    pub(crate) fn note_nudged(&self, project_id: &str, digest: u64, prompts: Option<u64>) {
+    pub(crate) fn note_nudged(&self, project_id: &str, digest: &str, prompts: Option<u64>) {
         let mut reg = self.0.lock().expect("masters poisoned");
         if let Some(m) = reg.live.get_mut(project_id) {
             m.last_nudge = Some(Nudge {
-                digest,
+                digest: digest.to_string(),
                 at: Instant::now(),
                 prompts,
             });

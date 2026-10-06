@@ -117,6 +117,22 @@ Each was deleted, not split, once core answered it, and no such amnesty remains:
   residency is over (`packages/core/src/jobs/park-deadline.ts:closeIdleResidents`); the box keeps no
   residency clock.
 
+The facts those verdicts read were then taken out of the box's hands too, so that it reports what it
+saw and judges none of it:
+
+- **How a master pass ended**: each tick the box reports what it holds about the open pass (who
+  opened it, its session, the hooks' turn counts, the transcript's age, the issues declared, the
+  conversation's record) as `{ op: "settle" }` on `POST /api/devices/me/master-session/pass`, and core
+  closes it with its reason (`packages/core/src/masters/pass-end.ts:passEnd`).
+- **What a master is owed**: core reads the admissible issues, the channel, the issue threads, the
+  requirements, the feedback and the returned designs itself, and answers them beside the verdict
+  with the nudge line, the first pass's brief and the digest the box echoes as its last nudge
+  (`packages/core/src/masters/owed.ts:readMasterWork`).
+- **Whether a master sits behind its account limit**, and **whether a run it holds is over**: the box
+  reports the newest refusal in the pane's conversation with what its hooks say, and each held run's
+  subagent evidence with no bound (`packages/core/src/masters/verdict.ts:limitHeld`,
+  `packages/core/src/devices/run-verdict.ts:subagentOver`).
+
 ## Consequences
 
 - **What the cleanup took.** 85,445 real lines became 30,391: 53,827 lines of tests and test
@@ -127,7 +143,12 @@ Each was deleted, not split, once core answered it, and no such amnesty remains:
 - **Decisions still made on the box.** A pool job pane's idle verdicts (`runner-core`'s `job_exit`,
   `job_unheard` and `turn_evidence`) and the retry of a refused run declaration are made on the
   box today. Until core takes the first, the runner suppresses core's own job timeouts by acking a
-  pool job as soon as its pane opens and posting progress every tick.
+  pool job as soon as its pane opens and posting progress every tick. Two more read only what the
+  box itself holds: withdrawing a pane stood down while it was being placed obeys the owner's act in
+  the box ledger (`packages/runner/crates/runner-daemon/src/master/obey.rs:withdrawn_if_stood_down`), and whether an account record is fresh
+  enough to report the account's limit to core is judged against `packages/runner/crates/runner-daemon/src/master_limit.rs:FRESH_WITHIN`,
+  which still derives from a hand copy of core's `MASTER_NUDGE_REFRESH_SECONDS` until
+  `/api/devices/me/limit` takes the raw record.
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
   is an on-disk migration on every box, so it waits for the same condition as any other promotion
   carry-over.

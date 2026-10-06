@@ -73,7 +73,7 @@ function facts(over: Doc = {}): Doc {
     pane: 'absent',
     capability: null,
     serversReadable: true,
-    work: { admissible: 1, owed: 0, poolWaits: false, jobPanes: 0 },
+    work: { poolWaits: false, jobPanes: 0 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
     outdated: null,
     holding: { kind: 'nothing' },
@@ -83,8 +83,8 @@ function facts(over: Doc = {}): Doc {
       pane: null,
       children: { total: 0, unfinished: [], lastClosedAgoSeconds: null },
     },
-    limitHeld: false,
-    nudge: { digest: 'd1', last: null, since: 'unreported' },
+    limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
+    nudge: { last: null, since: 'unreported' },
     ...over,
   };
 }
@@ -92,16 +92,39 @@ function facts(over: Doc = {}): Doc {
 const verdict = (body: Doc, who: Who = 'box') =>
   say(who, 'POST', '/api/devices/me/master-session/verdict', body);
 
+/** The verdict core answered, beside the work it read for the project. */
+const judged = async (body: Doc): Promise<Doc> => ok(await verdict(body)).verdict;
+
 describe('POST /api/devices/me/master-session/verdict', () => {
-  it('places a master where work waits, resuming the conversation whose transcript the box holds', async () => {
-    const v = ok(await verdict({ projectId, runnerId, facts: facts() }));
-    expect(v).toMatchObject({ act: 'place', resume: 'conv-1', nudge: true });
+  it('withholds where core reads no work owed, whatever the box reports', async () => {
+    const answer = ok(await verdict({ projectId, runnerId, facts: facts() }));
+    expect(answer.verdict).toMatchObject({ act: 'withhold', reason: 'nothing_owed' });
+    expect(answer.work).toMatchObject({ admissible: 0, owed: 0, issueKey: null });
+  });
+
+  it('places a master where core reads work owed, resuming the conversation whose transcript the box holds', async () => {
+    ok(
+      await say('owner', 'POST', `/api/projects/${projectId}/feedback`, {
+        kind: 'bug',
+        severity: 'low',
+        title: 'The board drops a column on resize',
+        screen: 'the board',
+      }),
+      201,
+    );
+    const answer = ok(await verdict({ projectId, runnerId, facts: facts() }));
+    expect(answer.verdict).toMatchObject({ act: 'place', resume: 'conv-1', nudge: true });
+    expect(answer.work.owed).toBe(1);
+    expect(answer.work.nudge).toContain('1 feedback item owes a triage');
+    expect(answer.work.digest).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it("withholds on the runner row's own status, which only core holds", async () => {
-    const v = ok(
-      await verdict({ projectId: drainingProjectId, runnerId: drainingRunnerId, facts: facts() }),
-    );
+    const v = await judged({
+      projectId: drainingProjectId,
+      runnerId: drainingRunnerId,
+      facts: facts(),
+    });
     expect(v).toMatchObject({ act: 'withhold', reason: 'runner_not_accepting' });
   });
 
@@ -116,30 +139,41 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     const alive = facts({
       pane: 'alive',
       capability: 'current',
-      nudge: { digest: 'd2', last: { digest: 'd1', agoSeconds: 0 }, since: 'working' },
+      nudge: { last: { digest: 'd1', agoSeconds: 0 }, since: 'working' },
     });
-    expect(ok(await verdict({ projectId, runnerId, facts: alive }))).toMatchObject({
+    expect(await judged({ projectId, runnerId, facts: alive })).toMatchObject({
       act: 'keep',
       nudge: true,
     });
     const pass = (body: Doc) => say('box', 'POST', '/api/devices/me/master-session/pass', body);
     const opened = ok(await pass({ op: 'open', sessionId, verb: 'dispatch' }), 201).pass;
-    expect(ok(await verdict({ projectId, runnerId, facts: alive }))).toMatchObject({
+    expect(await judged({ projectId, runnerId, facts: alive })).toMatchObject({
       act: 'keep',
       nudge: false,
     });
-    ok(
-      await pass({
-        op: 'close',
+    const settle = (hooks: Doc) =>
+      pass({
+        op: 'settle',
         sessionId,
         passId: opened.id,
-        dispatched: [],
-        skipped: [],
-        parked: [],
-        closeReason: 'turn_ended',
-      }),
-    );
-    expect(ok(await verdict({ projectId, runnerId, facts: alive })).nudge).toBe(true);
+        facts: {
+          openedBy: 'this_daemon',
+          served: true,
+          openedAgoMs: 5_000,
+          hooks: { turnsSinceOpen: 1, turnBeganAgoMs: 4_000, lastEventAgoMs: 1_000, ...hooks },
+          writtenAgoMs: null,
+          dispatched: ['ISS-7'],
+          record: { worked: true, refusal: null },
+        },
+      });
+    const working = ok(await settle({ doing: 'working' }));
+    expect(working.pass.endedAt, working.because).toBeUndefined();
+    const ended = ok(await settle({ doing: 'idle' }));
+    expect(ended.pass).toMatchObject({ closeReason: 'turn_ended', dispatched: ['ISS-7'] });
+    expect((await judged({ projectId, runnerId, facts: alive })).nudge).toBe(true);
+    const again = await settle({ doing: 'idle' });
+    expect(again.status, 'a pass core closed was settled again').toBe(422);
+    expect(JSON.stringify(again.json)).toContain('MASTER_PASS_NOT_OPEN');
   });
 
   // forge-dev 2026-10-07: an outdated master that dispatches back to back always holds a run, and was
@@ -155,12 +189,13 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     const outdated = facts({
       pane: 'alive',
       capability: 'current',
-      work: { admissible: 0, owed: 6, poolWaits: false, jobPanes: 0 },
       outdated: 'placed under 1.0.0, this box runs 1.1.0',
-      holding: { kind: 'these', working: ['r7 (FB-89)'], over: [] },
-      nudge: { digest: 'd9', last: null, since: 'unreported' },
+      holding: {
+        kind: 'these',
+        runs: [{ name: 'r7 (FB-89)', subagent: { kind: 'resumed', silentMs: 0 } }],
+      },
     });
-    expect(ok(await verdict({ projectId, runnerId, facts: outdated }))).toMatchObject({
+    expect(await judged({ projectId, runnerId, facts: outdated })).toMatchObject({
       act: 'keep',
       nudge: true,
       drain: true,
@@ -170,7 +205,13 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(first).toMatchObject({ why: 'placed under 1.0.0, this box runs 1.1.0', draining: true });
     expect(first.heldBy.join(' ')).toContain('r7 (FB-89)');
 
-    const later = facts({ ...outdated, holding: { kind: 'these', working: ['r8'], over: [] } });
+    const later = facts({
+      ...outdated,
+      holding: {
+        kind: 'these',
+        runs: [{ name: 'r8', subagent: { kind: 'resumed', silentMs: 0 } }],
+      },
+    });
     ok(await verdict({ projectId, runnerId, facts: later }));
     const second = ok(await standing()).outdated;
     expect(second.since, 'since moved while the pane stayed outdated').toBe(first.since);

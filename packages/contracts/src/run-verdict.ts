@@ -33,6 +33,33 @@ export const RUN_HOST_ENDS = [
 ] as const;
 export type RunHostEnd = (typeof RUN_HOST_ENDS)[number];
 
+/**
+ * What a subagent's own evidence says, read with no bound: `no_turn_end` it has ended no turn since
+ * its run was declared; `host_ended` the process it ran in was read gone with nothing heard since;
+ * `resumed` an entry after its last turn-end is a turn's own; `awaiting_reply` it was handed an entry
+ * after its last turn-end and has written no reply; `turn_ended` it ended a turn and wrote nothing
+ * after; `unreadable` its transcript cannot say what followed a turn-end; `tail_unreadable` its
+ * transcript was written after a turn-end and cannot be opened to say what. Whether a silence is
+ * long enough to call it over is core's (`devices/run-verdict.ts:subagentOver`).
+ */
+export const RUN_SUBAGENT_EVIDENCE = [
+	"no_turn_end",
+	"host_ended",
+	"resumed",
+	"awaiting_reply",
+	"turn_ended",
+	"unreadable",
+	"tail_unreadable",
+] as const;
+export type RunSubagentEvidence = (typeof RUN_SUBAGENT_EVIDENCE)[number];
+
+/** A subagent's evidence and how long it has been silent since it; `silentMs` is null for `unreadable`. */
+export const runSubagentSchema = z.strictObject({
+	kind: z.enum(RUN_SUBAGENT_EVIDENCE),
+	silentMs: age.nullable(),
+});
+export type RunSubagent = z.infer<typeof runSubagentSchema>;
+
 export const runFactsSchema = z.strictObject({
 	/** The issue keys the ledger says this run holds, as the box declared them. */
 	issueKeys: z.array(z.string().trim().min(1).max(64)).max(16),
@@ -73,6 +100,8 @@ export const runFactsSchema = z.strictObject({
 		.nullable(),
 	/** How long ago an earlier sweep first read the session over at core; null while it is not. */
 	sessionOverForMs: age.nullable(),
+	/** What the subagent's own evidence says, read by the box with no bound. */
+	subagent: runSubagentSchema,
 	/** The subagent's own transcript: none recorded, unreadable, or written so long ago. */
 	transcript: z.discriminatedUnion("kind", [
 		z.strictObject({ kind: z.literal("none") }),
@@ -100,7 +129,7 @@ export const runVerdictRequestSchema = z.strictObject({
 	facts: runFactsSchema,
 });
 export const RUN_VERDICT_SHAPE =
-	"{ projectId: uuid | null, facts: { issueKeys, parkedOnHuman, master, liveMasterInProject, thisBoot, bound, process, ledgerDead, host, hostEnded, ended, declaredAgoMs, checkoutGone, hasSession, activity, sessionOverForMs, transcript, releaseDecided, releaseRefused, close } } — see @forge/contracts/run-verdict runFactsSchema";
+	"{ projectId: uuid | null, facts: { issueKeys, parkedOnHuman, master, liveMasterInProject, thisBoot, bound, process, ledgerDead, host, hostEnded, ended, declaredAgoMs, checkoutGone, hasSession, activity, sessionOverForMs, subagent, transcript, releaseDecided, releaseRefused, close } } — see @forge/contracts/run-verdict runFactsSchema";
 
 /** Why a run the close loop could not finish this sweep still stands. */
 export const RUN_STANDINGS = [
