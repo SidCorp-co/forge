@@ -157,6 +157,14 @@ describe('a breakdown item carries its contract waits', () => {
     ]);
     const issue = ok(await say('plugin', 'GET', `/api/issues/${ids.issue}`));
     expect(issue.status).toBe('draft');
+    ok(
+      await say('plugin', 'PATCH', `/api/issues/${ids.issue}`, {
+        plan: 'Send policyVersion from the open call, read from the policy the box loaded.',
+      }),
+    );
+    const planned = ok(await say('plugin', 'GET', at(`/requirements/${req}`)));
+    expect(planned.issues[0]).toMatchObject({ plannedRevision: 1, changedSincePlan: false });
+    expect(planned.standing.tasks.filter((t: Doc) => t.kind === 're-plan')).toEqual([]);
   });
 });
 
@@ -205,5 +213,25 @@ describe('an accepted revision_diff lands its revision proposed', () => {
         reason: 'the platform moved it',
       }),
     );
+  });
+});
+
+describe('a revision the plan predates opens one re-plan task per flagged issue', () => {
+  it('flags the planned issue whose traced BC r2 reworded, and opens its re-plan task for the master', async () => {
+    const read = ok(await say('plugin', 'GET', at(`/requirements/${req}`)));
+    expect(read.currentRevision).toBe(2);
+    expect(read.issues).toEqual([
+      expect.objectContaining({ issueId: ids.issue, plannedRevision: 1, changedSincePlan: true }),
+    ]);
+    expect(read.standing.tasks).toContainEqual(
+      expect.objectContaining({
+        kind: 're-plan',
+        owner: 'Project master',
+        revision: 2,
+        issueId: ids.issue,
+        dueAt: null,
+      }),
+    );
+    expect(read.standing.waitingOn).toMatchObject({ who: 'Master', act: 're-plan ISS-1' });
   });
 });
