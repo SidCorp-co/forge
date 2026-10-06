@@ -38,11 +38,21 @@ it). `PAT_UNGRANTABLE` beside it names every path kept out, each with its reason
 the browser session's own lifecycle under `/api/auth`, token management at `/api/pat`, signed
 webhooks, ticketed uploads, the GitHub install redirect, the MCP transport, and the paired box's
 own device routes. Each entry also names the door it does admit (`PAT_EXCLUSION_DOORS`), and a
-token sent there, where its router runs the token door, is refused with that door's advice; a
-device-only route answers a token with its own 401 before that door is reached.
+personal or agent token sent there, where its router runs the token door, is refused with that
+door's advice. A device entry lets the box's own credential past the token door, so a guard
+mounted ahead of a device route leaves the route's device gate to decide.
 `middleware/pat-mount-coverage.test.ts` reads the composed app's routes and
 fails naming any route under neither list, and any route under a menu prefix that a token cannot
-reach.
+reach — with every door on the request's chain run, so a guard mounted earlier cannot answer for
+the route's own. It also sends each public entry no credential and each device entry a device
+credential, and refuses a router mounted at `/` or `/api` that runs middleware over every path
+beneath it.
+
+Still open: routers mounted at one shared prefix, `/api/projects` above all, each carry a
+`use('*')` guard, so a router's guard runs for every sibling mounted after it. The coverage test
+sees through it, and every such guard there today is `requireAuth()` with `assertEmailVerified()`,
+which admits what each route behind it admits; what it costs is that a route's own gate is not the
+first one it meets.
 
 A token keeps the reach it was minted with: each prefix carries the grant epoch it joined at and
 each token the epoch it was minted at, so a token issued before a prefix joined the menu is refused

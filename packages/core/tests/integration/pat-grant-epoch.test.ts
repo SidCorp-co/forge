@@ -193,12 +193,15 @@ async function addedPrefixes(reach?: 'project' | 'account'): Promise<string[]> {
 const ZERO = '00000000-0000-4000-8000-000000000000';
 
 /**
- * A request under a prefix that reaches the token door. The two invitation
- * lookups by their own token are public, so their token-gated siblings stand in.
+ * A served route under a prefix, which reaches the token door. The two
+ * invitation lookups by their own token are public, so their token-gated
+ * siblings stand in; `/api/me` and `/api/devices` serve nothing at `/:id`.
  */
 function probeFor(prefix: string): readonly ['GET' | 'POST', string] {
   if (prefix === '/api/invitations') return ['GET', `${prefix}/pending`];
   if (prefix === '/api/org-invitations') return ['POST', `${prefix}/${ZERO}/accept`];
+  if (prefix === '/api/me') return ['GET', `${prefix}/devices`];
+  if (prefix === '/api/devices') return ['GET', `${prefix}/${ZERO}/runners`];
   return ['GET', `${prefix}/${ZERO}`];
 }
 

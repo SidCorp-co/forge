@@ -256,6 +256,35 @@ describe('a path kept out of the grammar is refused with its reason', () => {
   });
 });
 
+describe("a device exclusion steps aside for the box's own credential", () => {
+  const box = (permissions: readonly string[] | null) => ({
+    ...principal(permissions),
+    deviceId: 'd1',
+  });
+
+  it('admits a device credential on a device exclusion, leaving the route its device gate', async () => {
+    authenticatePat.mockResolvedValue(box(['*']));
+    const fake = ctx('/api/projects/p1/skills/sync', 'POST');
+    const admitted = await beginPatRequest(fake.ctx, 'forge_pat_test');
+    expect(admitted.principal.deviceId).toBe('d1');
+  });
+
+  it('still refuses a personal or agent token there, with the device advice', async () => {
+    const refusal = await refusalFor('/api/projects/p1/skills/sync', ['*'], 'POST', 2);
+    expect(refusal?.code).toBe('PAT_NOT_PERMITTED');
+    expect(refusal?.message).toContain('Call it from the box itself');
+  });
+
+  it('refuses a device credential on an exclusion whose door is not the device', async () => {
+    authenticatePat.mockResolvedValue(box(['*']));
+    const refusal = await beginPatRequest(ctx('/api/pat', 'GET').ctx, 'forge_pat_test').then(
+      () => null,
+      (err: HTTPException) => (err.cause as { code?: string }).code,
+    );
+    expect(refusal).toBe('PAT_NOT_PERMITTED');
+  });
+});
+
 describe('a token minted before the menu grew keeps its reach', () => {
   it.each([
     ['NULL', null],

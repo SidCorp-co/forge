@@ -117,10 +117,14 @@ devicePublicRoutes.post(
   },
 );
 
+/**
+ * Mounted at `/api`, so each route carries its own guard: a `use('*')` here
+ * would run ahead of every `/api` route mounted after this router, whatever
+ * that route admits.
+ */
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
-deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-deviceOwnerRoutes.get('/me/devices', async (c) => {
+deviceOwnerRoutes.get('/me/devices', requireAuth(), assertEmailVerified(), async (c) => {
   const userId = c.get('userId');
   // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
   // sits on top of `devices.ownerId`, so the answer is always a subset of the
@@ -174,6 +178,8 @@ const updateDeviceSchema = z
 
 deviceOwnerRoutes.patch(
   '/devices/:id',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -239,6 +245,8 @@ deviceOwnerRoutes.patch(
 
 deviceOwnerRoutes.delete(
   '/devices/:id',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -287,6 +295,8 @@ deviceOwnerRoutes.delete(
 // sensible prefill when a runner has no per-device path set yet.
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
