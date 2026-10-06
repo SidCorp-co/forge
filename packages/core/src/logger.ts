@@ -79,10 +79,7 @@ function withErrorsSerialized(value: unknown, depth = 0): unknown {
  * short bound value is told only by the values the error carries.
  */
 function redactCall(args: unknown[], err: Error | null): unknown[] {
-  const clean = (v: unknown) => {
-    const serialized = withErrorsSerialized(v);
-    return err ? redactQueryParams(serialized, err) : serialized;
-  };
+  const clean = (v: unknown) => redactQueryParams(withErrorsSerialized(v), err ?? undefined);
   let [first, ...rest] = args;
   rest = rest.map(clean);
   const named = first as { msg?: unknown };

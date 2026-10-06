@@ -103,6 +103,14 @@ describe('the core logger', () => {
       'in context with no err beside it',
       (log: Logger, err: Error) => log.warn({ ctx: [err] }, 'failed'),
     ],
+    [
+      'nine objects deep with no err beside it',
+      (log: Logger, err: Error) => {
+        let deep: object = { error: err };
+        for (let i = 0; i < 9; i++) deep = { inner: deep };
+        log.error('failed %j', deep);
+      },
+    ],
   ])('serializes an error interpolated or carried %s without its bound values', (_, write) => {
     const { lines, log } = capture();
     write(log, failedInsert());
