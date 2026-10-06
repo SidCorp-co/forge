@@ -208,6 +208,11 @@ pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
             exe.display()
         )));
     };
+    if !exe.is_absolute() {
+        return Err(Error::Other(format!(
+            "the runner path {exe_text} is not absolute, so a hook naming it would resolve against each session's PATH or directory and could reach another runner's build — installing none"
+        )));
+    }
     if !runner_platform::exe::is_runnable(exe) {
         return Err(Error::Other(format!(
             "no runnable file stands at {exe_text}, so every hook naming it would die at every call — installing none"
@@ -412,4 +417,45 @@ fn repaired(before: &str, after: &str) -> Result<Vec<String>> {
         )));
     }
     unrunnable_in(before)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn programs(text: &str) -> Vec<String> {
+        let root: Value = serde_json::from_str(text).unwrap();
+        root["hooks"]
+            .as_object()
+            .unwrap()
+            .values()
+            .flat_map(|entries| entries.as_array().cloned().unwrap_or_default())
+            .flat_map(|entry| entry["hooks"].as_array().cloned().unwrap_or_default())
+            .filter_map(|h| h["command"].as_str().and_then(program_of))
+            .collect()
+    }
+
+    #[test]
+    fn a_bare_forge_runner_hook_another_writer_left_is_rewritten_to_the_serving_path() {
+        let serving = "/home/dev/.forge-dev-runner/bin/forge-runner";
+        let existing = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"forge-runner hook --event Stop"}]}],
+            "PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"forge-runner gate --event PreToolUse"}]}]}}"#;
+        let text = merged_for(Some(existing), serving, true).unwrap();
+        let found = programs(&text);
+        assert!(!found.is_empty());
+        assert!(
+            found.iter().all(|p| p == serving),
+            "a hook names something other than the serving binary: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_relative_runner_path_is_refused_by_name() {
+        let cwd = std::env::temp_dir().join(format!("forge-hook-rel-{}", uuid::Uuid::new_v4()));
+        let err = install(&cwd, Path::new("forge-runner"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not absolute"), "{err}");
+        assert!(!settings_path(&cwd).exists());
+    }
 }

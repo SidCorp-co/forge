@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **runner:** a pane's `forge-runner` resolves to the binary serving its daemon, ahead of any other on the inherited PATH, so a dev runner's panes stop reaching the prod build; a hook naming a relative runner path is refused.
+
 ## [0.4.0-dev.44] - 2026-10-06
 
 Private agent chats are visible only to their owner and project admins
