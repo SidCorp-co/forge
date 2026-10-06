@@ -206,6 +206,19 @@ function RailGroupBlock({
   );
 }
 
+function FlyAction({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
+    >
+      <Icon name={icon} size={16} className="text-subtle" />
+      {label}
+    </button>
+  );
+}
+
 export function NavRailCompact({
   workspaceItems,
   projectItems,
@@ -397,22 +410,8 @@ export function NavRailCompact({
               )}
             </div>
             <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
-            <button
-              type="button"
-              onClick={() => { setFlyOpen(false); onAllProjects(); }}
-              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-            >
-              <Icon name="folder" size={16} className="text-subtle" />
-              View all
-            </button>
-            <button
-              type="button"
-              onClick={() => { setFlyOpen(false); onNewProject(); }}
-              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-            >
-              <Icon name="plus" size={16} className="text-subtle" />
-              New project
-            </button>
+            <FlyAction icon="folder" label="View all" onClick={() => { setFlyOpen(false); onAllProjects(); }} />
+            <FlyAction icon="plus" label="New project" onClick={() => { setFlyOpen(false); onNewProject(); }} />
           </Popover>
         </div>
       )}
