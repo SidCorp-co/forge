@@ -106,7 +106,8 @@ export function BatchReleaseDialog({
         },
         onError: (err) => {
           const named = carriedIn(err);
-          if (named) setCarried(named);
+          // A refusal names only what is still undecided, so the decisions already made are kept.
+          if (named) setCarried((prev) => [...prev, ...named.filter((n) => !prev.some((p) => p.issueId === n.issueId))]);
           setRefusal((prev) => ({ message: formatApiError(err), tries: (prev?.tries ?? 0) + 1 }));
         },
       },

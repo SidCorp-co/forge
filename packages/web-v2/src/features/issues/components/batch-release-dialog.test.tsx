@@ -323,6 +323,28 @@ describe("issues the release would ship without naming them", () => {
     expect(button()).toBeEnabled();
   });
 
+  it("keeps a decision already made when the next refusal names only a newly landed issue", async () => {
+    answer(409, { ...CARRIES, details: { carried: [CARRIES.details.carried[0]] } });
+    draw();
+    press();
+    await screen.findByTestId("carried-ISS-7");
+    fireEvent.click(radios("ISS-7")[1] as Element);
+
+    answer(409, { ...CARRIES, details: { carried: [CARRIES.details.carried[1]] } });
+    press();
+    await screen.findByTestId("carried-ISS-8");
+    expect(screen.getByTestId("carried-ISS-7")).toBeInTheDocument();
+    fireEvent.click(radios("ISS-8")[1] as Element);
+    accepted("probed");
+    press();
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(sentBody(2).carried).toEqual([
+      { issueId: "iss-7", decision: "revert" },
+      { issueId: "iss-8", decision: "revert" },
+    ]);
+  });
+
   it("sends each decision with the batch when pressed again, and none on the first press", async () => {
     answer(409, CARRIES);
     draw();
