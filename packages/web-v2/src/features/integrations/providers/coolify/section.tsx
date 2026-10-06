@@ -132,7 +132,7 @@ function BindingPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-4">
       <EnvironmentNote bindingId={existing?.id} />
       <CoolifyServerFields
         projectId={projectId}
@@ -179,7 +179,7 @@ function CoolifyServerFields(p: {
   orgLocked: boolean;
 }) {
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
+    <fieldset className="flex flex-col gap-3 border-t border-line-subtle pt-3">
       <legend className="fg-label px-1 text-subtle">Coolify server · shared credential</legend>
       <p className="fg-body-sm text-muted">
         One Coolify server + API token, reused by every project bound to this connection. Forge calls it to

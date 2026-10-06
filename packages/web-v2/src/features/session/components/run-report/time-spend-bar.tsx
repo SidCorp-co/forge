@@ -24,7 +24,7 @@ function clockOf(iso: string): string {
 
 export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
   return (
-    <section className="rounded-lg border border-line bg-surface px-5 py-4 shadow-sm">
+    <section className="py-4">
       <div className="flex items-baseline gap-2.5">
         <span className="fg-overline">Where the time went</span>
         <span className="fg-caption ml-auto">

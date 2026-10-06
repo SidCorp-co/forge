@@ -108,7 +108,7 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
           action={{ label: "Show all", onClick: () => setFilter("all") }}
         />
       ) : (
-        <ol className="flex list-none flex-col gap-2.5 p-0">
+        <ol className="flex list-none flex-col divide-y divide-line-subtle p-0">
           {visible.map((entry) => (
             <ActivityRow key={entry.key} entry={entry} />
           ))}
@@ -120,7 +120,7 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
 
 function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line-subtle pb-2.5">
       <span
         className="rounded-full px-2 py-0.5 font-mono text-11 font-semibold"
         style={{ background: "var(--amberw-50)", color: "var(--amberw-600)" }}
@@ -141,7 +141,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const color = TONE_COLOR[entry.tone];
   const when = formatRelativeTime(entry.at);
   return (
-    <li className="flex gap-3 rounded-md border border-line-subtle bg-app px-3.5 py-3">
+    <li className="flex gap-3 py-3">
       <span
         aria-hidden
         className={entry.open ? "forge-pulse mt-1.5 size-2 flex-none rounded-full" : "mt-1.5 size-2 flex-none rounded-full"}

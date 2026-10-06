@@ -9,7 +9,7 @@
 // (core enforces) — we offer only orgs where the caller is owner/admin and
 // confirm before the PATCH since the destination org's admins gain control.
 import { useState } from "react";
-import { Button, Card, CardContent, Field, Input, SectionTitle, Select } from "@/design";
+import { Button, PageSection, PageSectionBody, Field, Input, SectionTitle, Select } from "@/design";
 import { useOrgs } from "@/features/orgs/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
 import { isOrgAdmin } from "@/features/projects/write-access";
@@ -36,8 +36,8 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
   };
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
         {project.archivedAt ? (
           <>
@@ -92,8 +92,8 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
               ))}
           </>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -121,8 +121,8 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   }
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
         <p className="fg-caption mb-4 text-muted">
           Transfer this project to another organization you administer. Owners
@@ -150,7 +150,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
             Move
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from "@/design";
+import { PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState, Skeleton } from "@/design";
 import { formatCount, formatWeek } from "../format";
 import type { AdminAdoptionBucket } from "../types";
 
@@ -9,14 +9,14 @@ const PAD = 4;
 
 export function AdoptionPanelSkeleton() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Adoption</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Adoption</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody>
         <Skeleton className="h-[120px] w-full" />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -25,18 +25,18 @@ export function AdoptionPanelSkeleton() {
 export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBucket[] }) {
   if (buckets.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Adoption</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <PageSection>
+        <PageSectionHeader>
+          <PageSectionTitle>Adoption</PageSectionTitle>
+        </PageSectionHeader>
+        <PageSectionBody>
           <EmptyState
             title="No adoption history yet"
             message="Signups appear here once the first account is created."
             mascot={false}
           />
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
     );
   }
 
@@ -53,14 +53,14 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
     .join(" ");
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Adoption</CardTitle>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Adoption</PageSectionTitle>
         <span className="fg-caption">
           {formatCount(last.cumulativeUsers)} users · {formatCount(last.activeWorkspaces)} active workspaces
         </span>
-      </CardHeader>
-      <CardContent>
+      </PageSectionHeader>
+      <PageSectionBody>
         <svg
           viewBox={`0 0 ${width} ${H}`}
           className="h-[120px] w-full"
@@ -90,7 +90,7 @@ export function AdoptionPanel({ buckets }: { buckets: readonly AdminAdoptionBuck
             </li>
           ))}
         </ol>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

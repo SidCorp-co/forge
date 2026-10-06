@@ -4,10 +4,10 @@ import { useState } from "react";
 import {
   StatusBadge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   ConfirmDialog,
   MonoTag,
   Skeleton,
@@ -37,11 +37,11 @@ function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {
 
 export function AlertFeedSkeleton() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Alerts</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Alerts</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-3">
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="flex items-center gap-3">
             <Skeleton variant="circle" className="h-2 w-2" />
@@ -49,8 +49,8 @@ export function AlertFeedSkeleton() {
             <Skeleton variant="text" className="w-48" />
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -131,18 +131,18 @@ function AlertRow({ alert }: { alert: AdminAlert }) {
 
 export function AlertFeed({ alerts }: { alerts: readonly AdminAlert[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Alerts</CardTitle>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Alerts</PageSectionTitle>
         <span className="fg-caption">crit first</span>
-      </CardHeader>
-      <CardContent>
+      </PageSectionHeader>
+      <PageSectionBody>
         <ul className="flex flex-col">
           {sortAlerts(alerts).map((a) => (
             <AlertRow key={a.id} alert={a} />
           ))}
         </ul>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

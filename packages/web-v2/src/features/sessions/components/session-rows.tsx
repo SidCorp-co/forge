@@ -1,8 +1,6 @@
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Card,
-  CardContent,
   IconButton,
   Menu,
   MonoTag,
@@ -81,10 +79,10 @@ export function SessionList({
         </Table>
       </div>
 
-      {/* Mobile: stacked cards — no horizontal page scroll. */}
-      <div className="space-y-2.5 md:hidden">
+      {/* Mobile: a flush list — no horizontal page scroll. */}
+      <div className="divide-y divide-line-subtle border-y border-line-subtle md:hidden">
         {treeRows.map(({ row, depth }) => (
-          <SessionMobileCard
+          <SessionMobileRow
             key={row.id}
             row={row}
             depth={depth}
@@ -239,46 +237,44 @@ function SessionTableRow(props: RowProps & {
   );
 }
 
-function SessionMobileCard(props: RowProps) {
+function SessionMobileRow(props: RowProps) {
   const { row, slug, deviceName, now, stuck, actions, depth } = props;
   const { display, duration, stage, open } = useRowView(props);
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
     // has to survive the narrow layout or the tree is a desktop-only claim.
-    <Card>
-      <CardContent>
-        <div
-          className="flex items-start justify-between gap-3"
-          style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
-        >
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-1.5">
-              {depth > 0 && (
-                <span aria-hidden className="text-muted select-none">
-                  &#8735;
-                </span>
-              )}
-              <SessionKindTag row={row} />
-            </div>
-            <SessionIdentity row={row} slug={slug} onOpen={open} />
+    <div className="py-3">
+      <div
+        className="flex items-start justify-between gap-3"
+        style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
+      >
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-1.5">
+            {depth > 0 && (
+              <span aria-hidden className="text-muted select-none">
+                &#8735;
+              </span>
+            )}
+            <SessionKindTag row={row} />
           </div>
-          <RowActionsMenu row={row} display={display} actions={actions} />
+          <SessionIdentity row={row} slug={slug} onOpen={open} />
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
-          <div className="flex items-center gap-3">
-            <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
-            <span className="fg-mono text-muted">{duration}</span>
-            <span className="fg-mono text-muted">{formatCost(row.estimatedCost)}</span>
-          </div>
+        <RowActionsMenu row={row} display={display} actions={actions} />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
+        <div className="flex items-center gap-3">
+          <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
+          <span className="fg-mono text-muted">{duration}</span>
+          <span className="fg-mono text-muted">{formatCost(row.estimatedCost)}</span>
         </div>
-        <div className="fg-caption mt-1.5 text-subtle">Started {formatShortTime(row.startedAt ?? row.dispatchedAt)}</div>
-        {row.deviceId && (
-          <div className="mt-2.5">
-            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+      <div className="fg-caption mt-1.5 text-subtle">Started {formatShortTime(row.startedAt ?? row.dispatchedAt)}</div>
+      {row.deviceId && (
+        <div className="mt-2.5">
+          <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { CardTitle, MonoTag } from "@/design";
+import { PageSectionTitle, MonoTag } from "@/design";
 import type { SessionMetadata } from "@/features/sessions/types";
 
 interface LoadedLink {
@@ -37,9 +37,9 @@ export function LoadedForRun({ metadata }: { metadata: SessionMetadata | null })
   if (!record) return null;
   return (
     <section>
-      <CardTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
+      <PageSectionTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
         {`Loaded for this run · ${record.links.length}`}
-      </CardTitle>
+      </PageSectionTitle>
       <ul className="flex flex-col gap-2">
         {record.links.map((l) => (
           <li key={l.link} className="flex flex-col gap-0.5 overflow-hidden">

@@ -201,11 +201,11 @@ export function StagedFileList({
     <>
       {spaced && banner ? <div className="mt-2">{banner}</div> : banner}
       {files.length > 0 && (
-        <ul className={`${spaced ? "mt-2.5 " : ""}flex flex-col gap-1.5`}>
+        <ul className={`${spaced ? "mt-2.5 " : ""}flex flex-col divide-y divide-line-subtle`}>
           {files.map((f, i) => (
             <li
               key={keyOf(f)}
-              className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
+              className="flex items-center gap-2.5 py-1.5"
             >
               <Icon
                 name={f.type.startsWith("image/") ? "grid" : "folder"}

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import {
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   DotStrip,
   SectionTitle,
   Waffle,
@@ -26,8 +26,8 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   const ages = pulse.work.humanBlockedAges;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
+    <PageSection>
+      <PageSectionBody className="flex flex-col gap-4">
         <SectionTitle className="fg-h3">Where the work is sitting</SectionTitle>
 
         {cells.some((c) => c.count > 0) ? (
@@ -50,10 +50,10 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
 
         {ages.length > 0 ? (
           <div className="flex flex-col gap-1">
-            <CardTitle className="fg-body-sm text-muted">
+            <PageSectionTitle className="fg-body-sm text-muted">
               Blocked on a person — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
               {formatElapsed(Math.max(...ages))}
-            </CardTitle>
+            </PageSectionTitle>
             <DotStrip
               items={ages.map((age, i) => ({
                 key: `age-${i}`,
@@ -66,7 +66,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
         ) : null}
 
         <div id="pulse-per-project" className="flex flex-col gap-2">
-          <CardTitle className="fg-body-sm text-muted">Longest without an issue run</CardTitle>
+          <PageSectionTitle className="fg-body-sm text-muted">Longest without an issue run</PageSectionTitle>
           {rows.length === 0 ? (
             <p className="fg-body-sm text-muted">No projects in scope.</p>
           ) : (
@@ -119,7 +119,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

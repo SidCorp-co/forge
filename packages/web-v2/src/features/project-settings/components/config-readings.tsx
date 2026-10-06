@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Banner, CardTitle, enumLabel, ErrorState, MonoTag, StatusBadge, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Badge, Banner, PageSectionTitle, enumLabel, ErrorState, MonoTag, StatusBadge, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
@@ -21,7 +21,7 @@ export function EffectiveSection({ projectId }: { projectId: string }) {
 	const q = useEffectiveConfig(projectId);
 	const heading = (
 		<>
-			<CardTitle className="fg-label text-fg">Effective config</CardTitle>
+			<PageSectionTitle className="fg-label text-fg">Effective config</PageSectionTitle>
 			<p className="fg-body-sm mt-1 mb-3 text-muted">
 				What a run reads, computed on read: each value with the layer and revision it came from.
 			</p>
@@ -98,7 +98,7 @@ function sourceLine(s: Extract<EnvironmentState, { deployment: unknown }>["sourc
 
 function EnvironmentRow({ env }: { env: EnvironmentState }) {
 	return (
-		<section className="rounded-md border border-line p-3" aria-label={`Environment ${env.environment}`}>
+		<section className="border-t border-line-subtle pt-3" aria-label={`Environment ${env.environment}`}>
 			<div className="flex flex-wrap items-center gap-2">
 				<MonoTag>{env.environment}</MonoTag>
 				<StatusBadge family="deployment" value={env.state} />
@@ -152,7 +152,7 @@ export function EnvironmentStateSection({ projectId }: { projectId: string }) {
 	const noDocument = q.error instanceof ApiError && q.error.code === "PROJECT_DOCUMENT_NOT_FOUND";
 	return (
 		<section aria-label="Environment state" className="mt-6 border-t border-line pt-5">
-			<CardTitle className="fg-label text-fg">Environments</CardTitle>
+			<PageSectionTitle className="fg-label text-fg">Environments</PageSectionTitle>
 			<p className="fg-body-sm mt-1 mb-3 text-muted">
 				What each environment runs, read from its deployment record and its runtime probes.
 			</p>

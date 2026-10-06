@@ -207,7 +207,7 @@ export default function ProjectOverviewPage() {
           />
         ) : null}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />
           <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} projectId={project.id} />
           <StatusDonut data={donut} />

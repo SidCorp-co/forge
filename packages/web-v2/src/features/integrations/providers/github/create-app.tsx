@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Field, Input } from "@/design";
+import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, Input } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useState } from "react";
@@ -57,11 +57,11 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create a GitHub App</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Create a GitHub App</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Forge creates one GitHub App for your organization, not one per project. You approve it on
           GitHub and choose which repositories it may see — no token is typed here.
@@ -101,8 +101,8 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

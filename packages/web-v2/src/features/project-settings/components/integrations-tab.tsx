@@ -6,7 +6,7 @@
 // connection" Card. The workspace `/integrations` page is the owner-scoped
 // connection directory; everything project-scoped lives here.
 import { useMemo, useState } from "react";
-import { Banner, Button, Card, CardContent, Field, SectionTitle, Select, type SelectOption } from "@/design";
+import { Banner, Button, PageSection, PageSectionBody, Field, SectionTitle, Select, type SelectOption } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
@@ -70,8 +70,8 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     [connectionsQ.data],
   );
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           Bind one of your connections to this project without re-entering the credential. The
@@ -86,8 +86,8 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
         ) : (
           <ShareForm projectId={projectId} eligible={eligible} loading={connectionsQ.isLoading} />
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

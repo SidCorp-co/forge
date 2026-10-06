@@ -6,7 +6,7 @@ import { type ReactNode, useState } from "react";
 import {
   Badge,
   Button,
-  CardTitle,
+  PageSectionTitle,
   EnumBadge,
   ErrorState,
   Field,
@@ -46,7 +46,7 @@ export function useFailToast(title = "Request failed") {
   return (err: unknown) => toast({ title, description: formatApiError(err), tone: "error" });
 }
 
-const ROW = "flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2";
+const ROW = "flex items-center justify-between gap-3 py-2";
 
 /** A query's rows as a bordered list, with its loading, error and empty states. */
 function RowList<T>({
@@ -63,7 +63,7 @@ function RowList<T>({
     return <ErrorState message={formatApiError(query.error)} onRetry={() => query.refetch()} />;
   const items = query.data ?? [];
   if (empty && items.length === 0) return <p className="fg-body-sm text-subtle">{empty}</p>;
-  return <ul className="space-y-1.5">{items.map(row)}</ul>;
+  return <ul className="divide-y divide-line-subtle">{items.map(row)}</ul>;
 }
 
 /**
@@ -222,7 +222,7 @@ export function ProjectList({ orgId }: { orgId: string }) {
   const projectsQ = useOrgProjects(orgId);
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <CardTitle className="fg-label text-fg">Projects</CardTitle>
+      <PageSectionTitle className="fg-label text-fg">Projects</PageSectionTitle>
       <RowList
         query={projectsQ}
         empty="No projects yet."
@@ -258,7 +258,7 @@ export function InvitationList({ orgId }: { orgId: string }) {
 
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
+      <PageSectionTitle className="fg-label text-fg">Pending invitations</PageSectionTitle>
       <RowList
         query={invitationsQ}
         empty="No pending invitations."

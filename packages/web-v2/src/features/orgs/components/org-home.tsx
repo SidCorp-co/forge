@@ -9,7 +9,7 @@
 // projects-only view so single-org users never hit an empty dead-end.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, Card, CardContent, EmptyState, ErrorState, PageContainer, Skeleton, EnumBadge } from "@/design";
+import { Badge, PageSection, PageSectionBody, EmptyState, ErrorState, PageContainer, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
@@ -62,8 +62,8 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
   const projectsQ = useOrgProjects(orgId);
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Projects</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">Projects in your personal workspace.</p>
         {projectsQ.isLoading ? (
@@ -76,12 +76,12 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
             message="Projects you create in your personal workspace will appear here."
           />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-line-subtle">
             {(projectsQ.data ?? []).map((p) => (
               <li key={p.id}>
                 <Link
                   href={`/projects/${p.slug}`}
-                  className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2 transition-colors hover:bg-hover"
+                  className="flex items-center justify-between gap-3 py-2 transition-colors hover:bg-hover"
                 >
                   <span className="min-w-0 truncate text-fg">{p.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
@@ -93,7 +93,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

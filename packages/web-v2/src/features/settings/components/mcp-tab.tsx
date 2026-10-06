@@ -12,8 +12,8 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   ErrorState,
   Field,
@@ -87,8 +87,8 @@ export function McpTab() {
         tab, then paste it into the snippet below in place of the placeholder.
       </Banner>
 
-      <Card>
-        <CardContent>
+      <PageSection>
+        <PageSectionBody>
           <SectionTitle className="fg-h3 mb-4">Connect a client</SectionTitle>
           <div className="space-y-4">
             <div>
@@ -104,8 +104,8 @@ export function McpTab() {
               />
             </Field>
           </div>
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
 
       {selectedProject ? (
         <>
@@ -152,8 +152,8 @@ function SnippetPanel({
   }
 
   return (
-      <Card>
-        <CardContent>
+      <PageSection>
+        <PageSectionBody>
           <div className="mb-2 flex items-center justify-between gap-3">
             <SectionTitle className="fg-h3">Config snippet</SectionTitle>
             <Button
@@ -200,8 +200,8 @@ function SnippetPanel({
               <SnippetCode content={snippet.content} />
             </code>
           </pre>
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
   );
 }
 
@@ -312,8 +312,8 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
   }
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Test connection</SectionTitle>
         <p className="fg-caption mb-4">
           Paste a token to verify it can reach this project over MCP. The token isn&apos;t saved.
@@ -348,7 +348,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
         </form>
 
         <TestOutcome test={test} />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

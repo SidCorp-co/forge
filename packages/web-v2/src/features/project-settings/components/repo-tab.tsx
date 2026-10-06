@@ -3,13 +3,13 @@
 // Project settings → Repository. The branch work is cut from is the project document's
 // `source.git.defaultBranch`, shown here and edited on the Configuration tab with the rest of the
 // document. The checkout is each device binding's.
-import { Card, CardContent, Field, SectionTitle } from "@/design";
+import { PageSection, PageSectionBody, Field, SectionTitle } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 
 export function RepoTab({ project }: { project: ProjectDetail }) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Repository</SectionTitle>
         <div className="space-y-4">
           <Field
@@ -28,7 +28,7 @@ export function RepoTab({ project }: { project: ProjectDetail }) {
             </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

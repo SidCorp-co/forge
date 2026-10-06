@@ -22,6 +22,10 @@
   is only `skill_md`, transcripts no longer convert `contentBlocks`, `pipelineHealth.retryCount`
   is gone, and the heartbeat reaper and the run standing read one beat expression.
 
+- **The web UI is flat.** `Card` becomes the frameless `PageSection`, every `Table` is flush, and
+  boxed rows and tiles — sessions on a phone, members, runners, attention, projects, KPIs — become
+  hairline-divided lists and strips.
+
 ### Removed
 
 - **The verify window is gone.** `pnpm verify` runs every check, and `--entry`, `--window`,

@@ -16,7 +16,7 @@ export function EmptyPanelLine({ title, status, detail, className, action }: Emp
     <section
       aria-label={title}
       className={cn(
-        "flex h-10 min-w-0 items-center gap-2 rounded-lg border border-line bg-surface px-3 shadow-sm",
+        "flex h-10 min-w-0 items-center gap-2 border-b border-line-subtle",
         className,
       )}
     >

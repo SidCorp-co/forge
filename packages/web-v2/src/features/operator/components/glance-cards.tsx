@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Skeleton, Sparkline, Tooltip } from "@/design";
+import { PageSection, Skeleton, Sparkline, Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatDelta, formatMinutes, formatPercent, formatRatio, formatUsd, formatCount, NO_VALUE } from "../format";
 import type { AdminGlanceMetric, AdminOverview } from "../types";
@@ -81,13 +81,13 @@ function Delta({ metric, betterWhen }: { metric: AdminGlanceMetric; betterWhen: 
 
 export function GlanceCardsSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-5">
       {GLANCE.map((g) => (
-        <Card key={g.id} className="px-4 py-3.5">
+        <PageSection key={g.id} className="py-3.5">
           <Skeleton variant="text" className="w-24" />
           <Skeleton className="mt-2 h-6 w-14" />
           <Skeleton className="mt-3 h-5 w-full" />
-        </Card>
+        </PageSection>
       ))}
     </div>
   );
@@ -95,11 +95,11 @@ export function GlanceCardsSkeleton() {
 
 export function GlanceCards({ glance }: { glance: AdminOverview["glance"] }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-5">
       {GLANCE.map((spec) => {
         const metric = glance[spec.key];
         return (
-          <Card key={spec.id} className="flex flex-col gap-2 px-4 py-3.5">
+          <PageSection key={spec.id} className="flex flex-col gap-2 py-3.5">
             <div className="flex items-baseline gap-2">
               <span className="fg-overline">{spec.id}</span>
               {spec.northStar && <span className="fg-caption text-accent">north-star</span>}
@@ -120,7 +120,7 @@ export function GlanceCards({ glance }: { glance: AdminOverview["glance"] }) {
               <Delta metric={metric} betterWhen={spec.betterWhen} />
             </div>
             <Sparkline points={metric.spark} width={140} height={22} className="w-full" />
-          </Card>
+          </PageSection>
         );
       })}
     </div>

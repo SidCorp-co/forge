@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   SectionTitle,
   StreamBand,
 } from "@/design";
@@ -16,12 +16,12 @@ export interface FlowSectionProps {
 export function FlowSection({ flow }: FlowSectionProps) {
   if (flow.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col gap-2">
+      <PageSection>
+        <PageSectionBody className="flex flex-col gap-2">
           <SectionTitle className="fg-h3">Which way the flow is going</SectionTitle>
           <p className="fg-body-sm text-muted">No weekly series in this response.</p>
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
     );
   }
 
@@ -31,8 +31,8 @@ export function FlowSection({ flow }: FlowSectionProps) {
   const drift = last.backlog - startBacklog;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3">
+    <PageSection>
+      <PageSectionBody className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <SectionTitle className="fg-h3">Which way the flow is going</SectionTitle>
           <p className="fg-body-sm text-muted">
@@ -52,7 +52,7 @@ export function FlowSection({ flow }: FlowSectionProps) {
           lineLabel="Backlog left behind"
           label={`${flow.length} weeks of issues created against issues finished. Backlog went from ${startBacklog} to ${last.backlog}.`}
         />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

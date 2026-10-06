@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Badge, Banner, CardTitle, ErrorState, Skeleton } from "@/design";
+import { Badge, Banner, PageSectionTitle, ErrorState, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { inlineCode } from "./inline-code";
 import { useReleaseReadiness } from "../hooks";
@@ -105,7 +105,7 @@ export function ReleaseSection({ projectId, slug }: { projectId: string; slug: s
   const q = useReleaseReadiness(projectId);
   const heading = (r?: ReleaseReadiness) => (
     <div>
-      <CardTitle className="fg-label text-fg">Release</CardTitle>
+      <PageSectionTitle className="fg-label text-fg">Release</PageSectionTitle>
       <p className="fg-caption mt-0.5 text-muted">
         An issue reaches <b>Awaiting release</b> only when the project document declares a
         production environment with an active deploy binding. {r ? stateLine(r) : null}

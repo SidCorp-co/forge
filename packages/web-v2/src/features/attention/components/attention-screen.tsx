@@ -77,7 +77,7 @@ export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (l
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+      className="flex w-full items-center gap-3 px-0.5 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
     >
       <KindTag kind={item.kind} />
       {item.kind === "channel_gate" ? (
@@ -157,7 +157,7 @@ function Group({
         )}
       </SectionTitle>
       {expanded && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col divide-y divide-line-subtle">
           {items.map((it) => (
             <AttentionRow key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
           ))}

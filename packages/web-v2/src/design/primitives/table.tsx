@@ -27,14 +27,11 @@ export type { ColumnDef, Header, OnChangeFn, SortingState };
 
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 
-export interface TableProps extends HTMLAttributes<HTMLTableElement> {
-  /** No card frame: a top rule only, for a table that runs edge to edge of its page. */
-  flush?: boolean;
-}
+/** Always flush, edge to edge of its column: a top rule only, never a frame. */
+export type TableProps = HTMLAttributes<HTMLTableElement>;
 
 export function Table({
   className,
-  flush = false,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   ...props
@@ -45,7 +42,7 @@ export function Table({
     ? { "aria-labelledby": ariaLabelledBy }
     : { "aria-label": ariaLabel ?? DEFAULT_REGION_NAME };
   return (
-    <div className={cn("relative overflow-hidden bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt", flush ? "border-t border-line" : "rounded-lg border border-line")}>
+    <div className={cn("relative overflow-hidden bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt border-t border-line")}>
       <div
         ref={scrollerRef}
         className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none"

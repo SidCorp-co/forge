@@ -308,7 +308,7 @@ function Overview({ r }: { r: RunStanding }) {
         <div className="mb-4 max-w-md">
           <RunPath r={r} />
         </div>
-        <Table flush aria-label="Standing">
+        <Table aria-label="Standing">
           <THead className="bg-sunken">
             <TR>
               <TH>Moment</TH>
@@ -361,7 +361,7 @@ function Attempts({ d, slug }: { d: RunStandingDetail; slug: string }) {
   return (
     <section>
       <ViewHeading>Attempts on {r.attempt.source === "runs" ? r.attempt.of : "this subject"}</ViewHeading>
-      <Table flush aria-label="Attempts">
+      <Table aria-label="Attempts">
         <THead className="bg-sunken">
           <TR>
             <TH>Attempt</TH>
@@ -404,7 +404,7 @@ function Events({ d }: { d: RunStandingDetail }) {
   return (
     <section>
       <ViewHeading hint={d.eventsHasMore ? `the first ${d.events.length}` : `${d.events.length}`}>Transitions</ViewHeading>
-      <Table flush aria-label="Transitions">
+      <Table aria-label="Transitions">
         <THead className="bg-sunken">
           <TR>
             <TH>When</TH>
@@ -444,7 +444,7 @@ function Lease({ r }: { r: RunStanding }) {
     <div className="grid gap-8">
       <section>
         <ViewHeading>Lease</ViewHeading>
-        <Table flush aria-label="Lease">
+        <Table aria-label="Lease">
           <THead className="bg-sunken">
             <TR>
               <TH>Fact</TH>

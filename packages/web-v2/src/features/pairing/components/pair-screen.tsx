@@ -5,10 +5,10 @@ import { useSearchParams } from "next/navigation";
 import {
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   EmptyState,
   Field,
   HelpButton,
@@ -79,20 +79,20 @@ export function PairScreen() {
       </TopBarActions>
 
       {!code ? (
-        <Card>
-          <CardContent>
+        <PageSection>
+          <PageSectionBody>
             <EmptyState
               title="No pairing code"
               message="Open this page from the link printed by `forge-runner setup` or `forge-runner login`."
             />
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ) : approved ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Device approved</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <PageSection>
+          <PageSectionHeader>
+            <PageSectionTitle>Device approved</PageSectionTitle>
+          </PageSectionHeader>
+          <PageSectionBody>
             <div className="flex flex-col gap-3">
               <Banner tone="success">
                 Return to your terminal — the runner will finish pairing automatically.
@@ -118,23 +118,23 @@ export function PairScreen() {
                 </dl>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ) : denied ? (
-        <Card>
-          <CardContent>
+        <PageSection>
+          <PageSectionBody>
             <EmptyState
               title="Request denied"
               message="The pairing code was not approved. It will expire on its own. You can close this tab."
             />
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Pairing request</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <PageSection>
+          <PageSectionHeader>
+            <PageSectionTitle>Pairing request</PageSectionTitle>
+          </PageSectionHeader>
+          <PageSectionBody>
             <div className="flex flex-col gap-4">
               <p className="fg-body-sm text-muted">
                 Confirm this code matches what <MonoTag>forge-runner setup</MonoTag> printed in
@@ -217,8 +217,8 @@ export function PairScreen() {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       )}
 
       <p className="fg-body-sm flex items-center gap-1.5 text-subtle">

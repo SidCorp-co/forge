@@ -3,7 +3,7 @@
 // ISS-55 — the issue's acceptance criteria, flat: one row per criterion with its verdict badge.
 // The identity, reason, author and time sit behind the badge's tooltip, not on the row.
 
-import { CardTitle, EmptyPanelLine, StatusBadge, statusReading, Tooltip } from "@/design";
+import { PageSectionTitle, EmptyPanelLine, StatusBadge, statusReading, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { type CriterionRow, criterionBadge, identityPhrase, useCriteria } from "../criteria";
 
@@ -31,7 +31,7 @@ export function CriteriaList({ issueId }: { issueId: string }) {
   if (rows.length === 0) return null;
   return (
     <section aria-label="Acceptance criteria">
-      <CardTitle className="mb-2">Acceptance criteria</CardTitle>
+      <PageSectionTitle className="mb-2">Acceptance criteria</PageSectionTitle>
       <ol className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
         {rows.map((row) => {
           return (

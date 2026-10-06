@@ -8,8 +8,8 @@
 import { useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   ErrorState,
   Icon,
   SectionTitle,
@@ -110,7 +110,7 @@ function McpServerRow({
   const checked = formatRelativeTime(entry.lastHealthAt);
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-md border border-line bg-surface px-3 py-2.5">
+    <li className="flex flex-col gap-1.5 py-2.5">
       <div className="flex items-center gap-2">
         <Icon name="command" size={15} className="text-muted" />
         <span className="font-mono text-13 font-semibold text-fg">{entry.serverName}</span>
@@ -179,8 +179,8 @@ export function McpServersPanel({
   const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
         <p className="fg-body-sm mb-3 text-muted">
           Every MCP server injected into a Claude agent dispatched for this project: its granted
@@ -196,7 +196,7 @@ export function McpServersPanel({
         ) : preview.isError ? (
           <ErrorState message={formatApiError(preview.error)} onRetry={() => preview.refetch()} />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col divide-y divide-line-subtle">
             {(preview.data?.servers ?? []).map((entry) => (
               <McpServerRow
                 key={`${entry.provider}:${entry.bindingId ?? entry.serverName}`}
@@ -208,7 +208,7 @@ export function McpServersPanel({
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

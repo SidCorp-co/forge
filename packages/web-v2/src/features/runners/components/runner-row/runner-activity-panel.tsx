@@ -33,14 +33,14 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-4 rounded-lg border border-line bg-sunken p-3">
+		<div className="flex flex-col gap-4 border-l-2 border-line-subtle pl-3">
 			{sessions.length > 0 && (
 				<div className="flex flex-col gap-2">
 					<span className="fg-label">Recent sessions on this device</span>
 					{sessions.map((s) => (
 						<div
 							key={s.id}
-							className="flex flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2"
+							className="flex flex-col gap-1 border-t border-line-subtle py-2"
 						>
 							<div className="flex items-center justify-between gap-2">
 								<span className="truncate text-13 text-fg">

@@ -1,13 +1,13 @@
 "use client";
 
-import { Card, CardContent, SectionTitle } from "@/design";
+import { PageSection, PageSectionBody, SectionTitle } from "@/design";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 
 export function PipelineTab({ projectId, canEdit, slug }: { projectId: string; canEdit: boolean; slug: string }) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
         <p className="fg-body-sm mb-1 text-muted">
           An issue is picked up at <b>Open</b>, runs <b>In progress</b> as one session through its
@@ -21,7 +21,7 @@ export function PipelineTab({ projectId, canEdit, slug }: { projectId: string; c
         <ReleaseSection projectId={projectId} slug={slug} />
 
         <PluginsSection projectId={projectId} canEdit={canEdit} />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

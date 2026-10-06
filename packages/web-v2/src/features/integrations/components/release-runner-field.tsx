@@ -7,7 +7,7 @@
 // control says WHICH tier the label in force came from.
 
 import { useState } from "react";
-import { Button, CardTitle, Field, Input } from "@/design";
+import { Button, PageSectionTitle, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdateConnection, useUpdateProviderIntegration } from "../hooks";
 import type { BindingSummary, ConnectionSummary, IntegrationSummary } from "../types";
@@ -69,7 +69,7 @@ function Editor({
 
   return (
     <section className="flex flex-col gap-2">
-      <CardTitle>{RELEASE_RUNNER_HEADING}</CardTitle>
+      <PageSectionTitle>{RELEASE_RUNNER_HEADING}</PageSectionTitle>
       <p className="fg-body-sm text-muted">
         {declared ? (
           <>

@@ -11,8 +11,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -238,9 +238,9 @@ export function IntegrationsScreen() {
           onRetry={() => connections.refetch()}
         />
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent>{renderEmpty()}</CardContent>
-        </Card>
+        <PageSection>
+          <PageSectionBody>{renderEmpty()}</PageSectionBody>
+        </PageSection>
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((g) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Banner, Button, Card, CardContent, CardHeader, CardTitle, Field, NativeSelect, Spinner } from "@/design";
+import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, NativeSelect, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import { AGENT_ACCESS_CLOSED, AgentAccessChoice, AgentAccessControl, agentAccessBody } from "../../components/agent-access-control";
@@ -157,11 +157,11 @@ export function SetRepository({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{current ? "Change repository" : "Connect a repository"}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>{current ? "Change repository" : "Connect a repository"}</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Using <span className="font-semibold">{connectionLabel}</span>. This project already has a
           GitHub binding; picking here points that same binding at a repository.
@@ -189,8 +189,8 @@ export function SetRepository({
         </div>
 
         <BindingControls projectId={projectId} binding={binding} />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -234,11 +234,11 @@ export function UseExistingApp({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Connect a repository</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Connect a repository</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Using <span className="font-semibold">{connectionLabel}</span>. One App serves every
           project; this project just points at one of its repositories.
@@ -263,8 +263,8 @@ export function UseExistingApp({
             Create a separate App instead
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

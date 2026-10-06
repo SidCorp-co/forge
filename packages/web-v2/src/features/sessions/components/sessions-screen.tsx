@@ -134,7 +134,7 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
       </div>
 
       {sessionsQ.isLoading && (
-        <div className="overflow-hidden rounded-lg border border-line bg-surface">
+        <div className="border-t border-line">
           {Array.from({ length: 6 }).map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
             <SessionRowSkeleton key={i} />

@@ -1,5 +1,5 @@
 import { Skeleton } from "@/design/primitives/skeleton";
-import { Card } from "@/design/primitives/card";
+import { PageSection } from "@/design/primitives/page-section";
 
 /* Layout-mirroring skeletons — show these on cold load instead of a centered
    spinner, so the page keeps its shape while data arrives. */
@@ -56,13 +56,13 @@ export function SessionRowSkeleton() {
 
 export function ProjectCardSkeleton() {
   return (
-    <Card>
-      <div className="flex items-center gap-3 border-b border-line-subtle px-5 py-4">
+    <PageSection className="border-t border-line-subtle">
+      <div className="flex items-center gap-3 pt-4">
         <Skeleton className="size-9 rounded-md" />
         <Skeleton className="h-4 w-32" />
         <Skeleton className="ml-auto h-5 w-20 rounded-pill" />
       </div>
-      <div className="flex flex-col gap-3 px-5 py-4">
+      <div className="flex flex-col gap-3 py-4">
         <Skeleton variant="text" className="w-3/4" />
         <div className="flex gap-4">
           <Skeleton className="h-3 w-14" />
@@ -70,6 +70,6 @@ export function ProjectCardSkeleton() {
           <Skeleton className="h-3 w-14" />
         </div>
       </div>
-    </Card>
+    </PageSection>
   );
 }

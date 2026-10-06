@@ -11,7 +11,7 @@
 // picks between the two on `metadata.type`.
 
 import { useMemo, useState } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EmptyState } from "@/design";
+import { Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
 import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
 import { useRun } from "@/features/pipeline/hooks";
 import { useSessionCost } from "@/features/sessions/hooks";
@@ -107,12 +107,12 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
 
       <div className="grid min-h-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
         <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Files changed</CardTitle>
+          <PageSection>
+            <PageSectionHeader>
+              <PageSectionTitle>Files changed</PageSectionTitle>
               <span className="fg-caption">{files.length}</span>
-            </CardHeader>
-            <CardContent className="py-2">
+            </PageSectionHeader>
+            <PageSectionBody className="py-2">
               {files.length === 0 ? (
                 <p className="fg-caption">Nothing was edited.</p>
               ) : (
@@ -142,12 +142,12 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
                   ))}
                 </ul>
               )}
-            </CardContent>
-          </Card>
+            </PageSectionBody>
+          </PageSection>
         </div>
 
-        <Card className="flex min-h-0 flex-col">
-          <CardHeader>
+        <PageSection className="flex min-h-0 flex-col">
+          <PageSectionHeader>
             <div className="flex gap-1" role="tablist" aria-label="View">
               {LENSES.map((l) => (
                 <button
@@ -171,7 +171,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
               {rows.filter((r) => r.kind === "tool").length} tool calls
               {blocker ? ` · ${blocker.errorCount} errors` : ""}
             </span>
-          </CardHeader>
+          </PageSectionHeader>
           <div className="flex min-h-0 flex-1 gap-2 p-2">
             <div className="min-w-0 flex-1 overflow-y-auto">
               {lens === "story" && (
@@ -194,17 +194,17 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
             </div>
             <Tape ticks={ticks} />
           </div>
-        </Card>
+        </PageSection>
 
         <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cost &amp; tokens</CardTitle>
+          <PageSection>
+            <PageSectionHeader>
+              <PageSectionTitle>Cost &amp; tokens</PageSectionTitle>
               <span className="fg-caption">
                 {formatUsd(meta.totals?.totalCostUsd ?? costQ.data?.estimatedCost)}
               </span>
-            </CardHeader>
-            <CardContent className="space-y-1.5 py-2">
+            </PageSectionHeader>
+            <PageSectionBody className="space-y-1.5 py-2">
               <Figure label="Turns" value={String(meta.totals?.numTurns ?? session.usage?.turns ?? "—")} />
               <Figure
                 label="API time"
@@ -232,21 +232,21 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
                 }
               />
               <Figure label="Model" value={costQ.data?.models[0]?.model ?? "—"} />
-            </CardContent>
-          </Card>
+            </PageSectionBody>
+          </PageSection>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Runner</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1.5 py-2">
+          <PageSection>
+            <PageSectionHeader>
+              <PageSectionTitle>Runner</PageSectionTitle>
+            </PageSectionHeader>
+            <PageSectionBody className="space-y-1.5 py-2">
               <Figure label="Device" value={session.deviceId ? session.deviceId.slice(0, 8) : "—"} />
               <Figure label="Repo" value={session.repoPath ?? "—"} />
               {runQ.data?.retrySummary && (
                 <Figure label="Attempts" value={String(runQ.data.retrySummary.totalAttempts)} />
               )}
-            </CardContent>
-          </Card>
+            </PageSectionBody>
+          </PageSection>
 
           {onOpenIssue && (
             <Button variant="secondary" size="sm" icon="list" onClick={onOpenIssue}>

@@ -62,14 +62,14 @@ export function PublicLanding({
         />
         {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null))} /> : null}
       </div>
-      <nav aria-label="Ways in" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <nav aria-label="Ways in" className="grid grid-cols-1 gap-x-8 md:grid-cols-3">
         {AUDIENCES.map((audience) => {
           const count = docsBehind(corpus, audience).length;
           return (
             <Link
               key={audience}
               href={doorHref(audience)}
-              className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface p-5 shadow-sm hover:bg-hover"
+              className="flex flex-col gap-1.5 border-t border-line-subtle py-4 hover:bg-hover"
             >
               <span className="fg-h3 text-fg">{DOORS[audience].label}</span>
               <span className="fg-body-sm text-muted">{DOORS[audience].blurb}</span>

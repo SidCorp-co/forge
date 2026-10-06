@@ -2,9 +2,9 @@
 
 import {
   BulletBar,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   SankeyFlow,
   SectionTitle,
   Waffle,
@@ -31,8 +31,8 @@ export function QualitySection({ quality }: QualitySectionProps) {
   const { finished, reopened, rework, runFailure, sessionFailures, pipelineFlow } = quality;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
+    <PageSection>
+      <PageSectionBody className="flex flex-col gap-4">
         <SectionTitle className="fg-h3">Whether the output holds</SectionTitle>
 
         {rates.finishedTotal > 0 ? (
@@ -96,12 +96,12 @@ export function QualitySection({ quality }: QualitySectionProps) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <CardTitle className="fg-body-sm text-muted">
+          <PageSectionTitle className="fg-body-sm text-muted">
             Why agent sessions failed — {rates.sessionFailureTotal} in 90 days
             {rates.unclassifiedShare !== null
               ? `, ${Math.round(rates.unclassifiedShare * 100)}% unclassified`
               : ""}
-          </CardTitle>
+          </PageSectionTitle>
           {sessionFailures.length === 0 ? (
             <p className="fg-body-sm text-muted">No failed sessions in the window.</p>
           ) : (
@@ -119,7 +119,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <CardTitle className="fg-body-sm text-muted">What the pipeline actually ran</CardTitle>
+          <PageSectionTitle className="fg-body-sm text-muted">What the pipeline actually ran</PageSectionTitle>
           {pipelineFlow.length === 0 ? (
             <p className="fg-body-sm text-muted">No jobs finished in the window.</p>
           ) : (
@@ -138,7 +138,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
             />
           )}
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

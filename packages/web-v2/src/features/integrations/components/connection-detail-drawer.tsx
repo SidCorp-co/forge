@@ -2,7 +2,7 @@
 
 import { Suspense, lazy, useMemo, useState } from "react";
 import {
-  CardTitle,
+  PageSectionTitle,
   ErrorState,
   Skeleton,
   SlideOver,
@@ -95,7 +95,7 @@ function BindingsSection({
   return (
     <section className="mt-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <CardTitle>Projects using this connection</CardTitle>
+        <PageSectionTitle>Projects using this connection</PageSectionTitle>
         {isOrgOwned && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             org-shared
@@ -140,14 +140,14 @@ function BindingsList({
     );
   }
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex flex-col divide-y divide-line-subtle">
       {items.map((b) => {
         const isCurrent = b.projectId === currentProjectId;
         const name = projectNames.get(b.projectId) ?? b.projectId;
         return (
           <li
             key={b.id}
-            className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
+            className="flex items-center gap-3 py-2"
           >
             <span className="truncate text-fg">{name}</span>
             <span className="fg-body-sm text-muted">{scopeLabel(b.role)}</span>

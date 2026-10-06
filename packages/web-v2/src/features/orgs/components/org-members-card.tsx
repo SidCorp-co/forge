@@ -7,8 +7,8 @@ import { ORG_ROLE_PERMISSIONS } from "@forge/contracts/permissions";
 import { useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   Field,
   Input,
   SectionTitle,
@@ -45,8 +45,8 @@ export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted
     : ORG_ROLE_OPTIONS.filter((o) => o.value !== "owner");
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <div className="mb-4 flex items-center justify-between gap-3">
           <SectionTitle className="fg-h3">{org.name} — members</SectionTitle>
           {isOwner && <OwnerActions org={org} onDeleted={onDeleted} />}
@@ -55,8 +55,8 @@ export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted
         <ProjectList orgId={org.id} />
         {canManage && <InvitationList orgId={org.id} />}
         {canManage && <AddMemberForm orgId={org.id} roleOptions={roleOptions} />}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

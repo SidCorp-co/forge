@@ -4,10 +4,10 @@ import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   ErrorState,
   Field,
   Skeleton,
@@ -45,11 +45,11 @@ export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
  */
 function NothingToAnswer() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>No questions on this issue</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>No questions on this issue</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="space-y-2">
         <p className="fg-body-sm text-fg">
           Move the issue on from the header once whoever is waiting has what they need. A comment
           does not restart the run.
@@ -58,8 +58,8 @@ function NothingToAnswer() {
           This panel lists the questions filed against this issue, and there are none. A run that
           asked in the thread instead leaves nothing here — read the comments.
         </p>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -93,13 +93,13 @@ function ThreadQuestionCard({
   };
   const answer = question.answer;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>
           {answer ? "The question this issue asked" : "The question this issue is waiting on"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="space-y-3">
         <p className="fg-caption text-muted">The run asked this in the comments.</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
         {question.why && (
@@ -147,8 +147,8 @@ function ThreadQuestionCard({
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

@@ -5,8 +5,8 @@
 import { useEffect, useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   Field,
   MonoTag,
   SectionTitle,
@@ -33,8 +33,8 @@ export function AccountTab() {
   const { user } = useAuth();
   return (
     <div className="space-y-6">
-      <Card>
-        <CardContent>
+      <PageSection>
+        <PageSectionBody>
           <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
           <dl className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -46,8 +46,8 @@ export function AccountTab() {
               <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
             </div>
           </dl>
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
       <PreferencesCard />
       <AssistantPreferencesCard />
     </div>
@@ -71,8 +71,8 @@ function PreferencesCard() {
   const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== prefsQ.data.language);
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
         {prefsQ.isLoading ? (
           <div className="space-y-4">
@@ -108,7 +108,7 @@ function PreferencesCard() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

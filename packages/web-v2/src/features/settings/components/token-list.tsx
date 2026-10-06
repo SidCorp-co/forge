@@ -3,8 +3,8 @@
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   ErrorState,
   MonoTag,
@@ -176,8 +176,8 @@ function TokenRow(props: RowProps) {
 function TokenMobileCard(props: RowProps) {
   const { token, level } = props;
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="fg-body-sm font-medium text-fg">
@@ -198,7 +198,7 @@ function TokenMobileCard(props: RowProps) {
         <p className="fg-caption mt-2 font-mono">
           Expires {fmtDate(token.expiresAt)} · Last used {fmtDate(token.lastUsedAt)}
         </p>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Badge, Banner, Button, CardTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";
+import { Badge, Banner, Button, PageSectionTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";
 import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdatePlugins } from "../hooks";
@@ -37,7 +37,7 @@ const sameList = (a: DraftRow[], b: PluginDesignation[]) =>
 
 const HEADING = (
   <div>
-    <CardTitle className="fg-label text-fg">Plugins</CardTitle>
+    <PageSectionTitle className="fg-label text-fg">Plugins</PageSectionTitle>
     <p className="fg-caption mt-0.5 text-muted">
       This project designates plugins; a device installs the union of every project it serves,
       and only when that box has <code>[plugins] enabled</code>. The driver skill{" "}
@@ -94,7 +94,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
           />
         </div>
       ) : (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 divide-y divide-line-subtle">
           {draft.map((p, i) => (
             <PluginRow
               key={p.rowKey}
@@ -156,7 +156,7 @@ function PluginRow({
   onRemove: () => void;
 }) {
   return (
-    <li className="rounded-md border border-line bg-surface p-3">
+    <li className="py-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Marketplace" hint="owner/repo of the plugin marketplace">
           <Input

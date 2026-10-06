@@ -7,7 +7,7 @@
 // `/integrations` page is now the owner connection directory.
 
 import { type KeyboardEvent, useState } from "react";
-import { Button, Card, CardContent, ErrorState, Icon, type IconName, Skeleton } from "@/design";
+import { Button, PageSection, PageSectionBody, ErrorState, Icon, type IconName, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
@@ -44,8 +44,8 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
   const clickable = Boolean(onOpen);
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <div
           className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
           {...(clickable
@@ -99,8 +99,8 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
             </span>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -136,8 +136,8 @@ function GroupedIntegrationCard({
   onOpen?: (card: StatusCard) => void;
 }) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <div className="flex min-h-[120px] flex-col gap-3">
           <span className="inline-flex items-center gap-2">
             <Icon name={cardIcon(provider)} size={18} className="text-muted" />
@@ -206,8 +206,8 @@ function GroupedIntegrationCard({
             })}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

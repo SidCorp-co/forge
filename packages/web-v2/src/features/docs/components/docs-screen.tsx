@@ -8,8 +8,8 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   HelpButton,
   PageContainer,
@@ -56,11 +56,11 @@ export function DocsScreen() {
       </TopBarActions>
 
       {HELP_DOCS.length === 0 ? (
-        <Card>
-          <CardContent>
+        <PageSection>
+          <PageSectionBody>
             <EmptyState title="No docs" message="No help pages are available." mascot={false} />
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ) : (
         <DocsLayout
           toc={toc}

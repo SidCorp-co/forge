@@ -25,7 +25,7 @@ import { ProjectCard } from './project-card';
 import { ProjectList } from './project-list';
 import { ProjectsToolbar } from './projects-toolbar';
 
-const GRID = 'grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]';
+const GRID = 'grid gap-x-8 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]';
 const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
 export function ProjectsConsole() {
@@ -204,7 +204,7 @@ function ProjectSections({
           <button
             type="button"
             onClick={onNewProject}
-            className="group flex min-h-[156px] flex-col items-center justify-center gap-2.5 rounded-lg border-[1.5px] border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
+            className="group flex min-h-[156px] flex-col items-center justify-center gap-2.5 border-t border-dashed border-line-strong text-muted transition-colors hover:border-accent hover:bg-accent-tint hover:text-accent-text"
           >
             <span className="flex size-[38px] items-center justify-center rounded-md bg-sunken transition-colors group-hover:bg-surface">
               <Icon name="plus" size={22} className="text-subtle group-hover:text-accent" />
@@ -239,7 +239,7 @@ function SectionLabel({
 
 function StatsBand({ totals }: { totals: WorkspaceTotals }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-surface px-[18px] py-[13px] shadow-sm">
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line-subtle pb-3">
       <span className="text-13-5 font-bold text-fg">Workspace</span>
       <span className="h-4 w-px bg-line" aria-hidden />
       <Stat icon="folder">{totals.projects} projects</Stat>

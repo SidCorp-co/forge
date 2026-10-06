@@ -12,8 +12,8 @@ import { type ReactNode, useMemo, useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -42,8 +42,8 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
   );
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Labels</SectionTitle>
 
         {labelsQ.isLoading ? (
@@ -56,7 +56,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
         ) : plainLabels.length === 0 ? (
           <EmptyState title="No labels yet" message="Create a label to organize issues." mascot={false} />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-line-subtle">
             {plainLabels.map((label) => (
               <LabelRow
                 key={label.id}
@@ -100,14 +100,14 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
           remove={remove}
           onClose={() => setPendingDelete(null)}
         />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
 function LabelRow({ label, onDelete, deleting }: { label: ProjectLabel; onDelete?: () => void; deleting: boolean }) {
   return (
-    <li className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2">
+    <li className="flex items-center justify-between gap-3 py-2">
       <span className="flex min-w-0 items-center gap-2">
         <span aria-hidden className="h-3 w-3 shrink-0 rounded-full border border-line" style={{ background: label.color }} />
         <span className="truncate text-fg">{label.name}</span>

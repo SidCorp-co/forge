@@ -40,7 +40,7 @@ src/
 │  ├─ icons/icon.tsx        # semantic name → lucide-react
 │  ├─ stages.ts · status.ts # job-type hues + status/health/avatar meta
 │  ├─ primitives/           # Button, StatusChip, MonoTag, Avatar, ProjectMark,
-│  │                        #   HealthDot, Stat, Card, Kicker, Spinner, EmptyState,
+│  │                        #   HealthDot, Stat, PageSection, Kicker, Spinner, EmptyState,
 │  │                        #   Input, Field, Toggle, SegmentedControl
 │  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, BottomTabBar,
 │  │                        #   CommandPalette, NotificationsMenu

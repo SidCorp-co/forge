@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
-  CardTitle,
+  PageSectionTitle,
   Checkbox,
   EmptyState,
   ErrorState,
@@ -126,7 +126,7 @@ export function ModulePicker({
       ) : (
         <div className="flex h-full flex-col gap-6">
           <section>
-            <CardTitle className="fg-overline mb-2">Primary</CardTitle>
+            <PageSectionTitle className="fg-overline mb-2">Primary</PageSectionTitle>
             <p className="fg-caption mb-2.5 text-muted">
               The one module this issue belongs to. Pick at most one.
             </p>
@@ -139,7 +139,7 @@ export function ModulePicker({
           </section>
 
           <section>
-            <CardTitle className="fg-overline mb-2">Also touches</CardTitle>
+            <PageSectionTitle className="fg-overline mb-2">Also touches</PageSectionTitle>
             <p className="fg-caption mb-2.5 text-muted">
               Every other module this issue reaches into.
             </p>

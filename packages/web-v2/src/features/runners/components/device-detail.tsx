@@ -152,7 +152,7 @@ function ProjectPoolRow({
 			onClick={() =>
 				router.push(`/projects/${assignment.slug}/settings?tab=runners`)
 			}
-			className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+			className="flex w-full items-center justify-between gap-2 py-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
 		>
 			<div className="flex min-w-0 items-center gap-2">
 				<HealthDot health={runnerHealth(assignment.status)} withLabel={false} />
@@ -221,7 +221,7 @@ export function DeviceDetail({
 								mascot={false}
 							/>
 						) : (
-							<div className="flex flex-col gap-2">
+							<div className="flex flex-col divide-y divide-line-subtle">
 								{rows.map((r) => (
 									<ProjectPoolRow key={r.runnerId} assignment={r} />
 								))}

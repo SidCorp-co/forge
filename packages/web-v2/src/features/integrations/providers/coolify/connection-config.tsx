@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Button,
-  CardTitle,
+  PageSectionTitle,
   Field,
   Input,
 } from "@/design";
@@ -19,7 +19,7 @@ export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canMana
 
   return (
     <section className="flex flex-col gap-3">
-      <CardTitle>Configuration</CardTitle>
+      <PageSectionTitle>Configuration</PageSectionTitle>
       <Field label="Base URL">
         <Input
           value={baseUrl}

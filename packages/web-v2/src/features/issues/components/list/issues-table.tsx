@@ -97,7 +97,7 @@ export function IssuesTable({
 
   return (
     // One table runs edge to edge from the sidebar, scrolling sideways inside itself at phone width; a grouping is a header row in it, not a box per group (ISS-49)
-    <Table flush aria-label="Issues" className="min-w-[860px]">
+    <Table aria-label="Issues" className="min-w-[860px]">
       <THead>
         <TR>
           {selection && (

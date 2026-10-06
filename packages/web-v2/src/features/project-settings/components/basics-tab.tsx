@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
 import {
   Banner,
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   Divider,
   Field,
   Input,
@@ -57,8 +57,8 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
   }
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Basics</SectionTitle>
         <div className="space-y-4">
           <Field label="Slug" hint="The project's URL identifier (read-only).">
@@ -101,7 +101,7 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
         </div>
         <Divider className="my-6" />
         <ContentLanguageField projectId={project.id} canEdit={canEdit} />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

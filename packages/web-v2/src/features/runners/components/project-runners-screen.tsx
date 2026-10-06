@@ -10,10 +10,10 @@
 import {
 	Banner,
 	Button,
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
+	PageSection,
+	PageSectionBody,
+	PageSectionHeader,
+	PageSectionTitle,
 	EmptyState,
 	ErrorState,
 	Field,
@@ -83,11 +83,11 @@ function AssignDevice({
 	const picked = available.find((d) => d.id === deviceId) ?? null;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Add a device</CardTitle>
-			</CardHeader>
-			<CardContent>
+		<PageSection>
+			<PageSectionHeader>
+				<PageSectionTitle>Add a device</PageSectionTitle>
+			</PageSectionHeader>
+			<PageSectionBody>
 				<div className="flex flex-col gap-4">
 					<div className="grid gap-3 sm:grid-cols-2">
 						<Field label="Device">
@@ -160,8 +160,8 @@ function AssignDevice({
 						</p>
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</PageSectionBody>
+		</PageSection>
 	);
 }
 
@@ -227,11 +227,11 @@ export function ProjectRunnersScreen({
 				/>
 			)}
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Assigned devices</CardTitle>
-				</CardHeader>
-				<CardContent>
+			<PageSection>
+				<PageSectionHeader>
+					<PageSectionTitle>Assigned devices</PageSectionTitle>
+				</PageSectionHeader>
+				<PageSectionBody>
 					{runners.isLoading ? (
 						<div className="flex flex-col gap-2">
 							<Skeleton className="h-28 w-full" />
@@ -249,7 +249,7 @@ export function ProjectRunnersScreen({
 							mascot={false}
 						/>
 					) : (
-						<div className="flex flex-col gap-3">
+						<div className="flex flex-col divide-y divide-line-subtle">
 							{rows.map((r) => (
 								<RunnerRow
 									key={r.runnerId}
@@ -262,8 +262,8 @@ export function ProjectRunnersScreen({
 							))}
 						</div>
 					)}
-				</CardContent>
-			</Card>
+				</PageSectionBody>
+			</PageSection>
 		</>
 	);
 

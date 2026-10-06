@@ -25,7 +25,7 @@ function accentOf(jobType: string): string {
 export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; currentStep?: string }) {
   if (run.steps.length === 0) return null;
   return (
-    <ol className="flex list-none gap-1.5 overflow-x-auto" aria-label="Pipeline run">
+    <ol className="flex list-none gap-3 overflow-x-auto" aria-label="Pipeline run">
       {run.steps.map((step) => {
         const tick = TICK[step.status] ?? { glyph: "·", color: "var(--fg-disabled)" };
         const isCurrent = step.jobType === currentStep;
@@ -33,7 +33,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
           <li
             key={`${step.jobType}-${step.startedAt ?? ""}`}
             aria-current={isCurrent ? "step" : undefined}
-            className="min-w-[112px] flex-1 rounded-md border bg-surface px-2.5 py-2"
+            className="min-w-[112px] flex-1 border-t-2 py-2 pr-2.5"
             style={{ borderColor: isCurrent ? "var(--border-strong)" : "var(--border-subtle)" }}
           >
             <div className="flex items-center gap-1.5">

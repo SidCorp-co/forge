@@ -73,7 +73,7 @@ function AutoflowBindingRow({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3">
       <BindingRowHeader binding={binding} isDefault={isDefault} badge={badge} monoDefault />
       {test.error && <Banner tone="danger">{test.error}</Banner>}
       {binding.lastHealthStatus === "needs_reauth" && binding.lastHealthDetail && !test.result && (

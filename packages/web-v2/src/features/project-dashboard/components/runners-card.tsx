@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   HealthDot,
   Icon,
 } from "@/design";
@@ -18,20 +18,20 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
   const { lines, onlineCount, total } = summary;
 
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
+    <PageSection className="flex h-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="server" size={16} className="text-subtle" />
-          <CardTitle>Runners</CardTitle>
+          <PageSectionTitle>Runners</PageSectionTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">
           {onlineCount}/{total} online
         </span>
       </div>
-      <p className="fg-caption border-b border-line-subtle px-5 py-2 text-subtle">
+      <p className="fg-caption border-b border-line-subtle py-2 text-subtle">
         Runners bound to this project
       </p>
-      <CardContent className="flex-1">
+      <PageSectionBody className="flex-1">
         {total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">
             No runners bound to this project yet.
@@ -74,8 +74,8 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
             ))}
           </ul>
         )}
-      </CardContent>
-      <div className="flex items-center gap-4 border-t border-line-subtle px-5 py-2.5">
+      </PageSectionBody>
+      <div className="flex items-center gap-4 border-t border-line-subtle py-2.5">
         <button
           type="button"
           onClick={() => router.push(`/projects/${slug}/agents`)}
@@ -93,6 +93,6 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
           <Icon name="arrowRight" size={13} />
         </button>
       </div>
-    </Card>
+    </PageSection>
   );
 }

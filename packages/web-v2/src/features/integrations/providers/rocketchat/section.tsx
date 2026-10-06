@@ -62,7 +62,7 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <span className="fg-body-sm font-semibold">{cfg.serverUrl ?? "Rocket.Chat"}</span>
         <Badge tone={badge.tone}>{badge.label}</Badge>

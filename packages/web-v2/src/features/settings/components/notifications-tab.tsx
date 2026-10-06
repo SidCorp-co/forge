@@ -9,8 +9,8 @@ import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   ErrorState,
   Pagination,
@@ -127,8 +127,8 @@ function DeliveryPreferences() {
   const update = useUpdatePreferences();
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Delivery preferences</SectionTitle>
         <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
 
@@ -158,8 +158,8 @@ function DeliveryPreferences() {
 
         <div className="my-3 border-t border-line" />
         <SoundNotificationsToggle />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -292,8 +292,8 @@ function ToggleRow({
 
 function NotificationCard({ row }: { row: NotificationRow }) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ function NotificationCard({ row }: { row: NotificationRow }) {
             {fmtTime(row.createdAt)}
           </span>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
