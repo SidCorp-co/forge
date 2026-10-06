@@ -9,7 +9,7 @@ new issue.
 
 ## What was measured, and did not happen
 
-ISS-1344's repair round r3 ran it three times on 2026-10-07 at `2a574c7`. Each run used a debug
+ISS-1344's repair round r3 ran it three times on 2026-10-06 (UTC) at `2a574c7`. Each run used a debug
 build from that tree. A Python pty read the screen, sent SIGTERM after the read window, and timed the
 exit.
 
