@@ -366,7 +366,7 @@ fn masked(last: &str) -> String {
 fn shared(exit: &Exit) -> String {
     match exit {
         Exit::Printed { last } => format!(
-            "it exited having printed last, with every id and number that differs per exit shown as `#`: \"{}\"",
+            "it exited having printed last, with every id and number shown as `#` since those are what may differ from one exit to the next: \"{}\"",
             masked(last)
         ),
         other => other.to_string(),
