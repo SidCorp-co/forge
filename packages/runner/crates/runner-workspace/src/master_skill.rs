@@ -37,7 +37,6 @@ pub fn path_in(repo: &Path) -> PathBuf {
 }
 
 pub const RECORD: &str = "master-skill.json";
-const LOCK: &str = "master-skill.json.lock";
 
 /// The record's shape. A reader refuses any other by name rather than read a
 /// newer build's record as this one's.
@@ -207,48 +206,14 @@ pub struct Record {
     pub entries: Vec<Entry>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Read {
-    Absent,
-    Unreadable(String),
-    Record(Record),
-}
+pub type Read = crate::record_file::Read<Record>;
 
 pub fn record_path(dir: &Path) -> PathBuf {
     dir.join(RECORD)
 }
 
 pub fn read(dir: &Path) -> Read {
-    let path = record_path(dir);
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Read::Absent,
-        Err(e) => return Read::Unreadable(format!("{}: {e}", path.display())),
-    };
-    parse(&path, &raw)
-}
-
-fn parse(path: &Path, raw: &str) -> Read {
-    let doc: serde_json::Value = match serde_json::from_str(raw) {
-        Ok(v) => v,
-        Err(e) => return Read::Unreadable(format!("{}: does not parse: {e}", path.display())),
-    };
-    match doc.get("version").and_then(serde_json::Value::as_u64) {
-        Some(v) if v == u64::from(RECORD_VERSION) => {}
-        Some(v) => {
-            return Read::Unreadable(format!(
-                "{}: version {v}, which this build does not read (it reads {RECORD_VERSION})",
-                path.display()
-            ))
-        }
-        None => {
-            return Read::Unreadable(format!("{}: carries no version", path.display()));
-        }
-    }
-    match serde_json::from_value(doc) {
-        Ok(r) => Read::Record(r),
-        Err(e) => Read::Unreadable(format!("{}: does not parse: {e}", path.display())),
-    }
+    crate::record_file::read(&record_path(dir), RECORD_VERSION)
 }
 
 /// How a write merges into what the record already holds.
@@ -290,37 +255,10 @@ fn merged(held: Vec<Entry>, new: Vec<Entry>, merge: Merge) -> Vec<Entry> {
 /// Merge `entries` into the record under an exclusive lock, so a `bind` and
 /// the daemon writing at once cannot drop each other's line.
 pub fn record(dir: &Path, entries: Vec<Entry>, merge: Merge) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let lock_path = dir.join(LOCK);
-    let lock = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    lock.lock()
-        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    let held = match read(dir) {
-        Read::Absent => Vec::new(),
-        Read::Record(r) => r.entries,
-        Read::Unreadable(why) if why.contains("which this build does not read") => {
-            return Err(format!("not overwriting a newer build's record — {why}"));
-        }
-        // A torn or foreign file holds no line anyone can read back.
-        Read::Unreadable(_) => Vec::new(),
-    };
-    let doc = Record {
+    crate::record_file::rewrite(dir, RECORD, RECORD_VERSION, |held: Option<Record>| Record {
         version: RECORD_VERSION,
-        entries: merged(held, entries, merge),
-    };
-    let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    let path = record_path(dir);
-    let tmp = dir.join(format!("{RECORD}.{}.tmp", std::process::id()));
-    let written = std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, &path));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    written.map_err(|e| format!("{}: {e}", path.display()))
+        entries: merged(held.map(|r| r.entries).unwrap_or_default(), entries, merge),
+    })
 }
 
 /// Install into one checkout, record the outcome where `dir` names a record,

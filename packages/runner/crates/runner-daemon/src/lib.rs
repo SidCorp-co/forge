@@ -368,7 +368,7 @@ async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
 }
 
 /// What a daemon reconciles before it starts anything: which projects route here, the hooks the
-/// daemon it replaced installed, and the forge-master skill in every checkout.
+/// daemon it replaced installed, and the forge-master skill and orientation in every checkout.
 async fn boot(cfg: &Config, client: &CoreClient) {
     // Discover server-side assignments (`/me/runners`). This is the source of
     // truth for which projects route to this device and for their repo paths;
@@ -415,12 +415,77 @@ async fn boot(cfg: &Config, client: &CoreClient) {
             (cfg.clone(), None)
         }
     };
-    install_master_skills(
+    let record_dir = runner_platform::config::config_dir();
+    let lock_dir = record_dir.as_deref().map(|d| d.join("locks"));
+    reconcile_checkouts(
         server.as_deref(),
         &fresh,
         census_from,
-        runner_platform::config::config_dir().as_deref(),
-    );
+        record_dir.as_deref(),
+        lock_dir.as_deref(),
+    )
+    .await;
+}
+
+/// What every start writes into every bound checkout, whatever the daemon it
+/// replaced left there: the running build's forge-master skill and its
+/// orientation. `record_dir` is where `forge-runner status` reads each outcome
+/// back, and `lock_dir` where each checkout's provision lock lives.
+async fn reconcile_checkouts(
+    server: Option<&[MeRunner]>,
+    cfg: &Config,
+    census_from: Option<i64>,
+    record_dir: Option<&std::path::Path>,
+    lock_dir: Option<&std::path::Path>,
+) {
+    install_master_skills(server, cfg, census_from, record_dir);
+    converge_orientations(server, cfg, census_from, record_dir, lock_dir).await;
+}
+
+/// Write the running build's orientation into every checkout this box is
+/// bound to, once per checkout, so a box that upgraded onto a build that
+/// moves it converges without anybody re-binding each checkout. A start is
+/// the one moment every build change passes through: an update's handover
+/// execs a new process.
+async fn converge_orientations(
+    server: Option<&[MeRunner]>,
+    cfg: &Config,
+    census_from: Option<i64>,
+    record_dir: Option<&std::path::Path>,
+    lock_dir: Option<&std::path::Path>,
+) {
+    use runner_workspace::orientation_record::{converge_every, Bound};
+    let rows = server.unwrap_or_default();
+    let bound = bound_checkouts(rows, cfg);
+    if server.is_none() {
+        tracing::warn!(
+            "[orientation] this box could not ask core which projects are assigned to it, so the orientation is written only into the {} checkout(s) config.toml names",
+            bound.checkouts.len()
+        );
+    }
+    let checkouts: Vec<Bound> = bound
+        .checkouts
+        .into_iter()
+        .map(|(slug, repo)| {
+            let project_id = rows
+                .iter()
+                .find(|r| r.slug == slug)
+                .map(|r| r.project_id.clone())
+                .or_else(|| cfg.bindings.get(&slug).and_then(|b| b.project_id.clone()));
+            Bound {
+                slug,
+                project_id,
+                repo,
+            }
+        })
+        .collect();
+    converge_every(
+        &checkouts,
+        lock_dir,
+        record_dir,
+        census_from.filter(|_| server.is_some()),
+    )
+    .await;
 }
 
 /// Where this daemon's WebSocket connects, as the device it is.
@@ -662,4 +727,153 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod start_tests {
+    use super::*;
+    use runner_platform::config::Binding;
+    use runner_workspace::orientation::{orientation_body, ORIENTATION};
+    use runner_workspace::orientation_record::{self, Outcome};
+    use std::path::{Path, PathBuf};
+
+    const PROD: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
+    const DEV: &str = "d1bb4907-74d9-4228-85ff-76121523af7d";
+
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.email=t@example.invalid", "-c", "user.name=t"])
+            .args(args)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// A clone an older runner provisioned: the committed orientation (another
+    /// instance's) held under skip-worktree with this instance's written over it.
+    fn old_shape_checkout(root: &Path) -> PathBuf {
+        let seed = root.join("seed");
+        std::fs::create_dir_all(seed.join(".forge")).unwrap();
+        git(&seed, &["init", "-q"]);
+        std::fs::write(seed.join(ORIENTATION), orientation_body(PROD, "forge-dev")).unwrap();
+        std::fs::write(
+            seed.join("CLAUDE.md"),
+            "@.forge/orientation.md\n\n# Forge\n",
+        )
+        .unwrap();
+        git(&seed, &["add", "-A"]);
+        git(&seed, &["commit", "-q", "-m", "committed"]);
+        let co = root.join("co");
+        git(
+            root,
+            &["clone", "-q", seed.to_str().unwrap(), co.to_str().unwrap()],
+        );
+        git(&co, &["update-index", "--skip-worktree", ORIENTATION]);
+        std::fs::write(co.join(ORIENTATION), orientation_body(DEV, "forge")).unwrap();
+        co
+    }
+
+    fn snapshot(co: &Path) -> Vec<(String, Option<(String, std::time::SystemTime)>)> {
+        [
+            "CLAUDE.local.md",
+            ".claude/settings.local.json",
+            ".git/info/exclude",
+            ORIENTATION,
+        ]
+        .iter()
+        .map(|p| {
+            let at = co.join(p);
+            let held = std::fs::read_to_string(&at)
+                .ok()
+                .zip(std::fs::metadata(&at).and_then(|m| m.modified()).ok());
+            (p.to_string(), held)
+        })
+        .collect()
+    }
+
+    fn outcomes(dir: &Path) -> Vec<(String, Outcome)> {
+        match orientation_record::read(dir) {
+            orientation_record::Read::Record(r) => {
+                r.entries.into_iter().map(|e| (e.slug, e.outcome)).collect()
+            }
+            other => panic!("no orientation record a daemon start wrote: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_daemon_start_converts_a_checkout_an_older_runner_held_under_skip_worktree_and_a_second_start_writes_nothing(
+    ) {
+        let root =
+            std::env::temp_dir().join(format!("forge-start-orient-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let co = old_shape_checkout(&root);
+        let (records, locks) = (root.join("config"), root.join("config/locks"));
+        let mut cfg = Config::default();
+        let bind = |path: PathBuf, project_id: Option<&str>| Binding {
+            repo_path: path,
+            branch: None,
+            project_id: project_id.map(str::to_string),
+        };
+        cfg.bindings
+            .insert("forge".into(), bind(co.clone(), Some(DEV)));
+        cfg.bindings
+            .insert("unnamed".into(), bind(root.join("unnamed"), None));
+        cfg.bindings
+            .insert("uncloned".into(), bind(root.join("uncloned"), Some("p-2")));
+        std::fs::create_dir_all(root.join("unnamed")).unwrap();
+
+        reconcile_checkouts(None, &cfg, None, Some(&records), Some(&locks)).await;
+
+        assert!(
+            git(&co, &["ls-files", "-v", ORIENTATION]).starts_with("H "),
+            "ORIENTATION_NOT_CONVERGED_AT_START: a daemon start left {ORIENTATION} under the older runner's skip-worktree mark"
+        );
+        assert_eq!(
+            std::fs::read_to_string(co.join(ORIENTATION)).unwrap(),
+            orientation_body(PROD, "forge-dev"),
+            "the committed file is restored"
+        );
+        let local = std::fs::read_to_string(co.join("CLAUDE.local.md")).unwrap();
+        assert!(local.contains(DEV) && !local.contains(PROD), "{local}");
+        assert_eq!(
+            git(&co, &["status", "--porcelain"]),
+            "",
+            "nothing tracked is left changed"
+        );
+        let first = outcomes(&records);
+        assert!(
+            matches!(&first[0], (s, Outcome::Converted { note }) if s == "forge" && note.contains("skip-worktree")),
+            "{first:?}"
+        );
+        assert!(
+            !root.join("uncloned").exists(),
+            "a start creates no checkout"
+        );
+        assert_eq!(
+            first[1],
+            ("uncloned".into(), Outcome::NoCheckout),
+            "{first:?}"
+        );
+        assert_eq!(
+            first[2],
+            ("unnamed".into(), Outcome::NoProject),
+            "{first:?}"
+        );
+
+        let before = snapshot(&co);
+        reconcile_checkouts(None, &cfg, None, Some(&records), Some(&locks)).await;
+        assert_eq!(snapshot(&co), before, "a second start rewrites nothing");
+        assert_eq!(outcomes(&records)[0], ("forge".into(), Outcome::Current));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

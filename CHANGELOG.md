@@ -24,6 +24,9 @@ Private agent chats are visible only to their owner and project admins
 - **Cancel run says when the issue was not put on hold.** Agents / Runs shares the pipeline's one
   cancel, naming a refused park by code and detail. An issue's session links open Sessions filtered
   to that issue.
+- **An upgraded runner converts every bound checkout's orientation at start.** Each daemon start
+  rewrites it once under the provision lock, so no re-bind is needed; `forge-runner status` names
+  any checkout it could not convert, and why.
 
 ## [0.4.0-dev.43] - 2026-10-06
 

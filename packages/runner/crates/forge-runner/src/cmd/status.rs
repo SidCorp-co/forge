@@ -38,6 +38,9 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     for line in skill_lines(runner_platform::config::config_dir().as_deref(), &cfg, now) {
         println!("{line}");
     }
+    for line in orientation_lines(runner_platform::config::config_dir().as_deref(), &cfg, now) {
+        println!("{line}");
+    }
     match Ledger::default_path() {
         Ok(path) => {
             for line in unanswered_runs(&path, &cfg) {
@@ -453,6 +456,63 @@ pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64)
     out
 }
 
+/// What the last orientation write did in each bound checkout. One that could
+/// not be converted is named with why, never left out.
+pub(crate) fn orientation_lines(
+    dir: Option<&std::path::Path>,
+    cfg: &Config,
+    now: i64,
+) -> Vec<String> {
+    use runner_workspace::orientation_record::{self, Read};
+    let Some(dir) = dir else {
+        return vec![
+            "orient     no config directory resolves on this box, so no orientation record can be read"
+                .into(),
+        ];
+    };
+    let path = orientation_record::record_path(dir);
+    let entries = match orientation_record::read(dir) {
+        Read::Unreadable(why) => {
+            return vec![format!(
+                "orient     UNREADABLE — {why}, so which checkouts carry this build's orientation cannot be said"
+            )]
+        }
+        Read::Absent => {
+            let mut out = vec![format!(
+                "orient     no orientation record at {} — the daemon writes one at every start, and a daemon older than this build writes none, so whether each checkout was converted cannot be said",
+                path.display()
+            )];
+            for (slug, b) in &cfg.bindings {
+                out.push(format!("  {slug}  no orientation write recorded ← {}", b.repo_path.display()));
+            }
+            return out;
+        }
+        Read::Record(r) => r.entries,
+    };
+    let unconverted = entries.iter().filter(|e| !e.outcome.oriented()).count();
+    let mut out = vec![if unconverted == 0 {
+        format!(
+            "orient     each bound checkout's orientation, as last written ← {}",
+            path.display()
+        )
+    } else {
+        format!(
+            "orient     {unconverted} bound checkout(s) NOT carrying this build's orientation, named below ← {}",
+            path.display()
+        )
+    }];
+    for e in &entries {
+        out.push(format!(
+            "  {}  {} {} ago: {}",
+            e.slug,
+            e.point.word(),
+            span(now.saturating_sub(e.at_ms).max(0)),
+            e.outcome.says(&e.path, &e.build)
+        ));
+    }
+    out
+}
+
 /// A duration a person reads without arithmetic. The stamps this replaced were
 /// `epoch+1789906979s`, which states a window in a unit nobody carries.
 fn span(ms: i64) -> String {
@@ -477,5 +537,50 @@ fn span(ms: i64) -> String {
         format!("{days}d")
     } else {
         format!("{days}d {rest_hours}h")
+    }
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+    use runner_workspace::orientation_record::{record, Entry, Merge, Outcome, Point};
+    use std::path::Path;
+
+    #[test]
+    fn a_checkout_not_converted_is_named_with_why_and_counted_in_the_header() {
+        let dir = std::env::temp_dir().join(format!("forge-status-orient-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let refused = Outcome::Refused {
+            detail: "PROVISION_WOULD_REWRITE_TRACKED: CLAUDE.local.md is committed".into(),
+        };
+        record(
+            &dir,
+            vec![
+                Entry::now("hop", Path::new("/w/hop"), Point::Start, refused),
+                Entry::now("epod", Path::new("/w/epod"), Point::Start, Outcome::Current),
+            ],
+            Merge::Upsert,
+        )
+        .unwrap();
+        let now = runner_core::agent_activity::now_ms();
+        let lines = orientation_lines(Some(&dir), &Config::default(), now);
+        assert!(
+            lines[0].contains("1 bound checkout(s) NOT carrying"),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("hop")
+                && l.contains("NOT CONVERTED")
+                && l.contains("PROVISION_WOULD_REWRITE_TRACKED")
+                && l.contains("/w/hop")),
+            "{lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("epod") && l.contains("wrote nothing")),
+            "{lines:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
