@@ -58,6 +58,11 @@ function readChain(err: unknown): ChainReading {
     cur = link.cause;
   }
   reading.driverMessages = drivers.filter((m) => reading.values.some((v) => m.includes(v)));
+  // Longest first: a shorter rendering or value that prefixes a longer one would otherwise hold
+  // part of it in place and leave the rest out of every later match.
+  for (const list of [reading.renderings, reading.values, reading.driverMessages]) {
+    list.sort((a, b) => b.length - a.length);
+  }
   return reading;
 }
 

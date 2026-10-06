@@ -75,8 +75,9 @@ describe('the core logger', () => {
     log.error({ err: pg }, pg.message);
     log.error({ err: pg }, 'failed with %s', pg.message);
     log.error({ err: pg, msg: pg.message });
+    log.error({ err: pg, reason: pg.message, ctx: { detail: pg.message } }, 'failed');
     for (const line of lines) expect(line).not.toContain('abc');
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
     expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22023');
   });
 

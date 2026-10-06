@@ -86,6 +86,18 @@ describe('redactQueryParams', () => {
     expect(redactQueryParams(err.message, err)).not.toContain('SENTINEL');
   });
 
+  it('lets no shorter bound value hold part of a longer one in place', () => {
+    const inner = new DrizzleQueryError(
+      'select $1',
+      ['abcdefSECRET'],
+      driverError('x', { code: 'XX000' }),
+    );
+    const outer = new DrizzleQueryError('select $1', ['abc'], inner);
+    expect(redactQueryParams(inner.message, outer)).toBe(
+      `Failed query: select $1\nparams: ${REDACTED}`,
+    );
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);

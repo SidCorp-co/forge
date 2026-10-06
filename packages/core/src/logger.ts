@@ -65,9 +65,15 @@ function redactCall(args: unknown[], err: Error): unknown[] {
   let [first, ...rest] = args;
   rest = rest.map((a) => (typeof a === 'string' ? redactQueryParams(a, err) : a));
   const named = first as { msg?: unknown };
-  if (!(first instanceof Error) && typeof named.msg === 'string') {
-    first = { ...named, msg: redactQueryParams(named.msg, err) };
-  } else if (typeof rest[0] !== 'string') {
+  if (!(first instanceof Error)) {
+    first = Object.fromEntries(
+      Object.entries(first as object).map(([k, v]) => [
+        k,
+        k === 'err' ? v : redactQueryParams(v, err),
+      ]),
+    );
+  }
+  if (typeof named.msg !== 'string' && typeof rest[0] !== 'string') {
     rest = [redactQueryParams(err.message, err), ...rest];
   }
   return [first, ...rest];
