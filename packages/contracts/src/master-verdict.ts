@@ -63,10 +63,8 @@ export const masterFactsSchema = z.strictObject({
 	capability: z.enum(["current", "stale", "unknown"]).nullable(),
 	/** Whether the project's declared MCP servers could be read, which a replacement pane needs; null where no pane is up and none was read. */
 	serversReadable: z.boolean().nullable(),
-	/** What the box was answered this sweep: admissible issues, owed items, a waiting pool job, held job panes. */
+	/** The work only the box holds: a pool job it took this sweep, and the job panes it holds. Admissible issues and owed items are core's own (`masters/owed.ts`). */
 	work: z.strictObject({
-		admissible: count,
-		owed: count,
 		poolWaits: z.boolean(),
 		jobPanes: count,
 	}),
@@ -124,9 +122,7 @@ export const masterFactsSchema = z.strictObject({
 		turnStartedAgoMs: ageMs.nullable(),
 	}),
 	nudge: z.strictObject({
-		/** A digest of this sweep's admissible and owed work, compared for equality only. */
-		digest: z.string().trim().min(1).max(64),
-		/** The box's last nudge to this master: the work it was about and how long ago. */
+		/** The box's last nudge to this master: the digest core gave the work it was about, and how long ago. */
 		last: z
 			.strictObject({
 				digest: z.string().trim().min(1).max(64),
@@ -188,3 +184,23 @@ export type MasterVerdict =
 	| { act: "leave"; reason: MasterLeaveReason; because: string }
 	| { act: "keep"; nudge: boolean; drain: boolean; because: string };
 export type MasterVerdictAct = MasterVerdict["act"];
+
+/** The work core read for the project this sweep: what decides a pass, and what the box types or briefs. */
+export interface MasterWork {
+	admissible: number;
+	owed: number;
+	/** A digest of the admissible and owed work; the box echoes it as `facts.nudge.last.digest` once it nudged on it. */
+	digest: string;
+	/** The line the box types into a kept pane it is told to nudge. */
+	nudge: string;
+	/** What a first pass owes, for the brief of a pane placed now; empty where nothing is owed. */
+	owedLine: string;
+	/** The issue a pass opened on this work is about: the one admissible issue, where nothing else is owed. */
+	issueKey: string | null;
+}
+
+/** What `POST /me/master-session/verdict` answers: the verdict, and the work it was judged against. */
+export interface MasterVerdictAnswer {
+	verdict: MasterVerdict;
+	work: MasterWork;
+}

@@ -1,9 +1,10 @@
 use super::*;
 
 /// One nudge, and the evidence a later sweep judges it by.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Nudge {
-    pub(crate) digest: u64,
+    /// Core's digest of the work the nudge was about, echoed back to it.
+    pub(crate) digest: String,
     pub(crate) at: Instant,
     /// The master's submitted-prompt count at the moment it was nudged, or `None`
     /// where the session had never reported to `agent_activity` at all. A later
@@ -57,219 +58,6 @@ pub(crate) fn since_nudge(
     }
 }
 
-pub(crate) fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut lines: Vec<String> = Vec::with_capacity(admissible.len());
-    for a in admissible {
-        let mut rels: Vec<String> = a
-            .relations
-            .iter()
-            .filter(|r| r.kind == DISPATCH_GATING_KIND)
-            .map(|r| {
-                format!(
-                    "{}|{}",
-                    r.depends_on_key.as_deref().unwrap_or(""),
-                    r.blocker_status.as_deref().unwrap_or(""),
-                )
-            })
-            .collect();
-        rels.sort_unstable();
-        lines.push(format!(
-            "issue:{}|{}|{}",
-            a.issue_id,
-            a.status,
-            rels.join(";")
-        ));
-    }
-    lines.sort_unstable();
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    for line in lines {
-        line.hash(&mut h);
-    }
-    h.finish()
-}
-
-pub(crate) fn nudge(inbox: &[UnansweredDocument]) -> String {
-    format!(
-        "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.{}",
-        master_inbox::inbox_line(inbox)
-    )
-}
-
-/// What this project's channel and issue threads owe, as core answers them this sweep.
-///
-/// Each read that fails is said once per cause and counts as nothing owed for
-/// this pass only: the issues the sweep already read still decide it, and the
-/// next sweep reads again. A failure is never cached as an empty inbox, and one
-/// read failing never hides what the other found.
-pub(crate) async fn read_inbox(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-) -> Vec<UnansweredDocument> {
-    let mut owed = read_channel_inbox(client, masters, project_id, slug).await;
-    owed.extend(read_comment_inbox(client, masters, project_id, slug).await);
-    owed.extend(read_requirement_inbox(client, masters, project_id, slug).await);
-    owed.extend(read_feedback_inbox(client, masters, project_id, slug).await);
-    owed.extend(owed_or_said(
-        masters,
-        slug,
-        &format!("{project_id}#designs"),
-        "design",
-        "which returned designs owe a revision",
-        "a returned design is not revised",
-        design_inbox::owed(client, project_id).await,
-    ));
-    owed.extend(owed_or_said(
-        masters,
-        slug,
-        &format!("{project_id}#returned-requirements"),
-        "returned requirement",
-        "which returned requirement revisions owe a revise",
-        "a returned revision is not revised",
-        requirement_inbox::returned(client, project_id).await,
-    ));
-    owed
-}
-
-/// What one inbox read answered, or nothing for this pass with its failure said
-/// once per cause and its recovery once, keyed by `key`.
-fn owed_or_said(
-    masters: &Arc<Masters>,
-    slug: &str,
-    key: &str,
-    inbox: &str,
-    what: &str,
-    until: &str,
-    read: runner_platform::error::Result<Vec<UnansweredDocument>>,
-) -> Vec<UnansweredDocument> {
-    match read {
-        Ok(owed) => {
-            if masters.note_inbox_read(key, None) {
-                tracing::info!("[master] {slug}: the {inbox} inbox reads again");
-            }
-            owed
-        }
-        Err(e) => {
-            let why = e.to_string();
-            if masters.note_inbox_read(key, Some(why.clone())) {
-                tracing::warn!(
-                    "[master] {slug}: cannot read {what} ({why}) — this pass is decided without them, and {until} until the read succeeds"
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
-/// Which feedback items owe this project's master a triage, as core answers it.
-pub(crate) async fn read_feedback_inbox(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-) -> Vec<UnansweredDocument> {
-    let key = format!("{project_id}#feedback");
-    match feedback_inbox::owed(client, project_id).await {
-        Ok(owed) => {
-            if masters.note_inbox_read(&key, None) {
-                tracing::info!("[master] {slug}: the feedback inbox reads again");
-            }
-            owed
-        }
-        Err(e) => {
-            let why = e.to_string();
-            if masters.note_inbox_read(&key, Some(why.clone())) {
-                tracing::warn!(
-                    "[master] {slug}: cannot read which feedback items owe a triage ({why}) — this pass is decided without them, and no filed feedback is triaged until the read succeeds"
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
-/// Which agreed requirements owe this project's master a breakdown, due or overdue.
-pub(crate) async fn read_requirement_inbox(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-) -> Vec<UnansweredDocument> {
-    let key = format!("{project_id}#requirements");
-    match requirement_inbox::owed(client, project_id).await {
-        Ok(owed) => {
-            if masters.note_inbox_read(&key, None) {
-                tracing::info!("[master] {slug}: the requirement inbox reads again");
-            }
-            owed
-        }
-        Err(e) => {
-            let why = e.to_string();
-            if masters.note_inbox_read(&key, Some(why.clone())) {
-                tracing::warn!(
-                    "[master] {slug}: cannot read which agreed requirements owe a breakdown ({why}) — this pass is decided without them, and an agreed requirement is not broken down until the read succeeds"
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
-/// What a person is owed a reply to on this project's issues, at any status.
-pub(crate) async fn read_comment_inbox(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-) -> Vec<UnansweredDocument> {
-    // Keyed apart from the channel read, so each failure is said once and each recovery once.
-    let key = format!("{project_id}#comments");
-    match comment_inbox::unanswered(client, project_id).await {
-        Ok(owed) => {
-            if masters.note_inbox_read(&key, None) {
-                tracing::info!("[master] {slug}: the comment inbox reads again");
-            }
-            owed
-        }
-        Err(e) => {
-            let why = e.to_string();
-            if masters.note_inbox_read(&key, Some(why.clone())) {
-                tracing::warn!(
-                    "[master] {slug}: cannot read which issue comments a person is owed a reply to ({why}) — this pass is decided without them, and a comment waiting for a reply is not seen until the read succeeds"
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
-pub(crate) async fn read_channel_inbox(
-    client: &CoreClient,
-    masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
-) -> Vec<UnansweredDocument> {
-    match channel_inbox::unanswered(client, project_id).await {
-        Ok(owed) => {
-            if masters.note_inbox_read(project_id, None) {
-                tracing::info!("[master] {slug}: the channel inbox reads again");
-            }
-            owed
-        }
-        Err(e) => {
-            let why = e.to_string();
-            if masters.note_inbox_read(project_id, Some(why.clone())) {
-                tracing::warn!(
-                    "[master] {slug}: cannot read what the ecosystem channel owes ({why}) — this pass is decided by its issues alone, and a document waiting for a reply is not seen until the read succeeds"
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
 pub(crate) struct NudgePass<'a> {
     pub(crate) client: &'a CoreClient,
     pub(crate) shared: SweepShared<'a>,
@@ -299,23 +87,23 @@ impl NudgePass<'_> {
     }
 }
 
-/// Paste one nudge into this project's master, saying core's reason for it.
-/// A pane parked behind its account limit is asked with the same line, which
-/// submits straight through Claude Code's armed wait-for-reset (captured
-/// 2026-09-24: `Usage limit reached again after you continued`), so no key is
-/// sent ahead of it.
+/// Paste the line core composed into this project's master, saying core's
+/// reason for it. A pane parked behind its account limit is asked with the
+/// same line, which submits straight through Claude Code's armed
+/// wait-for-reset (captured 2026-09-24: `Usage limit reached again after you
+/// continued`), so no key is sent ahead of it.
 pub(crate) async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
     slug: &str,
     because: &str,
-    inbox: &[UnansweredDocument],
+    line: &str,
 ) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
     tracing::info!("[master] {slug}: nudging {name}: {because}");
-    if let Err(e) = terminal::send_line(&name, &nudge(inbox)).await {
+    if let Err(e) = terminal::send_line(&name, line).await {
         // A pane that exited before the nudge reached it is reported by the
         // sweep that reads it gone, with why; a warning here too would be the
         // second line per placement ISS-1343 counted on sid-desk.
@@ -332,19 +120,6 @@ pub(crate) async fn nudge_master(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
-
-    #[test]
-    fn a_nudge_for_untriaged_feedback_names_it() {
-        let owed = [UnansweredDocument {
-            id: "f2".into(),
-            number: Some("FB-2".into()),
-            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
-            from: None,
-            overdue: false,
-        }];
-        assert!(nudge(&owed).contains("feedback item owes a triage (FB-2)"));
-    }
 
     /// FB-82, dev 2026-10-06: forge-master-forge was resumed at 14:51:43 and
     /// handed its brief, and the same sweep claimed a nudge it never typed. The

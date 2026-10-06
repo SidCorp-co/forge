@@ -1,13 +1,12 @@
-import type { MasterFacts } from '@forge/contracts/master-verdict';
 import { describe, expect, it } from 'vitest';
-import { limitHeld, masterVerdict, nudgeDue } from './verdict.js';
+import { limitHeld, type MasterJudged, masterVerdict, nudgeDue } from './verdict.js';
 
 // ADR 0009, What core takes over: Placement and Retirement were the runner's ensure_master and sweep;
 // each case below is one branch of the verdict the box now asks core for and obeys.
 
 const HOUR = 3600;
 
-function facts(over: Partial<MasterFacts> = {}): MasterFacts {
+function facts(over: Partial<MasterJudged> = {}): MasterJudged {
   return {
     restarting: null,
     terminal: true,
@@ -35,14 +34,14 @@ const online = { runnerStatus: 'online', passOpen: false };
 const working = { kind: 'resumed' as const, silentMs: 0 };
 const ended = { kind: 'host_ended' as const, silentMs: 60_000 };
 /** A pane holding runs: the first names' subagents still working, the rest read over. */
-const holds = (live: string[], over: string[] = []): MasterFacts['holding'] => ({
+const holds = (live: string[], over: string[] = []): MasterJudged['holding'] => ({
   kind: 'these',
   runs: [
     ...live.map((name) => ({ name, subagent: working })),
     ...over.map((name) => ({ name, subagent: ended })),
   ],
 });
-const alive = (over: Partial<MasterFacts> = {}) =>
+const alive = (over: Partial<MasterJudged> = {}) =>
   facts({ pane: 'alive', capability: 'current', ...over });
 const noWork = { admissible: 0, owed: 0, poolWaits: false, jobPanes: 0 };
 const quietHour = {
@@ -163,7 +162,7 @@ describe('retire: an idle master', () => {
   });
 
   it('keeps it for each signal that is not quiet', () => {
-    const stays: Partial<MasterFacts>[] = [
+    const stays: Partial<MasterJudged>[] = [
       { idle: { ...quietHour, noWorkForSeconds: HOUR - 1 } },
       { idle: { ...quietHour, noWorkForSeconds: null } },
       { idle: { ...quietHour, children: { ...quietHour.children, unfinished: ['r1'] } } },
@@ -370,8 +369,8 @@ describe('deaf: a pane the box cannot hear', () => {
 describe('keep: when a driven master is nudged', () => {
   const last = (digest: string, agoSeconds: number) => ({ digest, agoSeconds });
   const due = (
-    over: Partial<MasterFacts['nudge']>,
-    extra: Partial<MasterFacts> = {},
+    over: Partial<MasterJudged['nudge']>,
+    extra: Partial<MasterJudged> = {},
     open = false,
   ) =>
     nudgeDue(alive({ nudge: { digest: 'd1', last: null, since: 'ran', ...over }, ...extra }), open)

@@ -26,7 +26,7 @@ pub(crate) struct Carryover<'a> {
     /// What the project owes its master this sweep. A placed pane is typed no
     /// nudge, so its brief is the only place the pass it is placed for can be
     /// told what it owes.
-    pub(crate) inbox: &'a [UnansweredDocument],
+    pub(crate) owed: &'a str,
 }
 
 /// The brief a placed pane is sent: the standing prompt, what a resumed
@@ -36,11 +36,10 @@ pub(crate) fn placement_brief(
     standing: String,
     resumed: Option<String>,
     lifted: Option<String>,
-    inbox: &[UnansweredDocument],
+    owed: &str,
 ) -> String {
-    let owed = master_inbox::inbox_line(inbox);
     let owed = if owed.is_empty() {
-        owed
+        String::new()
     } else {
         format!("\n## What this first pass owes\n\n{}\n", owed.trim_start())
     };
@@ -394,7 +393,7 @@ surface it reads",
             .conversation
             .map(|conv| resumed_brief(conv, carry.inherited, started, carry.hosts)),
         carry.lifted.map(stood_up_brief),
-        carry.inbox,
+        carry.owed,
     );
     match terminal::brief_new_pane(name, &brief).await {
         Ok(()) => {
@@ -487,24 +486,17 @@ pub(crate) fn remember(
 #[cfg(test)]
 mod placement_brief_tests {
     use super::*;
-    use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
 
     #[test]
-    fn a_pane_placed_for_owed_feedback_is_told_which_item_its_first_pass_owes() {
-        let owed = [UnansweredDocument {
-            id: "f1".into(),
-            number: Some("FB-1".into()),
-            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
-            from: None,
-            overdue: false,
-        }];
-        let brief = placement_brief("standing\n".into(), Some("resumed\n".into()), None, &owed);
+    fn a_pane_placed_for_owed_work_is_told_what_its_first_pass_owes() {
+        let owed = " 1 feedback item owes a triage (FB-1): read it.";
+        let brief = placement_brief("standing\n".into(), Some("resumed\n".into()), None, owed);
         assert!(
-            brief.contains("1 feedback item owes a triage (FB-1)"),
+            brief.contains("## What this first pass owes\n\n1 feedback item owes a triage (FB-1)"),
             "the placement brief names no owed item, so the pass it places triages nothing: {brief}"
         );
         assert!(brief.starts_with("standing\nresumed\n"), "{brief}");
-        let quiet = placement_brief("standing\n".into(), None, None, &[]);
+        let quiet = placement_brief("standing\n".into(), None, None, "");
         assert_eq!(quiet, "standing\n");
     }
 }

@@ -22,7 +22,6 @@ pub(crate) struct Seen {
     pub(crate) servers: Option<ServersRead>,
     pub(crate) restarting: Option<String>,
     pub(crate) last_said: Option<master_limit::Decisive>,
-    pub(crate) digest: u64,
 }
 
 /// A pane found up, registered with core, and what this box can say about
@@ -266,17 +265,16 @@ pub(crate) fn idle_facts(
 pub(crate) fn nudge_facts(
     masters: &Masters,
     project_id: &str,
-    digest: u64,
     seen: Option<&agent_activity::Activity>,
 ) -> wire::NudgeFacts {
     let last = masters.last_nudge(project_id);
+    let prompts = last.as_ref().and_then(|n| n.prompts);
     wire::NudgeFacts {
-        digest: digest.to_string(),
         last: last.map(|n| wire::LastNudge {
-            digest: n.digest.to_string(),
             ago_seconds: n.at.elapsed().as_secs(),
+            digest: n.digest,
         }),
-        since: since_nudge(seen, last.and_then(|n| n.prompts)).wire(),
+        since: since_nudge(seen, prompts).wire(),
     }
 }
 
@@ -309,18 +307,10 @@ pub(crate) fn limit_facts(
     }
 }
 
-/// The work core answered this box this sweep, counted.
-pub(crate) struct Answered<'a> {
-    pub(crate) admissible: &'a [AdmissibleIssue],
-    pub(crate) inbox: &'a [UnansweredDocument],
-    pub(crate) pool_waits: bool,
-    pub(crate) job_panes: usize,
-}
-
 /// Every fact core's verdict reads, as one request body.
 pub(crate) fn facts_of(
     seen: &Seen,
-    answered: &Answered<'_>,
+    work: &Work,
     judged: Option<(String, wire::Holding, wire::Turn)>,
     idle: wire::Idle,
     limit: wire::Limit,
@@ -339,10 +329,8 @@ pub(crate) fn facts_of(
         capability: seen.adopted.as_ref().map(|a| a.capability.wire()),
         servers_readable: seen.servers.as_ref().map(std::result::Result::is_ok),
         work: wire::Work {
-            admissible: answered.admissible.len(),
-            owed: answered.inbox.len(),
-            pool_waits: answered.pool_waits,
-            job_panes: answered.job_panes,
+            pool_waits: work.pool_waits,
+            job_panes: work.job_panes,
         },
         conversation: wire::Conversation {
             id: seen.stored_conversation.clone(),

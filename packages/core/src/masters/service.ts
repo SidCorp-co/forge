@@ -9,7 +9,7 @@ import type {
   MasterSessionResponse,
   MasterVerb,
 } from '@forge/contracts/master-standing';
-import type { MasterFacts, MasterVerdict } from '@forge/contracts/master-verdict';
+import type { MasterFacts, MasterVerdictAnswer } from '@forge/contracts/master-verdict';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -22,6 +22,7 @@ import {
   setMaxJobPanes,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { readMasterWork } from './owed.js';
 import { passEnd } from './pass-end.js';
 import {
   closedPassOf,
@@ -37,7 +38,7 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
-import { masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
+import { judged, masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
@@ -199,15 +200,15 @@ export async function recordMasterDialog(args: {
 
 /**
  * Core's verdict on one project's resident master on the box sweeping `runnerId`: the box's facts,
- * its runner row's status and whether its live master has a pass open (ADR 0009, What core takes
- * over: Placement and Retirement).
+ * the work core reads the project owes its master, its runner row's status and whether its live
+ * master has a pass open (ADR 0009, What core takes over: Placement and Retirement).
  */
 export async function judgeMaster(args: {
   deviceId: string;
   projectId: string;
   runnerId: string;
   facts: MasterFacts;
-}): Promise<MasterVerdict> {
+}): Promise<MasterVerdictAnswer> {
   await assertDeviceBoundToProject(args.deviceId, args.projectId);
   const [runner] = await db
     .select({ status: runners.status })
@@ -242,11 +243,13 @@ export async function judgeMaster(args: {
     )
     .limit(1);
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
-  const verdict = masterVerdict(args.facts, { runnerStatus: runner.status, passOpen });
+  const work = await readMasterWork(args.deviceId, args.projectId);
+  const facts = judged(args.facts, work);
+  const verdict = masterVerdict(facts, { runnerStatus: runner.status, passOpen });
   if (master && verdict.act === 'keep') {
-    await recordOutdated(master.id, master.outdated, outdatedHold(args.facts));
+    await recordOutdated(master.id, master.outdated, outdatedHold(facts));
   }
-  return verdict;
+  return { verdict, work };
 }
 
 /**

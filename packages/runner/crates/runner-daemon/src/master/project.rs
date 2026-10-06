@@ -23,23 +23,12 @@ pub(crate) struct Found {
     pub(crate) account_said: Vec<master_limit::Decisive>,
 }
 
-/// The work core answered this box for one project this sweep.
+/// The work only this box holds for one project this sweep: a pool job it
+/// took, and the job panes it holds. What the project owes its master is
+/// core's, answered beside the verdict.
 pub(crate) struct Work {
-    pub(crate) admissible: Vec<AdmissibleIssue>,
-    pub(crate) inbox: Vec<UnansweredDocument>,
     pub(crate) pool_waits: bool,
     pub(crate) job_panes: usize,
-}
-
-impl Work {
-    fn answered(&self) -> Answered<'_> {
-        Answered {
-            admissible: &self.admissible,
-            inbox: &self.inbox,
-            pool_waits: self.pool_waits,
-            job_panes: self.job_panes,
-        }
-    }
 }
 
 pub(crate) async fn sweep_project(
@@ -72,18 +61,10 @@ pub(crate) async fn sweep_project(
         }
     };
     let work = Work {
-        admissible: admissible::admissible(sw.client, Some(&runner.project_id))
-            .await
-            .unwrap_or_default(),
-        inbox: read_inbox(sw.client, masters, &runner.project_id, &runner.slug).await,
         pool_waits,
         job_panes: sw.shared.job_panes.holds_for(&runner.project_id),
     };
-    if work.pool_waits
-        || !work.admissible.is_empty()
-        || !work.inbox.is_empty()
-        || work.job_panes > 0
-    {
+    if work.pool_waits || work.job_panes > 0 {
         masters.note_work(&runner.project_id);
     }
     let read = Read {
@@ -94,33 +75,36 @@ pub(crate) async fn sweep_project(
             .and_then(|row| row.conversation_id),
         restarting,
     };
-    let Some(seen) = see(sw, runner, &resolved, &work, read).await else {
+    let Some(seen) = see(sw, runner, &resolved, read).await else {
         return;
     };
     let facts = facts_for(sw, ledger.as_ref(), runner, &resolved, &seen, &work);
-    let verdict =
-        match wire::verdict(sw.client, &runner.project_id, &runner.runner_id, &facts).await {
-            Ok(v) => v,
-            Err(e) => {
-                say_unplaced(
-                    masters,
-                    &runner.project_id,
-                    &runner.slug,
-                    Unplaced::VerdictUnanswered {
-                        detail: e.to_string(),
-                    },
-                );
-                return;
-            }
-        };
+    let answer = match wire::verdict(sw.client, &runner.project_id, &runner.runner_id, &facts).await
+    {
+        Ok(a) => a,
+        Err(e) => {
+            say_unplaced(
+                masters,
+                &runner.project_id,
+                &runner.slug,
+                Unplaced::VerdictUnanswered {
+                    detail: e.to_string(),
+                },
+            );
+            return;
+        }
+    };
+    if answer.work.admissible > 0 || answer.work.owed > 0 {
+        masters.note_work(&runner.project_id);
+    }
     let turn = Turn {
         sw,
         runner,
         resolved: &resolved,
         seen: &seen,
-        work: &work,
+        work: &answer.work,
     };
-    obey(&turn, ledger, verdict, found).await;
+    obey(&turn, ledger, answer.verdict, found).await;
     drop(admit);
 }
 
@@ -152,22 +136,14 @@ fn facts_for(
     let reported = masters
         .get(&runner.project_id)
         .and_then(|(s, _)| activity.get(&s));
-    let nudge = nudge_facts(masters, &runner.project_id, seen.digest, reported.as_ref());
+    let nudge = nudge_facts(masters, &runner.project_id, reported.as_ref());
     let limit = limit_facts(
         seen.last_said.as_ref(),
         seen.stored_conversation.as_deref(),
         reported.as_ref(),
         agent_activity::now_ms(),
     );
-    facts_of(
-        seen,
-        &work.answered(),
-        judged,
-        idle,
-        limit,
-        nudge,
-        &resolved.repo_path,
-    )
+    facts_of(seen, work, judged, idle, limit, nudge, &resolved.repo_path)
 }
 
 /// What the ledger and the drain said about the project before anything is awaited.
@@ -187,7 +163,6 @@ async fn see(
     sw: &Sweep<'_>,
     runner: &runners::MeRunner,
     resolved: &crate::dispatch::Resolved,
-    work: &Work,
     read: Read,
 ) -> Option<Seen> {
     let masters = sw.shared.masters;
@@ -229,7 +204,6 @@ async fn see(
         servers,
         restarting,
         last_said,
-        digest: work_digest(&work.admissible).wrapping_add(master_inbox::inbox_digest(&work.inbox)),
     })
 }
 

@@ -1,3 +1,5 @@
+export { readAdmissibleIssues } from './admissible.js';
+export { readOwedComments } from './comment-inbox.js';
 export { assertDeviceBoundToProject } from './device-project.js';
 export { readDialogsAnswered, readRunGate } from './gate-report.js';
 export { OCCUPYING } from './load.js';

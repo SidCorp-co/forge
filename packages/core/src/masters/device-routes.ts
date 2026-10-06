@@ -11,7 +11,7 @@ import {
 } from '@forge/contracts/master-standing';
 import {
   MASTER_VERDICT_SHAPE,
-  type MasterVerdict,
+  type MasterVerdictAnswer,
   masterVerdictRequestSchema,
 } from '@forge/contracts/master-verdict';
 import { Hono } from 'hono';
@@ -95,12 +95,12 @@ deviceMasterRoutes.post(
   strictBody(masterVerdictRequestSchema, MASTER_VERDICT_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
-    const verdict = await judgeMaster({
+    const answer = await judgeMaster({
       deviceId: c.get('device').id,
       projectId: body.projectId,
       runnerId: body.runnerId,
       facts: body.facts,
     });
-    return c.json(verdict satisfies MasterVerdict);
+    return c.json(answer satisfies MasterVerdictAnswer);
   },
 );

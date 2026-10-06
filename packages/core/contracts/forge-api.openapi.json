@@ -4982,40 +4982,6 @@
         ]
       }
     },
-    "/api/devices/me/channel/unanswered": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
     "/api/devices/me/checkout-heads/{requestId}": {
       "post": {
         "parameters": [
@@ -5093,108 +5059,6 @@
         "x-forge-validated": [
           "json",
           "param"
-        ]
-      }
-    },
-    "/api/devices/me/comments/unanswered": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/designs/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/feedback/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
         ]
       }
     },
@@ -5334,51 +5198,6 @@
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/issues/admissible": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
           "query"
         ]
       }
@@ -6220,11 +6039,6 @@
                       "nudge": {
                         "additionalProperties": false,
                         "properties": {
-                          "digest": {
-                            "maxLength": 64,
-                            "minLength": 1,
-                            "type": "string"
-                          },
                           "last": {
                             "anyOf": [
                               {
@@ -6265,7 +6079,6 @@
                           }
                         },
                         "required": [
-                          "digest",
                           "last",
                           "since"
                         ],
@@ -6371,17 +6184,7 @@
                       "work": {
                         "additionalProperties": false,
                         "properties": {
-                          "admissible": {
-                            "maximum": 100000,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
                           "jobPanes": {
-                            "maximum": 100000,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "owed": {
                             "maximum": 100000,
                             "minimum": 0,
                             "type": "integer"
@@ -6391,8 +6194,6 @@
                           }
                         },
                         "required": [
-                          "admissible",
-                          "owed",
                           "poolWaits",
                           "jobPanes"
                         ],
@@ -6884,74 +6685,6 @@
             "name": "runId",
             "required": false,
             "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/requirements/owed": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-query-closed": true,
-        "x-forge-validated": [
-          "query"
-        ]
-      }
-    },
-    "/api/devices/me/requirements/returned": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "projectId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
           }

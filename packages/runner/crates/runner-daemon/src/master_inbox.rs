@@ -1,17 +1,8 @@
-//! A project's ecosystem channel as master work (ISS-38).
-//!
-//! Two halves. The wake: `master.wake` names what fired it, and this box keeps
-//! that name rather than reducing the frame to its project, refusing a source
-//! it does not know by name. The state: what the channel owes a reply to is
-//! read from core on every sweep, so a document is admissible work for the
-//! master even with an empty backlog and even when its wake was coalesced or
-//! lost on a reconnect.
-
-use runner_transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
-use runner_transport::comment_inbox::ISSUE_COMMENT_TYPE;
-use runner_transport::design_inbox::DESIGN_REVISION_TYPE;
-use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
-use runner_transport::requirement_inbox::{REQUIREMENT_BREAKDOWN_TYPE, REQUIREMENT_REVISION_TYPE};
+//! What fired a `master.wake` (ISS-38). This box keeps that name rather than
+//! reducing the frame to its project, refusing a source it does not know by
+//! name. The wake only makes a sweep come sooner: what the project owes its
+//! master is read by core on every verdict (`masters/owed.ts`), so a wake that
+//! was coalesced or lost on a reconnect loses nothing.
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +17,7 @@ pub enum WakeSource {
     EcosystemBuild,
     /// The approver decided a workflow design the project proposed: an approve unblocks its builds,
     /// a return hands the drawing back to the issue it was drawn under, or, with no live issue, to
-    /// the master, whose sweep reads it from `/me/designs/owed`.
+    /// the master, whose verdict core answers with it named.
     WorkflowDesign,
     /// A person commented on one of the project's issues, at whatever status it stands.
     Comment,
@@ -73,151 +64,6 @@ impl WakeSource {
     }
 }
 
-/// A digest of the documents owed, `0` for none, so a set of issues alone hashes as it always has.
-pub fn inbox_digest(inbox: &[UnansweredDocument]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    if inbox.is_empty() {
-        return 0;
-    }
-    let mut ids: Vec<&str> = inbox.iter().map(|d| d.id.as_str()).collect();
-    ids.sort_unstable();
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "channel".hash(&mut h);
-    for id in ids {
-        id.hash(&mut h);
-    }
-    h.finish()
-}
-
-/// The sentence for returned work the master owes a revision: designs no issue
-/// carries, and agent-written requirement revisions a signer sent back.
-fn returned_line(designs: &[&UnansweredDocument], revisions: &[&UnansweredDocument]) -> String {
-    let mut line = String::new();
-    if !designs.is_empty() {
-        // the design read takes the workflow's id, so each is named with it beside its flow
-        let keys: Vec<String> = designs
-            .iter()
-            .map(|d| match d.number.as_deref() {
-                Some(name) => format!("{name}, workflow {}", d.id),
-                None => d.id.clone(),
-            })
-            .collect();
-        line.push_str(&format!(
-            " {} returned design{} a revision no issue carries ({}): read each return's reason (`forge-runner api projects/<projectId>/workflows/<workflowId>/design`), then get the next revision written and proposed in a declared run, or record why it waits; the forge-master skill's returned-work section is the method.",
-            designs.len(),
-            if designs.len() == 1 { " owes" } else { "s owe" },
-            keys.join("; ")
-        ));
-    }
-    if !revisions.is_empty() {
-        let keys: Vec<&str> = revisions
-            .iter()
-            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
-            .collect();
-        line.push_str(&format!(
-            " {} returned requirement revision{} a revise ({}): read each (`forge-runner api projects/<projectId>/requirements/<key>`, its revision's `returnReason`), then write and propose it again, or drop it; the forge-master skill's returned-work section is the method.",
-            revisions.len(),
-            if revisions.len() == 1 { " owes" } else { "s owe" },
-            keys.join(", ")
-        ));
-    }
-    line
-}
-
-/// The sentence a nudge carries when the channel, a builder run, an issue thread, a requirement, a returned design or revision, or feedback owes something, empty when nothing is owed.
-pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
-    let (comments, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .iter()
-        .partition(|d| d.r#type.as_deref() == Some(ISSUE_COMMENT_TYPE));
-    let (breakdowns, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .into_iter()
-        .partition(|d| d.r#type.as_deref() == Some(REQUIREMENT_BREAKDOWN_TYPE));
-    let (triages, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .into_iter()
-        .partition(|d| d.r#type.as_deref() == Some(FEEDBACK_TRIAGE_TYPE));
-    let (designs, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .into_iter()
-        .partition(|d| d.r#type.as_deref() == Some(DESIGN_REVISION_TYPE));
-    let (revisions, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .into_iter()
-        .partition(|d| d.r#type.as_deref() == Some(REQUIREMENT_REVISION_TYPE));
-    let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
-        .into_iter()
-        .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
-    let mut line = String::new();
-    line.push_str(&returned_line(&designs, &revisions));
-    if !breakdowns.is_empty() {
-        let keys: Vec<String> = breakdowns
-            .iter()
-            .map(|d| {
-                let key = d.number.as_deref().unwrap_or(d.id.as_str());
-                if d.overdue {
-                    format!("{key} overdue")
-                } else {
-                    key.to_string()
-                }
-            })
-            .collect();
-        line.push_str(&format!(
-            " {} agreed requirement{} no breakdown yet ({}): read each (`forge-runner api projects/<id>/requirements/<key>`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.",
-            breakdowns.len(),
-            if breakdowns.len() == 1 { " has" } else { "s have" },
-            keys.join(", ")
-        ));
-    }
-    if !triages.is_empty() {
-        let keys: Vec<&str> = triages
-            .iter()
-            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
-            .collect();
-        line.push_str(&format!(
-            " {} feedback item{} a triage ({}): read each (`forge-runner api projects/<projectId>/feedback/<key>`, and `/similar` for its nearest), then route it (`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST`) or propose a `feedback_triage` suggestion (`forge-runner api projects/<projectId>/suggestions -X POST`); the forge-master skill's feedback section is the method.",
-            triages.len(),
-            if triages.len() == 1 { " owes" } else { "s owe" },
-            keys.join(", ")
-        ));
-    }
-    if !comments.is_empty() {
-        // Core clears an owed question only on a reply threaded under it (`devices/comment-inbox.ts`),
-        // so each is named with the comment id the reply's `parentId` takes.
-        let keys: Vec<String> = comments
-            .iter()
-            .map(|d| match d.number.as_deref() {
-                Some(key) => format!("{key} comment {}", d.id),
-                None => d.id.clone(),
-            })
-            .collect();
-        line.push_str(&format!(
-            " A person is owed a reply on {} issue{} ({}): read each thread (`forge-runner api issues/<id>/comments`), reply to that comment in its thread (`forge-runner api issues/<id>/comments -X POST` with `parentId` set to the comment id), and move the issue when the comment asks for it; only a threaded reply clears it, a top-level comment does not.",
-            comments.len(),
-            if comments.len() == 1 { "" } else { "s" },
-            keys.join(", ")
-        ));
-    }
-    if !docs.is_empty() {
-        let numbers: Vec<&str> = docs
-            .iter()
-            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
-            .collect();
-        line.push_str(&format!(
-            " The ecosystem channel owes {} repl{} ({}): list them (`forge-runner api projects/<projectId>/channel/unanswered`), read each (`forge-runner api projects/<projectId>/channel/documents/<number>`), and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
-            docs.len(),
-            if docs.len() == 1 { "y" } else { "ies" },
-            numbers.join(", ")
-        ));
-    }
-    if !runs.is_empty() {
-        let ids: Vec<&str> = runs.iter().map(|d| d.id.as_str()).collect();
-        line.push_str(&format!(
-            " {} ecosystem builder run{} open ({}): `forge-runner api projects/<projectId>/builder-runs` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work one.",
-            runs.len(),
-            if runs.len() == 1 { " is" } else { "s are" },
-            ids.join(", ")
-        ));
-    }
-    line
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,71 +87,5 @@ mod tests {
         let source = WakeSource::of_frame(&serde_json::json!({ "source": "feedback" })).unwrap();
         assert_eq!(source, WakeSource::Feedback);
         assert_eq!(source.label(), "feedback");
-    }
-
-    #[test]
-    fn an_owed_triage_is_named_on_the_pass_by_its_key() {
-        let doc = |key: &str| UnansweredDocument {
-            id: format!("id-{key}"),
-            number: Some(key.into()),
-            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
-            from: None,
-            overdue: false,
-        };
-        let line = inbox_line(&[doc("FB-2")]);
-        assert!(
-            line.contains("1 feedback item owes a triage (FB-2)"),
-            "{line}"
-        );
-        assert!(line.contains("feedback/<key>/triage -X POST"), "{line}");
-        assert!(!line.contains("ecosystem channel"), "{line}");
-        let line = inbox_line(&[doc("FB-2"), doc("FB-5")]);
-        assert!(
-            line.contains("2 feedback items owe a triage (FB-2, FB-5)"),
-            "{line}"
-        );
-    }
-
-    #[test]
-    fn a_returned_design_and_a_returned_revision_are_named_on_the_pass() {
-        let doc = |id: &str, number: &str, kind: &str| UnansweredDocument {
-            id: id.into(),
-            number: Some(number.into()),
-            r#type: Some(kind.into()),
-            from: None,
-            overdue: false,
-        };
-        let line = inbox_line(&[
-            doc("w1", "catalog-context r1", DESIGN_REVISION_TYPE),
-            doc("w2", "catalog-design-deploy r1", DESIGN_REVISION_TYPE),
-            doc("r1#r2", "REQ-2 r2", REQUIREMENT_REVISION_TYPE),
-        ]);
-        assert!(
-            line.contains("2 returned designs owe a revision no issue carries (catalog-context r1, workflow w1; catalog-design-deploy r1, workflow w2)"),
-            "{line}"
-        );
-        assert!(
-            line.contains("1 returned requirement revision owes a revise (REQ-2 r2)"),
-            "{line}"
-        );
-        assert!(!line.contains("ecosystem channel"), "{line}");
-        assert!(!line.contains("builder run"), "{line}");
-    }
-
-    #[test]
-    fn an_owed_breakdown_is_named_on_the_pass_and_an_overdue_one_says_so() {
-        let doc = |key: &str, overdue: bool| UnansweredDocument {
-            id: format!("id-{key}"),
-            number: Some(key.into()),
-            r#type: Some(REQUIREMENT_BREAKDOWN_TYPE.into()),
-            from: None,
-            overdue,
-        };
-        let line = inbox_line(&[doc("REQ-3", true), doc("REQ-4", false)]);
-        assert!(
-            line.contains("2 agreed requirements have no breakdown yet (REQ-3 overdue, REQ-4)"),
-            "{line}"
-        );
-        assert!(!line.contains("ecosystem channel"), "{line}");
     }
 }

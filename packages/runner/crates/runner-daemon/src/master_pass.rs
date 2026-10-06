@@ -93,16 +93,6 @@ pub(crate) fn pass_facts(
     }
 }
 
-pub(crate) fn nudged_issue(
-    admissible: &[runner_transport::admissible::AdmissibleIssue],
-    inbox_empty: bool,
-) -> Option<&str> {
-    match admissible {
-        [only] if inbox_empty => only.issue_key.as_deref(),
-        _ => None,
-    }
-}
-
 // contract -> packages/core/src/masters/rules.ts — passAlreadyOpenRefusal names the open pass as
 // `id <uuid>` in its detail, and that is the only place core says which pass it holds open
 pub(crate) fn named_pass_id(detail: &str) -> Option<String> {

@@ -10,23 +10,13 @@
 //! - `checkout_head`  — POST `/me/checkout-heads/:id`: a project's default-branch head, read here
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 //! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
-//! - `channel_inbox`  — GET `/me/channel/unanswered`: what a project's channel owes (ISS-38)
-//! - `comment_inbox`  — GET `/me/comments/unanswered`: what a project's issue threads owe a person
-//! - `requirement_inbox` — GET `/me/requirements/owed` and `/me/requirements/returned`: which agreed
-//!   requirements owe a breakdown, and which returned revisions owe a revise
-//! - `feedback_inbox` — GET `/me/feedback/owed`: which feedback items owe the master a triage
-//! - `design_inbox` — GET `/me/designs/owed`: which returned designs owe the master a revision
-//! - `master_verdict` — POST `/me/master-session/verdict`: core's verdict on a project's master
+//! - `master_verdict` — POST `/me/master-session/verdict`: core's verdict on a project's master,
+//!   and the work core read the project owes it
 //! - `run_verdict` — POST `/me/run-sessions/verdict`: core's verdict on a run the ledger holds open
-pub mod admissible;
 pub mod agent_sessions;
 pub mod api;
-pub mod channel_inbox;
 pub mod checkout_head;
-pub mod comment_inbox;
-pub mod design_inbox;
 pub mod events;
-pub mod feedback_inbox;
 pub mod git_credential;
 pub mod heartbeat;
 pub mod inbox;
@@ -38,7 +28,6 @@ pub mod plugins;
 pub mod pool;
 pub mod provision;
 pub mod questions;
-pub mod requirement_inbox;
 pub mod run_sessions;
 pub mod run_verdict;
 pub mod runners;

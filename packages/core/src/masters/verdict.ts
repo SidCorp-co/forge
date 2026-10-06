@@ -7,6 +7,27 @@ import {
 } from '@forge/contracts/master-verdict';
 import { subagentOver } from '../devices/index.js';
 
+/**
+ * The box's facts with the work core read beside them: the admissible and owed counts in `work`,
+ * and the digest of that work in `nudge`, so every rule below reads one document.
+ */
+export type MasterJudged = Omit<MasterFacts, 'work' | 'nudge'> & {
+  work: MasterFacts['work'] & { admissible: number; owed: number };
+  nudge: MasterFacts['nudge'] & { digest: string };
+};
+
+/** The box's facts joined to the work core read for the project. */
+export function judged(
+  facts: MasterFacts,
+  work: { admissible: number; owed: number; digest: string },
+): MasterJudged {
+  return {
+    ...facts,
+    work: { ...facts.work, admissible: work.admissible, owed: work.owed },
+    nudge: { ...facts.nudge, digest: work.digest },
+  };
+}
+
 /** What core contributes beside the box's facts: its runner row's status and its master's pass record. */
 export interface MasterRecord {
   runnerStatus: string;
@@ -20,7 +41,7 @@ function runnerAccepts(status: string): boolean {
 }
 
 /** Whether the project has anything a master would be placed for: issues, owed items or a waiting pool job. */
-function workWaits(facts: MasterFacts): boolean {
+function workWaits(facts: MasterJudged): boolean {
   const { admissible, owed, poolWaits } = facts.work;
   return admissible > 0 || owed > 0 || poolWaits;
 }
@@ -38,11 +59,11 @@ export function limitHeld(limit: MasterFacts['limit']): boolean {
 }
 
 /** Whether a master pass is owed at all: a pool job is taken under the master, not passed to it. */
-function passAsked(facts: MasterFacts): boolean {
+function passAsked(facts: MasterJudged): boolean {
   return facts.work.admissible > 0 || facts.work.owed > 0 || limitHeld(facts.limit);
 }
 
-function withheld(facts: MasterFacts, record: MasterRecord): MasterVerdict | null {
+function withheld(facts: MasterJudged, record: MasterRecord): MasterVerdict | null {
   if (facts.standing === 'unreadable') {
     return {
       act: 'withhold',
@@ -91,7 +112,7 @@ function withheld(facts: MasterFacts, record: MasterRecord): MasterVerdict | nul
 }
 
 /** Why a master that has had no work for the idle window still stays, or null where it may be retired. */
-export function idleStay(facts: MasterFacts): string | null {
+export function idleStay(facts: MasterJudged): string | null {
   const { noWorkForSeconds, pane, children } = facts.idle;
   const window = MASTER_IDLE_BEFORE_RETIRE_SECONDS;
   if (noWorkForSeconds === null || noWorkForSeconds < window) {
@@ -111,7 +132,7 @@ export function idleStay(facts: MasterFacts): string | null {
   return null;
 }
 
-function retireBecause(facts: MasterFacts): string {
+function retireBecause(facts: MasterJudged): string {
   const { noWorkForSeconds, pane, children } = facts.idle;
   const declared =
     children.total === 0
@@ -129,7 +150,7 @@ function retireBecause(facts: MasterFacts): string {
 }
 
 /** Why the successor of a replaced pane could not resume its conversation, or null where it could. */
-function unresumable(facts: MasterFacts): string | null {
+function unresumable(facts: MasterJudged): string | null {
   const { id, transcript } = facts.conversation;
   if (id === null) {
     return 'the box has recorded no conversation for it, so a successor would start cold, without what it was doing';
@@ -169,7 +190,7 @@ function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: s
 }
 
 /** Null where the pane is current, unjudged or absent. */
-export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
+export function outdatedHold(facts: MasterJudged): OutdatedHold | null {
   if (facts.pane !== 'alive' || facts.outdated === null) return null;
   const heldBy: string[] = [];
   if (!workWaits(facts)) {
@@ -193,7 +214,7 @@ export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
 }
 
 /** An outdated pane nothing holds is replaced, resuming its conversation; null where something holds it. */
-function outdatedReplace(facts: MasterFacts, hold: OutdatedHold): MasterVerdict | null {
+function outdatedReplace(facts: MasterJudged, hold: OutdatedHold): MasterVerdict | null {
   if (hold.heldBy.length > 0) return null;
   const inherited = heldRuns(facts.holding).over;
   return {
@@ -222,7 +243,7 @@ function outdatedKept(hold: OutdatedHold): string {
 }
 
 /** A pane the box cannot hear is ended only where a successor would be placed in its stead. */
-export function deafVerdict(facts: MasterFacts): MasterVerdict {
+export function deafVerdict(facts: MasterJudged): MasterVerdict {
   const left = !workWaits(facts)
     ? 'this project has no admissible work, so no replacement would be placed in its stead'
     : facts.serversReadable !== true
@@ -251,7 +272,10 @@ function retryOwed(since: MasterSinceNudge): boolean {
  * limited master is asked again every refresh window whatever its pane says; the same work is asked
  * again only once the window has passed and the last nudge started no turn or ended in a failure.
  */
-export function nudgeDue(facts: MasterFacts, passOpen: boolean): { due: boolean; because: string } {
+export function nudgeDue(
+  facts: MasterJudged,
+  passOpen: boolean,
+): { due: boolean; because: string } {
   const { last, digest, since } = facts.nudge;
   const windowPassed = last !== null && last.agoSeconds >= MASTER_NUDGE_REFRESH_SECONDS;
   if (!passAsked(facts)) return { due: false, because: 'nothing is owed a pass' };
@@ -272,11 +296,11 @@ export function nudgeDue(facts: MasterFacts, passOpen: boolean): { due: boolean;
   return { due: false, because: `its last nudge read ${since}` };
 }
 
-function resumeOf(facts: MasterFacts): string | null {
+function resumeOf(facts: MasterJudged): string | null {
   return facts.conversation.transcript === 'present' ? facts.conversation.id : null;
 }
 
-function placeVerdict(facts: MasterFacts): MasterVerdict {
+function placeVerdict(facts: MasterJudged): MasterVerdict {
   if (!workWaits(facts)) {
     return {
       act: 'withhold',
@@ -320,7 +344,7 @@ function placeVerdict(facts: MasterFacts): MasterVerdict {
  * holds nothing an outdated pane is kept for; any other pane is kept and driven, an outdated one
  * draining toward its replacement.
  */
-export function masterVerdict(facts: MasterFacts, record: MasterRecord): MasterVerdict {
+export function masterVerdict(facts: MasterJudged, record: MasterRecord): MasterVerdict {
   const held = withheld(facts, record);
   if (held) return held;
   if (facts.pane === 'absent') return placeVerdict(facts);

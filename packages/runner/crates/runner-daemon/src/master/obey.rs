@@ -4,7 +4,7 @@
 //! of it.
 
 use super::*;
-use runner_transport::master_verdict::Verdict;
+use runner_transport::master_verdict::{self as wire, Verdict};
 
 /// One project's turn in a sweep, as the acts below read it.
 pub(crate) struct Turn<'a> {
@@ -12,7 +12,8 @@ pub(crate) struct Turn<'a> {
     pub(crate) runner: &'a runners::MeRunner,
     pub(crate) resolved: &'a crate::dispatch::Resolved,
     pub(crate) seen: &'a Seen,
-    pub(crate) work: &'a Work,
+    /// The work core read for the project, which a nudge or a brief carries.
+    pub(crate) work: &'a wire::OwedWork,
 }
 
 impl Turn<'_> {
@@ -297,16 +298,16 @@ async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
         .get(project_id)
         .and_then(|(s, _)| t.sw.shared.activity.get(&s))
         .map(|a| a.prompts);
-    masters.note_nudged(project_id, t.seen.digest, prompts);
+    masters.note_nudged(project_id, &t.work.digest, prompts);
     let pass = NudgePass {
         client: t.sw.client,
         shared: *t.sw.shared,
         project_id,
-        issue_key: master_pass::nudged_issue(&t.work.admissible, t.work.inbox.is_empty()),
+        issue_key: t.work.issue_key.as_deref(),
     };
     pass.open(ledger, typed.is_some()).await;
     if let Some(because) = typed {
-        nudge_master(masters, project_id, t.slug(), because, &t.work.inbox).await;
+        nudge_master(masters, project_id, t.slug(), because, &t.work.nudge).await;
     }
 }
 
@@ -397,7 +398,7 @@ async fn place(
         stood_down_told: &told,
         started: &started,
         hosts: &hosts,
-        inbox: &t.work.inbox,
+        owed: &t.work.owed_line,
     };
     let ports = CapabilityPorts {
         tokens: t.sw.tokens,

@@ -245,5 +245,3 @@ requirementRoutes.post(
 );
 
 requirementRoutes.route('/', requirementLinkRoutes);
-
-export { deviceRequirementInboxRoutes } from './device-owed-routes.js';
