@@ -1466,6 +1466,7 @@ dependencies = [
  "reqwest",
  "runner-core",
  "runner-platform",
+ "runner-proto",
  "runner-transport",
  "runner-update",
  "serde",

@@ -72,10 +72,10 @@ pub(crate) struct Registry {
     /// Per project, the master session and the dialog last reported to core
     /// for its pane, so a dialog standing for an hour is one report.
     pub(crate) dialog_said: HashMap<String, (String, Option<String>)>,
-    /// Per project, the master session and its prompt count when its last
+    /// Per project, the master session and its turn count when its last
     /// pass settled: a turn started past it with no pass open is one the
     /// runner did not nudge, and is recorded as an unprompted pass.
-    pub(crate) prompts_settled: HashMap<String, (String, u64)>,
+    pub(crate) turns_settled: HashMap<String, (String, u64)>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -261,17 +261,17 @@ impl Masters {
         reg.dialog_said.remove(project_id);
     }
 
-    pub(crate) fn note_prompts_settled(&self, project_id: &str, session: &str, prompts: u64) {
+    pub(crate) fn note_turns_settled(&self, project_id: &str, session: &str, turns: u64) {
         let mut reg = self.0.lock().expect("masters poisoned");
-        reg.prompts_settled
-            .insert(project_id.to_string(), (session.to_string(), prompts));
+        reg.turns_settled
+            .insert(project_id.to_string(), (session.to_string(), turns));
     }
 
-    /// The prompt count `session`'s last pass settled at, `None` where none
+    /// The turn count `session`'s last pass settled at, `None` where none
     /// settled under that session in this process.
-    pub(crate) fn prompts_settled(&self, project_id: &str, session: &str) -> Option<u64> {
+    pub(crate) fn turns_settled(&self, project_id: &str, session: &str) -> Option<u64> {
         let reg = self.0.lock().expect("masters poisoned");
-        reg.prompts_settled
+        reg.turns_settled
             .get(project_id)
             .filter(|(s, _)| s == session)
             .map(|(_, n)| *n)

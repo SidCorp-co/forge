@@ -23,6 +23,7 @@ import {
 	type DeviceBuildChip,
 	type DeviceRow,
 	type DeviceRunnerAssignment,
+	deviceBinariesRead,
 	deviceBuildChip,
 	deviceGateBanner,
 	runnerHealth,
@@ -53,6 +54,46 @@ function MetaRow({
 		<div className="flex items-center justify-between gap-3 py-1.5">
 			<span className="fg-body-sm text-subtle">{label}</span>
 			<span className="fg-body-sm text-fg">{children}</span>
+		</div>
+	);
+}
+
+/**
+ * The binaries this box's panes need and cannot resolve, one hairline row each,
+ * with what the box looked for. Every pane it starts fails on any listed here.
+ */
+function DeviceBinaries({ device }: { device: DeviceRow }) {
+	const read = deviceBinariesRead(device.binaries);
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="fg-label">Pane binaries</span>
+			{read.state === "unreported" && (
+				<p className="fg-body-sm text-subtle">
+					Not reported. This box&rsquo;s runner build does not say which binaries
+					its panes can resolve.
+				</p>
+			)}
+			{read.state === "resolved" && (
+				<p className="fg-body-sm text-subtle">
+					forge-runner, claude and node all resolve for this box&rsquo;s panes.
+				</p>
+			)}
+			{read.state === "missing" && (
+				<div className="flex flex-col divide-y divide-line-subtle">
+					{read.missing.map((m) => (
+						<div key={m.name} className="flex flex-col gap-0.5 py-2">
+							<span className="inline-flex items-center gap-2">
+								<code className="fg-body-sm font-semibold text-fg">{m.name}</code>
+								<span className="fg-caption text-amber-700 dark:text-amber-300">
+									missing
+								</span>
+							</span>
+							<span className="fg-body-sm text-subtle">{m.detail}</span>
+						</div>
+					))}
+				</div>
+			)}
+			{read.stale && <p className="fg-caption text-subtle">{read.stale}.</p>}
 		</div>
 	);
 }
@@ -104,7 +145,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 				</Button>
 			</div>
 
-			<div className="rounded-lg border border-line bg-sunken px-3 py-1.5">
+			<div className="flex flex-col divide-y divide-line-subtle">
 				<MetaRow label="Status">
 					<StatusBadge family="device" value={device.status} />
 				</MetaRow>
@@ -132,6 +173,8 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 					{formatRelativeTime(device.pairedAt, { emptyLabel: "never" })}
 				</MetaRow>
 			</div>
+
+			<DeviceBinaries device={device} />
 		</div>
 	);
 }

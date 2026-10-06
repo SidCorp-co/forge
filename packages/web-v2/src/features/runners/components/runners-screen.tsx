@@ -32,6 +32,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useOrgDevices, useSetDeviceDisabled } from "../hooks";
 import { RevokeDeviceControl } from "./revoke-device-control";
 import {
+  deviceBinariesRead,
   deviceBuildChip,
   deviceHealth,
   deviceVersionLabel,
@@ -146,6 +147,7 @@ function ScopeTabs({
 function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
   const chip = deviceBuildChip(device);
   const projects = "projectNames" in device ? device.projectNames : null;
+  const missing = "binaries" in device ? deviceBinariesRead(device.binaries).missing : [];
   return (
     <div className="flex flex-col">
       <span className="font-semibold text-fg">
@@ -164,6 +166,11 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
       </span>
       {projects && projects.length > 0 ? (
         <span className="fg-body-sm text-subtle">Serves {projects.join(", ")}</span>
+      ) : null}
+      {missing.length > 0 ? (
+        <span className="fg-body-sm text-amber-700 dark:text-amber-300">
+          Panes cannot resolve {missing.map((m) => m.name).join(", ")}
+        </span>
       ) : null}
     </div>
   );

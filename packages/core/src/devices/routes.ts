@@ -10,6 +10,7 @@ import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { answerCheckoutHead, patchDeviceRunnerCheckout } from '../runners/index.js';
+import { heartbeatBinaries, withDeviceBinaries } from './binary-report.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
@@ -40,6 +41,8 @@ const heartbeatBodySchema = z
     // heartbeat and take the box offline with it (ISS-1192).
     gate: z.unknown().optional(),
     pool: z.unknown().optional(),
+    // Read by `heartbeatBinaries`, for the reason `gate` is.
+    binaries: z.unknown().optional(),
   })
   .strict();
 async function ownedDevice(id: string, userId: string) {
@@ -69,7 +72,7 @@ deviceOwnerRoutes.get('/me/devices', zValidator('query', ownerDevicesQuery), asy
   // release AND the runner head on the default branch. The second is what catches
   // a release that was never cut, where every box reports the number the last one
   // carried and nothing reads as behind.
-  const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
+  const annotated = withDeviceBinaries(withDeviceGate(await annotateDeviceBuilds(rows)));
   // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
   return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
 });
@@ -183,10 +186,11 @@ deviceAuthRoutes.post(
     const wasOffline = device.status !== 'online';
 
     const gate = heartbeatGate(input.gate, device.id);
+    const binaries = heartbeatBinaries(input.binaries, device.id);
 
     const beat = await recordHeartbeat(
       device.id,
-      heartbeatPatch({ ...input, gate: gate.report }, new Date()),
+      heartbeatPatch({ ...input, gate: gate.report, binaries: binaries.report }, new Date()),
       input.pool,
     );
     if (!beat) throw unauth();
@@ -200,7 +204,13 @@ deviceAuthRoutes.post(
       });
     }
 
-    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack, ...beat.poolAck });
+    return c.json({
+      ok: true,
+      serverTime: new Date().toISOString(),
+      ...gate.ack,
+      ...binaries.ack,
+      ...beat.poolAck,
+    });
   },
 );
 

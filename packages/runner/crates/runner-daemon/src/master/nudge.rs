@@ -339,7 +339,7 @@ impl NudgePass<'_> {
             project_id: self.project_id,
             session_id: &session_id,
             issue_key: self.issue_key,
-            prompts: self.shared.activity.get(&session_id).map(|a| a.prompts),
+            turns: self.shared.activity.get(&session_id).map(|a| a.turns),
         };
         let process = master_pass::this_process();
         let activity = self.shared.activity;

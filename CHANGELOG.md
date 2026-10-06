@@ -14,10 +14,19 @@
   feedback; rescues skip issues a declared run holds; feedback waits name who can act (master,
   release approver); triage files carriers with complexity, category, priority.
 
+## [0.4.0-dev.52] - 2026-10-06
+
+Every master turn counts as a pass, and boxes report missing pane binaries
+
+### Fixed
+
+- **Every master turn is a pass, and a box names what its panes cannot run.** Task-notification
+  turns open passes; an outdated master holding only finished runs is replaced; missing pane
+  binaries reach the device screen; cuts emit one blank line.
+
 ## [0.4.0-dev.51] - 2026-10-06
 
 Breaking contract versions name their dependent issues and open re-plan tasks
-
 
 ### Fixed
 
@@ -28,7 +37,6 @@ Breaking contract versions name their dependent issues and open re-plan tasks
 ## [0.4.0-dev.50] - 2026-10-06
 
 Breakdowns carry contract waits; consumers adopt additive contract versions in one act
-
 
 ### Fixed
 
@@ -73,7 +81,6 @@ Masters stop being re-woken for held rows; waits name the right party
 
 Agent sessions read true, and pane agents run the daemon's own forge-runner
 
-
 ### Fixed
 
 - **Agent sessions read true.** The session screen shows each refusal as `CODE: sentence`;
@@ -85,7 +92,6 @@ Agent sessions read true, and pane agents run the daemon's own forge-runner
 ## [0.4.0-dev.47] - 2026-10-06
 
 Approved-only contract pins, instant claim visibility, and 36 wrappers inlined
-
 
 ### Fixed
 
@@ -100,7 +106,6 @@ Approved-only contract pins, instant claim visibility, and 36 wrappers inlined
 
 Ecosystem peers read approved contracts first; Agents run list refreshes live
 
-
 ### Fixed
 
 - **The Agents run list refreshes live when a job or run moves.** Every job frame names its
@@ -113,7 +118,6 @@ Ecosystem peers read approved contracts first; Agents run list refreshes live
 ## [0.4.0-dev.45] - 2026-10-06
 
 Dev panes run their own runner, upgraded checkouts convert, unreadable contracts refused
-
 
 ### Fixed
 
@@ -132,7 +136,6 @@ Dev panes run their own runner, upgraded checkouts convert, unreadable contracts
 
 Private agent chats are visible only to their owner and project admins
 
-
 ### Fixed
 
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
@@ -148,7 +151,6 @@ Private agent chats are visible only to their owner and project admins
 ## [0.4.0-dev.43] - 2026-10-06
 
 Private chat forks stay the owner's, runner fails refused turns, worktrees load orientation
-
 
 ### Fixed
 
@@ -191,7 +193,6 @@ Release numbers stay spent, head reads honour the repository, building runs read
 
 Outbox admits every event type; refusals name their code to every forge client
 
-
 ### Fixed
 
 - **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
@@ -205,7 +206,6 @@ Outbox admits every event type; refusals name their code to every forge client
 
 Documentation matches the code it cites, and dead comment prefixes are gone
 
-
 ### Changed
 
 - **Documentation matches the code it cites.** 707 dead `cm:` comment prefixes are gone,
@@ -215,7 +215,6 @@ Documentation matches the code it cites, and dead comment prefixes are gone
 ## [0.4.0-dev.39] - 2026-10-06
 
 Every lint rule blocks, transcripts are stored once, and realtime frames are typed
-
 
 ### Changed
 
@@ -237,7 +236,6 @@ Every lint rule blocks, transcripts are stored once, and realtime frames are typ
 
 Master state tells the truth, and an aborted release keeps its version
 
-
 ### Fixed
 
 - **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
@@ -251,7 +249,6 @@ Master state tells the truth, and an aborted release keeps its version
 ## [0.4.0-dev.37] - 2026-10-06
 
 Standing tells the truth, the UI goes flat, and bind provisions its checkout
-
 
 ### Fixed
 
@@ -269,7 +266,6 @@ Standing tells the truth, the UI goes flat, and bind provisions its checkout
 ## [0.4.0-dev.34] - 2026-10-05
 
 Simpler core and web, and projects that live only on a runner's checkout
-
 
 ### Changed
 
@@ -304,7 +300,6 @@ Simpler core and web, and projects that live only on a runner's checkout
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
 
-
 ### Changed
 
 - **Unknown query keys are refused; audit 4's dead paths go.** Bulk triage by signal has a
@@ -314,7 +309,6 @@ Dead routes and unread data removed; unknown API filters are refused, not ignore
 ## [0.4.0-dev.32] - 2026-10-05
 
 Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates
-
 
 ### Changed
 
@@ -330,7 +324,6 @@ Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates
 ## [0.4.0-dev.31] - 2026-10-05
 
 Onboarding hand-off, feedback loop, verified releases and cross-project contracts
-
 
 ### Added
 
@@ -363,7 +356,6 @@ Onboarding hand-off, feedback loop, verified releases and cross-project contract
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts
 
-
 ### Added
 
 - **A delivered requirement can be accepted or dropped.** The BA is notified on delivery; the accept
@@ -382,7 +374,6 @@ Workflow design health, requirement accept/drop, and job briefs as launch prompt
 ## [0.4.0-dev.29] - 2026-10-05
 
 Issues wait on contract versions, and job panes never stop for a person
-
 
 ### Changed
 
@@ -409,7 +400,6 @@ Issues wait on contract versions, and job panes never stop for a person
 
 Secrets rest digested or encrypted, and pool claims and release failures are repaired
 
-
 ### Changed
 
 - **Secrets rest digested or encrypted, and core refuses to boot without `PAT_PEPPER` (ISS-227).**
@@ -430,7 +420,6 @@ Secrets rest digested or encrypted, and pool claims and release failures are rep
 ## [0.4.0-dev.27] - 2026-10-05
 
 Forge sheds features nobody used, and an independent review's fixes land
-
 
 ### Changed
 
@@ -530,7 +519,6 @@ Forge sheds features nobody used, and an independent review's fixes land
 
 Refusals answer the status that says what to do, and approving takes a named grant
 
-
 ### Changed
 
 - **A refused request answers the status that says what to do (ISS-186):** 403 for a missing
@@ -564,7 +552,6 @@ Refusals answer the status that says what to do, and approving takes a named gra
 ## [0.4.0-dev.6] - 2026-10-04
 
 One approval permission, nine MCP tools, and a durable outbox behind every reaction
-
 
 ### Added
 
@@ -704,7 +691,6 @@ One approval permission, nine MCP tools, and a durable outbox behind every react
 
 One adapter per external system, and a system graph read from the server
 
-
 ### Changed
 
 - **Mail, sign-in, LLM, embeddings, outbound webhooks, GitHub releases and a deployed app's runtime
@@ -719,7 +705,6 @@ One adapter per external system, and a system graph read from the server
 
 Agents / Runs pages, and requirements that pin the contracts they build on
 
-
 ### Added
 
 - **Development > Agents / Runs lists every run, grouped by what needs attention (ISS-111).** The
@@ -732,7 +717,6 @@ Agents / Runs pages, and requirements that pin the contracts they build on
 ## [0.4.0-dev.2] - 2026-10-04
 
 Mockups on requirements, feedback and issues; automation and run states read clearly
-
 
 ### Added
 
@@ -748,7 +732,6 @@ Mockups on requirements, feedback and issues; automation and run states read cle
 ## [0.4.0-dev.1] - 2026-10-04
 
 Requirements, feedback and suggestions get homes; issue statuses say who acts next
-
 
 ### Security
 

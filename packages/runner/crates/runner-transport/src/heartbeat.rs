@@ -24,6 +24,8 @@ struct HeartbeatResponse {
     gate: Option<GateAck>,
     #[serde(default)]
     pool: Option<GateAck>,
+    #[serde(default)]
+    binaries: Option<GateAck>,
 }
 
 /// What core says it did with the gate condition. A refusal is carried back
@@ -59,6 +61,10 @@ pub struct Conditions {
     /// even an empty one, is the box's whole picture. A record that exists and
     /// cannot be read is no picture, so it is `None`, never an empty list.
     pub pool: Option<Vec<runner_proto::pool_read::Condition>>,
+    /// Every binary a pane needs that this box cannot resolve now. `None` sends
+    /// no `binaries` key, which core reads as "changes nothing"; a list, even an
+    /// empty one, is the box's whole picture.
+    pub binaries: Option<Vec<runner_proto::binaries::Missing>>,
 }
 
 /// Core's reasons for refusing either condition while taking the heartbeat.
@@ -66,6 +72,7 @@ pub struct Conditions {
 pub struct Refused {
     pub gate: Option<String>,
     pub pool: Option<String>,
+    pub binaries: Option<String>,
 }
 
 pub async fn beat(client: &CoreClient, conditions: &Conditions) -> Result<Refused> {
@@ -99,6 +106,7 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
         Refused {
             gate: gate_refusal(parsed.gate),
             pool: gate_refusal(parsed.pool),
+            binaries: gate_refusal(parsed.binaries),
         },
     ))
 }
@@ -134,10 +142,58 @@ pub(crate) fn heartbeat_body(
     if let Some(pool) = &conditions.pool {
         body["pool"] = pool_body(pool);
     }
+    if let Some(missing) = &conditions.binaries {
+        body["binaries"] = serde_json::json!({ "missing": missing });
+    }
     body
 }
 
 /// The pool object exactly as it rides on the heartbeat body.
 pub fn pool_body(pool: &[runner_proto::pool_read::Condition]) -> serde_json::Value {
     serde_json::json!({ "projects": pool })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_binary_the_box_cannot_resolve_rides_on_the_beat() {
+        let conditions = Conditions {
+            binaries: Some(vec![runner_proto::binaries::Missing::new(
+                "node",
+                "no `node` resolves".into(),
+            )]),
+            ..Conditions::default()
+        };
+        let body = heartbeat_body("1.0.0", None, &conditions);
+        assert_eq!(
+            body["binaries"],
+            serde_json::json!({ "missing": [{ "name": "node", "detail": "no `node` resolves" }] })
+        );
+        let clear = Conditions {
+            binaries: Some(Vec::new()),
+            ..Conditions::default()
+        };
+        assert_eq!(
+            heartbeat_body("1.0.0", None, &clear)["binaries"],
+            serde_json::json!({ "missing": [] }),
+            "a box that resolves everything sent no picture, so a fixed box kept its old report"
+        );
+        assert!(heartbeat_body("1.0.0", None, &Conditions::default())
+            .get("binaries")
+            .is_none());
+    }
+
+    #[test]
+    fn core_refusing_the_binary_report_is_carried_back() {
+        let parsed: HeartbeatResponse = serde_json::from_value(serde_json::json!({
+            "binaries": { "accepted": false, "reason": "binaries.missing: too many" }
+        }))
+        .unwrap();
+        assert_eq!(
+            gate_refusal(parsed.binaries).as_deref(),
+            Some("binaries.missing: too many")
+        );
+    }
 }

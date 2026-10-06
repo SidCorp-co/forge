@@ -623,6 +623,12 @@ fn warn_refused(refused: &heartbeat::Refused) {
              cannot read is reaching nobody but this box's own status and log"
         );
     }
+    if let Some(r) = &refused.binaries {
+        tracing::warn!(
+            "[binaries] core refused this box's missing-binary report: {r} — which pane binaries \
+             this box cannot resolve is reaching nobody but this box's own log"
+        );
+    }
 }
 
 /// Say once, at a level somebody watches, that this box's declaration gate has
@@ -704,17 +710,24 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
     runner_workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
 }
 
-/// Both heartbeat conditions off the files beside `config.toml`; nothing where
-/// there is no such directory to read.
+/// The gate and pool conditions off the files beside `config.toml`, none where
+/// there is no such directory to read, and the pane binaries this box cannot
+/// resolve, read every beat: a binary installed or removed since the last one
+/// reaches core within a beat, not at the next pane start.
 fn heartbeat_conditions(
     config_dir: Option<&std::path::Path>,
     now_ms: i64,
 ) -> heartbeat::Conditions {
+    let binaries = Some(runner_workspace::terminal::missing_binaries());
     let Some(dir) = config_dir else {
-        return heartbeat::Conditions::default();
+        return heartbeat::Conditions {
+            binaries,
+            ..heartbeat::Conditions::default()
+        };
     };
     heartbeat::Conditions {
         gate: Some(degraded::report(dir, now_ms).degraded),
         pool: pool_reads::report(dir, now_ms).ok(),
+        binaries,
     }
 }

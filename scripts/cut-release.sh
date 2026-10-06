@@ -98,16 +98,7 @@ for f in "${VERSION_JSON_FILES[@]}"; do mv "$STAGE/$f" "$f"; done
 # The new `[Unreleased]` is flat on purpose: `###` headings belong to a cut
 # section, and check-release-record fails a heading repeated inside one.
 DATE=$(date -u +%F)
-python3 - "$RECORD" "$NEW" "$DATE" "$HEADLINE" <<'PY'
-import sys
-path, ver, date, headline = sys.argv[1:5]
-src = open(path, encoding='utf-8').read()
-marker = '## [Unreleased]'
-i = src.index(marker)
-after = src[i + len(marker):]
-new = (f'{marker}\n\n## [{ver}] - {date}\n\n{headline}\n' + after)
-open(path, 'w', encoding='utf-8').write(src[:i] + new)
-PY
+node scripts/lib/promote-unreleased.mjs "$RECORD" "$NEW" "$DATE" "$HEADLINE" || die "could not promote $UNRELEASED in $RECORD"
 
 # ---- step 4: commit and tag -----------------------------------------------
 git add -- "${VERSION_JSON_FILES[@]}" "$RECORD"
