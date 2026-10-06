@@ -28,7 +28,7 @@ import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import type { FeedbackActor, Row } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
-import { feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
+import { feedbackStandingOf, type PhaseFacts, phaseOf, revisionStageOf } from './standing.js';
 import { targetView } from './target-view.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
@@ -39,7 +39,16 @@ export interface Linked {
   releases: Map<string, string>;
   workflows: Map<string, { flow: string; title: string | null }>;
   providers: Map<string, string>;
-  suggestions: Map<string, { status: string; revisionLive: boolean; delivered: boolean }>;
+  suggestions: Map<
+    string,
+    {
+      status: string;
+      revisionLive: boolean;
+      delivered: boolean;
+      requirement: string | null;
+      revision: number | null;
+    }
+  >;
   roots: Map<string, Row>;
   names: Map<string, string>;
 }
@@ -101,13 +110,16 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
               id: suggestions.id,
               status: suggestions.status,
               revisionState: requirementRevisions.state,
+              revision: requirementRevisions.revision,
               requirementId: requirementRevisions.requirementId,
+              requirementSeq: requirements.reqSeq,
             })
             .from(suggestions)
             .leftJoin(
               requirementRevisions,
               eq(requirementRevisions.fromSuggestionId, suggestions.id),
             )
+            .leftJoin(requirements, eq(requirements.id, requirementRevisions.requirementId))
             .where(inArray(suggestions.id, suggestionIds))
         : [],
       rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
@@ -161,6 +173,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           status: s.status,
           revisionLive: s.revisionState === 'current' || s.revisionState === 'superseded',
           delivered: s.requirementId !== null && delivered.has(s.requirementId),
+          requirement: s.requirementSeq === null ? null : requirementKey(s.requirementSeq),
+          revision: s.revision,
         },
       ]),
     ),
@@ -243,6 +257,9 @@ export function summaryOf(
     route?.key ?? null,
     reporter,
     viewer.userId === r.reportedBy,
+    r.route === 'revision' && r.routedSuggestionId
+      ? revisionStageOf(l.suggestions.get(r.routedSuggestionId) ?? null)
+      : null,
   );
   return {
     id: r.id,

@@ -25,6 +25,7 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import { buildsWorkflowOf, fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
 import type { IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
+import { withheldAmong } from './standing-withheld-read.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 
 /** The one issue the detail page reads, whichever door it was resolved through. */
@@ -141,6 +142,8 @@ issueProjectRoutes.get(
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     const creatorMap = await hydrateCreatorsForIssues(serialized);
+    // a takeable row a dispatch gate holds says which and why, null where none does
+    const withheld = await withheldAmong(projectId, serialized);
 
     if (!q.withAgentSessions) {
       return c.json(
@@ -150,6 +153,7 @@ issueProjectRoutes.get(
             ...r,
             ...creatorMap.get(r.id),
             pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status as IssueStatus),
+            withheld: withheld.get(r.id) ?? null,
           })),
           total,
           q,
@@ -169,6 +173,7 @@ issueProjectRoutes.get(
             agentSessions: bucket?.agentSessions ?? [],
             agentStatus: bucket?.agentStatus ?? null,
             pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status as IssueStatus),
+            withheld: withheld.get(r.id) ?? null,
           };
         }),
         total,

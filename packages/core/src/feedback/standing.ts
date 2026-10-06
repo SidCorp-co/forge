@@ -58,6 +58,34 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
   }
 }
 
+/**
+ * Which act a revision-routed item's revision owes next: a person deciding the proposal, a person
+ * making the accepted revision current, or the work that delivers the current revision.
+ */
+export type RevisionStage =
+  | { stage: 'proposal' }
+  | { stage: 'adoption' | 'delivery'; revision: string | null; requirement: string | null };
+
+/** The stage read off the routed suggestion and its revision; null where none was read. */
+export function revisionStageOf(
+  s: {
+    status: string;
+    revisionLive: boolean;
+    delivered: boolean;
+    requirement: string | null;
+    revision: number | null;
+  } | null,
+): RevisionStage | null {
+  if (!s) return null;
+  if (s.status !== 'accepted') return { stage: 'proposal' };
+  const revision = s.requirement && s.revision !== null ? `${s.requirement} r${s.revision}` : null;
+  return {
+    stage: s.revisionLive ? 'delivery' : 'adoption',
+    revision,
+    requirement: s.requirement,
+  };
+}
+
 const wait = (
   kind: FeedbackWaitingKind,
   who: string,
@@ -87,6 +115,7 @@ function waitingOf(
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
+  revision: RevisionStage | null,
 ): FeedbackWaitingOn {
   switch (phase) {
     case 'new':
@@ -110,13 +139,7 @@ function waitingOf(
             ref: carrier,
           },
         );
-      if (route === 'revision')
-        return wait(
-          'person',
-          'The revision proposal',
-          'be accepted and delivered',
-          'planned: a requirement revision carries it',
-        );
+      if (route === 'revision') return revisionWait(revision);
       if (route === 'new_requirement')
         return wait(
           'issue',
@@ -141,15 +164,45 @@ function waitingOf(
   }
 }
 
+// a revision-routed item waits on a person only while a person owes its revision an act; once the
+// revision is current, what remains is the work that delivers it
+function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
+  if (!revision || revision.stage === 'proposal') {
+    return wait(
+      'person',
+      'The revision proposal',
+      'be accepted',
+      'planned: a requirement revision proposal carries it, and a person decides it',
+    );
+  }
+  if (revision.stage === 'adoption') {
+    return wait(
+      'person',
+      revision.revision ?? 'The accepted revision',
+      'be made current',
+      'planned: the proposal was accepted, and a person makes its revision current',
+      { ref: revision.requirement },
+    );
+  }
+  return wait(
+    'issue',
+    revision.revision ?? 'The current revision',
+    'be delivered',
+    'planned: its requirement revision is current, and the work delivering it carries it',
+    { ref: revision.requirement },
+  );
+}
+
 export function feedbackStandingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
   viewerIsReporter: boolean,
+  revision: RevisionStage | null,
 ): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
   const attentionGroup = groupOf(phase, viewerIsReporter);
-  const w = waitingOf(phase, route, carrier, reporter);
+  const w = waitingOf(phase, route, carrier, reporter, revision);
   return {
     attentionGroup,
     waitingOn: attentionGroup === 'needs_you' ? { ...w, kind: 'you', who: 'You' } : w,

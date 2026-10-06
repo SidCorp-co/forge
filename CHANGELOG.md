@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **Reads around a wait name the right party.** Issue list rows say which gate withholds them,
+  contract versions carry their own decision, and revision-routed feedback waits on delivery, not a
+  person, once its revision is current.
 - **A release no longer reads lost when its master pane is replaced.** A pool job's session opens
   as its own root, not under the master it was held by, so ending that master leaves the running
   release untouched.

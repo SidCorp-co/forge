@@ -6,7 +6,7 @@
  */
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import { ISSUE_TERMINAL_STATUSES, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -26,10 +26,9 @@ import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { isRefusal } from '../lib/refusal.js';
 import { holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
-import { assertContractWaitsSettledForIssue, contractWaitUnsettledSql } from './contract-waits.js';
+import { contractWaitUnsettledSql } from './contract-waits.js';
 import { designHoldPhrase } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -37,12 +36,10 @@ import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
   approvalRequired,
-  assertDesignApprovedForIssue,
   changedTracedOf,
   designUnapprovedSql,
   handoffContextsOf,
   holdsOpenHumanQuestion,
-  policyGapsOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
 import {
@@ -59,6 +56,7 @@ import {
   type RequirementRaw,
   requirementsOf,
 } from './standing-facts-read.js';
+import { withheldOf } from './standing-withheld-read.js';
 import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
@@ -290,50 +288,6 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     withheld: f.withheld.get(r.id) ?? null,
     now: f.now,
   };
-}
-
-const gateDetail = async (ask: () => Promise<void>): Promise<string | null> => {
-  try {
-    await ask();
-    return null;
-  } catch (err) {
-    if (isRefusal(err)) return err.refusals.map((r) => r.detail).join(' ');
-    throw err;
-  }
-};
-
-/**
- * Why the admissible list withholds each takeable row, asked of the gates that withhold it (the
- * policy, the design gate, the contract-wait gate), first that holds; a row that is not withheld is
- * absent. A gate is asked again only for the rows its predicate already held, so a page asks none.
- */
-async function withheldOf(
-  projectId: string,
-  raws: readonly IssueRowRaw[],
-): Promise<Map<string, IssueWithheld>> {
-  const out = new Map<string, IssueWithheld>();
-  const takeable = raws.filter((r) => TAKEABLE_STATUSES.includes(r.status));
-  if (takeable.length === 0) return out;
-  const gapOf = await policyGapsOf(projectId);
-  for (const r of takeable) {
-    const gap = gapOf(r.status);
-    if (gap) {
-      out.set(r.id, gap);
-      continue;
-    }
-    if (r.design_unapproved) {
-      const detail = await gateDetail(() => assertDesignApprovedForIssue(projectId, r.id));
-      if (detail !== null) {
-        out.set(r.id, { code: 'WORKFLOW_DESIGN_NOT_APPROVED', detail });
-        continue;
-      }
-    }
-    if (r.contract_unsettled) {
-      const detail = await gateDetail(() => assertContractWaitsSettledForIssue(projectId, r.id));
-      if (detail !== null) out.set(r.id, { code: 'CONTRACT_WAIT_UNSETTLED', detail });
-    }
-  }
-  return out;
 }
 
 async function standingRows(

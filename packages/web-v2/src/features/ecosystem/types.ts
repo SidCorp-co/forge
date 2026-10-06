@@ -141,7 +141,8 @@ export interface ApiPagePublication {
   artifact: "none" | "upload";
   lifecycle: string;
   ecosystems: string[];
-  versions: string[];
+  /** Each recorded version beside its decision; a party reads approved versions only. */
+  versions: { version: string; approval: string }[];
   consumers: { project?: NamedProject; ecosystem: string; builtAgainst: string }[];
 }
 

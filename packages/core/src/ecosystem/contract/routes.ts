@@ -92,10 +92,11 @@ contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c)
   if (reader.access === 'party') {
     return c.json({ reader, versions: versions.map(versionForParty), current });
   }
+  // each row carries its own decision: a sibling map keyed by version read as no decision at all to
+  // a reader walking the rows
   return c.json({
-    versions: versions.map((v) => v.document),
+    versions: versions.map((v) => ({ ...v.document, approval: approvalView(v) })),
     current,
-    approvals: Object.fromEntries(versions.map((v) => [v.version, approvalView(v)])),
   });
 });
 

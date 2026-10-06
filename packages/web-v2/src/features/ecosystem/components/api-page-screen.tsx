@@ -28,7 +28,11 @@ function PublishesSection({ page, slug, ecoName }: { page: ApiPage; slug: string
               {p.summary ? <p className="fg-caption mt-1 break-words">{p.summary}</p> : null}
               <p className="fg-caption mt-1 break-words">
                 in {p.ecosystems.map((e) => ecoName.get(e) ?? e).join(", ")} · versions{" "}
-                {p.versions.length > 0 ? p.versions.join(", ") : "none recorded"}
+                {p.versions.length > 0
+                  ? p.versions
+                      .map((v) => (v.approval === "approved" ? v.version : `${v.version} (${v.approval})`))
+                      .join(", ")
+                  : "none recorded"}
               </p>
             </li>
           ))}
