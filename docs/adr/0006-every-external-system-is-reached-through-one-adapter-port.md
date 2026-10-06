@@ -76,7 +76,8 @@ operational is a data-policy decision, and the type would then demand a project 
 where a provider may be *named*; it now also decides where core may *call out*: a global `fetch`
 (called, or handed on as a value) or an import of a package in `egress.vendorSdks`, in any core file
 outside `packages/core/src/integrations/`, is refused by file and line. Its configuration is
-`.forge/conformance.json` → `checkers["provider-literals"].egress`, every exception carries the
+`.forge/conformance.json` → `checkers["provider-literals"].egress` (its `adapters`, `vendorSdks` and
+`exceptions`), every exception carries the
 sentence that justifies it, and an exception with no reason is refused.
 
 ### The named exceptions

@@ -45,8 +45,8 @@ is the defect.
 **A pull request is gated before it lands; a direct push to `main`, after.**
 
 **`pnpm test:changed` is the loop** — it selects by import graph and says so. What makes a run
-proof is where it ran. On `dev` no TS or JS test file is tracked until ISS-172 restores them, so it
-selects nothing there; the Rust tests remain.
+proof is where it ran. On `dev` ISS-172 removed the TS and JS suites; only the core tests written
+since are tracked, so a change outside them reaches no test there. The Rust tests remain.
 
 **The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.
 `pnpm tc:changed` typechecks the packages your branch touched, and every package importing one,

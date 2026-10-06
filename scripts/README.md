@@ -94,7 +94,9 @@ its debt is frozen and which direction improves it — `baseline: {path, keyBy, 
 `improves` is `down` (a per-key number may only fall), `shrink` (a set may only lose members) or
 `tighten` (a status may only get stricter). The direction lives in the manifest, not in the
 baseline file, because `--update-baseline` rewrites those files and a rule a re-freeze can silently
-drop is not a rule.
+drop is not a rule. A baseline whose checker's scopes can grow also names that checker in
+`scopesFrom` (`form` names `size-budget`): a scope the checker did not measure at the base revision
+is that scope's first freeze, not a total that rose (`lib/baseline-ratchet.mjs:ratchetFault`).
 
 The manifest also declares a `profile` — the shape the whole repo claims, never the tools it uses:
 `baseline` one axis measures · `standard` two axes block and both meta-checks are present ·
@@ -509,7 +511,8 @@ length and its longest function), so a reflow or a moved function is not a viola
 **A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
 already at its number trips this, and re-freezing above it is then refused by `conformance-status`:
 the form axis declares `improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs`
-faults on ANY per-key rise and on any per-area total rise. The way through is to make the file come
+faults on ANY per-key rise and on any per-area total rise, except the total of a scope
+`size-budget` did not measure at the base revision, which is that scope's first freeze. The way through is to make the file come
 in under the number it already holds. `--update-baseline` is for a baseline moving DOWN, which is
 the only direction the manifest allows.
 

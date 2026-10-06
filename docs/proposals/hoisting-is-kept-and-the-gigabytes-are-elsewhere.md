@@ -41,7 +41,8 @@ Two things will re-hide it for the next person:
   nothing. Re-measure with `--force`, or with `TURBO_CACHE_DIR` pointed somewhere empty.
 - **A scratch directory with a very large parent.** Run from
   `/home/dev/.cache/forge-tmp/<...>/`, `biome` stopped applying `scripts/biome.json` and
-  `form scripts lint` and `form lint-budget` both went red on formatting, under *both* linkers.
+  `form scripts lint` and the web-v2 biome check (then `form lint-budget`, since deleted) both went
+  red on formatting, under *both* linkers.
   The same tree at `/home/dev/forge-iss1287-probe` is green. That is an artefact of the probe's
   location and not of this repository; it is recorded here only so the next person does not read
   it as a finding.
@@ -160,8 +161,8 @@ hoisting put them in. ISS-207 declared each in the manifest of the code that use
 
 | reached from | the package it needs | declared by |
 |---|---|---|
-| `scripts/verify.mjs`, in its `pnpm exec biome check scripts` check | `@biomejs/biome` | root |
-| `scripts/check-lint-budget.mjs`, running `npx biome` inside `packages/web-v2` | `@biomejs/biome` | `web-v2` |
+| `scripts/lib/verify-checks.mjs`, in its `pnpm exec biome check scripts` check | `@biomejs/biome` | root |
+| `scripts/lib/verify-checks.mjs`, running `pnpm --filter web-v2 lint` (`biome check src`) | `@biomejs/biome` | `web-v2` |
 | `scripts/check-integration-declarations.mjs`, spawning `node_modules/.bin/tsx` | `tsx` | root |
 | `.forge/archmap/src/providers/ts.mjs`, walking the root for its bin | `dependency-cruiser` | root |
 | `.arch-tsconfig.json`, mapping `hono/*` to `node_modules/hono/dist/*` | `hono` | `@forge/core` only |

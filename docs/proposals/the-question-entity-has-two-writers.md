@@ -1,4 +1,4 @@
-# The question entity has two writers, and only one of them creates a question
+# The question entity has a writer core mines from a comment, and no writer tells an open screen
 
 **Removed when:** an ask, answer or void publishes a realtime event open screens refetch on and
 `blocked.rs`'s `park_for_human` is wired or deleted, and forge-plugin ISS-2317 has shipped `forge
@@ -14,11 +14,11 @@ way it was found was an owner staring at an empty panel for nineteen hours.
 The entity, its doors and everything that reads it:
 
 - `packages/core/src/questions/` — `write.ts` (`insertAskedQuestion`, the one path every door's
-  question is written through; `askQuestion`, `askParkQuestion`, `answerQuestion`, `voidQuestion`),
-  `issue-coupling.ts` (the open questions on an issue, and the terminal refusal or void that rides
-  in the issue transition's transaction), `read.ts` (`askAs`, `projectQuestionsFor`,
-  `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`, `screen.ts`,
-  `origin.ts`, `protections.ts`, `batch-item.ts`
+  question is written through; `askQuestion`, `askParkQuestion`), `answer.ts` (`answerQuestion`),
+  `issue-coupling.ts` (the open questions on an issue, and the terminal refusal or the void a move's
+  `voidQuestions` sentence asks for, in the issue transition's transaction), `read.ts` (`askAs`,
+  `projectQuestionsFor`, `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`,
+  `screen.ts`, `origin.ts`, `ports.ts`
 - `POST /api/questions` on a personal access token, in `questions/routes.ts`, through `askAs`
 - `POST /api/devices/me/questions` and `GET /me/questions/:questionId?runId=` on a device pairing,
   in `devices/pool-routes.ts`
@@ -66,11 +66,14 @@ issue standing) and the row chip each read status OR marker.
 | `mintParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on every agent or device park to `needs_info` | it runs inside that park |
 | `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` | yes | no |
 | `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing | no |
-| `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/` | **no** — it writes a `forge-record: question` comment and nothing else | no |
+| `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/`, mined in core by `mintRecordQuestion` (`packages/core/src/issues/record-events/question-record.ts`) | yes, since FF-2 — when an agent writes the comment, on an issue that is not terminal, addressed to someone other than `agent`, `run`, `master` or `self`; the row is keyed by the comment's id | no |
 
-The last is the half this repo cannot gate: its record reads correctly to a human in the thread,
-and no question row carries the options or the need it wrote. That, and the CLI having no verb that
-reaches `POST /api/questions`, are forge-plugin's to fix and are reported there.
+The last is the half this repo cannot gate: the plugin writes a `forge-record: question` comment,
+and core reads the prompt, the readings and the need back out of that comment's prose and fields
+to mint the row. Nothing pins the comment's shape between the two repositories, so a record the
+plugin changes is mined into a weaker question, or into none, without either side failing. That,
+and the CLI having no verb that reaches `POST /api/questions`, are forge-plugin's to fix and are
+reported there.
 
 ## What binds the halves that ARE here
 
@@ -99,5 +102,5 @@ with the runner's tests (ISS-216), and core's TypeScript tests are deleted on de
 |---|---|
 | A close can now be refused for a question | An automated close (a release batch, a reconciler) that meets an open question fails that issue by name instead of closing it; the release path already records the failure and recovers the stranded row. The price is that a moot question must be answered or voided before the work reads done |
 | `voidQuestions` lets whoever closes void a person's question | Voiding has no REST door: a question is voided only by `voidQuestions` on an issue move, feedback `closeClarification` and a questionnaire supersede, and an agent voids only inside a close it makes, with a sentence on the record. An actor entitled to close the issue is trusted to say the question died with it |
-| Four routes to one entity | A reader asking "how did this row get here?" has four answers to check. The pinned wire file has to be edited whenever the device body changes |
-| Writing the split down does not close it | This document has to be rewritten the day `forge record question` creates the entity or the device door parks; until then it is a second place the coupling is described |
+| Four routes to one entity | A reader asking "how did this row get here?" has four answers to check, and one of them parses a comment's prose, so its row is only as good as the record the plugin wrote |
+| Writing the split down does not close it | This document has to be rewritten again the day the plugin writes the row itself instead of a comment core mines, or the device door parks; until then it is a second place the coupling is described |

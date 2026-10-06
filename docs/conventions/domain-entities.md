@@ -650,4 +650,4 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | The semantic rules run on demand, not before a push | New code can break a table-writer, route-query or refusal rule and land; the break shows only when the orchestrator or QA next runs the script |
 | Read models SELECT owners' tables they declare | An owner's column change can break a read model's SQL that no owner code calls, so the `reads` list is where an owner looks before it changes a table |
 | One input-builder per fact, shared with the gate | The builder answers what both callers need, so the read model's page query and the gate's single-row check run the same statement shape, and the gate may read a column it does not use |
-| A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |
+| Import rules with nothing frozen | A violation fails the run the moment it appears, a file move that surfaces one included; there is no baseline to re-freeze it into, so it is fixed before the change lands |

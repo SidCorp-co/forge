@@ -7,6 +7,8 @@ One file per decision: what was decided, the context it was decided in, and what
 - **An ADR is immutable.** A decision that changes gets a **new** ADR superseding the old one by
   number; the old one keeps standing and says which ADR replaced it. Editing a past decision to
   match the present destroys the only record of why the present was chosen.
+- **A decision replaced only in part** keeps its status and names the replacement in its header
+  (`Superseded in part by`), and the new ADR names what it supersedes in its own `Supersedes`.
 - **Numbered `NNNN-kebab-title.md`**, allocated in order, never reused.
 - **A rule belongs in the document that owns it** — [`CONTRIBUTING.md`](../../CONTRIBUTING.md),
   [`GOVERNANCE.md`](../../GOVERNANCE.md), [`CLAUDE.md`](../../CLAUDE.md) or

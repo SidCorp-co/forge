@@ -2,8 +2,8 @@
 
 `/guides` and `/guides/<slug>` in `packages/web-v2` are Forge's public documentation: one set of
 pages from two homes, behind two doors named for the reader. Both homes are unauthenticated —
-`guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its `/orgs`
-and `/projects` sub-trees, and the help pages are a static module bundled into the web build — and the routes sit
+`guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its
+`/projects` sub-tree, and the help pages are a static module bundled into the web build — and the routes sit
 outside the `(workspace)` group, whose layout redirects a signed-out visitor to `/login`.
 
 | Home | Audience | Read at |
@@ -18,8 +18,8 @@ These are two of Forge's four documentation homes; which page belongs in which i
 list is what the search, the doors and the reader all read. No guide prose is stored in `web-v2`;
 the agent pages are fetched at request time, every body included (`fetchGuideCorpus` in
 `packages/web-v2/src/features/guides/api.ts`) so the search reaches their words and not only their titles.
-Each guide carries the `audience` core declared for it, which `fromGuide` reads and refuses where it
-is not `agent`.
+Each guide carries the `audience` core declared for it, which `coreAudience` (called by `fromGuide`)
+reads and refuses where it is missing or not `agent`.
 
 The addresses: `/guides` is the landing — the sentence saying the corpus is one, the search, the
 two doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help page, the same

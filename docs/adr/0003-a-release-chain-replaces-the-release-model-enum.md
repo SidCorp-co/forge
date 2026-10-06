@@ -19,8 +19,9 @@ writer produces). A project with no second environment simply writes no
 `promote` row. The ledger does not run a different algorithm; the config layer above it claims two
 exist.
 
+<!-- doc-citation: unchecked `packages/core/src/db/release-axes.ts` — this ADR is superseded by 0004, and ISS-16 dropped these columns and their checks; the citation records the tree this decision was taken against -->
 **Two CHECK constraints exist only to stop the columns contradicting each other.**
-`packages/core/src/db/release-axes.ts` carries `release_model <> 'promote' OR live_branch IS NOT NULL`
+`packages/core/src/db/release-axes.ts` carried `release_model <> 'promote' OR live_branch IS NOT NULL`
 and `(release_model = 'promote') = (release_strategy IS NOT NULL)`, and the project write door
 answers `LIVE_BRANCH_REQUIRED` for the same reason. A rule whose whole job is to keep two fields agreeing is a rule about a fact stored
 twice.

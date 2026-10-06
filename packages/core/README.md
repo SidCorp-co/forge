@@ -4,7 +4,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 
 ## Prerequisites
 
-- **Node** `>=20` (enforced via `engines.node`)
+- **Node** `>=22.12` (enforced via `engines.node`)
 - **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace)
 - **Postgres 17** — the compose stack at the repo root gives you one preconfigured (`forge` DB, user `forge`, password `forge_secret`)
 

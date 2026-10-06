@@ -68,8 +68,9 @@ agent access token holding the permission approves too).
   records its credential and delegation on the `kernel_transitions` row.
 - **The two person-or-master knobs are retired.** A stored document carrying
   `workflows.designApprover` or `contracts.approver` still reads; a write naming either is refused
-  `APPROVER_POLICY_RETIRED`, and nothing reads them (amnesty ISS-159 in
-  `packages/core/src/project-config/schema.ts`, until no stored document carries them).
+  `APPROVER_POLICY_RETIRED` (`packages/core/src/project-config/rules.ts`), and nothing reads them
+  (amnesty ISS-159 in `packages/core/src/project-config/schema.ts`, until no stored document carries
+  them).
 
 ## Consequences
 

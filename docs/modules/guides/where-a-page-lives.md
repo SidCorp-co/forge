@@ -12,7 +12,7 @@ without a release. How the code works is not shipped at all.
 |---|---|---|---|---|---|
 | `packages/web-v2/content/help/` | how to use Forge, on its screens | `user` | the web build | each page's front-matter | `readPage` and `readAudience` in `packages/web-v2/scripts/help-frontmatter.mjs`, at `pnpm gen:help` |
 | `packages/core/src/guides/registry.ts`, served at `/api/guides` | a rule of the system agents are held to | `agent` | core | `audience` on each `ForgeGuide` in `packages/core/src/guides/types.ts` | the type |
-| the `integration_guides` table | an external service, per organisation | `agent` | the database | the home: `resolveGuide` and `resolveGuideIndex` in `packages/core/src/guides/integration-guides.ts` set it on every row they return | — |
+| the `integration_guides` table | an external service, per organisation | `agent` | the database | the home: `resolveGuide` in `packages/core/src/guides/integration-guides.ts` sets it on every row it returns | — |
 | `docs/` | how the code works | none | never | — | — |
 
 ## Why each home is where it is
@@ -24,9 +24,12 @@ without a release. How the code works is not shipped at all.
   silently diverge; it has no project, so there is nothing to gate and no membership bypass to bolt
   onto project knowledge. Runtime-editable, per-project guidance already exists one tier down, as
   project knowledge entries (`/api/projects/:id/knowledge`), and the registry does not duplicate it.
-- **An external service changes on someone else's schedule.** A guide about it is corrected by an
-  organisation admin without waiting for a Forge release. It shares the registry's slug space as
-  `integration-<provider>`, and a row shadows the code default of the same slug.
+- **An external service changes on someone else's schedule.** A guide about it is a row per
+  organisation, so it can change without a Forge release. It shares the registry's slug space as
+  `integration-<provider>`, and a row shadows the code default of the same slug when a project
+  member reads it (`GET /api/projects/:id/guides/:slug`). No route writes the table: the
+  organisation write routes went with cleanup round 2 (`0e66a2884`), so a row is written in the
+  database itself.
 - **The code describes itself.** `docs/` is read in the repository by contributors, operators and
   coding sessions, and is never served to anyone.
 
@@ -41,8 +44,9 @@ the field means every page that is served.
 Each served home admits only one of the two. Core's two homes admit `agent` alone, and a help
 page may not be `agent`, for the same reason: the agent door promises every page behind it as plain
 markdown at `/api/guides/<slug>.md`, which only core can keep. The public documentation reads the
-value core declared for each guide, in `fromGuide` in
-`packages/web-v2/src/features/guides/corpus.ts`, and refuses one it cannot place.
+value core declared for each guide, in `coreAudience` (called by `fromGuide`) in
+`packages/web-v2/src/features/guides/corpus.ts`, and refuses one with no `audience` or one it cannot
+place.
 
 ## How each audience's pages read
 

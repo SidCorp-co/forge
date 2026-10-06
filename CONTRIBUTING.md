@@ -34,8 +34,10 @@ ever disagree.
 ## What gets a change merged
 
 **`ci-passed` is the one required check, and CI is the gate — not your laptop.** A green laptop and
-a red `ci-passed` means the change does not land. `strict: true`, so your branch must be current
-with the base before it merges.
+a red `ci-passed` means the change does not land. Branch protection does not require your branch to
+be current with the base (`strict: false`, read from the `main` protection on 2026-10-06), so
+`ci-passed` judges your branch as it stands, not merged onto the latest base: merge the base in
+before you push when it has moved.
 
 **Green covers the jobs that ran.** A skipped job passes `ci-passed`; the `changes` filter decides
 which run. Read which ran, not the aggregate alone — a suite the filter should have selected and

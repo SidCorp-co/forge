@@ -1,6 +1,6 @@
 # 0002 — The agent cuts the release tag; no code path does
 
-**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md), which answers its last consequence
+**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md), which answers its last consequence; [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md), which replaces the burn rule it relies on
 
 ## Context
 
