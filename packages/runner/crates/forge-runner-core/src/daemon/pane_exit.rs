@@ -206,26 +206,37 @@ fn elsewhere_in(text: &str) -> Option<(String, Option<String>)> {
     Some((id.to_string(), short))
 }
 
-/// The folder the trust dialog in `text` names, where `text` ends on that
-/// dialog: its question, one of its options after the last question, and its
-/// footer as the final words. Output that goes on past the footer is a session
-/// that met the dialog and carried on, so it is not this exit.
-fn untrusted_in(text: &str) -> Option<Option<String>> {
-    let at = TRUST_QUESTIONS.iter().filter_map(|q| text.rfind(q)).max()?;
-    let rest = &text[at..];
-    if !TRUST_OPTIONS.iter().any(|o| rest.contains(o)) {
-        return None;
-    }
-    let tail = text.trim_end();
-    if !TRUST_FOOTERS.iter().any(|f| tail.ends_with(f)) {
-        return None;
-    }
-    let workspace = text[..at].rfind(TRUST_WORKSPACE).and_then(|w| {
-        let named = text[w + TRUST_WORKSPACE.len()..at].trim();
-        let folder = named.split_whitespace().next()?;
-        Some(folder.to_string())
-    });
-    Some(workspace)
+/// Whether `text` ends on the trust dialog: its question, one of its options
+/// after the last question, and its footer as the final words. Output that
+/// goes on past the footer is a session that met the dialog and carried on, so
+/// it is not this exit.
+fn ends_on_trust_dialog(text: &str) -> bool {
+    let Some(at) = TRUST_QUESTIONS.iter().filter_map(|q| text.rfind(q)).max() else {
+        return false;
+    };
+    TRUST_OPTIONS.iter().any(|o| text[at..].contains(o))
+        && TRUST_FOOTERS.iter().any(|f| text.trim_end().ends_with(f))
+}
+
+/// The folder the last trust dialog in `raw` names: the first line holding a
+/// path after the line that opens the dialog, which is `Accessing workspace:`
+/// where it prints one and the question otherwise. Read line by line, before
+/// the output is flattened to words, so a folder with a space in its name is
+/// kept whole.
+fn trust_workspace(raw: &str) -> Option<String> {
+    let lines: Vec<String> = raw.lines().map(screen_words).collect();
+    let question = lines
+        .iter()
+        .rposition(|l| TRUST_QUESTIONS.iter().any(|q| l.contains(q)))?;
+    let opens = lines[..question]
+        .iter()
+        .rposition(|l| l.contains(TRUST_WORKSPACE))
+        .unwrap_or(question);
+    lines[opens + 1..].iter().find_map(|l| {
+        let named = l.trim();
+        let windows = named.len() > 2 && named.as_bytes()[1] == b':';
+        (named.starts_with('/') || named.starts_with('~') || windows).then(|| named.to_string())
+    })
 }
 
 /// Why the pane whose output is at `path`, written from byte `from` on, exited.
@@ -266,9 +277,9 @@ pub fn classify(path: &Path, from: u64, early: bool) -> Exit {
             short,
         };
     }
-    if let Some(workspace) = untrusted_in(&text) {
+    if ends_on_trust_dialog(&text) {
         return Exit::Untrusted {
-            workspace,
+            workspace: trust_workspace(&String::from_utf8_lossy(&raw)),
             config: crate::workspace::trust::config_path().map(|p| p.display().to_string()),
         };
     }
@@ -893,13 +904,24 @@ mod tests {
             "a pane read gone late on the dialog is still that"
         );
         let older = "\x1b[1mDo you trust the files in this folder?\x1b[0m\r\n\r\n/srv/old\r\n\r\n 1. Yes, proceed\r\n 2. No, exit\r\n\r\nEnter to confirm \u{b7} Esc to exit\r\n";
-        assert!(matches!(
-            classified(older, true),
-            Exit::Untrusted {
-                workspace: None,
-                ..
-            }
-        ));
+        assert!(
+            matches!(
+                classified(older, true),
+                Exit::Untrusted { workspace: Some(w), .. } if w == "/srv/old"
+            ),
+            "the older wording prints the folder after its question"
+        );
+        let spaced = TRUST_DIALOG.replace(
+            "/home/dev/.cache/forge-tmp/iss-1266/iso/work",
+            "/srv/team project",
+        );
+        assert!(
+            matches!(
+                classified(&spaced, true),
+                Exit::Untrusted { workspace: Some(w), .. } if w == "/srv/team project"
+            ),
+            "a folder with a space in its name is named whole"
+        );
     }
 
     /// ISS-1382 criterion 8: a pane that met the dialog and carried on exited
