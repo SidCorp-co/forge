@@ -36,8 +36,6 @@ async function sweptBy(table: string) {
 describe('retention sweep: the window (ISS-1027)', () => {
   it('removes an over-age row from every swept table and keeps a fresh one', async () => {
     const runner = await fx.insertRunner();
-    // Two events BEFORE the window, because the newer of those is the carry-in
-    // the rule keeps — which is what makes the older one removable at all.
     await fx.insertRunnerEvent(runner, 200);
     await fx.insertRunnerEvent(runner, 100);
     await fx.insertQueueSnapshot(200);
@@ -163,7 +161,6 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     expect(swept?.deleted).toBe(1);
     expect(swept?.capped).toBe(true);
     expect(swept?.heldBack).toBe(2);
-    // One eligible transition survived the cap, and it is not in the held count.
     const left = await idsIn('kernel_transitions');
     expect(left).toHaveLength(3);
     expect(left).toEqual(expect.arrayContaining([held, liveHeld]));

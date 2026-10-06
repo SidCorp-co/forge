@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { addVerdict, replaceCriteria } from '../../src/issues/criteria/service.js';
+import { userNames } from '../../src/lib/people.js';
 import { api, patToken, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -22,6 +23,7 @@ const BETA_SHA = 'e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510';
 
 let projectId: string;
 let ownerId: string;
+let agentId: string;
 const tokens: Record<'owner' | 'member' | 'agent', string> = { owner: '', member: '', agent: '' };
 
 const fx = releaseWorld(() => ({ projectId, ownerId }));
@@ -34,9 +36,9 @@ beforeEach(async () => {
   const member = await createTestUser({ verified: true });
   await addProjectMember(projectId, member.id, 'member');
   tokens.member = await userToken(member.id);
-  const agent = await createTestUser({ kind: 'agent' });
-  await addProjectMember(projectId, agent.id, 'admin');
-  tokens.agent = await patToken(agent.id, [projectId], 'master');
+  agentId = (await createTestUser({ kind: 'agent' })).id;
+  await addProjectMember(projectId, agentId, 'admin');
+  tokens.agent = await patToken(agentId, [projectId], 'master');
   await fx.seedReleaseRunner();
   const bindingId = await fx.declareProduction({}, 'none');
   await declareProductionDocument({
@@ -198,7 +200,7 @@ describe('a draft release reads its gate as words', () => {
 });
 
 describe('a release awaiting approval names its approver', () => {
-  it('shows a member the one admin who can decide, by name and never by address', async () => {
+  it('shows a member the one holder who can decide by name and never by address, and no name where several can', async () => {
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     const cut = await call('owner', 'POST', '/release-batches', {
       issueIds: [(await rows(sql`SELECT id FROM issues WHERE project_id = ${projectId}`))[0]?.id],
@@ -207,9 +209,23 @@ describe('a release awaiting approval names its approver', () => {
     const runId = String(cut.body.runId);
     const asked = await call('agent', 'POST', `/release-batches/${runId}/approvals`, evidence);
     expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+    const several = await detail('member', '0.1.0');
+    expect(several.waitingOn).toMatchObject({
+      kind: 'person',
+      act: 'approve',
+      who: 'A holder of releases.approve',
+    });
+
+    await db.execute(
+      sql`UPDATE project_members SET role = 'member' WHERE project_id = ${projectId} AND user_id = ${agentId}`,
+    );
     const member = await detail('member', '0.1.0');
     expect(member.attentionGroup).toBe('waiting');
-    expect(member.waitingOn).toMatchObject({ kind: 'person', act: 'approve' });
+    expect(member.waitingOn).toMatchObject({
+      kind: 'person',
+      act: 'approve',
+      who: (await userNames([ownerId])).get(ownerId),
+    });
     expect(member.waitingOn.who).not.toContain('@');
     expect(JSON.stringify(member)).not.toMatch(/@[a-z0-9.-]+\.[a-z]{2,}/i);
     const owner = await detail('owner', '0.1.0');

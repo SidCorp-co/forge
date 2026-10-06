@@ -153,7 +153,6 @@ describe('a row held before the route existed is carried by the next sweep', () 
     );
   });
 
-  // Judge finding 2: a probe and a record on two commits is a project between deploys.
   it('pairs each served commit with what answered it, and calls two commits no fault', async () => {
     await bindCoolify('source');
     const id = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
@@ -233,12 +232,10 @@ describe('a project nothing can read is told once', () => {
     expect(unrouted?.message).toContain('epodsystem');
     expect(unrouted?.message).not.toContain('Held: 2 issue(s)');
     expect(unrouted?.message.match(/`ISS-\d+` owes criteria 1, 2/g)).toHaveLength(2);
-    // Judge r2 finding 5: held rows are listed oldest merge first, not in the order Postgres returns.
     const [first, second] = await fx.displayIds([earlier, later]);
     expect(unrouted?.message).toContain(`\`${first}\` owes criteria 1, 2; \`${second}\``);
   });
 
-  // Judge r2 finding 1: beside rows owing nothing, the card sent a person to a judging run.
   it('names the route, not a judging run, where only some waiting rows owe a criterion', async () => {
     await bindUnreporting();
     const owing = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
@@ -255,7 +252,6 @@ describe('a project nothing can read is told once', () => {
     expect(said).not.toContain('still owes a judging run');
   });
 
-  // Judge finding 4: an epodsystem project cannot deploy through Coolify, so it is not told to.
   it('offers a project bound through a provider that reports nothing only a route it can take', async () => {
     await bindUnreporting();
     const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');

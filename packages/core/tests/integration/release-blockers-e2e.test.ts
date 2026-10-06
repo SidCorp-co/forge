@@ -57,8 +57,6 @@ async function seed(
   const user = await createTestUser({ verified: true });
   const project = await createTestProject(user.id);
   await addProjectMember(project.id, user.id, 'admin');
-  // Everything `gaps` reports, declared — so a non-empty `blockers` beside an
-  // empty `gaps` is the reproduction and not a half-configured fixture.
   for (const slug of ['build-commands', 'test-commands', 'release-procedure']) {
     await db.execute(sql`
       INSERT INTO knowledge_entries (id, project_id, slug, title, body, kind)
@@ -287,17 +285,6 @@ describe('release-readiness and the create door answer the same question', () =>
     expect(created.status).toBe(201);
   });
 
-  // ISS-1127 shipped this warning offering withdrawal as one of two equal ways
-  // out while withdrawal raised a 409. ISS-1275 answered that by making the
-  // withdrawal free, so the clause that named its cost is gone rather than
-  // reworded: a cost sentence for a cost nobody pays is the same defect wearing
-  // the opposite sign. Its repair then put the withdrawal back into the
-  // sentence, the free act having been left unsaid for a round.
-  //
-  // Its judge then read the sentence against the product: the free act named
-  // two objects and no screen, and there was no screen. Every act this message
-  // offers is asserted here WITH its destination, so an act that loses the
-  // place it is taken cannot pass as an act.
   it('offers both acts with the screen each is taken on, and names no blocker either raises', async () => {
     const w = await seed();
     const device = await createTestDevice(w.userId, { status: 'online' });
@@ -309,6 +296,7 @@ describe('release-readiness and the create door answer the same question', () =>
     await seedIssue(w);
 
     const answer = await readiness(w);
+    expect(answer.body.warnings.map((x) => x.code)).toContain('RELEASE_RUNNER_PREFERENCE_UNMET');
     const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_RUNNER_PREFERENCE_UNMET');
 
     expect(warned?.message).toContain("Label the box you want this project's releases to run on");
@@ -349,9 +337,6 @@ describe('release-readiness and the create door answer the same question', () =>
 });
 
 describe('a reason names the state it was read from and the act that clears it', () => {
-  // The failure ISS-1127 was reopened on. Both forge-dev boxes were green and
-  // Idle on the Runners tab at 13s and 21s, and the release surface told the
-  // operator to bring one up or wait for one to reconnect.
   it('names the box an operator retired, and the switch that returns it', async () => {
     const w = await seed();
     const device = await createTestDevice(w.userId, {
@@ -375,10 +360,6 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(held?.message).not.toContain('Bring one up');
   });
 
-  // The forge-dev fleet carried `devices.name` = 'dev1 CLI runner' against
-  // `runners.name` = 'dev1', so the blocker named a box under a string no
-  // screen shows. The two names are deliberately disjoint here: with one a
-  // substring of the other, a message carrying the wrong one still passes.
   it('names the box under the name the Runners tab shows, not the runner row name', async () => {
     const w = await seed();
     const device = await createTestDevice(w.userId, {
@@ -400,14 +381,6 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(held?.message).not.toContain('binding-42');
   });
 
-  // The actual mechanism, not just the mismatch as it stands today:
-  // `POST /:id/runners` snapshots `runners.name` from `devices.name` at bind
-  // time and never refreshes it (no `name` in its `onConflictDoUpdate` set,
-  // and no other write keeps the two in step for a box that stays bound and
-  // is later renamed). A test asserting only that two already-different
-  // strings compare correctly would pass on a fresh row and never have
-  // caught this — so this one binds first, at one name, and renames the
-  // device only afterward.
   it('keeps naming the box by its current name after the device is renamed post-bind', async () => {
     const w = await seed();
     const device = await createTestDevice(w.userId, {
@@ -460,8 +433,6 @@ describe('the reason the unattended sweep will not carry an issue', () => {
     ]);
   });
 
-  // A partial exclusion is not a stopped release: `sweepProject` returns early
-  // only where NOTHING is left eligible, and otherwise cuts the subset.
   it('warns rather than blocks where a release still starts without them', async () => {
     const w = await seed();
     await seedAutoRelease(w);
