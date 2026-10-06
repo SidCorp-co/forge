@@ -1,6 +1,6 @@
 import { redactQueryParams } from './query-params.js';
 
-export { REDACTED, redactQueryParams } from './query-params.js';
+export { errorsWithin, REDACTED, redactQueryParams } from './query-params.js';
 
 /** Header names whose values must be replaced before send. Compared case-insensitively. */
 export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([

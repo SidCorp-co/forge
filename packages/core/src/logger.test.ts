@@ -121,7 +121,7 @@ describe('the core logger', () => {
       (log: Logger, err: Error) => {
         let deep: object = { error: err };
         for (let i = 0; i < 9; i++) deep = { inner: deep };
-        log.error('failed %j', deep);
+        log.error(`duplicate ${EMAIL}: %j`, deep);
       },
     ],
   ])('serializes an error interpolated or carried %s without its bound values', (_, write) => {

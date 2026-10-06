@@ -1,4 +1,4 @@
-import { redactQueryParams } from '@forge/observability';
+import { errorsWithin, redactQueryParams } from '@forge/observability';
 import type { Context } from 'hono';
 import { type Logger, type LoggerOptions, pino, stdSerializers } from 'pino';
 import { pgConstraintName, pgErrorCode } from './lib/db-errors.js';
@@ -83,22 +83,13 @@ function withErrorsSerialized(value: unknown, depth = 0): unknown {
   return Array.isArray(value) ? next.map(([, v]) => v) : Object.fromEntries(next);
 }
 
-/** Every `Error` anywhere in a log call's arguments, within the depth `withErrorsSerialized` reads. */
-function errorsIn(value: unknown, found: Error[] = [], depth = 0): Error[] {
-  if (value instanceof Error) found.push(value);
-  else if (depth < 8 && typeof value === 'object' && value !== null) {
-    for (const v of Object.values(value)) errorsIn(v, found, depth + 1);
-  }
-  return found;
-}
-
 /**
  * The call's arguments with every error in them serialized, and all of its text redacted against
  * every error it carries, which only this hook still holds: a value the call repeats beside its
  * error, or a driver message repeating a short one, is told only by the values the errors carry.
  */
 function redactCall(args: unknown[], err: Error | null): unknown[] {
-  const errors = errorsIn(args);
+  const errors = errorsWithin(args);
   const clean = (v: unknown) =>
     redactQueryParams(withErrorsSerialized(v), errors.length > 0 ? errors : undefined);
   let [first, ...rest] = args;

@@ -166,11 +166,17 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
 }
 
 /** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */
-function errorsWithin(value: unknown, found: unknown[], seen: Set<unknown>, depth: number): void {
-  if (typeof value !== 'object' || value === null || seen.has(value) || depth > MAX_DEPTH) return;
-  seen.add(value);
-  if (value instanceof Error) found.push(value);
-  for (const v of Object.values(value)) errorsWithin(v, found, seen, depth + 1);
+export function errorsWithin(value: unknown): unknown[] {
+  const found: unknown[] = [];
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number): void => {
+    if (typeof v !== 'object' || v === null || seen.has(v) || depth > MAX_DEPTH) return;
+    seen.add(v);
+    if (v instanceof Error) found.push(v);
+    for (const child of Object.values(v)) walk(child, depth + 1);
+  };
+  walk(value, 0);
+  return found;
 }
 
 /**
@@ -182,7 +188,7 @@ function errorsWithin(value: unknown, found: unknown[], seen: Set<unknown>, dept
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
   const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
-  errorsWithin(value, errs, new Set(), 0);
+  errs.push(...errorsWithin(value));
   const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
   return redactValue(value, chain, 0) as T;
 }
