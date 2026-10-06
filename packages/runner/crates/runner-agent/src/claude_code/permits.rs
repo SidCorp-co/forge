@@ -4,7 +4,10 @@ pub(crate) fn takes_session_permit(spec: &JobSpec) -> bool {
     spec.counts_against_session_cap
 }
 
-pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
+/// How long a job waits for a session slot before it fails naming the holders.
+/// A parked session keeps its slot until core ends its residency, which it
+/// does after ten minutes of waiting for a turn, so a slot frees within this.
+pub const SESSION_PERMIT_WAIT: Duration = Duration::from_secs(10 * 60);
 
 pub(crate) async fn acquire_session_permit(
     sem: Arc<tokio::sync::Semaphore>,

@@ -23,11 +23,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::ledger::Run;
-use crate::run_exit::RUN_SILENT_BEFORE_EXIT;
 use crate::transcript_age::{self, Newest};
 
-/// Silence after a turn-end past which a subagent run reads as quiet.
-pub const SUBAGENT_QUIET: Duration = RUN_SILENT_BEFORE_EXIT;
+/// Silence after a turn-end past which a subagent run reads as quiet: the
+/// hour core's run verdict also waits before it calls a silent run over.
+pub const SUBAGENT_QUIET: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Evidence {

@@ -12,6 +12,7 @@ export {
 } from './interactive-credential.js';
 export { liveMasterSessionId } from './master-owner.js';
 export { provideAgentSessionsPorts } from './ports.js';
+export { closeResidentOnBox } from './push.js';
 export { publishSessionRecoveryChanged } from './recovery-publish.js';
 export {
   incrementAutoRetryCount,
@@ -56,6 +57,7 @@ export {
   beatSession,
   claimSessionMarker,
   claimSessionMetadataDelivery,
+  endLapsedResidency,
   insertSessionRow,
   mergeSessionMetadata,
   setSessionFailureDetail,

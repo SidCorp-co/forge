@@ -1,9 +1,9 @@
 /*
  * When a job pane that has finished its work stops needing its slot.
  *
- * `run_exit` answers this for a run pane, and its header already states why a
- * job pane is the same shape: a pane briefed ONCE "has nothing left to do
- * after its last turn", so alive is evidence of nothing. Nothing in
+ * Core's run verdict answers this for a run pane, and a job pane is the same
+ * shape: a pane briefed ONCE has nothing left to do after its last turn, so
+ * alive is evidence of nothing. Nothing in
  * `pool_jobs` ever asked it. A job pane's slot was spent on the pane EXISTING
  * and returned only when the pane died, when core disowned the job, or when
  * `turn_evidence` found the agent had never been asked anything — so an agent

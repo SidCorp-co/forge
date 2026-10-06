@@ -17,7 +17,7 @@ pub fn job_id_of(data: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Extract a `sessionId` from an `agent:abort` (chat) frame.
+/// Extract a `sessionId` from an `agent:abort` or `agent:close` (chat) frame.
 pub fn session_id_of(data: &serde_json::Value) -> Option<String> {
     data.get("sessionId")
         .and_then(|v| v.as_str())

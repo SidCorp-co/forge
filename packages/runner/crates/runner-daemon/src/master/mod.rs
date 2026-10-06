@@ -78,7 +78,6 @@ use runner_core::job_exit;
 use runner_core::job_unheard;
 use runner_core::ledger::{Ledger, MasterAuthority, MasterStanding, Run};
 use runner_core::pane_exit;
-use runner_core::run_exit;
 use runner_platform::config::Config;
 use runner_platform::subagent_host;
 use runner_transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};

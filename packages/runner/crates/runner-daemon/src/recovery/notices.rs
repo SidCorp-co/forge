@@ -27,33 +27,11 @@ pub(crate) fn unanswered_line(reads: &[String], ended_by_process: &[String]) -> 
     ))
 }
 
-/// Say, once per unchanged failure, that the fact this keep now turns on could
-/// not be read. The notice shares `kept_notice` with [`say_why_kept`], and only
-/// one of the two writes on a sweep, so a transport that keeps failing says
-/// this once and a transport that recovers hands the latch back.
-pub(crate) fn say_issue_status_unreadable(ledger: &mut Ledger, run: &Run, why: &str) {
-    if !matches!(
-        ledger.note_kept(&run.run_id, ISSUE_STATUS_UNREADABLE),
-        Ok(true)
-    ) {
-        return;
-    }
-    tracing::warn!(
-        "[recovery] run {} is kept because {why} — not because its issues are live. It ends when \
-         core answers that read, and until then nothing here can tell a run still working from \
-         one whose issues closed. Said once, not every sweep",
-        run.run_id
-    );
-}
-
 /// The `kept_notice` [`say_why_released`] latches on. Not `unanswered`, which
 /// 0.17.46 wrote for a release said and 0.17.52 for a keep, so that word
 /// latches neither writer: a release still owed after 0.17.46 said it is said
 /// once more, rather than a release after 0.17.52's keep never being said.
 pub(crate) const RELEASE_SAID: &str = "release-said";
-
-/// The `kept_notice` [`say_issue_status_unreadable`] latches on.
-pub(crate) const ISSUE_STATUS_UNREADABLE: &str = "issue-status-unreadable";
 
 /// Latch [`RELEASE_SAID`] for `run` and, on the sweep that first owes the
 /// release line, the issue keys it holds joined for that line. `None` when it
@@ -170,6 +148,19 @@ pub(crate) enum Standing {
     AwaitingCore,
 }
 
+impl Standing {
+    /// The standing core named, or `None` for a word this build does not know.
+    pub(crate) fn from_wire(word: &str) -> Option<Self> {
+        match word {
+            "unanswered" => Some(Self::Unanswered),
+            "foreign_boot" => Some(Self::ForeignBoot),
+            "decided" => Some(Self::Decided),
+            "awaiting_core" => Some(Self::AwaitingCore),
+            _ => None,
+        }
+    }
+}
+
 /// The `kept_notice` [`say_standing`] latches on for a run standing this way.
 pub(crate) fn standing_notice(standing: Standing, state: &CloseState) -> &'static str {
     match standing {
@@ -193,6 +184,7 @@ pub(crate) fn say_standing(
     boot_id: &str,
     state: &CloseState,
     standing: Standing,
+    release_after_minutes: u64,
 ) -> bool {
     match ledger.note_standing(&run.run_id, standing_notice(standing, state)) {
         Ok(false) => return true,
@@ -220,7 +212,7 @@ pub(crate) fn say_standing(
     );
     match standing {
         Standing::Unanswered => {
-            let what_ends_it = unanswered_ends(run, state);
+            let what_ends_it = unanswered_ends(run, state, release_after_minutes);
             tracing::warn!(
                 "[recovery] run {} ({issues}) is partially closed ({holds}): no master on this box \
                  answers for it (it answered to {}), so {what_ends_it}. Said once; what ends it \
@@ -278,19 +270,17 @@ pub(crate) fn say_standing(
 }
 
 /// What ends an unanswered run's standing, by which of its marks is still out.
-fn unanswered_ends(run: &Run, state: &CloseState) -> String {
+fn unanswered_ends(run: &Run, state: &CloseState, bound_minutes: u64) -> String {
     if !state.session_terminal {
         format!(
-            "core still holds its session open, and the bound of {}m starts when core \
-             calls it over",
-            UNANSWERED_RELEASE_AFTER.as_secs() / 60
+            "core still holds its session open, and the bound of {bound_minutes}m starts when \
+             core calls it over"
         )
     } else if !state.checkout_returned {
         format!(
-            "its checkout {} is released once core has called its session over for {}m \
-             ({}, now)",
+            "its checkout {} is released once core has called its session over for \
+             {bound_minutes}m ({}, now)",
             run.worktree_path.display(),
-            UNANSWERED_RELEASE_AFTER.as_secs() / 60,
             silence_evidence(run)
         )
     } else {

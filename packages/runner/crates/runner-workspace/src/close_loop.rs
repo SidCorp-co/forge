@@ -45,33 +45,6 @@ pub trait RunCloser: Send + Sync {
 pub trait LeaseKeeper: Send + Sync {
     async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()>;
     async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool>;
-
-    /// Whether the ISSUE that key names is over — `closed` or `dropped` — as
-    /// opposed to whether its lease is back. The two are different questions
-    /// and a run outlives its issue by exactly the gap between them (ISS-1245).
-    ///
-    /// `None` says *not known to be over*, which is the answer a keeper that
-    /// cannot ask gives and the answer an older core's reply carries. It is a
-    /// refusal to claim, not a softened `false`: every caller here keeps the
-    /// run it would otherwise have closed, so the default below changes no
-    /// behaviour and a keeper that never overrides it behaves as it does today.
-    async fn issue_is_over(
-        &self,
-        _project_id: Option<&str>,
-        _issue_key: &str,
-    ) -> Result<Option<bool>> {
-        Ok(None)
-    }
-
-    /// Whether the issue rests at core: over, or parked at `needs_info` or
-    /// `on_hold`, so no run works it now. `None` as for [`Self::issue_is_over`].
-    async fn issue_rests(
-        &self,
-        _project_id: Option<&str>,
-        _issue_key: &str,
-    ) -> Result<Option<bool>> {
-        Ok(None)
-    }
 }
 
 /// What the ledger says, with no process inspected.

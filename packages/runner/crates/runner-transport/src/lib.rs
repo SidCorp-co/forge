@@ -17,6 +17,7 @@
 //! - `feedback_inbox` — GET `/me/feedback/owed`: which feedback items owe the master a triage
 //! - `design_inbox` — GET `/me/designs/owed`: which returned designs owe the master a revision
 //! - `master_verdict` — POST `/me/master-session/verdict`: core's verdict on a project's master
+//! - `run_verdict` — POST `/me/run-sessions/verdict`: core's verdict on a run the ledger holds open
 pub mod admissible;
 pub mod agent_sessions;
 pub mod api;
@@ -39,6 +40,7 @@ pub mod provision;
 pub mod questions;
 pub mod requirement_inbox;
 pub mod run_sessions;
+pub mod run_verdict;
 pub mod runners;
 pub mod skills;
 pub mod status;

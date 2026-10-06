@@ -8,6 +8,7 @@
 mod outcome;
 use outcome::*;
 mod permits;
+mod stream;
 pub use permits::*;
 
 use std::collections::HashMap;
@@ -67,8 +68,6 @@ type TurnTx = Arc<Mutex<mpsc::Sender<RunnerEvent>>>;
 type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
-
-const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 pub struct ClaudeCodeRunner {
     core_url: String,
@@ -207,7 +206,8 @@ impl ClaudeCodeRunner {
     }
 
     /// End a live session between turns: EOF on stdin, then let the completion
-    /// task reap. Used when the next turn cannot reuse it (a model change).
+    /// task reap. Used when the next turn cannot reuse it (a model change), and
+    /// when core ends its residency.
     pub async fn close(&self, id: &SessionId) {
         if let Some(s) = self.sessions.lock().await.get_mut(id) {
             s.stdin = None;
@@ -256,6 +256,34 @@ impl ClaudeCodeRunner {
         closed
     }
 
+    /// The duplex permit `spec` takes, if it takes one, registered as pending
+    /// from here rather than from the session insertion that follows.
+    async fn permit_for(
+        &self,
+        spec: &JobSpec,
+    ) -> Result<(
+        Option<tokio::sync::OwnedSemaphorePermit>,
+        Option<PendingPermit>,
+    )> {
+        if !takes_session_permit(spec) {
+            return Ok((None, None));
+        }
+        let permit = acquire_session_permit(
+            self.session_sem.clone(),
+            self.session_cap,
+            SESSION_PERMIT_WAIT,
+            &spec.job_id,
+            self.permit_holders().await,
+        )
+        .await?;
+        let pending = PendingPermit::register(
+            &self.pending_permits,
+            &spec.job_id,
+            spec.project_slug.as_deref(),
+        );
+        Ok((Some(permit), Some(pending)))
+    }
+
     pub async fn close_all_resident(&self) -> Vec<SessionId> {
         let mut map = self.sessions.lock().await;
         let mut closed = Vec::new();
@@ -270,10 +298,6 @@ impl ClaudeCodeRunner {
 
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the turn loop of one Claude Code session; its arms share the session state (ISS-218 amnesty, ends when core takes the idle verdict per ADR 0009 What core takes over: Idle verdict)"
-    )]
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 
@@ -297,33 +321,8 @@ impl Runner for ClaudeCodeRunner {
         };
 
         let invoked_with_resume = spec.resume_id.is_some();
-        let timeout = spec
-            .timeout_seconds
-            .filter(|s| *s > 0)
-            .map(Duration::from_secs);
 
-        let session_permit = if takes_session_permit(&spec) {
-            Some(
-                acquire_session_permit(
-                    self.session_sem.clone(),
-                    self.session_cap,
-                    SESSION_PERMIT_WAIT,
-                    &spec.job_id,
-                    self.permit_holders().await,
-                )
-                .await?,
-            )
-        } else {
-            None
-        };
-        // Countable from HERE, not from the session insertion far below.
-        let pending_permit = session_permit.is_some().then(|| {
-            PendingPermit::register(
-                &self.pending_permits,
-                &spec.job_id,
-                spec.project_slug.as_deref(),
-            )
-        });
+        let (session_permit, pending_permit) = self.permit_for(&spec).await?;
 
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
@@ -333,44 +332,11 @@ impl Runner for ClaudeCodeRunner {
             &spec.job_id,
             spec.mcp_servers_override.as_ref(),
         )?;
-        let args = build_args(&spec, &mcp_path.to_string_lossy());
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-
-        let mut cmd = build_command(&args, &effective_repo);
-        cmd.env("FORGE_PAT", &credential);
-        for (k, v) in project_env(&spec) {
-            cmd.env(k, v);
-        }
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        // Give MCP servers room to connect before the `system/init` snapshot.
-        // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
-        // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
-        // claude default is tight. Caller-set env wins (don't clobber an override).
-        if std::env::var_os("MCP_TIMEOUT").is_none() {
-            cmd.env("MCP_TIMEOUT", "15000");
-        }
-
-        let mut child = cmd.spawn().map_err(|e| {
-            let _ = std::fs::remove_file(&mcp_path);
-            Error::Other(format!("failed to spawn claude: {e}"))
-        })?;
+        let mut child = spawn_claude(&spec, &effective_repo, &credential, &mcp_path)?;
         tracing::info!("[claude] spawned job={job_id}");
-
-        let session_stdin = {
-            let mut stdin = child
-                .stdin
-                .take()
-                .ok_or_else(|| Error::Other("no stdin on the spawn".into()))?;
-            stdin
-                .write_all(user_message_line(&prompt).as_bytes())
-                .await
-                .map_err(|e| Error::Other(format!("failed to write the first turn: {e}")))?;
-            let _ = stdin.flush().await;
-            Some(stdin)
-        };
+        let session_stdin = Some(write_first_turn(&mut child, &prompt).await?);
 
         let stdout = child
             .stdout
@@ -422,251 +388,32 @@ impl Runner for ClaudeCodeRunner {
             buf
         });
 
-        // stdout reader.
-        let reader = {
-            let turn_tx = turn_tx.clone();
-            let sessions = self.sessions.clone();
-            let outcome = outcome.clone();
-            let result_notify = result_notify.clone();
-            let job_id = job_id.clone();
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stdout).lines();
-                let mut got_sid = false;
-                let mut got_limit = false;
-                let mut got_init = false;
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let Ok(json) = serde_json::from_str::<Value>(&line) else {
-                        continue;
-                    };
-                    if !got_sid {
-                        if let Some(sid) = json.get("session_id").and_then(Value::as_str) {
-                            if let Some(s) = sessions.lock().await.get_mut(&job_id) {
-                                s.claude_session_id = Some(sid.to_string());
-                            }
-                            // Cloned under the lock and sent outside it: a
-                            // full channel must not hold the lock a resident
-                            // send takes to swap in the next turn's sender.
-                            let tx = turn_tx.lock().await.clone();
-                            let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.to_string())).await;
-                            got_sid = true;
-                        }
-                    }
-                    if !got_init {
-                        if let Some(failed) = mcp_failed_servers(&json) {
-                            got_init = true;
-                            if failed.is_empty() {
-                                tracing::debug!("[claude] job={job_id} all MCP servers connected");
-                            } else {
-                                tracing::warn!(
-                                    "[claude] job={job_id} MCP servers not connected: {failed:?}"
-                                );
-                                outcome.lock().await.mcp_failed = failed;
-                            }
-                        }
-                    }
-                    if !got_limit {
-                        if let Some(msg) = detect_usage_limit(&json) {
-                            outcome.lock().await.usage_limit = Some(msg);
-                            got_limit = true;
-                        }
-                    }
-                    if json.get("type").and_then(Value::as_str) == Some("result") {
-                        let is_error = json
-                            .get("is_error")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(true);
-                        {
-                            let mut o = outcome.lock().await;
-                            o.succeeded = Some(!is_error);
-                            o.result_seen = true;
-                            if is_error {
-                                o.result_error = Some(result_error_detail(&json));
-                            }
-                        }
-                        // Definitive done marker — wake the completion task.
-                        result_notify.notify_one();
-                    }
-                    let tx = turn_tx.lock().await.clone();
-                    let _ = tx.send(RunnerEvent::Stdout(json)).await;
-                }
-            })
-        };
-
-        // Completion task: race reader-EOF vs child-exit (MCP grandchildren can
-        // hold the pipe open) vs the definitive `{type:result}` marker, then
-        // reap, classify, and emit Done/Failed.
-        let sessions = self.sessions.clone();
-        let job_id_task = job_id.clone();
-        let core_for_state = Some(runner_transport::CoreClient::new(
-            self.core_url.clone(),
-            self.device_token.clone(),
-        ));
-        let outcome_for_turns = outcome.clone();
-        let result_notify_for_turns = result_notify.clone();
-        let turn_tx_for_turns = turn_tx.clone();
-        let turn_started_for_turns = turn_started.clone();
-        let turn_done_for_turns = turn_done.clone();
-        let sessions_for_turns = self.sessions.clone();
-        tokio::spawn(async move {
-            let job_id = job_id_task;
-            let mut reader = reader;
-            let already_reported = duplex_turns(
-                TurnLoop {
-                    sessions: &sessions_for_turns,
-                    job_id: &job_id,
-                    core: core_for_state.as_ref(),
-                    outcome: &outcome_for_turns,
-                    result_notify: &result_notify_for_turns,
-                    turn_tx: &turn_tx_for_turns,
-                    turn_started: &turn_started_for_turns,
-                    turn_done: &turn_done_for_turns,
-                    residency: SESSION_IDLE_TIMEOUT,
-                },
-                &mut reader,
-            )
-            .await;
-            let exit_poll = {
-                let sessions = sessions.clone();
-                let outcome = outcome.clone();
-                let job_id = job_id.clone();
-                async move {
-                    loop {
-                        // Snapshot try_wait WITHOUT holding the sessions lock
-                        // across the outcome lock (avoids a lock-order cycle).
-                        let polled = {
-                            let mut s = sessions.lock().await;
-                            match s.get_mut(&job_id).and_then(|x| x.child.as_mut()) {
-                                Some(child) => match child.try_wait() {
-                                    Ok(Some(status)) => Some(Some(status)), // exited
-                                    Err(_) => Some(None),                   // give up
-                                    Ok(None) => None,                       // still running
-                                },
-                                None => Some(None),
-                            }
-                        };
-                        match polled {
-                            Some(Some(status)) => {
-                                outcome.lock().await.exit = Some(status);
-                                break;
-                            }
-                            Some(None) => break,
-                            None => {}
-                        }
-                        tokio::time::sleep(Duration::from_millis(200)).await;
-                    }
-                }
-            };
-
-            let on_result = {
-                let result_notify = result_notify.clone();
-                async move { result_notify.notified().await }
-            };
-
-            if !reader.is_finished() {
-                match timeout {
-                    Some(d) => tokio::select! {
-                        _ = &mut reader => {}
-                        _ = exit_poll => { join_reader(&mut reader, Duration::from_secs(2)).await; }
-                        _ = on_result => { join_reader(&mut reader, RESULT_EXIT_GRACE).await; }
-                        _ = tokio::time::sleep(d) => { tracing::warn!("[claude] job={job_id} timed out"); }
-                    },
-                    None => tokio::select! {
-                        _ = &mut reader => {}
-                        _ = exit_poll => { join_reader(&mut reader, Duration::from_secs(2)).await; }
-                        _ = on_result => { join_reader(&mut reader, RESULT_EXIT_GRACE).await; }
-                    },
-                }
-            }
-            reader.abort();
-
-            // Reap the child + group, capturing its exit status if the
-            // exit-poll branch didn't already.
-            let killed_exit = if let Some(s) = sessions.lock().await.get_mut(&job_id) {
-                if let Some(mut child) = s.child.take() {
-                    graceful_kill(&mut child).await
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let (succeeded_opt, usage_limit, result_seen, result_error, mcp_failed, polled_exit) = {
-                let o = outcome.lock().await;
-                (
-                    o.succeeded,
-                    o.usage_limit.clone(),
-                    o.result_seen,
-                    o.result_error.clone(),
-                    o.mcp_failed.clone(),
-                    o.exit,
-                )
-            };
-            let outcome_exit = polled_exit.or(killed_exit);
-
-            let stderr = tokio::time::timeout(Duration::from_secs(3), stderr_handle)
-                .await
-                .ok()
-                .and_then(|r| r.ok())
-                .unwrap_or_default();
-
-            let usage_limit = usage_limit.or_else(|| {
-                stderr
-                    .to_lowercase()
-                    .contains("out of extra usage")
-                    .then(|| stderr.trim().chars().take(500).collect())
-            });
-
-            let succeeded = usage_limit.is_none() && succeeded_opt.unwrap_or(false);
-
-            let resume_failed = invoked_with_resume && !succeeded && {
-                let b = stderr.to_lowercase();
-                b.contains("session not found")
-                    || b.contains("could not resume")
-                    || b.contains("no such session")
-                    || b.contains("session file missing")
-                    || b.contains("session id not found")
-            };
-
-            // Emit the terminal event.
-            let _ = std::fs::remove_file(&mcp_path);
-
-            let emit = turn_tx.lock().await.clone();
-            if !already_reported {
-                if succeeded {
-                    let _ = emit.send(RunnerEvent::Done).await;
-                } else if let Some(msg) = usage_limit {
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error: format!("[USAGE_LIMIT] {msg}"),
-                        })
-                        .await;
-                } else if resume_failed {
-                    let body: String = stderr.trim().chars().take(500).collect();
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error: format!("[RESUME_FAILED] {body}"),
-                        })
-                        .await;
-                } else {
-                    let (exit_code, signal) = match outcome_exit {
-                        Some(ref st) => split_exit(st),
-                        None => (None, None),
-                    };
-                    let error = classify_failure_reason(
-                        exit_code,
-                        signal,
-                        result_seen,
-                        result_error.as_deref(),
-                        &mcp_failed,
-                        &stderr,
-                    );
-                    let _ = tx.send(RunnerEvent::Failed { error }).await;
-                }
-            }
-            sessions.lock().await.remove(&job_id);
-            inflight::forget(&job_id);
-        });
+        let reader = stream::spawn_reader(
+            stdout,
+            turn_tx.clone(),
+            self.sessions.clone(),
+            outcome.clone(),
+            result_notify.clone(),
+            job_id.clone(),
+        );
+        tokio::spawn(stream::complete(stream::Completion {
+            sessions: self.sessions.clone(),
+            job_id: job_id.clone(),
+            core: Some(runner_transport::CoreClient::new(
+                self.core_url.clone(),
+                self.device_token.clone(),
+            )),
+            outcome,
+            result_notify,
+            turn_tx,
+            turn_started,
+            turn_done,
+            reader,
+            stderr: stderr_handle,
+            mcp_path,
+            invoked_with_resume,
+            tx,
+        }));
 
         Ok(job_id)
     }
@@ -711,6 +458,53 @@ impl Runner for ClaudeCodeRunner {
             Err(Error::Other("session not found".into()))
         }
     }
+}
+
+/// Spawn `claude` for `spec` in `repo`, its MCP config at `mcp_path`.
+fn spawn_claude(
+    spec: &JobSpec,
+    repo: &str,
+    credential: &str,
+    mcp_path: &std::path::Path,
+) -> Result<tokio::process::Child> {
+    let args = build_args(spec, &mcp_path.to_string_lossy());
+    let mut cmd = build_command(&args, repo);
+    cmd.env("FORGE_PAT", credential);
+    for (k, v) in project_env(spec) {
+        cmd.env(k, v);
+    }
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Give MCP servers room to connect before the `system/init` snapshot.
+    // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
+    // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
+    // claude default is tight. Caller-set env wins (don't clobber an override).
+    if std::env::var_os("MCP_TIMEOUT").is_none() {
+        cmd.env("MCP_TIMEOUT", "15000");
+    }
+    cmd.spawn().map_err(|e| {
+        let _ = std::fs::remove_file(mcp_path);
+        Error::Other(format!("failed to spawn claude: {e}"))
+    })
+}
+
+/// Write the first turn into the spawn's stdin, and hand the stdin back held
+/// open: dropping it is EOF, which is how a resident session is closed.
+async fn write_first_turn(
+    child: &mut tokio::process::Child,
+    prompt: &str,
+) -> Result<tokio::process::ChildStdin> {
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| Error::Other("no stdin on the spawn".into()))?;
+    stdin
+        .write_all(user_message_line(prompt).as_bytes())
+        .await
+        .map_err(|e| Error::Other(format!("failed to write the first turn: {e}")))?;
+    let _ = stdin.flush().await;
+    Ok(stdin)
 }
 
 fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {

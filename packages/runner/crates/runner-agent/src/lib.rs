@@ -28,7 +28,6 @@ pub struct JobSpec {
     pub system_prompt: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
-    pub timeout_seconds: Option<u64>,
     pub mcp_servers_override: Option<serde_json::Value>,
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,

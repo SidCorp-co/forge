@@ -156,6 +156,21 @@ export async function setSessionRuntimeState(
     );
 }
 
+/**
+ * A resident session core told its box to close and heard nothing back for: the residency is over
+ * whether or not the box ever answers, so the row stops reading as one waiting in a process.
+ */
+export async function endLapsedResidency(agentSessionId: string): Promise<boolean> {
+  const ended = await db
+    .update(agentSessions)
+    .set({ runtimeState: 'closed', updatedAt: new Date() })
+    .where(
+      and(eq(agentSessions.id, agentSessionId), eq(agentSessions.runtimeState, 'awaiting_input')),
+    )
+    .returning({ id: agentSessions.id });
+  return ended.length > 0;
+}
+
 /** The failure class of a session and what was done about it. */
 export async function setSessionFailureDetail(
   agentSessionId: string,
