@@ -17,6 +17,10 @@
   for the checkout core names; another repository's origin is refused `CHECKOUT_HEAD_OTHER_REPOSITORY`.
   A revise whose accept is refused answers `acceptRefused`.
 
+- **Forking a private agent chat is the owner's.** Another writer is refused
+  `AGENT_CHAT_OWNER_FORBIDDEN` with no transcript; a fork belongs to its caller. Regenerate replays
+  its prompt once, on a cold start. A `constructor` entry type is refused `UNREPRESENTABLE_ENTRY`.
+
 ## [0.4.0-dev.41] - 2026-10-06
 
 Outbox admits every event type; refusals name their code to every forge client

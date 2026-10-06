@@ -168,12 +168,16 @@ agentSessionTurnsRoutes.post(
     const turn = await findTurnInSession(id, turnId);
     if (!turn) throw notFound('turn not found');
 
-    const keepThrough = turn.role === 'assistant' ? turn.turnIndex - 1 : turn.turnIndex;
-    const replayMessages = (await readTranscript(id)).slice(0, keepThrough + 1);
-    const lastUserEntry = [...replayMessages].reverse().find(isUserEntry) as
-      | { content?: unknown }
-      | undefined;
-    const targetMessage = extractPromptString(lastUserEntry?.content);
+    // the redo replays the prompt that produced this turn: everything from that prompt on (its
+    // system init, tool calls, results and the reply) is cut, and dispatch appends the prompt again
+    const replayMessages = (await readTranscript(id)).slice(
+      0,
+      turn.role === 'assistant' ? turn.turnIndex : turn.turnIndex + 1,
+    );
+    let promptIndex = replayMessages.length - 1;
+    while (promptIndex >= 0 && !isUserEntry(replayMessages[promptIndex])) promptIndex -= 1;
+    const promptEntry = replayMessages[promptIndex] as { content?: unknown } | undefined;
+    const targetMessage = extractPromptString(promptEntry?.content);
     if (!targetMessage) {
       throw refuseSession(
         'NO_DISPATCHABLE_PROMPT',
@@ -191,8 +195,8 @@ agentSessionTurnsRoutes.post(
     const project = await projectHandle(session.projectId);
     if (!project) throw notFound('project not found');
 
-    const priorMessages = replayMessages.slice(0, -1);
-    const truncatedFromIndex = priorMessages.length;
+    const priorMessages = replayMessages.slice(0, promptIndex);
+    const truncatedFromIndex = promptIndex;
     const locked = await requeueForRegeneration({
       session,
       messages: priorMessages,
@@ -225,6 +229,7 @@ agentSessionTurnsRoutes.post(
 
     const { session, access } = await ensureSessionMember(id, userId);
     requireHeld(access, 'project.write');
+    assertAgentChatOwner(session, access, userId);
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 
@@ -251,7 +256,7 @@ agentSessionTurnsRoutes.post(
     const { inserted, seedSync } = await insertForkedSession(
       {
         projectId: session.projectId,
-        userId: session.userId,
+        userId,
         deviceId: session.deviceId,
         pipelineRunId: forkRun.id,
         title: title ?? (session.title ? `${session.title} (fork)` : null),

@@ -17,7 +17,9 @@ const TURN_ROLE_OF_TYPE: Readonly<Record<string, AgentSessionTurnRole>> = {
 export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | null {
   if (!entry || typeof entry !== 'object') return null;
   const type = (entry as { type?: unknown }).type;
-  return typeof type === 'string' ? (TURN_ROLE_OF_TYPE[type] ?? null) : null;
+  return typeof type === 'string' && Object.hasOwn(TURN_ROLE_OF_TYPE, type)
+    ? (TURN_ROLE_OF_TYPE[type] ?? null)
+    : null;
 }
 
 /**

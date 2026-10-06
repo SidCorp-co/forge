@@ -230,7 +230,9 @@ export async function requeueForRegeneration(r: {
   const [row] = (
     await transitionSessions(db, {
       to: 'queued',
-      set: { failureReason: null, dispatchedAt: at, updatedAt: at },
+      // the resumed Claude session still holds the answer being replaced; a cold start rebuilds
+      // the model's history from the stored transcript instead
+      set: { failureReason: null, dispatchedAt: at, updatedAt: at, claudeSessionId: null },
       where: and(
         eq(agentSessions.id, r.session.id),
         eq(agentSessions.status, r.session.status),
