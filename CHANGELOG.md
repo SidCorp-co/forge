@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A breakdown files its issues' contract waits, and an accepted revision suggestion is proposed.**
+  Each item's `contractWaits` is checked like the wait door and written in the accept; a
+  `revision_diff` accept lands its revision proposed, owing only the accept.
+
 ### Added
 
 - **A consumer adopts an additive contract version in one act.** `POST /api/projects/:id/interface/adopt`
@@ -19,10 +25,6 @@
 Masters stop being re-woken for held rows; waits name the right party
 
 ### Fixed
-
-- **A breakdown files its issues' contract waits, and an accepted revision suggestion is proposed.**
-  Each item's `contractWaits` is checked like the wait door and written in the accept; a
-  `revision_diff` accept lands its revision proposed, owing only the accept.
 
 - **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler
   rescues only a lost wake: never after a newer decision, and a delivered rescue backs off
@@ -64,7 +66,6 @@ Approved-only contract pins, instant claim visibility, and 36 wrappers inlined
 
 
 ### Fixed
-
 
 - **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
   to the job's readers inside its own transaction; the runner no longer listens for
@@ -1212,7 +1213,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   says where it stopped instead of ending mid-sentence and looking finished. A turn cannot report
   complete while anything it said is undelivered.
 
-
 - **An agent's report on an issue is now drawn as a card.** A headline, then one labelled row per
   field, with an over-long field folded rather than shortened and a note saying how far over it ran.
 
@@ -2050,7 +2050,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   to `open` on an autonomous project, because a person disagreed with a close and a person routes what
   follows.
 
-
 - **An agent that needs your decision now asks you and gets out of the way.** When a run hits
   something only a person can settle, it writes the question down, releases the machine it was
   holding, and stops — keeping its branch, its working copy and its place in the work so it can pick
@@ -2147,7 +2146,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   App's settings and the new permission approved on each installation. That arrives as HTTP 403,
   which is a permission to grant and not a credential to replace.
 
-
 - **Forge now reports the module pairs your issues keep linking that your module hierarchy never
   declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the
   same nodes — *observed*, a self-join of `issue_labels` scoped to `kind='module'` on both sides,
@@ -2218,7 +2216,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   read. None of the three answers with a partial picture that looks complete. The standing
   `product-map-refresh` schedule keeps authoring its overview / scenario / workflow entries and no
   longer claims the four generated kinds, so those kinds have exactly one owner. (ISS-950)
-
 
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four
@@ -2610,7 +2607,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   added later. Its address is random at `agents.forge.invalid`, a domain RFC 2606 reserves so no MX
   ever resolves it. It cannot mint another agent either: `/api/pat` and `/api/orgs` are both absent
   from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
-
 
 - **Interventions performed by hand at the database are now counted, instead of being invisible to
   the number that exists to count them.** Forge's north-star metric is *interventions per issue
@@ -3507,7 +3503,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   with the assistant, and nothing ever called the older one. It has been removed with the switch
   that turned it on; nothing else changed.
 
-
 - **The UX Contract settings screen is retired.** Your project's UI checklist stays word for
   word as an ordinary rule on the Knowledge screen, fetched when a change touches the UI
   instead of pasted into every briefing.
@@ -3572,7 +3567,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   the same question. All six describe a run rather than a conversation, and all six are still there
   on a run: open a session from the sessions list and they are unchanged. If the chat you want is the
   one that can read the code, that is written up for whoever picks it up, with what it would take.
-
 
 - **The `forge-*` comment components are gone; a body is markdown, or plain HTML.** Bodies could be
   written in a vocabulary of typed elements — `<forge-review>`, `<forge-plan>`, `<forge-blocked>`
@@ -3913,7 +3907,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   A runner carrying `limit_reason='auth'` is a visible consequence: nothing excludes it from being
   claimed onto any more, so `GET /me/load` now reports `runnerFaults` verbatim and
   `forge-runner pool load` warns on them.
-
 
 - **`[runner] max_concurrent` and `device_max_concurrent` from the runner's `config.toml`.** Both
   were parsed, serialized and written into every config file the daemon has ever produced, and read
@@ -4417,7 +4410,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   names what moved and offers two ways on: take the stored values, or keep yours. Edits elsewhere
   on the page stand either way.
 
-
 - **A whole-backlog read no longer lists the same issue twice.** Every hundredth issue in the
   ordering stream, and every sixty-fourth in the duplicate sweep, arrived a second time, so the
   count overran the total the stream itself declared.
@@ -4839,7 +4831,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   `forge-runner run declare` fails loudly instead of printing a sentence where the caller reads an
   id.
 
-
 - **A link in an assistant's reply now opens the page it names, instead of the API's 404.** When the
   assistant pointed you at an issue or at a project's Agents screen, the link it wrote was correct —
   but the page put it together with the address of the backend the app talks to, so clicking it
@@ -5110,7 +5101,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   answer in every room came out as that instead. Nothing in the app said otherwise and no test could
   see it: the only lane that exercised this rule handed it a pretend database that accepts anything.
   Found by the first thing that ran the whole path against a real one.
-
 
 - **An issue whose branch the tracker is holding is no longer told it has no branch.** The check
   that refuses to move an issue on with nothing recorded against it reads the branch from one
@@ -5585,7 +5575,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   under a name that matches no repository on GitHub. The binding's spelling is now what the grant
   and every refusal report.
 
-
 - **`pg-boss` is pinned back to 10, because 12 cannot start against the schema this project's
   databases hold.** The Dependabot majors group (#317) took it from `10.4.2` to `12.30.0`. Every
   gate passed — 15 conformance checks, 5,825 unit tests, 1,167 integration tests, the build, CI on
@@ -5720,7 +5709,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   framing `serialize()` applies. The original report mistook the absence of a field on the issue
   *document* for the absence of the value.
 
-
 - **A token shared by a dispatcher and the agents it runs is rate-limited for that load, and a
   refusal now says exactly how long to wait.** The `forge` CLI's credential file is per-user, so on
   a box running a dispatching session plus four to six agents, one PAT carries every issue read,
@@ -5843,7 +5831,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   closes the issue — `merged_at` is caller-asserted, so the honest act is to put it in front of
   someone who can check the branch.
 
-
 - **A gate now says whether the defect is in the repo or on the box it is running on.** Three
   checks reported an environment condition as a repository failure, in a signal with no field in
   which to say which it was. All three survive a serial re-run identically, so they wear the exact
@@ -5873,7 +5860,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   panicked on a file the winner had unlinked. The tests now write into a directory belonging to the
   process, through a `write_in` seam, and keep asserting that the file *name* is stable — which is
   the property they exist for and the reason randomising it was not the fix. (ISS-939)
-
 
 - **A cross-field pipeline-config rule was enforceable on one write and bypassable by two.** The
   `PATCH /projects/:id/pipeline-config` validator ran the schema over the PATCH, and the service
@@ -6142,7 +6128,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 
   The invariant is now written both ways in `CLAUDE.md`, and the whole lifecycle — both directions,
   and what each symptom means when it goes wrong — is drawn in `docs/flows/lifecycle-pipeline.html`.
-
 
 - **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
   `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that
@@ -7277,7 +7262,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   its own now, instead of rewriting the whole configuration; and a save that fails part-way leaves
   every setting in it untouched.
 
-
 - **Background checks for stuck work handle a fixed amount per pass, and say when there was more.**
   Nothing is skipped: each pass resumes where the last stopped, so a busy minute costs a short
   delay rather than a missed alert.
@@ -7496,7 +7480,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   written in time order and stay that way, which makes the simpler index nearly as fast to scan as
   the table itself, and a second index on that table that wins no query would only cost every write.
 
-
 - **Every place the assistant answers you now works to the same method, and your project chooses the
   language it answers in.** Until now that method lived inside the team-chat integration and nowhere
   else: the assistant in the Forge app answered on a single sentence, and a correction to any rule
@@ -7528,7 +7511,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   still lands on the issue: the assistant now attaches it with `forge attach` once the filing or
   the comment has landed, and tells you if the upload was refused. And when `forge new` shows a
   near neighbour it did not fold onto, the assistant relates the two issues and names both.
-
 
 - **A personal access token no longer counts as "a person is typing this", so driving Forge from the
   command line on your own token now meets the same recorded-work check an agent meets.** The check
@@ -7654,7 +7636,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 
 - **Spend has left the workspace dashboard.** It is an operational surface; money lives on Usage.
 
-
 - **The rules `forge_issues` carries now reach the model reading them, in a third fewer characters.**
   That tool's description was 6,381 characters and the largest single item in the nine-tool catalog
   every assistant turn ships — more prose than the 6,619-character schema beside it. The chat
@@ -7691,7 +7672,6 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   from it, so the menu cannot drift from what the pipeline says a stage does next. The API stays
   deliberately permissive: it still accepts moves the menu no longer offers, so nothing already
   automated against it breaks.
-
 
 - **An issue may rest at `confirmed` or `approved` again, and a master can see it there.**
   Five statuses were cut from the forward ladder on 2026-09-10 and left in the enum to be drained.
@@ -7919,7 +7899,6 @@ One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body rea
   is a label: nothing reads behaviour off it, and a person's token called `device:` is inert. Read
   `agency` any other way at any door and the ISS-786/812 evidence gates and the comment mandate stop
   agreeing about who an agent is.
-
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them
