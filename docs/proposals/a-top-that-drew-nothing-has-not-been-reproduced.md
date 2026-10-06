@@ -38,3 +38,10 @@ The judge's harness is not on the record, so neither of these has been checked a
 The next step is to rerun the judge's exact command line and record the process state (`ps -o stat`)
 while it is drawing nothing. A `T` there confirms the first explanation. An `S` with a gather stack
 confirms the second.
+
+## Honest costs
+
+| What leaving this as a note costs | The price |
+|---|---|
+| A report nobody has explained stays unexplained | If the judge's observation was real, `top` launched from a script or a background job can still draw nothing and ignore SIGTERM. Nothing here prevents that, and the only defence is this note. |
+| The next step depends on a command line that was not recorded | Whoever picks this up has to rebuild the judge's harness before either explanation can be tested. Until then both are hypotheses, and a fix aimed at either one would be a guess. |
