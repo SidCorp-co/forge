@@ -25,6 +25,9 @@
 - **A dev checkout's orientation reaches its worktrees and never blocks a pull.** It is written into
   the excluded `CLAUDE.local.md`, the committed orientation is excluded from loading, and an older
   runner's skip-worktree mark is lifted.
+- **A runner's origin token stays on the box.** Head reads strip URL userinfo; `bind` provisions only
+  its own project, one provisioner per checkout; a pane's borrowed credential is refused
+  `API_BORROW_OTHER_CORE` at another core; an undecodable head-read frame is answered.
 
 ## [0.4.0-dev.42] - 2026-10-06
 

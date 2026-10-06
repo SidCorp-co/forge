@@ -32,13 +32,23 @@ use runner_transport::CoreClient;
 
 /// Pull all queued provisions and process them sequentially (one device, low
 /// volume). Errors are logged, never propagated, so a single bad row can't wedge
-/// the sweep.
+/// the sweep. A checkout another process is provisioning right now is left to it.
 pub async fn run_pending(client: &CoreClient, cfg: &Config) {
+    let Some(provisions) = pull(client).await else {
+        return;
+    };
+    for p in provisions {
+        process_one(client, cfg, &p, Contended::LeaveIt).await;
+    }
+}
+
+/// The queued provisions core returned, with what it could not build said per project.
+async fn pull(client: &CoreClient) -> Option<Vec<Provision>> {
     let pending = match provision::pull_pending(client).await {
         Ok(p) => p,
         Err(e) => {
             provision::report_pull_refusal(&e);
-            return;
+            return None;
         }
     };
     // What core could not build, named per project. This used to arrive as
@@ -54,17 +64,26 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
         );
     }
     if pending.provisions.is_empty() {
-        return;
+        return None;
     }
     tracing::info!("[provision] {} pending", pending.provisions.len());
-    for p in pending.provisions {
-        process_one(client, cfg, &p).await;
-    }
+    Some(pending.provisions)
 }
 
-pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) {
+/// Queue `runner_id`'s provision and run that one alone, waiting for a checkout another process
+/// holds. Every other queued project on the device is the daemon's sweep's, never this caller's: a
+/// `bind` that took them cloned other projects inside the CLI, racing the sweep for the same folder.
+/// Whether core returned this runner's provision to run.
+pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) -> bool {
     report(client, runner_id, "queued", None).await;
-    run_pending(client, cfg).await;
+    let Some(own) = pull(client)
+        .await
+        .and_then(|all| all.into_iter().find(|p| p.runner_id == runner_id))
+    else {
+        return false;
+    };
+    process_one(client, cfg, &own, Contended::WaitForIt).await;
+    true
 }
 
 /// Best-effort status report (logs on failure).
@@ -74,7 +93,7 @@ async fn report(client: &CoreClient, runner_id: &str, status: &str, detail: Opti
     }
 }
 
-async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
+async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision, contended: Contended) {
     // 1. Resolve the target folder.
     let repo_path = match resolve_path(cfg, p) {
         Some(path) => path,
@@ -88,6 +107,11 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
             .await;
             return;
         }
+    };
+    // 2. One provisioner per checkout across every process on this box: two `git clone`s into one
+    // folder leave the provision on whichever report came last.
+    let Some(_held) = hold_checkout(client, p, &repo_path, contended).await else {
+        return;
     };
 
     let cred_host = credential_host(p);
@@ -173,6 +197,94 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
     }
 
     finish_workspace(client, cfg, p, &repo_path).await;
+}
+
+/// The held provision lock on `repo_path`, or `None` once what stopped it is reported or logged.
+async fn hold_checkout(
+    client: &CoreClient,
+    p: &Provision,
+    repo_path: &Path,
+    contended: Contended,
+) -> Option<std::fs::File> {
+    let lock_dir = match runner_platform::config::base_dir() {
+        Ok(base) => base.join("locks"),
+        Err(e) => {
+            let detail = format!(
+                "the provision lock for {} has no directory: {e}",
+                repo_path.display()
+            );
+            report(client, &p.runner_id, "failed", Some(&detail)).await;
+            return None;
+        }
+    };
+    match checkout_lock(&lock_dir, repo_path, contended).await {
+        Ok(Some(held)) => Some(held),
+        Ok(None) => {
+            tracing::info!(
+                "[provision] {}: another process on this box is provisioning {} — it reports this provision",
+                p.slug,
+                repo_path.display()
+            );
+            None
+        }
+        Err(detail) => {
+            report(client, &p.runner_id, "failed", Some(&detail)).await;
+            None
+        }
+    }
+}
+
+/// What a provisioner does when another process on this box holds the checkout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Contended {
+    /// The daemon's sweep: the holder reports this provision, and the next sweep sees the outcome.
+    LeaveIt,
+    /// `bind`: the person asked for this checkout, so the call waits for the holder and then runs
+    /// over what it left, which every step here takes as it finds it.
+    WaitForIt,
+}
+
+/// The lock file serialising provisions of `repo_path`: one per checkout, under `lock_dir`.
+fn checkout_lock_path(lock_dir: &Path, repo_path: &Path) -> PathBuf {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(repo_path.to_string_lossy().as_bytes());
+    lock_dir.join(format!("provision-{}.lock", &hex::encode(digest)[..16]))
+}
+
+/// The held lock on `repo_path`'s provision, released when dropped; `None` where another process
+/// holds it and `contended` says to leave it; or why the lock could not be taken at all.
+async fn checkout_lock(
+    lock_dir: &Path,
+    repo_path: &Path,
+    contended: Contended,
+) -> std::result::Result<Option<std::fs::File>, String> {
+    let path = checkout_lock_path(lock_dir, repo_path);
+    let said = |e: std::io::Error| {
+        format!(
+            "the provision lock {} for {} could not be taken: {e}",
+            path.display(),
+            repo_path.display()
+        )
+    };
+    std::fs::create_dir_all(lock_dir).map_err(said)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(said)?;
+    match contended {
+        Contended::LeaveIt => match file.try_lock() {
+            Ok(()) => Ok(Some(file)),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => Err(said(e)),
+        },
+        Contended::WaitForIt => tokio::task::spawn_blocking(move || file.lock().map(|()| file))
+            .await
+            .map_err(|e| said(std::io::Error::other(e)))?
+            .map(Some)
+            .map_err(said),
+    }
 }
 
 /// Write the checkout's orientation, answering what its provision result records.
@@ -602,5 +714,135 @@ fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode
             }
         }
         Err(e) => WorkspaceMode::Occupied(vec![format!("<unreadable: {e}>")]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    type Seen = Arc<Mutex<Vec<(String, String)>>>;
+
+    /// A fake core whose provision pull answers `queued` (a JSON array), recording every request.
+    async fn fake_core(queued: serde_json::Value) -> (CoreClient, Seen) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Seen = Arc::default();
+        let log = seen.clone();
+        let queued = queued.to_string();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let (method, path) = loop {
+                    let n = sock.read(&mut chunk).await.unwrap_or(0);
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let len = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if body.len() >= len || n == 0 {
+                            let mut words = head.split_whitespace();
+                            break (
+                                words.next().unwrap_or("").to_string(),
+                                words.next().unwrap_or("").to_string(),
+                            );
+                        }
+                    }
+                    if n == 0 {
+                        break (String::new(), String::new());
+                    }
+                };
+                log.lock().unwrap().push((method.clone(), path.clone()));
+                let reply = if method == "GET" && path == "/api/devices/me/provisions" {
+                    queued.clone()
+                } else {
+                    "{}".to_string()
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    reply.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.write_all(reply.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (CoreClient::new(format!("http://{addr}"), "token"), seen)
+    }
+
+    fn queued(runner_id: &str, slug: &str) -> serde_json::Value {
+        serde_json::json!({
+            "runnerId": runner_id, "projectId": format!("p-{slug}"), "slug": slug,
+            "repoPath": null, "branch": null, "repoUrl": null,
+        })
+    }
+
+    #[tokio::test]
+    async fn a_checkout_another_process_provisions_is_left_by_the_sweep_and_waited_for_by_bind() {
+        let dir = std::env::temp_dir().join(format!("forge-prov-lock-{}", uuid::Uuid::new_v4()));
+        let checkout = dir.join("epod");
+        let other = dir.join("other");
+        let held = checkout_lock(&dir, &checkout, Contended::LeaveIt)
+            .await
+            .unwrap()
+            .expect("a free checkout is taken");
+        assert!(
+            checkout_lock(&dir, &checkout, Contended::LeaveIt)
+                .await
+                .unwrap()
+                .is_none(),
+            "a second provisioner of one checkout ran beside the first"
+        );
+        assert!(
+            checkout_lock(&dir, &other, Contended::LeaveIt)
+                .await
+                .unwrap()
+                .is_some(),
+            "another checkout is not held by this one's lock"
+        );
+        let waiting = tokio::spawn({
+            let (dir, checkout) = (dir.clone(), checkout.clone());
+            async move { checkout_lock(&dir, &checkout, Contended::WaitForIt).await }
+        });
+        tokio::task::yield_now().await;
+        assert!(
+            !waiting.is_finished(),
+            "bind took a checkout another process holds"
+        );
+        drop(held);
+        let got = tokio::time::timeout(Duration::from_secs(10), waiting)
+            .await
+            .expect("bind waits for the holder, not for ever")
+            .unwrap()
+            .unwrap();
+        assert!(got.is_some());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn bind_provisions_only_its_own_runner_never_another_queued_project() {
+        let (client, seen) =
+            fake_core(serde_json::json!([queued("r-a", "a"), queued("r-b", "b")])).await;
+        let cfg = Config::default();
+        reprovision(&client, &cfg, "r-a").await;
+        let seen = seen.lock().unwrap().clone();
+        assert!(
+            seen.iter()
+                .any(|(m, p)| m == "POST" && p.contains("/runners/r-a/")),
+            "its own runner is provisioned: {seen:?}"
+        );
+        assert!(
+            !seen.iter().any(|(_, p)| p.contains("/runners/r-b/")),
+            "another project's queued provision was taken by bind: {seen:?}"
+        );
     }
 }
