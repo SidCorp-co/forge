@@ -34,6 +34,7 @@ import {
   issueCriteriaOf,
   latestContractPinsOf,
   latestPinsOf,
+  unapprovedDesignsOf,
 } from './standing-facts.js';
 
 interface StandingRow {
@@ -107,6 +108,7 @@ export async function standingsOf(
     releaseApproval,
     contracts,
     contractPins,
+    unapproved,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -116,6 +118,7 @@ export async function standingsOf(
           state: requirementRevisions.state,
           authorId: requirementRevisions.authorId,
           authorAgency: requirementRevisions.authorAgency,
+          returnReason: requirementRevisions.returnReason,
           createdAt: requirementRevisions.createdAt,
           proposedAt: requirementRevisions.proposedAt,
           decidedAt: requirementRevisions.decidedAt,
@@ -169,6 +172,7 @@ export async function standingsOf(
     held ? held.releaseApproval : approvalRequiredIn(projectId),
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
+    unapprovedDesignsOf(ids),
   ]);
   const [people, issueCriteria, feedbackLinks, closedAt, changedTraced] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
@@ -219,6 +223,7 @@ export async function standingsOf(
           authorName: people.get(r.authorId)?.name ?? null,
           authorKind: people.get(r.authorId)?.kind ?? 'human',
           authorAgency: r.authorAgency,
+          returned: r.returnReason !== null,
           createdAt: r.createdAt,
           proposedAt: r.proposedAt,
           decidedAt: r.decidedAt,
@@ -230,6 +235,10 @@ export async function standingsOf(
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
+        unapprovedDesigns: by(unapproved, row.id).map(({ flow, designStatus }) => ({
+          flow,
+          designStatus,
+        })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         updatedAt: row.updatedAt,

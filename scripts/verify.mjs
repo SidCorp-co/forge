@@ -42,6 +42,7 @@ const CI_COVERAGE = {
   'pnpm --filter @forge/core typecheck': 'verify',
   'pnpm --filter web-v2 lint': 'verify',
   'pnpm --filter @forge/contracts test': 'pnpm test',
+  'pnpm --filter web-v2 test': 'pnpm test',
   'pnpm --filter web-v2 build': 'pnpm build',
   'pnpm --filter @forge/core test': 'pnpm test',
   'pnpm --filter @forge/core build': 'pnpm build',

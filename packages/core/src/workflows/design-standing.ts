@@ -43,8 +43,8 @@ function proposedWait(input: DesignStandingInput, revision: number): DesignWaiti
 }
 
 // Whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
-// returned or draft → the master that writes it (a holder of workflow-designs.write); approved or
-// not under approval → nobody
+// returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
+// it; approved or not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
   const writer = input.latest?.author ?? 'Master';
@@ -62,9 +62,9 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
     case 'returned':
       return wait(
         'agent',
-        writer,
+        "The project's master",
         latest === null ? 'revise it' : `revise revision ${latest}`,
-        'a returned design is revised by its master writing it, which proposes the next revision',
+        "a returned design is owed by the project's master, whoever wrote it: core wakes it on the return and its box carries the return to every pass until the next revision is proposed",
       );
     case 'draft':
       return wait(

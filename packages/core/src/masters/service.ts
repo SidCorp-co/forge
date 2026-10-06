@@ -2,6 +2,7 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterPassCloseReason,
   MasterPassRefusal,
   MasterPassSkip,
   MasterPassTrigger,
@@ -131,6 +132,7 @@ export async function closeMasterPass(args: {
   skipped: MasterPassSkip[];
   parked: string[];
   refused: MasterPassRefusal | null;
+  closeReason: MasterPassCloseReason | null;
 }): Promise<ClosePassOutcome> {
   const withWork = refusedWithWorkRefusal(args);
   if (withWork) return { ok: false, refusals: [withWork] };
@@ -150,7 +152,8 @@ export async function closeMasterPass(args: {
                  args.parked.map((p) => sql`${p}`),
                  sql`, `,
                )}]::text[]`},
-               refusal = ${args.refused ? JSON.stringify(scrubSecretsDeep(args.refused)) : null}::jsonb
+               refusal = ${args.refused ? JSON.stringify(scrubSecretsDeep(args.refused)) : null}::jsonb,
+               close_reason = ${args.closeReason}
          WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
         RETURNING ${PASS_COLUMNS}`),
     );

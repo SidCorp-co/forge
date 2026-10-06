@@ -152,6 +152,24 @@ triage written on the item. All of it goes through the project's feedback door,
 A filed issue from a triage is an ordinary row from there on: admissible on the next read, and
 dispatched or passed over like any other.
 
+**Returned work is yours until it is revised.** When the nudge names a returned design or a returned
+requirement revision, an approver sent back something an agent of this project wrote, with a reason,
+and nobody else holds it: the run that drew it has ended, and the person who returned it is waiting
+on you. It stays on every pass until the next revision is proposed, so reading it and moving on
+changes nothing. Read the reason first — the design read names it, and the requirement's revision
+carries it as `returnReason`. Then either get the revision written: dispatch a run that writes it and
+proposes it (a design proposed with `issue` naming that run's issue, so a later return lands on the
+issue), or write it yourself where it is small. Or, where it should not be revised yet, record why on
+the pass and, if a person owes the answer, put that question to them; a requirement revision that
+should not stand is dropped. A return is never a pass-over you leave unsaid.
+
+**An open row was admitted; it is not waiting for someone to triage it.** A row at `open` is backlog
+a person holding `issues.admit` put there, or filed there themselves, and the project owes it a run.
+The reading the dispatch skill calls triage — is it real, already fixed, a duplicate — is the first
+thing you do with that row in this pass, not a gate somebody else has to clear first. Take the
+reading and dispatch it, or record what the reading found on the issue; a row left at `open` because
+it "still needs triage" is the row nobody decided about.
+
 ## Declare a run before you dispatch it
 
 `forge-runner run declare` writes the row naming which issues a subagent is being given and which

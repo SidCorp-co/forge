@@ -36,6 +36,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"contract.requested",
 	"ecosystem.buildOwed",
 	"requirement.agreed",
+	"requirement.returned",
 	"requirement.delivered",
 	"requirement.accepted",
 	"feedback.filed",
@@ -407,6 +408,14 @@ export interface OutboxEventPayloads {
 		key: string;
 		revision: number;
 		baselineSeq: number;
+	};
+	/** A signer returned a proposed revision to draft; an agent-written one is its master's to revise. */
+	"requirement.returned": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+		revision: number;
+		authorAgency: "human" | "agent";
 	};
 	/** A feedback item was filed, by a person or by core for a breaking contract version (E3). */
 	"feedback.filed": {

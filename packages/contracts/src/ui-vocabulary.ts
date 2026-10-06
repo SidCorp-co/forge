@@ -7,7 +7,7 @@ import type { AgentReportTriage } from "./agent-reports.js";
 import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { JobStatus } from "./job-machine.js";
-import type { MasterState, MasterVerb } from "./master-standing.js";
+import type { MasterPassCloseReason, MasterState, MasterVerb } from "./master-standing.js";
 import type {
 	RunActorType,
 	RunEventEntity,
@@ -259,6 +259,7 @@ export const STATE_READINGS = {
 	},
 	masterState: {
 		in_pass: ["In a pass", "run", "●"],
+		runs_out: ["Runs out", "run", "◐"],
 		idle: ["Idle", "neutral", "○"],
 		waiting_person: ["Waiting on a person", "you", "?"],
 		silent: ["Silent", "err", "!"],
@@ -470,6 +471,14 @@ export const ENUM_LABELS = {
 		rate_limit: "Rate limit",
 		auth: "Credential refused",
 	},
+	masterPassClose: {
+		turn_ended: "Turn ended",
+		abandoned_quiet: "Abandoned: quiet",
+		abandoned_restart: "Abandoned: daemon restarted",
+		abandoned_orphan: "Abandoned: no record on the box",
+		session_gone: "Closed with its session",
+		unrecorded: "Closed: not recorded",
+	} satisfies Record<MasterPassCloseReason, string>,
 	runExpirySource: {
 		claim: "Claim",
 		silence_reap: "Silence reap",

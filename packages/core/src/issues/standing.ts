@@ -344,10 +344,10 @@ function idleTurn(status: IssueStatus): Turn {
     waitingOn: wait(
       'master',
       'Master',
-      status === 'approved' ? 'build next' : 'free slot',
+      status === 'approved' ? 'build next' : 'dispatch a run',
       status === 'approved'
         ? 'the plan checkpoint holds; the next run goes straight to build'
-        : 'accepted, nothing blocks it; a master takes it',
+        : "admitted and nothing withholds it, so the project's master owes it a run; reading whether it is real is the first thing that master's pass does with it, not a gate before it",
     ),
   };
 }

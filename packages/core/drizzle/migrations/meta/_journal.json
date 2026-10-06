@@ -2738,6 +2738,13 @@
       "when": 1819584000000,
       "tag": "0424_a_revision_names_who_wrote_it_and_a_projects_strands_share_one_bell_row",
       "breakpoints": true
+    },
+    {
+      "idx": 425,
+      "version": "7",
+      "when": 1819670400000,
+      "tag": "0425_a_master_pass_names_how_it_closed_and_a_returned_revision_is_told",
+      "breakpoints": true
     }
   ]
 }

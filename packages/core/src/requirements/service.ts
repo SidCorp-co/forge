@@ -4,6 +4,7 @@
  * `agree.ts`, the guards `rules.ts`, the reads `read.ts`.
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import { db } from '../db/client.js';
 import {
   type RevisionState,
@@ -11,6 +12,7 @@ import {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
@@ -169,6 +171,14 @@ export async function returnRevision(input: {
       revision: target.revision,
       returnedBy: actor.userId,
       reason,
+    });
+    // told on the outbox in the return's own transaction: an agent's revision is its master's to revise
+    await emitEvent(tx, 'requirement.returned', {
+      projectId,
+      requirementId: row.id,
+      key: requirementKey(row.reqSeq),
+      revision: target.revision,
+      authorAgency: target.authorAgency,
     });
     return null;
   });

@@ -27,8 +27,14 @@ export function SlideOver({
   return (
     <Sheet
       open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
+      onOpenChange={(next, details) => {
+        if (next) return;
+        // cm:why a control inside the drawer that took Escape for itself marks it handled; base-ui's dismissal honours only a stopped key, so a marked one closed the drawer and its draft with it (ISS-1146)
+        if (details.reason === "escape-key" && details.event.defaultPrevented) {
+          details.cancel();
+          return;
+        }
+        onClose();
       }}
     >
       <SheetContent
