@@ -50,13 +50,28 @@ function refuse(
   return { ok: false, code, detail, details };
 }
 
-function unreadable(commit: string, why: string): CommitLanding {
+const READABLE =
+  "once the tracker can read the project's repository — a GitHub binding whose installation can " +
+  'read it';
+
+/**
+ * Only an agent's mark on an issue holding no branch or handoff reads the repository, so the
+ * commit is the one route left: the refusal names what reopens it, never the branch the work was
+ * done on, which on the base-branch lane is the base branch `collectWorkEvidence` discards.
+ */
+function unreadable(commit: string, why: string, clears: string = READABLE): CommitLanding {
   return refuse(
     'COMMIT_UNVERIFIED',
-    `commit ${commit} could not be checked against this project's repository, so it is not taken as evidence unchecked: ${why}. Mark again once the repository can be read, or record the branch the work was done on`,
+    `commit ${commit} could not be checked against this project's repository, so it is not ` +
+      `taken as evidence unchecked: ${why}. This issue records no branch or handoff, so the ` +
+      `commit is the only evidence an agent's mark can carry here, and a branch recorded under ` +
+      `the base branch's name is not evidence. Mark again ${clears}, or have a person mark it merged`,
     { commit },
   );
 }
+
+/** Long enough to be a whole sha (SHA-1, or SHA-256 at 64), which GitHub cannot read as a prefix. */
+const FULL_SHA_LENGTH = 40;
 
 /**
  * Whether `commit` is this issue's landing, read from the project's own repository: the repository
@@ -83,7 +98,13 @@ export async function readCommitLanding(
   if (!row) return unreadable(commit, 'the issue was not found');
   const { projectId, issSeq } = row;
   const baseBranch = row.baseBranch?.trim() || null;
-  if (!baseBranch) return unreadable(commit, 'the project names no base branch to look for it on');
+  if (!baseBranch) {
+    return unreadable(
+      commit,
+      'the project names no base branch to look for it on',
+      'once the project names its base branch',
+    );
+  }
   const live = chainLiveBranch(row.releaseChain);
   const branches = live && live !== baseBranch ? [baseBranch, live] : [baseBranch];
 
@@ -104,11 +125,15 @@ export async function readCommitLanding(
   } catch (err) {
     const lookup = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
     if (lookup === 404 || lookup === 422) {
-      return refuse(
-        'COMMIT_NOT_IN_REPOSITORY',
-        `commit ${commit} is not an object in ${repository}: GitHub resolves it to no single commit there (HTTP ${lookup}). Mark with the sha the work landed at`,
-        { commit, repository },
-      );
+      // GitHub answers a prefix nothing starts with and one several commits start with alike, so
+      // an abbreviated sha it cannot resolve is not reported as absent.
+      const detail =
+        commit.length >= FULL_SHA_LENGTH
+          ? `GitHub finds no commit ${commit} in ${repository} (HTTP ${lookup}). Mark with the sha the work landed at`
+          : `GitHub resolves no single commit from ${commit} in ${repository} (HTTP ${lookup}): ` +
+            'no commit there starts with it, or more than one does, and GitHub answers both ' +
+            'alike. Mark with the full 40-character sha the work landed at';
+      return refuse('COMMIT_NOT_IN_REPOSITORY', detail, { commit, repository });
     }
     return unreadable(commit, err instanceof Error ? err.message : String(err));
   }

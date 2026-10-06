@@ -54,7 +54,9 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked.
+evidence unchecked. GitHub answers an abbreviated sha that no commit starts with and one that
+several commits start with alike, so such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
+unresolved, asking for the full sha, and never reported as absent.
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
 `merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the
@@ -64,7 +66,10 @@ both blankets have been written into it and both were false.
 
 A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged_commit_sha`
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
-`developed` or `testing` one status later.
+`developed` or `testing` one status later. The `NO_WORK_EVIDENCE` refusal
+(`packages/core/src/pipeline/work-evidence.ts:noWorkEvidenceDetail`) offers that commit route
+on the `git` shape only. On `outside_git` it names the branch and handoff routes and a person's
+mark, which the check does not hold.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
