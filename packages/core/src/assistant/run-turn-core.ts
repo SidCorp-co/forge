@@ -124,7 +124,7 @@ async function safeExecute(toolset: ChatToolset, tc: CollectedToolCall): Promise
   try {
     return await toolset.execute(tc.name, tc.arguments);
   } catch (err) {
-    return toolError(err instanceof Error ? err.message : String(err));
+    return toolError(redactQueryParams(err instanceof Error ? err.message : String(err), err));
   }
 }
 
