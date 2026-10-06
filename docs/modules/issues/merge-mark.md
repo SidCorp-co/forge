@@ -99,7 +99,7 @@ like any other repeat.
 
 A claim is still checked (ISS-1350). On a `git` project every commit a mark records — a person's,
 an agent's on an issue that has a branch or handoff, one beside a merged pull request — is first
-resolved by the project's repository (`resolveMarkCommit` in `commit-landing.ts`, the same commit
+resolved by the project's repository (`packages/core/src/issues/commit-landing.ts:resolveMarkCommit`, the same commit
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
 `COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
 why, and a mark naming no commit is the route that still records. A resolved commit is recorded by

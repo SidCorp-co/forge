@@ -133,6 +133,19 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     },
   );
 
+  it('says a handoff commit was left out on a mark that repeats one Forge observed (criterion 8)', async () => {
+    const issue = await seed();
+    expect((await mark(issue, OWN)).mark).toBe('observed');
+    await handoff(issue.id, FABRICATED);
+    const res = await mark(issue, undefined, 'human');
+    expect(res.action).toBe('already_merged');
+    expect(res.mark).toBe('observed');
+    const why = 'SidCorp-co/specimen does not resolve it';
+    expect(res.markDetail).toContain(`commit ${FABRICATED} this issue's implementation handoff`);
+    expect(res.markDetail).toContain(why);
+    expect((await comments(issue.id)).at(-1)).toContain(why);
+  });
+
   it('records a handoff commit the repository holds by its full sha (criterion 9)', async () => {
     const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
     await handoff(issue.id, OWN.slice(0, 10));

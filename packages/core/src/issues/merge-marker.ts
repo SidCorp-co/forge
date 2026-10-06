@@ -64,11 +64,10 @@ async function resolveRecordedCommit(issueId: string): Promise<string | null> {
 type LeftOut = { commit: string; why: string };
 
 /**
- * ISS-1350 — the commit a `git` mark records, as the project's repository resolves it, never as
- * the caller typed it. The caller's own commit is refused by name where the repository does not
- * hold it or cannot be read; the handoff's, which the caller never sent, is left off the mark and
- * said to be instead. The one commit not read is a merged pull request's own merge sha, which
- * Forge already holds.
+ * ISS-1350 — what a `git` mark names as its commit is the repository's resolution of it, never the
+ * caller's spelling. A caller's commit the repository does not hold, or cannot be read for, is
+ * refused by name; the handoff's, which the caller never sent, is left off and said to be. A merged
+ * pull request's own merge sha is not read again: Forge already holds it.
  */
 async function recordedClaim(args: {
   projectId: string;
