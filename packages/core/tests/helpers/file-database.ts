@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
-import { afterAll } from 'vitest';
+import { afterAll, beforeAll } from 'vitest';
 
 const adminUrl = process.env.TEST_PG_ADMIN_URL;
 const template = process.env.TEST_PG_TEMPLATE;
@@ -23,10 +23,24 @@ const url = new URL(adminUrl);
 url.pathname = `/${name}`;
 process.env.DATABASE_URL = url.toString();
 process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL ??= 'silent';
 process.env.JWT_SECRET ??= 'integration-secret-at-least-32-characters-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-pepper-at-least-32-characters-long';
 
+/**
+ * The process wired the way its entry wires it — every port provided, every route mounted, every
+ * integration registered — and never served. In a hook rather than at the top of this file, so a
+ * file's own `vi.mock` is registered before the entry's module graph is first loaded.
+ */
+beforeAll(async () => {
+  await import('../../src/index.js');
+  const { registerAllIntegrations } = await import('../../src/integration-registry.js');
+  registerAllIntegrations();
+});
+
 afterAll(async () => {
+  const boss = await import('../../src/queue/boss.js');
+  if (boss.isBossStarted()) await boss.stopBoss();
   const { closeDb } = await import('../../src/db/client.js');
   await closeDb();
 });

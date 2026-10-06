@@ -169,13 +169,23 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   });
 }
 
+/**
+ * Locks the row, then reads the composed value in a statement of its own. One statement doing both
+ * waits on the lock and then composes the lease from `issue_work_state` as its snapshot saw it
+ * before the wait, so a writer queued behind another compared against the value that writer
+ * replaced, and both compare-and-sets won.
+ */
 async function lockComposedSessionContext(
   tx: UpdateTx,
   issueId: string,
 ): Promise<{ sessionContext: unknown } | null> {
+  const locked = (await tx.execute(sql`
+    SELECT 1 FROM issues WHERE id = ${issueId} FOR UPDATE
+  `)) as unknown as unknown[];
+  if (locked.length === 0) return null;
   const rows = (await tx.execute(sql`
     SELECT issue_session_context(i.id, i.session_context) AS session_context
-      FROM issues i WHERE i.id = ${issueId} FOR UPDATE
+      FROM issues i WHERE i.id = ${issueId}
   `)) as unknown as Array<{ session_context: unknown }>;
   const row = rows[0];
   return row ? { sessionContext: row.session_context ?? null } : null;

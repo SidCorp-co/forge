@@ -21,6 +21,7 @@ export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     environment: 'node',
+    fsModuleCache: true,
     globalSetup: ['./tests/helpers/global-setup.ts'],
     // The guard fails a test that lists the repository root without declaring it (ISS-1314).
     setupFiles: ['../../scripts/lib/whole-tree-guard.mjs', './tests/helpers/file-database.ts'],
