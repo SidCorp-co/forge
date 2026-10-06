@@ -183,7 +183,7 @@ runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
     projectId: input.projectId,
     runnerId: row.id,
     event: 'runner.created',
-    data: { runnerId: row.id, type: row.type },
+    data: { runnerId: row.id, projectId: input.projectId, type: row.type },
     runnerRoom: false,
   });
 
@@ -239,7 +239,7 @@ runnerRoutes.patch(
       projectId: row.projectId,
       runnerId: row.id,
       event: 'runner.updated',
-      data: { runnerId: row.id, status: row.status },
+      data: { runnerId: row.id, projectId: row.projectId, status: row.status },
       runnerRoom: false,
     });
 
@@ -259,7 +259,7 @@ runnerRoutes.delete('/:id', zValidator('param', idParam), async (c) => {
     projectId: existing.projectId,
     runnerId: id,
     event: 'runner.deleted',
-    data: { runnerId: id },
+    data: { runnerId: id, projectId: existing.projectId },
     runnerRoom: false,
   });
   return c.json({ ok: true });

@@ -25,6 +25,10 @@ vi.mock('../lib/rooms.js', async (importOriginal) => {
   };
 });
 vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../lifecycle/index.js', () => ({
+  transition: vi.fn(async () => ({ rows: [{ id: 'r-9', projectId: 'p-9' }] })),
+}));
+vi.mock('../runners/runner-events.js', () => ({ insertRunnerEvent: vi.fn() }));
 vi.mock('../pipeline/index.js', () => ({
   emitPipelineWedge: vi.fn(),
   resolvePipelineWedge: vi.fn(),
@@ -33,6 +37,7 @@ vi.mock('../pipeline/index.js', () => ({
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
 const { broadcastRunnerChanged } = await import('../runners/apply-runner-limit.js');
 const { pushDevice } = await import('../devices/push.js');
+const { runRunnerStaleSweep } = await import('../runners/stale-detector.js');
 
 /** Hands every event written so far to the consumer registered for its type, as the worker would. */
 async function deliver(): Promise<void> {
@@ -77,10 +82,27 @@ describe('a runner push reaches its room only through the outbox', () => {
       projectId: 'p-1',
       runnerId: 'r-1',
       event: 'runner.status',
-      data: { runnerId: 'r-1', status: 'offline', reason: 'stale' },
+      data: { runnerId: 'r-1', projectId: 'p-1', status: 'offline', reason: 'stale' },
       runnerRoom: true,
     });
     expect(published.map((p) => p.room)).toEqual(['runner:r-1', 'project:p-1']);
+  });
+
+  it('names the project in the frame the stale sweep publishes, so its runner list refreshes', async () => {
+    await runRunnerStaleSweep();
+    await deliver();
+    expect(published).toEqual([
+      {
+        room: 'runner:r-9',
+        event: 'runner.status',
+        data: { runnerId: 'r-9', projectId: 'p-9', status: 'offline', reason: 'stale' },
+      },
+      {
+        room: 'project:p-9',
+        event: 'runner.status',
+        data: { runnerId: 'r-9', projectId: 'p-9', status: 'offline', reason: 'stale' },
+      },
+    ]);
   });
 
   it('names a token change as the pat.* event web listens for', async () => {

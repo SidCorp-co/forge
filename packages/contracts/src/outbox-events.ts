@@ -52,6 +52,15 @@ export const OUTBOX_EVENT_TYPES = [
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
+/** What a runner change tells its rooms: always which runner and which project, so web can refresh that project's runner list. */
+export interface RunnerChange {
+	runnerId: string;
+	projectId: string;
+	status?: string;
+	reason?: string;
+	type?: string;
+}
+
 /**
  * The route a merge stamp arrived by (github-merge-sequence `m-stamp`): the host's webhook
  * (`event`), Forge's own merge (`kernel`), a mark whose commit Forge read from the repository or its
@@ -427,7 +436,7 @@ export interface OutboxEventPayloads {
 			| "runner.updated"
 			| "runner.deleted"
 			| "runner.status";
-		data: Record<string, unknown>;
+		data: RunnerChange;
 		runnerRoom: boolean;
 	};
 	/** A job moved, or its box is asked to stop it; `rooms` names who is told. */

@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **Live updates reach the lists they name.** Tokens and Settings notifications refresh live; every
+  runner frame names its project, so a created, deleted or stale runner updates Runners at once.
+  Copy link without a clipboard shows the link.
+
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
   project admins, never the project room; reads gate on the `kind` column, not a `metadata.type`
   nothing has written since ISS-1136.

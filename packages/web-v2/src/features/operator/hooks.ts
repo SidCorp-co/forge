@@ -65,7 +65,6 @@ export function useReapJob() {
     mutationFn: (jobId: string) => operatorApi.reapJob(jobId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "ops"] });
-      qc.invalidateQueries({ queryKey: ["jobs", "list"] });
     },
   });
 }
