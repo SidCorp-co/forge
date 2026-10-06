@@ -38,21 +38,24 @@ export function turnStageOf({
 export function sessionTurnStage({
   live,
   display,
-  fromMessages,
+  truncated,
   tail,
 }: {
   /** The screen's own liveness, so which statuses are live is stated in one place and not two. */
   live: boolean;
   display: AgentSessionDisplayStatus;
-  /** The transcript came from `agent_sessions.messages` rather than from turn rows (ISS-348). */
-  fromMessages?: boolean;
+  /**
+   * The loaded turns stop at the page cap, so the thread's last item is not the session's newest
+   * turn: no live stage is drawn on it, only a failure, which is the session's and not the tail's.
+   */
+  truncated?: boolean;
   /** The thread's last item, whichever kind it is. */
   tail?: Pick<ConversationItem, "kind" | "blocks"> | undefined;
 }): TurnStage | null {
   return turnStageOf({
-    live,
+    live: live && truncated !== true,
     failed: display === "failed",
-    ...(fromMessages !== true && tail?.kind === "agent" ? { blocks: tail.blocks } : {}),
+    ...(tail?.kind === "agent" ? { blocks: tail.blocks } : {}),
   });
 }
 

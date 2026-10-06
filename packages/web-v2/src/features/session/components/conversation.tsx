@@ -29,9 +29,8 @@ interface ConversationProps extends ConversationActions {
   /** Turn actions are disabled while a turn is in flight. */
   busy?: boolean;
   /**
-   * Read-only render (transcript from `agent_sessions.messages`, not per-turn
-   * rows): hide per-turn Edit/Regenerate/Fork — those need real turn ids that
-   * the messages fallback doesn't carry (ISS-348).
+   * Read-only render, for items that are not turn rows (a conversation message): hide per-turn
+   * Edit/Regenerate/Fork, which act on a real turn id.
    */
   readOnly?: boolean;
   newestAgentId?: string;

@@ -6,10 +6,13 @@ import { TURN_PAGE_CAP, TURN_PAGE_SIZE } from "../hooks";
 export function TurnsTruncated({
   loaded,
   loading,
+  live,
   onLoad,
 }: {
   loaded: number;
   loading: boolean;
+  /** The session is still producing turns, all of them past the loaded range. */
+  live?: boolean;
   onLoad: () => void;
 }) {
   return (
@@ -19,6 +22,7 @@ export function TurnsTruncated({
     >
       <p className="fg-body-sm text-muted">
         Showing the first {loaded.toLocaleString()} entries — later entries were not loaded.
+        {live && " The session is still running; what it is doing now is past the loaded range."}
       </p>
       <button
         type="button"

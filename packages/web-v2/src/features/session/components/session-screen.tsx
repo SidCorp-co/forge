@@ -42,7 +42,7 @@ import {
   useSession,
   useSessionTurnPages,
 } from "../hooks";
-import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
+import { deriveAgentTasks, parseTurns } from "../types";
 import { SessionComposer } from "./session-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
@@ -96,17 +96,11 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
   useRoom(session ? projectRoom(session.projectId) : null);
 
-  // Prefer the per-turn rows (interactive: live caret + edit/regen/fork
-  // anchors). Pipeline/CLI-runner sessions have no turn rows yet — fall back to
-  // the full canonical transcript returned on the detail row (read-only).
-  const items = useMemo(() => {
-    const turns = turnsQ.data?.turns ?? [];
-    if (turns.length > 0) return parseTurns(turns);
-    if (session?.messages?.length) return parseMessages(session.messages);
-    return [];
-  }, [turnsQ.data, session?.messages]);
-  const fromMessages =
-    (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
+  // The turn rows are the session's only transcript. The detail row's `messages` is their last
+  // few rows, so it never stands in for them, and a failed turns read is shown as one.
+  const items = useMemo(() => parseTurns(turnsQ.data?.turns ?? []), [turnsQ.data]);
+  // Later turns exist past the page cap: the last loaded item is not the session's newest turn.
+  const truncated = !!turnsQ.data?.nextCursor;
   const isRun = session ? isJobDriven(session) : false;
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.
@@ -129,15 +123,15 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     : undefined;
   const elapsed = useElapsed(startMs, live);
 
-  const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
+  const lastTurnId = !truncated && items.length ? items[items.length - 1].turnId : undefined;
+  const streaming = live && !truncated;
 
   // What this turn is doing, in the one line that replaced the `AgentWorking` card below the
-  // thread (ISS-1083). Which statuses draw which stage is `sessionTurnStage`'s, named there with
-  // the three judgements it makes and asserted in `turn-stage.test.tsx`.
+  // thread (ISS-1083). Which statuses draw which stage is `sessionTurnStage`'s.
   const stage = sessionTurnStage({
     live,
     display,
-    fromMessages,
+    truncated,
     ...(items.length ? { tail: items[items.length - 1] } : {}),
   });
 
@@ -147,7 +141,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     ready: turnsQ.isSuccess,
     itemCount: items.length,
     live,
-    streaming: live && !fromMessages,
+    streaming,
     streamedChars,
   });
 
@@ -184,9 +178,27 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     );
   }
 
-  // Overflow menu — Branch/View runner machine/Copy link (ISS-351).
+  const turnsError = turnsQ.isError ? (
+    <ErrorState
+      title={items.length ? "Couldn't refresh this session's turns" : "Couldn't load this session's turns"}
+      message={formatApiError(turnsQ.error)}
+      onRetry={() => turnsQ.refetch()}
+      mascot={items.length === 0}
+    />
+  ) : null;
+  const turnsTruncated = truncated && (
+    <TurnsTruncated
+      loaded={turnsQ.data?.turns.length ?? 0}
+      loading={turnsQ.isFetching}
+      live={live}
+      onLoad={loadMoreTurns}
+    />
+  );
+
+  // Overflow menu — Branch/View runner machine/Copy link (ISS-351). Branching forks from the
+  // newest turn, so it is offered only when the newest turn is loaded.
   const menuItems = [
-    ...(!fromMessages && lastTurnId
+    ...(lastTurnId
       ? [
           {
             label: "Branch this conversation",
@@ -318,13 +330,19 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       </header>
 
       {isRun ? (
-        <RunReport
-          session={session}
-          items={items}
-          {...(issueId && projectSlug
-            ? { onOpenIssue: () => router.push(`/projects/${projectSlug}/issues/${issueId}`) }
-            : {})}
-        />
+        <>
+          {turnsError}
+          {!(turnsQ.isError && items.length === 0) && (
+            <RunReport
+              session={session}
+              items={items}
+              {...(issueId && projectSlug
+                ? { onOpenIssue: () => router.push(`/projects/${projectSlug}/issues/${issueId}`) }
+                : {})}
+            />
+          )}
+          {turnsTruncated && <div className="px-4 pb-6 sm:px-6">{turnsTruncated}</div>}
+        </>
       ) : (
         <>
       <DisclosureScope atBottom={atBottom}>
@@ -334,12 +352,8 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
             <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
-              ) : items.length === 0 && turnsQ.isError ? (
-                <ErrorState
-                  title="Couldn't load this session's turns"
-                  message={formatApiError(turnsQ.error)}
-                  onRetry={() => turnsQ.refetch()}
-                />
+              ) : items.length === 0 && turnsError ? (
+                turnsError
               ) : items.length === 0 ? (
                 live ? null : (
                   <EmptyState title="No messages yet" message="This session has no turns." />
@@ -347,8 +361,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
               ) : (
                 <Conversation
                   items={items}
-                  streaming={live && !fromMessages}
-                  readOnly={fromMessages}
+                  streaming={streaming}
                   busy={
                     live ||
                     send.isPending ||
@@ -362,9 +375,8 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                   }
                 />
               )}
-              {!fromMessages && turnsQ.data?.nextCursor && (
-                <TurnsTruncated loaded={turnsQ.data.turns.length} loading={turnsQ.isFetching} onLoad={loadMoreTurns} />
-              )}
+              {items.length > 0 && turnsError}
+              {turnsTruncated}
               {stage && (
                 <div className="mt-3">
                   <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />

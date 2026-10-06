@@ -13,6 +13,9 @@
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
   project admins, never the project room; reads gate on the `kind` column, not a `metadata.type`
   nothing has written since ISS-1136.
+- **A session transcript no longer passes part of itself off as the whole.** A failed turns read
+  shows its error, not the last 20 messages; a transcript cut at the page cap offers no branch and
+  no live caret.
 
 ## [0.4.0-dev.43] - 2026-10-06
 
