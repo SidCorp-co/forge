@@ -383,7 +383,8 @@ fn rate_line(c: &Condition) -> String {
             span(window),
             span(MIN_WINDOW_MS)
         )),
-        _ => parts.push("one mark, so no window to state a rate over".to_string()),
+        _ if c.count == 1 => parts.push("one mark, so no window to state a rate over".to_string()),
+        _ => parts.push("no measurable window between its marks, so no rate is stated".to_string()),
     }
     if c.trimmed {
         // What the flag knows is that the file holds at least what a trim
@@ -1071,6 +1072,29 @@ mod tests {
             out.contains("one mark, so no window to state a rate over"),
             "{out}"
         );
+    }
+
+    /// Forty marks in one millisecond have no window either, and are not one mark.
+    #[test]
+    fn marks_sharing_one_instant_state_no_rate_and_are_not_called_one_mark() {
+        let c = forge_runner_core::daemon::degraded::condition(
+            &forge_runner_core::daemon::degraded::Tally {
+                count: 40,
+                by_reason: std::collections::BTreeMap::new(),
+                last: None,
+                last_at: Some(NOW),
+                first_at: Some(NOW),
+                trimmed: false,
+            },
+            NOW,
+        );
+        let out = gate_lines(&c, &Condition::none()).join("\n");
+        assert!(out.contains("degraded   40 dispatch(es)"), "{out}");
+        assert!(
+            out.contains("no measurable window between its marks, so no rate is stated"),
+            "{out}"
+        );
+        assert!(!out.contains("one mark") && !out.contains("/day"), "{out}");
     }
 
     /// Criterion 1. The count as a rate over a window a person can read.

@@ -19,6 +19,9 @@ import type { AdminAlert } from './types.js';
  */
 export const GATE_REPORT_FRESH_MS = 10 * 60_000;
 
+/** `alert-queries.ts:ENTITY_LIMIT`, which every Tier 1 alert's entity list is capped at;
+ *  `count` stays the true total (`AdminAlert.count`). Restated here because that module
+ *  imports this one. */
 export const GATE_ALERT_ENTITY_LIMIT = 20;
 
 export interface GateAlertRow {

@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { GATE_REPORT_FRESH_MS, gateAlert } = await import('./gate-alert.js');
+const { GATE_ALERT_ENTITY_LIMIT, GATE_REPORT_FRESH_MS, gateAlert } = await import(
+  './gate-alert.js'
+);
 
 const NOW = new Date('2026-10-07T00:00:00Z');
 
@@ -72,6 +74,18 @@ describe('A6, a box whose gate is failing open (ISS-1324)', () => {
     expect(a.count).toBe(2);
     expect(a.detail).toBe('2 boxes admitting dispatches their gate could not decide');
     expect(a.entities.map((e) => e.label.split(' · ')[0])).toEqual(['large', 'small']);
+  });
+
+  it('counts every box failing open but names only as many as every Tier 1 alert carries', () => {
+    const rows = Array.from({ length: GATE_ALERT_ENTITY_LIMIT + 1 }, (_, i) =>
+      box(`box-${String(i).padStart(2, '0')}`),
+    );
+    const a = gateAlert(rows, NOW);
+    expect(a.count).toBe(GATE_ALERT_ENTITY_LIMIT + 1);
+    expect(a.entities).toHaveLength(GATE_ALERT_ENTITY_LIMIT);
+    expect(a.detail).toBe(
+      `${GATE_ALERT_ENTITY_LIMIT + 1} boxes admitting dispatches their gate could not decide`,
+    );
   });
 
   it('reads ok when no box reports anything', () => {
