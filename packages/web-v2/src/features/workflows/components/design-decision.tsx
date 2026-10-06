@@ -37,10 +37,10 @@ const NOTE_MODES: Record<NoteMode, { open: string; label: string; placeholder: s
   return: { open: "Return with reason", label: "Why it goes back", placeholder: "What the master should change", submit: "Return", testid: "design-return" },
 };
 
-// The acts that carry text sit in the banner that names the turn they answer, never beside the header's one-click Approve: an approval with its conditions, or a return with its reason, one box open at a time
+// The acts that carry text sit in the banner that names the turn they answer, never beside the header's one-click Approve: an approval with its conditions, or a return with its reason, one box open at a time and each keeping its own draft
 export function DecisionNoteControl({ revision, decide }: { revision: number | null; decide: Decide }) {
   const [mode, setMode] = useState<NoteMode | null>(null);
-  const [text, setText] = useState("");
+  const [drafts, setDrafts] = useState<Record<NoteMode, string>>({ approve: "", return: "" });
   if (revision === null) return null;
   if (mode === null) {
     return (
@@ -61,11 +61,12 @@ export function DecisionNoteControl({ revision, decide }: { revision: number | n
     );
   }
   const m = NOTE_MODES[mode];
+  const text = drafts[mode];
   const reason = text.trim();
   const body: DesignDecisionBody = mode === "approve" ? { revision, decision: "approve", reason } : { revision, decision: "return", reason };
   return (
     <span className="grid w-full max-w-[560px] basis-full gap-2" data-testid={m.testid}>
-      <Textarea aria-label={m.label} placeholder={m.placeholder} value={text} onChange={(e) => setText(e.target.value)} rows={2} />
+      <Textarea aria-label={m.label} placeholder={m.placeholder} value={text} onChange={(e) => setDrafts((d) => ({ ...d, [mode]: e.target.value }))} rows={2} />
       <span className="flex gap-1.5">
         <Button size="sm" variant="secondary" onClick={() => setMode(null)}>
           Cancel
