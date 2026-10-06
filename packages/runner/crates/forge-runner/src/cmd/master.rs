@@ -506,7 +506,17 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
             size / 1024,
             path.display()
         );
-        if let Some(line) = presence_detail(presence, &name, || last_exit_line(&s)) {
+        // A pane re-placed after a trust exit stops on the dialog again and
+        // reads alive, so the exit is carried while its screen still shows it
+        // (ISS-1382 judging).
+        let dialog = if alive {
+            terminal::screen(&name)
+                .await
+                .and_then(|screen| pane_exit::on_trust_dialog(&screen))
+        } else {
+            None
+        };
+        for line in presence_detail(presence, &name, dialog.as_ref(), || last_exit_line(&s)) {
             println!("{:<20} {line}", "");
         }
         if let Some(line) = unplaced_line(&s) {
@@ -549,21 +559,28 @@ fn pane_word(presence: MasterPresence) -> &'static str {
     }
 }
 
-/// The line `status` prints under the pane line: why the pane exited where it
+/// The lines `status` prints under the pane line: why the pane exited where it
 /// was read gone, that nothing is known where tmux could not be asked, and
-/// nothing for a live pane. `last_exit` is asked only for a pane read gone, so
-/// no exit is ever reported under a pane that may be running.
+/// nothing for a live pane unless `dialog` says its screen shows the
+/// folder-trust dialog. That pane has not started, so the dialog and the last
+/// exit are both said. `last_exit` is asked only for a pane read gone or one
+/// stopped on the dialog, so no exit is reported under a pane that is running.
 fn presence_detail(
     presence: MasterPresence,
     name: &str,
+    dialog: Option<&pane_exit::Exit>,
     last_exit: impl FnOnce() -> String,
-) -> Option<String> {
-    match presence {
-        MasterPresence::Gone => Some(format!("last exit {}", last_exit())),
-        MasterPresence::Unanswered | MasterPresence::Unknown => Some(format!(
+) -> Vec<String> {
+    match (presence, dialog) {
+        (MasterPresence::Gone, _) => vec![format!("last exit {}", last_exit())],
+        (MasterPresence::Unanswered | MasterPresence::Unknown, _) => vec![format!(
             "pane: tmux could not be asked about {name}, so whether it runs is not known here and no exit is reported for it"
-        )),
-        MasterPresence::Alive => None,
+        )],
+        (MasterPresence::Alive, Some(on)) => vec![
+            format!("on screen {on}. Its screen shows that dialog now, and its session waits on that answer before it starts"),
+            format!("last exit {}", last_exit()),
+        ],
+        (MasterPresence::Alive, None) => Vec::new(),
     }
 }
 
@@ -953,7 +970,7 @@ mod tests {
         // matches a CRLF checkout, which is how this test went red on Windows.
         assert!(
             body.contains(
-                "if let Some(line) = presence_detail(presence, &name, || last_exit_line(&s)) {"
+                "for line in presence_detail(presence, &name, dialog.as_ref(), || last_exit_line(&s)) {"
             ),
             "status prints the line under the pane from presence_detail's result, which the cases below judge"
         );
@@ -972,8 +989,8 @@ mod tests {
             "the recorded reason".to_string()
         };
         assert_eq!(
-            presence_detail(MasterPresence::Gone, "forge-master-p", exit).as_deref(),
-            Some("last exit the recorded reason"),
+            presence_detail(MasterPresence::Gone, "forge-master-p", None, exit),
+            vec!["last exit the recorded reason".to_string()],
             "the last exit is printed under a pane read gone"
         );
         assert_eq!(
@@ -982,7 +999,7 @@ mod tests {
             "a pane read gone asks for its last exit once"
         );
         for unasked in [MasterPresence::Unanswered, MasterPresence::Unknown] {
-            let line = presence_detail(unasked, "forge-master-p", exit).unwrap_or_default();
+            let line = presence_detail(unasked, "forge-master-p", None, exit).join("\n");
             assert!(
                 line.contains("tmux could not be asked about forge-master-p")
                     && line.contains("no exit is reported"),
@@ -994,13 +1011,47 @@ mod tests {
             );
         }
         assert_eq!(
-            presence_detail(MasterPresence::Alive, "forge-master-p", exit),
-            None
+            presence_detail(MasterPresence::Alive, "forge-master-p", None, exit),
+            Vec::<String>::new()
         );
         assert_eq!(
             asked.get(),
             1,
             "only a pane read gone reads the exit record: a pane alive or unasked never does"
+        );
+    }
+
+    /// ISS-1382 judging: a pane re-placed after a trust exit stops on the
+    /// dialog again and reads alive. Status carried nothing about the exit
+    /// then, so it says the dialog is on screen now and gives the last exit.
+    #[test]
+    fn a_live_pane_still_on_the_trust_dialog_carries_the_last_exit() {
+        let screen = include_str!("../../../forge-runner-core/assets/composer-trust-dialog.txt");
+        let on =
+            pane_exit::on_trust_dialog(screen).expect("the captured dialog is read as on screen");
+        let asked = std::cell::Cell::new(0);
+        let exit = || {
+            asked.set(asked.get() + 1);
+            "the recorded reason".to_string()
+        };
+        let lines = presence_detail(MasterPresence::Alive, "forge-master-p", Some(&on), exit);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(
+            lines[0].starts_with("on screen ")
+                && lines[0].contains(
+                    "folder-trust dialog for /home/dev/.cache/forge-tmp/iss-1266/iso/work"
+                )
+                && lines[0].contains("hasTrustDialogAccepted")
+                && lines[0].contains("shows that dialog now"),
+            "{}",
+            lines[0]
+        );
+        assert_eq!(lines[1], "last exit the recorded reason");
+        assert_eq!(asked.get(), 1, "the record is read once");
+        let ran_on = format!("{screen}\n> working on ISS-12\n");
+        assert!(
+            pane_exit::on_trust_dialog(&ran_on).is_none(),
+            "a screen that went on past the dialog is a running pane, and nothing is carried for it"
         );
     }
 
