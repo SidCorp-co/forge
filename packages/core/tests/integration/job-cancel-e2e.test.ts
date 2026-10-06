@@ -1,7 +1,7 @@
 /**
- * ISS-252 — a person's cancel of a dispatched job settles only when the box it runs on says the
- * process is over (`cancel-job.ts:settleConfirmedCancel`): a kill-ack `killed`, or a failure
- * report. Until then the job stays `dispatched` and its heartbeat is refused
+ * ISS-252 — a person's cancel of a dispatched job settles only when the box it runs on says it is
+ * done with it (`cancel-job.ts:settleConfirmedCancel`): a kill-ack `killed`, sent once the process
+ * is closed, or a failure report, sent as the box closes it. Until then the job stays `dispatched` and its heartbeat is refused
  * `JOB_CANCEL_REQUESTED`, the channel a lost `job.cancel` frame cannot take with it. Through the
  * app, against Postgres.
  */
@@ -145,7 +145,7 @@ describe('a dispatched job a person cancelled', () => {
     expect(await statusOf(jobId)).toBe('dispatched');
   });
 
-  it('ends cancelled, not failed, when its box reports the process over', async () => {
+  it('ends cancelled, not failed, when its box reports it has ended the job', async () => {
     const jobId = await dispatchedJob();
     await cancel(jobId);
     const reason = 'the job pane went quiet and was concluded';
@@ -170,7 +170,7 @@ describe('a dispatched job nobody cancelled', () => {
     expect(await statusOf(jobId)).toBe('dispatched');
   });
 
-  it('still ends failed when its box reports the process over', async () => {
+  it('still ends failed when its box reports it has ended the job', async () => {
     const jobId = await dispatchedJob();
     const failed = ok(await say('box', 'POST', `/api/jobs/${jobId}/fail`, { error: 'boom' }));
     expect(failed).toMatchObject({ status: 'failed' });

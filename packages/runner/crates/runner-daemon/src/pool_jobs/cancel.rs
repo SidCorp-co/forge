@@ -1,7 +1,7 @@
 //! A cancel reaching a pool job's pane (ISS-252).
 //!
-//! Core settles a cancelled job `cancelled` only when the box it is out on says its process is
-//! over, so this closes the pane first, says so second, and gives the slot back last. A cancel
+//! Core settles a cancelled job `cancelled` on a kill-ack `killed`, which this sends only once the
+//! pane is closed: it closes the pane first, says so second, and gives the slot back last. A cancel
 //! arrives two ways — the `job.cancel` frame, and a heartbeat core refuses with
 //! `JOB_CANCEL_REQUESTED` — and both come through [`cancel`].
 
