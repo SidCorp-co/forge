@@ -186,6 +186,11 @@ pub struct GateMemory {
     /// the subagent is that it was resumed, not that it started.
     #[cfg(unix)]
     resumed: std::collections::HashSet<String>,
+    /// The last role inventory this daemon read whole, kept for the sweep
+    /// that cannot read one: what decides which dispatch an unread
+    /// inventory's promise may go to (ISS-1390 review F2).
+    #[cfg(unix)]
+    last_roles: Option<std::collections::BTreeSet<String>>,
 }
 
 /// What the gate promised a pending declaration to: the tool call, and the
@@ -812,6 +817,9 @@ fn dispatch_gate_reply(
         }
     };
     let mut memory = ctl.promises.lock().expect("promises poisoned");
+    if let Some(read) = roles.as_ref() {
+        memory.last_roles = Some(read.clone());
+    }
 
     // A tool call this daemon has already answered gets that answer again, whether
     // or not its declaration has since been bound.
@@ -871,7 +879,23 @@ fn dispatch_gate_reply(
             // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
             // names it to promise the run to or to tell a second hand-off from a replay, so
             // that case still fails open once per call, and the drain counts only the one row.
-            if let (Some(run), Some(tool_use)) = (pending.as_deref(), d.tool_use_id.clone()) {
+            // Only a dispatch that could be the run's takes the promise: one
+            // of a role the last inventory read whole names, or, where none
+            // was ever read, one namespaced as a plugin's role is, which no
+            // built-in helper is. Otherwise the first helper a master sends
+            // would take the run meant for its worker (ISS-1390 review F2).
+            let eligible =
+                d.subagent_type
+                    .as_deref()
+                    .is_some_and(|role| match memory.last_roles.as_ref() {
+                        Some(known) => known.contains(role),
+                        None => role
+                            .split_once(':')
+                            .is_some_and(|(plugin, name)| !plugin.is_empty() && !name.is_empty()),
+                    });
+            if let (Some(run), Some(tool_use), true) =
+                (pending.as_deref(), d.tool_use_id.clone(), eligible)
+            {
                 let spent = memory
                     .promised
                     .get(run)
@@ -3037,6 +3061,44 @@ mod tests {
         );
     }
 
+    /// Review F2: an inventory read whole once is what decides, when the
+    /// next read fails, which dispatch the promise may go to: another
+    /// plugin's helper is not the run's however it is namespaced.
+    #[cfg(unix)]
+    #[test]
+    fn an_inventory_read_before_decides_who_takes_the_promise_when_it_cannot_be_read() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("Explore", "toolu_read"),
+            "sess-a"
+        )));
+        std::fs::remove_dir_all(dir.join("marketplaces")).unwrap();
+        let run_id = declare_seven(&ctl);
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("other:helper", "toolu_h"),
+            "sess-a"
+        )));
+        bind_declared(
+            &ctl,
+            Some("helper-0"),
+            Some("other:helper"),
+            "sess-a",
+            0,
+            None,
+        );
+        assert_eq!(bound_to(&ctl, &run_id).agent_id, None);
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+        bind_declared(&ctl, Some("run-1"), Some("forge:runner"), "sess-a", 0, None);
+        assert_eq!(bound_to(&ctl, &run_id).agent_id.as_deref(), Some("run-1"));
+    }
+
     /// ISS-1378 judging (8012bc54 #2): a `SendMessage` resume fires
     /// `SubagentStart` too, so a resumed subagent that answers to nothing
     /// declared is named as resumed, not as started.
@@ -3090,6 +3152,24 @@ mod tests {
     fn with_no_role_inventory_the_promised_role_still_binds_its_run() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let run_id = declare_seven(&ctl);
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("general-purpose", "toolu_h"),
+            "sess-a"
+        )));
+        bind_declared(
+            &ctl,
+            Some("helper-0"),
+            Some("general-purpose"),
+            "sess-a",
+            0,
+            None,
+        );
+        assert_eq!(
+            bound_to(&ctl, &run_id).agent_id,
+            None,
+            "review F2: a helper dispatched first is let through and takes no promise"
+        );
         assert!(allowed(&gate_on(
             &ctl,
             &asking("forge:runner", "toolu_1"),

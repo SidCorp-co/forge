@@ -964,15 +964,30 @@ fn say_standing(
             } else {
                 format!("Its checkout {} is still held", run.worktree_path.display())
             };
+            // What this sweep did about the run, said as it stands on the row:
+            // a box that cannot read its own boot ends nothing (ISS-1390
+            // review F3).
+            let ended = match run.ended_by.as_deref() {
+                Some(by) => format!(
+                    "it is ended (by {by}), and its session and its leases go back by the close \
+                     loop"
+                ),
+                None => "this box cannot read its own boot, so it cannot tell whether that boot \
+                         has ended, and it ends nothing"
+                    .to_string(),
+            };
+            let this_boot = if boot_id.is_empty() {
+                "an unread boot"
+            } else {
+                boot_id
+            };
             tracing::error!(
                 "[recovery] run {} ({issues}) is partially closed ({holds}): it was declared \
-                 under boot {} and this box is boot {}, so the box has ended it and its session \
-                 and its leases go back by the close loop, but its checkout is never released \
-                 here, because a process or a pane of another boot cannot be read from this one. \
-                 {left}. Said once, not every sweep",
+                 under boot {} and this box is {this_boot}, so {ended}; its checkout is never \
+                 released here, because a process or a pane of another boot cannot be read from \
+                 this one. {left}. Said once, not every sweep",
                 run.run_id,
                 run.boot_id,
-                boot_id
             )
         }
         Standing::Decided => {
@@ -3941,11 +3956,17 @@ mod tests {
         let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
         let run_id = led.unclosed_runs().unwrap()[0].run_id.clone();
 
-        sweep(&mut led, "");
+        let said = logged_while(|| {
+            let _ = sweep(&mut led, "");
+        });
         assert_eq!(
             led.run(&run_id).unwrap().unwrap().ended_by,
             None,
             "a box that cannot read its boot cannot tell that one ended"
+        );
+        assert!(
+            said.contains("it ends nothing") && !said.contains("it is ended"),
+            "and its line claims no ending: {said}"
         );
 
         sweep(&mut led, "boot-later");

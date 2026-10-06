@@ -113,6 +113,9 @@ struct Registry {
     served: Served,
     /// Why each project's master pane was not placed on the last sweep.
     unplaced: HashMap<String, Unplaced>,
+    /// Projects whose reason could not be kept where `master status` reads
+    /// it, so the next sweep writes it again whether or not it changed.
+    unkept: std::collections::HashSet<String>,
     /// The last thing this box said about each project's pane, so a project
     /// stuck in one state is reported on the sweep that finds it and not on all
     /// forty-five after it.
@@ -1006,15 +1009,25 @@ impl Masters {
     /// answering whether the reason changed. A change is also written where
     /// `forge-runner master status` reads it, since that command asks this
     /// daemon nothing (ISS-1390 criterion 6).
+    ///
+    /// Whether the reason changed decides what the journal says; whether it
+    /// was kept is apart from that, so a write that failed is tried again on
+    /// the next sweep that finds the same reason, with nothing said twice.
     pub(crate) fn note_unplaced(&self, project_id: &str, slug: &str, why: Unplaced) -> bool {
-        let changed = {
+        let (changed, owed) = {
             let mut reg = self.0.lock().expect("masters poisoned");
             let changed = reg.unplaced.get(project_id) != Some(&why);
             reg.unplaced.insert(project_id.to_string(), why.clone());
-            changed
+            (changed, changed || reg.unkept.contains(project_id))
         };
-        if changed {
-            keep_unplaced(slug, Some(&why));
+        if owed {
+            let kept = keep_unplaced(slug, Some(&why));
+            let mut reg = self.0.lock().expect("masters poisoned");
+            if kept {
+                reg.unkept.remove(project_id);
+            } else {
+                reg.unkept.insert(project_id.to_string());
+            }
         }
         changed
     }
@@ -1097,7 +1110,13 @@ impl Masters {
             .expect("masters poisoned")
             .unplaced
             .remove(project_id);
-        keep_unplaced(slug, None);
+        let kept = keep_unplaced(slug, None);
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if kept {
+            reg.unkept.remove(project_id);
+        } else {
+            reg.unkept.insert(project_id.to_string());
+        }
     }
 
     pub fn why_unplaced(&self, project_id: &str) -> String {
@@ -4181,13 +4200,13 @@ fn write_authority(ledger: Option<&Ledger>, project_id: &str, slug: &str, said: 
 /// Keep `slug`'s reason for having no pane where `master status` reads it, or
 /// remove it where `why` is none. A stale capability is not kept: its pane is
 /// up, `master status`'s authority line says it, and its words carry a core
-/// session id that has no business in a file.
-fn keep_unplaced(slug: &str, why: Option<&Unplaced>) {
+/// session id that has no business in a file. Answers whether it was kept.
+fn keep_unplaced(slug: &str, why: Option<&Unplaced>) -> bool {
     let dir = match pane_exit::master_dir(slug) {
         Ok(d) => d,
         Err(e) => {
             tracing::debug!("[master] {slug}: no directory to keep why no pane was placed: {e}");
-            return;
+            return false;
         }
     };
     let kept = match why {
@@ -4203,11 +4222,15 @@ fn keep_unplaced(slug: &str, why: Option<&Unplaced>) {
         ),
         None => unplaced_record::clear(&dir),
     };
-    if let Err(e) = kept {
-        tracing::warn!(
-            "[master] {slug}: why no pane was placed could not be kept in {} for `forge-runner master status`: {e}",
-            unplaced_record::record_path(&dir).display()
-        );
+    match kept {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: why no pane was placed could not be kept in {} for `forge-runner master status`: {e} — the next sweep tries again",
+                unplaced_record::record_path(&dir).display()
+            );
+            false
+        }
     }
 }
 
@@ -13798,6 +13821,35 @@ mod pane_path_tests {
             detail: String::new()
         }
         .is_error());
+    }
+
+    /// Review F1: a reason whose write failed is written by the next sweep
+    /// that finds it unchanged, and the journal is not told it twice.
+    #[test]
+    fn a_refusal_that_could_not_be_kept_is_kept_by_the_next_sweep() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::short("mst-unplaced-retry");
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", &home);
+        let dir = pane_exit::master_dir("retry").expect("a scratch config dir");
+        std::fs::create_dir_all(dir.parent().unwrap()).unwrap();
+        std::fs::write(&dir, b"a file where the directory goes").unwrap();
+        let masters = Masters::new();
+        assert!(masters.note_unplaced("proj-1", "retry", Unplaced::NoRepoPath));
+        std::fs::remove_file(&dir).unwrap();
+        assert_eq!(unplaced_record::read(&dir), unplaced_record::Found::None);
+        assert!(
+            !masters.note_unplaced("proj-1", "retry", Unplaced::NoRepoPath),
+            "the same reason is no change for the journal"
+        );
+        assert!(
+            matches!(
+                unplaced_record::read(&dir),
+                unplaced_record::Found::Record(_)
+            ),
+            "and it is kept once the destination takes it"
+        );
     }
 
     /// Criteria 1 and 3: the placement asks for the PATH before it mints the
