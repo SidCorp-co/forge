@@ -266,3 +266,5 @@ feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, async (c) =>
   const { id, fb } = c.req.valid('param');
   return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
 });
+
+export { deviceFeedbackInboxRoutes } from './device-owed-routes.js';

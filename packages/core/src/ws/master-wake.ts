@@ -2,6 +2,7 @@ import type { FeedbackSeverity } from '@forge/contracts/feedback';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { masterCharterPath } from '@forge/contracts/master-standing';
 import type { IssueStatus } from '../db/schema.js';
+import { MASTER_OWED_SEVERITIES } from '../feedback/index.js';
 import { issuesSettledBy } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
@@ -117,9 +118,6 @@ async function wakeMastersForRequirement(args: {
     revision: args.revision,
   });
 }
-
-/** Feedback filed at high or critical severity is the only filing a master is woken for. */
-const WAKING_SEVERITIES: readonly FeedbackSeverity[] = ['high', 'critical'];
 
 async function wakeMastersForFeedback(args: {
   projectId: string;
@@ -242,7 +240,8 @@ export function registerMasterWakeSubscribers(): void {
   consume('feedback.filed', {
     name: 'master-wake',
     handle: async (p) => {
-      if (!WAKING_SEVERITIES.includes(p.severity)) return;
+      // the same set the box's sweep reads as owed (`feedback/owed-triage.ts`), so a wake always finds work
+      if (!MASTER_OWED_SEVERITIES.includes(p.severity)) return;
       await wakeMastersForFeedback(p);
     },
   });

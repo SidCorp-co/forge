@@ -52,7 +52,7 @@ import {
   linkProjectRoutes,
   membershipRoutes,
 } from './ecosystem/routes.js';
-import { feedbackRoutes } from './feedback/routes.js';
+import { deviceFeedbackInboxRoutes, feedbackRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import {
@@ -308,6 +308,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', devicePoolRoutes);
   app.route('/api/devices', deviceChannelInboxRoutes);
   app.route('/api/devices', deviceRequirementInboxRoutes);
+  app.route('/api/devices', deviceFeedbackInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
 }

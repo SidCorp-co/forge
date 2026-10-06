@@ -9,6 +9,7 @@
 
 use runner_transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
 use runner_transport::comment_inbox::ISSUE_COMMENT_TYPE;
+use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
 use runner_transport::requirement_inbox::REQUIREMENT_BREAKDOWN_TYPE;
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
@@ -93,7 +94,7 @@ pub fn inbox_digest(inbox: &[UnansweredDocument]) -> u64 {
     h.finish()
 }
 
-/// The sentence a nudge carries when the channel, a builder run or an issue thread owes something, empty when nothing is owed.
+/// The sentence a nudge carries when the channel, a builder run, an issue thread, a requirement or feedback owes something, empty when nothing is owed.
 pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     let (comments, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .iter()
@@ -101,6 +102,9 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     let (breakdowns, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(REQUIREMENT_BREAKDOWN_TYPE));
+    let (triages, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+        .into_iter()
+        .partition(|d| d.r#type.as_deref() == Some(FEEDBACK_TRIAGE_TYPE));
     let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
@@ -121,6 +125,18 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
             " {} agreed requirement{} no breakdown yet ({}): read each (`forge-runner api projects/<id>/requirements/<key>`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.",
             breakdowns.len(),
             if breakdowns.len() == 1 { " has" } else { "s have" },
+            keys.join(", ")
+        ));
+    }
+    if !triages.is_empty() {
+        let keys: Vec<&str> = triages
+            .iter()
+            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
+            .collect();
+        line.push_str(&format!(
+            " {} feedback item{} a triage ({}): read each (`forge-runner api projects/<projectId>/feedback/<key>`, and `/similar` for its nearest), then route it (`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST`) or propose a `feedback_triage` suggestion (`forge-runner api projects/<projectId>/suggestions -X POST`); the forge-master skill's feedback section is the method.",
+            triages.len(),
+            if triages.len() == 1 { " owes" } else { "s owe" },
             keys.join(", ")
         ));
     }
@@ -181,6 +197,29 @@ mod tests {
         let source = WakeSource::of_frame(&serde_json::json!({ "source": "feedback" })).unwrap();
         assert_eq!(source, WakeSource::Feedback);
         assert_eq!(source.label(), "feedback");
+    }
+
+    #[test]
+    fn an_owed_triage_is_named_on_the_pass_by_its_key() {
+        let doc = |key: &str| UnansweredDocument {
+            id: format!("id-{key}"),
+            number: Some(key.into()),
+            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
+            from: None,
+            overdue: false,
+        };
+        let line = inbox_line(&[doc("FB-2")]);
+        assert!(
+            line.contains("1 feedback item owes a triage (FB-2)"),
+            "{line}"
+        );
+        assert!(line.contains("feedback/<key>/triage -X POST"), "{line}");
+        assert!(!line.contains("ecosystem channel"), "{line}");
+        let line = inbox_line(&[doc("FB-2"), doc("FB-5")]);
+        assert!(
+            line.contains("2 feedback items owe a triage (FB-2, FB-5)"),
+            "{line}"
+        );
     }
 
     #[test]

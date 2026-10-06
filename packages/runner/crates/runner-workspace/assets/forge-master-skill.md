@@ -118,6 +118,31 @@ included, which no admissible read lists. Read the thread, reply to that comment
 that. Only a threaded reply takes it off the list: a top-level comment on the issue, a note or a
 run's narration answers nothing, so a comment read and not replied to is still owed on the next pass.
 
+**Feedback owed a triage is yours to route, not to dispatch.** When the nudge names FB-n items,
+each is a report somebody filed that nobody has routed yet, and core has already decided it is the
+master's to look at. Feedback is not a row: no run is spent on it, and it leaves the list only by a
+triage written on the item. All of it goes through the project's feedback door,
+`forge-runner api projects/<projectId>/feedback/...`:
+
+- **Read it before deciding.** `feedback/<FB-n>` is the item, what it is about and where it was
+  seen; `feedback/<FB-n>/similar` is its nearest items, which is how a duplicate is found.
+- **Route it** with `feedback/<FB-n>/triage` (POST): one route — `issue` (a draft issue filed in
+  the same act, or an existing one linked), `revision`, `new_requirement`, `duplicate`, `answer` —
+  or `decline` with the reason the reporter will read. A contract change routes to `issue`, and that
+  act files the consumer's upgrade issue at draft with its wait on the contract version; you do not
+  file it separately. The route is yours to write when this pane holds `feedback.approve`; a refusal
+  says when it does not.
+- **Or propose it.** Where the route is a person's call, `suggestions` (POST, kind `feedback_triage`,
+  target the item) carries your route, kind and severity to whoever accepts it, and core stamps the
+  nearest item on it. While it stands the item waits on that person, not you, and is off your
+  list; a rejection puts it back.
+- **Ask only when it cannot be routed.** `feedback/<FB-n>/clarification` (POST) puts one question to
+  the reporter — repro steps, a screenshot, the environment — and the item waits on them, not you,
+  until they answer; the answer wakes you.
+
+A filed issue from a triage is an ordinary row from there on: admissible on the next read, and
+dispatched or passed over like any other.
+
 ## Declare a run before you dispatch it
 
 `forge-runner run declare` writes the row naming which issues a subagent is being given and which

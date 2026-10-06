@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **High or critical feedback now prompts the master.** The box reads which items core says owe a
+  triage on every sweep and nudges the master naming them; the master skill gains the feedback
+  method.
 - **Reads around a wait name the right party.** Issue list rows say which gate withholds them,
   contract versions carry their own decision, and revision-routed feedback waits on delivery, not a
   person, once its revision is current.
