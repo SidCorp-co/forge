@@ -158,7 +158,7 @@
    ]
   },
   "core-components": {
-   "title": "Core components: module kinds and dependency direction",
+   "title": "Core components: doors, domains and adapters around the kernel",
    "steps": [
     "ad-chat",
     "ad-deploy",
@@ -199,6 +199,21 @@
     "rm-me",
     "rm-metrics",
     "rm-runs"
+   ]
+  },
+  "core-kernel": {
+   "title": "Core components: the kernel view",
+   "steps": [
+    "k-devices",
+    "k-issues",
+    "k-jobs",
+    "k-lifecycle",
+    "k-permissions",
+    "k-pipeline",
+    "k-runners",
+    "k-sessions",
+    "plat-data",
+    "plat-runtime"
    ]
   },
   "design-reconciliation": {
@@ -343,7 +358,6 @@
    "steps": [
     "ds-audit",
     "ds-box-creds",
-    "ds-chatlogs",
     "ds-conversations",
     "ds-issues",
     "ds-memory",
@@ -492,14 +506,12 @@
   "system-context": {
    "title": "Forge in context",
    "steps": [
-    "api-tooling",
     "claude",
     "core",
     "deploy",
     "email",
     "error-tracking",
     "github",
-    "google",
     "integrations",
     "llm",
     "mcp-client",
@@ -512,8 +524,7 @@
     "runner",
     "storefront",
     "uploads",
-    "web",
-    "webhooks-out"
+    "web"
    ]
   },
   "workflow-step-health": {

@@ -24,14 +24,15 @@ import { forgeUploadsTool } from '../uploads/tool.js';
 export const MCP_TOOLS = {
   // Every action has a REST twin under /api/agent-reports (POST /, GET /, POST /:id/triage, and
   // POST /triage by signalKey), and get's is GET /api/projects/:id/automation/reports/:reportId.
-  // Kept only for forge-plugin clients, until mcp_audit_log shows no call (reported there).
+  // Kept for forge-plugin clients, which still call it: the priced amnesty
+  // `mcp-tools-with-rest-twins` in .forge/conformance.json names the condition that deletes it.
   forge_agent_report: (ctx) => forgeAgentReportTool(ctx),
   // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
   forge_uploads: (ctx) => forgeUploadsTool(ctx),
   // Every action has a REST twin under
   // /api/projects/:id/channel|interface|links|builder-runs|contracts|contract-context and
-  // /api/ecosystems, and every prompt in this repo names the route; kept only for forge-plugin
-  // clients, whose CLI has no REST verbs for them, until mcp_audit_log shows no call (reported there).
+  // /api/ecosystems, and every prompt in this repo names the route; kept for forge-plugin clients,
+  // whose CLI has no REST verbs for them, under the same amnesty `mcp-tools-with-rest-twins`.
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
   // A core-mediated integration's agent path: the provider credential stays in core. forge_source,

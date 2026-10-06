@@ -194,7 +194,7 @@ export const REQUIREMENT_WAITING_KINDS = [
 export type RequirementWaitingKind = (typeof REQUIREMENT_WAITING_KINDS)[number];
 
 /** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
-const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
+const REQUIREMENT_TASK_KINDS = ["breakdown", "check", "re-plan"] as const;
 export type RequirementTaskKind = (typeof REQUIREMENT_TASK_KINDS)[number];
 
 /** Step `breakdown`: the master proposes the breakdown within this many working days of the agree. */
@@ -202,8 +202,9 @@ export const BREAKDOWN_SLA_WORKING_DAYS = 2;
 /** Step `check`: the BA checks the business criteria within this many working days of delivery. */
 export const CHECK_SLA_WORKING_DAYS = 5;
 
-export interface RequirementTask {
-	kind: RequirementTaskKind;
+/** A task the design gives an SLA: the breakdown and the BA's check. */
+interface RequirementSlaTask {
+	kind: "breakdown" | "check";
 	/** The role the design gives the task: the project master breaks down, the BA checks. */
 	owner: "Project master" | "BA";
 	/** The requirement revision the task is for; a revision holds at most one of each kind. */
@@ -212,6 +213,25 @@ export interface RequirementTask {
 	dueAt: string;
 	overdue: boolean;
 }
+
+/**
+ * Step `delivery`, opened by `impact`: one re-plan per flagged issue and revision, the master's.
+ * The design gives it no SLA, so it carries no due date; the flag refuses at the awaiting_release
+ * gate (REQUIREMENT_CHANGED_SINCE_PLAN) until the issue is re-planned.
+ */
+interface RequirementReplanTask {
+	kind: "re-plan";
+	owner: "Project master";
+	revision: number;
+	/** When the revision the task is for became current. */
+	openedAt: string;
+	dueAt: null;
+	overdue: false;
+	issueId: string;
+	displayId: string;
+}
+
+export type RequirementTask = RequirementSlaTask | RequirementReplanTask;
 
 /** A business criterion's proof: its linked issue criteria and their latest verdicts. */
 export const BC_VERDICTS = [
@@ -699,13 +719,15 @@ export interface RequirementScreenBinding {
 	 */
 	brokenBy: string | null;
 	/**
-	 * `impact`: the issues building this design's flow, once `brokenBy` names a version that reaches
-	 * it; empty while nothing broke the element.
+	 * `impact`: the issues building the flow a breaking version reaches, once `brokenBy` names one:
+	 * each issue whose build link names this design, and each whose live criteria trace a BC of
+	 * this requirement, which pins the broken version; a dropped issue builds nothing. Empty while
+	 * nothing broke the element.
 	 */
 	buildingIssues: RequirementBuildingIssue[];
 }
 
-/** An issue whose build link names the workflow a broken screen binding sits in. */
+/** An issue building the flow a broken screen binding sits in. */
 export interface RequirementBuildingIssue {
 	issueId: string;
 	displayId: string;

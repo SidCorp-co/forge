@@ -9,9 +9,11 @@ import type {
   RequirementBuildingIssue,
   RequirementScreenBinding,
 } from '@forge/contracts/requirements';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import type { db, Tx } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { issues, projects } from '../db/schema.js';
+import { issueCriteria } from '../db/schema-issue-criteria.js';
+import { requirementCriteria } from '../db/schema-requirements.js';
 import { projectWorkflowDesigns } from '../db/schema-workflows.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -227,36 +229,73 @@ export interface BuildLink {
   status: string;
 }
 
-/** `impact`: each broken binding names the issues building its flow; an unbroken one names none. */
+/** An issue whose live criteria trace a BC of the requirement whose bindings are read. */
+export type TraceLink = Omit<BuildLink, 'workflowId'>;
+
+/**
+ * `impact`: each broken binding names the issues building the flow the breaking version reaches,
+ * those whose build link names its design and those whose live criteria trace a BC of the
+ * requirement pinning the broken version, once each and in issue order; a dropped issue builds
+ * nothing. An unbroken binding names none.
+ */
 export function attachBuildingIssues(
   bindings: readonly RequirementScreenBinding[],
   builds: readonly BuildLink[],
+  traced: readonly TraceLink[],
   prefix: string | null,
 ): RequirementScreenBinding[] {
-  return bindings.map((b) => ({
-    ...b,
-    buildingIssues: b.brokenBy
-      ? builds
-          .filter((x) => x.workflowId === b.workflowId)
-          .map(
-            (x): RequirementBuildingIssue => ({
-              issueId: x.issueId,
-              displayId: formatIssueRef(prefix, x.issSeq),
-              title: x.title,
-              status: x.status,
-            }),
-          )
-      : [],
-  }));
+  return bindings.map((b) => {
+    if (!b.brokenBy) return { ...b, buildingIssues: [] };
+    const building = new Map<string, TraceLink>();
+    for (const x of [...builds.filter((y) => y.workflowId === b.workflowId), ...traced]) {
+      if (x.status !== 'dropped') building.set(x.issueId, x);
+    }
+    return {
+      ...b,
+      buildingIssues: [...building.values()]
+        .sort((x, y) => x.issSeq - y.issSeq)
+        .map(
+          (x): RequirementBuildingIssue => ({
+            issueId: x.issueId,
+            displayId: formatIssueRef(prefix, x.issSeq),
+            title: x.title,
+            status: x.status,
+          }),
+        ),
+    };
+  });
+}
+
+/** The issues whose live criteria trace a BC of `requirementId`, at any of its wordings. */
+async function tracingIssuesOf(
+  executor: Tx | typeof db,
+  requirementId: string,
+): Promise<TraceLink[]> {
+  return executor
+    .selectDistinct({
+      issueId: issues.id,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      status: issues.status,
+    })
+    .from(issueCriteria)
+    .innerJoin(requirementCriteria, eq(requirementCriteria.id, issueCriteria.requirementCriterionId))
+    .innerJoin(issues, eq(issues.id, issueCriteria.issueId))
+    .where(and(eq(requirementCriteria.requirementId, requirementId), isNull(issueCriteria.retiredAt)));
 }
 
 /** The bindings with the issues building each broken one's flow, read only when one is broken. */
 export async function withBuildingIssues(
   executor: Tx | typeof db,
+  requirementId: string,
   bindings: readonly RequirementScreenBinding[],
   prefix: string | null,
 ): Promise<RequirementScreenBinding[]> {
   const broken = [...new Set(bindings.filter((b) => b.brokenBy).map((b) => b.workflowId))];
-  const builds = broken.length ? await buildsOf(executor as Tx, broken) : [];
-  return attachBuildingIssues(bindings, builds, prefix);
+  if (broken.length === 0) return attachBuildingIssues(bindings, [], [], prefix);
+  const [builds, traced] = await Promise.all([
+    buildsOf(executor as Tx, broken),
+    tracingIssuesOf(executor, requirementId),
+  ]);
+  return attachBuildingIssues(bindings, builds, traced, prefix);
 }

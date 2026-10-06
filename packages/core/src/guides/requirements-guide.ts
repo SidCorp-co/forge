@@ -70,7 +70,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
   or when its plan names no revision. A re-pin, or a revision that changed only BCs it does not
   trace, leaves it unflagged. Re-plan against the current head; do not build against a plan that reads changed. An issue that
   reads changed is refused \`awaiting_release\` as
-  \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten.
+  \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten. While it reads changed and has not
+  closed, the agreed requirement's standing holds a \`re-plan\` task for it in \`tasks\`, the
+  project master's, one per issue and revision, with no due date.
 - A plan written before the link reads changed-since-plan, unless a holder of \`requirements.approve\`
   passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
@@ -121,8 +123,9 @@ refused \`REQUIREMENT_SIGNOFF_FORBIDDEN\`.
 ### Screen bindings
 A design step's \`node.binds: [{ provider, slug, element }]\` names the contract elements a screen
 uses. A baseline pinning that design pins them with it, and the detail's \`bindings\` lists each with
-\`brokenBy\`, the version past the pin that removed or broke it, and \`buildingIssues\`, the issues whose
-build link names that design's flow (empty while nothing broke it). Binding a contract that is not
+\`brokenBy\`, the version past the pin that removed or broke it, and \`buildingIssues\`, the issues building
+that flow: those whose build link names the design and those whose live criteria trace a BC of this
+requirement, dropped ones left out (empty while nothing broke it). Binding a contract that is not
 element-indexed (asyncapi, protobuf, opaque) is refused \`REQUIREMENT_BINDING_NOT_INDEXED\` both when the
 design is written (\`PUT\`/\`POST\` on workflows, at the bind's pointer) and when the baseline is written.`,
 };

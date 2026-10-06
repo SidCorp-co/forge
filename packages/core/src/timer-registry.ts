@@ -21,7 +21,7 @@ import {
 import { sweepDeclinedFeedback } from './feedback/index.js';
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
-import { probePgBossBackstop, releaseHeldJobs, runStaleSweep } from './jobs/index.js';
+import { releaseHeldJobs, runStaleSweep } from './jobs/index.js';
 import { runKnowledgeEmbeddingBackfill } from './knowledge/index.js';
 import { logger } from './lib/logger.js';
 import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
@@ -244,12 +244,6 @@ export function coreTimers(): Timer[] {
     { kind: 'cluster', name: 'admin-alert-sweep', cron: '*/5 * * * *', run: () => runAlertSweep() },
 
     // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
-    {
-      kind: 'process',
-      name: 'pgboss-health',
-      everyMs: 30_000,
-      run: async () => probePgBossBackstop(),
-    },
     {
       kind: 'process',
       name: 'web-conversation-drain',

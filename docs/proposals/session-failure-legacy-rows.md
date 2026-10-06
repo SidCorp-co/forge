@@ -15,7 +15,9 @@ agent's reply, a runner error or a fragment of the session's own prompt. ISS-877
 `failure_detail`, and since then every writer in core writes a `FailureCause` (the producer audit is in
 ISS-1157's plan). Migration 0192 chose not to backfill: a legacy value reads as `unclassified` through
 `resolveFailureCause` (`packages/contracts/src/failure-causes.ts`, re-exported by
-`pipeline/failure-causes.ts`).
+`pipeline/failure-causes.ts`). The two retired cause spellings, `job_failed` and `usage_limit`, were
+rewritten to `unclassified` and `provider_usage_limit` by migration 0420, which deleted their read-time
+alias; what is left is prose.
 
 Two readers resolve that way today:
 `me/pulse-folds.ts:foldSessionFailures` (since ISS-1157) and `runs/standing-final.ts`. Every other reader of the column still gets the raw value:
@@ -30,13 +32,11 @@ A single migration:
 
 - For every row whose `failure_reason` is not in `FAILURE_CAUSES`, keep the value by appending it to
   `failure_detail` (setting it where that is null).
-- Then set `failure_reason` to the cause `resolveFailureCause` gives for that value: an alias to its
-  target, anything else to `unclassified`.
+- Then set `failure_reason` to `unclassified`, the cause `resolveFailureCause` gives for that value.
 
 Nothing is re-classified, so the rule migration 0192 relies on holds: a historical row keeps the
-verdict it already reads as, and only where that verdict is stored changes. Once this lands, the
-two `LEGACY_CAUSE_ALIAS` entries (`job_failed`, `usage_limit`) and the read-time fold can be removed, because the column holds
-only the cause set.
+verdict it already reads as, and only where that verdict is stored changes. Once this lands, the read-time
+fold can be removed, because the column holds only the cause set.
 
 ## Why ISS-1157 did not do it
 
@@ -53,5 +53,5 @@ since landed, so nothing holds this back. Take the number from `node scripts/che
   that showed it as the reason loses it from that place. Rows that already had a detail hold two
   sentences in one field.
 - **Taking it costs a journal slot and one rewrite of an unbounded set of rows.** Nobody has counted
-  the legacy rows on beta since 0192 measured 55 prose rows and 1,787 `job_failed`. The statement
+  the prose rows on beta since 0192 measured 55 of them. The statement
   touches all of them in one transaction on a 5.6 GB table.

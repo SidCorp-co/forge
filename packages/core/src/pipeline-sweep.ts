@@ -1,7 +1,7 @@
 // The pipeline sweeper tick: every pass the work and execution kernels, the release domain and
 // notifications run once a minute, each isolated so one that throws cannot starve the rest.
 
-import { type LoopMonitorResult, recordPipelineSweeperTick, runLoopMonitor } from './jobs/index.js';
+import { type LoopMonitorResult, runLoopMonitor } from './jobs/index.js';
 import { reportFailure } from './lib/error-tracking.js';
 import { logger } from './lib/logger.js';
 import { type ReevaluateResult, reevaluateConditions } from './notifications/index.js';
@@ -141,18 +141,14 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const reevaluated = await runPass('reevaluateConditions', () => reevaluateConditions(now));
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 
-  // Preserve the ISS-449 missed-tick contract: if ANY pass failed, do NOT
-  // record a clean heartbeat — re-throw so `pgboss-health` still sees the
-  // missed tick and pg-boss retries the (idempotent) tick. The difference from
-  // the old code is purely ordering: every pass has already RUN this tick
-  // before we surface the failure, so a single buggy pass can no longer starve
-  // the reapers. Each error was logged + captured individually above; re-throw
-  // the first so its original cause/message surfaces unchanged.
+  // If ANY pass failed, re-throw so pg-boss retries the (idempotent) tick. Every pass has already
+  // RUN this tick before the failure surfaces, so a single buggy pass cannot starve the reapers.
+  // Each error was logged + captured individually above; the first is re-thrown so its original
+  // cause/message surfaces unchanged.
   if (errors.length > 0) {
     throw errors[0]?.err;
   }
 
-  recordPipelineSweeperTick(t0);
   return {
     durationMs: Date.now() - t0,
     loop: loop as LoopMonitorResult,

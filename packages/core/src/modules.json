@@ -111,13 +111,14 @@
         "issue-delivery#ev-run-ended",
         "personal-data-flow#ds-transcripts",
         "REQ-24",
-        "issue-delivery#rule-return"
+        "issue-delivery#rule-return",
+        "core-kernel#k-sessions"
       ]
     },
     "api-contract": {
       "kind": "platform",
       "context": "platform",
-      "serves": ["core-components#plat-runtime"]
+      "serves": ["core-components#plat-runtime", "core-kernel#plat-runtime"]
     },
     "assistant": {
       "kind": "domain",
@@ -218,6 +219,7 @@
       "context": "platform",
       "owns": ["backfillMarkers"],
       "serves": [
+        "core-kernel#plat-data",
         "via:agent-reports",
         "via:agent-sessions",
         "via:assistant",
@@ -299,7 +301,8 @@
         "personal-data-flow#ds-box-creds",
         "personal-data-flow#pr-provision",
         "REQ-25",
-        "issue-delivery#rule-return"
+        "issue-delivery#rule-return",
+        "core-kernel#k-devices"
       ]
     },
     "ecosystem": {
@@ -500,7 +503,8 @@
         "workflow-step-health#in-builds",
         "issue-delivery#case-run",
         "agent-run-standing#queued",
-        "requirement-to-delivery#contract-first"
+        "requirement-to-delivery#contract-first",
+        "core-kernel#k-issues"
       ]
     },
     "jobs": {
@@ -513,7 +517,8 @@
         "agent-run-standing#running",
         "issue-delivery#case-release",
         "project-onboarding#analyse",
-        "personal-data-flow#pr-ingest"
+        "personal-data-flow#pr-ingest",
+        "core-kernel#k-jobs"
       ]
     },
     "knowledge": {
@@ -604,7 +609,8 @@
         "requirement-lifecycle#deferred",
         "requirement-lifecycle#accepted",
         "requirement-lifecycle#dropped",
-        "issue-delivery#rule-close"
+        "issue-delivery#rule-close",
+        "core-kernel#k-lifecycle"
       ]
     },
     "masters": {
@@ -781,7 +787,7 @@
       "kind": "kernel",
       "context": "platform",
       "owns": ["pipelineOutbox"],
-      "serves": ["issue-delivery#core", "issue-delivery#ev-transition", "automation#file"]
+      "serves": ["issue-delivery#core", "issue-delivery#ev-transition", "automation#file", "core-kernel#k-lifecycle"]
     },
     "permissions": {
       "kind": "kernel",
@@ -791,7 +797,8 @@
         "issue-lifecycle#start",
         "requirement-lifecycle#agreed",
         "project-onboarding#approve-guard",
-        "core-components#k-permissions"
+        "core-components#k-permissions",
+        "core-kernel#k-permissions"
       ]
     },
     "pipeline": {
@@ -810,7 +817,8 @@
         "issue-delivery#act-build",
         "issue-delivery#rule-dispatch",
         "issue-delivery#rule-wedge",
-        "core-components#k-pipeline"
+        "core-components#k-pipeline",
+        "core-kernel#k-pipeline"
       ]
     },
     "preferences": {
@@ -932,7 +940,7 @@
       "kind": "kernel",
       "context": "execution",
       "owns": ["runnerEvents", "runners"],
-      "serves": ["REQ-15", "issue-delivery#rule-dispatch"]
+      "serves": ["REQ-15", "issue-delivery#rule-dispatch", "core-kernel#k-runners"]
     },
     "runs": {
       "kind": "read-model",
