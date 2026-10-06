@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.59] - 2026-10-06
+
+Returned designs and requirement revisions reach the master; runs-out standing shown
+
 ### Fixed
 
 - **Returned designs and requirement revisions now reach the project's master**, on every pass until revised. Admitted open issues wait on a run, not a slot. A master with runs out reads `runs_out`, and each closed pass says why it closed.
