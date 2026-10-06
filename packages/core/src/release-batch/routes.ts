@@ -6,6 +6,7 @@ import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
+import { RANGE_COMMIT_LIMIT } from './cut-range.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import {
   attemptReading,
@@ -80,6 +81,23 @@ const createBodySchema = z
      * and one refusal carrying the whole rule beats a zod message carrying half of it.
      */
     recutOf: z.string().trim().max(100).optional(),
+    /** A decision for each issue the release's range carries off the roster (ISS-1386). */
+    carried: z
+      .array(
+        z.discriminatedUnion('decision', [
+          z
+            .object({
+              issueId: z.uuid(),
+              decision: z.literal('ship-unverified'),
+              why: z.string().trim().min(1, 'say what ships unverified').max(2000),
+            })
+            .strict(),
+          z.object({ issueId: z.uuid(), decision: z.literal('revert') }).strict(),
+          z.object({ issueId: z.uuid(), decision: z.literal('cut-below') }).strict(),
+        ]),
+      )
+      .max(RANGE_COMMIT_LIMIT)
+      .optional(),
   })
   .strict();
 
@@ -96,7 +114,7 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds, recutOf } = c.req.valid('json');
+    const { issueIds, recutOf, carried } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
@@ -104,7 +122,7 @@ releaseBatchRoutes.post(
     assertProjectRole(access, 'admin');
 
     try {
-      const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
+      const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf, carried });
       return c.json(result, 201);
     } catch (err) {
       // Every reason the enumerator found answers from its own entry, so the

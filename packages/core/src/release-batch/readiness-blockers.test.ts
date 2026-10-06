@@ -25,6 +25,12 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
 
+// The release range is read from a repository this suite does not stand up: `carried.test.ts`.
+vi.mock('./carried.js', async (importActual) => ({
+  ...(await importActual<typeof import('./carried.js')>()),
+  readCarried: async () => ({ kind: 'not-read', why: 'not read in this suite' }),
+}));
+
 const heldSlugs = vi.fn(async (_id: string): Promise<string[]> => Object.keys(CONTRACT_KNOWLEDGE));
 vi.mock('../knowledge/service.js', () => ({
   selectAllSlugsFromKnowledge: (id: string) => heldSlugs(id),

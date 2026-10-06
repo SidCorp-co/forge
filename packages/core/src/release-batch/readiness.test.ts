@@ -29,6 +29,13 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
 
+// The release range is read from the repository, which this suite does not stand up; its own
+// rules are `carried.test.ts`'s, and readiness carrying them is the carried integration suite's.
+vi.mock('./carried.js', async (importActual) => ({
+  ...(await importActual<typeof import('./carried.js')>()),
+  readCarried: async () => ({ kind: 'not-read', why: 'not read in this suite' }),
+}));
+
 const heldSlugs = vi.fn(async (_id: string): Promise<string[]> => Object.keys(CONTRACT_KNOWLEDGE));
 vi.mock('../knowledge/service.js', () => ({
   selectAllSlugsFromKnowledge: (id: string) => heldSlugs(id),

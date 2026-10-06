@@ -14,7 +14,7 @@
 
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, type PipelineRunStatus } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -29,22 +29,16 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
+import { closedBeforeAbort, settleAbortStamp, stampAbort } from './abort-stamp.js';
+import { collectReleaseBlockers, type ReleaseWarning, releaseBlockerError } from './blockers.js';
 import {
-  abortedError,
-  batchAborted,
-  closedBeforeAbort,
-  settleAbortStamp,
-  stampAbort,
-} from './abort-stamp.js';
-import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import {
-  type CloseVerification,
-  closeVerification,
-  finishVerification,
-  type ReleaseVerification,
-  resolveReleaseChannels,
-  resolveReleasePlan,
-} from './channel.js';
+  type CarriedDecision,
+  type CarriedRecord,
+  carriedRecord,
+  noteShipUnverified,
+  readCarried,
+} from './carried.js';
+import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
@@ -52,16 +46,18 @@ import {
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
-  ReleaseVersionMissingError,
 } from './errors.js';
+import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import {
+  type CloseRefusal,
+  closeRefusalOf,
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
-import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
 import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
@@ -76,6 +72,8 @@ export interface CreateReleaseBatchArgs {
    * refused by name unless it names this project's highest release and that release never shipped.
    */
   recutOf?: string | undefined;
+  /** A decision for each issue the release's range carries off the roster (ISS-1386). */
+  carried?: CarriedDecision[] | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -95,6 +93,10 @@ export interface CreateReleaseBatchResult {
   openedAfterRelease: boolean;
   /** `unverified` where no live binding declares a probe, which every issue it closes says. */
   verification: ReleaseVerification;
+  /** The cut, and how each off-roster landing was decided. */
+  carried: CarriedRecord | null;
+  /** What changes how this release runs without stopping it, said where the press is answered. */
+  warnings: ReleaseWarning[];
 }
 
 export async function createReleaseBatch(
@@ -109,6 +111,8 @@ export async function createReleaseBatch(
   const report = await collectReleaseBlockers(projectId, {
     issueIds: args.issueIds,
     door: 'batch',
+    carried: await readCarried(projectId, args.carried ?? []),
+    decisions: args.carried,
   });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
@@ -171,6 +175,7 @@ export async function createReleaseBatch(
       openedAfterRelease,
       verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
+      carried: carriedRecord(report.carried),
     },
   };
   const { run, version } = await db.transaction(async (tx) => {
@@ -221,6 +226,7 @@ export async function createReleaseBatch(
     releaseChain: project.releaseChain,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
+    carried: carriedRecord(report.carried),
     issues: issueRows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(batchPrefix, r.issSeq) : r.id,
@@ -258,6 +264,7 @@ export async function createReleaseBatch(
     throw err;
   }
 
+  await noteShipUnverified({ runId: run.id, version, check: report.carried, userId });
   return {
     runId: run.id,
     jobId,
@@ -267,6 +274,8 @@ export async function createReleaseBatch(
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
     openedAfterRelease,
     verification: verification.kind,
+    carried: carriedRecord(report.carried),
+    warnings: report.warnings,
   };
 }
 
@@ -296,47 +305,6 @@ export interface FinishReleaseBatchOptions {
    * release job's own session, so anything that must be written about this finish is written here.
    */
   onClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
-}
-
-export type ReleaseRunRow = {
-  projectId: string;
-  metadata: unknown;
-  status: PipelineRunStatus;
-  releaseVersion: string | null;
-};
-
-/** The run a finish is about, or `undefined` when there is no row under that id. */
-export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | undefined> {
-  const [run] = await db
-    .select({
-      projectId: pipelineRuns.projectId,
-      metadata: pipelineRuns.metadata,
-      status: pipelineRuns.status,
-      releaseVersion: pipelineRuns.releaseVersion,
-    })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  return run;
-}
-
-/**
- * Every refusal a finish can decide from the database alone, and how the release will be proved.
- * Nothing here makes an outbound request, so a door may call it inline.
- */
-export async function assertFinishable(
-  runId: string,
-  run: ReleaseRunRow,
-): Promise<CloseVerification> {
-  if (batchAborted(run)) throw await abortedError(runId);
-  // A release closes its roster claiming a ship. Without a version nothing afterwards can name
-  // WHICH release carried these issues, which is the one thing this path exists to make true, so
-  // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
-  // the transaction that inserts the row, so a release row reaching here without one was not
-  // opened by it.
-  if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
-
-  return finishVerification(await resolveReleaseChannels(run.projectId));
 }
 
 export async function finishReleaseBatch(
@@ -394,6 +362,7 @@ export async function finishReleaseBatch(
 
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
+  const refusals = new Map<string, CloseRefusal>();
 
   const { fence } = options;
   for (const issue of claimed) {
@@ -417,6 +386,7 @@ export async function finishReleaseBatch(
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
         failed.push({ id: issue.id, reason: err instanceof Error ? err.message : String(err) });
+        refusals.set(issue.id, closeRefusalOf(err));
       }
     }
   }
@@ -425,7 +395,10 @@ export async function finishReleaseBatch(
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
+    commentAuthorId: actor.type === 'device' ? actor.ownerId : undefined,
     comment: true,
+    refusals,
+    version: run?.releaseVersion ?? null,
     fence,
   });
 

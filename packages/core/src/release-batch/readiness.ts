@@ -12,6 +12,7 @@ import {
   type ReleaseWarning,
   releaseBlockerSentence,
 } from './blockers.js';
+import { readCarried } from './carried.js';
 import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 import { readWeighingNow } from './runtime-weighing.js';
@@ -77,7 +78,8 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
         err instanceof Error ? err.message : String(err),
       )
     : undefined;
-  const report = await collectReleaseBlockers(projectId, { serving, weighing });
+  const carried = await readCarried(projectId, []);
+  const report = await collectReleaseBlockers(projectId, { serving, weighing, carried });
   if (!report.projectExists) return null;
   const decl = report.declaration;
   const channels = report.channels ?? [];

@@ -37,13 +37,16 @@ function answer(status: number, body: unknown) {
   );
 }
 
-function accepted(verification: "probed" | "unverified") {
+function accepted(verification: "probed" | "unverified", more: Record<string, unknown> = {}) {
   answer(201, {
     runId: "run-1",
     jobId: "job-1",
     issueIds: ISSUES.map((i) => i.id),
     gateStatus: "awaiting_release",
     verification,
+    carried: null,
+    warnings: [],
+    ...more,
   });
 }
 
@@ -148,6 +151,16 @@ describe("a batch release the server refuses", () => {
   });
 });
 
+describe("what the dialog promises before the press", () => {
+  it("promises a release and a close, not a deploy some projects never take", () => {
+    draw();
+
+    const drawer = screen.getByRole("dialog");
+    expect(drawer).toHaveTextContent(/will be released together and closed in one batch/);
+    expect(drawer.textContent).not.toMatch(/deployed/);
+  });
+});
+
 describe("a batch release the server accepts", () => {
   it("closes the dialog and hands the parent its success", async () => {
     accepted("probed");
@@ -168,6 +181,19 @@ describe("a batch release the server accepts", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Batch release started — 2 issues")).toBeInTheDocument();
     expect(screen.getByText(/close unverified/i)).toBeInTheDocument();
+  });
+
+  it("says the cut it promotes and each warning the server answered with", async () => {
+    accepted("probed", {
+      carried: { kind: "read", live: "production", start: "main", cut: "d".repeat(40), issues: [], cutBelow: [] },
+      warnings: [{ code: "RELEASE_CARRIED_UNREAD", message: "Nothing read what this release carries." }],
+    });
+    draw();
+    press();
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/It promotes dddddddddddd\./)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing read what this release carries\./)).toBeInTheDocument();
   });
 });
 
@@ -247,5 +273,100 @@ describe("a refusal, said once and where it can be read", () => {
     const alert = await within(screen.getByRole("dialog")).findByRole("alert");
     expect(alert).toHaveTextContent(REFUSAL);
     expect(screen.queryByText("Batch release failed")).not.toBeInTheDocument();
+  });
+});
+
+// ISS-1386 — a release whose range carries issues the roster does not name is refused until each
+// holds a decision, and the dialog is where a person makes them.
+const CARRIES = {
+  code: "RELEASE_CARRIES_UNDECIDED",
+  message: "This release promotes `main` onto `production`, and that range carries ISS-7 at `needs_info`.",
+  details: {
+    carried: [
+      { issueId: "iss-7", displayId: "ISS-7", status: "needs_info", landing: "b".repeat(40) },
+      { issueId: "iss-8", displayId: "ISS-8", status: "testing", landing: "c".repeat(40) },
+    ],
+  },
+};
+
+const radios = (id: string) => screen.getByTestId(`carried-${id}`).querySelectorAll('[role="radio"]');
+const sentBody = (call: number) => JSON.parse(String(fetchMock.mock.calls[call]?.[1]?.body));
+
+describe("issues the release would ship without naming them", () => {
+  it("lists each one with the three choices once a press is refused for them", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+
+    const seven = await screen.findByTestId("carried-ISS-7");
+    for (const row of [seven, screen.getByTestId("carried-ISS-8")]) {
+      for (const label of ["Ship unverified", "Reverted", "Cut below"]) expect(row).toHaveTextContent(label);
+    }
+    expect(seven).toHaveTextContent("at needs_info");
+  });
+
+  it("holds the release until each is decided, and a Ship unverified carries its reason", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+    await screen.findByTestId("carried-ISS-7");
+    const button = () => screen.getByRole("button", { name: /release 2 now/i });
+    expect(button()).toBeDisabled();
+
+    fireEvent.click(radios("ISS-7")[0] as Element);
+    fireEvent.click(radios("ISS-8")[2] as Element);
+    expect(button()).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("What is unverified in ISS-7"), {
+      target: { value: "criterion 2 needs payroll writes" },
+    });
+    expect(button()).toBeEnabled();
+  });
+
+  it("keeps a decision already made when the next refusal names only a newly landed issue", async () => {
+    answer(409, { ...CARRIES, details: { carried: [CARRIES.details.carried[0]] } });
+    draw();
+    press();
+    await screen.findByTestId("carried-ISS-7");
+    fireEvent.click(radios("ISS-7")[1] as Element);
+
+    answer(409, { ...CARRIES, details: { carried: [CARRIES.details.carried[1]] } });
+    press();
+    await screen.findByTestId("carried-ISS-8");
+    expect(screen.getByTestId("carried-ISS-7")).toBeInTheDocument();
+    fireEvent.click(radios("ISS-8")[1] as Element);
+    accepted("probed");
+    press();
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(sentBody(2).carried).toEqual([
+      { issueId: "iss-7", decision: "revert" },
+      { issueId: "iss-8", decision: "revert" },
+    ]);
+  });
+
+  it("sends each decision with the batch when pressed again, and none on the first press", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+    await screen.findByTestId("carried-ISS-7");
+    expect(sentBody(0)).toEqual({ issueIds: ["iss-a", "iss-b"] });
+
+    fireEvent.click(radios("ISS-7")[0] as Element);
+    fireEvent.change(screen.getByLabelText("What is unverified in ISS-7"), {
+      target: { value: "  criterion 2 needs payroll writes  " },
+    });
+    fireEvent.click(radios("ISS-8")[1] as Element);
+    accepted("probed");
+    press();
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(sentBody(1)).toEqual({
+      issueIds: ["iss-a", "iss-b"],
+      carried: [
+        { issueId: "iss-7", decision: "ship-unverified", why: "criterion 2 needs payroll writes" },
+        { issueId: "iss-8", decision: "revert" },
+      ],
+    });
   });
 });

@@ -63,6 +63,21 @@ export interface ReleaseMethod {
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";
 
+/** Whether a box has started the release's job, and if not, why not — core's own sentence. */
+export type ReleaseStart =
+	| { kind: "taken"; at: string; device: string | null }
+	| {
+			kind: "waiting";
+			since: string;
+			handedBackAt: string;
+			reason: "no-eligible-box" | "no-box" | "eligible-not-taken";
+			why: string;
+	  }
+	| { kind: "claimed"; since: string; why: string }
+	| { kind: "handed-back"; at: string; why: string }
+	| { kind: "ended"; status: string; at: string | null; why: string }
+	| { kind: "none"; why: string };
+
 /** `GET /api/projects/:projectId/release-batches/:runId/state`. */
 export interface ReleaseRunState {
 	runId: string;
@@ -78,4 +93,5 @@ export interface ReleaseRunState {
 	/** `null` when the run never announced one. */
 	method: ReleaseMethod | null;
 	methodUnloaded: boolean;
+	start: ReleaseStart;
 }

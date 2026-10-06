@@ -12,7 +12,6 @@ import {
   decodeCommentCursor,
   encodeCommentCursor,
 } from '../../comments/cursor.js';
-import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import { messageRefused } from '../../comments/screen.js';
 import {
   type CommentThreadRow,
@@ -26,6 +25,7 @@ import {
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { pgConstraintName, pgErrorCode } from '../../lib/db-errors.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {

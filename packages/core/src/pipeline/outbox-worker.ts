@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, users } from '../db/schema.js';
@@ -139,7 +140,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
       await db.execute(sql`
         UPDATE pipeline_outbox
         SET claimed_at = now(), last_error = ${message}

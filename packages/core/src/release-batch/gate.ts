@@ -23,7 +23,7 @@ export class ReleaseTargetUndeclaredError extends Error {
     readonly releaseChain: ReleaseChain,
   ) {
     super(
-      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or declare an empty release chain if this project ships nothing.`,
+      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, press "This project ships nothing" on its Repository settings tab.`,
     );
     this.name = 'ReleaseTargetUndeclaredError';
   }

@@ -185,9 +185,36 @@ export interface CreateReleaseBatchResult {
   issueIds: string[];
   gateStatus: string;
   verification: "probed" | "unverified";
+  /** The cut this release promotes and each off-roster issue its range carries (ISS-1386). */
+  carried: CreatedCarried | null;
+  warnings: { code: string; message: string }[];
 }
 
+export interface CreatedCarriedIssue {
+  issueId: string;
+  displayId: string;
+  status: string;
+  landing: string;
+  decision: CarriedDecisionBody["decision"];
+  why?: string;
+}
+
+export type CreatedCarried =
+  | { kind: "not-read" | "unbound" | "unread"; why: string }
+  | {
+      kind: "read";
+      live: string;
+      start: string;
+      cut: string;
+      issues: CreatedCarriedIssue[];
+      cutBelow: CreatedCarriedIssue[];
+    };
+
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
+
+export type CarriedDecisionBody =
+  | { issueId: string; decision: "ship-unverified"; why: string }
+  | { issueId: string; decision: "revert" | "cut-below" };
 
 export const releaseBatchApi = {
   /** `GET …/release-batches/roster` — waiting, oldest first. Parsed, not cast. */
@@ -196,13 +223,13 @@ export const releaseBatchApi = {
     return parseReleaseRoster(await apiClient<unknown>(endpoint), endpoint);
   },
 
-  /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
-  create: (projectId: string, issueIds: string[]) =>
+  /** `POST /api/projects/:projectId/release-batches` — create + claim a batch (ISS-1386 `carried`). */
+  create: (projectId: string, issueIds: string[], carried?: CarriedDecisionBody[]) =>
     apiClient<CreateReleaseBatchResult>(
       `/projects/${projectId}/release-batches`,
       {
         method: "POST",
-        body: JSON.stringify({ issueIds }),
+        body: JSON.stringify(carried && carried.length > 0 ? { issueIds, carried } : { issueIds }),
       },
     ),
 };
