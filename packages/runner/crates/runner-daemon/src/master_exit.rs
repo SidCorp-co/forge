@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use runner_core::agent_activity::{Activity, Doing, Event};
 use runner_core::ledger::{Ledger, MasterRow};
+use runner_core::subagent_end;
 use runner_platform::error::Result;
 use runner_workspace::close_loop;
 
@@ -118,6 +119,29 @@ pub struct HeldRun {
     /// operator to force past work belonging to somebody else.
     pub master_session_id: String,
     pub issues: Vec<String>,
+    /// Why its subagent is over, in recovery's words, where the box reads it so:
+    /// the process it ran in is gone, or it ended a turn at least
+    /// [`subagent_end::SUBAGENT_QUIET`] ago with nothing after. `None` while it
+    /// may still be working, or nothing can be read. A pane ended over a run
+    /// whose subagent is over ends no work; its successor inherits the run.
+    pub ended: Option<String>,
+}
+
+/// Recovery's evidence for a run's subagent, narrowed to whether it is over.
+pub fn subagent_over(evidence: subagent_end::Evidence, transcript: Option<&str>) -> Option<String> {
+    match evidence {
+        subagent_end::Evidence::HostEnded { .. }
+        | subagent_end::Evidence::Quiet { .. }
+        | subagent_end::Evidence::Unanswered { .. } => {
+            Some(subagent_end::held_because(evidence, transcript))
+        }
+        subagent_end::Evidence::NoTurnEnd { .. }
+        | subagent_end::Evidence::Resumed { .. }
+        | subagent_end::Evidence::AwaitingReply { .. }
+        | subagent_end::Evidence::Recent { .. }
+        | subagent_end::Evidence::Unreadable
+        | subagent_end::Evidence::TailUnreadable { .. } => None,
+    }
 }
 
 /// What this box can say about the runs one project's resident master holds.
@@ -157,6 +181,7 @@ pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
         )));
     }
     let mut held = Vec::new();
+    let now = runner_core::agent_activity::now_ms();
     for run in ledger.runs_for_master(session)? {
         if close_loop::state(ledger, &run.run_id)?.is_closed() {
             continue;
@@ -169,6 +194,10 @@ pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
                 .into_iter()
                 .map(|m| m.issue_key)
                 .collect(),
+            ended: subagent_over(
+                subagent_end::of_run(&run, now),
+                run.agent_transcript.as_deref(),
+            ),
         });
     }
     if held.is_empty() {

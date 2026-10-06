@@ -55,6 +55,11 @@ export const devices = pgTable(
      * is the condition it is IN (ISS-1192).
      */
     gateReport: jsonb('gate_report'),
+    /**
+     * The binaries this box's panes need and it last reported it cannot resolve, with the time
+     * core heard it. A condition it is in, like `gateReport`; `devices/binary-report.ts` reads it.
+     */
+    binaryReport: jsonb('binary_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
     // the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number

@@ -122,9 +122,6 @@ pub struct Activity {
     pub last_event_at: i64,
     /// When the running turn began. `None` once it has ended.
     pub turn_started_at: Option<i64>,
-    /// When the newest prompt was submitted, kept after its turn ends: the one
-    /// start a reader that arrives after a short turn can still date it by.
-    pub prompted_at: Option<i64>,
     pub children: std::collections::BTreeSet<String>,
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
@@ -142,6 +139,19 @@ pub struct Activity {
     pub sequence: u64,
     pub turn_ended_failed: bool,
     pub prompts: u64,
+    /// Turns the lead began, prompted or not. A turn Claude Code starts on its
+    /// own — taking up a task notification when a background agent or shell
+    /// finishes — fires no `UserPromptSubmit`, so `prompts` never counts it;
+    /// it is counted here from the first boundary only a running turn
+    /// reports, met after the lead's previous turn ended.
+    pub turns: u64,
+    /// When the newest turn began, kept after it ends so a reader arriving
+    /// after a short turn can still date it: its prompt, or for a turn no
+    /// prompt began, the end of the turn before it — the latest instant this
+    /// box can prove it began after.
+    pub turn_began_at: Option<i64>,
+    /// When the lead's last turn ended.
+    lead_ended_at: Option<i64>,
 }
 
 impl Doing {
@@ -181,6 +191,26 @@ impl Activity {
     }
 }
 
+/// Whether `r` is the first word of a lead turn no prompt began: the lead had
+/// ended its last turn, and what arrived is a boundary only a running lead
+/// turn reports — its own end, a question it stopped on, or a child it
+/// started. A child's question while the lead waits on it is the child's, and
+/// a compaction or a child's end begins nothing.
+fn began_unprompted(a: &Activity, r: Report<'_>) -> bool {
+    if !a.lead_ended || a.turn_started_at.is_some() {
+        return false;
+    }
+    match r.event {
+        Event::Stopped | Event::StoppedFailed => r.subject.is_none(),
+        Event::PermissionRequested => r.subject.is_none() && a.children.is_empty(),
+        Event::SubagentStarted => true,
+        Event::PromptSubmitted
+        | Event::SubagentStopped
+        | Event::TeammateWentIdle
+        | Event::Compacted => false,
+    }
+}
+
 #[derive(Default)]
 pub struct Activities(Mutex<HashMap<String, Activity>>);
 
@@ -197,7 +227,6 @@ impl Activities {
             last_event: event,
             last_event_at: at,
             turn_started_at: None,
-            prompted_at: None,
             children: std::collections::BTreeSet::new(),
             conversation: None,
             transcript: None,
@@ -206,6 +235,9 @@ impl Activities {
             sequence: 0,
             turn_ended_failed: false,
             prompts: 0,
+            turns: 0,
+            turn_began_at: None,
+            lead_ended_at: None,
         });
         if let Some(seen) = r.conversation {
             if a.conversation.as_deref().is_some_and(|had| had != seen) {
@@ -229,6 +261,11 @@ impl Activities {
         a.last_event = event;
         a.last_event_at = at;
         a.sequence += 1;
+        if began_unprompted(a, r) {
+            a.turns += 1;
+            a.turn_began_at = Some(a.lead_ended_at.unwrap_or(at));
+            a.lead_ended = false;
+        }
         let child_only = a.turn_started_at.is_none() && !a.children.is_empty();
         if child_only
             && !matches!(
@@ -241,10 +278,11 @@ impl Activities {
         match event {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
-                a.prompted_at = Some(at);
                 a.awaiting_permission = false;
                 a.lead_ended = false;
                 a.prompts += 1;
+                a.turns += 1;
+                a.turn_began_at = Some(at);
             }
             Event::PermissionRequested => a.awaiting_permission = true,
             Event::Stopped | Event::StoppedFailed | Event::Compacted => {
@@ -252,7 +290,10 @@ impl Activities {
                 a.awaiting_permission = false;
                 a.turn_ended_failed = event == Event::StoppedFailed;
                 // A compaction ends nothing, so it leaves the lead where it stood.
-                a.lead_ended |= event != Event::Compacted;
+                if event != Event::Compacted {
+                    a.lead_ended = true;
+                    a.lead_ended_at = Some(at);
+                }
             }
             Event::SubagentStarted => {
                 if let Some(id) = r.subject {
@@ -275,5 +316,93 @@ impl Activities {
             .expect("activities poisoned")
             .get(session_id)
             .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lead(a: &Activities, event: Event, at: i64) -> Activity {
+        a.record(
+            "s",
+            Report {
+                event,
+                at,
+                subject: None,
+                conversation: Some("c"),
+                transcript: None,
+            },
+        )
+    }
+
+    fn child(a: &Activities, event: Event, at: i64) -> Activity {
+        a.record(
+            "s",
+            Report {
+                event,
+                at,
+                subject: Some("agent-1"),
+                conversation: Some("c"),
+                transcript: None,
+            },
+        )
+    }
+
+    #[test]
+    fn a_turn_no_prompt_began_is_counted_at_its_end_and_dated_after_the_last() {
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, 1_000);
+        lead(&a, Event::Stopped, 2_000);
+        let seen = lead(&a, Event::Stopped, 9_000);
+        assert_eq!(seen.prompts, 1);
+        assert_eq!(seen.turns, 2, "a task-notification turn was not counted");
+        assert_eq!(seen.turn_began_at, Some(2_000));
+        assert_eq!(seen.doing(), Doing::Idle);
+    }
+
+    #[test]
+    fn a_child_started_after_the_lead_ended_begins_a_turn_that_is_working() {
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, 1_000);
+        lead(&a, Event::Stopped, 2_000);
+        let seen = child(&a, Event::SubagentStarted, 5_000);
+        assert_eq!(seen.turns, 2);
+        assert_eq!(seen.doing(), Doing::Working);
+        let ended = lead(&a, Event::Stopped, 6_000);
+        assert_eq!(ended.turns, 2, "one unprompted turn was counted twice");
+    }
+
+    #[test]
+    fn what_a_waiting_lead_hears_from_its_children_begins_no_turn() {
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, 1_000);
+        child(&a, Event::SubagentStarted, 1_500);
+        lead(&a, Event::Stopped, 2_000);
+        let asked = child(&a, Event::PermissionRequested, 3_000);
+        assert_eq!(asked.turns, 1);
+        let gone = child(&a, Event::SubagentStopped, 4_000);
+        assert_eq!(gone.turns, 1);
+        assert_eq!(lead(&a, Event::Compacted, 4_500).turns, 1);
+    }
+
+    #[test]
+    fn a_first_stop_heard_from_an_adopted_pane_counts_nothing() {
+        let a = Activities::new();
+        let seen = lead(&a, Event::Stopped, 2_000);
+        assert_eq!(
+            seen.turns, 0,
+            "a turn begun before this daemon heard the pane was counted as its own"
+        );
+    }
+
+    #[test]
+    fn a_prompted_turn_counts_once_however_it_ends() {
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, 1_000);
+        lead(&a, Event::Compacted, 1_200);
+        let seen = lead(&a, Event::StoppedFailed, 2_000);
+        assert_eq!((seen.prompts, seen.turns), (1, 1));
+        assert_eq!(seen.turn_began_at, Some(1_000));
     }
 }

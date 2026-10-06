@@ -8,10 +8,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every master turn is a pass, and a box names what its panes cannot run.** Task-notification
+  turns open passes; an outdated master holding only finished runs is replaced; missing pane
+  binaries reach the device screen; cuts emit one blank line.
+
 ## [0.4.0-dev.50] - 2026-10-06
 
 Breakdowns carry contract waits; consumers adopt additive contract versions in one act
-
 
 ### Fixed
 

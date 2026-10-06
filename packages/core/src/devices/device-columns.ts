@@ -14,5 +14,6 @@ export const DEVICE_LIST_COLUMNS = {
   pairedAt: devices.pairedAt,
   capabilities: devices.capabilities,
   gateReport: devices.gateReport,
+  binaryReport: devices.binaryReport,
   createdAt: devices.createdAt,
 };

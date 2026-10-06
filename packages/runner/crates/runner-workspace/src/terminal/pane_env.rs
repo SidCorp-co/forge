@@ -14,7 +14,8 @@ pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
     );
     for name in &found.missing {
         tracing::error!(
-            "[terminal] a pane for {project_slug} is starting and no `{name}` resolves on this daemon's PATH or in the usual install directories: every plugin hook in it that runs `{name}` fails with `{name}: not found`. Install it, or put its directory on the runner service's PATH, and restart the pane"
+            "[terminal] a pane for {project_slug} is starting and {}",
+            unresolved(name)
         );
     }
     if let Some(path) = found.path {
@@ -23,6 +24,62 @@ pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
     env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
     env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
     env
+}
+
+fn unresolved(name: &str) -> String {
+    format!(
+        "no `{name}` resolves on this daemon's PATH or in the usual install directories: every plugin hook in a pane that runs `{name}` fails with `{name}: not found`. Install it, or put its directory on the runner service's PATH, and restart the pane"
+    )
+}
+
+/// Every binary a pane needs that this daemon cannot resolve for it now, each
+/// with what was looked for: what a pane started now fails on, read the same
+/// way `pane_env` reads it, for the heartbeat to carry to core.
+pub fn missing_binaries() -> Vec<runner_proto::binaries::Missing> {
+    use runner_proto::binaries::Missing;
+    let mut out = Vec::new();
+    if let Err(e) = runner_platform::exe::own() {
+        out.push(Missing::new(
+            "forge-runner",
+            format!(
+                "{e}: a pane's `forge-runner hook|gate|run` cannot be pointed at the build serving this daemon, and resolves to whatever its inherited PATH holds"
+            ),
+        ));
+    }
+    if let Some(why) = claude_unresolved(runner_platform::process::resolve_claude_bin(), |n| {
+        which::which(n).is_ok()
+    }) {
+        out.push(Missing::new("claude", why));
+    }
+    let found = pane_path(
+        std::env::var_os("PATH"),
+        std::env::var_os("HOME").map(std::path::PathBuf::from),
+        claude_dir(),
+        None,
+    );
+    for name in found.missing {
+        out.push(Missing::new(name, unresolved(name)));
+    }
+    out
+}
+
+/// Why `bin`, the `claude` this daemon starts panes with, cannot be run, or
+/// `None` where it can. A bare name is what `resolve_claude_bin` falls back to
+/// when no install directory held one, and is run off PATH at spawn.
+fn claude_unresolved(bin: &str, on_path: impl Fn(&str) -> bool) -> Option<String> {
+    let path = std::path::Path::new(bin);
+    if path.is_absolute() {
+        return (!runner_platform::exe::is_runnable(path)).then(|| {
+            format!(
+                "this daemon resolved `claude` to {bin} when it started, and no runnable file stands there now: every pane it starts fails to launch its agent. Reinstall Claude Code there, or restart the runner service so it resolves `claude` again"
+            )
+        });
+    }
+    (!on_path(bin)).then(|| {
+        format!(
+            "no `{bin}` resolves on this daemon's PATH or in the usual install directories: every pane it starts fails to launch its agent. Install Claude Code, or put its directory on the runner service's PATH, and restart the runner service"
+        )
+    })
 }
 
 /// The directory of the binary serving this daemon, which a pane's `forge-runner` has to resolve
@@ -95,16 +152,10 @@ fn pane_path(
     fallbacks.push("/usr/bin".into());
     let mut missing = Vec::new();
     for name in PANE_BINARIES {
-        if dirs
-            .iter()
-            .any(|d| runner_platform::exe::is_runnable(&d.join(name)))
-        {
+        if dirs.iter().any(|d| runs_in(d, name)) {
             continue;
         }
-        match fallbacks
-            .iter()
-            .find(|d| runner_platform::exe::is_runnable(&d.join(name)))
-        {
+        match fallbacks.iter().find(|d| runs_in(d, name)) {
             Some(dir) => dirs.insert(0, dir.clone()),
             None => missing.push(name),
         }
@@ -118,6 +169,12 @@ fn pane_path(
         .flatten()
         .map(|p| p.to_string_lossy().into_owned());
     PanePath { path, missing }
+}
+
+/// Whether `dir` holds a runnable `name`, under the name Windows gives it too.
+fn runs_in(dir: &std::path::Path, name: &str) -> bool {
+    runner_platform::exe::is_runnable(&dir.join(name))
+        || (cfg!(windows) && runner_platform::exe::is_runnable(&dir.join(format!("{name}.exe"))))
 }
 
 // a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
@@ -140,7 +197,7 @@ fn pane_env_from(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<(Strin
 
 #[cfg(test)]
 mod tests {
-    use super::pane_path;
+    use super::{claude_unresolved, pane_path};
     use std::path::{Path, PathBuf};
 
     struct Scratch(PathBuf);
@@ -230,6 +287,47 @@ mod tests {
 
         let path = pane_path(Some(inherited), None, None, None).path.unwrap();
         assert_eq!(std::env::split_paths(&path).next(), Some(other));
+    }
+
+    #[test]
+    fn a_claude_that_no_longer_runs_or_never_resolved_is_named_missing() {
+        let root = Scratch::new();
+        let gone = root.0.join("bin").join("claude");
+        let why = claude_unresolved(gone.to_str().unwrap(), |_| true)
+            .expect("a claude deleted after the daemon resolved it read as runnable");
+        assert!(why.contains(gone.to_str().unwrap()), "{why}");
+        assert!(claude_unresolved("claude", |_| false).is_some());
+        assert_eq!(claude_unresolved("claude", |_| true), None);
+        runnable(&root.0.join("bin"), "claude");
+        assert_eq!(claude_unresolved(gone.to_str().unwrap(), |_| false), None);
+    }
+
+    #[test]
+    fn a_node_found_nowhere_is_missing_and_one_beside_claude_is_not() {
+        let root = Scratch::new();
+        let empty = root.0.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let path = std::env::join_paths([&empty]).unwrap();
+        let none = pane_path(Some(path.clone()), Some(root.0.clone()), None, None);
+        if !runner_platform::exe::is_runnable(std::path::Path::new("/usr/bin/node"))
+            && !runner_platform::exe::is_runnable(std::path::Path::new("/usr/local/bin/node"))
+        {
+            assert_eq!(none.missing, vec!["node"]);
+        }
+        let claude = root.0.join("claude-bin");
+        runnable(&claude, "node");
+        let found = pane_path(Some(path), Some(root.0.clone()), Some(claude), None);
+        assert!(found.missing.is_empty());
+    }
+
+    #[test]
+    fn a_detail_is_clipped_to_the_wire_bound_on_a_character() {
+        let long = "\u{e9}".repeat(runner_proto::binaries::DETAIL_UNITS + 5);
+        let m = runner_proto::binaries::Missing::new("node", long);
+        assert_eq!(
+            m.detail.encode_utf16().count(),
+            runner_proto::binaries::DETAIL_UNITS
+        );
     }
 
     #[test]

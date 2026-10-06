@@ -1,11 +1,11 @@
 //! A resident master judged against the build and plugins this box would
-//! place now, and replaced once it holds nothing (ISS-1379).
+//! place now, and replaced once nothing it holds is still working (ISS-1379).
 
 use super::*;
 
 /// Judge the project's resident pane against what this box would place now,
-/// and act on an outdated one: end it where it holds no run and no turn and
-/// there is work for a successor, which the placement after this call then
+/// and act on an outdated one: end it where no run it holds is still working,
+/// its turn is over and there is work for a successor, which the placement after this call then
 /// starts resuming the same conversation; leave it running otherwise, and say
 /// once why (ISS-1379). Answers whether an outdated pane was left running, so
 /// the sweep does not nudge it.
@@ -37,17 +37,24 @@ pub(crate) async fn outdated_resident(
     };
     let Outdated { why, act, session } = found;
     match act {
-        OutdatedAct::Replace => {
+        OutdatedAct::Replace { inherited } => {
+            let holds = if inherited.is_empty() {
+                "holds no run and no turn".to_string()
+            } else {
+                format!(
+                    "holds no turn and no run still working — its successor inherits {inherited}"
+                )
+            };
             if let Err(e) = terminal::kill(pane_name).await {
                 if masters.note_outdated(project_id, Some(format!("unkillable: {why}"))) {
                     tracing::error!(
-                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {e}. It is left running and not nudged; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
+                        "[master] {slug}: {pane_name} is outdated ({why}) and {holds}, and tmux would not end it: {e}. It is left running and not nudged; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
                     );
                 }
                 return true;
             }
             tracing::info!(
-                "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, so it is ended and placed again this sweep, resuming its conversation under the build and plugins this box holds now"
+                "[master] {slug}: {pane_name} is outdated ({why}) and {holds}, so it is ended and placed again this sweep, resuming its conversation under the build and plugins this box holds now"
             );
             match session.as_deref() {
                 Some(session) => {
@@ -71,7 +78,7 @@ pub(crate) async fn outdated_resident(
         OutdatedAct::Leave(reason) => {
             if masters.note_outdated(project_id, Some(format!("{why} / {reason}"))) {
                 tracing::warn!(
-                    "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
+                    "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds no run it holds still working, it at its prompt, and work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
                 );
             }
             true
@@ -228,15 +235,19 @@ pub(crate) fn turn_of(
 /// What a sweep does about a pane judged outdated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OutdatedAct {
-    /// End it, and let this sweep's placement start its successor.
-    Replace,
+    /// End it, and let this sweep's placement start its successor, which
+    /// inherits the runs named — each one whose subagent is over — or none.
+    Replace { inherited: String },
     /// Leave it running, for the reason named.
     Leave(String),
 }
 
-/// Replace only a pane that holds nothing, has affirmatively ended its turn,
-/// has work waiting for its successor, and has a conversation its successor
-/// can resume. Each other case leaves it, and every reason that holds is
+/// Replace only a pane holding no run whose subagent may still be working,
+/// that has affirmatively ended its turn, has work waiting for its successor,
+/// and has a conversation its successor can resume. A run whose subagent is
+/// over is no reason to wait: ending the pane ends no work in it, the
+/// successor inherits the run and owes its resume choice, and waiting for the
+/// pane to close it waits on a pane this box no longer nudges. Each other case leaves it, and every reason that holds is
 /// named, not only the first: a pane left for having no admissible work that
 /// also holds four runs is left for both (judge r2's wording note).
 pub(crate) fn outdated_act(
@@ -252,15 +263,28 @@ pub(crate) fn outdated_act(
                 .into(),
         );
     }
+    let name = |r: &crate::master_exit::HeldRun| format!("{} ({})", r.run_id, r.issues.join(", "));
+    let mut inherited = String::new();
     match holding {
         Holding::Nothing => {}
         Holding::These(runs) => {
-            let names = runs
+            let (over, working): (Vec<_>, Vec<_>) = runs.iter().partition(|r| r.ended.is_some());
+            if !working.is_empty() {
+                let names = working
+                    .iter()
+                    .map(|r| name(r))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                left.push(format!(
+                    "it holds {} open run(s) whose subagent may still be working: {names}",
+                    working.len()
+                ));
+            }
+            inherited = over
                 .iter()
-                .map(|r| format!("{} ({})", r.run_id, r.issues.join(", ")))
+                .map(|r| format!("{} — {}", name(r), r.ended.as_deref().unwrap_or_default()))
                 .collect::<Vec<_>>()
                 .join("; ");
-            left.push(format!("it holds {} open run(s): {names}", runs.len()));
         }
         // Each one already says that which runs it holds is not known, and
         // why; a prefix saying so again read the sentence twice.
@@ -276,7 +300,7 @@ pub(crate) fn outdated_act(
         left.push(why.to_string());
     }
     if left.is_empty() {
-        OutdatedAct::Replace
+        OutdatedAct::Replace { inherited }
     } else {
         OutdatedAct::Leave(left.join("; "))
     }
@@ -303,5 +327,115 @@ pub(crate) fn note_placement(
             "[master] {}: {pane_name} was placed and the build it was placed under could not be recorded ({e}); the next build will read it as outdated",
             resolved.slug
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::master_exit::HeldRun;
+
+    #[test]
+    fn an_outdated_master_whose_held_run_has_ended_is_replaced() {
+        let held = Holding::These(vec![run(
+            "r1",
+            Some("its subagent ended a turn 70m ago and wrote nothing after it"),
+        )]);
+        assert_eq!(
+            outdated_act(Placement::AdoptOrStart, &held, &TurnRead::Ended, None),
+            OutdatedAct::Replace {
+                inherited: "r1 (ISS-1) — its subagent ended a turn 70m ago and wrote nothing after it".into()
+            },
+            "an outdated master holding only a run whose subagent has ended was left running and never nudged"
+        );
+    }
+
+    fn run(id: &str, ended: Option<&str>) -> HeldRun {
+        HeldRun {
+            run_id: id.into(),
+            master_session_id: "s".into(),
+            issues: vec!["ISS-1".into()],
+            ended: ended.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_run_still_working_keeps_an_outdated_master_and_names_only_itself() {
+        let held = Holding::These(vec![run("r1", Some("over")), run("r2", None)]);
+        let OutdatedAct::Leave(why) =
+            outdated_act(Placement::AdoptOrStart, &held, &TurnRead::Ended, None)
+        else {
+            panic!(
+                "an outdated master was replaced over a run whose subagent may still be working"
+            );
+        };
+        assert!(why.contains("r2 (ISS-1)"), "{why}");
+        assert!(
+            !why.contains("r1"),
+            "a run that is over was named as holding the pane: {why}"
+        );
+    }
+
+    #[test]
+    fn an_ended_run_does_not_excuse_a_turn_still_running_or_no_work() {
+        let held = Holding::These(vec![run("r1", Some("over"))]);
+        assert!(matches!(
+            outdated_act(
+                Placement::AdoptOrStart,
+                &held,
+                &TurnRead::InTurn("busy"),
+                None
+            ),
+            OutdatedAct::Leave(_)
+        ));
+        assert!(matches!(
+            outdated_act(Placement::AdoptOnly, &held, &TurnRead::Ended, None),
+            OutdatedAct::Leave(_)
+        ));
+        assert_eq!(
+            outdated_act(
+                Placement::AdoptOrStart,
+                &Holding::Nothing,
+                &TurnRead::Ended,
+                None
+            ),
+            OutdatedAct::Replace {
+                inherited: String::new()
+            }
+        );
+    }
+
+    #[test]
+    fn only_a_subagent_read_as_over_is_over() {
+        use runner_core::subagent_end::Evidence;
+        let over = [
+            Evidence::HostEnded { silent_ms: 1 },
+            Evidence::Quiet {
+                silent_ms: 4_000_000,
+            },
+            Evidence::Unanswered {
+                silent_ms: 4_000_000,
+            },
+        ];
+        for e in over {
+            assert!(
+                crate::master_exit::subagent_over(e, None).is_some(),
+                "{e:?}"
+            );
+        }
+        let live = [
+            Evidence::NoTurnEnd { since_ms: 1 },
+            Evidence::Resumed { silent_ms: 1 },
+            Evidence::AwaitingReply { silent_ms: 1 },
+            Evidence::Recent { silent_ms: 1 },
+            Evidence::Unreadable,
+            Evidence::TailUnreadable { silent_ms: 1 },
+        ];
+        for e in live {
+            assert!(
+                crate::master_exit::subagent_over(e, None).is_none(),
+                "{e:?}"
+            );
+        }
     }
 }
