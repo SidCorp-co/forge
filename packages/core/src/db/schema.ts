@@ -391,6 +391,11 @@ export const projects = pgTable(
 export const projectKinds = ['standard', 'website'] as const;
 export type ProjectKind = (typeof projectKinds)[number];
 
+/** `git`: the work lands as commits. `outside_git`: it lands as a live resource, a CMS entry, a
+ *  storefront change — the repository, where there is one, holds none of it. */
+export const landingShapes = ['git', 'outside_git'] as const;
+export type LandingShape = (typeof landingShapes)[number];
+
 export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
 export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
@@ -1041,6 +1046,8 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    // ISS-1384 — where THIS issue's work lands, declared on it; NULL answers the project's kind.
+    declaredLandingShape: text('declared_landing_shape', { enum: landingShapes }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
@@ -1085,6 +1092,10 @@ export const issues = pgTable(
     mergedLandingChk: check(
       'issues_merged_landing_chk',
       sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
+    ),
+    declaredLandingShapeChk: check(
+      'issues_declared_landing_shape_chk',
+      sql`${t.declaredLandingShape} IS NULL OR ${t.declaredLandingShape} IN ('git', 'outside_git')`,
     ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),

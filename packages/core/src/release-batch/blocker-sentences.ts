@@ -317,7 +317,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return unroutedSentence(remedy, details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
-    return `${namedHere(details)} have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+    return `${namedHere(details)} have no mark saying where their work landed. Their work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];

@@ -12,6 +12,7 @@ import { AttachmentError } from '../../issues/attachment-service.js';
 import { IssueCreateError } from '../../issues/create-service.js';
 import { LabelResolutionError, PrimaryModuleError } from '../../issues/label-service.js';
 import {
+  LandingShapeMarkStands,
   SessionContextDropsUnreadKeys,
   SessionContextExpectMismatch,
 } from '../../issues/update-service.js';
@@ -34,6 +35,7 @@ export function toMcpIssueError(err: unknown): unknown {
         '`expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
     );
   }
+  if (err instanceof LandingShapeMarkStands) return new Error(`${err.code}: ${err.message}`);
   if (err instanceof SessionContextExpectMismatch) {
     return new Error(
       'SESSION_CONTEXT_MISMATCH: `sessionContext` no longer holds the value this write expected — ' +

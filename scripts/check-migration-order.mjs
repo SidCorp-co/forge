@@ -10,7 +10,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { baseRef as resolveBase } from './lib/base-branch.mjs';
+import { ciBranches, baseRef as resolveBase } from './lib/base-branch.mjs';
 import { checkSet, floorOf, newEntries, readJournal, readOpenSet } from './lib/migration-order.mjs';
 
 const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
@@ -97,6 +97,50 @@ if (landing.length === 0 && !isBase) {
   process.exit(0);
 }
 
+/**
+ * The lines that renumber above a base rather than beside it, declared rather than derived: `dev`
+ * merges `main` in and moves its own migrations above main's (b3710d63d, 2026-10-01), so a branch
+ * cut from `dev` is not a sibling of a `main` tree, and counting it refused every migration `main`
+ * took while `dev` held any. A line is set aside only where CI also gates it on a push.
+ */
+const RENUMBERS_ABOVE = new Map([['dev', 'main']]);
+const CI_WORKFLOW = '.github/workflows/ci.yml';
+const ciPath = join(root, CI_WORKFLOW);
+const otherLines = existsSync(ciPath)
+  ? (ciBranches(readFileSync(ciPath, 'utf8')).push ?? []).filter(
+      (b) => RENUMBERS_ABOVE.get(b) === base.branch,
+    )
+  : [];
+
+/** A line's own commits: its first-parent chain the base does not hold. `undefined` unreadable. */
+const spines = new Map();
+function spineOf(ref) {
+  if (!spines.has(ref)) {
+    const out = git(['log', '--first-parent', '--format=%H', ref, `^${baseRef}`], root);
+    spines.set(ref, out === null ? undefined : new Set(out.split('\n').filter(Boolean)));
+  }
+  return spines.get(ref);
+}
+
+/**
+ * The other gated line `ref` lands on, `null` for none, `undefined` where git could not say. A
+ * branch is cut FROM a line when its own first-parent chain runs into that line's; a base branch
+ * the line merely merged in sits on the line's second parent and stays this base's sibling.
+ */
+function landsOn(ref) {
+  const own = spineOf(ref);
+  if (own === undefined) return undefined;
+  for (const line of otherLines) {
+    const lineRef = `origin/${line}`;
+    if (git(['rev-parse', '--verify', '--quiet', `${lineRef}^{commit}`], root) === null) continue;
+    if (ref === lineRef) return line;
+    const spine = spineOf(lineRef);
+    if (spine === undefined) return undefined;
+    for (const commit of own) if (spine.has(commit)) return line;
+  }
+  return null;
+}
+
 /** Every open branch's new entries, or `null` where the remote could not be read at all. */
 function readOpenBranches() {
   const read = readOpenSet({
@@ -109,6 +153,7 @@ function readOpenBranches() {
     baseRef,
     baseCommit: baseRef,
     isOurs,
+    landsOn,
     parse: entriesOf,
     // The fetch may have moved the base under us, and the floor was read before it. Re-read rather
     // than compare against a number the remote has already left behind.
@@ -131,6 +176,12 @@ function readOpenBranches() {
         'An unknown is not an absence. Exit 2, not a pass.',
     );
   }
+  if (read?.hole?.kind === 'line') {
+    die(
+      `whether ${read.hole.ref} lands on ${otherLines.join(' or ')} rather than ${baseRef} could not be\n` +
+        "read, so whether its migrations are this tree's siblings is unknown. Exit 2, not a pass.",
+    );
+  }
   if (read?.hole?.kind === 'journal') {
     die(
       `${read.hole.ref} has a ${JOURNAL} that will not read, so the open set has a hole in it.\n` +
@@ -138,9 +189,11 @@ function readOpenBranches() {
         `landing ${landing.map((e) => e.tag).join(', ') || 'no migration'}. Exit 2, not a pass.`,
     );
   }
+  if (read !== null) elsewhere = read.elsewhere;
   return read === null ? null : read.open;
 }
 
+let elsewhere = [];
 const siblings = readOpenBranches();
 
 // The fetch inside that call may have shown that the base already carries what this tree was
@@ -180,6 +233,16 @@ say(`${LABEL}: ${landing.length} migration(s) landing, ${siblings.length} open b
 say(
   `  ${baseRef} floor: ${floorOf(baseEntries)} (merge target ${base.branch}, from ${base.source})`,
 );
+
+if (elsewhere.length > 0) {
+  say('');
+  say(`  On another gated line, and not counted against ${baseRef} — each lands there, and that`);
+  say('  line renumbers its own migrations above this base when it next merges it:');
+  for (const line of [...new Set(elsewhere.map((b) => b.line))]) {
+    const on = elsewhere.filter((b) => b.line === line);
+    say(`    ${line}: ${on.map((b) => b.branch).join(', ')}`);
+  }
+}
 
 if (result.stranded.length > 0) {
   say('');

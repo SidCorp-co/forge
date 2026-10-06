@@ -101,7 +101,7 @@ export interface IssueRow {
   mergeMark?: MergeMarkKind;
   /** ISS-1327 — where the work landed outside git, on a mark that named one. */
   mergedLanding?: string | null;
-  /** ISS-1327 — what this issue's project accepts as landed; core's answer, never re-derived. */
+  /** ISS-1384 — what this issue accepts as landed, its own or its project's; core's, never re-derived. */
   landingShape?: LandingShape;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;

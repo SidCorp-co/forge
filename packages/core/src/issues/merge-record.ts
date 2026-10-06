@@ -133,7 +133,12 @@ async function readBack(
  */
 export async function recordIssueMerge(
   executor: MergeRecordExecutor,
-  args: { issueId: string; evidence: MergeEvidence },
+  args: {
+    issueId: string;
+    evidence: MergeEvidence;
+    /** The issue's declared lane the mark was judged on; the stamp lands only while it still holds. */
+    declared?: string | null;
+  },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
   const stampExpr =
@@ -155,7 +160,15 @@ export async function recordIssueMerge(
       ...(landing ? { mergedLanding: landing } : {}),
       updatedAt: sql`now()`,
     })
-    .where(and(eq(issues.id, issueId), gate))
+    .where(
+      and(
+        eq(issues.id, issueId),
+        gate,
+        args.declared === undefined
+          ? undefined
+          : sql`${issues.declaredLandingShape} IS NOT DISTINCT FROM ${args.declared}::text`,
+      ),
+    )
     .returning({
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,

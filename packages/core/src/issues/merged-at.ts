@@ -1,6 +1,6 @@
 import type { IssueStatus } from '../db/schema.js';
 import {
-  type LandingShape,
+  type Lane,
   landingRoute,
   landingShortfall,
   readLandingEvidence,
@@ -16,35 +16,37 @@ export interface ShippedRuleRefusal {
   details: Record<string, unknown>;
 }
 
-/** The sentence every close refusal carries, naming the route this project's shape has. */
-export function closedMeansShipped(shape: LandingShape, held?: MergeMarkKind): string {
+/** The sentence every close refusal carries, naming the route this issue's lane has. */
+export function closedMeansShipped(lane: Lane, held?: MergeMarkKind): string {
   return (
     '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
     'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
-    `and releases every \`blocks\` dependent the same way. ${landingRoute(shape, held)}`
+    `and releases every \`blocks\` dependent the same way. ${landingRoute(lane, held)}`
   );
 }
 
-// cm:flow release/close after:stamp — the close reads the stamp and the project's shape and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
+// cm:flow release/close after:stamp — the close reads the stamp and the issue's lane and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
 export async function refuseUnshippedClose(
   executor: MergeRecordExecutor,
   args: { issueId: string; toStatus: IssueStatus },
 ): Promise<ShippedRuleRefusal | null> {
   if (args.toStatus !== 'closed') return null;
   const evidence = await readLandingEvidence(executor, args.issueId);
-  if (evidence && !landingShortfall(evidence.columns, evidence.shape)) return null;
-  if (!evidence || evidence.shape === 'git') {
+  if (evidence && !landingShortfall(evidence.columns, evidence.lane)) return null;
+  if (!evidence || evidence.lane.shape === 'git') {
+    const lane = evidence?.lane ?? { shape: 'git', declared: false };
     return {
-      detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${closedMeansShipped('git')}`,
+      detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${closedMeansShipped(lane)}`,
       details: { requires: 'mergedAt', useInstead: 'dropped' },
     };
   }
-  const { columns, shape } = evidence;
+  const { columns, lane } = evidence;
   return {
-    detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
+    detail: `${landingShortfall(columns, lane)}, so nothing on it shows where the work landed. ${closedMeansShipped(lane, mergeMarkKindOf(columns))}`,
     details: {
       requires: 'mergedLanding',
-      shape,
+      shape: lane.shape,
+      declared: lane.declared,
       held: mergeMarkKindOf(columns),
       useInstead: 'dropped',
     },
