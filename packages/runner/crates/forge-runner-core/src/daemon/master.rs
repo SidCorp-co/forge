@@ -13685,8 +13685,13 @@ mod pane_path_tests {
         .to_string();
         masters.note_unplaced("proj-1", Unplaced::PathUnresolved { detail });
         let why = masters.why_unplaced("proj-1");
+        // The reason is checked and not printed: the registry it is read
+        // from also holds reasons that carry a core session id.
         for said in ["`forge-runner`, `node`", "(/usr/local/bin:/usr/bin)"] {
-            assert!(why.contains(said), "`{said}` missing: {why}");
+            assert!(
+                why.contains(said),
+                "the reason on `master status` does not name `{said}`"
+            );
         }
         assert!(Unplaced::PathUnresolved {
             detail: String::new()

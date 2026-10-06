@@ -163,9 +163,6 @@ pub(crate) mod testing {
 mod tests {
     use super::*;
 
-    const DEFAULT_PATH: &str =
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin";
-
     fn executable(path: &Path) {
         std::fs::write(path, "#!/bin/sh\nexit 0\n").unwrap();
         let mut perms = std::fs::metadata(path).unwrap().permissions();
@@ -236,20 +233,30 @@ mod tests {
     #[test]
     fn a_binary_missing_from_every_directory_is_named() {
         let p = Planted::new();
+        // The daemon's own PATH is a directory this test plants, never the
+        // host's: a runner image with a system `node` in /usr/bin kept
+        // resolving it after the planted one was removed (PR #840, CI).
+        let system = p.root.join("system-bin");
+        std::fs::create_dir_all(&system).unwrap();
+        executable(&system.join("sh-on-the-boot-path"));
         let built = build(
             Some(&p.own()),
             Some(&p.claude()),
             Some(&p.home()),
-            Some(OsStr::new(DEFAULT_PATH)),
+            Some(system.as_os_str()),
         );
         assert!(missing(&built, &required(true)).is_empty());
+        assert!(
+            missing(&built, &["sh-on-the-boot-path"]).is_empty(),
+            "the daemon's own PATH is searched too"
+        );
         std::fs::remove_file(p.home().join(".local/bin/node")).unwrap();
         assert_eq!(missing(&built, &required(true)), vec!["node"]);
         assert!(
             missing(&built, &required(false)).is_empty(),
             "with plugins off a missing node refuses nothing"
         );
-        let bare = build(None, None, None, Some(OsStr::new("/nonexistent-dir")));
+        let bare = build(None, None, None, Some(system.as_os_str()));
         assert_eq!(
             missing(&bare, &required(false)),
             vec!["forge-runner", "claude"]
