@@ -10,6 +10,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { extractTurnPreview } from './chat-preview.js';
+import { transcriptLength } from './turns-helpers.js';
 import {
   canonicalSessionId,
   EMPTY_USAGE_TOTALS,
@@ -18,9 +19,8 @@ import {
 } from './usage-rollup.js';
 
 /**
- * `agentSessionListColumns` is the one definition of "an agent session row without its transcript": `messages` is a full
- * transcript, often multi-MB, and selecting it into a LIST makes every page carry every word
- * ever said (ISS-428).
+ * `agentSessionListColumns` is the one definition of "an agent session row" for a read; the
+ * transcript lives in `agent_session_turns`, often multi-MB, and a LIST never joins it (ISS-428).
  */
 const agentSessionListColumns = {
   id: agentSessions.id,
@@ -113,13 +113,14 @@ export async function readAgentSession(sessionId: string) {
   const [row] = await db
     .select({
       ...agentSessionListColumns,
-      totalMessages: sql<number>`coalesce(jsonb_array_length(${agentSessions.messages}), 0)`,
+      totalMessages: transcriptLength,
       messages: sql<unknown[]>`coalesce((
-        SELECT jsonb_agg(x.e ORDER BY x.ord)
+        SELECT jsonb_agg(x.e ORDER BY x.turn_index)
         FROM (
-          SELECT e, ord
-          FROM jsonb_array_elements(${agentSessions.messages}) WITH ORDINALITY AS y(e, ord)
-          ORDER BY ord DESC
+          SELECT t.content->'value' AS e, t.turn_index
+          FROM agent_session_turns t
+          WHERE t.agent_session_id = "agent_sessions"."id"
+          ORDER BY t.turn_index DESC
           LIMIT ${sql.raw(String(MESSAGE_TAIL))}
         ) x
       ), '[]'::jsonb)`,

@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { toCanonicalMessages } from './canonical-legacy.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;
@@ -34,13 +33,7 @@ export async function seedTurn(
   let seq = await nextSeq(tx, agentSessionId);
   const rows: Array<{ kind: 'seed' | 'snapshot'; data: Record<string, unknown> }> = [];
   if (seq === 1 && args.priorMessages.length > 0) {
-    const converted = toCanonicalMessages(args.priorMessages);
-    if (!converted.ok) {
-      throw new Error(
-        `agent_session_events: cannot carry this session's standing transcript into its carrier — messages[${converted.index}] ${converted.why}`,
-      );
-    }
-    rows.push({ kind: 'snapshot', data: { entries: converted.messages } });
+    rows.push({ kind: 'snapshot', data: { entries: args.priorMessages } });
   }
   rows.push({ kind: 'seed', data: { entry: args.entry } });
 

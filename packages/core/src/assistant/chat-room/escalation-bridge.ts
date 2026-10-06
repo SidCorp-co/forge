@@ -3,6 +3,7 @@
  * was escalated from, once, through the synthesis turn in `escalation-synthesis.ts`.
  */
 
+import { readTranscript } from '../../agent-sessions/index.js';
 import { recordDeliveredReplyToVenue } from '../../conversations/index.js';
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import {
@@ -52,7 +53,9 @@ export async function deliverEscalationReplyOnce(session: SessionRow): Promise<v
   if (!auth) return;
 
   const finalText =
-    session.status === 'completed' ? extractFinalAssistantText(session.messages) : null;
+    session.status === 'completed'
+      ? extractFinalAssistantText(await readTranscript(session.id))
+      : null;
   let reply: string;
   let proof: ReplySendProof = FIXED_REPLY_CONSTANT;
   if (!finalText) {

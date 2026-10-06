@@ -60,7 +60,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: null,
     env: null,
     floorDays: 0,
-    why: 'Not swept, and not append-only in the sense this rule is about: it materialises `agent_sessions.messages` one row per turn, under an ON DELETE CASCADE from its parent session, so its lifetime is that session’s and a time window here would delete half a live transcript.',
+    why: 'Not swept, and not append-only in the sense this rule is about: it is the session transcript, one row per entry, under an ON DELETE CASCADE from its parent session, so its lifetime is that session’s and a time window here would delete half a live transcript.',
   },
 ];
 

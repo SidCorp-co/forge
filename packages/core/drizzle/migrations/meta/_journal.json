@@ -2703,6 +2703,13 @@
       "when": 1818979200000,
       "tag": "0417_a_release_number_is_spent_only_when_it_leaves",
       "breakpoints": true
+    },
+    {
+      "idx": 418,
+      "version": "7",
+      "when": 1819065600000,
+      "tag": "0418_the_transcript_lives_only_in_its_turn_rows",
+      "breakpoints": true
     }
   ]
 }

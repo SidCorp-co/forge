@@ -38,7 +38,6 @@ export const agentSessions = pgTable(
       .references(() => pipelineRuns.id, { onDelete: 'restrict' }),
     title: text('title'),
     status: text('status', { enum: agentSessionStatuses }).notNull().default('idle'),
-    messages: jsonb('messages').notNull().default(sql`'[]'::jsonb`),
     claudeSessionId: text('claude_session_id'),
     repoPath: text('repo_path'),
     usage: jsonb('usage'),
@@ -103,9 +102,8 @@ export const agentSessionsRelations = relations(agentSessions, ({ many, one }) =
   turns: many(agentSessionTurns),
 }));
 
-// Sibling table that materializes each entry of `agent_sessions.messages` into
-// its own row so turns can be addressed by id. The jsonb blob remains the
-// source of truth during the dual-write rollout.
+// A session's transcript, one row per entry at its index, held as `content.value`.
+// It is the only store of the transcript: `agent_sessions` carries none.
 export const agentSessionTurnRoles = ['user', 'assistant', 'tool'] as const;
 
 export type AgentSessionTurnRole = (typeof agentSessionTurnRoles)[number];

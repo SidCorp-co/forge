@@ -8,8 +8,20 @@ import type { AuthVars } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
 import { refuseSession } from './refusals.js';
+import { readTranscript } from './turns-helpers.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
+
+/**
+ * A session row as the session routes answer it: with its whole transcript under `messages`,
+ * read from the turn rows unless the caller already holds it.
+ */
+export async function withTranscript<T extends { id: string }>(
+  row: T,
+  messages?: readonly unknown[],
+): Promise<T & { messages: readonly unknown[] }> {
+  return { ...row, messages: messages ?? (await readTranscript(row.id)) };
+}
 
 /** Load the session row or 404 — the shared first step of every per-session guard. */
 export async function loadSessionOr404(sessionId: string) {

@@ -16,7 +16,7 @@ import { assertCallerDeclaresNoKind } from './kind-query.js';
 import { sendBodySchema } from './lifecycle-schemas.js';
 import { projectHandle } from './read.js';
 import { refuseSession } from './refusals.js';
-import { ensureSessionOwnerOrAdmin } from './session-access.js';
+import { ensureSessionOwnerOrAdmin, withTranscript } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 
 const createSchema = z
@@ -59,7 +59,7 @@ agentSessionInteractiveRoutes.post('/', zValidator('json', createSchema), async 
 
   await recordSessionCreatedActivity(inserted, restActor(c));
 
-  return c.json(inserted, 201);
+  return c.json(await withTranscript(inserted, []), 201);
 });
 agentSessionInteractiveRoutes.post('/send', zValidator('json', sendBodySchema), async (c) => {
   const input = c.req.valid('json');
