@@ -106,56 +106,6 @@ fn which_tmux() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// A core that answers every request 200 and records its path and body.
-async fn fake_core() -> (CoreClient, Arc<std::sync::Mutex<Vec<(String, String)>>>) {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let log = seen.clone();
-    tokio::spawn(async move {
-        while let Ok((mut sock, _)) = listener.accept().await {
-            let mut buf = Vec::new();
-            let mut chunk = [0u8; 4096];
-            loop {
-                let n = sock.read(&mut chunk).await.unwrap_or(0);
-                if n == 0 {
-                    break;
-                }
-                buf.extend_from_slice(&chunk[..n]);
-                let text = String::from_utf8_lossy(&buf).to_string();
-                if let Some((head, body)) = text.split_once("\r\n\r\n") {
-                    let len = head
-                        .lines()
-                        .find_map(|l| {
-                            l.to_ascii_lowercase()
-                                .strip_prefix("content-length:")
-                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
-                        })
-                        .unwrap_or(0);
-                    if body.len() >= len {
-                        let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
-                        log.lock().unwrap().push((path, body.to_string()));
-                        break;
-                    }
-                }
-            }
-            let reply = "{}";
-            let head = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                reply.len()
-            );
-            let _ = sock.write_all(head.as_bytes()).await;
-            let _ = sock.write_all(reply.as_bytes()).await;
-            let _ = sock.shutdown().await;
-        }
-    });
-    (
-        CoreClient::new(format!("http://{addr}"), "device-token"),
-        seen,
-    )
-}
-
 fn frame_ctx(client: CoreClient, pool: pool_jobs::PoolPanes) -> FrameCtx {
     let base = client.base().to_string();
     FrameCtx {
@@ -204,7 +154,7 @@ async fn a_job_cancel_frame_closes_the_pool_pane_it_names_frees_its_slot_and_ack
     let record = records.path(&job_id).unwrap();
     assert!(record.exists(), "the pane's record was never written");
 
-    let (client, seen) = fake_core().await;
+    let (client, seen) = crate::test_core::fake_core(crate::test_core::takes_everything).await;
     let ctx = frame_ctx(
         client,
         pool_jobs::PoolPanes {

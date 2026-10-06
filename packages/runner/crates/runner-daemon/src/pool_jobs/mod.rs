@@ -502,7 +502,9 @@ pub async fn supervise(
         // this box knows nothing about, and `job_exit` keeps it.
         let seen = said.as_ref().map(job_exit::Reported::of).or(live.seen);
         let transcript = transcript_of(said.as_ref(), live.transcript.as_deref());
-        if seen != live.seen || transcript != live.transcript {
+        if (seen != live.seen || transcript != live.transcript)
+            && registry.refresh(&live.job_id, seen, transcript.clone())
+        {
             records
                 .note(&Live {
                     seen,
@@ -510,14 +512,6 @@ pub async fn supervise(
                     ..live.clone()
                 })
                 .await;
-            registry.hold(
-                &live.job_id,
-                &live.pane,
-                live.watch.clone(),
-                seen,
-                transcript.clone(),
-                live.opened_at,
-            );
         }
         let written_at = transcript
             .as_deref()

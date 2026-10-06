@@ -902,3 +902,6 @@ mod start_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+#[cfg(test)]
+mod test_core;
