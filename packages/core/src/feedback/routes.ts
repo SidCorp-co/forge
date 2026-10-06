@@ -6,6 +6,7 @@ import {
   FEEDBACK_EMPTY_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
+  FEEDBACK_RETARGET_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
   type FeedbackResponse,
@@ -13,6 +14,7 @@ import {
   feedbackClarificationRequestSchema,
   feedbackEmptyRequestSchema,
   feedbackReasonRequestSchema,
+  feedbackRetargetRequestSchema,
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
@@ -32,6 +34,7 @@ import { listFeedbackAs } from './list-read.js';
 import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor } from './read.js';
 import { redactReporterData } from './redact.js';
+import { retargetFeedback } from './retarget.js';
 import {
   askReporterToVerify,
   createFeedback,
@@ -156,6 +159,24 @@ feedbackRoutes.post(
         actor: actorOf(c),
         triage: c.req.valid('json'),
         channel: 'web',
+      }),
+    );
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/retarget',
+  itemParam,
+  strictBody(feedbackRetargetRequestSchema, FEEDBACK_RETARGET_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return answer(
+      c,
+      await retargetFeedback({
+        projectId: id,
+        ref: fb,
+        actor: actorOf(c),
+        request: c.req.valid('json'),
       }),
     );
   },

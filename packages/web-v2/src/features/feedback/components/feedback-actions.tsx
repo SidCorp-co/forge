@@ -6,6 +6,7 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useFeedbackAction } from "../hooks";
+import { RetargetForm } from "./feedback-retarget";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
 type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
@@ -165,6 +166,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
     <div className="grid gap-4">
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
+      {f.can.retarget ? <RetargetForm projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
     </div>
   );

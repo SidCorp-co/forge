@@ -175,7 +175,7 @@ export async function triageIn(
 }
 
 /** A holder of feedback.approve acts on one item under the feedback lock, then reads it back. */
-async function approvedActOn(
+export async function approvedActOn(
   input: { projectId: string; ref: string; actor: FeedbackActor },
   act: string,
   body: (tx: Tx, row: Row) => Promise<TriageWritten>,

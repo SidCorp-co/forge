@@ -178,6 +178,7 @@ export async function detailAs(
           viewer.userId !== row.reportedBy &&
           summary.phase === 'resolved',
         redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
+        retarget: holds(facts, 'feedback.approve') && row.contractVersion === null,
       },
       sensitive: level !== 'off',
     },
