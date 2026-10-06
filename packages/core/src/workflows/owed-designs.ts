@@ -3,7 +3,7 @@
  * `decided`: a returned design goes back to revision). The box carrying the master reads it on
  * every sweep, so a return is master work whether or not its workflow.designDecided wake was heard.
  * A design drawn under a live issue is that issue's to carry, and the return already reopened it or
- * said so on it (`design-issue.ts:settleDesignIssue`), so only a return no live issue holds is owed
+ * said so on it (`design-issue.ts:handBack`), so only a return no live issue holds is owed
  * here; proposing the next revision is what takes it off.
  */
 

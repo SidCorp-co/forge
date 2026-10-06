@@ -45,6 +45,11 @@ export {
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { registerDependencyHealth } from './dependency-service.js';
+export {
+  type DesignLandingOutcome,
+  designLandingNotice,
+  markApprovedDesign,
+} from './design-landing.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';

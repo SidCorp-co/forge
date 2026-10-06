@@ -173,18 +173,31 @@ const designColumns = {
   designIssueId: projectWorkflowDesigns.designIssueId,
 };
 
+/** The issue a new revision inherits, or the superseded revision's issue where it is no longer work. */
+export type InheritedDesignIssue =
+  | { issueId: string | null }
+  | { lapsed: { issueId: string; issSeq: number; status: string } };
+
 // A revision a write proposes again is drawn under the issue the one it supersedes named, while that
 // issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38 though it was
-// drawn under ISS-64 (FB-54), and a return then reopens nothing. Past that the writer names it.
-async function inheritedDesignIssue(tx: Tx, workflowId: string): Promise<string | null> {
+// drawn under ISS-64 (FB-54). Where that issue is closed or dropped the writer names the drawing issue,
+// and the write is refused until it does (`design.ts:designIssueLapsedRefusal`); where no revision
+// ever named one there is nothing to lose and none is inherited.
+export async function designIssueToInherit(
+  tx: Tx,
+  workflowId: string,
+): Promise<InheritedDesignIssue> {
   const prior = (await designsOf(tx, workflowId))[0]?.designIssueId ?? null;
-  if (!prior) return null;
+  if (!prior) return { issueId: null };
   const [issue] = await tx
-    .select({ status: issues.status })
+    .select({ status: issues.status, issSeq: issues.issSeq })
     .from(issues)
     .where(eq(issues.id, prior))
     .limit(1);
-  return issue && !ISSUE_TERMINAL_STATUSES.includes(issue.status) ? prior : null;
+  if (!issue) return { issueId: null };
+  return ISSUE_TERMINAL_STATUSES.includes(issue.status)
+    ? { lapsed: { issueId: prior, issSeq: issue.issSeq, status: issue.status } }
+    : { issueId: prior };
 }
 
 export async function insertDesign(
@@ -194,20 +207,16 @@ export async function insertDesign(
     revision: number;
     document: WorkflowWrite;
     userId: string;
-    /** The issue the design is drawn under; absent, the revision it supersedes names it. */
-    designIssueId?: string | null | undefined;
+    /** The issue the design is drawn under, named or inherited by the caller (`designIssueToInherit`). */
+    designIssueId: string | null;
   },
 ): Promise<void> {
-  const designIssueId =
-    input.designIssueId !== undefined
-      ? input.designIssueId
-      : await inheritedDesignIssue(tx, input.workflowId);
   await tx.insert(projectWorkflowDesigns).values({
     workflowId: input.workflowId,
     revision: input.revision,
     document: input.document,
     proposedByUser: input.userId,
-    designIssueId,
+    designIssueId: input.designIssueId,
   });
 }
 
