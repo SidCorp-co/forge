@@ -1,27 +1,17 @@
 /*
- * When a resident master is allowed to end itself.
+ * What a resident master holds: the runs it declared and whether each is over.
  *
- * Residency is not free — a master is a live `claude` process holding a pane —
- * so a project with nothing to do gives its master back. Every half is
- * required: an hour of quiet on the pool says nothing about the runs already
- * in flight, and a master that leaves over a live child abandons the close
- * loop nobody else on the box will finish. Nor does it say anything about the
- * pane, where a turn runs that the pool never sees; the pane's own hooks are
- * the one channel that hears a turn begin and end, so they decide whether it
- * is busy (ISS-95).
+ * When an idle master may end is core's verdict (`masters/verdict.ts`, ADR
+ * 0009 What core takes over: Retirement); this reads the facts it is judged on,
+ * which only this box's ledger and process table hold.
  */
 
-use std::time::Duration;
-
-use runner_core::agent_activity::{Activity, Doing, Event};
 use runner_core::ledger::{Ledger, MasterRow};
 use runner_core::subagent_end;
 use runner_platform::error::Result;
 use runner_workspace::close_loop;
 
-pub const MASTER_IDLE_BEFORE_EXIT: Duration = Duration::from_secs(60 * 60);
-
-/// One child run, reduced to what this decision asks of it.
+/// One child run, reduced to what core's retirement verdict asks of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Child {
     pub run_id: String,
@@ -29,84 +19,6 @@ pub struct Child {
     /// The newest close mark the ledger stamped for it, in unix seconds. `None`
     /// where no mark carries a time.
     pub closed_at: Option<i64>,
-}
-
-/// What the master pane's own hooks last reported, narrowed to this decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pane {
-    pub doing: Doing,
-    /// The newest hook event the pane reported, and when, in wall-clock ms.
-    /// A submitted prompt is one, so input inside the window moves it.
-    pub last_event: Event,
-    pub last_event_at: i64,
-}
-
-impl Pane {
-    pub fn of(a: &Activity) -> Self {
-        Self {
-            doing: a.doing(),
-            last_event: a.last_event,
-            last_event_at: a.last_event_at,
-        }
-    }
-}
-
-/// Why a master is staying, or that it may go.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Verdict {
-    Stay(StayReason),
-    Exit(Quiet),
-}
-
-/// The signals a retirement read, carried to the line that says it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Quiet {
-    pub pane: Pane,
-    /// How long the pool has held nothing for this project.
-    pub no_work_for: Duration,
-    /// Child runs this master declared, every one of them closed.
-    pub children_closed: Vec<String>,
-    /// The newest close mark among them, in unix seconds.
-    pub last_child_closed_at: Option<i64>,
-}
-
-impl Quiet {
-    /// The retirement, said as the signals it read.
-    pub fn reason(&self, now_ms: i64) -> String {
-        let children = match (self.children_closed.len(), self.last_child_closed_at) {
-            (0, _) => "it declared no child run".to_string(),
-            (n, Some(at)) => format!(
-                "all {n} child run(s) it declared are closed, the last at {}",
-                utc(at.saturating_mul(1000))
-            ),
-            (n, None) => format!("all {n} child run(s) it declared are closed"),
-        };
-        format!(
-            "its pane's last hook was `{}` at {} ({}m ago) with no turn running and no prompt submitted since, nothing was claimable for {}m, and {children}",
-            self.pane.last_event.wire(),
-            utc(self.pane.last_event_at),
-            now_ms.saturating_sub(self.pane.last_event_at) / 60_000,
-            self.no_work_for.as_secs() / 60,
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StayReason {
-    /// There was work inside the idle window.
-    RecentWork,
-    /// Children whose close loop has not finished, named.
-    ChildrenUnfinished(Vec<String>),
-    /// This daemon has heard no hook from the pane, so whether a turn is
-    /// running cannot be told, and that is never read as idle.
-    PaneUnreported,
-    /// A turn is running, a child agent of it is, or it is stopped on a
-    /// question a human owes.
-    PaneBusy(Doing),
-    /// The pane reported inside the window: input arrived or a turn ended.
-    PaneRecent { last_event: Event, at: i64 },
-    /// A child run closed inside the window.
-    ChildClosedRecently(String),
 }
 
 /// One run a resident master still holds, named the way an operator who is
@@ -227,71 +139,4 @@ pub fn children(ledger: &Ledger, master_session_id: &str) -> Result<Vec<Child>> 
         });
     }
     Ok(out)
-}
-
-/// Whether a resident master may be retired as idle.
-///
-/// Idle is every one of these holding for the whole of
-/// [`MASTER_IDLE_BEFORE_EXIT`]: the pool held nothing, the pane's hooks report
-/// no turn running and nothing since the last one ended, and no child run is
-/// open or closed inside it. A pane this daemon has not heard is not idle.
-pub fn verdict(idle_for: Duration, pane: Option<Pane>, children: &[Child], now_ms: i64) -> Verdict {
-    let window_ms = MASTER_IDLE_BEFORE_EXIT.as_millis() as i64;
-    if idle_for < MASTER_IDLE_BEFORE_EXIT {
-        return Verdict::Stay(StayReason::RecentWork);
-    }
-    let unfinished: Vec<String> = children
-        .iter()
-        .filter(|c| !c.closed)
-        .map(|c| c.run_id.clone())
-        .collect();
-    if !unfinished.is_empty() {
-        return Verdict::Stay(StayReason::ChildrenUnfinished(unfinished));
-    }
-    let Some(pane) = pane else {
-        return Verdict::Stay(StayReason::PaneUnreported);
-    };
-    if pane.doing != Doing::Idle {
-        return Verdict::Stay(StayReason::PaneBusy(pane.doing));
-    }
-    if now_ms.saturating_sub(pane.last_event_at) < window_ms {
-        return Verdict::Stay(StayReason::PaneRecent {
-            last_event: pane.last_event,
-            at: pane.last_event_at,
-        });
-    }
-    let last_child_closed_at = children.iter().filter_map(|c| c.closed_at).max();
-    if let Some(recent) = children.iter().find(|c| {
-        c.closed_at
-            .is_some_and(|at| now_ms.saturating_sub(at.saturating_mul(1000)) < window_ms)
-    }) {
-        return Verdict::Stay(StayReason::ChildClosedRecently(recent.run_id.clone()));
-    }
-    Verdict::Exit(Quiet {
-        pane,
-        no_work_for: idle_for,
-        children_closed: children.iter().map(|c| c.run_id.clone()).collect(),
-        last_child_closed_at,
-    })
-}
-
-/// `ms` since the epoch as an RFC 3339 UTC instant, to the second.
-fn utc(ms: i64) -> String {
-    let secs = ms.div_euclid(1000);
-    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    )
 }

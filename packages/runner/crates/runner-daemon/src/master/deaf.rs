@@ -33,7 +33,7 @@ pub(crate) enum DeafAct {
     LeftStanding(String),
 }
 
-/// Where `ensure_master` leaves that, for the sweep to gather across projects.
+/// Where a project's turn leaves that, for the sweep to gather across projects.
 #[derive(Default)]
 pub(crate) struct DeafSink(pub(crate) Mutex<Option<Deaf>>);
 
@@ -66,45 +66,6 @@ impl DeafSink {
     }
 }
 
-/// What the box does about the capability a resident pane turned out to hold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CapabilityAct {
-    /// Nothing: the pane can be heard, or this box cannot say that it cannot.
-    Keep,
-    /// End it and place one that carries a capability for the session core
-    /// serves now.
-    Replace,
-    /// It cannot be heard and the box still leaves it running, for this reason.
-    LeaveDeaf(&'static str),
-}
-
-/// The three conditions ISS-1208 puts on acting, read off the two facts that
-/// carry them.
-///
-/// **The condition is precise.** Only `Stale` is evidence about a pane.
-/// `Unknown` is evidence about this box's own capability map and says nothing
-/// about any pane, so a map that could not be read never ends one — which is
-/// the whole reason `capability_of` keeps three answers rather than two.
-///
-/// **A replacement would be placed.** `AdoptOrStart` is the sweep's own reading
-/// that this project has admissible work; under `AdoptOnly` the placement path
-/// below the adopt branch refuses to start anything, so ending the pane would
-/// buy an empty project instead of a working master.
-///
-/// The other two of the three are already true wherever this is reached:
-/// `ensure_master` returned early if tmux is absent, the sweep's stand-down
-/// gate ran before it, and the command that resolves the condition is the one
-/// the daemon has been printing for an operator to type since ISS-1099.
-pub(crate) fn capability_act(verdict: &Capability, placement: Placement) -> CapabilityAct {
-    match (verdict, placement) {
-        (Capability::Stale, Placement::AdoptOrStart) => CapabilityAct::Replace,
-        (Capability::Stale, Placement::AdoptOnly) => CapabilityAct::LeaveDeaf(
-            "this project has no admissible work, so no replacement would be placed in its stead",
-        ),
-        (Capability::Current | Capability::Unknown(_), _) => CapabilityAct::Keep,
-    }
-}
-
 /// The capability map's answer, overruled where this box knows that answer came
 /// from a mint it could not take back.
 ///
@@ -131,12 +92,9 @@ pub(crate) fn verdict_over_unwithdrawn(
     }
 }
 
-/// What `ensure_master` is given to consult and to answer into: this box's own
-/// capability map, the sink the verdict about it goes to, and the sink for what
-/// was done where the verdict earned an act.
-///
-/// One struct rather than three parameters because `ensure_master` sits at
-/// exactly the argument count `clippy::too_many_arguments` allows.
+/// What a placement is given to consult and to answer into: this box's own
+/// capability map, the sink the finding about it goes to, and the sink for
+/// what was done about a deaf pane.
 pub(crate) struct CapabilityPorts<'a> {
     pub(crate) tokens: Option<&'a session_tokens::SessionTokens>,
     pub(crate) authority: &'a AuthoritySink,

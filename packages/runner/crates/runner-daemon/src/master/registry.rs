@@ -186,7 +186,7 @@ impl Masters {
     ///
     /// The latch used to live on the `reg.live` entry, which `remember` fills
     /// and which is empty for every project on a daemon that has just started.
-    /// A caller reached before `ensure_master` therefore asked a latch that
+    /// A caller reached before the pane was adopted therefore asked a latch that
     /// answered "already said" about a project nothing had said anything about,
     /// and the report was lost. ISS-1118's two reports route through
     /// `note_unplaced` for a reason of their own — they are about a project
@@ -308,29 +308,23 @@ impl Masters {
         news
     }
 
-    pub(crate) fn claim_nudge(
-        &self,
-        project_id: &str,
-        digest: u64,
-        seen: Option<&agent_activity::Activity>,
-        held: bool,
-        pass_open: bool,
-    ) -> bool {
+    /// The box's own record of its last nudge to this project's master.
+    pub(crate) fn last_nudge(&self, project_id: &str) -> Option<Nudge> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live.get(project_id).and_then(|m| m.last_nudge)
+    }
+
+    /// Record a nudge core asked for: the work it was about, now, and the
+    /// prompt count its pane had reported by then.
+    pub(crate) fn note_nudged(&self, project_id: &str, digest: u64, prompts: Option<u64>) {
         let mut reg = self.0.lock().expect("masters poisoned");
-        let Some(m) = reg.live.get_mut(project_id) else {
-            return false;
-        };
-        let now = Instant::now();
-        let since = since_nudge(seen, m.last_nudge.and_then(|n| n.prompts));
-        if !nudge_due(m.last_nudge, digest, now, since, held, pass_open) {
-            return false;
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.last_nudge = Some(Nudge {
+                digest,
+                at: Instant::now(),
+                prompts,
+            });
         }
-        m.last_nudge = Some(Nudge {
-            digest,
-            at: now,
-            prompts: seen.map(|a| a.prompts),
-        });
-        true
     }
 
     /// How long this project has had nothing, or `None` if it has no master.

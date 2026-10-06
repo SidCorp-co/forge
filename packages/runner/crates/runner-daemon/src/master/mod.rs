@@ -12,11 +12,14 @@
 //! Nothing here supervises that master any more (ISS-933). A pane's byte count
 //! cannot tell a master idle on purpose from one that has stopped, so the
 //! silence ceiling, the quiet gate, the transcript reads and the crashloop
-//! breaker are gone — leaving one detector, the pane exists or it does not,
-//! and one exit the master earns for itself out of the ledger.
+//! breaker are gone — leaving one detector, the pane exists or it does not.
 //!
-//! The daemon deliberately makes NO routing decision. It answers one question
-//! per project, "is there anything at all", and hands the rest to judgement.
+//! The daemon makes NO decision about that master (ADR 0009, What core takes
+//! over: Placement and Retirement). Each sweep it reports what only this box
+//! can see — the pane, its capability, its build, its turn, its runs, its
+//! conversation — and core answers whether to place, keep, nudge, leave,
+//! replace, retire or withhold; the box does that and nothing else, and where
+//! core cannot answer it does nothing.
 //!
 
 mod unplaced;
@@ -45,6 +48,12 @@ mod place;
 use place::*;
 mod exit;
 use exit::*;
+mod facts;
+use facts::*;
+mod obey;
+use obey::*;
+mod project;
+use project::*;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -52,7 +61,7 @@ use std::time::{Duration, Instant};
 
 use crate::dispatch::resolve_repo;
 use crate::master_build::{self, Judged};
-use crate::master_exit::{self, Holding, Verdict};
+use crate::master_exit::{self, Holding};
 use crate::master_handed;
 use crate::master_inbox::{self, WakeSource};
 use crate::master_limit;
@@ -89,6 +98,8 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
 
+/// How often core asks a limited master again (`@forge/contracts/master-verdict`
+/// `MASTER_NUDGE_REFRESH_SECONDS`), which bounds how fresh a limit record must be.
 pub(crate) const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);

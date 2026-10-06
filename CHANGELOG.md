@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Core now decides when a box places, nudges, replaces or retires a master** (new `POST /api/devices/me/master-session/verdict`). Deploy core first: this runner places nothing without it; older runners still decide locally.
+
 ### Fixed
 
 - **Returned designs and requirement revisions now reach the project's master**, on every pass until revised. Admitted open issues wait on a run, not a slot. A master with runs out reads `runs_out`, and each closed pass says why it closed.

@@ -115,6 +115,17 @@ pub(crate) enum Unplaced {
         conversation: String,
         short: Option<String>,
     },
+    /// Core withheld a pane for a reason this build has no record of its own
+    /// for, said as core said it (ADR 0009, What core takes over: Placement).
+    Withheld {
+        reason: String,
+        because: String,
+    },
+    /// Core could not be asked what to do about this project's master, so the
+    /// box placed, ended and nudged nothing: it holds no answer of its own.
+    VerdictUnanswered {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -153,28 +164,7 @@ impl std::fmt::Display for Unplaced {
                 why,
                 slug,
                 pane,
-            } => {
-                // Always a reason in parentheses, never an absent one. A line
-                // that says only who stood it down reads as a stand-down whose
-                // reason the reader has not found yet, rather than one that was
-                // never recorded — and telling those two apart is the whole of
-                // ISS-1238.
-                write!(
-                    f,
-                    "its master was stood down by {by} ({})",
-                    why.as_deref().unwrap_or(MasterStanding::NO_REASON)
-                )?;
-                match pane {
-                    None => write!(
-                        f,
-                        " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
-                    ),
-                    Some(pane) => write!(
-                        f,
-                        " — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane}` to make the box's two answers agree, or `forge-runner master stand-up {slug}` to put the project back under this box's authority"
-                    ),
-                }
-            }
+            } => stood_down_said(f, by, why.as_deref(), slug, pane.as_deref()),
             Self::StandingUnreadable { detail } => write!(
                 f,
                 "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
@@ -216,12 +206,51 @@ impl std::fmt::Display for Unplaced {
                 short_said(short.as_deref()),
                 pane_exit::remedy(conversation, short.as_deref())
             ),
+            Self::Withheld { reason, because } => write!(
+                f,
+                "core withheld a master for it ({reason}): {because}"
+            ),
+            Self::VerdictUnanswered { detail } => write!(
+                f,
+                "core could not be asked what to do about its master ({detail}), so this box placed, ended and nudged nothing — it decides none of that itself. The next sweep whose verdict reads acts on it"
+            ),
             Self::StaleCapability { session, pane } => write!(
                 f,
                 "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
             ),
         }
     }
+}
+
+/// A stand-down, said with who took it, why, and what an operator does about
+/// the pane running against it where one is.
+fn stood_down_said(
+    f: &mut std::fmt::Formatter<'_>,
+    by: &str,
+    why: Option<&str>,
+    slug: &str,
+    pane: Option<&str>,
+) -> std::fmt::Result {
+    // Always a reason in parentheses, never an absent one. A line
+    // that says only who stood it down reads as a stand-down whose
+    // reason the reader has not found yet, rather than one that was
+    // never recorded — and telling those two apart is the whole of
+    // ISS-1238.
+    write!(
+        f,
+        "its master was stood down by {by} ({})",
+        why.unwrap_or(MasterStanding::NO_REASON)
+    )?;
+    match pane {
+                    None => write!(
+                        f,
+                        " — this box places none for it and nudges none. `forge-runner master stand-up {slug}` is the one act that lets it be placed again"
+                    ),
+                    Some(pane) => write!(
+                        f,
+                        " — nothing here adopts it as this box's master, nudges it or ends it. Either `tmux kill-session -t {pane}` to make the box's two answers agree, or `forge-runner master stand-up {slug}` to put the project back under this box's authority"
+                    ),
+                }
 }
 
 /// Why a held conversation is waited out rather than forked, said wherever
@@ -276,6 +305,7 @@ impl Unplaced {
                 | Self::PaneUnstarted { .. }
                 | Self::ConversationElsewhere { .. }
                 | Self::ConversationUnaskable { .. }
+                | Self::VerdictUnanswered { .. }
         )
     }
 }
@@ -304,25 +334,8 @@ pub(crate) fn read_standing(ledger: Option<&Ledger>, project_id: &str) -> Standi
     }
 }
 
-/// What a project's recorded standing says this sweep may do about its pane
-/// (ISS-1118).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Placed {
-    /// Nothing withholds a pane: place it on the same terms as always.
-    Proceed,
-    /// Stood down and no pane is up. This sweep places none.
-    Withheld,
-    /// Stood down and a pane is up anyway. This sweep reports it and neither
-    /// adopts it as a driving master nor nudges it; it does not end it either,
-    /// because the daemon stopped killing master panes (ISS-933).
-    Contradicted,
-}
-
-/// The whole of the stand-down decision, as a function of the two facts it
-/// turns on.
-///
-/// A lifted stand-down proceeds: `stand-up` restores a project to the gates
-/// every other project answers to rather than to a guaranteed pane.
+/// A stand-down, said with who took it and why, and the pane running against
+/// it where one is.
 pub(crate) fn stood_down_reason(
     standing: Option<&MasterStanding>,
     slug: &str,
@@ -377,12 +390,4 @@ pub(crate) fn lifted_from(standing: &MasterStanding) -> Option<Lifted> {
         why: standing.why.clone(),
         lifted_on: standing.stood_up_why.clone(),
     })
-}
-
-pub(crate) fn placement_under(standing: Option<&MasterStanding>, pane_alive: bool) -> Placed {
-    match standing {
-        Some(s) if s.stands() && pane_alive => Placed::Contradicted,
-        Some(s) if s.stands() => Placed::Withheld,
-        _ => Placed::Proceed,
-    }
 }
