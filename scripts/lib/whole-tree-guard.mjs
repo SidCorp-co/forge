@@ -159,7 +159,12 @@ afterAll(async () => {
   // whatever it listed: it is refused, naming why.
   if (!filepath) {
     throw new Error(
-      unjudgedVerdict({ file: null, why: 'vitest named no test file at its end', hits, root: ROOT }),
+      unjudgedVerdict({
+        file: null,
+        why: 'vitest named no test file at its end',
+        hits,
+        root: ROOT,
+      }),
     );
   }
   let source;

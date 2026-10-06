@@ -403,7 +403,9 @@ describe('branchSetFaults', () => {
       .replace('type: choice', 'type: string')
       .replace('        options: [main]\n', '');
     expect(branchSetFaults(text)).toEqual([
-      expect.stringMatching(/^on\.workflow_dispatch\.inputs\.base: type string, which takes any text/),
+      expect.stringMatching(
+        /^on\.workflow_dispatch\.inputs\.base: type string, which takes any text/,
+      ),
     ]);
   });
 
@@ -419,7 +421,7 @@ describe('branchSetFaults', () => {
     const text = WORKFLOW('main', 'main', 'refs/heads/main').replace(PROVED_STEP, 'renamed step');
     expect(branchSetFaults(text)).toEqual([`the \`${PROVED_STEP}\` step: not found`]);
     const undispatched = WORKFLOW('main', 'main', 'refs/heads/main').replace(
-      /  workflow_dispatch:[\s\S]*?options: \[main\]\n/,
+      / {2}workflow_dispatch:[\s\S]*?options: \[main\]\n/,
       '',
     );
     expect(branchSetFaults(undispatched)).toEqual([
@@ -428,7 +430,10 @@ describe('branchSetFaults', () => {
   });
 
   it('agrees with the repository’s own ci.yml', () => {
-    const text = readFileSync(join(import.meta.dirname, '..', '..', '.github/workflows/ci.yml'), 'utf8');
+    const text = readFileSync(
+      join(import.meta.dirname, '..', '..', '.github/workflows/ci.yml'),
+      'utf8',
+    );
     expect(ciBranches(text).dispatch?.type).toBe('choice');
     expect(branchSetFaults(text)).toEqual([]);
   });

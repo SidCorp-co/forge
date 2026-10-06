@@ -251,7 +251,8 @@ function install(state) {
     const at = callSite();
     if (entries.length > 0) state.onListing(entries.map(({ program, ...e }) => ({ ...e, at })));
   };
-  const asRoot = (via) => tell([{ dir: ROOT, via: `${via}, so counted as the root`, unseen: true }]);
+  const asRoot = (via) =>
+    tell([{ dir: ROOT, via: `${via}, so counted as the root`, unseen: true }]);
   const unreadable = (name) => [
     {
       dir: ROOT,

@@ -312,7 +312,9 @@ describe('what a run owes after it listed the root', () => {
       root: ROOT,
     });
     expect(gone).toMatch(
-      new RegExp(`^whole-tree-gates: ${WALKER_PATH}: its source could not be read \\(ENOENT\\), so `),
+      new RegExp(
+        `^whole-tree-gates: ${WALKER_PATH}: its source could not be read \\(ENOENT\\), so `,
+      ),
     );
     expect(gone).toContain('2 listing(s) it made');
   });
