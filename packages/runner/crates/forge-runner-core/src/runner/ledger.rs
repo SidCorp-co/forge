@@ -876,9 +876,9 @@ impl Ledger {
 
     /// `~/.local/share/forge-runner/ledger.sqlite`.
     pub fn default_path() -> Result<PathBuf> {
-        let dir = dirs_next::data_dir()
-            .ok_or_else(|| Error::Other("ledger: cannot resolve OS data dir".into()))?;
-        Ok(dir.join("forge-runner").join("ledger.sqlite"))
+        Ok(crate::config::data_dir()?
+            .join("forge-runner")
+            .join("ledger.sqlite"))
     }
 
     /// Open the ledger at `path` for reading only: no migration, no directory

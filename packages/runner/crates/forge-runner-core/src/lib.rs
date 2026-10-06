@@ -3,6 +3,16 @@
 //! Holds everything the daemon does, with zero CLI/GUI coupling so a thin
 //! GUI/tray frontend can later drive the same logic over a local socket.
 
+// A doctest builds this crate with no `cfg(test)` and no `test-support`, so
+// `config`'s refusal to resolve a dir outside a test's scratch is absent there
+// (ISS-1344). `doctest = false` keeps `cargo test` from running them; this
+// refuses an explicit `cargo test --doc`, whatever form a doc's code takes.
+#[cfg(doctest)]
+compile_error!(
+    "forge-runner-core runs no doctests: one would resolve the invoking user's own config and \
+     data dirs, unguarded (ISS-1344). Write it as a unit test that holds a test_scratch::Scratch."
+);
+
 pub mod api;
 pub mod auth;
 pub mod config;

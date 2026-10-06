@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# No doctests: one builds this crate with neither `cfg(test)` nor `test-support`, so `config`'s
+# refusal to resolve a dir outside a test's scratch is absent there, and its code can come from a
+# file no scan reads (ISS-1344). `config::tests` holds this.
+[lib]
+doctest = false
+
 [features]
 # `test_scratch::Scratch` for the forge-runner crate's own tests; never enabled by a normal build.
 test-support = []

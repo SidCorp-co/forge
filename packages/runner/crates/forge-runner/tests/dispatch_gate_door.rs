@@ -29,6 +29,7 @@
 
 #![cfg(unix)]
 
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
@@ -122,11 +123,23 @@ fn config_dir_at(root: &Path) -> PathBuf {
     dir
 }
 
+/// A process started with HOME, the data dir and the config dir inside `root`, which is how every
+/// process this file starts is made (ISS-1344): `forge-runner status` resolves the ledger, and
+/// started with the test's own environment it read the invoking user's live one. On macOS the
+/// config dir follows HOME, so `XDG_CONFIG_HOME` is removed there rather than pointed anywhere.
+fn scoped(program: impl AsRef<OsStr>, root: &Path) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.env_remove("XDG_CONFIG_HOME")
+        .env("HOME", root)
+        .env("XDG_DATA_HOME", root.join("data"))
+        .env(config_home_at(root).0, root);
+    cmd
+}
+
 fn run_gate(command: &str, config_home: &Path, payload: &str) -> String {
-    let mut child = Command::new("sh")
+    let mut child = scoped("sh", config_home)
         .arg("-c")
         .arg(command)
-        .env(config_home_at(config_home).0, config_home)
         .env("FORGE_CONTROL_TOKEN", "a-token-the-daemon-minted")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -260,9 +273,8 @@ fn status_prints_what_the_gate_could_not_do() {
         );
     }
 
-    let out = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+    let out = scoped(env!("CARGO_BIN_EXE_forge-runner"), scratch.path())
         .arg("status")
-        .env(config_home_at(scratch.path()).0, scratch.path())
         .output()
         .expect("status runs");
     let printed = String::from_utf8_lossy(&out.stdout);
@@ -322,10 +334,9 @@ fn a_payload_this_box_cannot_read_is_allowed_and_marked() {
 /// The registered command run with no capability and no tmux around it: a
 /// Claude Code session the daemon never placed, standing in a Forge checkout.
 fn run_gate_tokenless(command: &str, config_home: &Path, payload: &str) -> String {
-    let mut child = Command::new("sh")
+    let mut child = scoped("sh", config_home)
         .arg("-c")
         .arg(command)
-        .env(config_home_at(config_home).0, config_home)
         .env_remove("FORGE_CONTROL_TOKEN")
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
@@ -378,7 +389,7 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
     if cfg!(target_os = "macos") {
         return skip("macOS resolves the tmux socket outside the config home a test can set");
     }
-    if Command::new("tmux").arg("-V").output().is_err() {
+    if scoped("tmux", config_home).arg("-V").output().is_err() {
         return skip("tmux is not installed here");
     }
     let dir = config_dir_at(config_home);
@@ -397,7 +408,7 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
         output.display(),
         output.display(),
     );
-    let started = Command::new("tmux")
+    let started = scoped("tmux", config_home)
         .arg("-S")
         .arg(&sock)
         .args(["new-session", "-d", "-s", pane, "sh", "-c", &script])
@@ -420,7 +431,7 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
         );
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
-    let _ = Command::new("tmux")
+    let _ = scoped("tmux", config_home)
         .arg("-S")
         .arg(&sock)
         .arg("kill-server")
@@ -593,4 +604,44 @@ fn a_dialog_opened_off_the_runners_server_is_let_through_unmarked() {
     let printed = run_gate_tokenless(&command, scratch.path(), DIALOG_PAYLOAD);
     assert_eq!(printed, "{}");
     assert!(!config_dir.join("gate-marks.jsonl").exists());
+}
+
+/// ISS-1344 criterion 16. Every process this file starts is made by `scoped`, and `scoped` puts
+/// HOME and the data dir inside the scratch and the config dir inside it or nowhere. A process
+/// started any other way inherits the test's own environment, and a `status` child then reads
+/// the invoking user's ledger, which no other assertion in this file would notice.
+#[test]
+fn every_process_this_file_starts_is_scoped_to_its_scratch() {
+    let src = forge_runner_core::test_scratch::lf(include_str!("dispatch_gate_door.rs"));
+    let new = concat!("Command::", "new(");
+    let helper = src
+        .split("fn scoped(")
+        .nth(1)
+        .and_then(|r| r.split("\n}").next())
+        .expect("scoped is in this file");
+    assert!(
+        helper.contains(new) && src.matches(new).count() == 1,
+        "a process this file starts outside `scoped` takes the test's own HOME, config and data \
+         dirs: start it through `scoped`"
+    );
+
+    let scratch = Scratch::new("scoped");
+    let cmd = scoped("true", scratch.path());
+    let set: Vec<(&OsStr, Option<&OsStr>)> = cmd.get_envs().collect();
+    let value = |name: &str| set.iter().find(|(k, _)| *k == name).map(|(_, v)| *v);
+    let inside = |v: Option<Option<&OsStr>>| {
+        v.flatten()
+            .is_some_and(|v| Path::new(v).starts_with(scratch.path()))
+    };
+    for name in ["HOME", "XDG_DATA_HOME"] {
+        assert!(
+            inside(value(name)),
+            "{name} is not inside the scratch: {set:?}"
+        );
+    }
+    let config = value("XDG_CONFIG_HOME");
+    assert!(
+        inside(config) || config == Some(None),
+        "XDG_CONFIG_HOME is neither inside the scratch nor removed: {set:?}"
+    );
 }
