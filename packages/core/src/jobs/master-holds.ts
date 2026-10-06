@@ -4,6 +4,7 @@ import { db, type Tx } from '../db/client.js';
 import { jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
+import { pushJobChanged } from './job-push.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -76,7 +77,7 @@ export async function holdQueuedJob(
 
 /**
  * The stamp that ends a hold: the held job moves to `dispatched` on the box about to run it, its
- * run share-locked and read in the same transaction.
+ * run share-locked and read in the same transaction, and its readers are told in that transaction.
  */
 export async function dispatchHeldJob(args: {
   jobId: string;
@@ -100,9 +101,17 @@ export async function dispatchHeldJob(args: {
       where: and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)),
       actor: { type: 'runner', id: args.deviceId },
       source: 'claim',
-      returning: ['id'],
+      returning: ['id', 'projectId', 'deviceId', 'agentSessionId'],
     });
-    return rows.length > 0 ? { ok: true } : { ok: false, reason: 'hold_lost' };
+    const [job] = rows;
+    if (!job) return { ok: false, reason: 'hold_lost' };
+    await pushJobChanged(
+      job,
+      'job.dispatched',
+      { jobId: job.id, projectId: job.projectId, status: 'dispatched' },
+      tx,
+    );
+    return { ok: true };
   });
 }
 

@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = new Map<string, (payload: unknown) => unknown>();
-const emitted: Array<{ type: string; payload: unknown }> = [];
+const emitted: Array<{ type: string; payload: unknown; tx?: unknown }> = [];
+// The one transaction a claim runs in; the run it share-locks reads `running`.
+const claimTx = vi.hoisted(() => ({ execute: async () => [{ status: 'running' }] }));
 const published: Array<{ room: string; event: string; data: unknown }> = [];
 
 vi.mock('../outbox/index.js', () => ({
   consume: (type: string, consumer: { handle: (payload: unknown) => unknown }) => {
     handlers.set(type, consumer.handle);
   },
-  emitEvent: vi.fn(async (_tx: unknown, type: string, payload: unknown) => {
-    emitted.push({ type, payload });
+  emitEvent: vi.fn(async (tx: unknown, type: string, payload: unknown) => {
+    emitted.push({ type, payload, ...(tx === claimTx ? { tx } : {}) });
   }),
 }));
 vi.mock('../lib/rooms.js', async (importOriginal) => {
@@ -24,7 +26,9 @@ vi.mock('../lib/rooms.js', async (importOriginal) => {
     },
   };
 });
-vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../db/client.js', () => ({
+  db: { transaction: (fn: (tx: unknown) => unknown) => fn(claimTx) },
+}));
 vi.mock('../lifecycle/index.js', () => ({
   transition: vi.fn(async () => ({ rows: [{ id: 'r-9', projectId: 'p-9' }] })),
 }));
@@ -46,6 +50,8 @@ const { broadcastRunnerChanged } = await import('../runners/apply-runner-limit.j
 const { pushDevice } = await import('../devices/push.js');
 const { runRunnerStaleSweep } = await import('../runners/stale-detector.js');
 const { jobEphemeralTarget, pushJobCancel, pushJobChanged } = await import('../jobs/job-push.js');
+const { dispatchHeldJob } = await import('../jobs/master-holds.js');
+const { transition } = await import('../lifecycle/index.js');
 
 /** Hands every event written so far to the consumer registered for its type, as the worker would. */
 async function deliver(): Promise<void> {
@@ -199,6 +205,52 @@ describe('a runner push reaches its room only through the outbox', () => {
         data: { jobId: 'j-3', projectId: 'p-1', reason: 'loop' },
       },
     ]);
+  });
+
+  it('tells the project a claim moved its job to dispatched, inside the claim transaction', async () => {
+    vi.mocked(transition).mockResolvedValueOnce({
+      rows: [{ id: 'j-5', projectId: 'p-1', deviceId: 'd-1', agentSessionId: null }],
+    } as never);
+    const args = { jobId: 'j-5', sessionId: 's-master', deviceId: 'd-1', runnerId: 'r-1' };
+    expect(await dispatchHeldJob(args)).toEqual({ ok: true });
+    expect(emitted.map((e) => [e.type, e.tx === claimTx])).toEqual([['job.changed', true]]);
+    await deliver();
+    expect(published).toEqual([
+      {
+        room: 'project:p-1',
+        event: 'job.dispatched',
+        data: { jobId: 'j-5', projectId: 'p-1', status: 'dispatched' },
+      },
+    ]);
+  });
+
+  it("tells a claim of a person's own chat job to its readers only", async () => {
+    vi.mocked(transition).mockResolvedValueOnce({
+      rows: [{ id: 'j-6', projectId: 'p-1', deviceId: 'd-1', agentSessionId: 's-private' }],
+    } as never);
+    await dispatchHeldJob({
+      jobId: 'j-6',
+      sessionId: 's-master',
+      deviceId: 'd-1',
+      runnerId: 'r-1',
+    });
+    await deliver();
+    expect(published.map((p) => [p.room, p.event])).toEqual([
+      ['user:u-owner', 'job.dispatched'],
+      ['user:u-admin', 'job.dispatched'],
+    ]);
+  });
+
+  it('sends no frame for a claim whose hold was lost', async () => {
+    vi.mocked(transition).mockResolvedValueOnce({ rows: [] } as never);
+    const lost = await dispatchHeldJob({
+      jobId: 'j-7',
+      sessionId: 's-master',
+      deviceId: 'd-1',
+      runnerId: 'r-1',
+    });
+    expect(lost).toEqual({ ok: false, reason: 'hold_lost' });
+    expect(emitted).toEqual([]);
   });
 
   it('refuses by name a job frame written before its audience was recorded', async () => {

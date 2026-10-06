@@ -63,6 +63,7 @@ export interface RunnerChange {
 
 /** The job frames a browser is told; `job.cancel` is the box's command and never reaches one. */
 export type JobFrameName =
+	| "job.dispatched"
 	| "job.cancelled"
 	| "job.cancelRequested"
 	| "job.failed"

@@ -10,7 +10,7 @@ pub struct Frame {
     pub data: serde_json::Value,
 }
 
-/// Extract a `jobId` from a `job.cancel` / `job.cancelRequested` frame.
+/// Extract a `jobId` from a `job.cancel` frame.
 pub fn job_id_of(data: &serde_json::Value) -> Option<String> {
     data.get("jobId")
         .and_then(|v| v.as_str())

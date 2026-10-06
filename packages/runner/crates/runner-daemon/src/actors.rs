@@ -491,7 +491,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
         wake_tx,
     } = ctx;
     match frame.event.as_str() {
-        "job.cancel" | "job.cancelRequested" => {
+        "job.cancel" => {
             if let Some(jid) = job_id_of(&frame.data) {
                 tracing::info!("[cancel] job={jid}");
                 // ISS-785 — core's kill-before-reap gate waits on this ack

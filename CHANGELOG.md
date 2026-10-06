@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
+  to the job's readers inside its own transaction; the runner no longer listens for
+  `job.cancelRequested`, a frame it never receives.
 - **A consumer pins an approved contract version only.** A link's `pinnedVersion` or a
   consumption's `builtAgainst` naming a proposed or returned version is refused
   `CONTRACT_VERSION_NOT_APPROVED`, naming its state and the approved versions.

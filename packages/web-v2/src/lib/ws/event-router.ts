@@ -106,6 +106,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 		// A live log line; no screen holds a job's log, so it refreshes nothing.
 		case "job.event":
 			return;
+		case "job.dispatched":
 		case "job.completed":
 		case "job.failed":
 		case "job.resumed":
