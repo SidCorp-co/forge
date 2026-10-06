@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- **runner:** a pane's `forge-runner` resolves to the binary serving its daemon, ahead of any other on the inherited PATH, so a dev runner's panes stop reaching the prod build; a hook naming a relative runner path is refused.
 - **An OpenAPI artifact oasdiff cannot load is refused, not stored "unknown".** `ARTIFACT_UNREADABLE`
   names the loader error and the misplaced schema; an unmeasured semver change takes the uploader's
   named version (`VERSION_NOT_MEASURED`), never a guessed MAJOR.
