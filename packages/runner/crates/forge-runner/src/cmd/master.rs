@@ -135,7 +135,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     // ahead of everything that could write: the ledger, the core lookup and
     // `--fresh`'s clear of the stored conversation, all of which are below.
     let standing_reason = standing_reason(&args.cmd)?;
-    if !terminal::available() {
+    if drives_a_pane(&args.cmd) && !terminal::available() {
         anyhow::bail!("tmux is not installed on this box, so it hosts no masters");
     }
     match args.cmd {
@@ -172,6 +172,16 @@ nothing confirmed its prompt was empty: what was already at it, if anything, wen
         Command::StandUp(a) => stand_up(&ctx, a, &standing_reason).await?,
     }
     Ok(())
+}
+
+/// Whether `cmd` acts on a pane and so cannot run without tmux.
+///
+/// `status` and `log` read records the daemon keeps on disk, and one of those
+/// is why no master was placed: on a box without tmux the daemon writes exactly
+/// that refusal into `unplaced.json`, so refusing `status` there for the same
+/// reason left the one record it holds unread (ISS-1390).
+fn drives_a_pane(cmd: &Command) -> bool {
+    !matches!(cmd, Command::Status(_) | Command::Log(_))
 }
 
 /// What actually happens after a kill.
@@ -456,7 +466,12 @@ fn whoami() -> String {
 
 async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
     let base = Config::path()?.with_file_name("master");
-    let led = open_ledger().ok();
+    // Read only, as `forge-runner status` reads it: `Ledger::open` creates the
+    // file and migrates it, so a status typed on a box whose CLI is newer than
+    // its daemon rewrote the schema under the running daemon.
+    let led = Ledger::default_path()
+        .and_then(|p| Ledger::open_read_only(&p))
+        .ok();
     let admission = read_admission(ctx).await;
     let slugs: Vec<String> = match slug {
         Some(s) => vec![s.to_string()],
@@ -466,12 +481,22 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
         println!("no master transcripts under {}", base.display());
         return Ok(());
     }
+    let tmux = terminal::available();
+    if !tmux {
+        println!(
+            "tmux is not on this command's PATH, so no pane was asked about: each pane below reads unknown"
+        );
+    }
     for s in slugs {
         let name = terminal::session_name(terminal::MASTER_PREFIX, &s);
         // The daemon's own three-valued reading: `terminal::alive` folds a tmux
         // nobody could ask into `false`, which printed `gone` for a pane that
         // may be running, and a `last exit` line under it (ISS-1343).
-        let presence = recovery_ports::pane_presence(&name).await;
+        let presence = if tmux {
+            recovery_ports::pane_presence(&name).await
+        } else {
+            MasterPresence::Unanswered
+        };
         let alive = presence == MasterPresence::Alive;
         let path = transcript(&s)?;
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);

@@ -3143,6 +3143,10 @@
   builds the pane's PATH, and places no pane that would lack one; `forge-runner master status`
   names the missing program (ISS-1390).
 
+- **`forge-runner master status` and `master log` answer on a box without tmux**, where the
+  daemon's reason for placing no master is that tmux is missing; status no longer creates or
+  migrates the box's ledger to read it (ISS-1390).
+
 - **`forge-runner doctor` reports each bound checkout's folder trust**, and a master that stopped on
   the trust dialog is reported as that, also when it closed itself by answering it (ISS-1382).
 
