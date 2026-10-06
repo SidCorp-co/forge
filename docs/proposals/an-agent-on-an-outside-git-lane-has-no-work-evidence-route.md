@@ -34,7 +34,9 @@ move. But an owner-lane agent on such a project with no branch has no route of i
 
 ## Honest costs
 
-Option 1 lets an agent satisfy a kernel gate (`VISION: kernel-hard-policy-soft`) with an unchecked
-string, which is the shape ISS-1318 refused for commits. Option 2 costs a reader per landing kind and
-a binding to read through. Option 3 costs a person's act on every agent-driven website issue. The
-residual ends when the owner picks one, and an issue is cut for it.
+- **Option 1** lets an agent satisfy a kernel gate (`VISION: kernel-hard-policy-soft`) with an
+  unchecked string, which is the shape ISS-1318 refused for commits.
+- **Option 2** costs a reader per landing kind, and a binding to read each one through.
+- **Option 3** costs a person's act on every agent-driven website issue, for as long as it stands.
+- **Leaving this undecided** costs every owner-lane agent run on a website project the same refusal
+  at the mark and again at `developed`. It ends when the owner picks one and an issue is cut for it.
