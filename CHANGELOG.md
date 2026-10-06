@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.68] - 2026-10-06
+
+Approving a design now answers the issue question parked on it
+
+### Fixed
+
+- **Approving or returning a design now answers the question an issue was parked on for it**, so the issue moves on. A design revised before anyone decided asks again; returning a design whose own issue is parked no longer errors.
+
 ## [0.4.0-dev.67] - 2026-10-06
 
 Outdated masters holding runs keep getting nudged, then drain to a replacement
