@@ -1,15 +1,17 @@
 // one pass is one master turn, from the nudge that asks for it to the hook that reports the turn
 // ended (design agent-run-standing rev 1, region master; ISS-107). The open pass is kept in the ledger so a
-// daemon restart closes exactly the pass it opened, by the id core answered, and never another one.
+// daemon restart settles exactly the pass it opened, by the id core answered, and never another one.
+// Whether and how it ended is core's (`masters/pass-end.ts:passEnd`): each tick the box reports what
+// its hooks, ledger and transcript hold about the pass, and drops its record once core closes it.
 
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use crate::master::Masters;
-use runner_core::agent_activity::{Activities, Activity, Doing};
+use runner_core::agent_activity::{Activities, Activity};
 use runner_core::ledger::{Ledger, MasterPass};
 use runner_platform::clock::now_secs;
-use runner_transport::master::{self as master_api, PassError};
+use runner_transport::master::{self as master_api, PassError, PassFacts};
 use runner_transport::CoreClient;
 
 pub(crate) const NUDGE_VERB: &str = "dispatch";
@@ -25,119 +27,70 @@ pub(crate) const TICK: Duration = Duration::from_secs(5);
 
 pub(crate) const ADOPTED_FROM_CORE: &str = "core";
 
-/// How long an open pass stands with nothing from its master — no hook and no
-/// transcript write, children's included — before it is closed as abandoned.
-/// The same 600s core's `SESSION_SILENCE_TIMEOUT_S` calls a master silent after.
-pub(crate) const QUIET_BOUND_MS: i64 = 600_000;
-
 static THIS_PROCESS: LazyLock<String> = LazyLock::new(|| uuid::Uuid::new_v4().to_string());
 
 pub(crate) fn this_process() -> &'static str {
     THIS_PROCESS.as_str()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Judged {
-    Open,
-    TurnEnded,
-    Abandoned(Abandoned),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Abandoned {
-    Restarted,
-    Orphaned,
-    SessionGone,
-    Quiet,
-}
-
-impl Abandoned {
-    /// The close reason core stores for this abandonment (`MASTER_PASS_CLOSE_REASONS`).
-    pub(crate) fn wire(self) -> &'static str {
-        match self {
-            Self::Restarted => "abandoned_restart",
-            Self::Orphaned => "abandoned_orphan",
-            Self::SessionGone => "session_gone",
-            Self::Quiet => "abandoned_quiet",
-        }
-    }
-
-    fn why(self) -> &'static str {
-        match self {
-            Self::Restarted => "opened by the daemon process before this one, so the hook counts its turn was measured against are gone and the turn can no longer be judged; closed as abandoned at the restart",
-            Self::Orphaned => "core held it open with no record on this box (an open whose answer never arrived); closed as abandoned",
-            Self::SessionGone => "its master session is no longer the one this box serves the project under; closed with the session",
-            Self::Quiet => "abandoned: its master reported no hook and wrote no transcript for the quiet bound, so its turn can no longer be told from a pane idle at its prompt; it stops holding nudges",
-        }
+/// Who opened `pass`, as core's `MASTER_PASS_OPENERS` names it.
+fn opener(pass: &MasterPass, process: &str) -> &'static str {
+    if pass.opened_by == ADOPTED_FROM_CORE {
+        "adopted"
+    } else if pass.opened_by == process {
+        "this_daemon"
+    } else {
+        "earlier_daemon"
     }
 }
 
-/// Whether the turn `pass` covers has ended: a turn counted after the pass was
-/// asked for, begun no earlier than the pass opened, and over. A task
-/// notification turn that was already running when a nudge was typed ends
-/// before the nudge's own prompt is taken, and is not the nudged turn.
-pub(crate) fn turn_ended(seen: Option<&Activity>, pass: &MasterPass) -> bool {
-    let Some(seen) = seen else {
-        return false;
-    };
-    seen.turns > pass.turns_at_nudge.unwrap_or(0)
-        && seen
-            .turn_began_at
-            .is_some_and(|began| began >= pass.opened_at.saturating_mul(1000))
-        && matches!(seen.doing(), Doing::Idle | Doing::AwaitingChildren)
+/// What the box has heard about a pass's master: the session it serves the
+/// project under, what that session's hooks reported, and the last write to
+/// the conversation they name, children's included.
+#[derive(Clone, Copy)]
+pub(crate) struct Heard<'a> {
+    pub live_session: Option<&'a str>,
+    pub seen: Option<&'a Activity>,
+    pub written_ms: Option<i64>,
 }
 
-/// `now_ms` is the clock this judgement is made at, and `written_ms` the last
-/// write to the conversation `seen` names, children's included.
-pub(crate) fn judge(
+/// What this box holds about `pass` at `now_ms`: who opened it, whether the
+/// project is still served under its session, what the pane's hooks and the
+/// conversation's records say since it opened.
+pub(crate) fn pass_facts(
     pass: &MasterPass,
     process: &str,
-    live_session: Option<&str>,
-    seen: Option<&Activity>,
+    heard: Heard<'_>,
     now_ms: i64,
-    written_ms: Option<i64>,
-) -> Judged {
-    if pass.opened_by == ADOPTED_FROM_CORE {
-        return Judged::Abandoned(Abandoned::Orphaned);
-    }
-    if pass.opened_by != process {
-        return Judged::Abandoned(Abandoned::Restarted);
-    }
-    if live_session != Some(pass.session_id.as_str()) {
-        return Judged::Abandoned(Abandoned::SessionGone);
-    }
-    if turn_ended(seen, pass) {
-        return Judged::TurnEnded;
-    }
-    if quiet_past_bound(pass, seen, now_ms, written_ms) {
-        return Judged::Abandoned(Abandoned::Quiet);
-    }
-    Judged::Open
-}
-
-/// Whether nothing has come from the pass's master — no hook, no transcript
-/// write, nothing since the pass opened — for [`QUIET_BOUND_MS`]. A pane
-/// stopped on a question a person owes is waiting, not quiet: the nudge the
-/// pass would stop holding would be typed into that dialog.
-fn quiet_past_bound(
-    pass: &MasterPass,
-    seen: Option<&Activity>,
-    now_ms: i64,
-    written_ms: Option<i64>,
-) -> bool {
-    if seen.is_some_and(|s| s.doing() == Doing::AwaitingPermission) {
-        return false;
-    }
-    let last_life = [
-        Some(pass.opened_at.saturating_mul(1000)),
-        seen.map(|s| s.last_event_at),
+    dispatched: Vec<String>,
+    turn: &TurnRecord,
+) -> PassFacts {
+    let Heard {
+        live_session,
+        seen,
         written_ms,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(i64::MAX);
-    now_ms.saturating_sub(last_life) >= QUIET_BOUND_MS
+    } = heard;
+    let ago = |at_ms: i64| u64::try_from(now_ms.saturating_sub(at_ms)).unwrap_or(0);
+    PassFacts {
+        opened_by: opener(pass, process),
+        served: live_session == Some(pass.session_id.as_str()),
+        opened_ago_ms: ago(pass.opened_at.saturating_mul(1000)),
+        hooks: seen.map(|s| master_api::PassHooks {
+            turns_since_open: s.turns.saturating_sub(pass.turns_at_nudge.unwrap_or(0)),
+            turn_began_ago_ms: s.turn_began_at.map(ago),
+            doing: s.doing().wire(),
+            last_event_ago_ms: ago(s.last_event_at),
+        }),
+        written_ago_ms: written_ms.map(ago),
+        dispatched,
+        record: master_api::PassRecord {
+            worked: turn.worked,
+            refusal: turn
+                .refusal
+                .clone()
+                .map(|(reason, detail)| master_api::PassRefusal { reason, detail }),
+        },
+    }
 }
 
 pub(crate) fn nudged_issue(
@@ -201,19 +154,6 @@ pub(crate) fn turn_since(tail: &str, opened_at: i64, now_unix: i64) -> TurnRecor
     turn
 }
 
-/// The refusal a pass closes with: only one inside which nothing ran — no
-/// answer from the account and no run declared in the ledger. A refusal met
-/// after work is the end of a turn that ran, and the pass closes as one.
-pub(crate) fn refused_pass(
-    turn: &TurnRecord,
-    dispatched: &[String],
-) -> Option<(&'static str, String)> {
-    if turn.worked || !dispatched.is_empty() {
-        return None;
-    }
-    turn.refusal.clone()
-}
-
 /// When the conversation `seen` names was last written, children's included.
 pub(crate) fn written_ms(seen: Option<&Activity>) -> Option<i64> {
     let path = seen.and_then(|s| s.transcript.as_deref())?;
@@ -230,72 +170,45 @@ fn turn_of(seen: Option<&Activity>, opened_at: i64) -> TurnRecord {
     turn_since(&tail, opened_at, crate::master_limit::now_unix())
 }
 
-/// The close reason core stores for a pass whose turn ran and ended.
-pub(crate) const TURN_ENDED: &str = "turn_ended";
-
-/// The close reason for a pass core opened and this box could not record, closed at once.
-pub(crate) const UNRECORDED: &str = "unrecorded";
-
+/// Ask core whether `pass` ended, and drop this box's record of it once core
+/// closed it or holds it open no more. `false` where core could not be asked,
+/// so the next tick asks again about the same pass.
 async fn settle(
     client: &CoreClient,
     led: &mut Ledger,
     pass: &MasterPass,
-    (close_reason, why): (&str, &str),
-    turn: &TurnRecord,
+    facts: &PassFacts,
 ) -> bool {
-    let dispatched = match led.issues_declared_since(&pass.session_id, pass.opened_at) {
-        Ok(keys) => keys,
-        Err(e) => {
-            tracing::warn!(
-                "[master] {}: cannot read which runs pass {} declared ({e}) — it is not closed this tick, so its dispatched list is not sent empty",
-                pass.project_id,
-                pass.pass_id
-            );
-            return false;
-        }
-    };
-    let refused = refused_pass(turn, &dispatched);
-    let refused_ref = refused.as_ref().map(|(r, d)| (*r, d.as_str()));
-    let gone = match master_api::close_pass(
-        client,
-        &pass.session_id,
-        &pass.pass_id,
-        &dispatched,
-        refused_ref,
-        close_reason,
-    )
-    .await
-    {
-        Ok(_) => {
-            match refused_ref {
-                Some((reason, detail)) => tracing::warn!(
-                    "[master] {}: pass {} ({}) closed refused ({reason}: {detail}) — its turn did not run",
+    let gone = match master_api::settle_pass(client, &pass.session_id, &pass.pass_id, facts).await {
+        Ok(master_api::Settled { closed: None, .. }) => false,
+        Ok(master_api::Settled {
+            closed: Some(reason),
+            because,
+        }) => {
+            match &facts.record.refusal {
+                Some(r) if reason == "turn_ended" && !facts.record.worked && facts.dispatched.is_empty() => {
+                    tracing::warn!(
+                        "[master] {}: pass {} ({}) closed refused ({}: {}) — its turn did not run",
+                        pass.project_id,
+                        pass.pass_id,
+                        pass.verb,
+                        r.reason,
+                        r.detail
+                    )
+                }
+                _ => tracing::info!(
+                    "[master] {}: pass {} ({}) closed ({reason}), {} issue(s) dispatched — {because}",
                     pass.project_id,
                     pass.pass_id,
-                    pass.verb
+                    pass.verb,
+                    facts.dispatched.len()
                 ),
-                None => match &turn.refusal {
-                    Some((reason, detail)) => tracing::warn!(
-                        "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — its turn ran and then met a refusal ({reason}: {detail}); {why}",
-                        pass.project_id,
-                        pass.pass_id,
-                        pass.verb,
-                        dispatched.len()
-                    ),
-                    None => tracing::info!(
-                        "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — {why}",
-                        pass.project_id,
-                        pass.pass_id,
-                        pass.verb,
-                        dispatched.len()
-                    ),
-                },
             }
             true
         }
         Err(PassError::Refused { code, detail }) => {
             tracing::warn!(
-                "[master] {}: closing pass {} was refused {code}: {detail} — not retried, and this box keeps no record of the pass from here",
+                "[master] {}: settling pass {} was refused {code}: {detail} — not retried, and this box keeps no record of the pass from here",
                 pass.project_id,
                 pass.pass_id
             );
@@ -303,7 +216,7 @@ async fn settle(
         }
         Err(PassError::Unreached(e)) => {
             tracing::warn!(
-                "[master] {}: could not close pass {}: {e} — kept, and the next tick closes the same pass by its id",
+                "[master] {}: could not settle pass {}: {e} — kept, and the next tick asks again about the same pass",
                 pass.project_id,
                 pass.pass_id
             );
@@ -313,13 +226,74 @@ async fn settle(
     if gone {
         if let Err(e) = led.closed_master_pass(&pass.pass_id) {
             tracing::error!(
-                "[master] {}: pass {} is settled at core and this box could not drop its record ({e}); the next tick closes it again and core answers MASTER_PASS_NOT_OPEN",
+                "[master] {}: pass {} is settled at core and this box could not drop its record ({e}); the next tick asks again and core answers MASTER_PASS_NOT_OPEN",
                 pass.project_id,
                 pass.pass_id
             );
         }
     }
     gone
+}
+
+/// Tell core this box could not record the pass it just opened, so that core
+/// closes it rather than leaving open a pass nothing here would settle.
+async fn settle_unrecorded(
+    client: &CoreClient,
+    session_id: &str,
+    pass_id: &str,
+) -> Result<master_api::Settled, PassError> {
+    let facts = PassFacts {
+        opened_by: "unrecorded",
+        served: true,
+        opened_ago_ms: 0,
+        hooks: None,
+        written_ago_ms: None,
+        dispatched: Vec::new(),
+        record: master_api::PassRecord {
+            worked: false,
+            refusal: None,
+        },
+    };
+    master_api::settle_pass(client, session_id, pass_id, &facts).await
+}
+
+/// The facts for `pass` as this box holds them now, or `None` where its ledger
+/// cannot say which runs the pass declared, so it is not settled this tick
+/// rather than settled with an empty list.
+fn facts_now(
+    led: &Ledger,
+    masters: &Masters,
+    activity: &Activities,
+    pass: &MasterPass,
+    process: &str,
+) -> Option<PassFacts> {
+    let dispatched = match led.issues_declared_since(&pass.session_id, pass.opened_at) {
+        Ok(keys) => keys,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {}: cannot read which runs pass {} declared ({e}) — it is not settled this tick, so its dispatched list is not sent empty",
+                pass.project_id,
+                pass.pass_id
+            );
+            return None;
+        }
+    };
+    let live = masters.live_for_project(&pass.project_id).map(|(s, _)| s);
+    let seen = activity.get(&pass.session_id);
+    let turn = turn_of(seen.as_ref(), pass.opened_at);
+    let heard = Heard {
+        live_session: live.as_deref(),
+        seen: seen.as_ref(),
+        written_ms: written_ms(seen.as_ref()),
+    };
+    Some(pass_facts(
+        pass,
+        process,
+        heard,
+        runner_core::agent_activity::now_ms(),
+        dispatched,
+        &turn,
+    ))
 }
 
 pub(crate) async fn reconcile(
@@ -358,43 +332,11 @@ pub(crate) async fn reconcile(
         .iter()
         .filter(|p| only.is_none_or(|id| p.project_id == id))
     {
-        let live = masters.live_for_project(&pass.project_id).map(|(s, _)| s);
-        let seen = activity.get(&pass.session_id);
-        let written = written_ms(seen.as_ref());
-        let now = runner_core::agent_activity::now_ms();
-        let settled = match judge(pass, process, live.as_deref(), seen.as_ref(), now, written) {
-            Judged::Open => false,
-            Judged::TurnEnded => {
-                let turn = turn_of(seen.as_ref(), pass.opened_at);
-                settle(
-                    client,
-                    led,
-                    pass,
-                    (TURN_ENDED, "the turn it covers has ended"),
-                    &turn,
-                )
-                .await
-            }
-            Judged::Abandoned(a) => {
-                if a == Abandoned::Quiet {
-                    tracing::warn!(
-                        "[master] {}: pass {} ({}) abandoned — nothing from its master for {}s, so it no longer holds this project's nudges",
-                        pass.project_id,
-                        pass.pass_id,
-                        pass.verb,
-                        QUIET_BOUND_MS / 1000
-                    );
-                }
-                settle(
-                    client,
-                    led,
-                    pass,
-                    (a.wire(), a.why()),
-                    &TurnRecord::default(),
-                )
-                .await
-            }
+        let Some(facts) = facts_now(led, masters, activity, pass, process) else {
+            continue;
         };
+        let settled = settle(client, led, pass, &facts).await;
+        let seen = activity.get(&pass.session_id);
         if settled {
             if let Some(seen) = seen.as_ref() {
                 masters.note_turns_settled(&pass.project_id, &pass.session_id, seen.turns);
@@ -477,15 +419,7 @@ async fn open_unprompted(
                     "[master] {project_id}: core opened unprompted pass {} and this box could not record it ({e}); closing it now",
                     row.pass_id
                 );
-                let _ = master_api::close_pass(
-                    client,
-                    session_id,
-                    &row.pass_id,
-                    &[],
-                    None,
-                    UNRECORDED,
-                )
-                .await;
+                let _ = settle_unrecorded(client, session_id, &row.pass_id).await;
                 return;
             }
             tracing::info!(
@@ -609,17 +543,7 @@ pub(crate) async fn open_for_nudge(
                     row.project_id,
                     row.pass_id
                 );
-                if let Err(e) =
-                    master_api::close_pass(
-                        client,
-                        &row.session_id,
-                        &row.pass_id,
-                        &[],
-                        None,
-                        UNRECORDED,
-                    )
-                    .await
-                {
+                if let Err(e) = settle_unrecorded(client, &row.session_id, &row.pass_id).await {
                     tracing::error!(
                         "[master] {}: pass {} could not be closed either: {e} — the next open is refused MASTER_PASS_ALREADY_OPEN and adopted from there",
                         row.project_id,
@@ -687,29 +611,6 @@ mod tests {
     use super::*;
     use runner_core::agent_activity::{Event, Report};
 
-    #[test]
-    fn each_way_a_pass_ends_is_told_to_core_by_its_own_name() {
-        let names = [
-            TURN_ENDED,
-            UNRECORDED,
-            Abandoned::Quiet.wire(),
-            Abandoned::Restarted.wire(),
-            Abandoned::Orphaned.wire(),
-            Abandoned::SessionGone.wire(),
-        ];
-        assert_eq!(
-            names,
-            [
-                "turn_ended",
-                "unrecorded",
-                "abandoned_quiet",
-                "abandoned_restart",
-                "abandoned_orphan",
-                "session_gone"
-            ]
-        );
-    }
-
     // 2026-10-06T10:00:00Z
     const T0: i64 = 1_791_280_800;
 
@@ -739,75 +640,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_pass_whose_master_is_quiet_past_the_bound_is_abandoned() {
-        let a = Activities::new();
-        report(&a, Event::PromptSubmitted, T0 * 1000);
-        let idle = report(&a, Event::Stopped, (T0 + 200) * 1000);
-        // A pass waiting on a turn nothing starts: the nudge it waits on never came.
-        let row = pass_from(T0, 1);
-        let quiet_from = (T0 + 200) * 1000;
-        assert_eq!(
-            judge(
-                &row,
-                "me",
-                Some("s"),
-                Some(&idle),
-                quiet_from + QUIET_BOUND_MS - 1,
-                None
-            ),
-            Judged::Open
-        );
-        assert_eq!(
-            judge(
-                &row,
-                "me",
-                Some("s"),
-                Some(&idle),
-                quiet_from + QUIET_BOUND_MS,
-                None
-            ),
-            Judged::Abandoned(Abandoned::Quiet),
-            "a pass whose master said nothing for the bound still held its nudges"
-        );
-        // A transcript still being written is a master still working.
-        assert_eq!(
-            judge(
-                &row,
-                "me",
-                Some("s"),
-                Some(&idle),
-                quiet_from + QUIET_BOUND_MS,
-                Some(quiet_from + 1),
-            ),
-            Judged::Open
-        );
-        // A session that never reported is measured from the pass's own open.
-        assert_eq!(
-            judge(
-                &row,
-                "me",
-                Some("s"),
-                None,
-                T0 * 1000 + QUIET_BOUND_MS,
-                None
-            ),
-            Judged::Abandoned(Abandoned::Quiet)
-        );
-        // A pane stopped on a person's question is waiting on that person.
-        let asked = report(&a, Event::PermissionRequested, (T0 + 300) * 1000);
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&asked), i64::MAX, None),
-            Judged::Open
-        );
-        // An ended turn is closed as one, whatever the clock says.
-        let ended = pass_from(T0, 0);
-        assert_eq!(
-            judge(&ended, "me", Some("s"), Some(&idle), i64::MAX, None),
-            Judged::TurnEnded
-        );
-    }
-
     fn report(a: &Activities, event: Event, at_ms: i64) -> Activity {
         a.record(
             "s",
@@ -821,8 +653,64 @@ mod tests {
         )
     }
 
+    fn facts_of(row: &MasterPass, seen: &Activity, now_ms: i64) -> PassFacts {
+        let heard = Heard {
+            live_session: Some("s"),
+            seen: Some(seen),
+            written_ms: None,
+        };
+        pass_facts(row, "me", heard, now_ms, Vec::new(), &TurnRecord::default())
+    }
+
+    /// Whether the turn a pass covers ended is `masters/pass-end.ts:turnEnded`
+    /// over these three facts: a turn counted since it opened, begun no
+    /// earlier than it opened, and the pane at rest.
+    fn ended_by_core(f: &PassFacts) -> bool {
+        let Some(h) = f.hooks.as_ref() else {
+            return false;
+        };
+        h.turns_since_open > 0
+            && h.turn_began_ago_ms.is_some_and(|b| b <= f.opened_ago_ms)
+            && matches!(h.doing, "idle" | "awaiting_children")
+    }
+
     #[test]
-    fn a_429_after_work_in_the_same_pass_closes_it_as_ran() {
+    fn a_pass_is_reported_by_who_opened_it_and_whose_session_it_is() {
+        let a = Activities::new();
+        let seen = report(&a, Event::PromptSubmitted, T0 * 1000);
+        let row = pass_from(T0, 0);
+        assert_eq!(facts_of(&row, &seen, T0 * 1000).opened_by, "this_daemon");
+        let earlier = MasterPass {
+            opened_by: "before".into(),
+            ..row.clone()
+        };
+        assert_eq!(
+            facts_of(&earlier, &seen, T0 * 1000).opened_by,
+            "earlier_daemon"
+        );
+        let adopted = MasterPass {
+            opened_by: ADOPTED_FROM_CORE.into(),
+            ..row.clone()
+        };
+        assert_eq!(facts_of(&adopted, &seen, T0 * 1000).opened_by, "adopted");
+        let heard = Heard {
+            live_session: Some("s2"),
+            seen: Some(&seen),
+            written_ms: None,
+        };
+        let elsewhere = pass_facts(
+            &row,
+            "me",
+            heard,
+            T0 * 1000,
+            Vec::new(),
+            &TurnRecord::default(),
+        );
+        assert!(!elsewhere.served);
+    }
+
+    #[test]
+    fn a_429_after_work_in_the_same_pass_reads_as_a_turn_that_ran() {
         let tail = [
             worked("2026-10-06T10:00:10Z"),
             limit("2026-10-06T10:00:20Z"),
@@ -831,27 +719,10 @@ mod tests {
         let turn = turn_since(&tail, T0, T0 + 30);
         assert!(turn.worked);
         assert_eq!(turn.refusal.as_ref().map(|r| r.0), Some("usage_limit"));
-        assert_eq!(
-            refused_pass(&turn, &[]),
-            None,
-            "a pass whose turn ran was closed refused"
-        );
     }
 
     #[test]
-    fn a_429_after_a_ledger_dispatch_closes_the_pass_as_ran() {
-        let tail = limit("2026-10-06T10:00:20Z");
-        let turn = turn_since(&tail, T0, T0 + 30);
-        let dispatched = vec!["ISS-A".to_string(), "ISS-B".to_string()];
-        assert_eq!(
-            refused_pass(&turn, &dispatched),
-            None,
-            "a pass that declared runs was closed refused"
-        );
-    }
-
-    #[test]
-    fn a_turn_refused_before_anything_ran_closes_refused() {
+    fn work_from_before_the_pass_is_not_counted_inside_it() {
         let tail = [
             worked("2026-10-06T09:59:00Z"),
             limit("2026-10-06T10:00:02Z"),
@@ -862,15 +733,9 @@ mod tests {
             !turn.worked,
             "work from before the pass was counted inside it"
         );
-        assert_eq!(refused_pass(&turn, &[]).map(|r| r.0), Some("usage_limit"));
-    }
-
-    #[test]
-    fn a_refusal_from_before_the_pass_opened_is_not_its_own() {
-        let tail = limit("2026-10-06T09:59:59Z");
-        let turn = turn_since(&tail, T0, T0 + 30);
-        assert_eq!(turn, TurnRecord::default());
-        assert_eq!(refused_pass(&turn, &[]), None);
+        assert_eq!(turn.refusal.as_ref().map(|r| r.0), Some("usage_limit"));
+        let before = turn_since(&limit("2026-10-06T09:59:59Z"), T0, T0 + 30);
+        assert_eq!(before, TurnRecord::default());
     }
 
     #[test]
@@ -878,7 +743,6 @@ mod tests {
         let a = Activities::new();
         report(&a, Event::PromptSubmitted, T0 * 1000 + 250);
         let seen = report(&a, Event::Stopped, T0 * 1000 + 2000);
-        assert_eq!(seen.doing(), Doing::Idle);
         assert_eq!(
             unprompted_turn(false, Some(&seen), None),
             Some(UnpromptedTurn {
@@ -896,9 +760,8 @@ mod tests {
         let turn = unprompted_turn(false, Some(&seen), None).expect("a running turn opens a pass");
         assert_eq!(turn.started_at, T0 - 4);
         // The refusal that turn met two seconds in is inside the pass it opened.
-        let tail = limit("2026-10-06T09:59:58Z");
-        let met = turn_since(&tail, turn.started_at, T0);
-        assert_eq!(refused_pass(&met, &[]).map(|r| r.0), Some("usage_limit"));
+        let met = turn_since(&limit("2026-10-06T09:59:58Z"), turn.started_at, T0);
+        assert_eq!(met.refusal.as_ref().map(|r| r.0), Some("usage_limit"));
     }
 
     #[test]
@@ -912,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    fn a_task_notification_turn_with_no_prompt_hook_opens_an_unprompted_pass() {
+    fn a_task_notification_turn_with_no_prompt_hook_reports_a_turn_after_its_pass_opened() {
         let a = Activities::new();
         report(&a, Event::PromptSubmitted, T0 * 1000);
         report(&a, Event::Stopped, T0 * 1000 + 1000);
@@ -927,77 +790,26 @@ mod tests {
                 started_at: T0 + 1
             }
         );
-        let row = MasterPass {
-            project_id: "p".into(),
-            session_id: "s".into(),
-            pass_id: "x".into(),
-            verb: NUDGE_VERB.into(),
-            issue_key: None,
-            opened_at: turn.started_at,
-            opened_by: "me".into(),
-            turns_at_nudge: Some(turn.turns_before),
-        };
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&seen), 0, None),
-            Judged::TurnEnded
-        );
+        let row = pass_from(turn.started_at, turn.turns_before);
+        assert!(ended_by_core(&facts_of(&row, &seen, (T0 + 61) * 1000)));
     }
 
     #[test]
-    fn a_notification_turn_running_when_the_nudge_was_typed_does_not_close_its_pass() {
+    fn a_notification_turn_running_when_the_nudge_was_typed_is_not_reported_as_its_turn() {
         let a = Activities::new();
         report(&a, Event::PromptSubmitted, T0 * 1000);
         report(&a, Event::Stopped, (T0 + 10) * 1000);
-        let mut row = MasterPass {
-            project_id: "p".into(),
-            session_id: "s".into(),
-            pass_id: "x".into(),
-            verb: NUDGE_VERB.into(),
-            issue_key: None,
-            opened_at: T0 + 30,
-            opened_by: "me".into(),
-            turns_at_nudge: Some(1),
-        };
+        let mut row = pass_from(T0 + 30, 1);
         let notified = report(&a, Event::Stopped, (T0 + 40) * 1000);
         assert_eq!(notified.turns, 2);
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&notified), 0, None),
-            Judged::Open,
-            "the nudge's pass closed on a turn that began before it was typed"
+        assert!(
+            !ended_by_core(&facts_of(&row, &notified, (T0 + 41) * 1000)),
+            "the nudge's pass read as ended on a turn that began before it was typed"
         );
         report(&a, Event::PromptSubmitted, (T0 + 41) * 1000);
         let nudged = report(&a, Event::Stopped, (T0 + 50) * 1000);
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&nudged), 0, None),
-            Judged::TurnEnded
-        );
+        assert!(ended_by_core(&facts_of(&row, &nudged, (T0 + 51) * 1000)));
         row.opened_at = T0 + 60;
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&nudged), 0, None),
-            Judged::Open
-        );
-    }
-
-    #[test]
-    fn a_short_unprompted_pass_is_judged_ended_in_the_reconcile_that_opened_it() {
-        let a = Activities::new();
-        report(&a, Event::PromptSubmitted, T0 * 1000);
-        let seen = report(&a, Event::Stopped, T0 * 1000 + 1500);
-        let turn = unprompted_turn(false, Some(&seen), None)
-            .expect("a turn shorter than one tick got no pass");
-        let row = MasterPass {
-            project_id: "p".into(),
-            session_id: "s".into(),
-            pass_id: "x".into(),
-            verb: NUDGE_VERB.into(),
-            issue_key: None,
-            opened_at: turn.started_at,
-            opened_by: "me".into(),
-            turns_at_nudge: Some(turn.turns_before),
-        };
-        assert_eq!(
-            judge(&row, "me", Some("s"), Some(&seen), 0, None),
-            Judged::TurnEnded
-        );
+        assert!(!ended_by_core(&facts_of(&row, &nudged, (T0 + 61) * 1000)));
     }
 }

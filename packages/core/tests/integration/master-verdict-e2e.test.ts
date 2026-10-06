@@ -128,18 +128,29 @@ describe('POST /api/devices/me/master-session/verdict', () => {
       act: 'keep',
       nudge: false,
     });
-    ok(
-      await pass({
-        op: 'close',
+    const settle = (hooks: Doc) =>
+      pass({
+        op: 'settle',
         sessionId,
         passId: opened.id,
-        dispatched: [],
-        skipped: [],
-        parked: [],
-        closeReason: 'turn_ended',
-      }),
-    );
+        facts: {
+          openedBy: 'this_daemon',
+          served: true,
+          openedAgoMs: 5_000,
+          hooks: { turnsSinceOpen: 1, turnBeganAgoMs: 4_000, lastEventAgoMs: 1_000, ...hooks },
+          writtenAgoMs: null,
+          dispatched: ['ISS-7'],
+          record: { worked: true, refusal: null },
+        },
+      });
+    const working = ok(await settle({ doing: 'working' }));
+    expect(working.pass.endedAt, working.because).toBeUndefined();
+    const ended = ok(await settle({ doing: 'idle' }));
+    expect(ended.pass).toMatchObject({ closeReason: 'turn_ended', dispatched: ['ISS-7'] });
     expect(ok(await verdict({ projectId, runnerId, facts: alive })).nudge).toBe(true);
+    const again = await settle({ doing: 'idle' });
+    expect(again.status, 'a pass core closed was settled again').toBe(422);
+    expect(JSON.stringify(again.json)).toContain('MASTER_PASS_NOT_OPEN');
   });
 
   // forge-dev 2026-10-07: an outdated master that dispatches back to back always holds a run, and was

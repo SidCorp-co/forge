@@ -350,7 +350,8 @@ mod tests {
     /// handed its brief, and the same sweep claimed a nudge it never typed. The
     /// brief's turn ended at 14:55:16; its pass stood open past 15:56 and held
     /// six newly admitted issues' nudge behind it. Whether the next nudge is
-    /// owed once it closes is core's (`masters/verdict.ts:nudgeDue`).
+    /// owed once it closes is core's (`masters/verdict.ts:nudgeDue`), and so is
+    /// whether it closed (`masters/pass-end.ts:passEnd`).
     #[test]
     fn a_resumed_panes_brief_turn_closes_its_pass() {
         use runner_core::agent_activity::{Activities, Event, Report};
@@ -393,10 +394,27 @@ mod tests {
             row.turns_at_nudge = turns;
         }
         let stopped = hook(Event::Stopped, (T0 + 208) * 1000);
-        assert_eq!(
-            master_pass::judge(&row, "me", Some("s"), Some(&stopped), 0, None),
-            master_pass::Judged::TurnEnded,
-            "a nudge that was never typed moved the pass past the brief's turn, so the pane's Stop closed nothing"
+        let heard = master_pass::Heard {
+            live_session: Some("s"),
+            seen: Some(&stopped),
+            written_ms: None,
+        };
+        let facts = master_pass::pass_facts(
+            &row,
+            "me",
+            heard,
+            (T0 + 209) * 1000,
+            Vec::new(),
+            &master_pass::TurnRecord::default(),
         );
+        let hooks = facts.hooks.expect("the pane's hooks were not reported");
+        assert_eq!(
+            hooks.turns_since_open, 1,
+            "a nudge that was never typed moved the pass past the brief's turn, so the pane's Stop reports no turn for core to close it on"
+        );
+        assert!(hooks
+            .turn_began_ago_ms
+            .is_some_and(|b| b <= facts.opened_ago_ms));
+        assert_eq!(hooks.doing, "idle");
     }
 }

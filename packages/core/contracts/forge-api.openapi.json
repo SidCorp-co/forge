@@ -5697,111 +5697,172 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "closeReason": {
-                        "enum": [
-                          "turn_ended",
-                          "abandoned_quiet",
-                          "abandoned_restart",
-                          "abandoned_orphan",
-                          "session_gone",
-                          "unrecorded"
-                        ],
-                        "type": "string"
-                      },
-                      "dispatched": {
-                        "items": {
-                          "maxLength": 200,
-                          "minLength": 1,
-                          "type": "string"
+                      "facts": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dispatched": {
+                            "items": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "maxItems": 200,
+                            "type": "array"
+                          },
+                          "hooks": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "doing": {
+                                    "enum": [
+                                      "idle",
+                                      "working",
+                                      "awaiting_permission",
+                                      "awaiting_children"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "lastEventAgoMs": {
+                                    "maximum": 315360000000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "turnBeganAgoMs": {
+                                    "anyOf": [
+                                      {
+                                        "maximum": 315360000000,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "turnsSinceOpen": {
+                                    "maximum": 100000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "turnsSinceOpen",
+                                  "turnBeganAgoMs",
+                                  "doing",
+                                  "lastEventAgoMs"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "openedAgoMs": {
+                            "maximum": 315360000000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "openedBy": {
+                            "enum": [
+                              "this_daemon",
+                              "earlier_daemon",
+                              "adopted",
+                              "unrecorded"
+                            ],
+                            "type": "string"
+                          },
+                          "record": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "refusal": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "detail": {
+                                        "maxLength": 1000,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "reason": {
+                                        "enum": [
+                                          "usage_limit",
+                                          "rate_limit",
+                                          "auth"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "reason",
+                                      "detail"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "worked": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "worked",
+                              "refusal"
+                            ],
+                            "type": "object"
+                          },
+                          "served": {
+                            "type": "boolean"
+                          },
+                          "writtenAgoMs": {
+                            "anyOf": [
+                              {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
                         },
-                        "maxItems": 200,
-                        "type": "array"
+                        "required": [
+                          "openedBy",
+                          "served",
+                          "openedAgoMs",
+                          "hooks",
+                          "writtenAgoMs",
+                          "dispatched",
+                          "record"
+                        ],
+                        "type": "object"
                       },
                       "op": {
-                        "const": "close",
+                        "const": "settle",
                         "type": "string"
-                      },
-                      "parked": {
-                        "items": {
-                          "maxLength": 200,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 200,
-                        "type": "array"
                       },
                       "passId": {
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                         "type": "string"
                       },
-                      "refused": {
-                        "anyOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "detail": {
-                                "maxLength": 1000,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "reason": {
-                                "enum": [
-                                  "usage_limit",
-                                  "rate_limit",
-                                  "auth"
-                                ],
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "reason",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
                       "sessionId": {
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                         "type": "string"
-                      },
-                      "skipped": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "issueKey": {
-                              "maxLength": 64,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            "refusal": {
-                              "maxLength": 1000,
-                              "minLength": 1,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "issueKey",
-                            "refusal"
-                          ],
-                          "type": "object"
-                        },
-                        "maxItems": 200,
-                        "type": "array"
                       }
                     },
                     "required": [
                       "op",
                       "sessionId",
                       "passId",
-                      "dispatched",
-                      "skipped",
-                      "parked"
+                      "facts"
                     ],
                     "type": "object"
                   }

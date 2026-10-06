@@ -50,7 +50,7 @@ running again. A person wait is never stuck.
 
 ### The project master
 \`…/masters/standing\` answers the master's state (\`in_pass\`, \`runs_out\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked, and \`closeReason\`: how the box judged it ended)
+pass, its last closed pass (dispatched, skipped with each refusal, parked, and \`closeReason\`: how core judged it ended, from what the box reported)
 and its slots: \`inUse\` counts the job panes
 \`max\` (the box's max_job_panes) caps, and \`runs\` the runs the box declared beside them, which no cap holds.
 \`runsOut\` counts the runs this project's master declared that are still live; between passes with one out the state is

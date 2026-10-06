@@ -1,11 +1,9 @@
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
-  MasterClosedPass,
   MasterOpenPass,
   MasterOutdated,
-  MasterPassCloseReason,
-  MasterPassRefusal,
-  MasterPassSkip,
+  MasterPassFacts,
+  MasterPassSettleResponse,
   MasterPassTrigger,
   MasterRefusal,
   MasterSessionResponse,
@@ -24,6 +22,7 @@ import {
   setMaxJobPanes,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { passEnd } from './pass-end.js';
 import {
   closedPassOf,
   openPassOf,
@@ -35,7 +34,6 @@ import {
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
-  refusedWithWorkRefusal,
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
@@ -45,7 +43,7 @@ type Refused = { ok: false; refusals: MasterRefusal[] };
 
 type MasterSessionOutcome = { ok: true; session: MasterSessionResponse } | Refused;
 type OpenPassOutcome = { ok: true; pass: MasterOpenPass } | Refused;
-type ClosePassOutcome = { ok: true; pass: MasterClosedPass } | Refused;
+type SettlePassOutcome = { ok: true; settled: MasterPassSettleResponse } | Refused;
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 
@@ -134,47 +132,50 @@ export async function openMasterPass(args: {
   });
 }
 
-export async function closeMasterPass(args: {
+/**
+ * Judge one open pass from the box's facts and close it where it ended (`pass-end.ts:passEnd`). A
+ * pass core no longer holds open is refused by name, which the box reads as its record to drop.
+ */
+export async function settleMasterPass(args: {
   deviceId: string;
   sessionId: string;
   passId: string;
-  dispatched: string[];
-  skipped: MasterPassSkip[];
-  parked: string[];
-  refused: MasterPassRefusal | null;
-  closeReason: MasterPassCloseReason | null;
-}): Promise<ClosePassOutcome> {
-  const withWork = refusedWithWorkRefusal(args);
-  if (withWork) return { ok: false, refusals: [withWork] };
+  facts: MasterPassFacts;
+}): Promise<SettlePassOutcome> {
   return db.transaction(async (tx) => {
     await lockMasterPasses(tx, args.sessionId);
     const master = await ownedMaster(tx, args.deviceId, args.sessionId);
+    const open = await readOpenPass(tx, master.id);
+    if (!open || open.id !== args.passId) {
+      const named = await readClosedPass(tx, { sessionId: master.id, passId: args.passId });
+      return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
+    }
+    const end = passEnd(args.facts);
+    if (!end) {
+      return {
+        ok: true,
+        settled: { pass: open, because: 'its turn has not ended and its master is not quiet' },
+      };
+    }
+    const { dispatched } = args.facts;
     const [row] = rowsOf<Parameters<typeof closedPassOf>[0]>(
       await tx.execute(sql`
         UPDATE master_passes
            SET ended_at = GREATEST(now(), started_at),
                dispatched = ${sql`ARRAY[${sql.join(
-                 args.dispatched.map((d) => sql`${d}`),
+                 dispatched.map((d) => sql`${d}`),
                  sql`, `,
                )}]::text[]`},
-               skipped = ${JSON.stringify(scrubSecretsDeep(args.skipped))}::jsonb,
-               parked = ${sql`ARRAY[${sql.join(
-                 args.parked.map((p) => sql`${p}`),
-                 sql`, `,
-               )}]::text[]`},
-               refusal = ${args.refused ? JSON.stringify(scrubSecretsDeep(args.refused)) : null}::jsonb,
-               close_reason = ${args.closeReason}
+               skipped = '[]'::jsonb,
+               parked = ARRAY[]::text[],
+               refusal = ${end.refused ? JSON.stringify(scrubSecretsDeep(end.refused)) : null}::jsonb,
+               close_reason = ${end.reason}
          WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
         RETURNING ${PASS_COLUMNS}`),
     );
-    if (!row) {
-      const [named, open] = await Promise.all([
-        readClosedPass(tx, { sessionId: master.id, passId: args.passId }),
-        readOpenPass(tx, master.id),
-      ]);
-      return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
-    }
-    return { ok: true, pass: closedPassOf(row) };
+    if (!row)
+      throw new Error(`settleMasterPass: pass ${args.passId} was read open and closed nothing`);
+    return { ok: true, settled: { pass: closedPassOf(row), because: end.because } };
   });
 }
 
