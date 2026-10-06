@@ -322,14 +322,15 @@ mod tests {
         let seed = root.join("seed");
         std::fs::create_dir_all(&seed).unwrap();
         run(&seed, &["init", "-q", "-b", "dev"]);
-        // Windows runners ship `core.autocrlf=true`, which restores committed files with CRLF; these tests assert the committed bytes.
-        run(&seed, &["config", "core.autocrlf", "false"]);
         for (path, body) in files {
             let at = seed.join(path);
             std::fs::create_dir_all(at.parent().unwrap()).unwrap();
             std::fs::write(at, body).unwrap();
             run(&seed, &["add", "--", path]);
         }
+        // `* -text` is committed so every checkout or worktree of this repo, including ones the product cuts, restores the committed bytes whatever `core.autocrlf` the box ships (Windows: true).
+        std::fs::write(seed.join(".gitattributes"), "* -text\n").unwrap();
+        run(&seed, &["add", "--", ".gitattributes"]);
         run(&seed, &["commit", "-q", "-m", "one"]);
         let bare = root.join("origin.git");
         run(

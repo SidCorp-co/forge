@@ -765,9 +765,13 @@ mod start_tests {
         let seed = root.join("seed");
         std::fs::create_dir_all(seed.join(".forge")).unwrap();
         git(&seed, &["init", "-q"]);
-        // Windows runners ship `core.autocrlf=true`, under which git restores a committed file
-        // with CRLF; the bytes asserted below are the committed ones.
-        git(&seed, &["config", "core.autocrlf", "false"]);
+        // `* -text` is committed so every checkout or worktree of this repo, including ones the product cuts, restores the committed bytes whatever `core.autocrlf` the box ships (Windows: true).
+        std::fs::write(
+            seed.join(".gitattributes"),
+            "* -text
+",
+        )
+        .unwrap();
         std::fs::write(seed.join(ORIENTATION), orientation_body(PROD, "forge-dev")).unwrap();
         std::fs::write(
             seed.join("CLAUDE.md"),
