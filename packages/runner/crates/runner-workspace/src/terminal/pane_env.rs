@@ -5,6 +5,23 @@
 /// but a skill file is the same bytes for every project, and a pane without them sends
 /// `projects//…` to Forge.
 pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
+    let (env, missing) = pane_env_read(project_id, project_slug);
+    for name in &missing {
+        tracing::error!(
+            "[terminal] a pane for {project_slug} is starting and {}",
+            unresolved(name)
+        );
+    }
+    env
+}
+
+/// [`pane_env`] without its report of the pane binaries it cannot resolve, which it answers
+/// beside the environment: the read a sweep takes of what a pane started now would carry, which
+/// says nothing about a pane that is starting.
+pub fn pane_env_read(
+    project_id: &str,
+    project_slug: &str,
+) -> (Vec<(String, String)>, Vec<&'static str>) {
     let mut env = pane_env_from(|k| std::env::var_os(k));
     let found = pane_path(
         std::env::var_os("PATH"),
@@ -12,18 +29,12 @@ pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
         claude_dir(),
         own_dir(project_slug),
     );
-    for name in &found.missing {
-        tracing::error!(
-            "[terminal] a pane for {project_slug} is starting and {}",
-            unresolved(name)
-        );
-    }
     if let Some(path) = found.path {
         env.push(("PATH".into(), path));
     }
     env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
     env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
-    env
+    (env, found.missing)
 }
 
 fn unresolved(name: &str) -> String {

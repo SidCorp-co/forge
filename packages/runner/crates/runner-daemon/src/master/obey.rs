@@ -391,12 +391,14 @@ async fn place(
     let told = std::sync::atomic::AtomicBool::new(false);
     let started = std::sync::atomic::AtomicBool::new(false);
     let hosts = subagent_host::ProcHosts::system();
+    let placed_with = Mutex::new(None);
     let carry = Carryover {
         conversation: placing.resume.as_deref(),
         inherited: &inherited,
         lifted: lifted.as_ref(),
         stood_down_told: &told,
         started: &started,
+        placed_with: &placed_with,
         hosts: &hosts,
         owed: &t.work.owed_line,
     };
@@ -408,7 +410,14 @@ async fn place(
     let pane = place_pane(t, &session, &carry, placing.ended_deaf, &ports).await;
     let new = matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
     if new && started.load(std::sync::atomic::Ordering::Relaxed) {
-        placed(t, ledger, &inherited, pane == PaneState::Resumed, &hosts);
+        let with = placed_with.lock().expect("placement sink poisoned").take();
+        placed(
+            t,
+            ledger,
+            &inherited,
+            (pane == PaneState::Resumed, with),
+            &hosts,
+        );
     }
     if pane == PaneState::Absent {
         return;
@@ -455,12 +464,19 @@ fn placed(
     t: &Turn<'_>,
     ledger: &mut Option<Ledger>,
     inherited: &[InheritedRun],
-    resumed: bool,
+    placing: (bool, Option<master_build::Standing>),
     hosts: &dyn subagent_host::Hosts,
 ) {
     let (masters, project_id) = (t.masters(), t.project_id());
+    let (resumed, with) = placing;
     if let Some(led) = ledger.as_ref() {
-        note_placement(led, project_id, &t.seen.pane_name, t.resolved);
+        note_placement(
+            led,
+            project_id,
+            &t.seen.pane_name,
+            t.resolved,
+            with.as_ref(),
+        );
     }
     if let (Some(led), Some((successor, _))) = (ledger.as_mut(), masters.get(project_id)) {
         let now = agent_activity::now_ms();

@@ -189,9 +189,31 @@ function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: s
   return { working, over };
 }
 
+/**
+ * Why the pane is outdated, or null where it is current: outdated only where an input it was
+ * placed with differs from what the box would hand a pane now, each named — a rebuild of the runner
+ * that changes none of them leaves it current. An input one side could not read is no evidence of a
+ * change. Only narrows the box's own reading, so a pane the box reports current is current.
+ */
+export function outdatedWhy(facts: Pick<MasterFacts, 'outdated' | 'inputs'>): string | null {
+  if (facts.outdated === null) return null;
+  const inputs = facts.inputs;
+  // cm:hack master-inputs until:every box sending master facts runs a build that reports inputs — a box built before them, or a pane placed by one, is judged by the build it was placed under, as it was before
+  if (!inputs?.placed) return facts.outdated;
+  const { placed, now } = inputs;
+  const changed = Object.keys(placed)
+    .filter((name) => now[name] !== undefined && now[name] !== placed[name])
+    .sort()
+    .map((name) => `${name} (placed ${placed[name]}, now ${now[name]})`);
+  return changed.length === 0
+    ? null
+    : `what it runs on changed since it was placed: ${changed.join('; ')}`;
+}
+
 /** Null where the pane is current, unjudged or absent. */
 export function outdatedHold(facts: MasterJudged): OutdatedHold | null {
-  if (facts.pane !== 'alive' || facts.outdated === null) return null;
+  const why = outdatedWhy(facts);
+  if (facts.pane !== 'alive' || why === null) return null;
   const heldBy: string[] = [];
   if (!workWaits(facts)) {
     heldBy.push('its project has no admissible work, so a successor would have nothing to take up');
@@ -210,7 +232,7 @@ export function outdatedHold(facts: MasterJudged): OutdatedHold | null {
   }
   const cold = unresumable(facts);
   if (cold) heldBy.push(cold);
-  return { why: facts.outdated, heldBy, drain: cold === null };
+  return { why, heldBy, drain: cold === null };
 }
 
 /** An outdated pane nothing holds is replaced, resuming its conversation; null where something holds it. */

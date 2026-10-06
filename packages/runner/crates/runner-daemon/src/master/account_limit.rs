@@ -26,10 +26,22 @@ pub(crate) fn cli_borrow_env(slug: &str) -> Option<(String, String)> {
         );
         return None;
     }
-    Some((
+    Some(cli_borrow_pair(&path))
+}
+
+/// What [`cli_borrow_env`] would hand a pane started now, read without saying
+/// anything: a sweep asks this of every live pane, and the warning belongs to
+/// the placement that starts one without it.
+pub(crate) fn cli_borrow_read(slug: &str) -> Option<(String, String)> {
+    let path = runner_workspace::mcp::config::cli_borrow_path(slug).ok()?;
+    path.is_file().then(|| cli_borrow_pair(&path))
+}
+
+fn cli_borrow_pair(path: &std::path::Path) -> (String, String) {
+    (
         runner_workspace::mcp::config::CLI_BORROW_VAR.to_string(),
         path.to_string_lossy().into_owned(),
-    ))
+    )
 }
 
 pub(crate) const REPORT_TIMEOUT: Duration = Duration::from_secs(10);

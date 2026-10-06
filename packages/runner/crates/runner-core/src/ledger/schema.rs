@@ -141,6 +141,7 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("masters", "placed_at", "INTEGER"),
     ("masters", "outdated", "TEXT"),
     ("masters", "unattributed", "TEXT"),
+    ("masters", "placed_inputs", "TEXT"),
 ];
 
 impl Ledger {
