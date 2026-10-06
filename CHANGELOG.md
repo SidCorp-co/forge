@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.60] - 2026-10-06
+
+Bell badge counts listed rows; web app tested again on every change
+
 ### Fixed
 
 - **The bell badge counts the open rows it lists**; a resolved notice drops its unread dot; a requirement waits on its unapproved designs rather than offer a refused Agree; a drawer stays open when a control inside took Escape.
