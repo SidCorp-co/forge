@@ -14,6 +14,10 @@
   turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
   PATH, and `master status` names its socket.
 
+- **An aborted release no longer burns its version or loops.** A batch that shipped nothing hands
+  its version to the next one, and an abort naming a person's blocker holds its issues until that
+  person acts.
+
 ## [0.4.0-dev.37] - 2026-10-06
 
 Standing tells the truth, the UI goes flat, and bind provisions its checkout

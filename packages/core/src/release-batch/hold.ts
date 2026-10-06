@@ -263,6 +263,50 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
+/** The hold an aborted release leaves on its roster when the blocker it named is a person's. */
+export const RELEASE_ABORT_BLOCKED = 'RELEASE_ABORT_BLOCKED';
+
+/**
+ * No unattended cut takes the row while this stands: the release that just tried it stopped on
+ * something no run can change, and cutting it again would burn a run on the same refusal. A
+ * person's act ends it — their own cut claims the row, or any move takes it off the gate.
+ */
+export function abortBlockedHold(args: {
+  projectId: string;
+  version: string | null;
+  reason: string;
+  waitingFor: string;
+}): ReleaseHold {
+  const release = args.version ? `Release ${args.version}` : 'The release';
+  return {
+    code: RELEASE_ABORT_BLOCKED,
+    reason:
+      `${release} was aborted by its release run, which named a blocker a person owns: ` +
+      `${args.reason} No automatic release or schedule cuts this issue again while it stands. A ` +
+      `person clears it: ${args.waitingFor}, then cut the release by hand (POST ` +
+      `/api/projects/${args.projectId}/release-batches), which takes this hold off; or move the ` +
+      'issue out of `awaiting_release` if it is not to ship.',
+    owes: 'human',
+    waitingFor: args.waitingFor,
+  };
+}
+
+/** The rows an aborted release left held for a person: no unattended cut may take them. */
+export async function abortBlockedIssues(issueIds: readonly string[]): Promise<Set<string>> {
+  if (issueIds.length === 0) return new Set();
+  const rows = await db
+    .select({ issueId: releaseHolds.issueId })
+    .from(releaseHolds)
+    .where(
+      and(
+        inArray(releaseHolds.issueId, [...issueIds]),
+        eq(releaseHolds.code, RELEASE_ABORT_BLOCKED),
+        isNull(releaseHolds.clearedAt),
+      ),
+    );
+  return new Set(rows.map((r) => r.issueId));
+}
+
 interface ReleaseHoldTally {
   /** Rows whose hold was written or replaced this call. */
   written: number;

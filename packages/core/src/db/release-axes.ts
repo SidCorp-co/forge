@@ -26,13 +26,16 @@ export const releaseRunVersionColumns = {
   releaseReleasedAt: timestamp('release_released_at', { withTimezone: true }),
 } as const;
 
-/** Unique per project and `int[]`-comparable: what makes that number an identity. Partial, so it
- *  says nothing about a run that is not a release. The rules: `release-batch/version-store.ts`. */
+/** Unique per project among the rows still holding their number, and `int[]`-comparable. A run
+ *  that ended unshipped leaves the index, so the next batch may wear the number it tried; whether it
+ *  may is `release-batch/version-store.ts:highestSpentVersion`'s to say, and this is the backstop. */
 export function releaseRunIdentity(t: { projectId: AnyPgColumn; releaseVersion: AnyPgColumn }) {
   return {
     releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')
       .on(t.projectId, t.releaseVersion)
-      .where(sql`release_version IS NOT NULL`),
+      .where(
+        sql`release_version IS NOT NULL AND (release_released_at IS NOT NULL OR status NOT IN ('cancelled', 'failed'))`,
+      ),
     releaseVersionChk: check(
       'pipeline_runs_release_version_chk',
       releaseVersionText(t.releaseVersion),

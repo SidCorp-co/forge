@@ -1,10 +1,13 @@
 // Where a release's version lives, and the only writer of it.
 //
-// TWO READERS, not interchangeable. `highestCutVersion` spans every release row that ever cut a
-// number, whatever became of it: a failed 0.5.0 stays the highest, so nothing wears it again, and
-// narrowing it to completed releases brings burned numbers back. `currentReleaseVersion` answers
-// what is SERVING and reads the ship stamp, because `cancelConcludedRun` flips a `completed` run
-// to `cancelled` while its bytes are still live. The partial unique index is only the backstop.
+// TWO READERS, not interchangeable. `highestSpentVersion` spans every release row whose number left
+// Forge or may still: it shipped, it is still in flight, it recorded a promotion or a finish, or its
+// abort said it pushed its tag. A batch that ended with none of those hands its number back, so the
+// next batch wears it; the ended row keeps `release_version` as the number it tried (ISS-234's
+// dev.35 and dev.36). The precedent is semantic-release, changesets and release-please, which all
+// derive the next version from the last one published and keep no allocator. `currentReleaseVersion`
+// answers what is SERVING and reads the ship stamp, because `cancelConcludedRun` flips a `completed`
+// run to `cancelled` while its bytes are still live. The partial unique index is only the backstop.
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -44,10 +47,23 @@ interface ReleaseRowReading {
   shipped: boolean;
 }
 
+/**
+ * What makes a cut number spent, beside the ship stamp: a row still live, or one that put something
+ * outside Forge before it ended. Read on the row and its ledger, never stored: an ended row that
+ * matches none of these never left Forge, so nothing outside it can disagree with handing it back.
+ */
+const NUMBER_SPENT = sql`(
+  r.release_released_at IS NOT NULL
+  OR r.status NOT IN ('cancelled', 'failed')
+  OR r.metadata ? 'finish'
+  OR r.metadata -> 'abort' ->> 'tagged' = 'true'
+  OR EXISTS (SELECT 1 FROM release_attempts a WHERE a.run_id = r.id)
+)`;
+
 // cm:why ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,
 // and a prerelease's `-dev.N` tail has no integer-array cast; the shape CHECK on the column is what
 // makes every stored value parse.
-export async function highestCutVersion(
+export async function highestSpentVersion(
   executor: Tx,
   projectId: string,
 ): Promise<ReleaseRowReading | null> {
@@ -61,6 +77,7 @@ export async function highestCutVersion(
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.release_version IS NOT NULL
+      AND ${NUMBER_SPENT}
   `);
   let highest: ReleaseRowReading | null = null;
   for (const row of rows) {
@@ -108,12 +125,12 @@ function ruleAboveHighest(
   highest: ReleaseRowReading | null,
 ): void {
   if (!highest || compareReleaseVersions(next, highest.version) > 0) return;
-  // A prerelease line declared below what this project already cut would hand out a lower version
-  // after a higher one; the line is the operator's to raise, never skipped forward here.
+  // A prerelease line declared below what this project already spent would hand out a lower
+  // version after a higher one; the line is the operator's to raise, never skipped forward here.
   throw refuseRelease(
     'RELEASE_VERSION_LINE_BEHIND',
     `the next version for project ${projectId} would be ${formatReleaseVersion(next)}, and this ` +
-      `project already cut ${formatReleaseVersion(highest.version)}. Nothing was cut. Raise ` +
+      `project already spent ${formatReleaseVersion(highest.version)}. Nothing was cut. Raise ` +
       '`release.prerelease.of` in the project document to the release the line now previews.',
   );
 }
@@ -131,7 +148,7 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   const { runId, projectId } = args;
   await lockProjectVersions(tx, projectId);
 
-  const highest = await highestCutVersion(tx, projectId);
+  const highest = await highestSpentVersion(tx, projectId);
   const line = await releaseLineOf(projectId);
   const next = nextReleaseVersion(highest?.version ?? null, line);
   // Refused here rather than at the column, which would name itself instead of the rule.

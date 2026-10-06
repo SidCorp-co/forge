@@ -22,14 +22,14 @@ import {
   parseReleaseVersion,
   RELEASE_VERSION_SHAPE,
 } from './version.js';
-import { currentReleaseVersion, highestCutVersion, releaseLineOf } from './version-store.js';
+import { currentReleaseVersion, highestSpentVersion, releaseLineOf } from './version-store.js';
 import { attemptsOf, issueIdsOf, type RunRow, versionRuns, versionStatus } from './versions.js';
 
 async function draftPart(projectId: string): Promise<Part | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
   const [highest, line, report] = await Promise.all([
-    highestCutVersion(db, projectId),
+    highestSpentVersion(db, projectId),
     releaseLineOf(projectId),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
   ]);
@@ -123,7 +123,8 @@ export async function listReleases(
     draftPart(projectId),
     productionOf(projectId, current),
   ]);
-  const parts = draft ? [draft, ...runs] : runs;
+  // The draft only ever wears a number no batch spent, so a run at its version handed that number back.
+  const parts = draft ? [draft, ...runs.filter((r) => r.version !== draft.version)] : runs;
   const shared = await sharedFor(projectId, parts, viewer, current, required);
   const releases = parts.map((p) => summaryOf(p, shared));
   const counts = Object.fromEntries(
@@ -148,7 +149,10 @@ export async function readRelease(
     currentReleaseVersion(projectId),
   ]);
   const [run] = await runParts(projectId, version, required);
-  const part = run ?? (await draftPart(projectId));
+  // An ended run that shipped nothing may have handed its number back to the draft.
+  const ended = !run || run.state === 'aborted' || run.state === 'failed';
+  const draft = ended ? await draftPart(projectId) : null;
+  const part = draft?.version === version ? draft : run;
   if (!part || part.version !== version) {
     throw notFound(`project ${projectId} has cut no version ${version}`);
   }

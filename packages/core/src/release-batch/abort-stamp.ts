@@ -4,6 +4,7 @@
 // aborted to a finish from that write on.
 
 import { randomUUID } from 'node:crypto';
+import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
@@ -22,6 +23,15 @@ interface AbortStamp {
   /** `returning` until the recovery has put the roster back and released its claims. */
   roster: 'held' | 'returning' | 'released';
   closed: string[] | null;
+  /** Who the run said must act before the roster can release, when it said. */
+  blocker?: AbortBlocker;
+  /** The run said it pushed its release tag, so its version is spent (`highestSpentVersion`). */
+  tagged?: boolean;
+}
+
+export interface AbortBlocker {
+  owes: ReleaseHoldOwer;
+  waitingFor: string;
 }
 
 function readAbortStamp(metadata: unknown): AbortStamp | null {
@@ -51,11 +61,17 @@ export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${
 /**
  * Stamp the abort before anything else it does. A later abort rewrites the stamp, because the
  * last abort is the one that decided where the roster went — keeping the closed issues an earlier
- * one recorded, whose claims it released.
+ * one recorded, whose claims it released, and a tag an earlier one said it pushed.
  */
 export async function stampAbort(
   runId: string,
-  stamp: { reason: string; by: string; holdPromotedRoster: boolean },
+  stamp: {
+    reason: string;
+    by: string;
+    holdPromotedRoster: boolean;
+    blocker?: AbortBlocker | undefined;
+    tagged?: boolean | undefined;
+  },
 ): Promise<string> {
   const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
   const record: AbortStamp = {
@@ -65,11 +81,15 @@ export async function stampAbort(
     by: stamp.by,
     roster: held ? 'held' : 'returning',
     closed: null,
+    ...(stamp.blocker ? { blocker: stamp.blocker } : {}),
+    ...(stamp.tagged !== undefined ? { tagged: stamp.tagged } : {}),
   };
   await writeRunMetadata(runId, {
     value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
       ${JSON.stringify(record)}::jsonb
-      || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb)))`,
+      || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb))
+      || CASE WHEN metadata -> 'abort' ->> 'tagged' = 'true'
+              THEN jsonb_build_object('tagged', true) ELSE '{}'::jsonb END)`,
     touch: true,
   });
   return record.id;

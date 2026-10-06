@@ -34,13 +34,27 @@ export async function versionRuns(projectId: string, version?: string): Promise<
         ...(version ? [eq(pipelineRuns.releaseVersion, version)] : []),
       ),
     );
-  return rows
-    .map((r) => ({
+  return latestPerVersion(
+    rows.map((r) => ({
       ...r,
       version: r.version as string,
       metadata: (r.metadata ?? {}) as Record<string, unknown>,
-    }))
-    .sort((a, b) => byVersionDescending(a.version, b.version));
+    })),
+  ).sort((a, b) => byVersionDescending(a.version, b.version));
+}
+
+/**
+ * One row per version: the newest run wearing it. A number an ended batch handed back is worn again
+ * by the next batch (`version-store.ts:highestSpentVersion`), so the version history names what that
+ * number became; the earlier attempt keeps it on its own row and reads at its run.
+ */
+function latestPerVersion(rows: RunRow[]): RunRow[] {
+  const byVersion = new Map<string, RunRow>();
+  for (const row of rows) {
+    const held = byVersion.get(row.version);
+    if (!held || row.startedAt > held.startedAt) byVersion.set(row.version, row);
+  }
+  return [...byVersion.values()];
 }
 
 // cm:why the column CHECK makes every stored version parse; one that did not would sort last rather

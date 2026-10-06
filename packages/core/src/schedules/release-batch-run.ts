@@ -102,6 +102,8 @@ export async function runScheduledReleaseCut(args: {
     };
   }
 
-  const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
+  const unclaimed = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
+  const blocked = await schedulesPorts().abortBlockedIssues(unclaimed);
+  const waiting = unclaimed.filter((id) => !blocked.has(id));
   return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
 }

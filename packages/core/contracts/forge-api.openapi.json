@@ -30068,6 +30068,28 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "blocker": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "owes": {
+                        "enum": [
+                          "agent",
+                          "human"
+                        ],
+                        "type": "string"
+                      },
+                      "waitingFor": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "owes",
+                      "waitingFor"
+                    ],
+                    "type": "object"
+                  },
                   "promotedRoster": {
                     "enum": [
                       "hold",
@@ -30078,6 +30100,9 @@
                   "reason": {
                     "maxLength": 2000,
                     "type": "string"
+                  },
+                  "tagged": {
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
