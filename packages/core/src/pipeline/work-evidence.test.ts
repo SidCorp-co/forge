@@ -347,7 +347,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
         [],
         [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind }],
       );
-      const detail = await findMissingWorkEvidence('iss-1', undefined, 'anyone');
+      const detail = await findMissingWorkEvidence('iss-1', undefined, 'criterion');
       expect(detail).toContain(says);
       expect(detail).toContain('`statusEntryCriteria`');
       expect(detail).toContain('commitSha/filesModified');
