@@ -380,6 +380,8 @@ export interface CommentNode {
     | null;
   /** ISS-56 — what the comment means to do. */
   intent?: CommentIntent;
+  /** On a decision recorded with its fields: what was decided and why. */
+  decision?: { decision: string; reason: string } | null;
   /** ISS-56 — what the comment is about (its arc target). */
   scope?: "issue";
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */

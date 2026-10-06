@@ -19,6 +19,8 @@ import {
   personCount,
   type RequestTrack,
   readMessagesInRange,
+  replyLanguageOf,
+  replyLanguageOfTag,
   replyTargetsOf,
   reserveDelivery,
   roomHandles,
@@ -29,9 +31,14 @@ import {
   withTerminalStatus,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
-import { firstRequirementsOnboardingOf, firstRequirementsStarterOf } from '../onboarding/index.js';
+import {
+  firstRequirementsOnboardingOf,
+  firstRequirementsStarterOf,
+  onboardingRoomOf,
+} from '../onboarding/index.js';
 import { readSelvesFor } from '../orgs/index.js';
 import { resolveTurnAuthority } from '../permissions/index.js';
+import { readContentLanguage } from '../project-config/index.js';
 import { refuseAuthority } from './authority-refusal.js';
 import type { RoutedWindow, RouteWindowArgs, WindowCut } from './route-window.js';
 import { handoffPersonSpoke, handoffVenueRefusal } from './turn-origin.js';
@@ -79,6 +86,8 @@ export async function decide(
   if (window.origin === 'onboarding_handoff' && !handoffPersonSpoke(messages)) {
     return handoffTurn(r, conversation, venue, messages);
   }
+  const onboarding = await onboardingRoomOf(window.conversationId);
+  if (onboarding) return toOnboardingJob(onboarding.live);
   const last = messages[messages.length - 1];
   const speaker = [...messages].reverse().find((m) => m.role === 'user') ?? last;
   const unlinked = () =>
@@ -110,6 +119,24 @@ export async function decide(
     room,
     authority: resolved.authority,
   });
+}
+
+/**
+ * An onboarding thread has one agent: the job that drafts the designs reads every message a person
+ * writes there (`onboarding/prompt.ts:threadRequests`). A chat turn here would be a second agent
+ * answering for work it does not do, so the window is handed to the job and says which.
+ */
+function toOnboardingJob(live: boolean): RoutedWindow {
+  return {
+    decision: 'handed-off',
+    detail: {
+      handedTo: 'onboarding-job',
+      jobLive: live,
+      reason: live
+        ? 'the onboarding job reads this before it posts its questions'
+        : 'no onboarding job runs now; the next one reads this, and a re-analysis starts one',
+    },
+  };
 }
 
 /**
@@ -317,6 +344,9 @@ async function takeTurn(
   track.anchor = anchor;
   track.venue = venue;
   track.handleName = inputs.handleName;
+  track.language =
+    replyLanguageOf(anchor?.text ?? speaker?.content) ??
+    replyLanguageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
   const group = venue.shape === 'group';
   const addressee =
     anchor && group && (await personCount(window.conversationId)) > 1 ? anchor.authorLabel : null;
@@ -347,6 +377,7 @@ async function takeTurn(
       fallbacks: group ? 'silence' : 'post',
       addressee,
       deliveryKey,
+      replyLanguage: track.language,
       onBeforeDeliver: () => reserveDelivery(window.id, claim),
     });
   } finally {
@@ -362,6 +393,8 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
       return { decision: 'answered', detail: { messageId: outcome.messageId } };
     case 'declined':
       return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
+    case 'failed':
+      return { decision: 'unreachable', detail: { code: outcome.code, reason: outcome.reason } };
     case 'stopped':
       return { decision: 'stopped', detail: { reason: outcome.reason } };
     case 'diverted':

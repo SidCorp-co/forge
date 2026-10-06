@@ -25,7 +25,7 @@ export function batchDue(postedAt: Date, now: Date) {
 const LIVE = new Set<string>(LIVE_JOB_STATUSES);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const OPEN = { action: 'open', actionLabel: 'Open onboarding' } as const;
-const START = { action: 'start', actionLabel: 'Start onboarding', mayReanalyze: false } as const;
+const START = { action: 'start', actionLabel: 'Ask for designs', mayReanalyze: false } as const;
 
 /** The project's system-context design, by its template: none, drafted but not approved, or approved. */
 export type SystemContextState = 'none' | 'unapproved' | 'approved';
@@ -61,7 +61,7 @@ function openBatchHint(
         lead: 'No system context yet.',
         text: `The agent read the code and drafted ${plural(drafted, 'design')} · ${tail}`,
         action: 'continue',
-        actionLabel: 'Start onboarding',
+        actionLabel: 'Answer the questions',
         mayReanalyze,
       }
     : {

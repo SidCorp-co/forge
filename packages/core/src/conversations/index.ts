@@ -30,6 +30,12 @@ export {
   CORRECTIVE_PREFIX,
   emptyFallbackReply,
   errorFallbackReply,
+  isTurnFailureCode,
+  type ReplyLanguage,
+  replyLanguageOf,
+  replyLanguageOfTag,
+  type TurnFailureCode,
+  turnFailureReason,
   unverifiedFallbackReply,
 } from './fallback-replies.js';
 export { existingProjectHandle, type ProjectHandle, resolveProjectHandle } from './handles.js';

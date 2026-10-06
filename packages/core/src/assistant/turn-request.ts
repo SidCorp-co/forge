@@ -1,7 +1,12 @@
 // The shape of one conversation turn: what the transport hands the runner, the hooks it may
 // divert through, and how the turn ended.
 
-import type { ConversationVenue, ScreenedMessage } from '../conversations/index.js';
+import type {
+  ConversationVenue,
+  ReplyLanguage,
+  ScreenedMessage,
+  TurnFailureCode,
+} from '../conversations/index.js';
 import type { TurnAuthority, TurnCredential } from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
@@ -43,6 +48,8 @@ export interface TurnHookContext {
 
 export type TurnReply =
   | { send: false; reason: string; ended?: 'declined' | 'superseded' | 'not-dispatched' }
+  /** The turn ended without an answer it chose: a failure, never a silence. */
+  | { send: false; reason: string; ended: 'failed'; code: TurnFailureCode }
   | { send: true; message: ScreenedMessage; screenReplaced: boolean };
 
 export interface ConversationTurnRequest {
@@ -100,6 +107,8 @@ export interface ConversationTurnRequest {
     | undefined;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
+  /** The language the code-authored fallbacks answer in: the asker's. */
+  replyLanguage?: ReplyLanguage | undefined;
   /**
    * The transport's own inputs, built INSIDE the timeout.
    */
@@ -134,6 +143,7 @@ export type TurnOutcome =
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
   | { kind: 'not-dispatched'; reason: string }
+  | { kind: 'failed'; code: TurnFailureCode; reason: string }
   /**
    * The composed reply rides along, so a failed delivery does not lose what was written. `reason`
    * is read by every reader of the conversation, so it is a fixed sentence keyed by `code`; the

@@ -243,13 +243,11 @@ export async function runExternalChatTurn(
   if (turn && (args.record ?? 'nothing') !== 'nothing') {
     // A person who stopped this turn gets no silence row: "nothing to add" is not "you ended this",
     // and a provider that answers a cancelled call with an error result would write the first (ISS-1146).
+    // A turn that ended in an error gets none either: it chose nothing, and its caller records the
+    // failure under a code the reader is shown, never the provider's own error text.
     const stoppedByAPerson = args.signal?.aborted && args.signal.reason === STOPPED_BY_A_PERSON;
-    const answered = result.terminal === 'done' && result.finalText.length > 0;
-    if (!answered && !stoppedByAPerson) {
-      appendSilence(
-        turn,
-        result.errorMessage ?? (result.terminal === 'done' ? 'empty-reply' : result.terminal),
-      );
+    if (result.terminal === 'done' && result.finalText.length === 0 && !stoppedByAPerson) {
+      appendSilence(turn, 'empty-reply');
     }
     await persistMessages(turn);
   }

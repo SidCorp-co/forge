@@ -10,7 +10,7 @@
 // it alone — so all six stayed on the session surface, which keeps every
 // run-shaped verb it had.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
   ErrorState,
@@ -223,6 +223,7 @@ export function ConversationChat({
     pick,
   ]);
 
+  const onboardingRoom = roomQ.data?.kind === "onboarding";
   const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-3 py-2 @2xl:px-4 @2xl:py-3">
       <div className="flex items-center gap-3">
@@ -334,34 +335,23 @@ export function ConversationChat({
           queueWhileBusy
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
-          placeholder={modePlaceholder(settledMode ?? pick)}
+          placeholder={onboardingRoom ? ONBOARDING_PLACEHOLDER : modePlaceholder(settledMode ?? pick)}
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
             : {})}
           {...(initialDraft ? { initialValue: initialDraft } : {})}
           footerControl={
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <ConversationModeControl
-                value={pick}
-                onChange={setPick}
-                offer={agentOffer}
-                settled={settledMode}
-                disabled={busy}
+            onboardingRoom ? (
+              <span className="fg-caption text-subtle" data-testid="composer-to-onboarding-job">
+                To the onboarding job, which drafts the designs
+              </span>
+            ) : (
+              <ModeFooter
+                mode={{ value: pick, onChange: setPick, offer: agentOffer, settled: settledMode, disabled: busy }}
+                scopeChip={scopeChip}
+                sees={page.sees ? { label: page.sees, detail: seesDetail(page.snapshot, { project: projectRow?.name ?? null, scope: ecosystemId ? "ecosystem" : "project" }) } : null}
               />
-              {scopeChip}
-              {page.sees && (
-                <span
-                  data-testid="composer-sees"
-                  title={seesDetail(page.snapshot, {
-                    project: projectRow?.name ?? null,
-                    scope: ecosystemId ? "ecosystem" : "project",
-                  })}
-                  className="fg-caption inline-flex max-w-[16rem] items-center gap-1 truncate text-subtle"
-                >
-                  Sees {page.sees}
-                </span>
-              )}
-            </div>
+            )
           }
         />
       ) : (
@@ -376,6 +366,35 @@ export function ConversationChat({
           open={membersOpen}
           onClose={() => setMembersOpen(false)}
         />
+      )}
+    </div>
+  );
+}
+
+const ONBOARDING_PLACEHOLDER = "Message the onboarding job — it reads every message here before it asks you anything…";
+
+/** The composer's footer in a chat with a mode: the mode, the room's scope, and what the agent sees. */
+function ModeFooter({
+  mode,
+  scopeChip,
+  sees,
+}: {
+  mode: ComponentProps<typeof ConversationModeControl>;
+  scopeChip: ReactNode;
+  sees: { label: string; detail: string } | null;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <ConversationModeControl {...mode} />
+      {scopeChip}
+      {sees && (
+        <span
+          data-testid="composer-sees"
+          title={sees.detail}
+          className="fg-caption inline-flex max-w-[16rem] items-center gap-1 truncate text-subtle"
+        >
+          Sees {sees.label}
+        </span>
       )}
     </div>
   );

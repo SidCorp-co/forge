@@ -3,6 +3,7 @@ import {
   codeAuthored,
   emptyFallbackReply,
   errorFallbackReply,
+  type ReplyLanguage,
   type ScreenedMessage,
   screened,
   unverifiedFallbackReply,
@@ -58,6 +59,8 @@ export interface ScreenedTurnArgs {
   projectId: string;
   /** The answering handle's own name — the fallbacks speak as it. */
   handleName: string;
+  /** The language the fallbacks answer in. */
+  language: ReplyLanguage;
   /** The first attempt, already run. */
   first: ExternalChatTurnResult;
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
@@ -120,7 +123,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       'conversations: reply still failing its door screen; sending honest fallback',
     );
     if (args.fallback === 'none') return null;
-    return codeAuthored(unverifiedFallbackReply(args.handleName));
+    return codeAuthored(unverifiedFallbackReply(args.handleName, args.language));
   }
 
   const trimmed = result.reply.trim();
@@ -128,8 +131,8 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     if (args.fallback === 'none') return null;
     return codeAuthored(
       result.terminal === 'error'
-        ? errorFallbackReply(args.handleName)
-        : emptyFallbackReply(args.handleName),
+        ? errorFallbackReply(args.handleName, args.language)
+        : emptyFallbackReply(args.handleName, args.language),
     );
   }
   const passed = screened(trimmed, args.door, outcome.verdict);

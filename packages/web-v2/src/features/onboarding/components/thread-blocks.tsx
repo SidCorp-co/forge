@@ -8,7 +8,8 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import Link from "next/link";
 import { Markdown } from "@/design/patterns/markdown";
-import { useOnboardingState, useReanalyze } from "../hooks";
+import { useOnboardingState } from "../hooks";
+import { useAskForDesigns } from "./ask-for-designs";
 import type { OnboardingDesignView, QuestionnaireView } from "../types";
 import { DesignStatusChip, HoverNote, ToneChip } from "./marks";
 import { QuestionnaireCard, QuestionnaireSummary } from "./questionnaire-card";
@@ -132,7 +133,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
   const projectId = data?.projectId ?? "";
   const slug = data?.projectSlug;
   const { byId, onboarding } = useDesigns(projectId, data?.kind === "onboarding");
-  const reanalyze = useReanalyze(projectId, data?.conversationId);
+  const reanalyze = useAskForDesigns(projectId, data?.conversationId ? { conversationId: data.conversationId } : {});
   const rows = block.workflowIds.map((id) => ({ id, design: byId.get(id) }));
   return (
     <div className="my-1" data-testid="designs-block">
@@ -184,8 +185,8 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
                 <button
                   type="button"
                   className="text-[12px] font-semibold text-link no-underline hover:underline disabled:opacity-60"
-                  disabled={reanalyze.isPending}
-                  onClick={() => reanalyze.mutate()}
+                  disabled={reanalyze.pending}
+                  onClick={() => reanalyze.ask("reanalyze")}
                 >
                   Re-analyze
                 </button>
@@ -194,6 +195,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               Runs one new analysis job and replaces any open batch. Refused while a job runs (ONBOARDING_ALREADY_RUNNING).
               Approved revisions are never overwritten.
             </HoverNote>
+            {reanalyze.dialog}
           </span>
         </div>
       )}

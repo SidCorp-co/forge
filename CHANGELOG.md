@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Owners ask for designs through a confirm step carrying their request to the onboarding job, which alone reads that room; a failed chat turn says one coded sentence in the asker's language; issues take recorded decisions.
+
 ## [0.4.0-dev.52] - 2026-10-06
 
 Every master turn counts as a pass, and boxes report missing pane binaries

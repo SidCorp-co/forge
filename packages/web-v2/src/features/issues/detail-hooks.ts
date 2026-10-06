@@ -54,6 +54,18 @@ export function useAttachments(id: string | undefined, projectId?: string) {
 }
 
 
+/** Record an owner's ruling on the issue as a decision, apart from the thread's chatter. */
+export function useRecordDecision(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (decision: { decision: string; reason: string }) => issueDetailApi.recordDecision(id, decision),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["comments", id] });
+      qc.invalidateQueries({ queryKey: ["activities", id] });
+    },
+  });
+}
+
 export function useCreateComment(id: string) {
   const qc = useQueryClient();
   const { toast } = useToast();

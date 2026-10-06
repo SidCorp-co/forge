@@ -5,7 +5,9 @@
 // `<BodyView>` (markdown or a `forge-*` component tree), author initials
 // resolved against the project members, and reply/add boxes.
 
-import { Avatar, Badge, BodyView, Button, EmptyState, Icon } from "@/design";
+import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, SegmentedControl, Textarea } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useState } from "react";
 import {
@@ -14,7 +16,7 @@ import {
   initials,
   memberLabel,
 } from "../derive";
-import { useCreateComment } from "../detail-hooks";
+import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
@@ -96,6 +98,72 @@ function AddCommentBox({
   );
 }
 
+/**
+ * A ruling the owner records on the issue unprompted: what was decided and why, kept as a decision
+ * (comment intent decision) so it reads apart from the thread's chatter and every agent reads it.
+ */
+function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () => void }) {
+  const [decision, setDecision] = useState("");
+  const [reason, setReason] = useState("");
+  const record = useRecordDecision(issueId);
+  const ready = decision.trim().length > 0 && reason.trim().length > 0;
+  const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
+  const submit = () => {
+    if (!ready) return;
+    record.mutate(
+      { decision: decision.trim(), reason: reason.trim() },
+      {
+        onSuccess: () => {
+          setDecision("");
+          setReason("");
+          onDone();
+        },
+      },
+    );
+  };
+  return (
+    <div className="grid gap-3" data-testid="record-decision">
+      <Field label="Decision" hint="What is decided, in one or two sentences.">
+        <Textarea rows={2} value={decision} onChange={(e) => setDecision(e.target.value)} maxLength={4000} disabled={record.isPending} />
+      </Field>
+      <Field label="Reason" hint="Why: the agent working this issue reads it with the decision.">
+        <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={4000} disabled={record.isPending} />
+      </Field>
+      {refused ? (
+        <p role="alert" className="fg-caption text-red">
+          {refused}
+        </p>
+      ) : null}
+      <div className="flex justify-end">
+        <Button variant="primary" size="sm" loading={record.isPending} disabled={!ready} onClick={submit}>
+          Record decision
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Composer({ issueId }: { issueId: string }) {
+  const [mode, setMode] = useState<"comment" | "decision">("comment");
+  return (
+    <div className="space-y-2">
+      <SegmentedControl
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "comment", label: "Comment" },
+          { value: "decision", label: "Decision", title: "Record a ruling on this issue: what is decided and why" },
+        ]}
+      />
+      {mode === "decision" ? (
+        <RecordDecisionBox issueId={issueId} onDone={() => setMode("comment")} />
+      ) : (
+        <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
+      )}
+    </div>
+  );
+}
+
 function CommentItem({
   node,
   issueId,
@@ -132,7 +200,11 @@ function CommentItem({
                 </span>
               </Badge>
             )}
-            {kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>}
+            {node.intent === "decision" ? (
+              <Badge tone="green">Decision</Badge>
+            ) : (
+              kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>
+            )}
             <span className="fg-caption">
               {formatRelativeTime(node.createdAt)}
             </span>
@@ -219,9 +291,7 @@ export function CommentThread({
   );
   return (
     <div className="space-y-5">
-      {!readOnly && (
-        <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
-      )}
+      {!readOnly && <Composer issueId={issueId} />}
       {ordered.length === 0 ? (
         <EmptyState
           title="No comments yet"

@@ -5,6 +5,9 @@
 
 export const STOPPED_BY_A_PERSON = 'stopped-by-a-person';
 
+/** The abort reason of a turn that ran past its ceiling, so its end reads as a timeout and not as a crash. */
+export const TURN_TIMED_OUT = 'turn-timed-out';
+
 const inFlight = new Map<string, Set<AbortController>>();
 
 export interface TurnStopHandle {

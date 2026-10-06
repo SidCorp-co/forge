@@ -10,6 +10,8 @@ import {
   type QuestionnaireResponse,
   REANALYZE_SHAPE,
   reanalyzeRequestSchema,
+  START_SHAPE,
+  startRequestSchema,
 } from '@forge/contracts/onboarding';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -67,8 +69,19 @@ onboardingRoutes.get('/:id/onboarding', projectParam, async (c) => {
   return c.json(body);
 });
 
-onboardingRoutes.post('/:id/onboarding/start', projectParam, emptyBody, async (c) =>
-  answer(c, await startOnboarding({ projectId: c.req.valid('param').id, actor: actorOf(c) })),
+onboardingRoutes.post(
+  '/:id/onboarding/start',
+  projectParam,
+  strictBody(startRequestSchema, START_SHAPE),
+  async (c) =>
+    answer(
+      c,
+      await startOnboarding({
+        projectId: c.req.valid('param').id,
+        actor: actorOf(c),
+        request: c.req.valid('json').request,
+      }),
+    ),
 );
 
 onboardingRoutes.post(
@@ -139,5 +152,9 @@ onboardingRoutes.post(
 onboardingRoutes.get('/:id/onboarding/answers', projectParam, async (c) => {
   const outcome = await readAnswers(c.req.valid('param').id, actorOf(c));
   if (!outcome.ok) return refusedOnboarding(c, outcome.refusals);
-  return c.json({ onboarding: outcome.onboarding, questionnaires: outcome.questionnaires });
+  return c.json({
+    onboarding: outcome.onboarding,
+    questionnaires: outcome.questionnaires,
+    requests: outcome.requests,
+  });
 });

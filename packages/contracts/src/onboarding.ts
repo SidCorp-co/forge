@@ -196,6 +196,22 @@ export const reanalyzeRequestSchema = z.strictObject({
 });
 export const REANALYZE_SHAPE = "{ reason? }";
 
+/** What the person asks the analysis job for, in their words: posted in the thread and carried in the job's brief. */
+export const ONBOARDING_REQUEST_MAX = 4_000;
+
+/** `POST /api/projects/:id/onboarding/start`. */
+export const startRequestSchema = z.strictObject({
+	request: z.string().trim().min(1).max(ONBOARDING_REQUEST_MAX).optional(),
+});
+export const START_SHAPE = `{ request?: what the drafts should cover, 1-${ONBOARDING_REQUEST_MAX} characters }`;
+
+/** A person's message in the onboarding thread, as the job that drafts the designs reads it. */
+export interface OnboardingThreadRequest {
+	at: string;
+	author: string | null;
+	text: string;
+}
+
 /**
  * Where an answered item landed: the proposed design revision that cites it, or, for an accepted
  * recommendation, the suggestion it became. Recorded on the item, never applied to a design.

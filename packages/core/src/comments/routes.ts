@@ -1,4 +1,4 @@
-import type { CommentRefusalCode } from '@forge/contracts/comments';
+import type { CommentRefusalCode, DecisionFields } from '@forge/contracts/comments';
 import { type CommentIntent, isCommentIntent } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -49,7 +49,13 @@ import {
   parentCommentOf,
 } from './read.js';
 import { messageRefusalHttp } from './screen.js';
-import { deleteComment, insertComment, intentRefusal, updateCommentBody } from './service.js';
+import {
+  decisionBody,
+  deleteComment,
+  insertComment,
+  intentRefusal,
+  updateCommentBody,
+} from './service.js';
 import { listIssueCommentPage } from './thread-read.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
 
@@ -143,6 +149,33 @@ async function issueThreadPage(
   return { tree, total: Number(total), nextCursor: read.nextCursor };
 }
 
+/**
+ * The body an issue comment is stored with: the one sent, or for a decision sent as fields only,
+ * the fields written out, so every reader of the body (the thread, MCP, the CLI) reads the ruling.
+ */
+function issueCommentBody(
+  sent: string | undefined,
+  intent: string | undefined,
+  decision: DecisionFields | undefined,
+): string {
+  if (decision && intent !== 'decision') {
+    throw refuse(
+      'COMMENT_DECISION_INTENT_MISMATCH',
+      `decision fields belong to intent decision; this comment is ${intent ? `a ${intent}` : 'sent with no intent'}. Send intent: decision, or drop the decision fields`,
+      '/decision',
+    );
+  }
+  if (sent !== undefined) return sent;
+  if (!decision) {
+    throw refuse(
+      'COMMENT_BODY_REQUIRED',
+      'a comment carries a body: the sentence somebody is meant to read (a decision may send decision: { decision, reason } instead)',
+      '/body',
+    );
+  }
+  return decisionBody(decision);
+}
+
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -150,8 +183,9 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('json', commentCreateSchema),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body, format, parentId, intent } = c.req.valid('json');
+      const { body: sent, format, parentId, intent, decision } = c.req.valid('json');
       const userId = c.get('userId');
+      const body = issueCommentBody(sent, intent, decision);
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
@@ -167,6 +201,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         parentId: parentId ?? null,
         declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
         intent,
+        decision: decision ?? null,
         announce: { actor: restActor(c), authored: restAuthored(c) },
       }).catch((err: unknown) => {
         throw commentWriteRefusal(err, parentId);

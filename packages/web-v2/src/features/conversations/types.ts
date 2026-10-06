@@ -1,4 +1,5 @@
 
+import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
 
@@ -189,6 +190,7 @@ export interface OutboxMessage {
 export type ThreadEntry =
   | { kind: "said"; key: string; message: ConversationMessage }
   | { kind: "silence"; key: string; decision: SilenceDecision; detail: unknown }
+  | { kind: "handed"; key: string; reason: string }
   | { kind: "pending"; key: string }
   | { kind: "agent-turn"; key: string; turn: AgentTurn }
   | { kind: "progress"; key: string; progress: ConversationProgressEntry }
@@ -235,6 +237,40 @@ export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, stri
   failed: "This Agent turn did not produce an answer.",
 };
 
+/** The reason a window was handed to the onboarding job (core `toOnboardingJob`), or null for any other hand-off. */
+function toOnboardingJob(detail: unknown): string | null {
+  const d = detail as { handedTo?: unknown; reason?: unknown } | null;
+  return d?.handedTo === "onboarding-job" && typeof d.reason === "string" ? d.reason : null;
+}
+
+/**
+ * Whether the window's status reached the room: then that message is the one statement the reader
+ * gets, and the window's own sentence would say the same thing a second time, or contradict it.
+ */
+function statusPosted(detail: unknown): boolean {
+  const status = (detail as { status?: { delivered?: unknown } } | null)?.status;
+  return status?.delivered === true;
+}
+
+/** A failed turn's coded reason (core `routedOutcome`, decision unreachable), or null. */
+export function turnFailureOf(detail: unknown): { code: string; reason: string } | null {
+  const d = detail as { code?: unknown; reason?: unknown } | null;
+  return isAssistantTurnFailureCode(d?.code) && typeof d?.reason === "string" ? { code: d.code, reason: d.reason } : null;
+}
+
+const SILENCE_ROW_REASON: Record<string, string> = {
+  "nothing-to-say": "The agent read this and had nothing to add.",
+  "not-mentioned": "Nobody asked the agent here, so it stayed quiet.",
+  "tool-not-called": "The agent chose not to post in this room.",
+  "empty-reply": "The agent finished without writing an answer.",
+  "screen-refused": "The agent's answer failed its checks, so it was not sent.",
+};
+
+/** The sentence for a silence a turn recorded: one it chose, or a generic line for a reason no reader is shown. */
+export function silenceSentence(reason: string): string {
+  return SILENCE_ROW_REASON[reason] ?? "The agent did not answer here.";
+}
+
 /**
  * The thread, with every silence in the place it happened.
  */
@@ -265,12 +301,14 @@ export function threadEntries(
       if (!w.closedAt) {
         if (w.id !== arriving) out.push({ kind: "pending", key: w.id });
       }
-      else if (w.decision === "handed-off") {
+      else if (w.decision === "handed-off" && toOnboardingJob(w.decisionDetail)) {
+        out.push({ kind: "handed", key: w.id, reason: toOnboardingJob(w.decisionDetail) as string });
+      } else if (w.decision === "handed-off") {
         const turn = turnByWindow.get(w.id);
         if (turn && turn.state !== "delivered")
           out.push({ kind: "agent-turn", key: w.id, turn });
         else if (!turn) out.push({ kind: "pending", key: w.id });
-      } else if (w.decision && w.decision !== "answered")
+      } else if (w.decision && w.decision !== "answered" && !statusPosted(w.decisionDetail))
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }

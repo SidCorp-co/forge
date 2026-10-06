@@ -10,6 +10,7 @@ import {
   type OnboardingJobPhase,
   type OnboardingStateResponse,
   type OnboardingStatus,
+  type OnboardingThreadRequest,
   type OnboardingView,
   type OpenQuestionnaireBatch,
   QUESTIONNAIRE_MAX_ROUNDS,
@@ -18,10 +19,12 @@ import {
 import { and, count, desc, eq, gte, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { conversationMessages } from '../db/schema-conversations.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
+import { peopleOf } from '../lib/people.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { linkItems, type SeriesItem } from './design-items.js';
 import { batchDue, hintOf, type SystemContextState } from './hint.js';
@@ -98,6 +101,52 @@ export async function liveJobOf(tx: Executor, projectId: string): Promise<LiveJo
     .orderBy(desc(jobs.queuedAt))
     .limit(1);
   return row ?? null;
+}
+
+/** How many of a thread's person messages the job reads: the newest, the cap a room's window keeps. */
+const THREAD_REQUESTS_CAP = 50;
+
+/**
+ * What the people of the project wrote in the onboarding thread, oldest first: the instructions the
+ * job that drafts the designs reads, since the room has no other agent to read them.
+ */
+export async function threadRequestsOf(conversationId: string): Promise<OnboardingThreadRequest[]> {
+  const rows = await db
+    .select({
+      at: conversationMessages.createdAt,
+      authorUserId: conversationMessages.authorUserId,
+      authorLabel: conversationMessages.authorLabel,
+      text: conversationMessages.content,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        eq(conversationMessages.role, 'user'),
+      ),
+    )
+    .orderBy(desc(conversationMessages.seq))
+    .limit(THREAD_REQUESTS_CAP);
+  const ids = rows.map((r) => r.authorUserId).filter((id): id is string => id !== null);
+  const names = await peopleOf(ids);
+  return rows.reverse().map((r) => ({
+    at: r.at.toISOString(),
+    author: (r.authorUserId ? names.get(r.authorUserId)?.name : null) ?? r.authorLabel ?? null,
+    text: r.text,
+  }));
+}
+
+/** The onboarding a conversation is the thread of, and whether a job of it runs now; null for any other room. */
+export async function onboardingRoomOf(
+  conversationId: string,
+): Promise<{ projectId: string; live: boolean } | null> {
+  const [row] = await db
+    .select({ projectId: onboardings.projectId })
+    .from(onboardings)
+    .where(eq(onboardings.conversationId, conversationId))
+    .limit(1);
+  if (!row) return null;
+  return { projectId: row.projectId, live: (await liveJobOf(db, row.projectId)) !== null };
 }
 
 /** Whether the project's data policy (ISS-59) is above `off`: its onboarding then owes a data-flow design. */

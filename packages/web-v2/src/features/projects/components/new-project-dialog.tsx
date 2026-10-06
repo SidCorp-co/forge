@@ -11,7 +11,7 @@ import { formatApiError } from '@/lib/api/error';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
-import { refusalLine, useOpenOnboarding } from '@/features/onboarding/components/onboarding-hint';
+import { useAskForDesigns } from '@/features/onboarding/components/ask-for-designs';
 import { useCreateProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
@@ -166,13 +166,9 @@ function CreateProjectForm({
 }
 
 function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinish: () => void }) {
-  const onboarding = useOpenOnboarding(created.id);
-  const onboardError = refusalLine(onboarding.error);
-
-  /** The designed onboarding: start it, open its thread in the chat panel, land on the project. */
-  async function onStartOnboarding() {
-    if (await onboarding.open('start')) onFinish();
-  }
+  /** The designed onboarding: confirm what its job does, start it, open its thread, land on the project. */
+  const onboarding = useAskForDesigns(created.id, { onOpened: onFinish });
+  const onboardError = onboarding.error;
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -204,9 +200,10 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
           </div>
         )}
         <div className="mt-2">
-          <Button variant="secondary" loading={onboarding.pending} onClick={onStartOnboarding} className="min-h-11">
-            Start onboarding
+          <Button variant="secondary" loading={onboarding.pending} onClick={() => onboarding.ask('start')} className="min-h-11">
+            Ask for designs
           </Button>
+          {onboarding.dialog}
           <p className="fg-body-sm mt-1.5 text-subtle">
             Analyses the repository on a runner bound to this project, then asks you a few rounds of questions in
             the onboarding thread. Connect a runner above first.
