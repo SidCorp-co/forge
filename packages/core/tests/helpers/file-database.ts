@@ -23,6 +23,7 @@ const url = new URL(adminUrl);
 url.pathname = `/${name}`;
 process.env.DATABASE_URL = url.toString();
 process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL ??= 'silent';
 process.env.JWT_SECRET ??= 'integration-secret-at-least-32-characters-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-pepper-at-least-32-characters-long';
 
@@ -31,6 +32,8 @@ const { registerAllIntegrations } = await import('../../src/integration-registry
 registerAllIntegrations();
 
 afterAll(async () => {
+  const boss = await import('../../src/queue/boss.js');
+  if (boss.isBossStarted()) await boss.stopBoss();
   const { closeDb } = await import('../../src/db/client.js');
   await closeDb();
 });

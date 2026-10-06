@@ -12,7 +12,7 @@ export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
 export async function truncateAll(): Promise<void> {
   const tables = await rows<{ name: string }>(sql`
     SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables
-     WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'drizzle')
+     WHERE schemaname = 'public'
   `);
   if (tables.length === 0) return;
   await db.execute(
@@ -94,12 +94,12 @@ export async function addProjectMember(
 
 export async function createTestDevice(
   ownerId: string,
-  opts: { status?: 'online' | 'offline'; agentVersion?: string } = {},
+  opts: { status?: 'online' | 'offline'; agentVersion?: string; name?: string } = {},
 ): Promise<string> {
   const id = randomUUID();
   await db.execute(sql`
     INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
-    VALUES (${id}, ${ownerId}, ${`device-${id.slice(0, 8)}`}, 'linux', ${opts.status ?? 'online'},
+    VALUES (${id}, ${ownerId}, ${opts.name ?? `device-${id.slice(0, 8)}`}, 'linux', ${opts.status ?? 'online'},
             ${opts.agentVersion ?? AGENT_NAMING_MIN_RUNNER})
   `);
   return id;
