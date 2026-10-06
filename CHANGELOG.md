@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The bell badge counts the open rows it lists**; a resolved notice drops its unread dot; a requirement waits on its unapproved designs rather than offer a refused Agree; a drawer stays open when a control inside took Escape.
+
 ## [0.4.0-dev.59] - 2026-10-06
 
 Returned designs and requirement revisions reach the master; runs-out standing shown
@@ -15,7 +19,6 @@ Returned designs and requirement revisions reach the master; runs-out standing s
 ### Fixed
 
 - **Returned designs and requirement revisions now reach the project's master**, on every pass until revised. Admitted open issues wait on a run, not a slot. A master with runs out reads `runs_out`, and each closed pass says why it closed.
-- **The bell badge counts the open rows it lists**; a resolved notice drops its unread dot; a requirement waits on its unapproved designs rather than offer a refused Agree; a drawer stays open when a control inside took Escape.
 
 ## [0.4.0-dev.58] - 2026-10-06
 
