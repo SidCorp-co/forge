@@ -11,6 +11,7 @@ import {
   dispatchInteractiveTurn,
   firstUserMessageText,
   readSessionAsker,
+  readTranscript,
   setSessionFailureDetail,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -166,7 +167,6 @@ export async function redispatchScheduleSessionOnFailover(
       userId: agentSessions.userId,
       deviceId: agentSessions.deviceId,
       title: agentSessions.title,
-      messages: agentSessions.messages,
       metadata: agentSessions.metadata,
       claudeSessionId: agentSessions.claudeSessionId,
     })
@@ -188,7 +188,6 @@ type FailedScheduleSession = Pick<
   | 'userId'
   | 'deviceId'
   | 'title'
-  | 'messages'
   | 'metadata'
   | 'claudeSessionId'
 >;
@@ -224,7 +223,7 @@ async function attemptScheduleFailover(
   const attempt = (prior.attempt ?? 0) + 1;
   if (attempt > MAX_SCHEDULE_FAILOVERS) return { ok: false, status: 'exhausted' };
 
-  const firstUser = firstUserMessageText(failed.messages);
+  const firstUser = firstUserMessageText(await readTranscript(sessionId));
   if (!firstUser) return { ok: false, status: 'no-prompt' };
 
   const asker = readSessionAsker(meta.asker);

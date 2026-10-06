@@ -160,11 +160,12 @@ export async function runnerActivity(row: RunnerRow, limit: number) {
           failureReason: agentSessions.failureReason,
           updatedAt: agentSessions.updatedAt,
           errorExcerpt: sql<string | null>`(
-            SELECT left(msg->>'content', 500)
-            FROM jsonb_array_elements(${agentSessions.messages}) AS msg
-            WHERE msg->>'content' ILIKE '%RESULT_ERROR%'
-               OR msg->>'content' ILIKE '%API Error%'
-            ORDER BY (msg->>'timestamp')::numeric DESC NULLS LAST
+            SELECT left(t.content->'value'->>'content', 500)
+            FROM agent_session_turns t
+            WHERE t.agent_session_id = "agent_sessions"."id"
+              AND (t.content->'value'->>'content' ILIKE '%RESULT_ERROR%'
+                OR t.content->'value'->>'content' ILIKE '%API Error%')
+            ORDER BY (t.content->'value'->>'timestamp')::numeric DESC NULLS LAST
             LIMIT 1
           )`,
         })

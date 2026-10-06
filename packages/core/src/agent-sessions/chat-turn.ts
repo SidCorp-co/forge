@@ -31,7 +31,7 @@ import { seedTurn } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { readSessionModel } from './session-model.js';
 import { transitionSessions } from './session-transition.js';
-import { syncTurnsWithMessages } from './turns-helpers.js';
+import { readTranscript, writeTranscript } from './turns-helpers.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
@@ -288,7 +288,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
     : [];
 
-  const prevMessages = Array.isArray(session.messages) ? session.messages : [];
+  const prevMessages = await readTranscript(session.id);
   const now = new Date();
   const userMessage: Record<string, unknown> = {
     id: randomUUID(),
@@ -316,7 +316,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       : null;
 
   const updates: AgentSessionPatch = {
-    messages,
     lastHeartbeatAt: now,
     updatedAt: now,
     startedAt: session.startedAt ?? now,
@@ -365,8 +364,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       );
     }
     const row = { ...written, status: 'running' as const };
-    // the legacy blob and the per-turn rows are written in one transaction so they never diverge
-    const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
+    const s = await writeTranscript(tx, row.id, messages);
     const seeded = await seedTurn(tx, row.id, {
       priorMessages: prevMessages,
       entry: userMessage,

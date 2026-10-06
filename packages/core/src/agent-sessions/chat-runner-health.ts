@@ -30,7 +30,8 @@ interface ChatRunnerHealthInput {
   /** The status actually persisted, after every core-side rewrite. */
   persistedStatus: AgentSessionStatus;
   isUserCancelled: boolean;
-  messages: unknown;
+  /** The session's transcript, read only when a failure has to be classified. */
+  readMessages: () => Promise<unknown>;
 }
 
 /**
@@ -44,7 +45,9 @@ export async function syncRunnerHealthFromChatTerminal(
 
   if (input.principal === 'device' && input.reportedStatus === 'failed' && !input.isUserCancelled) {
     try {
-      const text = extractSessionFailureText(input.messages, null, { excludeRoles: ['user'] });
+      const text = extractSessionFailureText(await input.readMessages(), null, {
+        excludeRoles: ['user'],
+      });
       const limit = detectRunnerLimit(text, null);
       if (limit) {
         const runnerId = await findRunnerId(input.projectId, input.deviceId);

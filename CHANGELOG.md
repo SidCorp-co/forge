@@ -13,6 +13,9 @@
 - **Every lint rule blocks.** Biome warnings are errors; the empty lint, boundary and trace
   baselines are deleted; web-v2 length is ratcheted; the unused code-quality linter is gone;
   dependencies take their patches.
+- **A transcript is stored once.** Turn rows are the only store; migration 0418 backfills them,
+  refuses by name a session whose blob disagrees, and drops `agent_sessions.messages`. A
+  role-shaped entry is refused, not converted.
 
 ### Fixed
 

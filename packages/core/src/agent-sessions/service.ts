@@ -10,10 +10,16 @@ import { notFound } from '../middleware/route-errors.js';
 import { recordReportedTranscript } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { transitionSessions } from './session-transition.js';
-import { syncTurnsWithMessages, truncateTurnsAfter } from './turns-helpers.js';
+import {
+  lockTranscript,
+  readTranscript,
+  type TranscriptWrite,
+  truncateTranscript,
+  writeTranscript,
+} from './turns-helpers.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
-type TurnSync = Awaited<ReturnType<typeof syncTurnsWithMessages>>;
+type TurnSync = TranscriptWrite;
 
 /** Stamp a runner's ack onto a still-running session; a terminal one is left as it is. */
 export async function markSessionAcked(
@@ -35,14 +41,14 @@ type SessionPatchWrite = {
   actor: KernelActor;
   /** A reported transcript to record as a snapshot, or null. */
   snapshot: Record<string, unknown>[] | null;
-  /** The messages the turn rows are mirrored to, or null when the patch carried none. */
+  /** The transcript the patch carried, written as the session's whole transcript; null for none. */
   messages: unknown[] | null;
   at: Date;
 };
 
 /**
- * A worker or user PATCH, written in one transaction with the turn rows mirrored to the messages
- * blob so the two never diverge. A status move is a compare-and-set on the status `existing` read.
+ * A worker or user PATCH, written in one transaction with the transcript it carried. A status move
+ * is a compare-and-set on the status `existing` read.
  */
 export async function writeSessionPatch(
   w: SessionPatchWrite,
@@ -50,8 +56,7 @@ export async function writeSessionPatch(
   const mirror = async (tx: Tx, rowId: string) => {
     if (w.snapshot) await recordReportedTranscript(tx, w.sessionId, w.snapshot, w.at);
     if (!w.messages) return null;
-    const prev = Array.isArray(w.existing.messages) ? w.existing.messages : [];
-    return syncTurnsWithMessages(rowId, prev, w.messages, tx);
+    return writeTranscript(tx, rowId, w.messages);
   };
   let sync: TurnSync | null = null;
   if (w.to !== undefined && w.to !== w.existing.status) {
@@ -184,28 +189,30 @@ export async function appendChatLines(
   });
 }
 
-/** Rewrite a user turn and mirror it into the session's messages blob, in one transaction. */
+/** Rewrite a user turn and record the transcript it leaves as a snapshot, in one transaction. */
 export async function editUserTurn(e: {
   sessionId: string;
   turnId: string;
   content: unknown;
-  messages: unknown[];
   at: Date;
 }) {
   return db.transaction(async (tx) => {
+    if (!(await lockTranscript(tx, e.sessionId))) throw notFound('agent session not found');
     const [turnRow] = await tx
       .update(agentSessionTurns)
       .set({ content: e.content as never, editedAt: e.at })
-      .where(eq(agentSessionTurns.id, e.turnId))
+      .where(
+        and(eq(agentSessionTurns.id, e.turnId), eq(agentSessionTurns.agentSessionId, e.sessionId)),
+      )
       .returning();
     if (!turnRow) throw notFound('turn not found');
     const [sessionRow] = await tx
       .update(agentSessions)
-      .set({ messages: e.messages as never, updatedAt: e.at })
+      .set({ updatedAt: e.at })
       .where(eq(agentSessions.id, e.sessionId))
       .returning();
     if (!sessionRow) throw notFound('agent session not found');
-    await recordReportedTranscript(tx, e.sessionId, e.messages as Record<string, unknown>[], e.at);
+    await recordReportedTranscript(tx, e.sessionId, await readTranscript(e.sessionId, tx), e.at);
     return [turnRow, sessionRow] as const;
   });
 }
@@ -223,7 +230,7 @@ export async function requeueForRegeneration(r: {
   const [row] = (
     await transitionSessions(db, {
       to: 'queued',
-      set: { messages: r.messages as never, failureReason: null, dispatchedAt: at, updatedAt: at },
+      set: { failureReason: null, dispatchedAt: at, updatedAt: at },
       where: and(
         eq(agentSessions.id, r.session.id),
         eq(agentSessions.status, r.session.status),
@@ -232,7 +239,7 @@ export async function requeueForRegeneration(r: {
       actor: r.actor,
       source: 'session-regenerate',
       afterWrite: async (tx) => {
-        await truncateTurnsAfter(r.session.id, r.messages.length - 1, tx);
+        await truncateTranscript(tx, r.session.id, r.messages.length);
         await recordReportedTranscript(
           tx,
           r.session.id,
@@ -247,12 +254,13 @@ export async function requeueForRegeneration(r: {
 
 /** Open a forked chat session holding `messages`, with its turn rows materialized fresh. */
 export async function insertForkedSession(
-  values: typeof agentSessions.$inferInsert & { messages: unknown[] },
+  values: typeof agentSessions.$inferInsert,
+  messages: readonly unknown[],
 ): Promise<{ inserted: SessionRow; seedSync: TurnSync }> {
   return db.transaction(async (tx) => {
     const [row] = await tx.insert(agentSessions).values(values).returning();
     if (!row) throw new Error('agent_sessions: insert returned no row');
-    const seedSync = await syncTurnsWithMessages(row.id, [], values.messages, tx);
+    const seedSync = await writeTranscript(tx, row.id, messages, []);
     return { inserted: row, seedSync };
   });
 }

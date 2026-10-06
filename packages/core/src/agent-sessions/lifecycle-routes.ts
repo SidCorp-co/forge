@@ -6,7 +6,12 @@ import { broadcastSession } from './broadcast.js';
 import { abortBodySchema } from './lifecycle-schemas.js';
 import { pushSession } from './push.js';
 import { abortSession, cancelSession } from './service.js';
-import { ensureSessionOwnerOrAdmin, idParamSchema, loadSessionOr404 } from './session-access.js';
+import {
+  ensureSessionOwnerOrAdmin,
+  idParamSchema,
+  loadSessionOr404,
+  withTranscript,
+} from './session-access.js';
 
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -52,13 +57,13 @@ agentSessionLifecycleRoutes.post('/:id/cancel', zValidator('param', idParamSchem
 
   if (session.status === 'completed' || session.status === 'failed') {
     // Already terminal — return current state, idempotent.
-    return c.json(session);
+    return c.json(await withTranscript(session));
   }
 
   const updated = await cancelSession(id, restActor(c));
   if (!updated) {
     // CAS lost — return the current row so the client can re-render.
-    return c.json(await loadSessionOr404(id));
+    return c.json(await withTranscript(await loadSessionOr404(id)));
   }
 
   // ISS-101 — close the one-shot run for cancelled interactive sessions.
@@ -77,5 +82,5 @@ agentSessionLifecycleRoutes.post('/:id/cancel', zValidator('param', idParamSchem
   }
 
   broadcastSession(updated, 'agent-session.status', { failureReason: 'user_cancelled' });
-  return c.json(updated);
+  return c.json(await withTranscript(updated));
 });

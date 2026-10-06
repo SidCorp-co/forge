@@ -14,6 +14,7 @@ import {
   claimSessionMarker,
   messageRoleToTurnRole,
   provideTerminalSessionBridge,
+  readTranscript,
   setSessionMarkerField,
   stampSessionMarker,
 } from '../agent-sessions/index.js';
@@ -108,7 +109,8 @@ async function stampFailure(sessionId: string, failure: string): Promise<void> {
 }
 
 async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta): Promise<Outcome> {
-  const text = session.status === 'completed' ? finalAssistantText(session.messages) : null;
+  const messages = session.status === 'completed' ? await readTranscript(session.id) : [];
+  const text = session.status === 'completed' ? finalAssistantText(messages) : null;
   if (!text) {
     return {
       text: meta.replies.failed,
@@ -124,7 +126,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
       screenReplyAtDoor(meta.door, {
         projectId: session.projectId,
         segments: [text],
-        toolCalls: extractToolCalls(session.messages),
+        toolCalls: extractToolCalls(messages),
         progress: readProgressFacts(session.metadata),
       }),
     rewrite: () => {

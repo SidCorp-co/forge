@@ -26,14 +26,14 @@ import {
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   idParamSchema,
+  withTranscript,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import {
   extractPromptString,
   findTurnInSession,
   loadTurns,
-  replaceMessageAt,
-  sliceMessagesThrough,
+  readTranscript,
 } from './turns-helpers.js';
 
 function isUserEntry(m: unknown): boolean {
@@ -138,17 +138,10 @@ agentSessionTurnsRoutes.patch(
       },
     };
 
-    // Mirror into the legacy jsonb blob so resumable-session reads stay
-    // consistent until the deprecation lands.
-    const newMessages = replaceMessageAt(session.messages, turn.turnIndex, (entry) => {
-      if (!entry || typeof entry !== 'object') return { content };
-      return { ...(entry as Record<string, unknown>), content };
-    });
     const [updatedTurn, updatedSession] = await editUserTurn({
       sessionId: id,
       turnId,
       content: newContent,
-      messages: newMessages,
       at: editNow,
     });
 
@@ -176,7 +169,7 @@ agentSessionTurnsRoutes.post(
     if (!turn) throw notFound('turn not found');
 
     const keepThrough = turn.role === 'assistant' ? turn.turnIndex - 1 : turn.turnIndex;
-    const replayMessages = sliceMessagesThrough(session.messages, keepThrough);
+    const replayMessages = (await readTranscript(id)).slice(0, keepThrough + 1);
     const lastUserEntry = [...replayMessages].reverse().find(isUserEntry) as
       | { content?: unknown }
       | undefined;
@@ -235,11 +228,11 @@ agentSessionTurnsRoutes.post(
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 
-    // Eager copy: slice both the jsonb blob and the per-turn rows up through
-    // (and including) the fork point. Storage cost is acceptable at our session
-    // scale (cap < 40k tokens × N turns); avoiding copy-on-write keeps reads
-    // simple and avoids cross-session FK juggling.
-    const slicedMessages = sliceMessagesThrough(session.messages, turn.turnIndex);
+    // Eager copy of the transcript up through (and including) the fork point.
+    // Storage cost is acceptable at our session scale (cap < 40k tokens × N
+    // turns); avoiding copy-on-write keeps reads simple and avoids cross-session
+    // FK juggling.
+    const slicedMessages = (await readTranscript(id)).slice(0, turn.turnIndex + 1);
 
     const prevMeta = (session.metadata ?? {}) as Record<string, unknown>;
     const newMetadata = {
@@ -255,19 +248,21 @@ agentSessionTurnsRoutes.post(
     });
     // Turn rows are materialized fresh; reusing the parent ids would tie a
     // fork's edits and regenerations to its parent.
-    const { inserted, seedSync } = await insertForkedSession({
-      projectId: session.projectId,
-      userId: session.userId,
-      deviceId: session.deviceId,
-      pipelineRunId: forkRun.id,
-      title: title ?? (session.title ? `${session.title} (fork)` : null),
-      kind: 'chat',
-      parentSessionId: session.id,
-      status: 'idle',
-      repoPath: session.repoPath,
-      messages: slicedMessages,
-      metadata: newMetadata as never,
-    });
+    const { inserted, seedSync } = await insertForkedSession(
+      {
+        projectId: session.projectId,
+        userId: session.userId,
+        deviceId: session.deviceId,
+        pipelineRunId: forkRun.id,
+        title: title ?? (session.title ? `${session.title} (fork)` : null),
+        kind: 'chat',
+        parentSessionId: session.id,
+        status: 'idle',
+        repoPath: session.repoPath,
+        metadata: newMetadata as never,
+      },
+      slicedMessages,
+    );
     for (const t of seedSync.appended) {
       broadcastTurnAppended(inserted, t);
     }
@@ -276,7 +271,7 @@ agentSessionTurnsRoutes.post(
 
     await recordSessionCreatedActivity(inserted, restActor(c));
 
-    return c.json(inserted, 201);
+    return c.json(await withTranscript(inserted, slicedMessages), 201);
   },
 );
 
@@ -289,8 +284,9 @@ agentSessionTurnsRoutes.post('/:id/rerun', zValidator('param', idParamSchema), a
     throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
   }
 
-  const messages = Array.isArray(session.messages) ? session.messages : [];
-  const firstUser = messages.find(isUserEntry) as { content?: unknown } | undefined;
+  const firstUser = (await readTranscript(id)).find(isUserEntry) as
+    | { content?: unknown }
+    | undefined;
   const prompt = extractPromptString(firstUser?.content);
   if (!prompt) {
     throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
@@ -327,5 +323,5 @@ agentSessionTurnsRoutes.post('/:id/rerun', zValidator('param', idParamSchema), a
 
   await recordSessionCreatedActivity(updated, restActor(c));
 
-  return c.json(updated, 201);
+  return c.json(await withTranscript(updated), 201);
 });

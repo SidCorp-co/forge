@@ -50,6 +50,7 @@ import {
   ensureSessionRole,
   idParamSchema,
   loadSessionOr404,
+  withTranscript,
 } from './session-access.js';
 import {
   type AgentSessionPatch,
@@ -57,6 +58,7 @@ import {
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
 import { isPipelineSessionKind } from './session-kinds.js';
+import { readTranscript } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
 const listQuerySchema = z
@@ -192,7 +194,7 @@ agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => 
   const row = await loadSessionOr404(id);
 
   // A CLI runner reads its own session back with a device token to use the
-  // persisted `messages` as the baseline its PATCH appends onto (ISS-462). The
+  // returned `messages` as the baseline its PATCH appends onto (ISS-462). The
   // PATCH path already honors the device principal; GET must too, or the
   // baseline fetch 403s, the runner falls back to an EMPTY baseline, and every
   // turn's PATCH overwrites the whole array — dropping the user turn + all
@@ -206,7 +208,7 @@ agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => 
     assertAgentChatOwner(row, access, userId);
   }
 
-  return c.json(row);
+  return c.json(await withTranscript(row));
 });
 
 // ISS-584 (C) — runner ack. A CLI runner POSTs this the moment it receives an
@@ -279,7 +281,6 @@ agentSessionRoutes.patch(
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (stored.metadata !== undefined) updates.metadata = stored.metadata;
     if (stored.diff !== undefined) updates.diff = stored.diff;
-    if (patchedMessages !== undefined) updates.messages = patchedMessages;
 
     const isWorkerActivity =
       (patch.runtimeState !== undefined && patch.runtimeState !== 'awaiting_input') ||
@@ -305,6 +306,12 @@ agentSessionRoutes.patch(
       updates.failureDetail = null;
     }
 
+    let standing: readonly unknown[] | undefined = patchedMessages;
+    const standingTranscript = async () => {
+      standing ??= await readTranscript(id);
+      return standing;
+    };
+
     const existingMetaForSkillCheck = (existing.metadata as Record<string, unknown> | null) ?? null;
     const pendingSkillName =
       typeof existingMetaForSkillCheck?.pendingSkillName === 'string'
@@ -314,18 +321,16 @@ agentSessionRoutes.patch(
       if (patch.status === 'completed') {
         // Prefer the pre-turn baseline stamped in chat-turn.ts (the message
         // count right after the user turn, before any assistant reply) over
-        // `existing.messages.length` — an interim `running` PATCH may have
+        // the stored transcript's length — an interim `running` PATCH may have
         // already persisted this turn's assistant messages before this
         // terminal PATCH lands, which would make a freshly-recomputed count
         // include them and slice them out of the scan.
         const priorCount =
           typeof existingMetaForSkillCheck?.pendingSkillBaselineCount === 'number'
             ? existingMetaForSkillCheck.pendingSkillBaselineCount
-            : Array.isArray(existing.messages)
-              ? existing.messages.length
-              : 0;
+            : (await readTranscript(id)).length;
         const unexpanded = detectUnexpandedSkillFailure(
-          patchedMessages ?? existing.messages,
+          await standingTranscript(),
           pendingSkillName,
           priorCount,
         );
@@ -347,7 +352,7 @@ agentSessionRoutes.patch(
     }
 
     const reportedToolCalls = derivedTranscript
-      ? countTranscriptToolCalls(existing.messages)
+      ? countTranscriptToolCalls(await standingTranscript())
       : patch.toolCallCount;
     if (reportedToolCalls !== undefined && c.get('principal') === 'device') {
       const metaBase =
@@ -377,7 +382,7 @@ agentSessionRoutes.patch(
       patch.status === 'failed' && existing.failureReason !== 'user_cancelled'
         ? await finalizeScheduleSessionFailure({
             sessionId: id,
-            messages: patchedMessages ?? existing.messages,
+            messages: await standingTranscript(),
             note: null,
             baseMetadata:
               (updates.metadata as Record<string, unknown> | undefined) ??
@@ -396,8 +401,6 @@ agentSessionRoutes.patch(
       updates.failureDetail = null;
     }
 
-    // Dual-write: the messages array and agent_session_turns are written in one
-    // transaction so the legacy blob and turn rows can never diverge.
     const { status: nextStatus, ...columns } = updates;
     const { updated: written, sync } = await writeSessionPatch({
       sessionId: id,
@@ -432,10 +435,10 @@ agentSessionRoutes.patch(
       reportedStatus: patch.status,
       persistedStatus: updated.status,
       isUserCancelled,
-      messages: patchedMessages ?? existing.messages,
+      readMessages: standingTranscript,
     });
 
-    return c.json(updated);
+    return c.json(await withTranscript(updated, patchedMessages));
   },
 );
 

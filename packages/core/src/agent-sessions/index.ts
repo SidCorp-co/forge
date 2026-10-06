@@ -42,7 +42,7 @@ export {
   transitionSessions,
 } from './session-transition.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
-export { firstUserMessageText, messageRoleToTurnRole } from './turns-helpers.js';
+export { firstUserMessageText, messageRoleToTurnRole, readTranscript } from './turns-helpers.js';
 export { materializeJobUsage } from './usage-materialize.js';
 export {
   EMPTY_USAGE_TOTALS,

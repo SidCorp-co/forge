@@ -1,19 +1,23 @@
-import { and, asc, eq, gt, gte } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { type AgentSessionTurnRole, agentSessionTurns } from '../db/schema.js';
+import { and, asc, eq, gt, gte, sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
+import { type AgentSessionTurnRole, agentSessions, agentSessionTurns } from '../db/schema.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either the top-level db client or an in-flight drizzle transaction. */
 export type DbOrTx = typeof db | Tx;
+
+/** The turn role each canonical entry type is stored under. */
+const TURN_ROLE_OF_TYPE: Readonly<Record<string, AgentSessionTurnRole>> = {
+  user: 'user',
+  assistant: 'assistant',
+  system: 'tool',
+  tool_use: 'tool',
+  tool_result: 'tool',
+};
 
 export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | null {
   if (!entry || typeof entry !== 'object') return null;
   const type = (entry as { type?: unknown }).type;
-  if (typeof type !== 'string') return null;
-  if (type === 'assistant') return 'assistant';
-  if (type === 'user') return 'user';
-  if (type === 'system' || type === 'tool_use' || type === 'tool_result') return 'tool';
-  return null;
+  return typeof type === 'string' ? (TURN_ROLE_OF_TYPE[type] ?? null) : null;
 }
 
 /**
@@ -30,13 +34,110 @@ export function firstUserMessageText(messages: unknown): string | null {
   return null;
 }
 
+/** One transcript entry as a turn row holds it under `content.value`. */
+export type TranscriptEntry = Record<string, unknown>;
+
+function entryRefusal(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    return `entry is ${Array.isArray(entry) ? 'an array' : typeof entry}, not an object`;
+  }
+  if (messageRoleToTurnRole(entry) !== null) return null;
+  const type = (entry as { type?: unknown }).type;
+  return `entry has \`type: ${JSON.stringify(type)}\`, which names no turn role (${Object.keys(TURN_ROLE_OF_TYPE).join(', ')})`;
+}
+
+/** A whole reported transcript, refused by INDEX where an entry is not in the canonical shape. */
+export function canonicalTranscript(
+  raw: unknown,
+): { ok: true; messages: TranscriptEntry[] } | { ok: false; index: number; why: string } {
+  if (!Array.isArray(raw)) {
+    return { ok: false, index: -1, why: `messages is ${typeof raw}, not an array` };
+  }
+  for (let i = 0; i < raw.length; i += 1) {
+    const why = entryRefusal(raw[i]);
+    if (why) return { ok: false, index: i, why };
+  }
+  return { ok: true, messages: raw as TranscriptEntry[] };
+}
+
+interface PlannedTurn {
+  turnIndex: number;
+  role: AgentSessionTurnRole;
+  entry: unknown;
+}
+
+/** The row writes that turn the standing transcript `prev` into `next`. */
+export interface TranscriptPlan {
+  update: PlannedTurn[];
+  insert: PlannedTurn[];
+  truncateFrom: number | null;
+}
+
+export function planTranscriptWrite(
+  prev: readonly unknown[],
+  next: readonly unknown[],
+): TranscriptPlan {
+  const plan: TranscriptPlan = {
+    update: [],
+    insert: [],
+    truncateFrom: next.length < prev.length ? next.length : null,
+  };
+  for (let i = 0; i < next.length; i += 1) {
+    const entry = next[i];
+    if (i < prev.length && entriesEqual(prev[i], entry)) continue;
+    const role = messageRoleToTurnRole(entry);
+    // a reported transcript was refused at its door; one reaching here is a producer's defect
+    if (!role) throw new Error(`agent_session_turns: messages[${i}] ${entryRefusal(entry)}`);
+    (i < prev.length ? plan.update : plan.insert).push({ turnIndex: i, role, entry });
+  }
+  return plan;
+}
+
+/** Stable structural equality via JSON; entries are JSON-round-trippable (they live in jsonb). */
+function entriesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/** A session's transcript, oldest first. */
+export async function readTranscript(
+  sessionId: string,
+  dbClient: DbOrTx = db,
+): Promise<TranscriptEntry[]> {
+  const rows = await dbClient
+    .select({ content: agentSessionTurns.content })
+    .from(agentSessionTurns)
+    .where(eq(agentSessionTurns.agentSessionId, sessionId))
+    .orderBy(asc(agentSessionTurns.turnIndex));
+  return rows.map((r) => (r.content as { value: TranscriptEntry }).value);
+}
+
 /**
- * Whatever shape `messages[i]` had on disk, store it under `{ value: ... }` so
- * downstream code can always read `content.value` without losing the original
- * field set (timestamp, tool calls, attachments, etc.).
+ * How many entries the transcript of the `agent_sessions` row being selected holds. The outer
+ * column is spelled out: drizzle renders a single-table column unqualified, which inside this
+ * subquery would name the turn row's own `id`.
  */
-export function normalizeTurnContent(entry: unknown): { value: unknown } {
-  return { value: entry };
+export const transcriptLength = sql<number>`(SELECT count(*)::int FROM agent_session_turns t WHERE t.agent_session_id = "agent_sessions"."id")`;
+
+/** The fingerprint of the selected row's transcript, computed by Postgres over the stored rows. */
+export const transcriptFingerprint = sql<string>`md5(coalesce((SELECT string_agg(t.content::text, ',' ORDER BY t.turn_index) FROM agent_session_turns t WHERE t.agent_session_id = "agent_sessions"."id"), ''))`;
+
+/**
+ * Hold a session's transcript for the rest of the transaction. Every transcript writer takes the
+ * session row first, so the rows it reads after this are the ones it writes over; false when the
+ * session does not exist.
+ */
+export async function lockTranscript(tx: Tx, sessionId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .for('update');
+  return rows.length > 0;
 }
 
 interface AppendedTurn {
@@ -45,96 +146,63 @@ interface AppendedTurn {
   role: AgentSessionTurnRole;
 }
 
-interface SyncResult {
+export interface TranscriptWrite {
   appended: AppendedTurn[];
   truncatedFromTurnIndex: number | null;
 }
 
-export async function syncTurnsWithMessages(
+/**
+ * Write `next` as the session's whole transcript, diffed row by row against what stands. `prev` is
+ * the standing transcript where the caller already read it under {@link lockTranscript}.
+ */
+export async function writeTranscript(
+  tx: Tx,
   sessionId: string,
-  prev: unknown[],
-  next: unknown[],
-  dbClient: DbOrTx = db,
-): Promise<SyncResult> {
-  const prevLen = Array.isArray(prev) ? prev.length : 0;
-  const nextLen = next.length;
-  const prevArr = Array.isArray(prev) ? prev : [];
-
-  if (nextLen > prevLen) {
-    const newEntries = next.slice(prevLen);
-    const values = newEntries
-      .map((entry, i) => {
-        const role = messageRoleToTurnRole(entry);
-        if (!role) return null;
-        return {
-          agentSessionId: sessionId,
-          turnIndex: prevLen + i,
-          role,
-          content: normalizeTurnContent(entry),
-        };
-      })
-      .filter((v): v is NonNullable<typeof v> => v !== null);
-
-    if (values.length === 0) {
-      return { appended: [], truncatedFromTurnIndex: null };
-    }
-
-    const inserted = await dbClient.insert(agentSessionTurns).values(values).returning({
-      id: agentSessionTurns.id,
-      turnIndex: agentSessionTurns.turnIndex,
-      role: agentSessionTurns.role,
-    });
-
-    // Guard against mocked clients that resolve `undefined` here (existing
-    // route tests don't model the dual-write insert chain). Real production
-    // calls always get an array back from drizzle's RETURNING.
-    const safeInserted = Array.isArray(inserted) ? inserted : [];
-    return {
-      appended: safeInserted.map((r) => ({
-        turnId: r.id,
-        turnIndex: r.turnIndex,
-        role: r.role,
-      })),
-      truncatedFromTurnIndex: null,
-    };
+  next: readonly unknown[],
+  prev?: readonly unknown[],
+): Promise<TranscriptWrite> {
+  if (!(await lockTranscript(tx, sessionId))) {
+    throw new Error(`agent_session_turns: session ${sessionId} does not exist`);
   }
-
-  if (nextLen < prevLen) {
-    await dbClient
+  const plan = planTranscriptWrite(prev ?? (await readTranscript(sessionId, tx)), next);
+  if (plan.truncateFrom !== null) {
+    await tx
       .delete(agentSessionTurns)
       .where(
         and(
           eq(agentSessionTurns.agentSessionId, sessionId),
-          gte(agentSessionTurns.turnIndex, nextLen),
+          gte(agentSessionTurns.turnIndex, plan.truncateFrom),
         ),
       );
-    return { appended: [], truncatedFromTurnIndex: nextLen };
   }
-
-  // Same length: detect in-place mutations (streaming-tail pattern).
-  for (let i = nextLen - 1; i >= 0; i--) {
-    if (entriesEqual(prevArr[i], next[i])) break;
-    const role = messageRoleToTurnRole(next[i]);
-    if (!role) continue;
-    await dbClient
+  for (const t of plan.update) {
+    await tx
       .update(agentSessionTurns)
-      .set({ content: normalizeTurnContent(next[i]) as never })
+      .set({ role: t.role, content: { value: t.entry } })
       .where(
-        and(eq(agentSessionTurns.agentSessionId, sessionId), eq(agentSessionTurns.turnIndex, i)),
+        and(
+          eq(agentSessionTurns.agentSessionId, sessionId),
+          eq(agentSessionTurns.turnIndex, t.turnIndex),
+        ),
       );
   }
-  return { appended: [], truncatedFromTurnIndex: null };
-}
-
-/** Stable structural equality via JSON. Sufficient for messages, which are
- * already JSON-round-trippable (they live in jsonb). */
-function entriesEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
+  if (plan.insert.length === 0) return { appended: [], truncatedFromTurnIndex: plan.truncateFrom };
+  const inserted = await tx
+    .insert(agentSessionTurns)
+    .values(
+      plan.insert.map((t) => ({
+        agentSessionId: sessionId,
+        turnIndex: t.turnIndex,
+        role: t.role,
+        content: { value: t.entry },
+      })),
+    )
+    .returning({
+      turnId: agentSessionTurns.id,
+      turnIndex: agentSessionTurns.turnIndex,
+      role: agentSessionTurns.role,
+    });
+  return { appended: inserted, truncatedFromTurnIndex: plan.truncateFrom };
 }
 
 /** Cursor-paginated turn fetch. Used by the GET /turns endpoint. */
@@ -165,18 +233,15 @@ export async function loadTurns(
   };
 }
 
-/** Truncate turns past `keepThroughTurnIndex` (delete turn_index > keepThrough). */
-export async function truncateTurnsAfter(
-  sessionId: string,
-  keepThroughTurnIndex: number,
-  dbClient: DbOrTx = db,
-) {
-  await dbClient
+/** Cut a session's transcript to its first `length` entries. */
+export async function truncateTranscript(tx: Tx, sessionId: string, length: number): Promise<void> {
+  await lockTranscript(tx, sessionId);
+  await tx
     .delete(agentSessionTurns)
     .where(
       and(
         eq(agentSessionTurns.agentSessionId, sessionId),
-        gt(agentSessionTurns.turnIndex, keepThroughTurnIndex),
+        gte(agentSessionTurns.turnIndex, length),
       ),
     );
 }
@@ -191,26 +256,6 @@ export async function findTurnInSession(sessionId: string, turnId: string) {
   return row ?? null;
 }
 
-/**
- * Replace one entry inside the legacy `agent_sessions.messages` jsonb so the
- * dual-write blob stays consistent with a per-turn row update.
- */
-export function replaceMessageAt(
-  messages: unknown,
-  turnIndex: number,
-  patch: (entry: unknown) => unknown,
-): unknown[] {
-  const arr = Array.isArray(messages) ? [...messages] : [];
-  if (turnIndex < 0 || turnIndex >= arr.length) return arr;
-  arr[turnIndex] = patch(arr[turnIndex]);
-  return arr;
-}
-
-/** Truncate the legacy jsonb to keep `[0..keepThroughTurnIndex]` inclusive. */
-export function sliceMessagesThrough(messages: unknown, keepThroughTurnIndex: number): unknown[] {
-  const arr = Array.isArray(messages) ? messages : [];
-  return arr.slice(0, keepThroughTurnIndex + 1);
-}
 /**
  * Extract a non-empty string prompt from a `messages[i].content` value. The
  * legacy schema lets `content` be either a string or an array of structured

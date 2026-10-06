@@ -1,12 +1,12 @@
 import { HTTPException } from 'hono/http-exception';
-import { toCanonicalMessages } from './canonical-legacy.js';
 import { agentSessionsPorts } from './ports.js';
 import { recordTurnError } from './session-events.js';
 import { deriveChatTurnFinal } from './session-transcript.js';
+import { canonicalTranscript } from './turns-helpers.js';
 
 /** What the handler needs back before it builds its update. */
 interface TranscriptPatch {
-  /** The `messages` to persist, converted, or undefined where none was sent. */
+  /** The `messages` to persist, or undefined where none was sent. */
   messages: Record<string, unknown>[] | undefined;
   /** True when this call derived the turn's transcript from the carrier. */
   derived: boolean;
@@ -17,7 +17,7 @@ interface TranscriptPatch {
 
 /**
  * The transcript half of one PATCH: record a reported failure, derive the turn
- * where the carrier holds it, and convert a legacy `messages` array. A failure and a
+ * where the carrier holds it, and refuse a `messages` entry not in the canonical shape. A failure and a
  * transcript are stored through the same secret scrubber as the session event door.
  */
 export async function applyTranscriptPatch(args: {
@@ -56,7 +56,7 @@ export async function applyTranscriptPatch(args: {
     return { messages: undefined, derived, snapshot: false, stored: scrubbed };
   }
 
-  const canonical = toCanonicalMessages(patch.messages);
+  const canonical = canonicalTranscript(patch.messages);
   if (!canonical.ok) {
     throw new HTTPException(400, {
       message: `messages[${canonical.index}] ${canonical.why}`,

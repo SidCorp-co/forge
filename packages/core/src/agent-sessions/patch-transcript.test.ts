@@ -9,6 +9,7 @@ vi.mock('./session-events.js', () => ({
   }),
 }));
 vi.mock('./session-transcript.js', () => ({ deriveChatTurnFinal: vi.fn(async () => false) }));
+vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('./ports.js', () => ({
   agentSessionsPorts: () => ({
     scrubSessionOutput: vi.fn(async (_sessionId: string, data: unknown) =>
@@ -41,15 +42,15 @@ describe('applyTranscriptPatch stores nothing a secret scrubber would remove', (
     expect(recorded[0]).not.toContain('held-testing-secret-value');
   });
 
-  it("scrubs a device's legacy messages before they are returned for storage", async () => {
+  it("scrubs a device's messages before they are returned for storage", async () => {
     const out = await applyTranscriptPatch({
       sessionId: 's-1',
       isDevice: true,
       isTerminal: false,
       patch: {
         messages: [
-          { role: 'assistant', content: `here is the token ${PAT}` },
-          { role: 'user', content: 'and held-testing-secret-value' },
+          { type: 'assistant', content: `here is the token ${PAT}` },
+          { type: 'user', content: 'and held-testing-secret-value' },
         ],
       },
     });
@@ -82,9 +83,28 @@ describe('applyTranscriptPatch stores nothing a secret scrubber would remove', (
       sessionId: 's-1',
       isDevice: true,
       isTerminal: false,
-      patch: { turnError: 'exit 1', messages: [{ role: 'assistant', content: 'done' }] },
+      patch: { turnError: 'exit 1', messages: [{ type: 'assistant', content: 'done' }] },
     });
     expect(recorded).toEqual(['exit 1']);
     expect(JSON.stringify(out.messages)).toContain('"done"');
+  });
+
+  it('refuses a legacy role-shaped entry by its index instead of converting it', async () => {
+    const refused = applyTranscriptPatch({
+      sessionId: 's-1',
+      isDevice: true,
+      isTerminal: false,
+      patch: {
+        messages: [
+          { type: 'user', content: 'hi' },
+          { role: 'assistant', content: 'x' },
+        ],
+      },
+    });
+    await expect(refused).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/^messages\[1\] entry has `type: undefined`/),
+      cause: { code: 'UNREPRESENTABLE_ENTRY' },
+    });
   });
 });

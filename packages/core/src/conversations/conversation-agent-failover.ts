@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import {
   firstUserMessageText,
   pickTurnCredentialDevice,
+  readTranscript,
   resolveSessionAuthority,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -66,7 +67,7 @@ async function failoverTarget(
   const attempt = (prior.attempt ?? 0) + 1;
   if (attempt > MAX_FAILOVERS) return { ok: false, status: 'exhausted' };
 
-  const firstUser = firstUserMessageText(session.messages);
+  const firstUser = firstUserMessageText(await readTranscript(session.id));
   if (!firstUser) return { ok: false, status: 'no-prompt' };
 
   if (!meta.asker) return { ok: false, status: 'no-asker' };

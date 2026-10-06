@@ -1,4 +1,4 @@
-import { and, eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { attemptedMerge, finalizedMerge } from '../db/transcript-marker.js';
@@ -15,7 +15,13 @@ import {
   readCarrierRows,
   type TranscriptCarrier,
 } from './session-transcript-carrier.js';
-import { syncTurnsWithMessages } from './turns-helpers.js';
+import {
+  lockTranscript,
+  readTranscript,
+  type TranscriptWrite,
+  transcriptFingerprint,
+  writeTranscript as writeTranscriptRows,
+} from './turns-helpers.js';
 
 export type { CarrierRow, TranscriptCarrier } from './session-transcript-carrier.js';
 export { contiguousPrefix } from './session-transcript-carrier.js';
@@ -31,10 +37,10 @@ const DERIVE_CAS_ATTEMPTS = 3;
 /**
  * What one flush hands the next so the next folds only the events since.
  *
- * `messages` is deliberately NOT here: the session row holds it and every
- * derive reads that column anyway for the turn-table diff, so keeping a second
- * copy per live session would cost the 233 KB average (35 MB peak) of a
- * transcript for as long as the job runs.
+ * `messages` is deliberately NOT here: the turn rows hold it and every derive
+ * reads them anyway for the diff, so keeping a second copy per live session
+ * would cost the 233 KB average (35 MB peak) of a transcript for as long as the
+ * job runs.
  */
 interface Checkpoint {
   /** Highest `job_events.seq` folded into the transcript this checkpoint wrote. */
@@ -94,8 +100,8 @@ function getState(sessionId: string): FlushState {
 }
 
 /** The stored derived result's fingerprint, computed by Postgres over the
- *  stored bytes themselves rather than over a re-serialized copy of them. */
-const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':' || md5(coalesce(${agentSessions.claudeSessionId}, ''))`;
+ *  stored rows themselves rather than over a re-serialized copy of them. */
+const storedFingerprint = sql<string>`${transcriptFingerprint} || ':' || md5(coalesce(${agentSessions.claudeSessionId}, ''))`;
 
 const notUserCancelled = sql`not (${agentSessions.status} = 'failed' and ${agentSessions.failureReason} is not distinct from 'user_cancelled')`;
 
@@ -180,7 +186,6 @@ async function deriveOnce(
       projectId: agentSessions.projectId,
       deviceId: agentSessions.deviceId,
       status: agentSessions.status,
-      messages: agentSessions.messages,
       fingerprint: storedFingerprint,
       claudeSessionId: agentSessions.claudeSessionId,
       failureReason: agentSessions.failureReason,
@@ -194,9 +199,8 @@ async function deriveOnce(
     return 'nothing-to-write';
   }
 
-  const prevMessages = Array.isArray(existing.messages)
-    ? (existing.messages as AgentMessage[])
-    : [];
+  // read after the fingerprint: a write landing between the two loses the compare-and-swap
+  const prevMessages = (await readTranscript(agentSessionId)) as unknown as AgentMessage[];
   const resumed = resumeFrom(st?.checkpoint ?? null, existing.fingerprint, prevMessages, log);
 
   const rows = await readCarrierRows(carrier, agentSessionId, resumed?.lastSeq ?? 0);
@@ -240,7 +244,7 @@ async function deriveOnce(
   return 'written';
 }
 
-interface TranscriptWrite {
+interface DeriveWrite {
   baseline: string;
   prevMessages: AgentMessage[];
   messages: AgentMessage[];
@@ -251,37 +255,40 @@ interface TranscriptWrite {
 
 type WriteResult = {
   updated: typeof agentSessions.$inferSelect;
-  sync: Awaited<ReturnType<typeof syncTurnsWithMessages>>;
+  sync: TranscriptWrite;
   fingerprint: string;
 };
 
-/** The transcript write and the turn-table dual write, or null when the stored
- *  transcript moved between the read and this write. */
+/** The transcript write, or null when the stored transcript moved between the read and this
+ *  write: the session row is held first, so the fingerprint read after it is the one written over. */
 async function writeTranscript(
   agentSessionId: string,
-  w: TranscriptWrite,
+  w: DeriveWrite,
 ): Promise<WriteResult | null> {
   return db.transaction(async (tx) => {
-    const [row] = await tx
+    if (!(await lockTranscript(tx, agentSessionId))) return null;
+    const [standing] = await tx
+      .select({ fingerprint: storedFingerprint })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, agentSessionId));
+    if (standing?.fingerprint !== w.baseline) return null;
+    const [updated] = await tx
       .update(agentSessions)
       .set({
-        messages: w.messages,
         updatedAt: new Date(),
         ...(w.claudeSessionId ? { claudeSessionId: w.claudeSessionId } : {}),
         ...(w.finalizedAt ? { metadata: finalizedMerge(w.finalizedAt) } : {}),
       })
-      .where(
-        and(
-          eq(agentSessions.id, agentSessionId),
-          eq(storedFingerprint, w.baseline),
-          notUserCancelled,
-        ),
-      )
-      .returning({ ...getTableColumns(agentSessions), fingerprint: storedFingerprint });
-    if (!row) return null;
-    const { fingerprint, ...updated } = row;
-    const sync = await syncTurnsWithMessages(agentSessionId, w.prevMessages, w.messages, tx);
-    return { updated, sync, fingerprint };
+      .where(and(eq(agentSessions.id, agentSessionId), notUserCancelled))
+      .returning();
+    if (!updated) return null;
+    const sync = await writeTranscriptRows(tx, agentSessionId, w.messages, w.prevMessages);
+    const [after] = await tx
+      .select({ fingerprint: storedFingerprint })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, agentSessionId));
+    if (!after) throw new Error(`agent_sessions: ${agentSessionId} vanished under its own lock`);
+    return { updated, sync, fingerprint: after.fingerprint };
   });
 }
 
