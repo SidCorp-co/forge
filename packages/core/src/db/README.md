@@ -5,7 +5,7 @@ module: one per module that `owns` it in `src/modules.json` (`schema-issues.ts`,
 `schema-auth.ts`, …) or one of its own (`schema-issue-leases.ts`,
 `schema-deploy-locks.ts`, …). The generator reads every `schema*.ts` file through the
 glob in [`../../drizzle.config.ts`](../../drizzle.config.ts). The query layer reads
-[`schema.ts`](./schema.ts), which re-exports the owner files, plus the files spread
+[`./schema.ts`](./schema.ts), which re-exports the owner files, plus the files spread
 into the `schema` object in [`db/client.ts`](./client.ts); a new module of its own
 is added to one of the two. An enum array one schema file's columns read from
 another goes in the leaf [`schema-vocabulary.ts`](./schema-vocabulary.ts): the

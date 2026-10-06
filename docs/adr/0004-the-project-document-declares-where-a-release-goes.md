@@ -56,7 +56,8 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
   `packages/core/src/release-batch/verify.ts:verifyDeployed`: 300 s, two stable reads.
 - **Test credentials leave the project row.** A tester gets in through the testing profile an
   environment names. That profile holds `secret://` references. The one route that hands out the
-  value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets`
+  value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets` (`self`, or the job's own
+  id)
   (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
   running job's own credential, only for the profile named by the environment whose `deploysFrom`
   is the target its issue's merge mark recorded, audits each read and scrubs each value from that

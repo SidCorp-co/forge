@@ -46,9 +46,11 @@ project document's `delivery.verdictsRequired` is true, the default; where it is
 dispatcher's own act. No code path fires a deployment, and none cuts a release tag — see
 [`docs/adr/0002-the-agent-cuts-the-release-tag.md`](docs/adr/0002-the-agent-cuts-the-release-tag.md).
 
-**A release's version number is allocated, not chosen.** One writer, under a lock, with a failed
-release burning its number — see
+**A release's version number is allocated, not chosen.** One writer, under a lock — see
 [`docs/adr/0001-a-release-version-is-a-counter.md`](docs/adr/0001-a-release-version-is-a-counter.md).
+A number is spent once it leaves Forge (a tag, a promotion, a served build); a batch that aborts
+before that hands it back — see
+[`docs/adr/0010-a-release-number-is-spent-when-it-leaves-forge.md`](docs/adr/0010-a-release-number-is-spent-when-it-leaves-forge.md).
 
 **Where a release goes is declared by the project document**: the production environment, the
 branch it deploys from, and the promotions that reach it — see

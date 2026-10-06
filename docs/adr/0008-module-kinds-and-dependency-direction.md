@@ -100,8 +100,9 @@ The choices inside that, and why:
   became a permission, and one `can()` replaces the agency rule table for every other act.
 
 **The rules are measured by two scripts.** The import rules (direction, public face, cycles)
-are `scripts/check-module-boundaries.mjs`'s, a blocking check with a shrink-only baseline, as
-ISS-184's amendment below records. `scripts/check-module-shape.mjs` refuses a declaration that
+are `scripts/check-module-boundaries.mjs`'s, a blocking check with every rule at zero and nothing
+frozen; the shrink-only baseline ISS-184's amendment below adopted was deleted once it drained
+(amendment of 2026-10-06). `scripts/check-module-shape.mjs` refuses a declaration that
 contradicts itself (an undeclared directory among it) and blocks, with type-aware ESLint rules
 ratcheted by bulk suppressions (ISS-196), the rules an import graph cannot show: table writers,
 database calls in routes, refusal shape and the global fetch outside an adapter; a status
@@ -283,3 +284,13 @@ per table over twelve tables) already broke the rule this ADR stated. The rule n
   its staleness stated, then a projection table the read model declares under `projections` (the one
   table a read model owns), written only by its outbox consumer and rebuildable from source. Application-maintained caches are "a complete mess of complicated
   invalidation logic" (Kleppmann); each step is taken only when the one before cannot serve.
+
+## Amendment (2026-10-06, tech-debt L1): the drained baselines are deleted
+
+The shrink-only baseline ISS-184 adopted for the import rules, and the one ISS-221 kept for the
+requirement trace, both reached zero entries. A ratchet holding nothing freezes nothing, while its
+`--update-baseline` path stayed a way to admit a new violation by re-freezing it. Both baselines and
+both update paths are deleted: `scripts/check-module-boundaries.mjs` takes no argument and fails on
+any violation, and the trace rules in `scripts/check-module-shape.mjs` fail on any untraced unit.
+The semantic rules keep their bulk suppressions (`.forge/module-shape-suppressions.json`), because
+that file still holds an entry.

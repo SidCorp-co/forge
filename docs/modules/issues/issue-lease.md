@@ -1,7 +1,8 @@
 # The issue lease
 
 `packages/core/src/issues/issue-lease.ts` is the only writer of `issue_leases`
-and the only place the SQL for *"is this issue being worked"* is written.
+and the only place the SQL for *"is this issue being worked"* is written
+(`issueWorkInFlightSql`, `issueWorkMovingSql`).
 
 ## Why a row and not a jsonb array
 
@@ -67,7 +68,7 @@ writes what core said to its own log rather than discarding it: a run that will
 not close is legible only while the sentence naming the way out survives.
 
 `releaseIssueLeaseRow` takes an executor rather than reaching for `db`, and
-`releaseIssueLease` in `packages/core/src/devices/run-session.ts` calls it inside
+`packages/core/src/devices/run-session.ts:releaseIssueLease` calls it inside
 the transaction that also strips the run's membership, because the lease and the
 membership have to drop in one transaction. Between two
 autonomous writes, a replacement open on the same device can take the lease back

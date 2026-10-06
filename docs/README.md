@@ -29,3 +29,6 @@
   and never `TBD`, `none` or `n/a`. A cost nobody has worked out is not a priced trade-off, and a
   section that is present and says nothing is the shape this rule exists to refuse.
   `check-honest-costs` measures it and `scripts/README.md` has the gate's row.
+- **Every file directly under `proposals/` opens with a `**Removed when:**` line** naming the issue
+  whose landing deletes it; `proposals/destination/` describes where the tree is going and is
+  exempt. `check-honest-costs` refuses a proposal without the line, or with one naming no issue key.

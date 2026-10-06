@@ -25,18 +25,18 @@ checker can only file `TERMINAL_PIPELINE_RUN_STATUSES` under `session` or leave 
 depending on the prose near it. A session tuple with those three members would pair with it
 falsely, and the pairing would read as a finding about the wrong module.
 
-**One question has ten inline answers and two more under other names.** `['running', 'paused']`,
+**One question has ten inline answers and one more under another name.** `['running', 'paused']`,
 which `LIVE_PIPELINE_RUN_STATUSES` names, is written inline in `pipeline/deploy-confirmations.ts`
-(twice), `pipeline/runs-control.ts`, `pipeline/runs.ts` (six times) and
-`health/project-health.ts`; it is declared a second time as
-`release-batch/version-store.ts:OPEN_RUN_STATUSES`, and a third as `LIVE_RUN_STATUSES` in
-`packages/web-v2/src/features/project-dashboard/derive.ts`. That last one is the shape this whole
+(twice), `pipeline/one-shot-reap.ts`, `pipeline/runs-control.ts`, `pipeline/runs.ts` (five times)
+and `health/project-health.ts`; it is declared a second time as `LIVE_RUN_STATUSES` in
+`packages/web-v2/src/features/project-dashboard/derive.ts`. That copy is the shape this whole
 axis exists to refuse: a browser copy of a core answer with no marker and nothing naming the two as
-one question. The same pair is also spelled as SQL text (`IN ('running', 'paused')`) in ten core
-files, which the checker deliberately does not read.
+one question. The same pair is also spelled as SQL text (`IN ('running', 'paused')`) in eight core
+files, which the checker deliberately does not read. Counted 2026-10-06 with
+`rg -U "\[\s*'running',\s*'paused',?\s*\]" packages/core/src` and the `IN (...)` form, tests excluded.
 
 What it would take: add `run` to `VOCABULARIES` and `DISCRIMINATOR` in
-`scripts/check-status-tuples.mjs`, move the inline sites and `OPEN_RUN_STATUSES` onto
+`scripts/check-status-tuples.mjs`, move the inline sites onto
 `LIVE_PIPELINE_RUN_STATUSES`, and have web-v2 import it from `@forge/contracts/run-machine`, which
 it already imports `PIPELINE_RUN_STATUSES` from (`features/pipeline/types.ts`), rather than mark the
 pair `differs`, since the two are the same answer and not a coincidence.
@@ -47,7 +47,7 @@ The price of doing this, not of leaving it:
 
 | Cost | What it takes |
 |---|---|
-| A dozen query predicates get re-read, not renamed | Every inline `['running', 'paused']` has to be read against what ITS query means by live. `paused` is in the set, so a site that meant `running` alone is widened by the move and the widening is silent — this is a behaviour surface in `pipeline/`, `projects/` and `release-batch/`, not a spelling change. |
+| A dozen query predicates get re-read, not renamed | Every inline `['running', 'paused']` has to be read against what ITS query means by live. `paused` is in the set, so a site that meant `running` alone is widened by the move and the widening is silent — this is a behaviour surface in `pipeline/` and `health/`, not a spelling change. |
 | A fourth vocabulary makes the gate louder before it makes it quieter | Adding `run` to `VOCABULARIES` turns the tree red at every site at once, so the checker and the collapse have to land in one change or the gate blocks every merge in between — the same rule ISS-1106 landed under. |
 | Attribution stays approximate either way | `['completed', 'failed', 'cancelled']` is a subset of `AGENT_SESSION_STATUSES` as well as of `PIPELINE_RUN_STATUSES`, so the discriminator decides by nearby prose. A tuple with no `run` or `session` word near it stays unattributed and is printed rather than measured. |
 | It buys nothing a reader has complained about | None of the copies has been observed disagreeing. This is drift before it rots, which is the only kind this axis can catch — and also the kind that is hardest to justify spending a round on. |

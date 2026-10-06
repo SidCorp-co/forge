@@ -2,8 +2,8 @@
 
 `packages/core/src/issues/merge-record.ts` is the only writer of
 `issues.merged_at`, `issues.merged_commit_sha` and `issues.merged_landing` —
-`scripts/check-merged-at-writers.mjs` holds that — and `mergeMarkKindOf` is the only reading of
-what the columns MEAN.
+`scripts/check-merged-at-writers.mjs` holds that — and `mergeMarkKindOf`, in the same file, is the
+only reading of what the columns MEAN.
 
 | `merged_at` | `merged_commit_sha` | `merged_landing` | kind |
 |---|---|---|---|

@@ -1,11 +1,13 @@
 # Migrations
 
 Drizzle-managed schema migrations for `@forge/core`. Applied automatically
-on container start by `node dist/db/migrate.js` (Dockerfile CMD).
+on container start by `node dist/migrate.js` (the Dockerfile CMD), before the
+server starts. That entry (`packages/core/src/migrate.ts`) installs the
+error-tracking port and then runs `packages/core/src/db/migrate.ts`.
 
 ## Runtime behaviour
 
-`dist/db/migrate.js` calls `drizzle-orm/postgres-js/migrator`, which:
+`packages/core/src/db/migrate.ts` calls `drizzle-orm/postgres-js/migrator`, which:
 
 1. **Reads `meta/_journal.json`** — the canonical list of migrations to
    apply, in order (`idx` field).
@@ -173,6 +175,6 @@ Then restart the container so the migrator reapplies cleanly.
 
 ## Source of truth
 
-- Runtime migrator: `packages/core/src/db/migrate.ts`
+- Runtime migrator: `packages/core/src/migrate.ts` over `packages/core/src/db/migrate.ts`
 - Schema TS: `packages/core/src/db/schema*.ts`
 - Drizzle config: `packages/core/drizzle.config.ts`

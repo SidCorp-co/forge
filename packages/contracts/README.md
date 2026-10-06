@@ -44,8 +44,8 @@ Every module is reached by its own subpath, `@forge/contracts/<module>`; the pac
 | [`src/rows.ts`](./src/rows.ts) | Row types inferred from Drizzle table schemas in `@forge/core` |
 | [`src/requests.ts`](./src/requests.ts) | Request input types (`z.infer` of core's validators, re-exported as types — no runtime Zod) |
 | [`src/responses.ts`](./src/responses.ts) | Response envelope shapes |
-| [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
-| [`src/notifications.ts`](./src/notifications.ts) | Notification types |
+| [`src/integrations.ts`](./src/integrations.ts) | Integration types re-exported from core (`IntegrationProvider`, `IntegrationCapabilities`), the connection and binding summaries, and the agent-access grant (`AGENT_ACCESS_VALUES`) |
+| [`src/notifications.ts`](./src/notifications.ts) | Notification types and the contract each one carries (`NOTIFICATION_TYPES`, `notificationContractOf`) |
 | [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry enum tuples (job types, priorities, complexities, run kinds) |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
