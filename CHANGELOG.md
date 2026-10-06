@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.44] - 2026-10-06
+
+Private agent chats are visible only to their owner and project admins
+
+
 ### Fixed
 
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
