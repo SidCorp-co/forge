@@ -34,6 +34,11 @@ fn a_master_refused_for_its_path_is_said_on_status_naming_each_binary_and_the_pa
     let before = status(&home, "plantslug");
     let said = String::from_utf8_lossy(&before.stdout);
     assert!(
+        before.status.success(),
+        "{said}{}",
+        String::from_utf8_lossy(&before.stderr)
+    );
+    assert!(
         !said.contains(" unplaced  "),
         "nothing recorded, nothing said: {said}"
     );
@@ -71,6 +76,11 @@ fn a_master_refused_for_its_path_is_said_on_status_naming_each_binary_and_the_pa
 
     unplaced_record::clear(&dir).unwrap();
     let after = status(&home, "plantslug");
+    assert!(
+        after.status.success(),
+        "{}",
+        String::from_utf8_lossy(&after.stderr)
+    );
     assert!(
         !String::from_utf8_lossy(&after.stdout).contains(" unplaced  "),
         "a placement that cleared the record leaves nothing said"
