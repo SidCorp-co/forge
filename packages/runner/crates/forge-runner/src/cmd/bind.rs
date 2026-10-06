@@ -64,6 +64,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         args.slug,
         bound.display()
     );
+    // A checkout bound by path is provisioned like any other: without this its orientation kept
+    // whatever instance last wrote it, and a re-bind never put this instance's back.
+    if given {
+        provision::reprovision(&client, &Config::load()?, &assignment.runner_id).await;
+    }
     if let Some(host) = helper_host {
         git_cred::set_repo_credential_helper(&bound, &host).map_err(|e| {
             anyhow::anyhow!(

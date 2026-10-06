@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`forge-runner bind --path` provisions the checkout.** A re-bound checkout used to keep the
+  orientation of whichever instance last wrote it; it now carries this instance's, under
+  skip-worktree where the file is committed.
+
 ## [0.4.0-dev.34] - 2026-10-05
 
 Simpler core and web, and projects that live only on a runner's checkout
