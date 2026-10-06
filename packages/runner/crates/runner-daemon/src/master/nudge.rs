@@ -187,7 +187,35 @@ pub(crate) async fn read_inbox(
     let mut owed = read_channel_inbox(client, masters, project_id, slug).await;
     owed.extend(read_comment_inbox(client, masters, project_id, slug).await);
     owed.extend(read_requirement_inbox(client, masters, project_id, slug).await);
+    owed.extend(read_feedback_inbox(client, masters, project_id, slug).await);
     owed
+}
+
+/// Which feedback items owe this project's master a triage, as core answers it.
+pub(crate) async fn read_feedback_inbox(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+) -> Vec<UnansweredDocument> {
+    let key = format!("{project_id}#feedback");
+    match feedback_inbox::owed(client, project_id).await {
+        Ok(owed) => {
+            if masters.note_inbox_read(&key, None) {
+                tracing::info!("[master] {slug}: the feedback inbox reads again");
+            }
+            owed
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if masters.note_inbox_read(&key, Some(why.clone())) {
+                tracing::warn!(
+                    "[master] {slug}: cannot read which feedback items owe a triage ({why}) — this pass is decided without them, and high or critical feedback is not triaged until the read succeeds"
+                );
+            }
+            Vec::new()
+        }
+    }
 }
 
 /// Which agreed requirements owe this project's master a breakdown, due or overdue.
@@ -317,7 +345,7 @@ pub(crate) async fn nudge_master(
             tracing::info!("[master] {slug}: admissible work — nudging {name}")
         }
         None => tracing::info!(
-            "[master] {slug}: admissible work, {} channel document(s) or issue comment(s) owed a reply — nudging {name}",
+            "[master] {slug}: {} item(s) owed from the channel, issue threads, requirements or feedback — nudging {name}",
             inbox.len()
         ),
     }
@@ -332,5 +360,25 @@ pub(crate) async fn nudge_master(
         } else {
             tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_transport::feedback_inbox::FEEDBACK_TRIAGE_TYPE;
+
+    #[test]
+    fn untriaged_feedback_alone_owes_the_master_a_pass_that_names_it() {
+        let owed = [UnansweredDocument {
+            id: "f2".into(),
+            number: Some("FB-2".into()),
+            r#type: Some(FEEDBACK_TRIAGE_TYPE.into()),
+            from: None,
+            overdue: false,
+        }];
+        assert!(asked_this_sweep(&[], &owed, None));
+        assert!(nudge(&owed).contains("feedback item owes a triage (FB-2)"));
+        assert!(!asked_this_sweep(&[], &[], None));
     }
 }

@@ -9,4 +9,5 @@ export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';
 export { lockFeedback } from './service.js';
+export { MASTER_OWED_SEVERITIES } from './owed-triage.js';
 export { triageIn } from './triage.js';

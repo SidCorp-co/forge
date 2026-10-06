@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **High or critical feedback now prompts the master.** The box reads which items core says owe a
+  triage on every sweep and nudges the master naming them; the master skill gains the feedback
+  method.
 - **A release no longer reads lost when its master pane is replaced.** A pool job's session opens
   as its own root, not under the master it was held by, so ending that master leaves the running
   release untouched.
