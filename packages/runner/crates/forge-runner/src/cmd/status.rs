@@ -1,7 +1,9 @@
 use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
-use forge_runner_core::daemon::degraded::{Condition, Last, Verdict, RECENT_WITHIN_MS};
+use forge_runner_core::daemon::degraded::{
+    Condition, Last, Verdict, KEPT_AFTER_TRIM, MIN_WINDOW_MS, RECENT_WITHIN_MS,
+};
 use forge_runner_core::daemon::pool_reads;
 use forge_runner_core::runner::ledger::{short_id, Ledger, Unanswered, WhatEndsIt};
 
@@ -337,7 +339,7 @@ fn kind_lines(label: &str, what: &str, c: &Condition) -> Vec<String> {
         _ => "",
     };
     let mut out = vec![
-        format!("  {label} {} {what}{verdict}", c.count),
+        format!("  {label} {} {what}{verdict}", count_of(c)),
         format!("{INDENT}{}", rate_line(c)),
     ];
     for r in &c.by_reason {
@@ -358,23 +360,38 @@ fn kind_lines(label: &str, what: &str, c: &Condition) -> Vec<String> {
     out
 }
 
+/// The count, as a floor wherever older marks may have been dropped: a bare
+/// number there reads as a lifetime total (ISS-1324).
+fn count_of(c: &Condition) -> String {
+    if c.trimmed {
+        format!("at least {}", c.count)
+    } else {
+        c.count.to_string()
+    }
+}
+
 /// The number as a rate over a window, which is the only form it means
 /// anything in. `278` alone reads as history; `75/day over 3d 17h, last 4m ago`
-/// reads as what it is (ISS-1192).
+/// reads as what it is (ISS-1192). Under `MIN_WINDOW_MS` no rate is stated,
+/// and the line says why (ISS-1324).
 fn rate_line(c: &Condition) -> String {
     let mut parts = Vec::new();
     match (c.per_day, c.window_ms) {
         (Some(rate), Some(window)) => parts.push(format!("{rate:.0}/day over {}", span(window))),
-        _ => parts.push("over too short a window to state a rate".to_string()),
+        (None, Some(window)) => parts.push(format!(
+            "over {}, under the {} a rate needs, so none is stated",
+            span(window),
+            span(MIN_WINDOW_MS)
+        )),
+        _ => parts.push("one mark, so no window to state a rate over".to_string()),
     }
     if c.trimmed {
-        // What the flag knows is that the file stands at its cap, not that
-        // anything was actually dropped. Stating the stronger thing would make
-        // the count read as a lifetime total that went down.
-        parts.push(
-            "of what is kept — the file is at its cap, so older marks may have been dropped"
-                .to_string(),
-        );
+        // What the flag knows is that the file holds at least what a trim
+        // keeps, not that anything was dropped, nor that the file is full.
+        parts.push(format!(
+            "the file holds at least the {KEPT_AFTER_TRIM} lines a trim keeps, so older marks \
+             may have been dropped and the count is a floor"
+        ));
     }
     if let Some(since) = c.since_last_ms {
         parts.push(if since <= RECENT_WITHIN_MS {
@@ -994,8 +1011,65 @@ mod tests {
         c.trimmed = true;
         let out = gate_lines(&c, &Condition::none()).join("\n");
         assert!(
-            out.contains("kept") && out.contains("may have been dropped"),
+            out.contains("degraded   at least 250 dispatch(es)"),
             "a trimmed count read as a lifetime total says the box is recovering: {out}"
+        );
+        assert!(
+            out.contains("at least the 250 lines a trim keeps")
+                && out.contains("may have been dropped"),
+            "{out}"
+        );
+        assert!(!out.contains("at its cap"), "{out}");
+    }
+
+    /// ISS-1324. A count whose file was never trimmed is stated whole.
+    #[test]
+    fn an_untrimmed_count_is_stated_as_it_is() {
+        let out = gate_lines(&condition(75, "x"), &Condition::none()).join("\n");
+        assert!(out.contains("degraded   75 dispatch(es)"), "{out}");
+        assert!(!out.contains("at least"), "{out}");
+    }
+
+    /// ISS-1324. Two marks five minutes apart: the span and the minimum, and
+    /// no figure per day.
+    #[test]
+    fn a_window_under_the_minimum_states_its_span_and_no_rate() {
+        let c = forge_runner_core::daemon::degraded::condition(
+            &forge_runner_core::daemon::degraded::Tally {
+                count: 2,
+                by_reason: std::collections::BTreeMap::new(),
+                last: None,
+                last_at: Some(NOW - 60_000),
+                first_at: Some(NOW - 60_000 - 5 * 60_000),
+                trimmed: false,
+            },
+            NOW,
+        );
+        let out = gate_lines(&Condition::none(), &c).join("\n");
+        assert!(!out.contains("/day"), "{out}");
+        assert!(
+            out.contains("over 5m, under the 1h a rate needs, so none is stated"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_single_mark_says_it_has_no_window() {
+        let c = forge_runner_core::daemon::degraded::condition(
+            &forge_runner_core::daemon::degraded::Tally {
+                count: 1,
+                by_reason: std::collections::BTreeMap::new(),
+                last: None,
+                last_at: Some(NOW),
+                first_at: Some(NOW),
+                trimmed: false,
+            },
+            NOW,
+        );
+        let out = gate_lines(&c, &Condition::none()).join("\n");
+        assert!(
+            out.contains("one mark, so no window to state a rate over"),
+            "{out}"
         );
     }
 

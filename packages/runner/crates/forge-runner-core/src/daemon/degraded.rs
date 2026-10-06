@@ -124,6 +124,11 @@ impl<'a> Mark<'a> {
 
 const MAX_LINES: usize = 500;
 
+/// What a trim leaves. A file holding fewer lines was never trimmed, so its
+/// count is a total; one holding at least this many may have been, so its
+/// count may be a floor.
+pub const KEPT_AFTER_TRIM: usize = MAX_LINES / 2;
+
 /// `<config dir>/gate-marks.jsonl`.
 pub fn marks_path(config_dir: &Path) -> PathBuf {
     config_dir.join("gate-marks.jsonl")
@@ -173,7 +178,7 @@ fn trim(path: &Path) {
     if lines.len() <= MAX_LINES {
         return;
     }
-    let keep = lines[lines.len() - MAX_LINES / 2..].join("\n");
+    let keep = lines[lines.len() - KEPT_AFTER_TRIM..].join("\n");
     let _ = std::fs::write(path, format!("{keep}\n"));
 }
 
@@ -254,15 +259,16 @@ pub fn tally(config_dir: &Path) -> (Tally, Tally) {
             slot.first_at = at;
         }
     }
-    let trimmed = body.lines().count() >= MAX_LINES / 2;
+    let trimmed = body.lines().count() >= KEPT_AFTER_TRIM;
     degraded.trimmed = trimmed && degraded.count > 0;
     undeclared.trimmed = trimmed && undeclared.count > 0;
     (degraded, undeclared)
 }
 
-/// A window shorter than this states no rate at all. One mark in fifty-five
-/// minutes extrapolates to whatever the arithmetic is asked for, and ISS-1192's
-/// own counter was read both ways in one afternoon.
+/// A window shorter than this states no rate at all, so a day is never
+/// extrapolated from more than 24 times the span the marks cover. Two marks in
+/// five minutes printed as 494 a day (ISS-1324), and ISS-1192's own counter was
+/// read both ways in one afternoon.
 pub const MIN_WINDOW_MS: i64 = 60 * 60 * 1000;
 
 /// Past this, the newest mark is history rather than an open wound. `149` alone
@@ -328,6 +334,7 @@ pub struct Condition {
     pub last_at: Option<i64>,
     /// The span the kept marks cover, `None` where fewer than two of them do.
     pub window_ms: Option<i64>,
+    /// `None` wherever `window_ms` is under `MIN_WINDOW_MS`.
     pub per_day: Option<f64>,
     /// How long since the newest mark, which is what separates an open wound
     /// from a closed one.
@@ -370,12 +377,13 @@ pub fn condition(t: &Tally, now_ms: i64) -> Condition {
         (Some(first), Some(last)) if last > first => Some(last - first),
         _ => None,
     };
-    let per_day = window_ms.map(|w| t.count as f64 * 86_400_000.0 / w as f64);
+    let per_day = window_ms
+        .filter(|w| *w >= MIN_WINDOW_MS)
+        .map(|w| t.count as f64 * 86_400_000.0 / w as f64);
     let since_last_ms = t.last_at.map(|last| (now_ms - last).max(0));
     let verdict = if t.count == 0 {
         Verdict::Clear
-    } else if window_ms.is_some_and(|w| w >= MIN_WINDOW_MS)
-        && since_last_ms.is_some_and(|s| s <= RECENT_WITHIN_MS)
+    } else if since_last_ms.is_some_and(|s| s <= RECENT_WITHIN_MS)
         && per_day.is_some_and(|r| r >= SUSTAINED_PER_DAY)
     {
         Verdict::FailingOpen
@@ -695,11 +703,26 @@ mod tests {
     fn a_window_too_short_to_hold_a_rate_never_reads_as_failing_open() {
         let t = tally_at(11, 60_000, 0, NOW);
         let c = condition(&t, NOW);
-        assert!(
-            c.per_day.is_some_and(|r| r > SUSTAINED_PER_DAY),
-            "the arithmetic is what makes this test worth having"
-        );
+        assert_eq!(c.per_day, None);
+        assert_eq!(c.window_ms, Some(60_000));
         assert_eq!(c.verdict, Verdict::Marked);
+    }
+
+    /// ISS-1324. The minimum is a bound on the rate itself and not only on the
+    /// verdict: two marks five minutes apart carry no rate, a millisecond under
+    /// the hour carries none, and the hour itself carries one.
+    #[test]
+    fn a_rate_is_stated_only_from_a_window_of_at_least_the_minimum() {
+        let two_in_five = condition(&tally_at(2, 5 * 60_000, 0, NOW), NOW);
+        assert_eq!(two_in_five.per_day, None, "{two_in_five:?}");
+
+        let just_under = condition(&tally_at(30, MIN_WINDOW_MS - 1, 0, NOW), NOW);
+        assert_eq!(just_under.per_day, None);
+        assert_eq!(just_under.verdict, Verdict::Marked);
+
+        let at = condition(&tally_at(30, MIN_WINDOW_MS, 0, NOW), NOW);
+        assert_eq!(at.per_day, Some(720.0));
+        assert_eq!(at.verdict, Verdict::FailingOpen);
     }
 
     /// Criterion 11. An old burst is history. `149` and `149 and still
