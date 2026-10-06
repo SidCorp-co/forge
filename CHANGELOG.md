@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.43] - 2026-10-06
+
+Private chat forks stay the owner's, runner fails refused turns, worktrees load orientation
+
+
 ### Fixed
 
 - **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
