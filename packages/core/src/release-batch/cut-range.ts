@@ -91,7 +91,10 @@ async function readPages(
       if (!commit) return `${client.fullName} answered a commit with no sha in ${base}...${head}`;
       commits.push(commit);
     }
-    if (commits.length >= read.total_commits || read.commits.length === 0) return { commits };
+    if (commits.length >= read.total_commits) return { commits };
+    if (read.commits.length === 0) {
+      return `${client.fullName} stopped answering ${base}...${head} at ${commits.length} of the ${read.total_commits} commits it reported`;
+    }
   }
   return `${base}...${head} holds more than ${PAGE_SIZE * PAGE_LIMIT} commits, more than one release range is read for`;
 }

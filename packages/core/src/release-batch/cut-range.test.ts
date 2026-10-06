@@ -86,6 +86,16 @@ describe('readRangeTo (ISS-1386)', () => {
     expect(failed.kind === 'unread' && failed.why).toContain('502 from GitHub');
   });
 
+  it('answers unread where a page comes back empty before the reported total is read', async () => {
+    const range = await readRangeTo('p', PROMOTE, HEAD, {
+      client: async () =>
+        client((path) => (path.endsWith('&page=1') ? page(100, 150) : page(0, 150))),
+    });
+
+    expect(range.kind).toBe('unread');
+    expect(range.kind === 'unread' && range.why).toMatch(/100 of the 150 commits/);
+  });
+
   it('refuses to read a range longer than it pages through, rather than read part of it', async () => {
     const range = await readRangeTo('p', PROMOTE, HEAD, {
       client: async () => client(() => page(100, 5000)),
