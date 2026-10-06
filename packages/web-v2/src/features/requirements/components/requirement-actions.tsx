@@ -114,6 +114,15 @@ export function PrimaryActions({
         </Button>
       </Tooltip>
     );
+  } else if (d.canSignOff && d.status === "draft" && head && !draft && s.facts.unapprovedDesigns.length > 0) {
+    const designs = s.facts.unapprovedDesigns.map((x) => `${x.flow} (${x.designStatus ?? "no design yet"})`).join(", ");
+    primary = (
+      <Tooltip label={`Every linked design is approved before the agree pins it; not approved: ${designs}`} multiline>
+        <Button type="button" size="sm" variant="primary" disabled data-testid="agree-held">
+          Agree r{head.revision}
+        </Button>
+      </Tooltip>
+    );
   } else if (d.canSignOff && d.status === "draft" && head && !draft) {
     primary = (
       <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "agree", revision: head.revision })}>

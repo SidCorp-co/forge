@@ -291,6 +291,8 @@ export interface RequirementFacts {
 		pinned: string | null;
 		current: string;
 	}[];
+	/** Linked designs holding no approved revision; an agree is refused while any is listed. */
+	unapprovedDesigns: { flow: string; designStatus: string | null }[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }

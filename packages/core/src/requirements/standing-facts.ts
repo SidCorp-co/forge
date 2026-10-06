@@ -131,3 +131,27 @@ export async function closedAtOf(issueIds: readonly string[]): Promise<Map<strin
      GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
   return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
 }
+
+/** Each requirement's linked designs that hold no approved revision, which an agree refuses. */
+export async function unapprovedDesignsOf(ids: readonly string[]) {
+  if (ids.length === 0) return [];
+  const rows = (await db.execute(sql`
+    SELECT rw.requirement_id, w.flow, w.design_status
+      FROM requirement_workflows rw
+      JOIN project_workflows w ON w.id = rw.workflow_id
+     WHERE w.approved_revision IS NULL
+       AND rw.requirement_id IN (${sql.join(
+         ids.map((id) => sql`${id}`),
+         sql`, `,
+       )})
+     ORDER BY w.flow`)) as unknown as {
+    requirement_id: string;
+    flow: string;
+    design_status: string | null;
+  }[];
+  return [...rows].map((r) => ({
+    requirementId: r.requirement_id,
+    flow: r.flow,
+    designStatus: r.design_status,
+  }));
+}

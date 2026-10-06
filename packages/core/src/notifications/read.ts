@@ -20,8 +20,9 @@ export const stillTrue = sql`(
 )`;
 
 /**
- * How many distinct records reachable through the caller's deliveries are still true — a
- * grouped delivery carrying fifteen firing parks reads fifteen.
+ * How many of the caller's deliveries still carry a record that is true — the rows the bell lists
+ * as open. A grouped delivery carrying fifteen firing parks is one row and reads one: counting its
+ * records put 136 on a badge over a list of 21 open rows (FB-76).
  */
 export async function openNotificationCount(
   userId: string,
@@ -36,7 +37,7 @@ export async function openNotificationCount(
   if (projectId) conditions.push(eq(notifications.projectId, projectId));
 
   const [row] = await db
-    .select({ n: countDistinct(notifications.id) })
+    .select({ n: countDistinct(notificationDeliveries.id) })
     .from(notificationDeliveries)
     .innerJoin(
       notificationDeliveryMembers,
