@@ -1,1 +1,0 @@
-**A chat turn is no longer failed while it works, however long it runs.** Its box beats the session each minute, the residency clock reads only chats between turns, and sessions no longer carry the never-written `pipelineControl`.

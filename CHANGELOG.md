@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.69] - 2026-10-06
+
+Forge serves the run and wave methods; long chat turns no longer cut off
+
+### Added
+
+- **Core serves the run and wave methods.** `GET /api/guides/issue-flow.md` and `/api/guides/dispatch.md` give runs and masters every tracker act as a REST call, and the shipped master skill reads its methods and tracker through `forge-runner api`.
+
+### Fixed
+
+- **A chat turn is no longer failed while it works, however long it runs.** Its box beats the session each minute, the residency clock reads only chats between turns, and sessions no longer carry the never-written `pipelineControl`.
+
 ## [0.4.0-dev.68] - 2026-10-06
 
 Approving a design now answers the issue question parked on it
