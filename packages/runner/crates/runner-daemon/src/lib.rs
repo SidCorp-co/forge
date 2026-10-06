@@ -34,6 +34,7 @@ pub mod serving;
 pub mod session_ledger;
 pub mod session_tokens;
 pub mod skill_pull;
+pub mod standing_dialogs;
 
 use runner_agent::chat;
 use runner_core::agent_activity;

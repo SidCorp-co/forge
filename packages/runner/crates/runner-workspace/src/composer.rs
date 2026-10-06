@@ -62,6 +62,185 @@ pub fn read(capture: &str) -> Composer {
     }
 }
 
+/// A Claude Code tool-permission dialog, as a capture draws it.
+///
+/// Claude Code 2.1.292 draws one as a `─` rule, a head naming the call (`Bash
+/// command`, the description, the command between `╌` rules), a question, the
+/// numbered options with the highlighted one marked `❯`, and the footer `Esc to
+/// cancel · Tab to amend`. Tab on `No` opens that row for text: it reads `No,
+/// and tell Claude what to do differently` until something is typed, then `No,
+/// <the text>`, and Enter hands the text to the agent as the reason its call
+/// was refused. Those are the drawings this reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Permission {
+    /// The lines between the dialog's rule and its question, `╌` rules left out.
+    pub head: Vec<String>,
+    pub question: String,
+    /// Each option's text without its number, a wrapped option on one line.
+    pub options: Vec<String>,
+    pub highlighted: usize,
+    /// The one option that refuses the call.
+    pub no: usize,
+    /// Whether the `No` row is open for text.
+    pub amending: bool,
+}
+
+impl Permission {
+    /// Whether `other` is this dialog, whatever its highlight or amend row.
+    pub fn is_same_dialog(&self, other: &Permission) -> bool {
+        self.head == other.head
+            && self.question == other.question
+            && self.options.len() == other.options.len()
+    }
+
+    /// What the `No` row holds once it is open, with every space taken out:
+    /// Claude Code wraps a long row onto indented lines, and where it breaks a
+    /// line is its own choice.
+    pub fn amended_with(&self) -> Option<String> {
+        let row = self.options.get(self.no)?;
+        let typed = row.strip_prefix(NO_AMENDED)?;
+        Some(typed.chars().filter(|c| !c.is_whitespace()).collect())
+    }
+}
+
+/// What stands on a pane, as far as the box may act on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Standing {
+    /// No choice list stands.
+    Nothing,
+    /// A tool-permission dialog the box can refuse with a reason.
+    Permission(Permission),
+    /// A choice list that is not one, and why.
+    Other { highlighted: String, why: String },
+}
+
+const NO: &str = "No";
+const NO_AMENDED: &str = "No, ";
+const AMEND_FOOTER: &str = "Tab to amend";
+const DASHED: char = '\u{254c}';
+
+/// Read what choice list, if any, stands lowest in `capture` (`capture-pane -p
+/// -e` output), and whether it is a permission dialog the box can refuse.
+pub fn standing(capture: &str) -> Standing {
+    let lines = rendered(capture);
+    let (at, highlighted) = match (framed(&lines), choice(&lines)) {
+        (Some((close, _)), Some((at, _))) if at < close => return Standing::Nothing,
+        (_, Some(found)) => found,
+        (_, None) => return Standing::Nothing,
+    };
+    let other = |why: &str| Standing::Other {
+        highlighted: excerpt(&highlighted, 200),
+        why: why.to_string(),
+    };
+    let Some(list) = numbered(&lines, at) else {
+        return other("its options are not numbered, which no tool-permission dialog draws");
+    };
+    let nos: Vec<usize> = (0..list.options.len())
+        .filter(|i| list.options[*i] == NO || list.options[*i].starts_with(NO_AMENDED))
+        .collect();
+    let [no] = nos[..] else {
+        return other("it offers no single No option to refuse the call with");
+    };
+    let amending = list.options[no] != NO;
+    let fresh = !amending && list.footer.contains(AMEND_FOOTER);
+    if !(fresh || (amending && list.highlighted == no)) {
+        return other(
+            "its footer offers no Tab to amend, so a refusal could not carry the reason to rephrase",
+        );
+    }
+    Standing::Permission(Permission {
+        head: head_above(&lines, list.question_at),
+        question: list.question,
+        options: list.options,
+        highlighted: list.highlighted,
+        no,
+        amending,
+    })
+}
+
+struct Numbered {
+    question_at: usize,
+    question: String,
+    options: Vec<String>,
+    highlighted: usize,
+    footer: String,
+}
+
+/// The numbered options around the marker at line `at`, the question above
+/// them and the footer below, or `None` where the marked row is not numbered.
+fn numbered(lines: &[Line], at: usize) -> Option<Numbered> {
+    let col = marker(&lines[at].all)? + MARKER_WIDTH;
+    let row = |i: usize| option_text(&lines[i].all, col);
+    let continues = |i: usize| indent(&lines[i].all).is_some_and(|c| c > col);
+    row(at)?;
+    let mut first = at;
+    while first > 0 && (row(first - 1).is_some() || continues(first - 1)) {
+        first -= 1;
+    }
+    let mut last = at;
+    while last + 1 < lines.len() && (row(last + 1).is_some() || continues(last + 1)) {
+        last += 1;
+    }
+    row(first)?;
+    let mut options: Vec<String> = Vec::new();
+    let mut highlighted = 0;
+    for (i, line) in lines.iter().enumerate().take(last + 1).skip(first) {
+        match row(i) {
+            Some(text) => options.push(text),
+            None => {
+                let more = line.all.trim();
+                if let Some(o) = options.last_mut() {
+                    o.push(' ');
+                    o.push_str(more);
+                }
+            }
+        }
+        if i == at {
+            highlighted = options.len() - 1;
+        }
+    }
+    let question_at = (0..first)
+        .rev()
+        .find(|j| indent(&lines[*j].all).is_some())?;
+    let footer = (last + 1..lines.len())
+        .find_map(|j| indent(&lines[j].all).map(|_| lines[j].all.trim().to_string()))
+        .unwrap_or_default();
+    Some(Numbered {
+        question_at,
+        question: lines[question_at].all.trim().to_string(),
+        options,
+        highlighted,
+        footer,
+    })
+}
+
+/// An option row's text without its marker or number, where the row is one.
+fn option_text(line: &str, col: usize) -> Option<String> {
+    let rest = match marker(line) {
+        Some(at) if at + MARKER_WIDTH == col => after_prompt(line),
+        Some(_) => return None,
+        None if indent(line) == Some(col) => line.trim_start(),
+        None => return None,
+    };
+    let digits = rest.chars().take_while(char::is_ascii_digit).count();
+    let text = rest[digits..].strip_prefix(". ").filter(|_| digits > 0)?;
+    Some(text.trim().to_string())
+}
+
+/// The dialog's head: what is drawn between its rule and its question.
+fn head_above(lines: &[Line], question_at: usize) -> Vec<String> {
+    let top = (0..question_at)
+        .rev()
+        .find(|j| is_rule(&lines[*j].all))
+        .map_or(0, |j| j + 1);
+    lines[top..question_at]
+        .iter()
+        .map(|l| l.all.trim())
+        .filter(|t| !t.is_empty() && !t.chars().all(|c| c == DASHED))
+        .map(str::to_string)
+        .collect()
+}
+
 /// The composer frame's closing rule and what it holds, or `None` where the
 /// capture draws no frame in that shape.
 fn framed(lines: &[Line]) -> Option<(usize, Composer)> {
@@ -269,3 +448,6 @@ fn sgr_dim(params: &str, mut dim: bool) -> bool {
     }
     dim
 }
+
+#[cfg(test)]
+mod tests;

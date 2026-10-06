@@ -126,6 +126,7 @@ pub async fn run(args: Args) {
                     runner_core::agent_activity::now_ms(),
                     project.as_deref(),
                     &asked,
+                    dialog_answer::Via::Hook,
                 );
             }
             return;

@@ -267,7 +267,9 @@ impl Masters {
 
     /// Why `session` may declare no new run for the project, where core's
     /// last verdict kept that very session draining. A successor's session
-    /// is never the drained one, so a replacement declares at once.
+    /// is never the drained one, so a replacement declares at once. Read only
+    /// by the control socket, which is unix's.
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) fn draining(&self, project_id: &str, session: &str) -> Option<String> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.draining

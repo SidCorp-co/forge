@@ -99,6 +99,8 @@ pub async fn run(
             "[master] the control capability map cannot be resolved on this box — no master pane can be minted a capability, and none will be started"
         );
     }
+    let mut dialogs = crate::standing_dialogs::BoxDialogs::new();
+    dialogs.pass().await;
     let mut passes = tokio::time::interval(master_pass::TICK);
     passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let sweep_due = tokio::time::sleep(delay);
@@ -111,6 +113,7 @@ pub async fn run(
                 }
             }
             _ = &mut sweep_due => {
+                dialogs.pass().await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
@@ -122,6 +125,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
+                dialogs.pass().await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();

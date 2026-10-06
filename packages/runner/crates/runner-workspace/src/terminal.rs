@@ -19,6 +19,7 @@ use tokio::process::Command;
 
 use crate::composer;
 
+pub mod deny;
 mod launch;
 mod pane_env;
 pub use launch::*;

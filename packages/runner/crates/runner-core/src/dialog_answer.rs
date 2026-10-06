@@ -9,9 +9,13 @@
 //! never allows: what the dialog guards is the person's to grant, and the box
 //! is not that person.
 //!
-//! Each answer is a line beside `config.toml`, and the heartbeat carries the
-//! count per project to core, so `masters/standing` says how often the box
-//! answered and what it answered last.
+//! A dialog no hook answered — raised under an older daemon, or while this one
+//! restarted — is answered by the daemon's sweep instead, through the pane's
+//! keys and with the same reason (`runner_daemon::standing_dialogs`, ISS-280).
+//!
+//! Each answer is a line beside `config.toml`, naming which of the two gave it,
+//! and the heartbeat carries the count per project to core, so
+//! `masters/standing` says how often the box answered and what it answered last.
 
 use std::path::{Path, PathBuf};
 
@@ -40,6 +44,38 @@ pub struct Asked {
     /// The subagent that asked; `None` where the pane's lead asked.
     pub agent: Option<String>,
     pub agent_type: Option<String>,
+}
+
+/// Which path answered a dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Via {
+    /// The pane's `PermissionRequest` hook, as the dialog was raised.
+    Hook,
+    /// The daemon's sweep, which found the dialog already standing on the pane.
+    Sweep,
+}
+
+impl Via {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Via::Hook => "hook",
+            Via::Sweep => "sweep",
+        }
+    }
+}
+
+impl Asked {
+    /// What a dialog drawn on a pane asked, read off its head: the first line
+    /// names the call (`Bash command`, `Overwrite file`), the rest what it names.
+    pub fn of_dialog(head: &[String]) -> Self {
+        let rest = head.get(1..).unwrap_or_default().join(" \u{b7} ");
+        Asked {
+            tool: head.first().cloned(),
+            what: (!rest.is_empty()).then(|| one_line(&rest)),
+            agent: None,
+            agent_type: None,
+        }
+    }
 }
 
 /// Read a `PermissionRequest` payload. One that cannot be read is still a
@@ -110,8 +146,8 @@ pub fn answers_path(config_dir: &Path) -> PathBuf {
 }
 
 /// Record one answer. `project` is the pane's own `$FORGE_PROJECT_ID`.
-pub fn record(config_dir: &Path, at: i64, project: Option<&str>, a: &Asked) {
-    let mut line = serde_json::json!({ "at": at, "reason": reason(a) });
+pub fn record(config_dir: &Path, at: i64, project: Option<&str>, a: &Asked, via: Via) {
+    let mut line = serde_json::json!({ "at": at, "reason": reason(a), "via": via.wire() });
     for (key, value) in [
         ("project", project),
         ("tool", a.tool.as_deref()),
@@ -247,6 +283,33 @@ mod tests {
     }
 
     #[test]
+    fn a_swept_dialog_is_named_off_its_head_and_recorded_as_the_sweep_s() {
+        let head: Vec<String> = ["Bash command", "Delete victim.txt", "rm -f victim.txt"]
+            .map(String::from)
+            .to_vec();
+        let a = Asked::of_dialog(&head);
+        assert_eq!(
+            reason(&a),
+            "denied Bash command: Delete victim.txt \u{b7} rm -f victim.txt"
+        );
+        assert_eq!(reason(&Asked::of_dialog(&[])), "denied a tool call");
+        let dir = std::env::temp_dir().join(format!(
+            "forge-dialog-via-{}-{}",
+            std::process::id(),
+            crate::agent_activity::now_ms()
+        ));
+        record(&dir, 1_000, Some("p1"), &a, Via::Sweep);
+        record(&dir, 2_000, Some("p1"), &Asked::default(), Via::Hook);
+        let body = std::fs::read_to_string(answers_path(&dir)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let via: Vec<String> = body
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()["via"].to_string())
+            .collect();
+        assert_eq!(via, ["\"sweep\"", "\"hook\""]);
+    }
+
+    #[test]
     fn answers_are_counted_per_project_newest_first() {
         let dir = std::env::temp_dir().join(format!(
             "forge-dialog-answers-{}-{}",
@@ -255,9 +318,9 @@ mod tests {
         ));
         assert!(report(&dir).is_empty(), "no record is no answers");
         let asked = asked_in(DOC_PAYLOAD.as_bytes());
-        record(&dir, 1_000, Some("p1"), &asked);
-        record(&dir, 2_000, Some("p2"), &Asked::default());
-        record(&dir, 3_000, Some("p1"), &asked);
+        record(&dir, 1_000, Some("p1"), &asked, Via::Hook);
+        record(&dir, 2_000, Some("p2"), &Asked::default(), Via::Sweep);
+        record(&dir, 3_000, Some("p1"), &asked, Via::Hook);
         let got = report(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(got.len(), 2);
