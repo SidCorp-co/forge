@@ -132,8 +132,8 @@ export const MASTER_WITHHOLD_REASONS = [
 ] as const;
 export type MasterWithholdReason = (typeof MASTER_WITHHOLD_REASONS)[number];
 
-/** Why a standing pane is left running and not driven. */
-export const MASTER_LEAVE_REASONS = ["stood_down", "deaf", "outdated"] as const;
+/** Why a standing pane is left running and not driven. An outdated pane is never left: it is kept and driven, draining. */
+export const MASTER_LEAVE_REASONS = ["stood_down", "deaf"] as const;
 export type MasterLeaveReason = (typeof MASTER_LEAVE_REASONS)[number];
 
 /** Why a standing pane is ended and a successor placed in the same sweep. */
@@ -143,6 +143,9 @@ export type MasterReplaceReason = (typeof MASTER_REPLACE_REASONS)[number];
 /**
  * `nudge` on place and replace: the new pane's brief is this pass's nudge, so the box opens a pass
  * for it and types none. `resume`: the conversation the new pane resumes, or null to start cold.
+ * `drain` on keep: the pane is outdated and its replacement waits on what it holds, so the box admits
+ * no new run declaration from it until that runs out (a graceful stop: finish what is held, take
+ * nothing new). It is still nudged on a current master's timing for the work it is owed.
  */
 export type MasterVerdict =
 	| { act: "withhold"; reason: MasterWithholdReason; because: string }
@@ -156,5 +159,5 @@ export type MasterVerdict =
 	  }
 	| { act: "retire"; because: string }
 	| { act: "leave"; reason: MasterLeaveReason; because: string }
-	| { act: "keep"; nudge: boolean; because: string };
+	| { act: "keep"; nudge: boolean; drain: boolean; because: string };
 export type MasterVerdictAct = MasterVerdict["act"];

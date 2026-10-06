@@ -51,7 +51,12 @@ pub(crate) async fn obey(
             leave(t, ledger, &reason, &because, &authority, &deaf, found).await
         }
         Verdict::Retire { because } => retire(t, &because).await,
-        Verdict::Keep { nudge, because } => {
+        Verdict::Keep {
+            nudge,
+            drain,
+            because,
+        } => {
+            note_draining(t, drain, &because);
             record_heard(t, ledger, &authority).await;
             tend(t, found).await;
             if nudge {
@@ -147,6 +152,21 @@ pub(crate) fn withheld_as(
     }
 }
 
+/// What core said of a kept pane's draining, held for `run declare` to refuse
+/// by; said once per session and reason rather than once a sweep.
+fn note_draining(t: &Turn<'_>, drain: bool, because: &str) {
+    let (masters, project_id, slug) = (t.masters(), t.project_id(), t.slug());
+    let Some((session, name)) = masters.get(project_id) else {
+        return;
+    };
+    let said = drain.then(|| because.to_string());
+    if masters.note_draining(project_id, &session, said) && drain {
+        tracing::warn!(
+            "[master] {slug}: {name} is kept and driven, and drains: {because}. This box refuses its new run declarations until core replaces it; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
+        );
+    }
+}
+
 fn withhold(t: &Turn<'_>, reason: &str, because: &str) {
     match withheld_as(reason, because, t.runner, t.seen) {
         // Said where the box takes no new work at all, not once per project.
@@ -186,6 +206,9 @@ async fn leave(
             record_stale(t, adopted, authority);
             tend(t, found).await;
         }
+        // Priced amnesty: only a core older than the draining keep still
+        // leaves an outdated pane; this arm goes once every core this runner
+        // build serves keeps one instead.
         ("outdated", Some(_)) => {
             if masters.note_outdated(project_id, Some(because.to_string())) {
                 tracing::warn!(

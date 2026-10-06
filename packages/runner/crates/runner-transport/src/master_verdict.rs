@@ -140,7 +140,15 @@ pub enum Verdict {
     /// The pane stays up and is not driven.
     Leave { reason: String, because: String },
     /// The pane is this project's master; type a nudge into it or not.
-    Keep { nudge: bool, because: String },
+    /// `drain`: it is outdated and its replacement waits on the runs it holds,
+    /// so the box admits no new run declaration from it until they run out.
+    /// Absent from a core older than the field, which never drains.
+    Keep {
+        nudge: bool,
+        #[serde(default)]
+        drain: bool,
+        because: String,
+    },
 }
 
 pub async fn verdict(
@@ -173,9 +181,15 @@ mod tests {
             known,
             Verdict::Keep {
                 nudge: true,
+                drain: false,
                 because: "work changed".into()
             }
         );
+        let draining: Verdict = serde_json::from_str(
+            r#"{"act":"keep","nudge":false,"drain":true,"because":"outdated"}"#,
+        )
+        .expect("a draining keep decodes");
+        assert!(matches!(draining, Verdict::Keep { drain: true, .. }));
         assert!(
             serde_json::from_str::<Verdict>(r#"{"act":"adopt","because":"x"}"#).is_err(),
             "an act core added after this build was decoded as one this build acts on"

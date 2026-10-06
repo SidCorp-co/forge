@@ -224,6 +224,23 @@ export interface MasterStanding {
 	/** Permission dialogs the box answered (denied) for this project's panes, as its last heartbeat
 	 *  counted them; null where it reported none. */
 	dialogsAnswered: MasterDialogsAnswered | null;
+	/** Set while core judges the pane outdated and keeps it: how long, why, and what its replacement waits on. */
+	outdated: MasterOutdated | null;
+}
+
+/**
+ * An outdated master core keeps rather than replaces, as its last verdict judged it. Being outdated
+ * decides replacement only: the pane is still driven, and `draining` says it takes no new run so
+ * that what it holds runs out and its successor is placed.
+ */
+export interface MasterOutdated {
+	/** When core first judged this pane outdated, unbroken since. */
+	since: string;
+	/** Why its build or plugins are not the ones its box would place now, as the box said it. */
+	why: string;
+	/** Every reason its replacement waits on, as the last verdict named them. */
+	heldBy: string[];
+	draining: boolean;
 }
 
 /** What the box's `PermissionRequest` hook answered for a project, read off the device's gate report. */
