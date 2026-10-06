@@ -209,11 +209,17 @@ mod tests {
             overdue: false,
         };
         let line = inbox_line(&[doc("FB-2")]);
-        assert!(line.contains("1 feedback item owes a triage (FB-2)"), "{line}");
+        assert!(
+            line.contains("1 feedback item owes a triage (FB-2)"),
+            "{line}"
+        );
         assert!(line.contains("feedback/<key>/triage -X POST"), "{line}");
         assert!(!line.contains("ecosystem channel"), "{line}");
         let line = inbox_line(&[doc("FB-2"), doc("FB-5")]);
-        assert!(line.contains("2 feedback items owe a triage (FB-2, FB-5)"), "{line}");
+        assert!(
+            line.contains("2 feedback items owe a triage (FB-2, FB-5)"),
+            "{line}"
+        );
     }
 
     #[test]

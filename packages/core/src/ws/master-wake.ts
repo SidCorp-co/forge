@@ -119,7 +119,6 @@ async function wakeMastersForRequirement(args: {
   });
 }
 
-
 async function wakeMastersForFeedback(args: {
   projectId: string;
   feedbackId: string;
