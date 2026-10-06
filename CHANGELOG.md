@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.58] - 2026-10-06
+
+Low and medium feedback now wakes the master for triage
+
 ### Fixed
 
 - **Every untriaged feedback item now reaches the project's master.** Low and medium items wake it and join its triage list, most severe first. Where no master is running, an item waits on whoever can triage it.
