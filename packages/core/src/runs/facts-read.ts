@@ -264,7 +264,8 @@ function holderRows(
       q(sql`
         SELECT s.id, COALESCE(s.metadata->>'terminalName', s.title) AS name,
                s.status NOT IN (${texts(terminalAgentSessionStatuses)}) AS live,
-               ${masterLastBeatSql('s')} AS last_beat
+               ${masterLastBeatSql('s')} AS last_beat,
+               s.metadata -> 'paneDialog' AS pane_dialog
           FROM agent_sessions s WHERE s.id IN (${uuids(masterIds)})`),
     ),
     when(masterIds.length > 0, () =>

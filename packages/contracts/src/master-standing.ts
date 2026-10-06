@@ -19,7 +19,24 @@ export const MASTER_VERBS = [
 ] as const;
 export type MasterVerb = (typeof MASTER_VERBS)[number];
 
-export const MASTER_STATES = ["in_pass", "idle", "silent", "none"] as const;
+/** What started a pass: a runner nudge, or a turn the runner saw start without one. */
+export const MASTER_PASS_TRIGGERS = ["nudge", "unprompted"] as const;
+export type MasterPassTrigger = (typeof MASTER_PASS_TRIGGERS)[number];
+
+/** Why a pass's turn was refused before it ran, as the master's account said it. */
+export const MASTER_PASS_REFUSAL_REASONS = [
+	"usage_limit",
+	"rate_limit",
+	"auth",
+] as const;
+
+export const MASTER_STATES = [
+	"in_pass",
+	"idle",
+	"waiting_person",
+	"silent",
+	"none",
+] as const;
 export type MasterState = (typeof MASTER_STATES)[number];
 
 const MASTER_REFUSAL_CODES = [
@@ -27,6 +44,7 @@ const MASTER_REFUSAL_CODES = [
 	"MASTER_PASS_ALREADY_OPEN",
 	"MASTER_PASS_NOT_OPEN",
 	"MASTER_SESSION_ENDED",
+	"MASTER_PASS_REFUSED_WITH_WORK",
 ] as const;
 export type MasterRefusalCode = (typeof MASTER_REFUSAL_CODES)[number];
 
@@ -41,6 +59,7 @@ const MASTER_PASS_LIST_MAX = 200;
 const MASTER_PASS_ITEM_MAX = 200;
 const MASTER_PASS_REFUSAL_MAX = 1000;
 const MASTER_ISSUE_KEY_MAX = 64;
+const MASTER_DIALOG_TEXT_MAX = 400;
 export const MASTER_PASS_PAGE_DEFAULT = 20;
 export const MASTER_PASS_PAGE_MAX = 100;
 
@@ -59,6 +78,12 @@ export const masterPassSkipSchema = z.strictObject({
 });
 export type MasterPassSkip = z.infer<typeof masterPassSkipSchema>;
 
+export const masterPassRefusalSchema = z.strictObject({
+	reason: z.enum(MASTER_PASS_REFUSAL_REASONS),
+	detail: z.string().trim().min(1).max(MASTER_PASS_REFUSAL_MAX),
+});
+export type MasterPassRefusal = z.infer<typeof masterPassRefusalSchema>;
+
 export const masterPassRequestSchema = z.discriminatedUnion("op", [
 	z.strictObject({
 		op: z.literal("open"),
@@ -71,6 +96,7 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 			.max(MASTER_ISSUE_KEY_MAX)
 			.nullable()
 			.optional(),
+		trigger: z.enum(MASTER_PASS_TRIGGERS).optional(),
 	}),
 	z.strictObject({
 		op: z.literal("close"),
@@ -79,9 +105,38 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 		dispatched: z.array(passItem).max(MASTER_PASS_LIST_MAX),
 		skipped: z.array(masterPassSkipSchema).max(MASTER_PASS_LIST_MAX),
 		parked: z.array(passItem).max(MASTER_PASS_LIST_MAX),
+		refused: masterPassRefusalSchema.nullable().optional(),
 	}),
 ]);
-export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[] }`;
+export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[], refused?: { reason: ${MASTER_PASS_REFUSAL_REASONS.join(" | ")}, detail } | null (a refused pass reports no work) }`;
+
+/** A dialog the master's pane stopped on, as the runner read it; `null` clears it. */
+export const masterDialogRequestSchema = z.strictObject({
+	sessionId: z.uuid(),
+	dialog: z
+		.strictObject({
+			text: z.string().trim().min(1).max(MASTER_DIALOG_TEXT_MAX),
+			source: z.enum(["pane", "hooks"]),
+		})
+		.nullable(),
+});
+export const MASTER_DIALOG_SHAPE = `{ sessionId: uuid, dialog: { text: string (1-${MASTER_DIALOG_TEXT_MAX}), source: "pane" | "hooks" } | null }`;
+
+/** What the runner last reported its master's pane stopped on. */
+export interface MasterPaneDialog {
+	text: string;
+	source: "pane" | "hooks";
+	seenAt: string;
+}
+
+/** The person a master waits on: whoever can answer at its pane. */
+export interface MasterWaitingOn {
+	kind: "person";
+	who: string;
+	act: string;
+	rule: "MASTER_PANE_DIALOG";
+	since: string;
+}
 
 export interface MasterOpenPass {
 	id: string;
@@ -89,6 +144,7 @@ export interface MasterOpenPass {
 	verb: MasterVerb;
 	startedAt: string;
 	issueKey: string | null;
+	trigger: MasterPassTrigger;
 }
 
 export interface MasterClosedPass extends MasterOpenPass {
@@ -96,6 +152,8 @@ export interface MasterClosedPass extends MasterOpenPass {
 	dispatched: string[];
 	skipped: MasterPassSkip[];
 	parked: string[];
+	/** Set when the pass's turn was refused before it ran; such a pass is never idle. */
+	refused: MasterPassRefusal | null;
 }
 
 export type MasterPassView = MasterOpenPass | MasterClosedPass;
@@ -131,6 +189,8 @@ export interface MasterStanding {
 	slots: MasterSlots | null;
 	lastBeatAt: string | null;
 	silentAfterSeconds: number;
+	/** Set while state is waiting_person: the pane is stopped on a dialog only a person answers. */
+	waitingOn: MasterWaitingOn | null;
 }
 
 export interface MasterPassList {
@@ -142,10 +202,13 @@ export interface MasterPassList {
 	next: string | null;
 }
 
-export const NO_MASTER_SLOTS = "No live master serves this project, so no box has declared slots for it.";
+export const NO_MASTER_SLOTS =
+	"No live master serves this project, so no box has declared slots for it.";
 
 /** What a project's slots line says when no live master declared slots for it; null when one did. */
-export function slotsNoteOf(standing: Pick<MasterStanding, "slots">): string | null {
+export function slotsNoteOf(
+	standing: Pick<MasterStanding, "slots">,
+): string | null {
 	if (!standing.slots) return NO_MASTER_SLOTS;
 	return standing.slots.undeclared?.detail ?? null;
 }

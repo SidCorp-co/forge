@@ -464,6 +464,7 @@ pub(crate) async fn sweep(
         if pane == PaneState::Absent {
             continue;
         }
+        report_pane_dialog(client, masters, activity, &runner.project_id).await;
         if told.load(std::sync::atomic::Ordering::Relaxed) {
             let stamped = ledger.as_ref().zip(lifted_episode.as_ref());
             if let Some((led, lifted)) = stamped {
@@ -669,4 +670,61 @@ pub(crate) async fn sweep(
     )
     .await;
     delay
+}
+
+/// What a master's pane is stopped on that only a person answers, from the
+/// pane's own drawing first and its hooks second, or `None`.
+pub(crate) fn dialog_of(
+    on_pane: Option<String>,
+    reported: Option<&agent_activity::Activity>,
+) -> Option<(String, &'static str)> {
+    if let Some(text) = on_pane {
+        return Some((text, "pane"));
+    }
+    reported
+        .filter(|a| a.doing() == agent_activity::Doing::AwaitingPermission)
+        .map(|_| {
+            (
+                "a permission prompt its hooks reported".to_string(),
+                "hooks",
+            )
+        })
+}
+
+/// Tell core what this project's master pane is stopped on, once per change:
+/// a pane frozen at a dialog reads `waiting_person` on `masters/standing` and on
+/// the runs it hosts, instead of reaching only this box's log.
+async fn report_pane_dialog(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    activity: &agent_activity::Activities,
+    project_id: &str,
+) {
+    let Some((session_id, name)) = masters.get(project_id) else {
+        return;
+    };
+    let reported = activity.get(&session_id);
+    let dialog = dialog_of(terminal::pane_dialog(&name).await, reported.as_ref());
+    let text = dialog.as_ref().map(|(t, _)| t.as_str());
+    if !masters.claim_dialog_report(project_id, &session_id, text) {
+        return;
+    }
+    let sent = master_api::report_dialog(
+        client,
+        &session_id,
+        dialog.as_ref().map(|(t, src)| (t.as_str(), *src)),
+    )
+    .await;
+    match (sent, text) {
+        (Ok(()), Some(text)) => tracing::warn!(
+            "[master] {project_id}: {name} is stopped on a dialog only a person answers ({text}); core now reads it waiting on a person"
+        ),
+        (Ok(()), None) => {}
+        (Err(e), _) => {
+            masters.forget_dialog_report(project_id);
+            tracing::warn!(
+                "[master] {project_id}: could not tell core what {name}'s pane is stopped on: {e} — the next sweep sends it again"
+            );
+        }
+    }
 }

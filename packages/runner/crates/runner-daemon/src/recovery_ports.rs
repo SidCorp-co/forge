@@ -149,6 +149,14 @@ impl LeaseKeeper for CoreRunState<'_> {
                 .issue_over,
         )
     }
+
+    async fn issue_rests(&self, project_id: Option<&str>, issue_key: &str) -> Result<Option<bool>> {
+        Ok(
+            run_sessions::lease_state(self.client, project_id, issue_key)
+                .await?
+                .issue_resting,
+        )
+    }
 }
 
 /// Telling core this box still holds a run.

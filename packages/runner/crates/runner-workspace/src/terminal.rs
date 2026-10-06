@@ -20,7 +20,9 @@ use tokio::process::Command;
 use crate::composer;
 
 mod launch;
+mod pane_env;
 pub use launch::*;
+pub use pane_env::pane_env;
 use runner_platform::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";
@@ -81,6 +83,24 @@ pub fn socket_path() -> Option<std::path::PathBuf> {
 
 fn fits_a_unix_socket(path: &str) -> bool {
     path.len() <= 100
+}
+
+/// The command an operator types to watch `name`: masters run on this box's
+/// own tmux socket, so an attach without `-S` reaches the default server,
+/// which holds no such session.
+pub fn attach_command(name: &str) -> String {
+    attach_command_on(socket_path().as_deref(), name)
+}
+
+fn attach_command_on(socket: Option<&std::path::Path>, name: &str) -> String {
+    match socket {
+        Some(sock) => format!(
+            "tmux -S {} attach -t {}",
+            shell_quote(&sock.to_string_lossy()),
+            shell_quote(name)
+        ),
+        None => format!("tmux attach -t {}", shell_quote(name)),
+    }
 }
 
 fn socket_args() -> Vec<String> {
@@ -577,6 +597,16 @@ async fn read_prompt(target: &str) -> composer::Composer {
     }
 }
 
+/// The highlighted option of a choice list `name`'s pane is stopped on, or
+/// `None` where it shows none or could not be read. A choice list is a dialog
+/// only a person answers: Enter there decides it, so no nudge reaches the pane.
+pub async fn pane_dialog(name: &str) -> Option<String> {
+    match read_prompt(&pane_target(name)).await {
+        composer::Composer::Menu { highlighted } => Some(composer::excerpt(&highlighted, 200)),
+        _ => None,
+    }
+}
+
 /// Type `text` into a pane and submit it.
 ///
 /// Enter submits the whole composer, so a composer already holding text is
@@ -725,33 +755,4 @@ async fn still_there(name: &str) -> Result<bool> {
         .await?
         .status
         .success())
-}
-
-/// What a pane's shell is started with. `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` are what a
-/// skill installed on disk names the project by: core writes the id into every brief it renders,
-/// but a skill file is the same bytes for every project, and a pane without them sends
-/// `projects//…` to Forge.
-pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
-    let mut env = pane_env_from(|k| std::env::var_os(k));
-    env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
-    env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
-    env
-}
-
-// cm:guard a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
-// session server's unit inherits none of this process's environment, so a daemon run under its
-// own `XDG_CONFIG_HOME` hands it on or its panes report to the box's default daemon (ISS-10)
-fn pane_env_from(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<(String, String)> {
-    let mut env = Vec::new();
-    if let Some(v) =
-        runner_platform::process::mcp_tool_timeout_default(var("MCP_TOOL_TIMEOUT").as_deref())
-    {
-        env.push(("MCP_TOOL_TIMEOUT".into(), v.into()));
-    }
-    if let Some(x) = var("XDG_CONFIG_HOME") {
-        if std::path::Path::new(&x).is_absolute() {
-            env.push(("XDG_CONFIG_HOME".into(), x.to_string_lossy().into_owned()));
-        }
-    }
-    env
 }

@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
+  turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
+  PATH, and `master status` names its socket.
+
 - **The lint budget prints how many files it scanned.** Verify read the count of files with lint
   debt as the scanned count, so a tree with no lint debt left read as a check that never ran.
 

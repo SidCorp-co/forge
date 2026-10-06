@@ -2689,6 +2689,13 @@
       "when": 1818806400000,
       "tag": "0415_every_notification_carries_its_severity",
       "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1818892800000,
+      "tag": "0416_a_master_pass_names_its_trigger_and_its_refusal",
+      "breakpoints": true
     }
   ]
 }

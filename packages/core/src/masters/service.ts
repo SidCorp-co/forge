@@ -2,7 +2,9 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterPassRefusal,
   MasterPassSkip,
+  MasterPassTrigger,
   MasterRefusal,
   MasterSessionResponse,
   MasterVerb,
@@ -10,6 +12,7 @@ import type {
 import { scrubSecretsDeep } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
 import {
@@ -18,10 +21,11 @@ import {
   setMaxJobPanes,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { closedPassOf, openPassOf, readClosedPass, readOpenPass } from './read.js';
+import { closedPassOf, openPassOf, PASS_COLUMNS, readClosedPass, readOpenPass } from './read.js';
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
+  refusedWithWorkRefusal,
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
@@ -96,6 +100,7 @@ export async function openMasterPass(args: {
   sessionId: string;
   verb: MasterVerb;
   issueKey: string | null;
+  trigger: MasterPassTrigger;
 }): Promise<OpenPassOutcome> {
   return db.transaction(async (tx) => {
     await lockMasterPasses(tx, args.sessionId);
@@ -109,9 +114,9 @@ export async function openMasterPass(args: {
     if (open) return { ok: false, refusals: [open] };
     const [row] = rowsOf<Parameters<typeof openPassOf>[0]>(
       await tx.execute(sql`
-        INSERT INTO master_passes (project_id, master_session_id, verb, issue_key)
-        VALUES (${master.projectId}, ${master.id}, ${args.verb}, ${args.issueKey})
-        RETURNING id, master_session_id, verb, issue_key, started_at, ended_at, dispatched, skipped, parked`),
+        INSERT INTO master_passes (project_id, master_session_id, verb, issue_key, trigger)
+        VALUES (${master.projectId}, ${master.id}, ${args.verb}, ${args.issueKey}, ${args.trigger})
+        RETURNING ${PASS_COLUMNS}`),
     );
     if (!row) throw new Error('openMasterPass: the insert returned no row');
     return { ok: true, pass: openPassOf(row) };
@@ -125,7 +130,10 @@ export async function closeMasterPass(args: {
   dispatched: string[];
   skipped: MasterPassSkip[];
   parked: string[];
+  refused: MasterPassRefusal | null;
 }): Promise<ClosePassOutcome> {
+  const withWork = refusedWithWorkRefusal(args);
+  if (withWork) return { ok: false, refusals: [withWork] };
   return db.transaction(async (tx) => {
     await lockMasterPasses(tx, args.sessionId);
     const master = await ownedMaster(tx, args.deviceId, args.sessionId);
@@ -141,9 +149,10 @@ export async function closeMasterPass(args: {
                parked = ${sql`ARRAY[${sql.join(
                  args.parked.map((p) => sql`${p}`),
                  sql`, `,
-               )}]::text[]`}
+               )}]::text[]`},
+               refusal = ${args.refused ? JSON.stringify(scrubSecretsDeep(args.refused)) : null}::jsonb
          WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
-        RETURNING id, master_session_id, verb, issue_key, started_at, ended_at, dispatched, skipped, parked`),
+        RETURNING ${PASS_COLUMNS}`),
     );
     if (!row) {
       const [named, open] = await Promise.all([
@@ -153,5 +162,23 @@ export async function closeMasterPass(args: {
       return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
     }
     return { ok: true, pass: closedPassOf(row) };
+  });
+}
+
+/**
+ * Record the dialog the runner read on its master's pane, or clear it with `null`. A fact the box saw,
+ * kept on the master session so `masters/standing` reads waiting_person while it stands.
+ */
+export async function recordMasterDialog(args: {
+  deviceId: string;
+  sessionId: string;
+  dialog: { text: string; source: 'pane' | 'hooks' } | null;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    await ownedMaster(tx, args.deviceId, args.sessionId);
+    const paneDialog = args.dialog
+      ? { ...scrubSecretsDeep(args.dialog), seenAt: new Date().toISOString() }
+      : null;
+    await mergeSessionMetadata(args.sessionId, { paneDialog }, tx);
   });
 }

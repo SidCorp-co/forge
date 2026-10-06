@@ -52,7 +52,7 @@ pub(crate) async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> 
             authority_line(led.as_ref(), &s, now_unix(), &running)
         );
         if alive {
-            println!("{:<20} attach: tmux attach -t {name}", "");
+            println!("{:<20} attach: {}", "", terminal::attach_command(&name));
         }
     }
     Ok(())

@@ -152,6 +152,21 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       rule: "every box serving this project is bound with no checkout, so its claim is refused: `forge-runner bind <slug> --path <dir>` on the box, or PATCH the runner's repoPath, and dispatch takes it",
     });
   }
+  if (
+    f.master?.live &&
+    f.master.dialog &&
+    f.session &&
+    !TERMINAL_SESSION.includes(f.session.status)
+  ) {
+    return person(ctx, {
+      need: 'write',
+      act: `answer the dialog ${f.master.name ?? 'its master pane'} is stopped on: "${f.master.dialog.text}"`,
+      ref: `master session ${f.master.sessionId} metadata.paneDialog`,
+      issueKey: key,
+      since: f.master.dialog.seenAt,
+      rule: 'MASTER_PANE_DIALOG: the master pane this run works in is stopped on a dialog, and nothing in it moves until a person answers',
+    });
+  }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind === 'human') {
     return person(ctx, {
       need: 'write',

@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import {
   CLIENT_SESSION_KINDS,
+  heartbeatSilentSql,
   kindTuple,
   PIPELINE_SESSION_KINDS,
 } from '../db/session-vocabulary.js';
@@ -125,13 +126,7 @@ export async function alarmZombieSessions(
   const heartbeat = await db.execute<SessionAlarmRow>(sql`
     SELECT s.id, s.project_id, s.pipeline_run_id
     FROM agent_sessions s
-    WHERE s.status = 'running'
-      AND ((s.last_heartbeat_at IS NOT NULL AND s.last_heartbeat_at < ${heartbeatCutoffIso})
-        OR (s.last_heartbeat_at IS NULL AND s.started_at IS NOT NULL
-            AND s.started_at < ${heartbeatCutoffIso} AND s.updated_at < ${heartbeatCutoffIso})
-        OR (s.last_heartbeat_at IS NULL AND s.started_at IS NULL
-            AND s.updated_at < ${heartbeatCutoffIso} AND s.created_at < ${heartbeatCutoffIso}))
-      AND s.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
+    WHERE ${heartbeatSilentSql(sql`s`, heartbeatCutoffIso)}
       ${projectClause}
   `);
 

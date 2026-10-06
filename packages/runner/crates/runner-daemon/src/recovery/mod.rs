@@ -210,6 +210,7 @@ pub async fn reconcile(
             continue;
         }
         end_if_unbound(ledger, &mut run, boot_id)?;
+        end_if_stale(ledger, &mut run, boot_id, &closing).await?;
         let pid_refuted = match run.pid {
             Some(pid) => procs.is_gone(pid).await,
             None => false,
@@ -491,6 +492,92 @@ fn end_if_unbound(ledger: &Ledger, run: &mut Run, boot_id: &str) -> Result<()> {
     run.ended_by = Some(ENDED_BY_BOX.to_string());
     run.ended_reason = Some(reason);
     Ok(())
+}
+
+/// End `run` where it is a stale declaration, and stand it as a master's close
+/// ends one, so the close loop takes it from here in this same sweep.
+///
+/// A subagent declaration whose every issue rests at core (over, or parked at
+/// `needs_info` or `on_hold`) and whose checkout git no longer registers is
+/// worked by nobody: the tree a subagent would work in is gone and the issue
+/// is not open to work. Held open, it counts as a run its master holds, so an
+/// outdated master is never replaced (HOP 2026-10-05, run 2e4bd5cd on ISS-1).
+/// The checkout is asked first, because it is local: core is asked only about
+/// a declaration whose tree is already gone.
+async fn end_if_stale(
+    ledger: &mut Ledger,
+    run: &mut Run,
+    boot_id: &str,
+    closing: &Closing<'_>,
+) -> Result<()> {
+    if run.pid.is_some() || run.ended_by.is_some() || run.boot_id != boot_id {
+        return Ok(());
+    }
+    let worktree = Path::new(&run.worktree_path);
+    let gone = run.worktree_gone_at.is_some()
+        || (!worktree.exists()
+            && match run
+                .project_id
+                .as_deref()
+                .and_then(|p| closing.roots.root_for(p))
+            {
+                Some(repo) => matches!(
+                    runner_workspace::worktree::residence_of(&repo, worktree).await,
+                    runner_workspace::worktree::Residence::Gone
+                ),
+                None => false,
+            });
+    if !gone {
+        return Ok(());
+    }
+    let keys: Vec<String> = ledger
+        .issues(&run.run_id)?
+        .into_iter()
+        .map(|m| m.issue_key)
+        .collect();
+    let mut rests = Vec::with_capacity(keys.len());
+    for key in &keys {
+        rests.push(
+            closing
+                .leases
+                .issue_rests(run.project_id.as_deref(), key)
+                .await
+                .ok()
+                .flatten(),
+        );
+    }
+    let Some(reason) = stale_reason(&keys, &rests, &run.worktree_path.display().to_string()) else {
+        return Ok(());
+    };
+    ledger.end_run(&run.run_id, ENDED_BY_BOX, &reason)?;
+    tracing::warn!(
+        "[recovery] run {} ({}) under master session {} ended: {reason}",
+        run.run_id,
+        run.project_id.as_deref().unwrap_or("no project"),
+        runner_core::ledger::short_id(&run.master_session_id)
+    );
+    run.incarnation = Incarnation::Exited;
+    run.ended_by = Some(ENDED_BY_BOX.to_string());
+    run.ended_reason = Some(reason);
+    Ok(())
+}
+
+/// Why a declaration whose checkout is gone is stale, or `None` while any
+/// issue it holds is not known to rest. A declaration holding no issue says
+/// nothing to conclude from, and an issue core could not answer for is not
+/// one that rests.
+pub(crate) fn stale_reason(
+    keys: &[String],
+    rests: &[Option<bool>],
+    worktree: &str,
+) -> Option<String> {
+    if keys.is_empty() || keys.len() != rests.len() || rests.iter().any(|r| *r != Some(true)) {
+        return None;
+    }
+    Some(format!(
+        "stale declaration: {} rest at core (over, or parked at needs_info or on_hold) and its checkout {worktree} is gone, so no subagent works it",
+        keys.join(", ")
+    ))
 }
 
 /// How long a declared run may stand bound to nothing before the box ends it

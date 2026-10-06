@@ -2,11 +2,15 @@ import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-se
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterPaneDialog,
   MasterPassList,
+  MasterPassRefusal,
   MasterPassSkip,
+  MasterPassTrigger,
   MasterPassView,
   MasterStanding,
   MasterVerb,
+  MasterWaitingOn,
 } from '@forge/contracts/master-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { type SQL, sql } from 'drizzle-orm';
@@ -35,14 +39,16 @@ interface PassRow {
   master_session_id: string;
   verb: MasterVerb;
   issue_key: string | null;
+  trigger: MasterPassTrigger;
   started_at: string | Date;
   ended_at: string | Date | null;
   dispatched: string[];
   skipped: MasterPassSkip[];
   parked: string[];
+  refusal: MasterPassRefusal | null;
 }
 
-const PASS_COLUMNS = sql`id, master_session_id, verb, issue_key, started_at, ended_at, dispatched, skipped, parked`;
+export const PASS_COLUMNS = sql`id, master_session_id, verb, issue_key, trigger, started_at, ended_at, dispatched, skipped, parked, refusal`;
 
 export function openPassOf(row: PassRow): MasterOpenPass {
   return {
@@ -51,6 +57,7 @@ export function openPassOf(row: PassRow): MasterOpenPass {
     verb: row.verb,
     startedAt: iso(row.started_at),
     issueKey: row.issue_key,
+    trigger: row.trigger,
   };
 }
 
@@ -61,6 +68,7 @@ export function closedPassOf(row: PassRow & { ended_at: string | Date }): Master
     dispatched: row.dispatched,
     skipped: row.skipped,
     parked: row.parked,
+    refused: row.refusal,
   };
 }
 
@@ -126,6 +134,7 @@ interface MasterRow {
   started_at: string | Date | null;
   last_beat: string | Date | null;
   silent: boolean;
+  pane_dialog: MasterPaneDialog | null;
 }
 
 async function liveMaster(projectId: string): Promise<MasterRow | null> {
@@ -136,7 +145,8 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
           SELECT s.id, COALESCE(s.metadata ->> 'terminalName', s.title) AS title, s.device_id, d.name AS device_name, d.max_job_panes,
                  COALESCE(s.started_at, s.created_at) AS started_at,
                  ${masterLastBeatSql('s')} AS last_beat,
-                 ${masterSilentSql('s')} AS silent
+                 ${masterSilentSql('s')} AS silent,
+                 s.metadata -> 'paneDialog' AS pane_dialog
             FROM agent_sessions s
             LEFT JOIN devices d ON d.id = s.device_id
            WHERE s.project_id = ${projectId}
@@ -173,6 +183,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       pass: null,
       slots: null,
       lastBeatAt: null,
+      waitingOn: null,
     };
   }
   const device =
@@ -183,9 +194,11 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     readOpenPass(db, master.id),
     device ? slotsInUse(device.id) : Promise.resolve(0),
   ]);
+  const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
   return {
     ...base,
-    state: master.silent ? 'silent' : pass ? 'in_pass' : 'idle',
+    state: master.silent ? 'silent' : waitingOn ? 'waiting_person' : pass ? 'in_pass' : 'idle',
+    waitingOn,
     sessionId: master.id,
     name: master.title,
     device,
@@ -193,6 +206,21 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     pass,
     slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, inUse) : null,
     lastBeatAt: master.last_beat ? iso(master.last_beat) : null,
+  };
+}
+
+// A pane stopped on a dialog runs no turn and takes no nudge until a person answers it, whatever pass is
+// open: the runner reports the dialog it read (agent-run-standing, waiting_person) and clears it once gone.
+function waitingOnDialog(master: MasterRow, deviceName: string | null): MasterWaitingOn | null {
+  const dialog = master.pane_dialog;
+  if (!dialog) return null;
+  const pane = master.title ?? 'the master pane';
+  return {
+    kind: 'person',
+    who: deviceName ? `Whoever can reach ${deviceName}` : 'Whoever can reach the master pane',
+    act: `Answer the dialog ${pane} is stopped on: "${dialog.text}"`,
+    rule: 'MASTER_PANE_DIALOG',
+    since: dialog.seenAt,
   };
 }
 

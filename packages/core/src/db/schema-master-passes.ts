@@ -1,4 +1,9 @@
-import { MASTER_VERBS, type MasterPassSkip } from '@forge/contracts/master-standing';
+import {
+  MASTER_PASS_TRIGGERS,
+  MASTER_VERBS,
+  type MasterPassRefusal,
+  type MasterPassSkip,
+} from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -27,11 +32,13 @@ export const masterPasses = pgTable(
       .references(() => agentSessions.id, { onDelete: 'cascade' }),
     verb: text('verb', { enum: MASTER_VERBS }).notNull(),
     issueKey: text('issue_key'),
+    trigger: text('trigger', { enum: MASTER_PASS_TRIGGERS }).notNull().default('nudge'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     dispatched: text('dispatched').array().notNull().default(sql`ARRAY[]::text[]`),
     skipped: jsonb('skipped').$type<MasterPassSkip[]>().notNull().default(sql`'[]'::jsonb`),
     parked: text('parked').array().notNull().default(sql`ARRAY[]::text[]`),
+    refusal: jsonb('refusal').$type<MasterPassRefusal>(),
   },
   (t) => ({
     oneOpenPerSessionUq: uniqueIndex('master_passes_one_open_uq')
@@ -42,6 +49,14 @@ export const masterPasses = pgTable(
     verbChk: check(
       'master_passes_verb_chk',
       sql`${t.verb} IN (${sql.raw(MASTER_VERBS.map((v) => `'${v}'`).join(', '))})`,
+    ),
+    triggerChk: check(
+      'master_passes_trigger_chk',
+      sql`${t.trigger} IN (${sql.raw(MASTER_PASS_TRIGGERS.map((v) => `'${v}'`).join(', '))})`,
+    ),
+    refusalShapeChk: check(
+      'master_passes_refusal_shape_chk',
+      sql`${t.refusal} IS NULL OR (${t.endedAt} IS NOT NULL AND jsonb_typeof(${t.refusal}) = 'object' AND cardinality(${t.dispatched}) = 0 AND cardinality(${t.parked}) = 0 AND ${t.skipped} = '[]'::jsonb)`,
     ),
     endedAfterStartChk: check(
       'master_passes_ended_after_start_chk',

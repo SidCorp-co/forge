@@ -69,6 +69,13 @@ pub(crate) struct Registry {
     /// account is given once per pane and reason rather than once a sweep
     /// (ISS-1379).
     pub(crate) outdated: HashMap<String, String>,
+    /// Per project, the master session and the dialog last reported to core
+    /// for its pane, so a dialog standing for an hour is one report.
+    pub(crate) dialog_said: HashMap<String, (String, Option<String>)>,
+    /// Per project, the master session and its prompt count when its last
+    /// pass settled: a turn started past it with no pass open is one the
+    /// runner did not nudge, and is recorded as an unprompted pass.
+    pub(crate) prompts_settled: HashMap<String, (String, u64)>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -234,6 +241,49 @@ impl Masters {
             Some(said) => reg.outdated.insert(project_id.to_string(), said.clone()) != Some(said),
             None => reg.outdated.remove(project_id).is_some(),
         }
+    }
+
+    /// Whether `dialog` on `session`'s pane is news to core, and remember it.
+    pub(crate) fn claim_dialog_report(
+        &self,
+        project_id: &str,
+        session: &str,
+        dialog: Option<&str>,
+    ) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let now = (session.to_string(), dialog.map(str::to_string));
+        reg.dialog_said.insert(project_id.to_string(), now.clone()) != Some(now)
+    }
+
+    /// Forget the dialog report, so the next sweep sends it again.
+    pub(crate) fn forget_dialog_report(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.dialog_said.remove(project_id);
+    }
+
+    pub(crate) fn note_prompts_settled(&self, project_id: &str, session: &str, prompts: u64) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.prompts_settled
+            .insert(project_id.to_string(), (session.to_string(), prompts));
+    }
+
+    /// The prompt count `session`'s last pass settled at, `None` where none
+    /// settled under that session in this process.
+    pub(crate) fn prompts_settled(&self, project_id: &str, session: &str) -> Option<u64> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.prompts_settled
+            .get(project_id)
+            .filter(|(s, _)| s == session)
+            .map(|(_, n)| *n)
+    }
+
+    /// Every project this box serves a live master for, with its session.
+    pub(crate) fn live_sessions(&self) -> Vec<(String, String)> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .iter()
+            .map(|(p, m)| (p.clone(), m.session_id.clone()))
+            .collect()
     }
 
     pub(crate) fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
