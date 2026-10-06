@@ -14,6 +14,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -82,9 +83,7 @@ export const feedback = pgTable(
     dueAt: timestamp('due_at', { withTimezone: true }),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
-    routedIssueId: uuid('routed_issue_id').references((): AnyPgColumn => issues.id, {
-      onDelete: 'no action',
-    }),
+    // an issue route's carriers are rows of `feedback_route_issues`, one or more (ISS-265)
     routedRequirementId: uuid('routed_requirement_id').references(
       (): AnyPgColumn => requirements.id,
       { onDelete: 'no action' },
@@ -142,12 +141,12 @@ export const feedback = pgTable(
     statusChk: check('feedback_status_chk', sql`${t.status} IN (${inList(FEEDBACK_STATUSES)})`),
     routeChk: check(
       'feedback_route_chk',
-      sql`(${t.route} IS NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
-        OR (${t.route} = 'issue' AND ${t.routedIssueId} IS NOT NULL AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
-        OR (${t.route} = 'revision' AND ${t.routedSuggestionId} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.duplicateOf}, ${t.answer}) = 0)
-        OR (${t.route} = 'new_requirement' AND ${t.routedRequirementId} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
-        OR (${t.route} = 'answer' AND ${t.answer} ~ '[^[:space:]]' AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}) = 0)
-        OR (${t.route} = 'duplicate' AND ${t.duplicateOf} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.answer}) = 0)`,
+      sql`(${t.route} IS NULL AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'issue' AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'revision' AND ${t.routedSuggestionId} IS NOT NULL AND num_nonnulls(${t.routedRequirementId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'new_requirement' AND ${t.routedRequirementId} IS NOT NULL AND num_nonnulls(${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'answer' AND ${t.answer} ~ '[^[:space:]]' AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}) = 0)
+        OR (${t.route} = 'duplicate' AND ${t.duplicateOf} IS NOT NULL AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.answer}) = 0)`,
     ),
     // a new item holds no route; triage writes it
     statusRouteChk: check(
@@ -171,12 +170,28 @@ export const feedback = pgTable(
       .on(t.projectId, t.dedupKey)
       .where(sql`dedup_key IS NOT NULL`),
     statusIdx: index('feedback_project_status_idx').on(t.projectId, t.status),
-    routedIssueIdx: index('feedback_routed_issue_idx')
-      .on(t.routedIssueId)
-      .where(sql`routed_issue_id IS NOT NULL`),
     duplicateIdx: index('feedback_duplicate_of_idx')
       .on(t.duplicateOf)
       .where(sql`duplicate_of IS NOT NULL`),
+  }),
+);
+
+// the issues an issue route names, one or more (ISS-265): an item delivered by several issues names
+// every one. The deferred trigger `feedback_route_carriers_guard` (migration 0429) holds the pairing a
+// CHECK cannot reach across tables: an item routed `issue` holds at least one row here, any other none
+export const feedbackRouteIssues = pgTable(
+  'feedback_route_issues',
+  {
+    feedbackId: uuid('feedback_id')
+      .notNull()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'no action' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.feedbackId, t.issueId] }),
+    issueIdx: index('feedback_route_issues_issue_idx').on(t.issueId),
   }),
 );
 

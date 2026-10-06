@@ -20,7 +20,8 @@ type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
 export interface PhaseFacts {
   status: FeedbackStatus;
   route: FeedbackRoute | null;
-  routedIssueStatus: string | null;
+  /** The own status of every issue an issue route names (ISS-265); empty on any other route. */
+  routedIssueStatuses: readonly string[];
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
   /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
@@ -30,13 +31,16 @@ export interface PhaseFacts {
 
 // planned and resolved are computed on read from the linked work (Q1); a route whose
 // carrier died (issue dropped, suggestion rejected, requirement dropped) reads triaged, so a person
-// routes it again. verified is only ever the stored decision of a person
+// routes it again. An issue route reads every carrier: a dropped one carries nothing, and the item is
+// resolved once each that still carries it is closed. verified is only ever the stored decision of a person
 export function phaseOf(f: PhaseFacts): FeedbackPhase {
   if (f.status !== 'triaged') return f.status;
   switch (f.route) {
-    case 'issue':
-      if (f.routedIssueStatus === 'closed') return 'resolved';
-      return f.routedIssueStatus === 'dropped' ? 'triaged' : 'planned';
+    case 'issue': {
+      const carrying = f.routedIssueStatuses.filter((s) => s !== 'dropped');
+      if (carrying.length === 0) return 'triaged';
+      return carrying.every((s) => s === 'closed') ? 'resolved' : 'planned';
+    }
     case 'revision':
       if (!f.suggestion) return 'triaged';
       if (f.suggestion.status === 'accepted') {
@@ -127,7 +131,7 @@ export type CarrierRelease = 'none' | 'approval' | 'manual' | 'automatic';
 export interface StandingFacts {
   /** An item the project's live master owes a triage (`owed-triage.ts:owedTriages`). */
   masterOwesTriage: boolean;
-  /** Set only where the item is planned on an issue standing at `awaiting_release`. */
+  /** Set only where the item is planned on issues every one still owed of which stands at `awaiting_release`. */
   carrierRelease: CarrierRelease | null;
 }
 
@@ -137,11 +141,17 @@ type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
 const TRIAGER = 'A holder of feedback.approve';
 
+/** Several carriers named in one phrase: `ISS-1`, `ISS-1 and ISS-2`, `ISS-1, ISS-2 and ISS-3`. */
+export function carriersPhrase(keys: readonly string[]): string | null {
+  if (keys.length <= 1) return keys[0] ?? null;
+  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`;
+}
+
 /** Who or what an item waits on, and whether that act is one the viewer holds. */
 function waitingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
-  carrier: string | null,
+  carriers: readonly string[],
   reporter: string,
   revision: RevisionStage | null,
   viewer: StandingViewer,
@@ -180,8 +190,8 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'planned':
-      if (route === 'issue') return issueWait(carrier, viewer, facts.carrierRelease);
-      return theirs(plannedWait(route, carrier, revision));
+      if (route === 'issue') return issueWait(carriers, viewer, facts.carrierRelease);
+      return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
       return {
         wait: wait('person', reporter, 'verify the fix', 'resolved: the reporter verifies the fix'),
@@ -193,14 +203,17 @@ function waitingOf(
 }
 
 // a carrier at the release gate waits on whoever makes that release: never a bare "ship" in a
-// project where nothing ships it (eco round 4, #45)
+// project where nothing ships it (eco round 4, #45). `carriers` are the issues still owed, every one
+// named; `ref` is the first of them
 function issueWait(
-  carrier: string | null,
+  carriers: readonly string[],
   viewer: StandingViewer,
   release: CarrierRelease | null,
 ): Owed {
+  const carrier = carriersPhrase(carriers);
   const issue = carrier ?? 'the linked issue';
-  const ref = { ref: carrier };
+  const ref = { ref: carriers[0] ?? null };
+  const waits = carriers.length > 1 ? 'wait' : 'waits';
   switch (release) {
     case 'none':
       return {
@@ -208,7 +221,7 @@ function issueWait(
           'person',
           'A project writer',
           `release ${issue} by hand and close it`,
-          `planned: ${issue} waits at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
+          `planned: ${issue} ${waits} at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
           ref,
         ),
         yours: viewer.canWrite,
@@ -219,7 +232,7 @@ function issueWait(
           'person',
           'A release approver',
           `approve the release of ${issue}`,
-          `planned: ${issue} waits at awaiting_release and this project requires a holder of releases.approve to approve its release`,
+          `planned: ${issue} ${waits} at awaiting_release and this project requires a holder of releases.approve to approve its release`,
           ref,
         ),
         yours: viewer.canApproveRelease,
@@ -230,7 +243,7 @@ function issueWait(
           'person',
           'A project writer',
           `cut the release that carries ${issue}`,
-          `planned: ${issue} waits at awaiting_release and this project's production does not deploy on land, so a person cuts its release`,
+          `planned: ${issue} ${waits} at awaiting_release and this project's production does not deploy on land, so a person cuts its release`,
           ref,
         ),
         yours: viewer.canWrite,
@@ -241,7 +254,7 @@ function issueWait(
           'issue',
           carrier ?? 'The linked issue',
           'ship',
-          'planned: its issue carries it',
+          carriers.length > 1 ? 'planned: its issues carry it' : 'planned: its issue carries it',
           ref,
         ),
         yours: false,
@@ -332,13 +345,13 @@ function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
 export function feedbackStandingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
-  carrier: string | null,
+  carriers: readonly string[],
   reporter: string,
   viewer: StandingViewer,
   revision: RevisionStage | null,
   facts: StandingFacts = NO_FACTS,
 ): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
-  const owed = waitingOf(phase, route, carrier, reporter, revision, viewer, facts);
+  const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts);
   const attentionGroup = groupOf(phase, owed);
   return {
     attentionGroup,

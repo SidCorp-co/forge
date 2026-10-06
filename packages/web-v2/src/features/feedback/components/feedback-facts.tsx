@@ -110,9 +110,17 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
           <div className="grid gap-1.5 text-13">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               <EnumBadge family="feedbackRoute" value={r.route} />
-              {r.key && carrierType !== "other" ? <KeyLink type={carrierType} k={r.key} slug={slug} /> : null}
-              {r.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={r.status} /> : null}
             </span>
+            {r.carriers.length ? (
+              <ul className="grid gap-1" data-testid="facts-route-carriers">
+                {r.carriers.map((c, n) => (
+                  <li key={c.key ?? n} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
+                    {c.key && carrierType !== "other" ? <KeyLink type={carrierType} k={c.key} slug={slug} /> : null}
+                    {c.status && CARRIER_FAMILY[r.route] ? <StatusBadge family={CARRIER_FAMILY[r.route] as StatusFamily} value={c.status} /> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {r.answer ? <p className="whitespace-pre-wrap text-12-5 text-muted">{r.answer}</p> : null}
           </div>
         )}

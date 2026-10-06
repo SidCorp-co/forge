@@ -112,12 +112,11 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
 export async function feedbackOf(ids: readonly string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (ids.length === 0) return out;
-  const rows = rowsOf<{ routed_issue_id: string; fb_seq: number }>(
+  const rows = rowsOf<{ issue_id: string; fb_seq: number }>(
     await db.execute(sql`
-      SELECT routed_issue_id, fb_seq FROM feedback
-       WHERE routed_issue_id IN (${idList(ids)}) ORDER BY fb_seq`),
+      SELECT c.issue_id, f.fb_seq FROM feedback_route_issues c JOIN feedback f ON f.id = c.feedback_id
+       WHERE c.issue_id IN (${idList(ids)}) ORDER BY f.fb_seq`),
   );
-  for (const r of rows)
-    out.set(r.routed_issue_id, [...(out.get(r.routed_issue_id) ?? []), `FB-${r.fb_seq}`]);
+  for (const r of rows) out.set(r.issue_id, [...(out.get(r.issue_id) ?? []), `FB-${r.fb_seq}`]);
   return out;
 }

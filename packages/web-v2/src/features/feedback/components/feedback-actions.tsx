@@ -13,7 +13,7 @@ type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "an
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
   { value: "file_issue", label: "Bug: file a draft issue", hint: "A master picks it up once it is accepted as work." },
-  { value: "link_issue", label: "Bug: link an issue", hint: "An issue already carries it." },
+  { value: "link_issue", label: "Bug: link issues", hint: "One or more issues already carry it." },
   { value: "revision", label: "Scope change: revise the requirement", hint: "Name the revision proposal that carries it." },
   { value: "new_requirement", label: "Out of scope: start a requirement", hint: "A new draft requirement carries it." },
   { value: "answer", label: "Question: answer it", hint: "The reporter reads the answer; it resolves the item." },
@@ -22,6 +22,12 @@ const CHOICES: { value: Choice; label: string; hint: string }[] = [
 ];
 
 const OPTIONAL: readonly Choice[] = ["file_issue"];
+
+/** The issue keys a person typed, split on commas and spaces: one key stays one, several become a list. */
+export function issueKeysOf(text: string): string | string[] {
+  const keys = text.split(/[\s,]+/).filter(Boolean);
+  return keys.length === 1 ? (keys[0] as string) : keys;
+}
 
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
@@ -34,7 +40,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
       choice === "file_issue"
         ? { route: "issue", createIssue: value ? { title: value } : {} }
         : choice === "link_issue"
-          ? { route: "issue", issue: value }
+          ? { route: "issue", issue: issueKeysOf(value) }
           : choice === "revision"
             ? { route: "revision", suggestion: value }
             : choice === "new_requirement"
@@ -48,7 +54,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   };
   const placeholder: Record<Choice, string> = {
     file_issue: "Issue title (optional; the item's title by default)",
-    link_issue: "ISS-12",
+    link_issue: "ISS-12, ISS-14",
     revision: "Revision proposal id",
     new_requirement: "Requirement title",
     answer: "The answer the reporter reads",
@@ -174,7 +180,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
 
 function routeLine(s: SuggestionView): string {
   const t = (s.payload ?? {}) as Partial<FeedbackTriage>;
-  const carrier = t.issue ?? t.duplicateOf ?? t.requirement ?? t.title ?? (t.createIssue ? "a draft issue" : "");
+  const carrier = (Array.isArray(t.issue) ? t.issue.join(", ") : t.issue) ?? t.duplicateOf ?? t.requirement ?? t.title ?? (t.createIssue ? "a draft issue" : "");
   return [t.route ? enumLabel("feedbackRoute", t.route) : "Route", carrier].filter(Boolean).join(" → ");
 }
 

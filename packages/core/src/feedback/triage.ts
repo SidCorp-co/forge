@@ -15,7 +15,7 @@ import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { feedback } from '../db/schema-feedback.js';
+import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import {
   activeIssuePrefix,
@@ -88,7 +88,7 @@ async function declineTriageIn(
   if (refused) return { refusals: [refused] };
   return {
     refusals: null,
-    effect: { feedback: feedbackKey(row.fbSeq), route: 'decline', carrier: null },
+    effect: { feedback: feedbackKey(row.fbSeq), route: 'decline', carriers: [] },
   };
 }
 
@@ -138,6 +138,7 @@ export async function triageIn(
       updatedAt: new Date(),
     })
     .where(eq(feedback.id, row.id));
+  await tx.delete(feedbackRouteIssues).where(eq(feedbackRouteIssues.feedbackId, row.id));
   if (row.status !== 'triaged') {
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: 'triaged',
@@ -162,16 +163,16 @@ export async function triageIn(
     fromSuggestionId,
   });
   if ('refusals' in written) return { refusals: written.refusals };
-  const carrier = written.carrier;
+  const carriers = written.carriers;
   await decide(tx, row, actor, {
     decision: 'triaged',
     route: t.route,
-    carrier,
+    carrier: carriers.length ? carriers.join(', ') : null,
     reason: t.note ?? null,
     fromSuggestionId,
   });
   await closeClarification(tx, row.id, `routed as ${t.route}`);
-  return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route: t.route, carrier } };
+  return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route: t.route, carriers } };
 }
 
 /** A holder of feedback.approve acts on one item under the feedback lock, then reads it back. */
@@ -214,23 +215,26 @@ type CarriedRoute = Exclude<FeedbackTriageRoute, 'decline'>;
 
 type RouteColumns = Pick<
   typeof feedback.$inferInsert,
-  'routedIssueId' | 'routedRequirementId' | 'routedSuggestionId' | 'duplicateOf' | 'answer'
+  'routedRequirementId' | 'routedSuggestionId' | 'duplicateOf' | 'answer'
 >;
 
 const NO_ROUTE: RouteColumns = {
-  routedIssueId: null,
   routedRequirementId: null,
   routedSuggestionId: null,
   duplicateOf: null,
   answer: null,
 };
 
+/** An issue carrying the route; `path` is where the triage named it, absent for one it filed. */
+type CarrierIssue = { id: string; key: string; status: string; path?: string };
+
 interface Carrier {
   columns: RouteColumns;
-  key: string | null;
+  /** What carries the route by key: every issue of an issue route, the one carrier of another. */
+  keys: string[];
   facts: Pick<RouteFacts, 'suggestion' | 'routedRequirement'>;
-  /** The existing issue the route names, which a contract change's wait is written on. */
-  issue?: { id: string; key: string; status: string };
+  /** The issues an issue route carries on, each of which a contract change's wait is written on. */
+  issues: CarrierIssue[];
 }
 
 interface RouteInput {
@@ -249,19 +253,50 @@ const unknownCarrier = (path: string, detail: string): Refusal => ({
   detail,
 });
 
+/**
+ * The issues an issue route names, each resolved inside the item's project: one ref answers at
+ * `/issue`, a list at `/issue/<n>`, and one issue named twice (by key and uuid alike) is refused.
+ */
+async function namedIssuesIn(
+  projectId: string,
+  named: string | string[],
+  userId: string,
+): Promise<{ refusal: Refusal } | CarrierIssue[]> {
+  const refs = typeof named === 'string' ? [named] : named;
+  const out: CarrierIssue[] = [];
+  for (const [n, ref] of refs.entries()) {
+    const path = typeof named === 'string' ? '/issue' : `/issue/${n}`;
+    const issue = await issueRefIn(projectId, ref, userId, path);
+    if (isRefusal(issue)) return { refusal: issue };
+    const twin = out.findIndex((o) => o.id === issue.id);
+    if (twin >= 0) {
+      return {
+        refusal: {
+          code: 'FEEDBACK_CARRIER_REPEATED',
+          path,
+          detail: `${ref} names ${issue.key}, which /issue/${twin} already names; an issue carries the route once, so name each issue one time.`,
+        },
+      };
+    }
+    out.push({ ...issue, path });
+  }
+  return out;
+}
+
 /** An existing carrier the write names, resolved inside the item's project. */
 async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Refusal } | Carrier> {
   const { row, route, write: w, actor } = input;
   const projectId = row.projectId;
   const none: Carrier = {
     columns: NO_ROUTE,
-    key: null,
+    keys: [],
     facts: { suggestion: null, routedRequirement: null },
+    issues: [],
   };
   if (route === 'issue' && w.issue) {
-    const issue = await issueRefIn(projectId, w.issue, actor.userId, '/issue');
-    if (isRefusal(issue)) return { refusal: issue };
-    return { ...none, columns: { ...NO_ROUTE, routedIssueId: issue.id }, key: issue.key, issue };
+    const issues = await namedIssuesIn(projectId, w.issue, actor.userId);
+    if ('refusal' in issues) return issues;
+    return { ...none, keys: issues.map((i) => i.key), issues };
   }
   if (route === 'revision' && w.suggestion) {
     const [s] = await tx
@@ -281,8 +316,9 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
       };
     }
     return {
+      ...none,
       columns: { ...NO_ROUTE, routedSuggestionId: s.id },
-      key: s.id,
+      keys: [s.id],
       facts: {
         suggestion: { kind: s.kind, requirementId: s.requirementId },
         routedRequirement: null,
@@ -293,8 +329,9 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
     const req = await requirementRefIn(projectId, w.requirement, '/requirement');
     if (isRefusal(req)) return { refusal: req };
     return {
+      ...none,
       columns: { ...NO_ROUTE, routedRequirementId: req.id },
-      key: req.key,
+      keys: [req.key],
       facts: { suggestion: null, routedRequirement: { key: req.key, status: req.status } },
     };
   }
@@ -318,7 +355,7 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
     return {
       ...none,
       columns: { ...NO_ROUTE, duplicateOf: root.id },
-      key: feedbackKey(root.fbSeq),
+      keys: [feedbackKey(root.fbSeq)],
     };
   }
   return none;
@@ -328,12 +365,12 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
  * The upgrade issue waits on the contract version the change names (contract >= version), never on
  * the provider's issue (E1), due by the end of the provider's commitment window (E3), written as
  * data on the wait. Written in the triage's own transaction, so it is never dispatched first; a
- * filed issue and an existing one the route names carry it alike.
+ * filed issue and every existing one the route names carry it alike.
  */
 async function upgradeWaitIn(
   tx: Tx,
   row: RouteInput['row'],
-  issue: { id: string; key: string; status: string },
+  issue: CarrierIssue,
   userId: string,
 ): Promise<Refusal | null> {
   const { contractProviderProjectId, contractSlug, contractVersion } = row;
@@ -349,6 +386,7 @@ async function upgradeWaitIn(
       providerProjectId: contractProviderProjectId,
       contractSlug,
     }),
+    issue.path,
   );
   if (refusal) return refusal;
   await insertContractWaitIn(tx, {
@@ -383,7 +421,7 @@ export function carrierBands(
 }
 
 /** A bug's issue, or a contract change's upgrade issue due by the provider's commitment window. */
-async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key: string }> {
+async function fileIssueIn(tx: Tx, input: RouteInput): Promise<CarrierIssue> {
   const { row, write: w, target, actor } = input;
   const key = feedbackKey(row.fbSeq);
   // an issue is product content every agent reads: at no_egress it carries the reference alone
@@ -420,9 +458,10 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
   const filed = {
     id: issue.id,
     key: formatIssueRef(await activeIssuePrefix(row.projectId), issue.issSeq),
+    status: issue.status,
   };
   if (row.kind === 'contract_change') {
-    const refusal = await upgradeWaitIn(tx, row, { ...filed, status: issue.status }, actor.userId);
+    const refusal = await upgradeWaitIn(tx, row, filed, actor.userId);
     if (refusal) throw new Error(`a filed upgrade issue was refused its wait: ${refusal.detail}`);
   }
   return filed;
@@ -431,7 +470,7 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
 async function writeRouteIn(
   tx: Tx,
   input: RouteInput,
-): Promise<{ refusals: Refusal[] } | { carrier: string | null }> {
+): Promise<{ refusals: Refusal[] } | { carriers: string[] }> {
   const { row, route, write: w, actor } = input;
   const named = await namedCarrierIn(tx, input);
   if ('refusal' in named) return { refusals: [named.refusal] };
@@ -441,15 +480,16 @@ async function writeRouteIn(
     ...named.facts,
   });
   if (fit) return { refusals: [fit] };
-  let { columns, key } = named;
+  let { columns, keys, issues } = named;
   const filed = route === 'issue' && w.createIssue !== undefined;
   if (filed) {
-    const issue = await fileIssueIn(tx, input);
-    columns = { ...NO_ROUTE, routedIssueId: issue.id };
-    key = issue.key;
-  } else if (route === 'issue' && row.kind === 'contract_change' && named.issue) {
-    const refusal = await upgradeWaitIn(tx, row, named.issue, actor.userId);
-    if (refusal) return { refusals: [refusal] };
+    issues = [await fileIssueIn(tx, input)];
+    keys = issues.map((i) => i.key);
+  } else if (route === 'issue' && row.kind === 'contract_change') {
+    for (const issue of issues) {
+      const refusal = await upgradeWaitIn(tx, row, issue, actor.userId);
+      if (refusal) return { refusals: [refusal] };
+    }
   }
   if (route === 'new_requirement' && w.title) {
     await lockRequirements(tx, row.projectId);
@@ -462,16 +502,21 @@ async function writeRouteIn(
     if (created.refusals?.length) return { refusals: created.refusals };
     const req = await requirementRowIn(tx, row.projectId, created.id);
     columns = { ...NO_ROUTE, routedRequirementId: req.id };
-    key = requirementKey(req.reqSeq);
+    keys = [requirementKey(req.reqSeq)];
   }
   await tx
     .update(feedback)
     .set({ route, ...columns, updatedAt: new Date() })
     .where(eq(feedback.id, row.id));
-  if (columns.routedIssueId) {
+  if (issues.length) {
+    await tx
+      .insert(feedbackRouteIssues)
+      .values(issues.map((i) => ({ feedbackId: row.id, issueId: i.id })));
+  }
+  for (const issue of issues) {
     await writeRecordEvent(
       {
-        issueId: columns.routedIssueId,
+        issueId: issue.id,
         actor: { type: 'user', id: actor.userId, agency: actor.agency },
         kind: 'decision',
         contract: 1,
@@ -484,5 +529,5 @@ async function writeRouteIn(
       tx,
     );
   }
-  return { carrier: key };
+  return { carriers: keys };
 }

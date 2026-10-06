@@ -39,7 +39,13 @@ export async function requirementFeedbackAs(
         severity: s.severity,
         phase: s.phase,
         open: !CLOSED.includes(s.phase),
-        via: { type, key: type === 'route' ? (s.route?.key ?? '') : s.target.key },
+        via: {
+          type,
+          key:
+            type === 'route'
+              ? (s.route?.carriers.flatMap((c) => (c.key ? [c.key] : [])).join(', ') ?? '')
+              : s.target.key,
+        },
         route: s.route,
       };
     })
