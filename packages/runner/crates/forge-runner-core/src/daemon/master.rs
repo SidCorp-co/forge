@@ -13765,6 +13765,7 @@ mod pane_path_tests {
         let detail = crate::daemon::pane_path::Unresolved {
             missing: vec!["forge-runner".into(), "node".into()],
             path: "/usr/local/bin:/usr/bin".into(),
+            claude: Some("/usr/local/bin/claude".into()),
         }
         .to_string();
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
@@ -13810,6 +13811,7 @@ mod pane_path_tests {
         let detail = crate::daemon::pane_path::Unresolved {
             missing: vec!["forge-runner".into(), "node".into()],
             path: "/usr/local/bin:/usr/bin".into(),
+            claude: Some("/usr/local/bin/claude".into()),
         }
         .to_string();
         masters.note_unplaced("proj-1", "path-kept", Unplaced::PathUnresolved { detail });

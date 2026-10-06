@@ -77,14 +77,26 @@ pub fn missing<'a>(path: &OsStr, required: &[&'a str]) -> Vec<&'a str> {
 pub struct Unresolved {
     pub missing: Vec<String>,
     pub path: String,
+    /// The `claude` this box resolved to an absolute path, whose directory
+    /// the PATH carries, or `None` where it resolved to none.
+    pub claude: Option<String>,
 }
 
 impl std::fmt::Display for Unresolved {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let named: Vec<String> = self.missing.iter().map(|b| format!("`{b}`")).collect();
+        let claude_dir = match self.claude.as_deref().map(Path::new).and_then(Path::parent) {
+            Some(dir) => format!(
+                "the directory of the `claude` it resolved ({})",
+                dir.display()
+            ),
+            None => {
+                "no directory for `claude`, which this box resolved to no absolute path".to_string()
+            }
+        };
         write!(
             f,
-            "{} resolve{} in none of the directories on the PATH this box builds for a pane ({}), so no pane is placed rather than one whose hooks and commands fail. That PATH is this runner's own directory, the directory of the `claude` it resolved, `$HOME/.local/bin` and the runner service's own PATH: put each one in one of them",
+            "{} resolve{} in none of the directories on the PATH this box builds for a pane ({}), so no pane is placed rather than one whose hooks and commands fail. That PATH is this runner's own directory, {claude_dir}, `$HOME/.local/bin` and the runner service's own PATH: put each one in one of them",
             named.join(", "),
             if self.missing.len() == 1 { "s" } else { "" },
             self.path
@@ -113,6 +125,7 @@ pub fn for_pane() -> Result<(String, String), Unresolved> {
         Err(Unresolved {
             missing: gone.into_iter().map(str::to_string).collect(),
             path: shown,
+            claude: claude.map(|c| c.to_string_lossy().into_owned()),
         })
     }
 }
@@ -268,14 +281,34 @@ mod tests {
         let said = Unresolved {
             missing: vec!["node".into(), "forge".into()],
             path: "/a:/b".into(),
+            claude: Some("/opt/claude/bin/claude".into()),
         }
         .to_string();
         for part in [
             "`node`, `forge` resolve in none",
             "(/a:/b)",
             "no pane is placed",
+            "the directory of the `claude` it resolved (/opt/claude/bin)",
         ] {
             assert!(said.contains(part), "`{part}` missing: {said}");
         }
+    }
+
+    /// ISS-1223 criterion 26: where `claude` resolved to no absolute path,
+    /// no directory of it is on the PATH, and the refusal says so rather than
+    /// naming the directory of a `claude` it resolved.
+    #[test]
+    fn a_refusal_with_no_claude_resolved_does_not_claim_one() {
+        let said = Unresolved {
+            missing: vec!["claude".into()],
+            path: "/a:/b".into(),
+            claude: None,
+        }
+        .to_string();
+        assert!(!said.contains("the `claude` it resolved"), "{said}");
+        assert!(
+            said.contains("no directory for `claude`, which this box resolved to no absolute path"),
+            "{said}"
+        );
     }
 }
