@@ -610,7 +610,10 @@ impl From<NotTyped> for Error {
 /// pane is still read from its first line.
 const PROMPT_READ_LINES: &str = "-500";
 
-async fn read_prompt(target: &str) -> composer::Composer {
+/// How a pane's composer reads, and the capture it was read from: escapes
+/// kept, with enough scrollback to hold a tall draft. The capture is `None`
+/// where tmux gave none, which reads as no composer.
+async fn read_prompt(target: &str) -> (composer::Composer, Option<String>) {
     let args = [
         "capture-pane",
         "-p",
@@ -620,9 +623,21 @@ async fn read_prompt(target: &str) -> composer::Composer {
         "-t",
         target,
     ];
-    match tmux(&args).await {
-        Ok(out) if out.status.success() => composer::read(&String::from_utf8_lossy(&out.stdout)),
-        _ => composer::Composer::Unrecognised,
+    let capture = match tmux(&args).await {
+        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
+        _ => None,
+    };
+    let read = capture
+        .as_deref()
+        .map_or(composer::Composer::Unrecognised, composer::read);
+    (read, capture)
+}
+
+/// The visible screen of pane `name` as text, or `None` where tmux gave none.
+pub async fn screen(name: &str) -> Option<String> {
+    match tmux(&["capture-pane", "-p", "-t", &pane_target(name)]).await {
+        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
+        _ => None,
     }
 }
 
@@ -646,7 +661,8 @@ pub async fn send_line(name: &str, text: &str) -> std::result::Result<Prompt, No
         }
     }
     let target = pane_target(name);
-    let prompt = match read_prompt(&target).await {
+    let (read, capture) = read_prompt(&target).await;
+    let prompt = match read {
         composer::Composer::Empty => Prompt::Empty,
         composer::Composer::Holds(found) => {
             return Err(NotTyped::Refused(format!(
@@ -662,6 +678,21 @@ submit it at the pane, then send again.",
 highlighted, and Enter there decides that choice instead of sending a message. Answer it at the \
 pane, or wait for whatever raised it to close, then send again.",
                 composer::excerpt(&highlighted, 200)
+            )));
+        }
+        // The composer reads a choice list by its layout, and a trust dialog
+        // drawn in another one is no menu to it (ISS-1382 judging), so the
+        // dialog's own words refuse the paste whose Enter would answer it.
+        composer::Composer::Unrecognised
+            if capture
+                .as_deref()
+                .and_then(crate::daemon::pane_exit::on_trust_dialog)
+                .is_some() =>
+        {
+            return Err(NotTyped::Refused(format!(
+                "{name}: nothing was typed — its pane is showing Claude Code's folder-trust \
+dialog, and Enter there answers it instead of sending a message. Answer it at the pane, or set \
+`hasTrustDialogAccepted: true` for that folder in the `.claude.json` Claude Code reads, then send again."
             )));
         }
         composer::Composer::Unrecognised => {
@@ -1726,7 +1757,7 @@ done
     async fn composer_reads(name: &str, want: &composer::Composer) -> composer::Composer {
         let mut seen = composer::Composer::Unrecognised;
         for _ in 0..40 {
-            seen = read_prompt(&pane_target(name)).await;
+            seen = read_prompt(&pane_target(name)).await.0;
             if &seen == want {
                 break;
             }
@@ -1785,7 +1816,7 @@ done
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         assert_eq!(
-            read_prompt(&pane_target(&name)).await,
+            read_prompt(&pane_target(&name)).await.0,
             leftover,
             "the draft must be left exactly as it was"
         );
@@ -1959,7 +1990,7 @@ done
             "no key may reach a pane showing a choice list — an Enter alone would read as ENTER here"
         );
         assert_eq!(
-            read_prompt(&pane_target(&name)).await,
+            read_prompt(&pane_target(&name)).await.0,
             menu,
             "the choice list must be left exactly as it was"
         );
@@ -2835,6 +2866,44 @@ done
                 "tmux broke at {verb} after the pane answered alive, which is no ending: {why:?}"
             );
         }
+    }
+
+    /// ISS-1382 judging: the older trust dialog, drawn with its marker at
+    /// column zero as judge j4's stub drew it, is no choice list to the
+    /// composer, and the send path typed the brief into it. Its own words
+    /// refuse the paste, and nothing reaches the pane.
+    // cm:guard not on Windows: the shim is a `#!/bin/sh` script Windows cannot spawn; see above.
+    #[cfg(not(windows))]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_trust_dialog_the_composer_cannot_read_is_still_not_typed_into() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let older = "\x1b[1mDo you trust the files in this folder?\x1b[0m\n\n/tmp/j8e45/repo\n\nClaude Code may read files in this folder.\n\n\x1b[36m\u{276f} 1. Yes, proceed\x1b[0m\n  2. No, exit\n\nEnter to confirm \u{b7} Esc to exit\n\n\n";
+        assert_eq!(
+            composer::read(older),
+            composer::Composer::Unrecognised,
+            "the control: the composer reads no menu on this screen"
+        );
+        let tmux = ShimTmux::installed(Asked::Present, older, None);
+        let why = send_line(SHIM_PANE, "MESSAGE")
+            .await
+            .expect_err("a trust dialog refuses the send");
+        assert!(matches!(why, NotTyped::Refused(_)), "{why:?}");
+        let said = why.to_string();
+        assert!(
+            said.contains("nothing was typed")
+                && said.contains("folder-trust dialog")
+                && said.contains("hasTrustDialogAccepted"),
+            "{said}"
+        );
+        let verbs = tmux.verbs();
+        assert!(
+            !verbs
+                .iter()
+                .any(|v| v == "load-buffer" || v == "paste-buffer" || v == "send-keys"),
+            "nothing was handed to the pane: {verbs:?}"
+        );
     }
 
     /// The branch the shim cannot reach: tmux is not runnable at all, so the

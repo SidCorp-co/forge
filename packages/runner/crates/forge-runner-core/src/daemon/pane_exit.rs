@@ -42,7 +42,8 @@ const TRUST_QUESTIONS: [&str; 2] = [
 /// An option only the trust dialog offers, which has to follow its question.
 const TRUST_OPTIONS: [&str; 2] = ["trust this folder", "Yes, proceed"];
 
-/// The dialog's footer: a pane stopped on the dialog prints nothing after it.
+/// The dialog's footer, its last line: after it, a pane stopped on the dialog
+/// prints only redraws of the dialog's own rows.
 const TRUST_FOOTERS: [&str; 2] = ["Esc to cancel", "Esc to exit"];
 
 /// What the dialog prints before the folder it is asking about.

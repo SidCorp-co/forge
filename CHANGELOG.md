@@ -3150,6 +3150,10 @@
 - **`forge-runner doctor` reports each bound checkout's folder trust**, and a master that stopped on
   the trust dialog is reported as that, also when it closed itself by answering it (ISS-1382).
 
+- **A master that declined Claude Code's Bypass Permissions warning is no longer reported as
+  stopped on folder trust**, and `forge-runner master status` names the dialog and the last exit
+  while a re-placed pane still shows it (ISS-1382).
+
 - **A checkout an agent is still working in is released once that agent finishes**, rather than
   given up after five minutes and left for a hand `forge-runner run release` (ISS-1390).
 
