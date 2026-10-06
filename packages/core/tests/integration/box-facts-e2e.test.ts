@@ -1,5 +1,5 @@
 /**
- * Facts a box reports and core judges or serves (ADR 0009). Migration 0429: a box reports what each
+ * Facts a box reports and core judges or serves (ADR 0009). Migration 0430: a box reports what each
  * scratch filesystem has left on its heartbeat, core judges it against its own thresholds and shows
  * the verdict on `/api/me/devices`. Core serves the checkout orientation on `me/runners`, so the box
  * writes what it is sent. The lease answer carries only the lease, now that no paired box reads the
@@ -23,7 +23,7 @@ import {
 } from '../helpers/factories.js';
 import { groundBefore, type MigrationGround } from '../helpers/migration-ground.js';
 
-const TAG = '0429_a_box_reports_what_its_scratch_has_left';
+const TAG = '0430_a_box_reports_what_its_scratch_has_left';
 
 describe('the migration', () => {
   let ground: MigrationGround;
@@ -108,7 +108,7 @@ describe('a box reporting its facts', () => {
       verdict: 'critical',
       criticalFreePercent: DISK_CRITICAL_FREE_PERCENT,
     });
-    expect((disk?.roots as unknown[])[0]).toMatchObject({
+    expect((disk?.roots as unknown[] | undefined)?.[0]).toMatchObject({
       root: '/tmp',
       verdict: 'critical',
       axis: 'inodes',

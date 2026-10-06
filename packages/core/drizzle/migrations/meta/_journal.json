@@ -2768,10 +2768,10 @@
       "breakpoints": true
     },
     {
-      "idx": 429,
+      "idx": 430,
       "version": "7",
-      "when": 1820016000000,
-      "tag": "0429_a_box_reports_what_its_scratch_has_left",
+      "when": 1820102400000,
+      "tag": "0430_a_box_reports_what_its_scratch_has_left",
       "breakpoints": true
     }
   ]
