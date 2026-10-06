@@ -1,0 +1,23 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h
+[38;5;220m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/home/dev/.cache/iss1382r3/repo[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject[40Gyou[44Gcreated[52Gor[55Gone[59Gyou[63Gtrust?[70G(Like[76Gyour[81Gown[85Gcode,[91Ga[93Gwell-known[104Gopen[109Gsource[116Gproject,[125Gor[128Gwork[133Gfrom[138Gyour[143Gteam).[150GIf[153Gnot,[158Gtake[163Ga[165Gmoment[172Gto[175Greview[182Gwhat's[189Gin[192Gthis[197Gfolder[204Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,[40Gand[44Gexecute[52Gfiles[58Ghere.
+
+[2G[38;5;246mSecurity[11Gguide[39m
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u[c[?2026$p_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\[16t[?1016$p[c(B[?2004h[1D[4B[1C[4A [4GNo, exit[1C[1B[38;5;153m❯[4GYes, I trust this folder[39m
+
+
+[1C[3A[1D[3B[1C[4A[38;5;153m❯[4GNo, exit[1C[1B[39m [4GYes, I trust this folder
+
+
+[1C[4A[?1006l[?1003l[?1002l[?1000l[1D[4B[?1004l[>4m[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;
