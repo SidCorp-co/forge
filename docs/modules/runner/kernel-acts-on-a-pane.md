@@ -16,7 +16,7 @@ it cites. Where the two disagree, the code is right.
 |---|---|---|
 | Reading the tracker and writing to it | `forge-runner api <path>` with the pane's credential (`packages/runner/crates/forge-runner/src/cmd/api.rs:rest_client`) | served |
 | Attaching evidence | `forge-runner api issues/<id>/attachments -F file=@<path>`, which sends multipart (`packages/runner/crates/runner-transport/src/api/form.rs:encode`) | served |
-| The method a run or a wave follows | core's guides, read with `forge-runner api guides/issue-flow.md` and `guides/dispatch.md` | served |
+| The method a run or a wave follows | core's guides, read with `forge-runner api guides/issue-flow.md` and `forge-runner api guides/dispatch.md` | served |
 | Declaring a run | `forge-runner run declare` to the daemon's control socket (`packages/runner/crates/forge-runner/src/cmd/run.rs:run`) | served |
 | The run brief | `forge-runner run brief <run id>` (`packages/runner/crates/forge-runner/src/cmd/run/brief.rs:brief`): base branch from the project, held trees read with git against `origin/<baseBranch>` | served |
 | Dispatch gate: a shipped role dispatched with nothing declared is refused | the runner's `PreToolUse` hook, `forge-runner gate` (`packages/runner/crates/forge-runner/src/cmd/gate.rs:answer`, deciding in `packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`) | served |

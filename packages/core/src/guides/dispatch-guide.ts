@@ -38,10 +38,15 @@ free slot as a further dispatch of that wave. \`GET /api/projects/:id/runs/stand
 run out stands; \`GET /api/projects/:id/masters/standing\` how many slots this box has.
 
 ### 2. Read the order
-- \`GET /api/devices/me/issues/admissible?projectId=<uuid>\` answers the issues this project's
-  master may dispatch now, and each it held back with the refusal that held it.
-- \`GET /api/projects/:id/issues?status=open\` lists the rest; an issue with no \`complexity\` is one
-  nobody has read, not one that is small. Reading those is the wave's work too.
+- **Core composes the order; the box delivers it.** Each sweep core reads what this project's master
+  is owed — the issues it may dispatch now and every other owed item — and answers the box's
+  \`POST /api/devices/me/master-session/verdict\` with \`{ verdict, work }\`. The box types
+  \`work.nudge\` into the pane, or puts \`work.owedLine\` in a new pane's first brief. That line is
+  the order for this pass; there is no route a pane polls for it.
+- \`GET /api/projects/:id/issues?status=open\` lists the open rows, and
+  \`GET /api/issues/:id/dependencies\` says whether a live \`blocks\` edge holds one back. An issue
+  with no \`complexity\` is one nobody has read, not one that is small. Reading those is the wave's
+  work too.
 - Take a lower-ranked issue whenever a reason the metadata cannot carry says so — a person's stated
   order, a file a running run holds, a chain being cleared — and the fold names the reason.
 

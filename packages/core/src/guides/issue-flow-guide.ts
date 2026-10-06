@@ -7,6 +7,7 @@
 // Served by core so a pane bound to this core reads the method this core enforces: a CLI built
 // against another core's statuses and records sends a run to verbs this one refuses (ISS-275).
 
+import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -73,7 +74,9 @@ lease. Outside a declared run the move is refused \`NO_HOLDER\` until a lease st
 live lease another holder wrote. A live \`blocks\` edge refuses
 it \`ISSUE_BLOCKED\` — the blocker is the work, not the refusal.
 
-Record where the work is at each push: \`PATCH /api/issues/:id\` \`{ workState: { step, branch, headSha } }\`.
+Record where the work is at each push: \`PATCH /api/issues/:id\` \`{ workState: { step, branch, headSha } }\`,
+\`step\` one of ${WORK_STEPS.map((step) => `\`${step}\``).join(', ')} (\`null\` ends it) and
+\`headSha\` the whole 40-hex sha.
 
 ### 3. Plan and criteria, in the issue's own fields
 \`PATCH /api/issues/:id\` with \`plan\` and \`acceptanceCriteria\` together, before the code. Criteria
