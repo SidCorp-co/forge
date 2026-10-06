@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.51] - 2026-10-06
+
+Breaking contract versions name their dependent issues and open re-plan tasks
+
+
 ### Fixed
 
 - **A breaking contract version names every issue building its flow, and each re-plan flag opens a task.**
