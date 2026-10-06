@@ -4,6 +4,7 @@ import { composeLayers } from '../assistant/prompt/layer.js';
 import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
 import { provideAssistantMethod } from './assistant-method-guide.js';
 import { getGuide, listGuides } from './registry.js';
+import { guideRoutes } from './routes.js';
 
 // The OpenAPI contract is generated from `app.routes`, what Hono dispatches on, and
 // `check-api-contracts` holds it byte-equal to the mounted app, so a path it lacks is one no request
@@ -104,9 +105,16 @@ describe('the method guides a pane follows', () => {
     ).toEqual(['forge claim ISS-1']);
   });
 
-  it.each(METHODS)('%s is served and names no plugin command', (slug) => {
-    const body = getGuide(slug)?.body;
-    expect(body, `guide ${slug} is not in the registry`).toBeTruthy();
-    expect(pluginCommands(body ?? '')).toEqual([]);
+  it.each(METHODS)('%s is served and names no plugin command', async (slug) => {
+    const res = await guideRoutes.request(`/guides/${slug}.md`);
+    expect(res.status, `guide ${slug} is not served`).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/markdown');
+    expect(pluginCommands(await res.text())).toEqual([]);
+  });
+
+  it.each(METHODS)('%s is listed in the index an agent reads first', async (slug) => {
+    const res = await guideRoutes.request('/guides');
+    const { guides } = (await res.json()) as { guides: { slug: string }[] };
+    expect(guides.map((g) => g.slug)).toContain(slug);
   });
 });
