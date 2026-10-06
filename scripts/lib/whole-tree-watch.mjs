@@ -367,10 +367,11 @@ function install(state) {
   // script `eval` worker does not, so its source is handed the preload as its first line instead.
   workerThreads.Worker = class WatchedWorker extends Worker {
     constructor(code, options = {}) {
-      const startup = foreignStartup(options.execArgv ?? process.execArgv, state.base);
+      const handed = options.execArgv ?? process.execArgv;
+      const startup = foreignStartup(handed, state.base);
       if (startup !== null)
         asRoot(`Worker() with the startup module \`${startup}\`, which runs before the watch`);
-      const execArgv = ['--import', PRELOAD, ...(options.execArgv ?? process.execArgv)];
+      const execArgv = ['--import', PRELOAD, ...withoutOwnPreload(handed)];
       const env = armedWorkerEnv(options.env, state.log);
       if (options.eval && isScript(code))
         super(`require(${JSON.stringify(fileURLToPath(PRELOAD))});\n${code}`, { ...options, env });
@@ -400,10 +401,11 @@ function isEsbuildService(options) {
   );
 }
 
-/** The first startup module a worker's arguments name that the vitest worker was not itself
- * started with, or null: one of its own runs before the watch as it did there, any other unseen. */
+/** The first startup module a worker's arguments name that is neither the preload nor one the
+ * vitest worker was itself started with, or null: any other runs before the watch, unseen. */
 function foreignStartup(execArgv, base) {
   const own = new Set((base?.execArgv ?? []).map((t) => startupModuleKey(t, null)));
+  own.add(startupModuleKey(PRELOAD, null));
   const args = execArgv.map(String);
   for (let i = 0; i < args.length; i++) {
     const [flag, inline] = args[i].includes('=') ? args[i].split(/=(.*)/s) : [args[i], undefined];
@@ -412,6 +414,20 @@ function foreignStartup(execArgv, base) {
     if (mod === undefined || !own.has(startupModuleKey(mod, process.cwd()))) return mod ?? flag;
   }
   return null;
+}
+
+/** A worker's execArgv without the preload a watched parent handed it, which the watch puts first. */
+function withoutOwnPreload(execArgv) {
+  const isOwn = (mod) =>
+    mod !== undefined && startupModuleKey(mod, process.cwd()) === startupModuleKey(PRELOAD, null);
+  const args = execArgv.map(String);
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const [flag, inline] = args[i].includes('=') ? args[i].split(/=(.*)/s) : [args[i], undefined];
+    if (flag === '--import' && inline === undefined && isOwn(args[i + 1])) i++;
+    else if (!(flag === '--import' && isOwn(inline))) out.push(args[i]);
+  }
+  return out;
 }
 
 /** The raw bindings that list a directory or start a process without passing a watched call. */

@@ -169,13 +169,18 @@ export function guardVerdict({ file, source, hits, root }) {
   );
 }
 
-/** The refusal for a file whose source the guard cannot read, whose listings would otherwise pass. */
+/** The refusal for a file whose source the guard cannot read, naming what would otherwise pass
+ * unjudged: the listings it made covering the root, or, where it made none, its own globs. */
 export function unjudgedVerdict({ file, why, hits, root }) {
   const listed = hits.filter((h) => coversRoot(root, h.dir)).length;
+  const unjudged =
+    listed > 0
+      ? `, and the ${listed} listing(s) it made covering the repository root would pass unjudged`
+      : '; it made no listing covering the repository root, but whatever those calls list would ' +
+        'pass unjudged';
   return (
     `whole-tree-gates: ${file ?? 'a test file'}: ${why}, so the guard cannot read its declaration ` +
-    `or its own globs, and the ${listed} listing(s) it made covering the repository root would ` +
-    'pass unjudged; it is refused rather than passed'
+    `or its own \`import.meta.glob\` calls${unjudged}; it is refused rather than passed`
   );
 }
 
