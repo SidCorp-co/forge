@@ -945,7 +945,8 @@ CI on PR #457 reported `1 file failed` with the file itself reading
 `db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by
 `packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` does not name that
 file, which is where it bit. Its only setup file is the root-walk guard
-(`scripts/lib/whole-tree-guard.mjs`), which supplies none of the variables `env.ts` requires.
+(`scripts/lib/whole-tree-guard.mjs`), which supplies none of the variables
+`packages/core/src/config/env.ts` requires.
 
 This checker is what keeps the two lazy, because the property is invisible in a green run: one new
 module-scope read puts the side effect back for every module downstream of the file that does it,

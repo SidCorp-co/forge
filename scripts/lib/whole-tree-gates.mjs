@@ -143,17 +143,14 @@ export function logLines(bytes, offset) {
   };
 }
 
-/**
- * What a test's run owes when it listed a directory covering the repository root: nothing when its
- * source declares a whole-tree input, and otherwise a refusal naming the file, each listing, where
- * it was called from, and the line to add. `hits` are `{ dir, via, at }`, `dir` absolute.
- */
+/** What a run owes for its `{ dir, via, at, unseen }` hits covering the root: nothing if declared,
+ * else a refusal naming the file, each listing, its call site and the line to add. An `unseen`
+ * hit's `via` already says it was counted as the root. */
 export function guardVerdict({ file, source, hits, root }) {
   const covering = hits.filter((h) => coversRoot(root, h.dir));
   if (covering.length === 0 || declaresWholeTree(source)) return null;
   const shown = covering.slice(0, 3).map((h) => {
     const at = h.at ? ` (called at ${h.at})` : '';
-    // A hit the guard counted as the root already says so in its `via`; it listed nothing itself.
     if (h.unseen) return `${h.via}${at}`;
     const canonical = physical(h.dir);
     const where =
@@ -172,11 +169,7 @@ export function guardVerdict({ file, source, hits, root }) {
   );
 }
 
-/**
- * The refusal for a file the guard cannot judge — vitest named no test path at its end, or its
- * source could not be read — since without the source neither its declaration nor its own globs
- * can be read, and passing it would drop whatever it listed. `file` is null where vitest named none.
- */
+/** The refusal for a file whose source the guard cannot read, whose listings would otherwise pass. */
 export function unjudgedVerdict({ file, why, hits, root }) {
   const listed = hits.filter((h) => coversRoot(root, h.dir)).length;
   return (

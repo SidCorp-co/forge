@@ -117,9 +117,8 @@ export function armed(name, args, at, log) {
   return out;
 }
 
-/** A worker's `env` carrying the log and the preload, whatever the test handed it: a copy of its own
- * `env`, or of `process.env` where it names none. Under `SHARE_ENV` the worker reads the test's own
- * `process.env`, so that is re-armed instead and handed through. */
+/** A worker's `env` armed with the log and the preload as `armed()` arms a child's; under
+ * `SHARE_ENV` the worker reads the test's own `process.env`, so that is re-armed instead. */
 export function armedWorkerEnv(env, log) {
   if (env === workerThreads.SHARE_ENV) {
     process.env.NODE_OPTIONS = withPreload(process.env.NODE_OPTIONS);
@@ -365,7 +364,6 @@ function install(state) {
   const Worker = workerThreads.Worker;
   // A file worker and a module `eval` worker run an `execArgv` preload before their first line; a
   // script `eval` worker does not, so its source is handed the preload as its first line instead.
-  // Either way the preload finds the log in the worker's own env, armed here as a child's is.
   workerThreads.Worker = class WatchedWorker extends Worker {
     constructor(code, options = {}) {
       const startup = foreignStartup(options.execArgv ?? process.execArgv, state.base);
