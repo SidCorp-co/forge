@@ -25,7 +25,9 @@ The release path is read from the project document and nowhere else
 - **Where it goes.** It goes to the production environment. The branch production deploys from
   must be reachable from the default branch by `promotions`. A path that cannot reach it is refused
   as `RELEASE_TARGET_UNDECLARED`, naming the gap. So is a production environment that is external,
-  unbound or bound to an inactive binding.
+  unbound or bound to an inactive binding. A path of more than one crossing is refused at the
+  config write as `PROMOTION_CHAIN_UNSUPPORTED` (`project-config/rules.ts`), because a release
+  performs one crossing and nothing carries the middle of a longer chain.
 - **No production environment means Forge ships nothing.**
 - **Which environment a deploy binding serves** is the environment whose `deployment.binding` names
   it. A binding has no `stages`, and a coolify connection has no `targets`.
