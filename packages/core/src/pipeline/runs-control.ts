@@ -1,3 +1,4 @@
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 /**
  * ISS-102 — pause / resume / cancel transitions for `pipeline_runs`.
  *
@@ -182,7 +183,10 @@ export async function cancelPipelineRun(
       cascades: [closed],
     } = await closeRunsInTx(tx, {
       to: 'cancelled',
-      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
+      ),
       set: { finishedAt: cancelNow, updatedAt: cancelNow },
       reason: FAILURE_REASON_PIPELINE_CANCELLED,
       actor: {

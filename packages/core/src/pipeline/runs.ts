@@ -1,3 +1,4 @@
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 /**
  * pipeline_runs lifecycle helpers: opening the run a job or session works
  * under, advancing its current step and closing it when its issue ends.
@@ -68,7 +69,7 @@ async function selectOpenIssueRun(issueId: string): Promise<OpenIssueRun | null>
       and(
         eq(pipelineRuns.kind, 'issue'),
         eq(pipelineRuns.issueId, issueId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
+        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
       ),
     )
     .limit(1);
@@ -110,7 +111,9 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
   await db
     .update(pipelineRuns)
     .set({ currentStep: step, updatedAt: new Date() })
-    .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])));
+    .where(
+      and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES)),
+    );
 }
 
 /**
@@ -194,7 +197,10 @@ export async function closeRun(
   const { cascades } = await db.transaction((tx) =>
     closeRunsInTx(tx, {
       to: resolved.to,
-      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
+      ),
       reason: reasonForOutcome(resolved.to),
       actor: { type: 'system' },
       source: 'runs',
@@ -271,7 +277,7 @@ async function closeOneShotInTx(
     where: and(
       eq(pipelineRuns.id, runId),
       inArray(pipelineRuns.kind, ['interactive', 'system']),
-      inArray(pipelineRuns.status, ['running', 'paused']),
+      inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
     ),
     reason: reasonForOutcome(outcome),
     actor: { type: 'system' },
@@ -355,7 +361,7 @@ export async function closeOpenRunForIssue(
       where: and(
         eq(pipelineRuns.kind, 'issue'),
         eq(pipelineRuns.issueId, issueId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
+        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
       ),
       reason: reasonForOutcome(resolved.to),
       actor: { type: 'system' },

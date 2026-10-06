@@ -1,4 +1,5 @@
 import { PARK_STATUSES } from '@forge/contracts/issue-machine';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
@@ -101,7 +102,7 @@ const readLiveRunRows = (projectIds: string[]) =>
     .where(
       and(
         inArray(pipelineRuns.projectId, projectIds),
-        inArray(pipelineRuns.status, ['running', 'paused']),
+        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
       ),
     )
     .groupBy(pipelineRuns.projectId);
