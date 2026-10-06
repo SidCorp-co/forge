@@ -293,7 +293,7 @@ async fn settle_runs(
         &CoreRunState { client },
         &CoreRunState { client },
         recovery::RunWatch {
-            beat: &CoreBeat { client },
+            core: &CoreBeat { client },
             idle: &PaneActivity {
                 activity: shared.activity,
             },

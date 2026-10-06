@@ -548,6 +548,16 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 inbox::handle_session_send(&client, runner, masters, frame.data).await;
             });
         }
+        "agent:close" => match session_id_of(&frame.data) {
+            Some(sid) => {
+                let (client, runner) = (client.clone(), runner.clone());
+                tokio::spawn(async move { chat::handle_close(&client, runner, &sid).await });
+            }
+            None => tracing::warn!(
+                "[chat] agent:close names no sessionId, so no session is closed (frame: {})",
+                frame.data
+            ),
+        },
         "agent:abort" => {
             if let Some(sid) = session_id_of(&frame.data) {
                 tracing::info!("[chat] abort session={sid}");

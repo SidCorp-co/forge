@@ -39,7 +39,6 @@ pub(crate) struct TurnLoop<'a> {
     pub(crate) turn_tx: &'a TurnTx,
     pub(crate) turn_started: &'a Arc<tokio::sync::Notify>,
     pub(crate) turn_done: &'a Arc<tokio::sync::Notify>,
-    pub(crate) residency: Duration,
 }
 
 pub(crate) async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration) {
@@ -71,7 +70,6 @@ pub(crate) async fn duplex_turns(
         turn_tx,
         turn_started,
         turn_done,
-        residency,
     } = r;
     let mut reported = false;
     loop {
@@ -107,14 +105,6 @@ pub(crate) async fn duplex_turns(
         tokio::select! {
             _ = turn_started.notified() => {}
             _ = &mut *reader => return reported,
-            _ = tokio::time::sleep(residency) => {
-                tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
-                report_session_closed(core, job_id).await;
-                if let Some(s) = sessions.lock().await.get_mut(job_id) {
-                    s.stdin = None;
-                }
-                return reported;
-            }
         }
     }
 }

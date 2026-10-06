@@ -8,12 +8,18 @@
  * against a session another box opened.
  */
 
+import {
+  RUN_VERDICT_SHAPE,
+  type RunVerdict,
+  runVerdictRequestSchema,
+} from '@forge/contracts/run-verdict';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { readRunIssues } from '../issues/index.js';
 import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { gateConditionSchema } from './gate-report.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
 import {
@@ -25,6 +31,7 @@ import {
   writeRunEvidence,
 } from './run-evidence.js';
 import { closeRunSession, openRunSession } from './run-session.js';
+import { runVerdict } from './run-verdict.js';
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -132,5 +139,28 @@ deviceRunSessionRoutes.post(
     });
     if (written === null) throw notFound('run session');
     return c.json(written);
+  },
+);
+
+/**
+ * Core's verdict on one run the box ledger still holds open (ADR 0009, What core takes over: Recovery
+ * verdict). The box sends the facts only it can read; core reads the run's issues itself, within the
+ * projects this box reaches, and answers keep, exit, close or settle.
+ */
+deviceRunSessionRoutes.post(
+  '/me/run-sessions/verdict',
+  requireDevice(),
+  strictBody(runVerdictRequestSchema, RUN_VERDICT_SHAPE),
+  async (c) => {
+    const { projectId, facts } = c.req.valid('json');
+    const issues =
+      facts.process === 'none' && facts.issueKeys.length > 0
+        ? await readRunIssues({
+            deviceId: c.get('device').id,
+            projectId,
+            issueKeys: facts.issueKeys,
+          })
+        : { over: [], rests: [] };
+    return c.json(runVerdict(facts, issues) satisfies RunVerdict);
   },
 );

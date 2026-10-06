@@ -7,17 +7,19 @@
 //!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model }`
 //!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
 //!   - `agent:abort` `{ sessionId }`
+//!   - `agent:close` `{ sessionId, reason }`: core ended the session's residency
 //!
 //! A chat session is RESIDENT (ISS-873 phase 1): the first turn spawns a
 //! duplex process whose stdin stays open and every follow-up is written into
 //! it. `--resume` is the fallback for a session this daemon no longer holds —
-//! a restart, the idle ceiling, or a model change. Session key = `sessionId`,
+//! a restart, core ending its residency, or a model change. Session key = `sessionId`,
 //! so `agent:abort` still maps onto the right process; replies stream back
 //! with `PATCH /api/agent-sessions/:id`, exactly like the desktop.
 //!
 //! Chat never goes through `jobs` or `dispatch::handle`, so it takes no
 //! pipeline slot, and since 2026-09-04 no budget of its own either: a turn
-//! never queues. Its residency ceiling is the only bound.
+//! never queues. Its residency, which core ends (ADR 0009, Idle verdict), is
+//! the only bound.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -322,6 +324,16 @@ pub async fn handle_abort(runner: Arc<ClaudeCodeRunner>, session_id: &str) {
     }
 }
 
+/// Handle `agent:close`: core ended this session's residency, so the resident
+/// process is closed between turns and core is told it is, which is what stops
+/// core asking. A session this daemon does not hold is already closed here, and
+/// is said so all the same.
+pub async fn handle_close(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, session_id: &str) {
+    runner.close(&session_id.to_string()).await;
+    tracing::info!("[chat {session_id}] core ended its residency — closed");
+    agent_sessions::report_runtime_state(client, session_id, "closed").await;
+}
+
 /// The spawn spec for one chat turn.
 // Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits the
 // right process. step="chat" / job_id=sessionId only label the run.
@@ -335,7 +347,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         system_prompt: turn.system_prompt.clone(),
         model: turn.model.clone(),
         permission_mode: None,
-        timeout_seconds: None,
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
         counts_against_session_cap: false,
@@ -774,6 +785,23 @@ mod tests {
             .filter(|(m, _, _)| m == "PATCH")
             .map(|(_, _, b)| serde_json::from_str(b).unwrap())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn a_residency_core_ended_is_reported_closed_even_where_nothing_is_resident() {
+        let (client, seen) = fake_core(200, "").await;
+        let runner = Arc::new(ClaudeCodeRunner::new(
+            "http://127.0.0.1:9",
+            "device-token",
+            1,
+        ));
+        handle_close(&client, runner, "s-1").await;
+        let patches = patches(&seen);
+        assert_eq!(
+            patches,
+            vec![serde_json::json!({ "runtimeState": "closed" })],
+            "core was not told the session it ended is closed, so it would ask again every pass"
+        );
     }
 
     #[tokio::test]

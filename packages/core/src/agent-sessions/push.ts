@@ -8,3 +8,14 @@ import { emitEvent } from '../outbox/index.js';
 export async function pushSession(push: OutboxEventPayload<'session.pushed'>): Promise<void> {
   await emitEvent(db, 'session.pushed', push);
 }
+
+/** Tell a box to close the resident process it holds for a session, whose residency core ended. */
+export async function closeResidentOnBox(sessionId: string, deviceId: string): Promise<void> {
+  await pushSession({
+    projectId: null,
+    deviceId,
+    userIds: [],
+    event: 'agent:close',
+    data: { sessionId, reason: 'residency_expired' },
+  });
+}

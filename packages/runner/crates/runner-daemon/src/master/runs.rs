@@ -23,6 +23,7 @@ impl recovery::RepoRoots for Reclaim<'_> {
 pub(crate) async fn release_held_tree(
     led: &mut Ledger,
     r: &recovery::Recovered,
+    reason: &str,
     boot_id: &str,
     world: &Reclaim<'_>,
     sessions: &dyn close_loop::SessionReader,
@@ -53,7 +54,7 @@ pub(crate) async fn release_held_tree(
             repo_root: &resolved.repo_path,
             base_branch: resolved.base_branch.as_deref(),
             by: "recovery",
-            reason: r.release_reason(),
+            reason,
         },
         terminate::Ports {
             procs: world.killer,
@@ -155,9 +156,9 @@ pub(crate) struct PaneActivity<'a> {
 
 #[async_trait::async_trait]
 impl recovery::RunActivity for PaneActivity<'_> {
-    async fn reported(&self, session_id: &str) -> Option<run_exit::Reported> {
+    async fn reported(&self, session_id: &str) -> Option<recovery::Reported> {
         let a = self.activity.get(session_id)?;
-        Some(run_exit::Reported {
+        Some(recovery::Reported {
             doing: a.doing(),
             at: a.last_event_at,
             written_at: pool_jobs::written_at(Some(&a), None),
@@ -165,12 +166,7 @@ impl recovery::RunActivity for PaneActivity<'_> {
     }
 }
 
-pub(crate) async fn end_run(
-    led: &mut Ledger,
-    run_id: &str,
-    cause: run_exit::ExitCause,
-    world: &Reclaim<'_>,
-) {
+pub(crate) async fn end_run(led: &mut Ledger, run_id: &str, why: &str, world: &Reclaim<'_>) {
     let Ok(Some(run)) = led.run(run_id) else {
         return;
     };
@@ -178,7 +174,6 @@ pub(crate) async fn end_run(
         return;
     };
     world.killer.kill(pid).await;
-    let why = cause.reason();
     tracing::info!(
         "[master] run {run_id}: {why} — ending pid {pid}; its close loop starts on the next sweep"
     );
@@ -190,7 +185,7 @@ pub(crate) async fn end_run(
         .close(
             session_id,
             close_loop::Outcome::KilledIdle,
-            &why,
+            why,
             Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
         )
         .await
@@ -223,8 +218,8 @@ pub(crate) async fn give_back_lost_runs(
     match recovery::reconcile(led, boot_id, live, world.procs, closing, watch).await {
         Ok(done) => {
             for r in done {
-                if let Some(cause) = r.owed_exit {
-                    end_run(led, &r.run_id, cause, world).await;
+                if let Some(why) = r.exit.as_deref() {
+                    end_run(led, &r.run_id, why, world).await;
                     continue;
                 }
                 if r.owed_death_report {
@@ -235,8 +230,8 @@ pub(crate) async fn give_back_lost_runs(
                 // or the binding it could not resolve. Recovery has said once
                 // why any other standing run stands. A line per sweep beside
                 // either only repeats it (ISS-1220).
-                if r.owed_release {
-                    release_held_tree(led, &r, boot_id, world, sessions, leases).await;
+                if let Some(reason) = r.release.as_deref() {
+                    release_held_tree(led, &r, reason, boot_id, world, sessions, leases).await;
                     continue;
                 }
                 if r.state.is_closed() || r.standing_said {

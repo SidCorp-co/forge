@@ -7,7 +7,7 @@
 //! it, and the session id core minted is written back onto the row.
 //!
 //! That write-back is what starts everything else. `recovery::reconcile` beats a
-//! run session it can name, so the session stops being beaten the moment this
+//! run session core's verdict keeps, so the session stops being beaten the moment this
 //! box's master dies; core's `reapDeadRunSessions` then fails the session and
 //! `returnIssuesForRun` puts every issue back at the status it held when the run
 //! opened. None of that machinery is new — it ran 358 times out of 358 before

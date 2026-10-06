@@ -9,7 +9,7 @@
 //! files and a turn whose end was lost moves none of them.
 //!
 //! This is the evidence and nothing else. How long a reader waits on its
-//! silence is that reader's policy (`job_exit`, `run_exit`).
+//! silence is that reader's policy (`job_exit`, and core's run verdict).
 
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;

@@ -1,5 +1,5 @@
 /*
- * The production halves of `reconcile`'s five ports.
+ * The production halves of `reconcile`'s ports.
  *
  * Each one answers by reading something back — a tmux pane, a core row, a
  * membership list. None of them answers from the response to the write that
@@ -8,9 +8,9 @@
  */
 
 use crate::master::Masters;
-use crate::recovery::{Heartbeat, MasterLiveness, MasterPresence, ProcessLiveness};
+use crate::recovery::{MasterLiveness, MasterPresence, ProcessLiveness, RunCore};
 use runner_platform::error::Result;
-use runner_transport::{run_sessions, CoreClient};
+use runner_transport::{run_sessions, run_verdict, CoreClient};
 use runner_workspace::close_loop::{LeaseKeeper, Outcome, RunCloser, SessionReader};
 use runner_workspace::terminal;
 
@@ -134,39 +134,24 @@ impl LeaseKeeper for CoreRunState<'_> {
                 .held_by_this_device,
         )
     }
-
-    async fn issue_is_over(
-        &self,
-        project_id: Option<&str>,
-        issue_key: &str,
-    ) -> Result<Option<bool>> {
-        // The same call `is_returned` makes, which is why the question lives on
-        // this trait: the issue's own status rides back on the lease read
-        // rather than costing a route of its own (ISS-1245).
-        Ok(
-            run_sessions::lease_state(self.client, project_id, issue_key)
-                .await?
-                .issue_over,
-        )
-    }
-
-    async fn issue_rests(&self, project_id: Option<&str>, issue_key: &str) -> Result<Option<bool>> {
-        Ok(
-            run_sessions::lease_state(self.client, project_id, issue_key)
-                .await?
-                .issue_resting,
-        )
-    }
 }
 
-/// Telling core this box still holds a run.
+/// Telling core this box still holds a run, and asking it what becomes of one.
 pub struct CoreBeat<'a> {
     pub client: &'a CoreClient,
 }
 
 #[async_trait::async_trait]
-impl Heartbeat for CoreBeat<'_> {
+impl RunCore for CoreBeat<'_> {
     async fn beat(&self, session_id: &str) -> Result<()> {
         run_sessions::beat(self.client, session_id).await
+    }
+
+    async fn verdict(
+        &self,
+        project_id: Option<&str>,
+        facts: &run_verdict::Facts,
+    ) -> Result<run_verdict::Verdict> {
+        run_verdict::verdict(self.client, project_id, facts).await
     }
 }

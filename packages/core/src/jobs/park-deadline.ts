@@ -1,18 +1,28 @@
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
-import { transitionSessions } from '../agent-sessions/index.js';
+import {
+  closeResidentOnBox,
+  endLapsedResidency,
+  transitionSessions,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
 import type { LoopScope } from './loop-monitor.js';
-import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
+import { CLIENT_SESSION_KINDS, kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
-// value -> packages/runner/crates/runner-agent/src/claude_code/mod.rs:SESSION_IDLE_TIMEOUT
-// — the runner closes a parked session after this long, so a row parked past it plus the grace has
-// no process behind it.
+/**
+ * How long a session may wait for its next turn in a resident process before core ends the
+ * residency (ADR 0009, What core takes over: Idle verdict). The box keeps no clock of its own: it
+ * closes the process when `closeIdleResidents` tells it to, so a row parked past this plus the
+ * grace has no process behind it.
+ */
 const RESIDENCY_SECONDS = 10 * 60;
+
+/** How long core keeps telling a box to close a resident session before it reads the box as gone. */
+const RESIDENCY_ANSWER_SECONDS = 60 * 60;
 
 const PARK_GRACE_SECONDS = 5 * 60;
 
@@ -141,4 +151,48 @@ export async function reapUnansweredParks(
     logger.info({ closed }, 'loop-monitor: parks nobody answered before their deadline');
   }
   return closed;
+}
+
+/**
+ * The idle verdict on a resident chat session: one that has waited for its next turn past the
+ * residency is told closed on its box with `agent:close`, every pass until the box reports it
+ * closed. A box that has not answered within the hour after is read as gone, and the row says
+ * the residency is over without it.
+ */
+export async function closeIdleResidents(
+  now: Date = new Date(),
+  scope: LoopScope = {},
+): Promise<number> {
+  const at = now.toISOString();
+  const rows = await db.execute<{ id: string; device_id: string; lapsed: boolean }>(sql`
+    SELECT s.id, s.device_id,
+           COALESCE(s.last_heartbeat_at, s.created_at)
+             < ${at}::timestamptz - make_interval(secs => ${RESIDENCY_SECONDS + RESIDENCY_ANSWER_SECONDS})
+             AS lapsed
+      FROM agent_sessions s
+     WHERE s.kind IN ${kindTuple(CLIENT_SESSION_KINDS)}
+       AND s.runtime_state = 'awaiting_input'
+       AND s.device_id IS NOT NULL
+       AND COALESCE(s.last_heartbeat_at, s.created_at)
+             < ${at}::timestamptz - make_interval(secs => ${RESIDENCY_SECONDS})
+       ${scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``}
+     ORDER BY COALESCE(s.last_heartbeat_at, s.created_at) ASC
+     LIMIT 500
+  `);
+  let told = 0;
+  for (const row of rows) {
+    if (row.lapsed) {
+      await endLapsedResidency(row.id);
+      continue;
+    }
+    await closeResidentOnBox(row.id, row.device_id);
+    told += 1;
+  }
+  if (rows.length > 0) {
+    logger.info(
+      { told, lapsed: rows.length - told },
+      'loop-monitor: resident sessions past their residency told closed',
+    );
+  }
+  return told;
 }

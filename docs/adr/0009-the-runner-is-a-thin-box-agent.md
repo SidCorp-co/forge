@@ -105,15 +105,17 @@ The choices inside that, and why:
 
 ### What core takes over
 
-The decisions the box still takes are each one too-long function kept under a `too_many_lines`
-amnesty, whose reason names its entry here. Each is deleted, not split, once core answers it:
+Four decisions the box took were each one too-long function under a `too_many_lines` amnesty.
+Each was deleted, not split, once core answered it, and no such amnesty remains:
 
-- **Recovery verdict** — `recovery::reconcile` (`packages/runner/crates/runner-daemon/src/recovery/mod.rs:reconcile`): at boot,
-  whether a run the ledger names is over. The box reports the pid, pane and transcript facts; core
-  takes the verdict on the run session (`/api/devices/me/run-sessions/:id`) and closes it.
-- **Idle verdict** — `ClaudeCodeRunner::start` (`packages/runner/crates/runner-agent/src/claude_code/mod.rs`): when a
-  resident turn has been idle long enough to end. Core's job timeouts take it once the box stops
-  acking a job at pane open and posting progress every tick.
+- **Placement and retirement** of a master: `POST /api/devices/me/master-session/verdict`
+  (`packages/core/src/masters/verdict.ts:masterVerdict`).
+- **Recovery verdict** on a run the box ledger holds open: `POST /api/devices/me/run-sessions/verdict`
+  (`packages/core/src/devices/run-verdict.ts:runVerdict`). The box reports the pid, pane,
+  transcript and checkout facts, and beats, ends, closes or releases as told.
+- **Idle verdict** on a resident chat session: core's loop monitor sends `agent:close` once its
+  residency is over (`packages/core/src/jobs/park-deadline.ts:closeIdleResidents`); the box keeps no
+  residency clock.
 
 ## Consequences
 
@@ -122,12 +124,10 @@ amnesty, whose reason names its entry here. Each is deleted, not split, once cor
   shape core no longer sends. That covers the blocked-run park, the setup agent, the ledger's question,
   claim-hold and revival writers, the `runner:register` switch, and the Claude Code runner's
   issue-job arms (its only job spec is chat).
-- **Decisions core should take are listed, not moved** — in *What core takes over* above. Job and
-  run idle verdicts and the retry of a refused run declaration are each made on the box today;
-  master placement and retirement moved to core's `POST /api/devices/me/master-session/verdict`
-  (`packages/core/src/masters/verdict.ts:masterVerdict`). Each needs core to take the verdict first, and then the runner side is deleted. Until then,
-  the runner suppresses core's own job timeouts by acking a job as soon as its pane opens and
-  posting progress every tick.
+- **Decisions still made on the box.** A pool job pane's idle verdicts (`runner-core`'s `job_exit`,
+  `job_unheard` and `turn_evidence`) and the retry of a refused run declaration are made on the
+  box today. Until core takes the first, the runner suppresses core's own job timeouts by acking a
+  pool job as soon as its pane opens and posting progress every tick.
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
   is an on-disk migration on every box, so it waits for the same condition as any other promotion
   carry-over.

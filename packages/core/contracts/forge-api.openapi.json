@@ -7059,6 +7059,312 @@
         ]
       }
     },
+    "/api/devices/me/run-sessions/verdict": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "facts": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activity": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "doing": {
+                                "enum": [
+                                  "working",
+                                  "awaiting_permission",
+                                  "awaiting_children",
+                                  "idle"
+                                ],
+                                "type": "string"
+                              },
+                              "lastEventAgoMs": {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "writtenAgoMs": {
+                                "anyOf": [
+                                  {
+                                    "maximum": 315360000000,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "doing",
+                              "lastEventAgoMs",
+                              "writtenAgoMs"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bound": {
+                        "type": "boolean"
+                      },
+                      "checkoutGone": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "close": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "checkoutReturned": {
+                                "type": "boolean"
+                              },
+                              "leasesReturned": {
+                                "maximum": 1000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "leasesTotal": {
+                                "maximum": 1000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "sessionTerminal": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "sessionTerminal",
+                              "checkoutReturned",
+                              "leasesReturned",
+                              "leasesTotal"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "declaredAgoMs": {
+                        "maximum": 315360000000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "ended": {
+                        "type": "boolean"
+                      },
+                      "hasSession": {
+                        "type": "boolean"
+                      },
+                      "host": {
+                        "enum": [
+                          "not_read",
+                          "alive",
+                          "gone",
+                          "unreadable"
+                        ],
+                        "type": "string"
+                      },
+                      "hostEnded": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "pane_gone",
+                              "pane_started",
+                              "process_gone"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "issueKeys": {
+                        "items": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
+                      },
+                      "ledgerDead": {
+                        "type": "boolean"
+                      },
+                      "liveMasterInProject": {
+                        "type": "boolean"
+                      },
+                      "master": {
+                        "enum": [
+                          "alive",
+                          "gone",
+                          "unknown",
+                          "unanswered"
+                        ],
+                        "type": "string"
+                      },
+                      "parkedOnHuman": {
+                        "type": "boolean"
+                      },
+                      "process": {
+                        "enum": [
+                          "none",
+                          "alive",
+                          "gone"
+                        ],
+                        "type": "string"
+                      },
+                      "releaseDecided": {
+                        "type": "boolean"
+                      },
+                      "releaseRefused": {
+                        "type": "boolean"
+                      },
+                      "sessionOverForMs": {
+                        "anyOf": [
+                          {
+                            "maximum": 315360000000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "thisBoot": {
+                        "type": "boolean"
+                      },
+                      "transcript": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "none",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "unreadable",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "agoMs": {
+                                "maximum": 315360000000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "const": "written",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "agoMs"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "issueKeys",
+                      "parkedOnHuman",
+                      "master",
+                      "liveMasterInProject",
+                      "thisBoot",
+                      "bound",
+                      "process",
+                      "ledgerDead",
+                      "host",
+                      "hostEnded",
+                      "ended",
+                      "declaredAgoMs",
+                      "checkoutGone",
+                      "hasSession",
+                      "activity",
+                      "sessionOverForMs",
+                      "transcript",
+                      "releaseDecided",
+                      "releaseRefused",
+                      "close"
+                    ],
+                    "type": "object"
+                  },
+                  "projectId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "facts"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/devices/me/run-sessions/{sessionId}": {
       "get": {
         "parameters": [
