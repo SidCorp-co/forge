@@ -927,6 +927,25 @@ fn on_a_terminal_with(
     keys: bool,
     env: &[(&str, &str)],
 ) -> Pty {
+    spawn_on_a_pty(b, cols, rows, args, keys, env, false)
+}
+
+/// As `on_a_terminal_reading` with keys, and the pty is the child's
+/// controlling terminal, its session's foreground: Ctrl-C, Ctrl-\ and Ctrl-Z
+/// typed on it are the signals a shell's terminal sends.
+fn on_its_controlling_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
+    spawn_on_a_pty(b, cols, rows, args, true, &[], true)
+}
+
+fn spawn_on_a_pty(
+    b: &PlantedBox,
+    cols: u16,
+    rows: u16,
+    args: &[&str],
+    keys: bool,
+    env: &[(&str, &str)],
+    controlling: bool,
+) -> Pty {
     use std::os::fd::FromRawFd;
     // SAFETY: plain libc calls on descriptors this test opens and owns; the
     // secondary's name is copied out of the buffer ptsname_r fills.
@@ -954,7 +973,21 @@ fn on_a_terminal_with(
     };
     let modes_before = modes(&secondary);
     let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
-    let child = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_forge-runner"));
+    if controlling {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid and ioctl are async-signal-safe, and stdin is the
+        // secondary by the time pre_exec runs.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY, 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    let child = cmd
         .arg("top")
         .args(args)
         .env_clear()
@@ -1288,6 +1321,33 @@ fn an_interval_out_of_range_is_refused_naming_the_range_in_words() {
 }
 
 /// Criterion 39: `--help` says the range in the same words.
+/// ISS-1341 r5, criterion 42 (judge w10): `--help` names every key the view
+/// reads and what it does, and the terminal keys that end or stop it.
+#[test]
+fn help_names_every_key() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let out = top(&b, &["--help"]);
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{help}");
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    for said in [
+        "↑ ↓ or j k move the selection",
+        "Enter opens the selected row's detail",
+        "Esc returns to the table",
+        "s shows each row's sources",
+        "l switches the legend",
+        "q quits",
+        "space holds the page shown, or lets pages turn again",
+        "n shows the next page",
+        "p shows the previous page",
+        "Ctrl-C and Ctrl-\\ end the view",
+        "Ctrl-Z stops it",
+    ] {
+        assert!(words.contains(said), "{said:?} not in: {help}");
+    }
+}
+
 #[test]
 fn help_says_the_interval_range_in_words() {
     let core = fake_core("200 OK");
@@ -1775,10 +1835,10 @@ fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
     assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
 }
 
-/// Consult on the r4 head, F1, and the whole-set read at 2b6a996, F1:
-/// SIGTERM and SIGQUIT each end a view reading keys through its loop, so the
-/// terminal is given back the modes it had; and while it runs, Ctrl-\\ and
-/// Ctrl-Z send nothing, and Ctrl-C is still the interrupt.
+/// Consult on the r4 head, F1: SIGTERM and SIGQUIT each end a view reading
+/// keys through its loop, so the terminal is given back the modes it had; and
+/// while it runs, Ctrl-C, Ctrl-\\ and Ctrl-Z are the terminal's own keys still
+/// (ISS-1341 r5, judge w10's third finding).
 #[test]
 fn a_view_ended_by_a_signal_gives_the_terminal_back() {
     let core = fake_core("200 OK");
@@ -1788,13 +1848,16 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
         first_page_count(&mut pty);
         let taken = modes(&pty.secondary);
         assert_eq!(taken.c_lflag & libc::ICANON, 0, "the view took the input");
-        assert_eq!(taken.c_cc[libc::VQUIT], 0, "Ctrl-\\ still quits");
-        assert_eq!(taken.c_cc[libc::VSUSP], 0, "Ctrl-Z still stops");
-        assert_eq!(
-            taken.c_cc[libc::VINTR],
-            pty.modes_before.c_cc[libc::VINTR],
-            "Ctrl-C is no longer the interrupt"
-        );
+        for (cc, key) in [
+            (libc::VINTR, "Ctrl-C"),
+            (libc::VQUIT, "Ctrl-\\"),
+            (libc::VSUSP, "Ctrl-Z"),
+        ] {
+            assert_eq!(
+                taken.c_cc[cc], pty.modes_before.c_cc[cc],
+                "{key} is no longer the terminal's own key"
+            );
+        }
         // SAFETY: a signal to the child this test spawned and still holds.
         assert_eq!(
             unsafe { libc::kill(pty.child.id() as libc::pid_t, signal) },
@@ -1808,6 +1871,153 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
             "signal {signal}"
         );
     }
+}
+
+/// ISS-1341 r5, criteria 43: Ctrl-\\ typed on the view's controlling
+/// terminal ends it, and the terminal has the modes it had before.
+#[test]
+fn ctrl_backslash_ends_the_view_and_gives_the_terminal_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_its_controlling_terminal(&b, 100, 20, &["--interval", "1"]);
+    first_page_count(&mut pty);
+    pty.type_keys("\x1c");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "Ctrl-\\: {st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new()
+    );
+}
+
+/// The state letter `/proc/<pid>/stat` gives the child: `T` is stopped.
+fn state_of(child: &Child) -> char {
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", child.id())).unwrap_or_default();
+    stat.rsplit_once(") ")
+        .and_then(|(_, rest)| rest.chars().next())
+        .unwrap_or('?')
+}
+
+fn becomes(child: &Child, state: char, within: std::time::Duration) -> bool {
+    let until = std::time::Instant::now() + within;
+    while std::time::Instant::now() < until {
+        if state_of(child) == state {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    false
+}
+
+/// ISS-1341 r5, criteria 44 and 45: Ctrl-Z typed on the view's controlling
+/// terminal stops it with the terminal given back its modes; continued, it
+/// takes the input again, draws its screen and answers keys.
+#[test]
+fn ctrl_z_stops_the_view_with_the_terminal_given_back_and_fg_resumes_it() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_its_controlling_terminal(&b, 100, 20, &["--interval", "60"]);
+    let pages = first_page_count(&mut pty);
+    assert_eq!(modes(&pty.secondary).c_lflag & libc::ICANON, 0, "taken");
+    pty.type_keys("\x1a");
+    assert!(
+        becomes(&pty.child, 'T', std::time::Duration::from_secs(5)),
+        "Ctrl-Z did not stop the view: state {}",
+        state_of(&pty.child)
+    );
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new(),
+        "stopped with the view's modes on the terminal"
+    );
+    let at = pty.screens_drawn();
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGCONT) },
+        0
+    );
+    let second = std::time::Duration::from_secs(2);
+    assert!(
+        pty.draws_page(at, "page 1 of ", second),
+        "continued, no screen drawn: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert_eq!(
+        modes(&pty.secondary).c_lflag & libc::ICANON,
+        0,
+        "taken again"
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    assert!(
+        pty.draws_page(at, &format!("page 2 of {pages} "), second),
+        "continued, n unanswered: {:?}",
+        pty.page_rows_after(at)
+    );
+    pty.type_keys("q");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "{st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new()
+    );
+}
+
+/// ISS-1341 r5, criteria 34 and 41 (judge w10, reopen 4): `n` pressed just
+/// before a redraw that was already due shows the next page, and that
+/// redraw does not turn it; the page turns only once a whole interval has
+/// passed since the key.
+#[test]
+fn n_just_before_a_redraw_is_not_turned_by_it() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let interval = 3.0;
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "3"], true);
+    let pages = first_page_count(&mut pty);
+    assert!(pages > 4, "{pages}");
+    // A redraw turned the page: the next is due an interval after it.
+    let at = pty.screens_drawn();
+    assert!(
+        pty.draws_page(at, "page 2 of ", std::time::Duration::from_secs(8)),
+        "the box's detail did not turn: {:?}",
+        pty.page_rows_after(at)
+    );
+    let turned_at = *pty.cleared.lock().unwrap().last().unwrap();
+    let key_at = turned_at + std::time::Duration::from_secs_f64(interval - 0.4);
+    std::thread::sleep(key_at.saturating_duration_since(std::time::Instant::now()));
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    let keyed = std::time::Instant::now();
+    assert!(
+        pty.draws_page(
+            at,
+            &format!("page 3 of {pages} "),
+            std::time::Duration::from_secs(1)
+        ),
+        "n: {:?}",
+        pty.page_rows_after(at)
+    );
+    // Past the redraw that was due, short of an interval since the key.
+    std::thread::sleep(
+        (keyed + std::time::Duration::from_secs_f64(interval - 0.6))
+            .saturating_duration_since(std::time::Instant::now()),
+    );
+    let since = pty.page_rows_after(at);
+    assert!(
+        since
+            .iter()
+            .all(|r| r.starts_with(&format!("page 3 of {pages} "))),
+        "the redraw due when n was pressed turned its page: {since:?}"
+    );
+    assert!(
+        pty.draws_page(
+            at,
+            &format!("page 4 of {pages} "),
+            std::time::Duration::from_secs(6)
+        ),
+        "the page never turned again: {:?}",
+        pty.page_rows_after(at)
+    );
 }
 
 /// The box_view flake (ISS-1341 comments fba234f3 and 046ff8a6): the planted

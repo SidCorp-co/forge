@@ -9,11 +9,14 @@
 //! two hundred words could not be read on screen (judge r3j, finding 78).
 //!
 //! The terminal's input is read without line buffering or echo while the view
-//! runs, and given back as it was on every way out. ISIG is kept, so Ctrl-C is
-//! still the interrupt the view ends on: `Interrupt::listen` has replaced its
-//! default action before any mode is changed, so it comes back through the
-//! loop, and the guard's `Drop` restores the mode. The release profile aborts
-//! on a panic, where no `Drop` runs, so a panic hook restores it first.
+//! runs, and given back as it was on every way out. ISIG is kept, and the
+//! terminal's own keys with it: Ctrl-C and Ctrl-\\ end the view and Ctrl-Z
+//! stops it. `Interrupt::listen` has replaced each one's default action
+//! before any mode is changed, so it comes back through the loop: an end
+//! drops the guard, whose `Drop` restores the mode, and a stop gives the mode
+//! back before the view stops and takes it again once it is continued. The
+//! release profile aborts on a panic, where no `Drop` runs, so a panic hook
+//! restores it first.
 
 // Keys are read on unix alone; elsewhere the view says so, and the parser and
 // the keys it makes are the unix reader's only.
@@ -137,13 +140,29 @@ const ESCAPE_WAIT_MS: i32 = 40;
 pub struct Keys {
     rx: tokio::sync::mpsc::UnboundedReceiver<Key>,
     #[cfg(unix)]
-    _raw: raw::Raw,
+    raw: raw::Raw,
 }
 
 impl Keys {
     /// The next key, or `None` once stdin has ended.
     pub async fn next(&mut self) -> Option<Key> {
         self.rx.recv().await
+    }
+
+    /// The terminal given back the modes it had, for a view about to stop.
+    pub fn suspend(&mut self) {
+        #[cfg(unix)]
+        self.raw.give_back();
+    }
+
+    /// The terminal's input taken again, for a view continued after a stop:
+    /// the modes given back are read afresh, since the shell may have set
+    /// them while the view was stopped.
+    pub fn resume(&mut self) -> std::io::Result<()> {
+        #[cfg(unix)]
+        return self.raw.take_again();
+        #[cfg(not(unix))]
+        Ok(())
     }
 }
 
@@ -182,7 +201,7 @@ fn open_on_stdin() -> Result<Keys, String> {
             }
         }
     });
-    Ok(Keys { rx, _raw: raw })
+    Ok(Keys { rx, raw })
 }
 
 /// Whether stdin has a byte to read within `ms`.
@@ -207,12 +226,6 @@ fn open_on_stdin() -> Result<Keys, String> {
 mod raw {
     use std::sync::Mutex;
 
-    /// The value that turns a terminal's control character off.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    const DISABLED: libc::cc_t = libc::_POSIX_VDISABLE;
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    const DISABLED: libc::cc_t = 0xff;
-
     /// The mode to give back if the process panics while the view runs.
     static SAVED: Mutex<Option<(i32, libc::termios)>> = Mutex::new(None);
 
@@ -225,38 +238,50 @@ mod raw {
 
     impl Raw {
         pub fn enter(fd: i32) -> std::io::Result<Self> {
-            // SAFETY: tcgetattr and tcsetattr on a descriptor this process
-            // holds, with a termios this frame owns.
-            let mut saved: libc::termios = unsafe { std::mem::zeroed() };
-            if unsafe { libc::tcgetattr(fd, &mut saved) } != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            let mut quiet = saved;
-            quiet.c_lflag &= !(libc::ICANON | libc::ECHO);
-            quiet.c_cc[libc::VMIN] = 1;
-            quiet.c_cc[libc::VTIME] = 0;
-            // Ctrl-C stays the interrupt; Ctrl-\ and Ctrl-Z would quit or stop
-            // the view past the loop that gives the mode back, leaving the
-            // shell a terminal that neither echoes nor edits a line (whole-set
-            // read at 2b6a996, F1), so while the view runs they send nothing.
-            quiet.c_cc[libc::VQUIT] = DISABLED;
-            quiet.c_cc[libc::VSUSP] = DISABLED;
-            *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = Some((fd, saved));
-            hook_once();
-            if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &quiet) } != 0 {
-                let e = std::io::Error::last_os_error();
-                *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                return Err(e);
-            }
+            let saved = take(fd)?;
             Ok(Self { fd, saved })
         }
+
+        /// The modes read when the input was taken, given back.
+        pub fn give_back(&self) {
+            // SAFETY: as in `take`, restoring the termios read there.
+            unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &self.saved) };
+            *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+
+        /// The input taken again, from the modes the terminal has now.
+        pub fn take_again(&mut self) -> std::io::Result<()> {
+            self.saved = take(self.fd)?;
+            Ok(())
+        }
+    }
+
+    /// The terminal's modes on `fd` read, then its input set to a byte at a
+    /// time and unechoed; the modes read are what is given back.
+    fn take(fd: i32) -> std::io::Result<libc::termios> {
+        // SAFETY: tcgetattr and tcsetattr on a descriptor this process holds,
+        // with a termios this frame owns.
+        let mut saved: libc::termios = unsafe { std::mem::zeroed() };
+        if unsafe { libc::tcgetattr(fd, &mut saved) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut quiet = saved;
+        quiet.c_lflag &= !(libc::ICANON | libc::ECHO);
+        quiet.c_cc[libc::VMIN] = 1;
+        quiet.c_cc[libc::VTIME] = 0;
+        *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = Some((fd, saved));
+        hook_once();
+        if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &quiet) } != 0 {
+            let e = std::io::Error::last_os_error();
+            *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            return Err(e);
+        }
+        Ok(saved)
     }
 
     impl Drop for Raw {
         fn drop(&mut self) {
-            // SAFETY: as in `enter`, restoring the termios read there.
-            unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &self.saved) };
-            *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            self.give_back();
         }
     }
 

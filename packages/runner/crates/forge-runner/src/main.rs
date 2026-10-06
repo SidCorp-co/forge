@@ -36,6 +36,7 @@ enum Command {
     /// Show connection + runner status.
     Status(cmd::status::Args),
     /// A live, read-only view of this box: projects, runs, panes, what waits on a person, health.
+    #[command(after_help = cmd::top::KEYS_HELP)]
     Top(cmd::top::Args),
     /// Say where this box's runner log is read.
     Logs(cmd::logs::Args),
