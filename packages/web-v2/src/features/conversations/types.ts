@@ -209,6 +209,17 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
 };
 
 /**
+ * A reply core composed and could not deliver (`assistant/window-decision.ts:routedOutcome`): the
+ * window keeps the text and the refusal, so the thread shows both instead of the generic sentence.
+ */
+export function undeliveredReplyOf(detail: unknown): { reason: string; reply: string } | null {
+  if (!detail || typeof detail !== "object") return null;
+  const { reason, undeliveredReply } = detail as { reason?: unknown; undeliveredReply?: unknown };
+  if (typeof undeliveredReply !== "string") return null;
+  return { reason: typeof reason === "string" ? reason : "no reason was recorded", reply: undeliveredReply };
+}
+
+/**
  * What a person reads beside a runner-hosted turn, in each of its four states.
  */
 export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, string> = {

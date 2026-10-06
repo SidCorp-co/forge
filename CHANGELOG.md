@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
+  registered event type; a test fails when schema and migrations disagree; an undelivered reply is
+  kept and shown with its reason.
+
 ## [0.4.0-dev.39] - 2026-10-06
 
 Every lint rule blocks, transcripts are stored once, and realtime frames are typed

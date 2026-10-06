@@ -30,8 +30,17 @@ export async function emitEvent<T extends OutboxEventType>(
   await emitEvents(tx, [{ type, payload } as OutboxEvent]);
 }
 
+/**
+ * The event rows and their delivery jobs are one unit: inside the caller's transaction they are a
+ * savepoint of it, and on the pool they are a transaction of their own, so a job insert that fails
+ * never leaves an event row no consumer will ever be handed.
+ */
 export async function emitEvents(tx: Tx, events: readonly OutboxEvent[]): Promise<void> {
   if (events.length === 0) return;
+  await tx.transaction((unit) => writeEvents(unit, events));
+}
+
+async function writeEvents(tx: Tx, events: readonly OutboxEvent[]): Promise<void> {
   const written = await tx
     .insert(pipelineOutbox)
     .values(

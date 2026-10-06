@@ -368,6 +368,11 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
       return { decision: 'handed-off', detail: { reason: outcome.reason } };
     case 'superseded':
       return { decision: 'undetermined', detail: { reason: outcome.reason, superseded: true } };
+    case 'undeliverable':
+      return {
+        decision: 'undetermined',
+        detail: { reason: outcome.reason, attempted: true, undeliveredReply: outcome.reply },
+      };
     default:
       return { decision: 'undetermined', detail: { reason: outcome.reason, attempted: true } };
   }

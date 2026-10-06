@@ -24,66 +24,12 @@ the directory — it trusts the journal exclusively.
 
 ## How to add a migration
 
-### Preferred — `drizzle-kit generate`
+Every migration is hand-written. The last drizzle snapshot is `meta/0381_snapshot.json`; none was
+kept after it, so `pnpm db:generate` diffs the schema against 0381 and re-emits every change made
+since. Do not use it to write a migration.
 
-```bash
-cd packages/core
-# After editing a src/db/schema*.ts file:
-pnpm db:generate
-```
+### Writing one
 
-`drizzle-kit` writes the SQL file, updates `meta/_journal.json`, and
-emits a snapshot under `meta/`.
-
-**Two things it gets wrong, both measured on 0220 (ISS-960):**
-
-1. The `when` it writes is the wall clock, which on this repo is far BELOW the
-   journal's existing `max(when)` (those are hand-picked, spaced a day apart).
-   Drizzle reads the single highest `created_at` in the target DB and skips
-   lower entries silently, forever — the container then serves new code against
-   an old schema. Replace the generated `when` by hand with the value the
-   `Next free:` line of `node scripts/check-migration-order.mjs` prints — it
-   reads the floor off the branch you land on and every open branch's journal.
-   Run it immediately before the push that lands it: every branch deriving
-   `+ 86400000` from one base lands on the same number.
-2. It does not re-emit an index that Postgres dropped with the column. If your
-   change drops and re-adds a column (the only way to alter a generated
-   column's expression), every index on that column goes with it and drizzle's
-   model still believes they exist. Add the `CREATE INDEX` by hand.
-
-Both mean the generated file is a starting point on this repo, not a finished
-one. Keep the snapshot drizzle emitted; rewrite the SQL and the journal entry.
-
-### When a sibling migration lands on `main` first
-
-Regenerate yours on the merged tree; do not renumber by hand. Measured twice on ISS-1030: on
-2026-09-17 its `0266`/`0267` were buried by `0268` landing an hour earlier at a `when` 16 days
-above them, and on 2026-09-18 the renumbered `0269`/`0270` were buried again by `0272`. As they
-stood, drizzle would have skipped both silently and forever. Expect this once per sibling that
-lands, not once per branch.
-
-Renaming the files and raising the `when` is not enough, because a snapshot records the schema it
-was diffed FROM: yours chains off the snapshot `main` held when you generated it, and `main` now
-carries another one, and the first `pnpm db:generate` after that re-emits DDL the database already
-has. So after `git merge origin/main`:
-
-1. Delete your `.sql` files, your `meta/<idx>_snapshot.json` files, and your entries from
-   `meta/_journal.json` (`git checkout origin/main -- meta/_journal.json` restores it whole).
-2. `pnpm db:generate` once. It emits ONE `.sql` carrying every table your branch adds, plus one
-   snapshot chained off whatever `main`'s head snapshot now is — which is the only thing you are
-   keeping. Splitting the modules across several passes is not needed: only the HEAD entry owes a
-   snapshot.
-3. Diff the emitted SQL against what you had; it should be the union of your files, statement for
-   statement. Anything else is a real schema change you did not mean to make. Restore your own
-   `.sql` files under their new `idx`, discard the emitted one, and rename the emitted snapshot to
-   `meta/<head idx>_snapshot.json`.
-4. Set the `when` values by hand from `node scripts/check-migration-order.mjs` — `generate` writes
-   `Date.now()`, which is months below the floor.
-
-### Hand-written SQL (rare)
-
-Use only when codegen can't express the change (data backfills,
-expression indexes, partial indexes, stored functions).
 <!-- doc-citation: unchecked `NNNN_name.sql` — the naming TEMPLATE a new migration follows, not a file that exists. -->
 When you hand-write a `NNNN_name.sql`, you **must also**:
 
@@ -116,34 +62,12 @@ When you hand-write a `NNNN_name.sql`, you **must also**:
    and still be recorded as applied. `0067_unify_runners.sql` did exactly that
    for 171 migrations until ISS-1001 removed it.
 
-**A hand-written migration that changes the SCHEMA still owes a snapshot**: a
-head snapshot that lags is a `pnpm db:generate` that re-emits DDL the database
-already has. A data-only migration owes nothing.
-
-The way to produce one for a hand-written migration is `pnpm db:generate` on the
-merged tree, keeping `meta/<idx>_snapshot.json` and discarding the `.sql` it
-emits. **When the change both creates and drops a table, that command cannot
-run unattended**: `drizzle-kit` asks "created or renamed?" and its prompt has no
-non-TTY answer at all — it aborts with *"Interactive prompts require a TTY"*
-under a pipe, a heredoc and `script -qec` alike. Generate in two passes instead,
-so neither pass has both a creation and a deletion in it:
-
-1. Add a temporary module re-declaring the table you are DROPPING, and list it
-   in `drizzle.config.ts`. Generate: creations only, no prompt.
-2. Delete that module and its config line. Generate again: the deletion only,
-   no prompt.
-
-Keep the second pass's snapshot, rename it onto your migration's own index, and
-set its `prevId` to the id of the snapshot it was diffed from — the two staging
-snapshots are discarded, so the chain must link past them. Then delete both
-emitted `.sql` files and restore `meta/_journal.json`, which `generate` appends
-to. `pnpm db:generate` answering *"No schema changes, nothing to migrate"* is
-the check that it worked. Measured 2026-09-14 on `0241_conversations.sql`,
-which creates three tables and drops one.
-
-**Declare every CHECK constraint in the schema module too**, not only in the
-`.sql`. A drizzle snapshot records `checkConstraints` per table, so a constraint
-that exists only in the migration is one the snapshot denies.
+**Declare every CHECK constraint in the schema module too**, not only in the `.sql`, and rebuild
+it in a migration whenever the schema's version changes — a vocabulary the CHECK is derived from
+(`OUTBOX_EVENT_TYPES` for `pipeline_outbox_type_chk`) included. `src/db/schema-checks.test.ts`
+replays these files in journal order and fails naming every CHECK whose literals differ from the
+schema's, or that no migration defines. 0405 left the outbox admitting 28 of 43 event types and
+every write of the other 15 failed; 0419 repaired it.
 
 ## Common failure modes
 

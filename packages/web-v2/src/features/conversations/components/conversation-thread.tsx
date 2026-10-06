@@ -31,6 +31,7 @@ import {
   type ConversationProgressEntry,
   type OutboxMessage,
   threadEntries,
+  undeliveredReplyOf,
 } from "../types";
 
 /**
@@ -367,6 +368,7 @@ export function ConversationThread({
             {afterEntry?.(entry.progress.entry.id ?? "live")}
             </div>
           );
+        const undelivered = undeliveredReplyOf(entry.detail);
         return (
           <div
             key={entry.key}
@@ -374,8 +376,15 @@ export function ConversationThread({
             className="rounded-md border border-line bg-surface px-3 py-2"
           >
             <p className="fg-body-sm text-muted" title={`decision: ${entry.decision}`}>
-              {SILENCE_REASON[entry.decision]}
+              {undelivered
+                ? `This reply was never delivered — ${undelivered.reason}`
+                : SILENCE_REASON[entry.decision]}
             </p>
+            {undelivered && (
+              <p className="fg-body-sm mt-1 whitespace-pre-wrap" data-testid="thread-undelivered-reply">
+                {undelivered.reply}
+              </p>
+            )}
           </div>
         );
       })}

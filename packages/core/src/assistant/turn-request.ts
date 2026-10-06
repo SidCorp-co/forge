@@ -134,4 +134,5 @@ export type TurnOutcome =
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
   | { kind: 'not-dispatched'; reason: string }
-  | { kind: 'undeliverable'; reason: string };
+  /** The composed reply rides along, so a failed delivery does not lose what was written. */
+  | { kind: 'undeliverable'; reason: string; reply: string };

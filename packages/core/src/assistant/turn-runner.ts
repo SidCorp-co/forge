@@ -170,9 +170,14 @@ async function deliverReply(
   } catch (err) {
     logger.error(
       { err, ...where },
-      'conversations: the reply could not be delivered; nothing was recorded',
+      'conversations: the reply could not be delivered; it is kept on the window, unrecorded',
     );
-    return { kind: 'undeliverable', reason: err instanceof Error ? err.message : String(err) };
+    reportFailure(err, { tags: { area: 'conversations', phase: 'deliver' }, extra: where });
+    return {
+      kind: 'undeliverable',
+      reason: err instanceof Error ? err.message : String(err),
+      reply: reply.message.text,
+    };
   }
 
   try {

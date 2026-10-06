@@ -2710,6 +2710,13 @@
       "when": 1819065600000,
       "tag": "0418_the_transcript_lives_only_in_its_turn_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 419,
+      "version": "7",
+      "when": 1819152000000,
+      "tag": "0419_every_outbox_event_type_the_registry_names_is_one_the_table_admits",
+      "breakpoints": true
     }
   ]
 }
