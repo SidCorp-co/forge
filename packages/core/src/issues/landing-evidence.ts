@@ -310,3 +310,16 @@ export async function readIssueLandingShape(
     .limit(1);
   return laneOrNull(null, row?.kind)?.shape ?? null;
 }
+
+/** What the issue declares now, read back where a stamp wrote nothing; `null` for no such row. */
+export async function readDeclaredLandingShape(
+  executor: ShapeExecutor,
+  issueId: string,
+): Promise<{ declared: LandingShape | null } | null> {
+  const [row] = await executor
+    .select({ declared: issues.declaredLandingShape })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row ?? null;
+}

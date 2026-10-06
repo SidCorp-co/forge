@@ -1,6 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments, projectKinds } from '../db/schema.js';
+import { comments, issues, projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -12,6 +13,7 @@ import {
   landingMarkRefusal,
   laneOf,
   markTargetRequired,
+  readDeclaredLandingShape,
   readLandingShape,
   standingMarkRefusal,
   UnknownProjectKindError,
@@ -118,6 +120,7 @@ export class MergeMarkerError extends Error {
       | 'MARK_ALREADY_STANDS'
       | 'TARGET_REQUIRED'
       | 'PROJECT_KIND_UNKNOWN'
+      | 'LANDING_SHAPE_MOVED'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
@@ -147,6 +150,24 @@ async function markLane(issue: {
       kinds: [...projectKinds],
     });
   }
+}
+
+/** A stamp that wrote nothing because the declaration moved after the lane was read is refused by
+ *  name: the mark was judged on a lane the issue no longer holds, and nothing was written. */
+async function refuseMovedLane(issue: {
+  id: string;
+  declaredLandingShape: LandingShape | null;
+}): Promise<void> {
+  const row = await readDeclaredLandingShape(db, issue.id);
+  const judged = issue.declaredLandingShape ?? null;
+  if (!row || (row.declared ?? null) === judged) return;
+  throw new MergeMarkerError(
+    'LANDING_SHAPE_MOVED',
+    `this issue's \`landingShape\` moved from ${judged ?? 'null'} to ${row.declared ?? 'null'} ` +
+      'while this mark was judged, so nothing was marked. Mark it again, and it is judged on the ' +
+      'lane the issue holds now.',
+    { judged, holds: row.declared },
+  );
 }
 
 export type MergeMarkerActor = {
@@ -241,6 +262,7 @@ export async function applyMergeMarker(args: {
     if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
+        declared: before.declaredLandingShape ?? null,
         evidence: {
           kind: 'observed',
           commitSha: observed.commitSha,
@@ -256,6 +278,7 @@ export async function applyMergeMarker(args: {
       readFrom = fromRepository;
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
+        declared: before.declaredLandingShape ?? null,
         evidence: {
           kind: 'observed',
           commitSha: fromRepository.sha,
@@ -266,12 +289,14 @@ export async function applyMergeMarker(args: {
     } else if (landing) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
+        declared: before.declaredLandingShape ?? null,
         evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, via: 'mark' },
       });
       claimedCommit = args.commit ?? null;
     } else {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
+        declared: before.declaredLandingShape ?? null,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
       });
       // Only a `git` lane reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
@@ -279,6 +304,7 @@ export async function applyMergeMarker(args: {
       claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
       leftOut = recorded?.leftOut ?? null;
     }
+    if (!stampResult.wrote) await refuseMovedLane(before);
     const standing = standingMarkRefusal({
       sent: landing,
       wrote: stampResult.wrote,

@@ -208,6 +208,33 @@ describe('a mark already standing is never re-judged by a changed declaration', 
   });
 });
 
+describe('a mark is never written on a lane the issue no longer holds', () => {
+  it('refuses a first mark judged on a lane the declaration moved off before it was written', async () => {
+    const w = await world('standard');
+    const id = await issueAt(w, 'awaiting_release');
+    // The mark writer's caller loaded the row while it declared nothing.
+    const loaded = { id, projectId: w.projectId, mergedAt: null, declaredLandingShape: null };
+    expect((await patch(id, w.token, { landingShape: 'outside_git' })).status).toBe(200);
+
+    const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
+    const refusal = await refusalOf(() =>
+      applyMergeMarker({
+        issue: loaded,
+        op: 'mark',
+        target: 'main',
+        actor: {
+          agency: 'human',
+          commentAuthorId: w.userId,
+          hookActor: { type: 'user', id: w.userId, agency: 'human' },
+        },
+      }),
+    );
+    expect(refusal.code).toBe('LANDING_SHAPE_MOVED');
+    expect(refusal.message).toContain('moved from null to outside_git');
+    expect((await stored(id)).merged_at).toBeNull();
+  });
+});
+
 describe('an issue declared outside git, on a git project', () => {
   it('takes an agent mark carrying a landing with nothing else behind it, then developed and testing', async () => {
     const w = await world('standard');

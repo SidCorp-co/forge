@@ -152,6 +152,9 @@ served, which says the change landed at a commit holding none of it.
   `unmark` as the route, and writes nothing. The condition is the UPDATE's own WHERE
   (`packages/core/src/issues/update-service.ts:shapeUnderNoMarkGuard`), so no mark lands between the decision and the
   write; the same value re-sent passes. A `closed` issue cannot be unmarked, so its lane is fixed.
+  The other order is held too: the mark writer reads the declaration off the row its caller
+  loaded, and `recordIssueMerge` stamps only while the issue still declares that value, so a
+  declaration that moved in between is refused `LANDING_SHAPE_MOVED` with nothing written.
 - **Read** as `landingShape` — the lane, the one field a client reads — on the REST detail and
   every `forge_issues` answer that serializes the issue whole, beside `declaredLandingShape`, the
   issue's own value or null. Every refusal names who decided (`whereItLands`): *this issue's work
