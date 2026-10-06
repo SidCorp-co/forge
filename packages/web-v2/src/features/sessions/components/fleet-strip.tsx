@@ -89,11 +89,11 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
           onRetry={() => projectQ.refetch()}
         />
       ) : !projectQ.isSuccess ? null : devicePool.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line px-4 py-3 fg-body-sm text-muted">
+        <div className="py-3 fg-body-sm text-muted">
           No runners paired to this project yet.
         </div>
       ) : (
-        <div className="flex gap-2.5 overflow-x-auto pb-1">
+        <div className="flex divide-x divide-line-subtle overflow-x-auto pb-1">
           {devicePool.map((d) => {
             const bound = boundByDevice.get(d.id);
             const busy = !!bound;
@@ -107,7 +107,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
             return (
               <div
                 key={d.id}
-                className="min-w-[200px] flex-none rounded-lg border border-line bg-surface px-3 py-2.5"
+                className="min-w-[200px] flex-none px-4 py-1 first:pl-0"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1.5">

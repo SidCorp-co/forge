@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   SectionTitle,
 } from "@/design";
 import type { PulseActionKey, PulseActionOwner } from "@forge/contracts/needs-you";
@@ -26,8 +26,8 @@ export function ActionQueue({ pulse }: ActionQueueProps) {
   const rows = pulse.actions;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3">
+    <PageSection>
+      <PageSectionBody className="flex flex-col gap-3">
         <SectionTitle className="fg-h3">What needs someone</SectionTitle>
 
         {rows.length === 0 ? (
@@ -72,7 +72,7 @@ export function ActionQueue({ pulse }: ActionQueueProps) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

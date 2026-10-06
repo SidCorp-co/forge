@@ -7,9 +7,9 @@ import { useEffect, useState } from "react";
 import type { AnswerStyle, PreferenceChange } from "@forge/contracts/assistant-self";
 import {
   Button,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Field,
   SectionTitle,
   Select,
@@ -68,8 +68,8 @@ export function AssistantPreferencesCard() {
       instructions !== (prefsQ.data.assistantInstructions ?? ""));
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">How the assistant answers you</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           Applies to every reply addressed to you — in Forge rooms and in every connected chat.
@@ -118,8 +118,8 @@ export function AssistantPreferencesCard() {
         )}
 
         <ChangeTrail />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -140,7 +140,7 @@ function ChangeTrail() {
 
   return (
     <>
-      <CardTitle className="mt-8 mb-2">Changes</CardTitle>
+      <PageSectionTitle className="mt-8 mb-2">Changes</PageSectionTitle>
       {changesQ.isLoading ? (
         <Skeleton className="h-10 w-full rounded-md" />
       ) : !changesQ.data || changesQ.data.length === 0 ? (

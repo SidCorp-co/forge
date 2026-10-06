@@ -15,7 +15,7 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import {
   Banner,
   Button,
-  CardTitle,
+  PageSectionTitle,
   Divider,
   ErrorState,
   Field,
@@ -160,7 +160,7 @@ function CredentialSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <CardTitle>Credential</CardTitle>
+      <PageSectionTitle>Credential</PageSectionTitle>
       {canManage && secretField === null && (
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
           {module?.connectionNote ??
@@ -234,7 +234,7 @@ function ConfigSection({
   if (!Section) {
     return (
       <section className="flex flex-col gap-2">
-        <CardTitle>Configuration</CardTitle>
+        <PageSectionTitle>Configuration</PageSectionTitle>
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)} has no configuration at the credential tier.`}
@@ -281,7 +281,7 @@ function ProjectsSection({
 
   return (
     <section className="flex flex-col gap-2">
-      <CardTitle>Projects using it</CardTitle>
+      <PageSectionTitle>Projects using it</PageSectionTitle>
       {bindingsLoading ? (
         <Skeleton className="h-8 w-full" />
       ) : bindingsError ? (
@@ -292,7 +292,7 @@ function ProjectsSection({
           Integrations.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col divide-y divide-line-subtle">
           {bindings.map((b) => {
             const project = byId.get(b.projectId);
             const archived = Boolean(project?.archivedAt);
@@ -323,12 +323,12 @@ function ProjectsSection({
                   <Link
                     href={`/projects/${project.slug}/settings?tab=integrations`}
                     onClick={onNavigate}
-                    className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 transition-colors hover:bg-hover"
+                    className="flex items-center gap-3 py-2 transition-colors hover:bg-hover"
                   >
                     {row}
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 opacity-80">
+                  <div className="flex items-center gap-3 py-2 opacity-80">
                     {row}
                   </div>
                 )}
@@ -362,7 +362,7 @@ function DangerZone({
 
   return (
     <section className="flex flex-col gap-3">
-      <CardTitle>Danger zone</CardTitle>
+      <PageSectionTitle>Danger zone</PageSectionTitle>
       <div className="flex items-center gap-2">
         {connection.active ? (
           <Button

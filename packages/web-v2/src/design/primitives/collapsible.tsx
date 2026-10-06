@@ -13,12 +13,12 @@ export interface CollapsibleProps {
 export function Collapsible({ title, children, defaultOpen = false }: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-md border border-line bg-surface">
+    <div className="border-y border-line-subtle">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-md px-4 py-3 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        className="flex w-full items-center gap-2 py-3 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
         <Icon
           name="chevronRight"
@@ -28,7 +28,7 @@ export function Collapsible({ title, children, defaultOpen = false }: Collapsibl
         />
         <span className="fg-label flex-1">{title}</span>
       </button>
-      {open && <div className="forge-fade border-t border-line-subtle px-4 py-3">{children}</div>}
+      {open && <div className="forge-fade border-t border-line-subtle py-3">{children}</div>}
     </div>
   );
 }

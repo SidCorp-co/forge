@@ -7,7 +7,7 @@
 // this": how many credentials, how many want attention, how many are off.
 
 import {
-  Card,
+  PageSection,
   Icon,
   SectionTitle,
 } from "@/design";
@@ -33,7 +33,7 @@ export function ConnectionGroupSection({
 }) {
   const rowsId = `connections-${group.provider}`;
   return (
-    <Card>
+    <PageSection>
       <SectionTitle className="fg-h3">
         <button
           type="button"
@@ -74,6 +74,6 @@ export function ConnectionGroupSection({
             />
           ))}
       </div>
-    </Card>
+    </PageSection>
   );
 }

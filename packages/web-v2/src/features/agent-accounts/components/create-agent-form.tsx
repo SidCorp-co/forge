@@ -14,9 +14,9 @@ import { useState } from "react";
 import {
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Checkbox,
   Field,
   Input,
@@ -76,9 +76,9 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <CardTitle className="mb-1">New agent</CardTitle>
+    <PageSection>
+      <PageSectionBody>
+        <PageSectionTitle className="mb-1">New agent</PageSectionTitle>
         <p className="fg-body-sm mb-4">
           An agent is a principal of its own: work it files is filed as the agent, not as whoever
           set it up. Its credential reaches exactly the projects picked here and nothing else.
@@ -144,7 +144,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

@@ -2,7 +2,7 @@
 // you, Open issues, Spend today, and a deferred Pass-rate slot (ISS-380 Part 2).
 // Presentational only: every value arrives from a hook the page already called.
 
-import { Card, CardContent, Icon, type IconName } from "@/design";
+import { PageSection, PageSectionBody, Icon, type IconName } from "@/design";
 import { Badge } from "@/design/primitives/badge";
 
 interface Kpi {
@@ -10,7 +10,7 @@ interface Kpi {
   label: string;
   value: string;
   /** Omitted where a tile has nothing true to say under its figure — the row keeps its rhythm
-      because every tile is a Card of the same height, and a blank line beats an invented one. */
+      because every tile is the same height, and a blank line beats an invented one. */
   caption?: string;
   /** Render the value in the accent color (a live signal worth the eye). */
   accent?: boolean;
@@ -69,10 +69,10 @@ export function KpiBand(props: KpiBandProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-x-8 lg:grid-cols-5">
       {kpis.map((k) => (
-        <Card key={k.label}>
-          <CardContent>
+        <PageSection key={k.label}>
+          <PageSectionBody>
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-[5px] text-subtle" style={{ fontSize: "var(--text-12-5)" }}>
                 <Icon name={k.icon} size={14} style={{ color: "var(--fg-subtle)" }} />
@@ -87,8 +87,8 @@ export function KpiBand(props: KpiBandProps) {
               {k.value}
             </p>
             {k.caption && <p className="fg-caption mt-0.5 text-subtle">{k.caption}</p>}
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ))}
     </div>
   );

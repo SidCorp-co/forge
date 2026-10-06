@@ -89,7 +89,7 @@ export function SentryTargetsField({
       ) : (
         targets.map((t, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
-          <div key={i} className="flex flex-col gap-3 rounded-md border border-subtle p-3">
+          <div key={i} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
             <div className="flex items-start justify-between gap-2">
               <span className="fg-label text-muted">Project {i + 1}</span>
               <Button

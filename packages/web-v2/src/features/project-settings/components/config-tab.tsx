@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, SectionTitle } from "@/design";
+import { PageSection, PageSectionBody, SectionTitle } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import {
 	BindingsSection,
@@ -13,8 +13,8 @@ import { SecretsSection } from "./secrets-section";
 
 export function ConfigTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
 	return (
-		<Card>
-			<CardContent>
+		<PageSection>
+			<PageSectionBody>
 				<SectionTitle className="fg-h3 mb-1">Configuration</SectionTitle>
 				<p className="fg-body-sm text-muted">
 					Each document is saved whole against the revision it was read at. One that moved since is refused, and you
@@ -27,7 +27,7 @@ export function ConfigTab({ project, canEdit }: { project: ProjectDetail; canEdi
 				<SecretsSection projectId={project.id} canEdit={canEdit} />
 				<BindingsSection projectId={project.id} canEdit={canEdit} />
 				<EffectiveSection projectId={project.id} />
-			</CardContent>
-		</Card>
+			</PageSectionBody>
+		</PageSection>
 	);
 }

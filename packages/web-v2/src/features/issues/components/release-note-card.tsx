@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, Markdown } from "@/design";
+import { PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Markdown } from "@/design";
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import type { IssueDetail, IssueStatus } from "../types";
 
@@ -34,13 +34,13 @@ export function ReleaseNoteCard({
   const note = issue.releaseNotes;
   if (!note || issue.status === "dropped") return null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{heading(issue.status, issue.workState?.step)}</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>{heading(issue.status, issue.workState?.step)}</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody>
         <Markdown>{sentence(issue.status, note.userFacing, note.section === "Skip")}</Markdown>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

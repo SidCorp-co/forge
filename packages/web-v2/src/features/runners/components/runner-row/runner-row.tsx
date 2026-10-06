@@ -52,7 +52,7 @@ export function RunnerRow({
 	const limit = runnerLimitDisplay(runner, now);
 
 	return (
-		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
+		<div className="flex flex-col gap-3 py-3">
 			<div className="flex items-center justify-between gap-2">
 				<RunnerHeading runner={runner} limit={limit} deviceDisabled={deviceDisabled} />
 				{canEdit && (

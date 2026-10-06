@@ -9,10 +9,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -205,14 +205,14 @@ function MonitorTab({
         <Tile label="Online runners" value={String(totalRunners)} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Live now</CardTitle>
+      <PageSection>
+        <PageSectionHeader>
+          <PageSectionTitle>Live now</PageSectionTitle>
           <Stat icon="activity" mono={false}>
             {recent} steps · last 7d
           </Stat>
-        </CardHeader>
-        <CardContent>
+        </PageSectionHeader>
+        <PageSectionBody>
           {live.length === 0 ? (
             <p className="fg-body-sm text-muted">No runs are active right now.</p>
           ) : (
@@ -228,20 +228,20 @@ function MonitorTab({
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
     </div>
   );
 }
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <p className="fg-caption">{label}</p>
         <p className="mt-1 font-mono text-2xl font-bold text-fg">{value}</p>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -305,11 +305,11 @@ function ProgressTab({
         />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Avg duration by stage · 7d</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <PageSection>
+        <PageSectionHeader>
+          <PageSectionTitle>Avg duration by stage · 7d</PageSectionTitle>
+        </PageSectionHeader>
+        <PageSectionBody>
           {aggs.length === 0 ? (
             <p className="fg-body-sm text-muted">No completed steps in the window.</p>
           ) : (
@@ -328,8 +328,8 @@ function ProgressTab({
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
     </div>
   );
 }
@@ -341,14 +341,14 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
     return <EmptyState title="No projects" message="No project health to report." />;
   }
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
       {health.map((h) => (
-        <Card key={h.id}>
-          <CardHeader>
-            <CardTitle>{h.projectName}</CardTitle>
+        <PageSection key={h.id}>
+          <PageSectionHeader>
+            <PageSectionTitle>{h.projectName}</PageSectionTitle>
             <HealthDot health={deriveHealth(h)} />
-          </CardHeader>
-          <CardContent>
+          </PageSectionHeader>
+          <PageSectionBody>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Metric label="Active" value={String(h.totalActive)} />
               <Metric label="Live runs" value={String(h.liveRuns)} />
@@ -357,8 +357,8 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
               <Metric label="Blockers" value={String(h.blockers?.length ?? 0)} />
               <Metric label="Escalations" value={String(h.pendingEscalations)} />
             </div>
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       ))}
     </div>
   );
@@ -405,14 +405,14 @@ function RunsTab({
 
   return (
     <>
-      {/* Mobile: stacked cards */}
-      <div className="flex flex-col gap-2.5 sm:hidden">
+      {/* Mobile: a flush list */}
+      <div className="flex flex-col divide-y divide-line-subtle sm:hidden">
         {rows.map((r) => (
           <button
             type="button"
             key={`${r.runId}-${r.step}-${r.startedAt}`}
             onClick={() => onOpen(r.runId)}
-            className="flex flex-col gap-1.5 rounded-md border border-line bg-surface p-3 text-left hover:bg-hover"
+            className="flex flex-col gap-1.5 py-3 text-left hover:bg-hover"
           >
             <div className="flex items-center gap-2">
               <MonoTag>{r.step}</MonoTag>

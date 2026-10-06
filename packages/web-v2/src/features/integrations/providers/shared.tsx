@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, type BadgeProps, Banner, Button, Card, CardContent, CardHeader, CardTitle } from "@/design";
+import { Badge, type BadgeProps, Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { type ReactNode, useState } from "react";
 import { IntegrationEnabledControl } from "../components/integration-enabled-control";
@@ -37,17 +37,17 @@ export function ProviderCard({
   children: ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
+    <PageSection>
+      <PageSectionHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>{title}</CardTitle>
+          <PageSectionTitle>{title}</PageSectionTitle>
           {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
         </div>
-      </CardHeader>
-      <CardContent>
+      </PageSectionHeader>
+      <PageSectionBody>
         <div className="flex flex-col gap-4">{children}</div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

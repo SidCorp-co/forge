@@ -3,9 +3,9 @@
 // trend graph is deferred to ISS-380 Part 1 (bucketed endpoints) — shown as a
 // quiet "coming soon" footer rather than a fake chart.
 import {
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Icon,
 } from "@/design";
 import { formatUsd } from "@/features/pipeline/derive";
@@ -14,15 +14,15 @@ import type { SpendByStageData } from "../derive";
 export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFlightUsd: number }) {
   const { segments, total } = data;
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
+    <PageSection className="flex h-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="dollar" size={16} className="text-subtle" />
-          <CardTitle>7-day spend</CardTitle>
+          <PageSectionTitle>7-day spend</PageSectionTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(total)}</span>
       </div>
-      <CardContent className="flex-1">
+      <PageSectionBody className="flex-1">
         {total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">No spend recorded in the last 7 days.</p>
         ) : (
@@ -51,7 +51,7 @@ export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFli
           {inFlightUsd > 0 ? `+${formatUsd(inFlightUsd)} in flight · ` : ""}
           Cost-over-time trend coming soon (ISS-380)
         </p>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

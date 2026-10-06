@@ -9,7 +9,7 @@
 // the default view (AC8); legacy rows lacking metadata render without a badge
 // rather than erroring.
 import { useState } from "react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
+import { Badge, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
   FRESH_REASON_COPY,
@@ -30,16 +30,16 @@ export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   if (entries.length === 0 || !hasGroup) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Session continuity</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Session continuity</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody>
         {entries.map((entry, i) => (
           <TimelineRow key={entry.id} entry={entry} isLast={i === entries.length - 1} />
         ))}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

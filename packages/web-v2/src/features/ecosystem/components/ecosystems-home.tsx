@@ -87,12 +87,12 @@ export function EcosystemsHome() {
           <NewButton />
         </span>
       </div>
-      <ul className="grid gap-2">
+      <ul className="divide-y divide-line-subtle">
         {joined.map((e) => {
           const owed = needsMe(read, e.id);
           return (
             <li key={e.id}>
-              <Link href={ecosystemRoutes.ecosystem(e.id)} className="flex items-center gap-3 rounded-[10px] border border-line-subtle bg-surface px-4 py-3 hover:bg-hover">
+              <Link href={ecosystemRoutes.ecosystem(e.id)} className="flex items-center gap-3 py-3 hover:bg-hover">
                 <MonoTag hue="cobalt">{e.code}</MonoTag>
                 <b className="min-w-0 truncate">{e.name}</b>
                 {e.steward.name ? <span className="fg-caption truncate">Steward · {e.steward.name}</span> : null}

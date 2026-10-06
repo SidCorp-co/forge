@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
-import { Banner, Button, CardTitle, MonoTag, Tabs, Textarea } from "@/design";
+import { Banner, Button, PageSectionTitle, MonoTag, Tabs, Textarea } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, type Refusal, readRefusal } from "@/lib/api/refusals";
@@ -196,7 +196,7 @@ export function DocumentEditor({
 	return (
 		<section aria-label={title} className="mt-6 border-t border-line pt-5">
 			<div className="flex flex-wrap items-center gap-2">
-				<CardTitle className="fg-label text-fg">{title}</CardTitle>
+				<PageSectionTitle className="fg-label text-fg">{title}</PageSectionTitle>
 				<MonoTag>{read.declared ? `revision ${read.revision}` : "not declared"}</MonoTag>
 				{actions}
 			</div>

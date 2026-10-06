@@ -72,7 +72,7 @@ function EpodsystemBindingRow({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3">
       <BindingRowHeader binding={binding} isDefault={isDefault} badge={badge} />
       <TestOutcome error={test.error} result={test.result} />
       {showKeyField && (

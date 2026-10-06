@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Banner, Button, CardTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Badge, Banner, Button, PageSectionTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useSecretNames, useTestingProfiles, useWriteSecret } from "../config-hooks";
 import { NAME, type SecretStanding, secretUsesIn, standingOf } from "../secret-refs";
@@ -69,7 +69,7 @@ export function SecretsSection({ projectId, canEdit }: { projectId: string; canE
 
 	return (
 		<section aria-label="Secrets" className="mt-6 border-t border-line pt-5">
-			<CardTitle className="fg-label text-fg">Secrets</CardTitle>
+			<PageSectionTitle className="fg-label text-fg">Secrets</PageSectionTitle>
 			<p className="fg-body-sm mt-1 mb-3 text-muted">
 				Values a testing profile names as <code>secret://scope/name</code>. Only the names are listed; a value is
 				written here and never read back.

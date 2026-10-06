@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import type { AgentSelf, AgentSelfPatch, AnswerInGroupMode } from "@forge/contracts/assistant-self";
 import {
   Button,
-  CardTitle,
+  PageSectionTitle,
   Field,
   Input,
   Select,
@@ -145,7 +145,7 @@ export function AgentSelfEditor({
           <Input value={draft.emoji} maxLength={16} onChange={(e) => set("emoji", e.target.value)} />
         </Field>
       </div>
-      <CardTitle className="fg-label mt-2">When it speaks</CardTitle>
+      <PageSectionTitle className="fg-label mt-2">When it speaks</PageSectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="In a group room">
           <Select

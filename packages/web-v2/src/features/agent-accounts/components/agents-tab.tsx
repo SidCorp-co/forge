@@ -14,9 +14,9 @@ import { useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   EmptyState,
   ErrorState,
   Field,
@@ -125,9 +125,9 @@ export function AgentsTab() {
       </header>
 
       {revealed && (
-        <Card>
-          <CardContent>
-            <CardTitle className="mb-2">Copy this now — it is shown once</CardTitle>
+        <PageSection>
+          <PageSectionBody>
+            <PageSectionTitle className="mb-2">Copy this now — it is shown once</PageSectionTitle>
             <p className="fg-body-sm mb-3">
               Forge stores a hash of it, so there is nothing to read back. Losing it means minting
               another.
@@ -155,8 +155,8 @@ export function AgentsTab() {
                 I have it
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       )}
 
       <CreateAgentForm orgId={orgId} />
@@ -167,8 +167,8 @@ export function AgentsTab() {
           message="Create one above, or let one appear when a project is first spoken to in a room."
         />
       ) : (
-        <Card>
-          <CardContent>
+        <PageSection>
+          <PageSectionBody>
             <Table>
               <THead>
                 <TR>
@@ -263,7 +263,7 @@ export function AgentsTab() {
             </Table>
             {openAgent && (
               <div className="mt-6 border-t border-line pt-6">
-                <CardTitle className="mb-3">Self of {agentLabel(openAgent)}</CardTitle>
+                <PageSectionTitle className="mb-3">Self of {agentLabel(openAgent)}</PageSectionTitle>
                 <AgentSelfEditor
                   orgId={orgId}
                   agentUserId={openAgent.userId}
@@ -271,8 +271,8 @@ export function AgentsTab() {
                 />
               </div>
             )}
-          </CardContent>
-        </Card>
+          </PageSectionBody>
+        </PageSection>
       )}
     </div>
   );

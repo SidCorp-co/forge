@@ -1,9 +1,9 @@
 // Open-issues-by-status donut (ISS-379, AC#4). Pure-CSS conic-gradient ring +
 // legend — no chart lib. Light-first (kit color tokens).
 import {
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Icon,
 } from "@/design";
 import { conicGradient, type StatusDonutData } from "../derive";
@@ -11,12 +11,12 @@ import { conicGradient, type StatusDonutData } from "../derive";
 export function StatusDonut({ data }: { data: StatusDonutData }) {
   const { segments, total } = data;
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
+    <PageSection className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b border-line-subtle py-3">
         <Icon name="board" size={16} className="text-subtle" />
-        <CardTitle>Open issues by status</CardTitle>
+        <PageSectionTitle>Open issues by status</PageSectionTitle>
       </div>
-      <CardContent className="flex-1">
+      <PageSectionBody className="flex-1">
         {total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">No open issues to chart.</p>
         ) : (
@@ -46,7 +46,7 @@ export function StatusDonut({ data }: { data: StatusDonutData }) {
             </ul>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

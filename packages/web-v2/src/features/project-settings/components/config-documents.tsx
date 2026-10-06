@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Banner, Button, CardTitle, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";
+import { Banner, Button, PageSectionTitle, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, readRefusal } from "@/lib/api/refusals";
 import {
@@ -123,7 +123,7 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 		name === "" || NAME.test(name) ? (held.has(name) ? `${name} is already declared.` : undefined) : "A profile id matches ^[a-z][a-z0-9-]{0,62}$.";
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<CardTitle className="fg-label text-fg">Testing profiles</CardTitle>
+			<PageSectionTitle className="fg-label text-fg">Testing profiles</PageSectionTitle>
 			<p className="fg-body-sm mt-1 text-muted">
 				How a tester gets into an environment: actors and services, each naming a <code>secret://</code> reference, never
 				a value. An environment names its profile in <code>environments.&lt;name&gt;.testing</code>.
@@ -197,7 +197,7 @@ export function BindingsSection({ projectId, canEdit }: { projectId: string; can
 	const pending = adding.filter((id) => !held.has(id));
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<CardTitle className="fg-label text-fg">Bindings</CardTitle>
+			<PageSectionTitle className="fg-label text-fg">Bindings</PageSectionTitle>
 			<p className="fg-body-sm mt-1 text-muted">
 				What a connection is bound to in this project: a deploy target, a storefront source or a service. Each keeps one
 				role; the project document names a binding by its id.

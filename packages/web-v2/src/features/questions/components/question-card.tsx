@@ -11,10 +11,10 @@ import { useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   Field,
   EnumBadge,
   StatusBadge,
@@ -77,7 +77,7 @@ function OptionRow({
 }) {
   const describedBy = `decision-option-${option.id}`;
   return (
-    <div className="rounded-md border border-line bg-surface px-3 py-2.5">
+    <div className="border-t border-line-subtle py-2.5">
       <div className="flex flex-wrap items-start gap-2">
         <span className="fg-body-sm min-w-0 flex-1 text-fg">{option.label}</span>
         {recommended && <Badge tone="accent">Recommended</Badge>}
@@ -108,7 +108,7 @@ function OptionRow({
 
 function RoundHistory({ step }: { step: QuestionStep }) {
   return (
-    <div className="rounded-md border border-line px-3 py-2">
+    <div className="border-l-2 border-line-subtle py-1 pl-3">
       <p className="fg-caption text-subtle">Round {step.round}</p>
       <p className="fg-body-sm mt-0.5 text-fg">{step.prompt}</p>
       {isChoiceStep(step) ? (
@@ -253,23 +253,23 @@ export function QuestionCard({
   const firstEnabledId = answerable ? (question.options.find((o) => !o.locked)?.id ?? null) : null;
 
   return (
-    <Card
+    <PageSection
       data-question-id={question.id}
       className={highlighted ? "shadow-[var(--shadow-focus)]" : undefined}
     >
-      <CardHeader className="flex flex-wrap items-center gap-2">
-        <CardTitle
+      <PageSectionHeader className="flex flex-wrap items-center gap-2">
+        <PageSectionTitle
           data-question-title="true"
           tabIndex={-1}
           className="focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           {answerable ? "Decision waiting" : "Decision"}
-        </CardTitle>
+        </PageSectionTitle>
         <EnumBadge family="blockerKind" value={question.blockerKind} />
         <StatusBadge family="question" value={question.status} />
         {context}
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </PageSectionHeader>
+      <PageSectionBody className="space-y-3">
         {earlier.length > 0 && (
           <div className="space-y-2">
             {earlier.map((step) => (
@@ -323,7 +323,7 @@ export function QuestionCard({
         )}
 
         {outcome && <p className="fg-body-sm text-muted">{outcome}</p>}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

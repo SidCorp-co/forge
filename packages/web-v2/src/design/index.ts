@@ -13,7 +13,7 @@ export { Avatar } from "./primitives/avatar";
 export { ProjectMark } from "./primitives/project-mark";
 export { HealthDot } from "./primitives/health-dot";
 export { Stat } from "./primitives/stat";
-export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
+export { PageSection, PageSectionHeader, PageSectionTitle, PageSectionBody } from "./primitives/page-section";
 export { PageTitle, SectionTitle } from "./primitives/heading";
 export { TopBarActions, TopBarSlotProvider, useTopBarSlotTargets } from "./primitives/top-bar-slot";
 export { Kicker } from "./primitives/kicker";

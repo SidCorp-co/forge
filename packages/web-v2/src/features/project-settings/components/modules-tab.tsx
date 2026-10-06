@@ -13,8 +13,8 @@
 
 import { useMemo, useState } from "react";
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   EmptyState,
   ErrorState,
   IconButton,
@@ -264,8 +264,8 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
   const tree = useMemo(() => flattenModules(modules), [modules]);
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-1">Modules</SectionTitle>
         <p className="fg-body-sm mb-4 text-muted">
           The parts of this project issues are attributed to. Each issue has one primary module and
@@ -322,7 +322,7 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
           remove={remove}
           onClose={() => setPendingDelete(null)}
         />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

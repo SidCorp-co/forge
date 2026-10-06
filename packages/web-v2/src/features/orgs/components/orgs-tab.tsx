@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Card, CardContent, ErrorState, Field, Input, SectionTitle, Skeleton, EnumBadge } from "@/design";
+import { Badge, Button, PageSection, PageSectionBody, ErrorState, Field, Input, SectionTitle, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { SLUG_RE, slugify } from "@/lib/slug";
@@ -43,18 +43,18 @@ export function OrgsTab() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardContent>
+      <PageSection>
+        <PageSectionBody>
           <SectionTitle className="fg-h3 mb-1">Organizations</SectionTitle>
           <p className="fg-body-sm mb-4 text-muted">
             Every project lives in exactly one org. Org owners/admins manage all
             of its projects; org members still need a per-project invite.
           </p>
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-line-subtle">
             {orgs.map((o) => (
               <li
                 key={o.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                className="flex items-center justify-between gap-3 py-2"
               >
                 <span className="min-w-0 flex-1 truncate text-fg">
                   {o.name}
@@ -78,8 +78,8 @@ export function OrgsTab() {
             ))}
           </ul>
           <CreateOrgForm />
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
 
       {selected && (
         <OrgMembersCard

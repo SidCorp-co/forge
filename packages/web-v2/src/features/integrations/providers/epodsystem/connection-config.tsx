@@ -2,7 +2,7 @@
 
 import type { ConnectionSection } from "../registry";
 import { text } from "../config-read";
-import { CardTitle } from "@/design";
+import { PageSectionTitle } from "@/design";
 
 /** Read-only: a successful Test fills the store identity out of the key. */
 export const EpodsystemConnectionConfig: ConnectionSection = ({ connection }) => {
@@ -12,7 +12,7 @@ export const EpodsystemConnectionConfig: ConnectionSection = ({ connection }) =>
 
   return (
     <section className="flex flex-col gap-2">
-      <CardTitle>Store</CardTitle>
+      <PageSectionTitle>Store</PageSectionTitle>
       <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
         {slug || name
           ? `${name ?? slug}${slug ? ` (${slug})` : ""}`

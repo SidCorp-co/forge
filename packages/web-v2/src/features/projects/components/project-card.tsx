@@ -45,8 +45,8 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
     <Link
       href={`/projects/${project.slug}`}
       className={cn(
-        'group flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 shadow-sm',
-        'transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md',
+        'group flex flex-col gap-3 border-t border-line-subtle pt-4 pb-2',
+        'transition-colors duration-150 hover:bg-hover',
         'focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none',
       )}
     >

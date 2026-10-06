@@ -4,10 +4,10 @@ import { useState } from "react";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -75,9 +75,9 @@ export function CopyButton({ value }: { value: string }) {
 /** Pairing panel — the CLI command the runner machine runs; it prints the code approved at /pair. */
 function PairPanel() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pair a device</CardTitle>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Pair a device</PageSectionTitle>
         <HelpButton
           summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
@@ -85,8 +85,8 @@ function PairPanel() {
             "Revoke a device below to cut off its access immediately",
           ]}
         />
-      </CardHeader>
-      <CardContent>
+      </PageSectionHeader>
+      <PageSectionBody>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Run on the runner machine</span>
@@ -101,8 +101,8 @@ function PairPanel() {
             </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -222,12 +222,12 @@ export function RunnersScreen() {
 
       <PairPanel />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Devices</CardTitle>
+      <PageSection>
+        <PageSectionHeader>
+          <PageSectionTitle>Devices</PageSectionTitle>
           <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
-        </CardHeader>
-        <CardContent>
+        </PageSectionHeader>
+        <PageSectionBody>
           <p className="mb-3 fg-body-sm text-muted">
             {populationLine(scope)}
             {bridge ? ` ${bridge}` : null}
@@ -342,8 +342,8 @@ export function RunnersScreen() {
               </TBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </PageSectionBody>
+      </PageSection>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </PageContainer>

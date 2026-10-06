@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, Icon, MonoTag } from "@/design";
+import { PageSection, PageSectionBody, Icon, MonoTag } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import type { QueuedStepView } from "../waiting";
 import type { IssueAgentSession } from "../types";
@@ -37,15 +37,15 @@ const HEARTBEAT_META: Record<IssueAgentSession["heartbeat"], { dot: string; labe
 
 export function LiveAgentPanel({ state, step, slug, issueId }: LiveAgentPanelProps) {
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         {state.kind === "live" ? (
           <LiveRow session={state.session} step={step} slug={slug} issueId={issueId} />
         ) : (
           <QueuedRow step={state.step} slug={slug} issueId={issueId} />
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

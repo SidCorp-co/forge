@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banner,
-  CardTitle,
+  PageSectionTitle,
   HealthDot,
   Icon,
   MonoTag,
@@ -62,9 +62,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <section>
       {/* Sticky within the rail's own scroll so the section label stays visible
           while a long list (e.g. Files changed) scrolls past (ISS-351). */}
-      <CardTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
+      <PageSectionTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
         {title}
-      </CardTitle>
+      </PageSectionTitle>
       {children}
     </section>
   );

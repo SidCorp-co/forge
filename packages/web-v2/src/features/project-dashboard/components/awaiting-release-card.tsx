@@ -11,9 +11,9 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Button,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Checkbox,
   Icon,
   StatusChip,
@@ -87,15 +87,15 @@ export function AwaitingReleaseCard({
 
   return (
     <>
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
+    <PageSection className="flex h-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="check" size={16} className="text-subtle" />
-          <CardTitle>Awaiting release</CardTitle>
+          <PageSectionTitle>Awaiting release</PageSectionTitle>
         </div>
         {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
       </div>
-      <CardContent className="flex-1">
+      <PageSectionBody className="flex-1">
         {runs.length === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">Nothing waiting on a release decision.</p>
         ) : (
@@ -120,11 +120,11 @@ export function AwaitingReleaseCard({
                 </Button>
               </div>
             )}
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col divide-y divide-line-subtle">
               {visible.map((run) => (
                 <li
                   key={run.id}
-                  className="flex items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 transition-colors hover:bg-hover"
+                  className="flex items-center gap-2.5 py-2 transition-colors hover:bg-hover"
                 >
                   {run.issueId && (
                     <Checkbox
@@ -168,8 +168,8 @@ export function AwaitingReleaseCard({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
     <BatchReleaseDialog
       projectId={projectId}
       selectedIssues={selectedIssues}

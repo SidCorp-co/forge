@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionHeader,
+  PageSectionTitle,
   EmptyState,
   SegmentedControl,
   Skeleton,
@@ -26,16 +26,16 @@ const SORTS: { value: OperatorWorkspaceSort; label: string }[] = [
 
 export function WorkspacesTableSkeleton() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Top workspaces</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Top workspaces</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-2.5">
         {[0, 1, 2, 3, 4].map((i) => (
           <Skeleton key={i} variant="text" className="h-4 w-full" />
         ))}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
@@ -49,12 +49,12 @@ export function WorkspacesTable({
   onSortChange: (sort: OperatorWorkspaceSort) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Top workspaces</CardTitle>
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>Top workspaces</PageSectionTitle>
         <SegmentedControl options={SORTS} value={sort} onChange={onSortChange} />
-      </CardHeader>
-      <CardContent>
+      </PageSectionHeader>
+      <PageSectionBody>
         {rows.length === 0 ? (
           <EmptyState
             title="No workspace activity"
@@ -85,7 +85,7 @@ export function WorkspacesTable({
             </TBody>
           </Table>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

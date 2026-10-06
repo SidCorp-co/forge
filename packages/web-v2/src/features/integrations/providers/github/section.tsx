@@ -5,7 +5,7 @@
 // manifest callback converts. So this section starts a redirect dance rather
 // than submitting a form to our own API.
 
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/design";
+import { Badge, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { useMemo, useState } from "react";
 import { scopeLabel } from "../../components/status-pill";
 import { useConnections, useIntegrationsList } from "../../hooks";
@@ -27,11 +27,11 @@ function ConnectedState({
   const { owner, repo } = repository;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>GitHub App</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <PageSection>
+      <PageSectionHeader>
+        <PageSectionTitle>GitHub App</PageSectionTitle>
+      </PageSectionHeader>
+      <PageSectionBody className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <Badge>{scopeLabel(binding.role)}</Badge>
           <a
@@ -48,8 +48,8 @@ function ConnectedState({
         </div>
 
         <BindingControls projectId={projectId} binding={binding} />
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   Heartbeat,
   SectionTitle,
   enumLabel,
@@ -36,8 +36,8 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
       : `Silent for ${formatElapsed(liveness.silenceSeconds)}`;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3">
+    <PageSection>
+      <PageSectionBody className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <SectionTitle className="fg-h3">Is it alive?</SectionTitle>
           <p className={`fg-body-sm ${MARK_TEXT[mark]}`}>
@@ -134,7 +134,7 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
             onClose={() => setPanel(null)}
           />
         ) : null}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

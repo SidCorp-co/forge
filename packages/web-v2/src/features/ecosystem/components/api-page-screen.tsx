@@ -15,9 +15,9 @@ function PublishesSection({ page, slug, ecoName }: { page: ApiPage; slug: string
       ) : page.publishes.length === 0 ? (
         <p className="fg-caption">{slug} publishes no contract.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-line-subtle">
           {page.publishes.map((p) => (
-            <li key={p.slug} className="min-w-0 rounded-md border border-line px-3 py-2">
+            <li key={p.slug} className="min-w-0 py-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-13 font-semibold">{p.contract}</span>
                 <EnumBadge family="interfaceType" value={p.type} />

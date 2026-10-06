@@ -50,7 +50,7 @@ export function CoolifyTargetsField({
   }
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
+    <fieldset className="flex flex-col gap-3 border-t border-line-subtle pt-3">
       <legend className="fg-label px-1 text-subtle">Deploy targets · this project</legend>
       <p className="fg-body-sm text-muted">
         The Coolify application(s) this binding deploys. Add one row per app — e.g. a separate backend and

@@ -6,7 +6,7 @@ import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { ChevronRight, Clock, User } from "lucide-react";
 import Link from "next/link";
 import { memo } from "react";
-import { Button, CardTitle, TemplateIcon } from "@/design";
+import { Button, PageSectionTitle, TemplateIcon } from "@/design";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import type { NodeHealthView } from "../health";
@@ -118,7 +118,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
           {data.lane ? ` · ${data.lane}` : ""}
         </span>
       ) : null}
-      <CardTitle className="fg-h4">{titleOf(step)}</CardTitle>
+      <PageSectionTitle className="fg-h4">{titleOf(step)}</PageSectionTitle>
       {data.health ? <NodeHealth h={data.health} full={full} hrefOf={data.hrefOf} /> : null}
       {full ? (
         <>
@@ -166,7 +166,7 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
     <div className="wfc-card" data-summary="true" data-rel={data.rel} data-hit={data.hits > 0} data-testid="workflow-band">
       {ends}
       <div className="wfc-sum">
-        <CardTitle className="fg-h4">{data.label}</CardTitle>
+        <PageSectionTitle className="fg-h4">{data.label}</PageSectionTitle>
         <span className="wfc-count">
           {summary.count} {summary.count === 1 ? "step" : "steps"}
         </span>

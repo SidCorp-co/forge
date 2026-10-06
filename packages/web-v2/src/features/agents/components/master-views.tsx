@@ -204,7 +204,7 @@ function Passes({ projectId, slug }: { projectId: string; slug: string }) {
   return (
     <section>
       <ViewHeading hint={q.data.hasMore ? `the newest ${items.length}` : `${items.length}`}>Passes</ViewHeading>
-      <Table flush aria-label="Passes">
+      <Table aria-label="Passes">
         <THead className="bg-sunken">
           <TR>
             <TH>Started</TH>
@@ -261,7 +261,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
   return (
     <section>
       <ViewHeading hint={`${rows.length}`}>Runs it dispatched that hold a lease</ViewHeading>
-      <Table flush aria-label="Runs holding a lease">
+      <Table aria-label="Runs holding a lease">
         <THead className="bg-sunken">
           <TR>
             <TH>Run</TH>

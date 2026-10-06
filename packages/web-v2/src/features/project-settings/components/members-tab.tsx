@@ -10,9 +10,9 @@ import { type ReactNode, useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   EnumBadge,
   ErrorState,
   Field,
@@ -43,7 +43,7 @@ const ROLE_OPTIONS: SelectOption[] = [
   { value: "admin", label: "Admin" },
 ];
 
-const ROW = "flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2";
+const ROW = "flex items-center justify-between gap-3 py-2";
 
 export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const membersQ = useMembers(projectId);
@@ -54,8 +54,8 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
   const orgId = listItem && !listItem.orgIsPersonal ? listItem.orgId : undefined;
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
         {membersQ.isLoading ? (
           <div className="space-y-2">
@@ -65,7 +65,7 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
         ) : membersQ.isError ? (
           <ErrorState message={formatApiError(membersQ.error)} onRetry={() => membersQ.refetch()} />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-line-subtle">
             {(membersQ.data ?? []).map((m) => (
               <li key={m.userId} className={ROW}>
                 <span className="min-w-0 truncate text-fg">{m.email}</span>
@@ -100,15 +100,15 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
             <InviteByEmail projectId={projectId} />
           </>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 
 function Subsection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <CardTitle className="fg-label text-fg">{title}</CardTitle>
+      <PageSectionTitle className="fg-label text-fg">{title}</PageSectionTitle>
       {children}
     </div>
   );
@@ -127,7 +127,7 @@ function PendingInvitations({ projectId }: { projectId: string }) {
       ) : invitations.length === 0 ? (
         <p className="fg-body-sm text-subtle">No pending invitations.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-line-subtle">
           {invitations.map((inv) => (
             <li key={inv.email} className={ROW}>
               <span className="min-w-0 truncate text-fg">{inv.email}</span>

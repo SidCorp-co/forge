@@ -7,8 +7,8 @@
 import { type Dispatch, type SetStateAction, useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
+  PageSection,
+  PageSectionBody,
   Checkbox,
   Field,
   Input,
@@ -121,8 +121,8 @@ export function TokenCreateForm({
   }
 
   return (
-    <Card>
-      <CardContent>
+    <PageSection>
+      <PageSectionBody>
         <SectionTitle className="fg-h3 mb-4">Create a token</SectionTitle>
         <div className="space-y-4">
           <DraftFields draft={draft} setDraft={setDraft} errors={errors} menu={menu} />
@@ -169,8 +169,8 @@ export function TokenCreateForm({
             )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }
 

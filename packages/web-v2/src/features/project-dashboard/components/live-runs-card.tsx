@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import {
-  Card,
-  CardContent,
-  CardTitle,
+  PageSection,
+  PageSectionBody,
+  PageSectionTitle,
   Icon,
   LiveDot,
   StatusBadge,
@@ -41,26 +41,26 @@ export function LiveRunsCard({
   };
 
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
+    <PageSection className="flex h-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="pipeline" size={16} className="text-subtle" />
-          <CardTitle>Live runs</CardTitle>
+          <PageSectionTitle>Live runs</PageSectionTitle>
         </div>
         <LiveDot state={runs.length > 0 ? "live" : "offline"} />
       </div>
-      <CardContent className="flex-1">
+      <PageSectionBody className="flex-1">
         {runs.length === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">No runs are live right now.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col divide-y divide-line-subtle">
             {runs.map((run) => {
               return (
                 <li key={run.id}>
                   <button
                     type="button"
                     onClick={() => open(run)}
-                    className="flex w-full items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                    className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                   >
                     <span className="size-2 flex-none rounded-full" style={{ background: stageColor(run.currentStep ?? "") }} />
                     <StatusBadge family="pipelineRun" value={run.status} />
@@ -100,7 +100,7 @@ export function LiveRunsCard({
             <Icon name="chevronRight" size={13} className="flex-none text-subtle" />
           </button>
         )}
-      </CardContent>
-    </Card>
+      </PageSectionBody>
+    </PageSection>
   );
 }

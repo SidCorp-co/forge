@@ -86,8 +86,8 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
   return (
     <div
       id={`step-card-${outcome.step}`}
-      className="rounded-lg border border-line-subtle bg-surface scroll-mt-24"
-      style={open ? { borderColor: "var(--accent)" } : undefined}
+      className="scroll-mt-24 border-b border-l-2 border-line-subtle border-l-transparent"
+      style={open ? { borderLeftColor: "var(--accent)" } : undefined}
     >
       <button
         type="button"

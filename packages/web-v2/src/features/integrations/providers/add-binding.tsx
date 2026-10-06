@@ -81,7 +81,7 @@ export function AddBindingForm({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-4">
       <span className="fg-label font-semibold">{title}</span>
       {intro}
       <ConnectionOwnerField projectId={add.projectId} value={add.ownerOrgId} onChange={add.setOwnerOrgId} />
