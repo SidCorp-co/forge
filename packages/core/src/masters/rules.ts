@@ -81,13 +81,16 @@ function undeclaredSlots(deviceName: string): MasterRefusal {
   };
 }
 
+// max_job_panes caps the job panes the daemon opens for pool jobs (runner master/pool_take.rs); a run a
+// master declares for its own in-pane builder takes no job pane, so it is counted beside the slots
 export function slotsOf(
   device: { name: string; maxJobPanes: number | null },
-  inUse: number,
+  held: { jobPanes: number; runs: number },
 ): MasterSlots {
   return {
-    inUse,
+    inUse: held.jobPanes,
     max: device.maxJobPanes,
+    runs: held.runs,
     undeclared: device.maxJobPanes === null ? undeclaredSlots(device.name) : null,
   };
 }

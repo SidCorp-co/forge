@@ -77,6 +77,14 @@ function cancelledOutcome(f: RunFacts, flip: KernelFlip | null, rule: string): D
   };
 }
 
+// a merge mark inside the run with no move to an outcome after it: the work landed and the issue was
+// never moved on (epod ISS-1 2026-10-06, its CLI's moves refused), which the reader is told rather than
+// left to read as work given back unfinished
+function landedNote(f: RunFacts, key: string): string {
+  const at = f.landedAt[key];
+  return at ? ` (it landed at ${at.toISOString()}, and no move to an outcome followed)` : '';
+}
+
 // a run-session run is done when every issue it carried left it at a status no run owes from where it
 // stopped (approved, awaiting_release, closed, dropped) and moved off the status it opened at; anything else
 // went back — the design's handed_back, final, the next attempt a new run
@@ -111,7 +119,7 @@ function sessionClose(f: RunFacts, close: RunHandbackClose | null): Derived {
       ? `the session closed (${closeWord}) and none of ${f.issues.join(', ') || 'its issues'} can be read back, so no outcome is credited`
       : missed.length === 0
         ? `the session closed ${closeWord}: the box gave the work back before its outcome`
-        : `the session closed (${closeWord}) with ${missed.map((m) => `${m.issueKey} at ${m.status}`).join(', ')}, short of an outcome`;
+        : `the session closed (${closeWord}) with ${missed.map((m) => `${m.issueKey} at ${m.status}${landedNote(f, m.issueKey)}`).join(', ')}, short of an outcome`;
   return {
     state: 'handed_back',
     since: at,

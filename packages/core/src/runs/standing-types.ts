@@ -58,6 +58,8 @@ export interface RunFacts {
   issues: string[];
   openingStatuses: Record<string, string>;
   endStatuses: Record<string, IssueStatus>;
+  /** Carried issues whose merge mark (`issues.merged_at`) fell inside the run's window. */
+  landedAt: Record<string, Date>;
   workState: { step: WorkStep | null; stepStartedAt: Date | null; lease: unknown } | null;
   session: {
     id: string;
@@ -113,6 +115,8 @@ export interface RunFacts {
     blockerKind: string | null;
     waitingOn: string | null;
     observedAt: Date;
+    /** The checkout the box reports the run working in (`device_run_ledger.worktree_path`). */
+    worktreePath: string | null;
   } | null;
   fleetKeys: Array<{ issueKey: string; sessionId: string; acquiredAt: Date }>;
   deployLocks: Array<
@@ -181,6 +185,23 @@ export interface Derived {
 }
 
 export type { RunWaitingOn };
+
+const treeOf = (lease: unknown): string | null => {
+  if (typeof lease !== 'object' || lease === null || Array.isArray(lease)) return null;
+  const tree = (lease as Record<string, unknown>).tree;
+  return typeof tree === 'string' && tree.length > 0 ? tree.replace(/\/+$/u, '') : null;
+};
+
+/**
+ * Where the claim on the run's issue was taken from a checkout other than the one the box reports
+ * this run working in, that other tree: a master's own claim, say, which times nothing for this run
+ * (epod 2026-10-06). Null where the claim is this run's or the two cannot be told apart.
+ */
+export function foreignClaimTree(f: Pick<RunFacts, 'workState' | 'ledger'>): string | null {
+  const tree = treeOf(f.workState?.lease);
+  const worktree = f.ledger?.worktreePath?.replace(/\/+$/u, '') ?? null;
+  return tree !== null && worktree !== null && tree !== worktree ? tree : null;
+}
 
 /** A release run: the one lane whose deploy takes the environment's deploy lock (ISS-1279). */
 export const isReleaseRun = (f: Pick<RunFacts, 'run' | 'job'>): boolean =>

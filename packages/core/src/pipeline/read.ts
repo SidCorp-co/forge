@@ -1,4 +1,5 @@
-import { and, count, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
+import { and, count, desc, eq, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { listItemsFromRows } from './runs-rollup.js';
@@ -111,7 +112,17 @@ export async function listProjectPipelineRuns(
 ): Promise<{ items: PipelineRunListItem[]; total: number }> {
   const conds: SQL[] = [eq(pipelineRuns.projectId, projectId)];
   if (filter.status) conds.push(eq(pipelineRuns.status, filter.status));
-  if (filter.issueId) conds.push(eq(pipelineRuns.issueId, filter.issueId));
+  // a run session's row names no issue: it carries its issues as a group, so an issue's runs are read
+  // through the group as well, by the canonical key (ISS-992)
+  if (filter.issueId) {
+    const key = sql`(SELECT 'ISS-' || i.iss_seq FROM issues i
+      WHERE i.id = ${filter.issueId} AND i.project_id = ${projectId})`;
+    const byIssue = or(
+      eq(pipelineRuns.issueId, filter.issueId),
+      sql`${pipelineRuns.metadata} -> ${RUN_GROUP_METADATA_KEY} ? ${key}`,
+    );
+    if (byIssue) conds.push(byIssue);
+  }
   const where = conds.length === 1 ? conds[0] : and(...conds);
 
   const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(pipelineRuns).where(where);

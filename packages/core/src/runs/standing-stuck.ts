@@ -15,6 +15,7 @@ import { lockAheadOf } from './standing-live.js';
 import {
   after,
   type Derived,
+  foreignClaimTree,
   iso,
   none,
   type RunFacts,
@@ -87,7 +88,8 @@ function boxExitedOf(f: RunFacts): StuckReading | null {
 
 function leaseOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
   const lease = f.workState?.lease;
-  if (lease === null || lease === undefined || !f.issue) return null;
+  if (lease === null || lease === undefined || !f.issue || foreignClaimTree(f) !== null)
+    return null;
   const read = classifyLease({ lease, now: ctx.now, fanout: 1 });
   if (read.verdict !== 'expired' && read.verdict !== 'abandoned') return null;
   if (!read.expiresAt || read.expiresAt.getTime() < f.run.startedAt.getTime()) return null;

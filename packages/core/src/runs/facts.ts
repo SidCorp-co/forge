@@ -40,6 +40,7 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
   const start = must(b.started_at).getTime();
   const openingStatuses: Record<string, string> = {};
   const endStatuses: Record<string, IssueStatus> = {};
+  const landedAt: Record<string, Date> = {};
   for (const canonical of keys) {
     const n = seqOf(canonical);
     const row = n === null ? undefined : t.issueBySeq.get(n);
@@ -47,6 +48,10 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
     const key = display(canonical);
     const opened = str(opening[canonical]);
     if (opened) openingStatuses[key] = opened;
+    const merged = date(row.merged_at);
+    if (merged && merged.getTime() >= start && merged.getTime() <= end.getTime()) {
+      landedAt[key] = merged;
+    }
     const moves = t.issueMoves.filter((m) => {
       const at = must(m.created_at).getTime();
       return String(m.entity_id) === String(row.id) && at >= start && at <= end.getTime();
@@ -55,7 +60,7 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
     if (last) endStatuses[key] = String(last.to_status) as IssueStatus;
     else if (opened) endStatuses[key] = opened as IssueStatus;
   }
-  return { openingStatuses, endStatuses };
+  return { openingStatuses, endStatuses, landedAt };
 }
 
 // the idle-issues sweep's finding on the issue (`pipeline/idle-issues.ts:StrandRecord`); a record that
@@ -263,6 +268,7 @@ function factsOf(
           blockerKind: str(ledger.blocker_kind),
           waitingOn: str(ledger.waiting_on),
           observedAt: must(ledger.observed_at),
+          worktreePath: str(ledger.worktree_path),
         }
       : null,
     fleetKeys: t.leases

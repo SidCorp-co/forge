@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A building run reads as building.** A claim taken in another checkout no longer makes it stuck;
+  slots count job panes, declared runs beside them; the issue page and per-issue run reads find group
+  runs; a landed handback says so.
+
 - **Requirement agree, contract requests and BA-room replies write again.** The outbox admits every
   registered event type; a test fails when schema and migrations disagree; an undelivered reply is
   kept and shown with its reason.

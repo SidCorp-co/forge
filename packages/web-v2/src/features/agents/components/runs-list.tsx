@@ -67,9 +67,10 @@ function Signals({ d }: { d: RunStandingList }) {
           </span>
         ) : null}
       </Signal>
-      <Signal label="Slots" testId="signal-slots" title={m.slots?.undeclared?.detail ?? "masters/standing.slots {inUse, max}; max from devices.max_job_panes"}>
+      <Signal label="Slots" testId="signal-slots" title={m.slots?.undeclared?.detail ?? "masters/standing.slots {inUse, max}: job panes, max from devices.max_job_panes; runs: declared runs the cap does not hold"}>
         <b className="font-semibold">{m.slots ? m.slots.inUse : "—"}</b>
         {m.slots ? <span className="text-muted">of {m.slots.max ?? "?"}</span> : null}
+        {m.slots && m.slots.runs > 0 ? <span className="text-muted">· {m.slots.runs} declared run{m.slots.runs === 1 ? "" : "s"}</span> : null}
       </Signal>
       <Signal label="Leases held" testId="signal-held" title="runs/standing counts.held: live runs whose holder is held">
         <b className="font-semibold">{d.counts.held}</b>
