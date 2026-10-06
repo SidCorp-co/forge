@@ -116,7 +116,9 @@ naming its own rule before the green counts.
 1. Land onto the base branch by the project's route — the brief or the project's knowledge says
    which: a fast-forward, a pull request, a merge.
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target.
-   It is refused \`COMMIT_NOT_LANDED\` until it is there. A merge mark moves no status.
+   It is refused \`COMMIT_NOT_LANDED\` until it is there, and \`COMMIT_UNVERIFIED\` where core
+   cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
+   naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
 3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, userFacing } }\`: what a user will now
    see, in their words — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
    nothing. A release refuses to claim an issue without one.
