@@ -67,7 +67,7 @@ export async function beginPatRequest(
     throw new HTTPException(403, {
       message:
         `${c.req.path} is kept out of what a personal or agent token can be granted ` +
-        `(${excluded.pattern}): ${excluded.reason}. Use a session (browser/desktop login).`,
+        `(${excluded.pattern}): ${excluded.reason}. ${excluded.instead}`,
       cause: { code: 'PAT_NOT_PERMITTED', details: { excludedBy: excluded.pattern } },
     });
   }

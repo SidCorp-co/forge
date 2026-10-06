@@ -37,7 +37,10 @@ proves every route under it fenced) or `account` reach (only a token with no pro
 it). `PAT_UNGRANTABLE` beside it names every path kept out, each with its reason: public routes,
 the browser session's own lifecycle under `/api/auth`, token management at `/api/pat`, signed
 webhooks, ticketed uploads, the GitHub install redirect, the MCP transport, and the paired box's
-own device routes. `middleware/pat-mount-coverage.test.ts` reads the composed app's routes and
+own device routes. Each entry also names the door it does admit (`PAT_EXCLUSION_DOORS`), and a
+token sent there, where its router runs the token door, is refused with that door's advice; a
+device-only route answers a token with its own 401 before that door is reached.
+`middleware/pat-mount-coverage.test.ts` reads the composed app's routes and
 fails naming any route under neither list, and any route under a menu prefix that a token cannot
 reach.
 

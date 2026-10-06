@@ -98,7 +98,7 @@ describe('every route is in the grant grammar or named out of it', () => {
   });
 
   it('gives every exclusion a reason', () => {
-    const bare = Object.entries(PAT_UNGRANTABLE).filter(([, why]) => why.trim() === '');
+    const bare = Object.entries(PAT_UNGRANTABLE).filter(([, why]) => why.reason.trim() === '');
     expect(bare.map(([p]) => p)).toEqual([]);
   });
 

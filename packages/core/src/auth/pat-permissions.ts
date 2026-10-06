@@ -91,23 +91,68 @@ export const PAT_PERMISSION_RESOURCES = {
   admin: { reach: 'account', prefixes: { '/api/admin': 2 } },
 } as const satisfies Record<string, PatResourceDeclaration>;
 
-const PUBLIC = 'public: it reads no credential, so there is nothing for a grant to admit';
-const SESSION =
-  "the browser session's own lifecycle — signing up, signing in, refreshing, verifying, " +
-  're-authenticating and signing out — which a token is not';
-const DEVICE =
-  "the paired box's own plane, admitted by the device credential minted at pairing or by a " +
-  'pairing code; a personal or agent token is not a device';
+/**
+ * The doors an exclusion can name. `instead` is the advice its refusal ends
+ * in; `names` is the word every reason under that door has to carry, so a
+ * reason and its advice cannot describe two different credentials.
+ */
+export const PAT_EXCLUSION_DOORS = Object.freeze({
+  public: { names: 'public', instead: 'Send it with no credential at all.' },
+  session: { names: 'session', instead: 'Use a session (browser/desktop login).' },
+  device: {
+    names: 'device',
+    instead: 'Call it from the box itself, as forge-runner does, with what that box holds.',
+  },
+  ticket: {
+    names: 'ticket',
+    instead:
+      'Send no bearer: the ticket forge_uploads or the issuing route handed out goes in the path.',
+  },
+  signature: {
+    names: 'HMAC',
+    instead: "Send no bearer: the sender signs the body with the webhook's secret.",
+  },
+  mcp: {
+    names: 'MCP',
+    instead: 'Send the token to /mcp as an MCP client, where its own door admits it.',
+  },
+  orgs: {
+    names: '/api/orgs',
+    instead: "Send the same request under /api/orgs, which a token granted 'orgs' reaches.",
+  },
+} as const satisfies Record<string, { readonly names: string; readonly instead: string }>);
+
+export type PatExclusionDoor = keyof typeof PAT_EXCLUSION_DOORS;
+
+export type PatExclusion = { readonly admits: PatExclusionDoor; readonly reason: string };
+
+const PUBLIC: PatExclusion = {
+  admits: 'public',
+  reason: 'public: it reads no credential, so there is nothing for a grant to admit',
+};
+const SESSION: PatExclusion = {
+  admits: 'session',
+  reason:
+    "the browser session's own lifecycle — signing up, signing in, refreshing, verifying, " +
+    're-authenticating and signing out — which a token is not',
+};
+const DEVICE: PatExclusion = {
+  admits: 'device',
+  reason:
+    "the paired box's own plane, admitted by the device credential minted at pairing or by a " +
+    'pairing code; a personal or agent token is not a device',
+};
 
 /**
- * Every path kept out of the grant grammar, and why. An entry is a path
- * prefix whose `:name` segments match any one segment, optionally led by one
- * method (`POST /api/...`) where only that method is kept out, and it wins
- * over a menu prefix it sits inside. Being here is not the same as refusing every
- * credential: a public route stays public and a device route keeps its device
- * credential. What it decides is the answer a personal or agent token gets.
+ * Every path kept out of the grant grammar, the door it names, and why. An
+ * entry is a path prefix whose `:name` segments match any one segment,
+ * optionally led by one method (`POST /api/...`) where only that method is
+ * kept out, and it wins over a menu prefix it sits inside. Being here is not
+ * the same as refusing every credential: a public route stays public and a
+ * device route keeps its device credential. What it decides is the answer a
+ * personal or agent token gets.
  */
-export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
+export const PAT_UNGRANTABLE: Readonly<Record<string, PatExclusion>> = Object.freeze({
   '/health': PUBLIC,
   '/version': PUBLIC,
   '/api/health': PUBLIC,
@@ -122,10 +167,16 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/llms.txt': PUBLIC,
   '/pair': PUBLIC,
   '/api/pipeline/registry': PUBLIC,
-  '/orgs':
-    'the guide router is mounted at the root for its public pages and its org-guide routes ride ' +
-    'along there; the token path to them is /api/orgs',
-  '/mcp': 'the MCP transport, admitted by its own token door, where each tool fences itself',
+  '/orgs': {
+    admits: 'orgs',
+    reason:
+      'the guide router is mounted at the root for its public pages and its org-guide routes ' +
+      'ride along there; the token path to them is /api/orgs',
+  },
+  '/mcp': {
+    admits: 'mcp',
+    reason: 'the MCP transport, admitted by its own token door, where each tool fences itself',
+  },
   '/api/auth/register': SESSION,
   '/api/auth/local': SESSION,
   '/api/auth/refresh': SESSION,
@@ -134,12 +185,25 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/auth/logout': SESSION,
   '/api/auth/reauth': SESSION,
   '/api/auth/oauth': SESSION,
-  '/api/pat':
-    'token management: a token that could mint, rotate or revoke tokens could widen its own grant',
-  '/api/integrations/github':
-    'a browser redirect GitHub sends back after an install, carrying the session that started it',
-  '/api/uploads': 'ticket-authenticated: the single-use ticket in the path is the credential',
-  '/api/webhooks': 'signed by the sender: the HMAC over the body is the credential',
+  '/api/pat': {
+    admits: 'session',
+    reason:
+      'token management, which takes a session: a token that could mint, rotate or revoke ' +
+      'tokens could widen its own grant',
+  },
+  '/api/integrations/github': {
+    admits: 'session',
+    reason:
+      'a browser redirect GitHub sends back after an install, carrying the session that started it',
+  },
+  '/api/uploads': {
+    admits: 'ticket',
+    reason: 'ticket-authenticated: the single-use ticket in the path is the credential',
+  },
+  '/api/webhooks': {
+    admits: 'signature',
+    reason: 'signed by the sender: the HMAC over the body is the credential',
+  },
   '/api/devices/me': DEVICE,
   '/api/devices/heartbeat': DEVICE,
   '/api/devices/pair': DEVICE,
@@ -247,16 +311,18 @@ function patternMatches(pattern: string, path: string): boolean {
   return want.every((seg, i) => (seg.startsWith(':') ? (have[i] ?? '') !== '' : seg === have[i]));
 }
 
-/** The exclusion entry this request falls under, with its reason, or null. */
+/** The exclusion entry this request falls under, with its reason and its advice, or null. */
 export function patUngrantableFor(
   path: string,
   method: string,
-): { pattern: string; reason: string } | null {
-  for (const [pattern, reason] of Object.entries(PAT_UNGRANTABLE)) {
+): { pattern: string; reason: string; instead: string } | null {
+  for (const [pattern, { admits, reason }] of Object.entries(PAT_UNGRANTABLE)) {
     const space = pattern.indexOf(' ');
     const only = space === -1 ? null : pattern.slice(0, space);
     if (only !== null && only !== method.toUpperCase()) continue;
-    if (patternMatches(pattern.slice(space + 1), path)) return { pattern, reason };
+    if (patternMatches(pattern.slice(space + 1), path)) {
+      return { pattern, reason, instead: PAT_EXCLUSION_DOORS[admits].instead };
+    }
   }
   return null;
 }

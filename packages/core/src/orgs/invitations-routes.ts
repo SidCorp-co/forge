@@ -24,7 +24,7 @@ export const orgInvitationRoutes = new Hono<{ Variables: AuthVars }>();
 orgInvitationRoutes.get('/:token', async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const [row] = await db
@@ -42,7 +42,7 @@ orgInvitationRoutes.get('/:token', async (c) => {
     .where(eq(orgInvitations.token, token))
     .limit(1);
 
-  if (!row) throw notFound('INVALID_TOKEN', 'invitation not found');
+  if (!row) throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
   if (row.acceptedAt !== null) throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
   if (new Date(row.expiresAt).getTime() < Date.now()) {
     throw gone('EXPIRED_TOKEN', 'invitation has expired');
@@ -60,7 +60,7 @@ orgInvitationRoutes.get('/:token', async (c) => {
 orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const userId = c.get('userId');
@@ -77,7 +77,7 @@ orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
 
   switch (result.status) {
     case 'invalid':
-      throw notFound('INVALID_TOKEN', 'invitation not found');
+      throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
     case 'expired':
       throw gone('EXPIRED_TOKEN', 'invitation has expired');
     case 'already_accepted':
@@ -97,7 +97,7 @@ orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
 orgInvitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const userId = c.get('userId');

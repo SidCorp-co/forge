@@ -226,6 +226,34 @@ describe('a path kept out of the grammar is refused with its reason', () => {
     expect(refusal?.message).toContain('(/api/pat)');
     expect(refusal?.message).toContain('could widen its own grant');
   });
+
+  it('tells every entry what it does admit, and never what another door admits', async () => {
+    const { PAT_UNGRANTABLE, PAT_EXCLUSION_DOORS } = await import('../auth/pat-permissions.js');
+    const doors = Object.entries(PAT_EXCLUSION_DOORS);
+    const wrong: string[] = [];
+    for (const [pattern, { admits, reason }] of Object.entries(PAT_UNGRANTABLE)) {
+      const space = pattern.indexOf(' ');
+      const method = space === -1 ? 'GET' : pattern.slice(0, space);
+      const path = pattern
+        .slice(space + 1)
+        .split('/')
+        .map((seg) => (seg.startsWith(':') ? 'x1' : seg))
+        .join('/');
+      const refusal = await refusalFor(path, ['*'], method, 2);
+      expect(refusal?.code, pattern).toBe('PAT_NOT_PERMITTED');
+      const message = refusal?.message ?? '';
+      if (!message.includes(reason)) wrong.push(`${pattern}: its reason is missing`);
+      if (!message.endsWith(PAT_EXCLUSION_DOORS[admits].instead)) {
+        wrong.push(`${pattern} admits '${admits}' and its refusal does not end in that advice`);
+      }
+      for (const [door, { instead }] of doors) {
+        if (door !== admits && message.includes(instead)) {
+          wrong.push(`${pattern} admits '${admits}' and its refusal sends a caller to '${door}'`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
 });
 
 describe('a token minted before the menu grew keeps its reach', () => {

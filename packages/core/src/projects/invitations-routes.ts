@@ -92,7 +92,7 @@ invitationRoutes.get('/pending', requireAuth(), async (c) => {
 invitationRoutes.get('/:token', async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const [row] = await db
@@ -110,7 +110,7 @@ invitationRoutes.get('/:token', async (c) => {
     .where(eq(projectInvitations.token, token))
     .limit(1);
 
-  if (!row) throw notFound('INVALID_TOKEN', 'invitation not found');
+  if (!row) throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
   if (row.acceptedAt !== null) {
     throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
   }
@@ -130,7 +130,7 @@ invitationRoutes.get('/:token', async (c) => {
 invitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const userId = c.get('userId');
@@ -151,7 +151,7 @@ invitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
 
   switch (result.status) {
     case 'invalid':
-      throw notFound('INVALID_TOKEN', 'invitation not found');
+      throw notFound('INVITATION_NOT_FOUND', 'invitation not found');
     case 'expired':
       throw gone('EXPIRED_TOKEN', 'invitation has expired');
     case 'already_accepted':
@@ -171,7 +171,7 @@ invitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
 invitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
   const token = c.req.param('token');
   if (!token || token.length === 0) {
-    throw badRequest('INVALID_TOKEN', 'invalid invitation token');
+    throw badRequest('INVALID_INVITATION_TOKEN', 'invalid invitation token');
   }
 
   const userId = c.get('userId');
