@@ -241,6 +241,7 @@ pub(crate) async fn register_master(
     project_id: &str,
     slug: &str,
     name: &str,
+    running: bool,
 ) -> Option<master_api::MasterSession> {
     let slots = sw.cfg.runner.max_job_panes.max(1);
     match master_api::register(sw.client, project_id, name, slots).await {
@@ -253,6 +254,7 @@ pub(crate) async fn register_master(
                 slug,
                 Unplaced::RegisterFailed {
                     detail: e.to_string(),
+                    pane: running.then(|| name.to_string()),
                 },
             );
             None
@@ -274,7 +276,7 @@ async fn adopt_pane(
 ) -> Option<Adopted> {
     let masters = sw.shared.masters;
     let (project_id, slug) = (&runner.project_id, &runner.slug);
-    let session = register_master(sw, project_id, slug, name).await?;
+    let session = register_master(sw, project_id, slug, name, true).await?;
     if let Err(e) = servers {
         tracing::warn!(
             "[master] {slug}: could not read this project's declared MCP servers from core ({e}), so whether {name} carries them is not known this sweep"
