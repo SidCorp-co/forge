@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.43] - 2026-10-06
+
+Private chat forks stay the owner's, runner fails refused turns, worktrees load orientation
+
+
 ### Fixed
 
 - **A master pass is refused only when nothing ran in it.** A usage limit after work closes it as
