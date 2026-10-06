@@ -217,12 +217,7 @@ async function row(id: string) {
   return r as { status: string; merged_at: unknown; merged_commit_sha: string | null };
 }
 
-async function advance(
-  id: string,
-  from: string,
-  to: string,
-  agency: 'agent' | 'human' = 'agent',
-) {
+async function advance(id: string, from: string, to: string, agency: 'agent' | 'human' = 'agent') {
   const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
   return transitionIssueStatus(
     { id, projectId, status: from, reopenCount: 0 } as never,

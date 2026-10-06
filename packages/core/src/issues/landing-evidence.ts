@@ -28,9 +28,6 @@ const SHAPE_OF_KIND: Readonly<Record<ProjectKind, LandingShape>> = {
   website: 'outside_git',
 };
 
-/** A `projects.kind` no route writes: the column is plain text, so only a write outside every
- *  route leaves one, and the constraint that would refuse it there is priced in
- *  docs/proposals/a-project-kind-forge-does-not-know-is-accepted-at-write.md. */
 export class UnknownProjectKindError extends Error {
   constructor(
     readonly kind: string,
