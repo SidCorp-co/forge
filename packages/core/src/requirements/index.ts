@@ -11,7 +11,7 @@ export { changedTracedOf, planDriftOf } from './plan-drift.js';
 export { readRequirementAs, rowIn } from './read.js';
 export {
   createRequirementIn,
-  newDraftRevisionIn,
+  newRevisionIn,
   type RevisionWrite,
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';

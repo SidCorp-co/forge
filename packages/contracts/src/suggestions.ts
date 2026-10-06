@@ -4,6 +4,10 @@
 
 import { z } from "zod";
 import {
+	CONTRACT_WAIT_TARGET_REFUSAL_CODES,
+	contractWaitTargetSchema,
+} from "./contract-waits.js";
+import {
 	type FeedbackTriageEffect,
 	feedbackDedupSchema,
 	feedbackTriageSchema,
@@ -130,6 +134,7 @@ const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_DESIGN_NOT_APPROVED",
 	"SUGGESTION_JOURNEY_SUGGESTED",
 	"SUGGESTION_REFUSED",
+	...CONTRACT_WAIT_TARGET_REFUSAL_CODES,
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
 export const SUGGESTION_REFUSAL_STATUSES = {
@@ -245,6 +250,13 @@ export const SUGGESTION_PAYLOADS = {
 							.array(z.string().regex(WORKFLOW_STEP_ID))
 							.min(1)
 							.max(40)
+							.optional(),
+						/** The provider versions the issue builds against that are not approved yet: each is written
+						 *  as its wait (contract >= minVersion) in the accept's own transaction. */
+						contractWaits: z
+							.array(contractWaitTargetSchema)
+							.min(1)
+							.max(20)
 							.optional(),
 						/** The observed steps (nodes of the design's latest observation) the issue removes or rebuilds. */
 						observedSteps: z
@@ -368,11 +380,13 @@ export interface SuggestionView {
 	payloadPurgedAt: string | null;
 }
 
-/** A revision_diff or requirement_draft accept: the draft revision it wrote. */
+/** A revision_diff or requirement_draft accept: the revision it wrote, proposed for a revision_diff
+ *  (the accept is its propose) and a draft for a first requirement. */
 export interface SuggestionRevisionEffect {
 	requirementId: string;
 	requirement: string;
 	revision: number;
+	state: "draft" | "proposed";
 	/** A first requirement's accept: the approved designs the new requirement was linked to. */
 	designs?: string[];
 }
@@ -387,6 +401,14 @@ export interface SuggestionBreakdownIssue {
 	complexity: string;
 	builds: string | null;
 	defaulted: (keyof typeof BREAKDOWN_ISSUE_DEFAULTS)[];
+	/** The waits its item named, as written: settled already where an approved version reaches it. */
+	contractWaits: {
+		waitId: string;
+		contract: string;
+		minVersion: string;
+		dueAt: string | null;
+		settledVersion: string | null;
+	}[];
 }
 
 /** A breakdown accept: the draft issues it filed against the requirement at `revision`. */

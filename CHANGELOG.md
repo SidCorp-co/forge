@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A breakdown files its issues' contract waits, and an accepted revision suggestion is proposed.**
+  Each item's `contractWaits` is checked like the wait door and written in the accept; a
+  `revision_diff` accept lands its revision proposed, owing only the accept.
+
 - **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler
   rescues only a lost wake: never after a newer decision, and a delivered rescue backs off
   2, 4…32 minutes, six in all per change.

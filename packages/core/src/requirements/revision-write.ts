@@ -1,6 +1,6 @@
 /**
  * The requirement writes that run inside a caller's transaction, under the project's requirement
- * lock: a revision's criteria as rows, REQ-n at revision 1, and a new draft revision on the head.
+ * lock: a revision's criteria as rows, REQ-n at revision 1, and a new revision on the head.
  * `service.ts` composes them into its own transactions; an accepted suggestion composes them into
  * the transaction that marks it accepted (ISS-58).
  */
@@ -171,8 +171,39 @@ export async function createRequirementIn(
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
 }
 
-/** A new draft revision on the head: refused while another is open, or when `baseRevision` moved. */
-export async function newDraftRevisionIn(
+/** Where a new revision lands: a draft its author proposes, or proposed already by the person whose
+ *  accept of a revision_diff suggestion is its propose (feedback-triage `revision`). */
+export type RevisionLanding = { state: 'draft' } | { state: 'proposed'; proposedBy: string };
+
+/** The revision row a new revision is inserted as, at `landing`. */
+export function newRevisionRow(input: {
+  requirementId: string;
+  revision: number;
+  head: number | null;
+  authorId: string;
+  write: RevisionWrite;
+  landing: RevisionLanding;
+  at: Date;
+}) {
+  const { write, landing } = input;
+  return {
+    requirementId: input.requirementId,
+    revision: input.revision,
+    baseRevision: input.head,
+    authorId: input.authorId,
+    spec: specOf(write.spec),
+    tldr: write.tldr ?? null,
+    changeSummary: write.changeSummary ?? null,
+    reason: write.reason.trim(),
+    fromSuggestionId: write.fromSuggestionId ?? null,
+    state: landing.state,
+    proposedAt: landing.state === 'proposed' ? input.at : null,
+    proposedBy: landing.state === 'proposed' ? landing.proposedBy : null,
+  };
+}
+
+/** A new revision on the head at `landing`: refused while another is open, or when `baseRevision` moved. */
+export async function newRevisionIn(
   tx: Tx,
   input: {
     requirementId: string;
@@ -180,6 +211,7 @@ export async function newDraftRevisionIn(
     baseRevision: number | null;
     actor: RequirementActor;
     write: RevisionWrite;
+    landing: RevisionLanding;
   },
 ): Promise<RequirementRefusal[] | null> {
   const { requirementId } = input;
@@ -197,17 +229,17 @@ export async function newDraftRevisionIn(
     .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
     .from(requirementRevisions)
     .where(eq(requirementRevisions.requirementId, requirementId));
-  await tx.insert(requirementRevisions).values({
-    requirementId,
-    revision: next,
-    baseRevision: input.head,
-    authorId: input.actor.userId,
-    spec: specOf(write.spec),
-    tldr: write.tldr ?? null,
-    changeSummary: write.changeSummary ?? null,
-    reason: write.reason.trim(),
-    fromSuggestionId: write.fromSuggestionId ?? null,
-  });
+  await tx.insert(requirementRevisions).values(
+    newRevisionRow({
+      requirementId,
+      revision: next,
+      head: input.head,
+      authorId: input.actor.userId,
+      write,
+      landing: input.landing,
+      at: new Date(),
+    }),
+  );
   return writeCriteria(tx, requirementId, next, write.criteria);
 }
 

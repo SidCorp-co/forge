@@ -3,6 +3,7 @@ import { db, type Tx } from '../../db/client.js';
 import { contractArtifacts, contractVersions } from '../../db/schema-ecosystem.js';
 import type { ContractVersionFact, ContractVersionReads } from '../../lib/contract-versions.js';
 import { currentOf } from './store.js';
+import { contractWaitTargetIn } from './waits.js';
 
 async function versionsOf(
   tx: Tx,
@@ -56,4 +57,5 @@ export const contractVersionReads: ContractVersionReads = {
       .where(inArray(contractArtifacts.sha256, [...new Set(shas)]));
     return new Map(rows.map((r) => [r.sha256, r.content]));
   },
+  waitTargetIn: contractWaitTargetIn,
 };

@@ -19,7 +19,7 @@ import { transition } from '../lifecycle/index.js';
 import {
   createRequirementIn,
   dropAsDuplicateIn,
-  newDraftRevisionIn,
+  newRevisionIn,
   type RevisionWrite,
   rowIn,
 } from '../requirements/index.js';
@@ -81,12 +81,15 @@ export async function writeEffect(
   }
   if (row.kind === 'revision_diff' && target.type === 'requirement') {
     const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
-    const refusals = await newDraftRevisionIn(tx, {
+    // feedback-triage `revision`: the accept of the suggestion is the revision's propose, so the
+    // only act it still owes is the accept that re-baselines it; it is never left at draft
+    const refusals = await newRevisionIn(tx, {
       requirementId: target.id,
       head,
       baseRevision: row.baseRevision,
       actor: authorOf(row, actor),
       write: { ...write, fromSuggestionId: row.id },
+      landing: { state: 'proposed', proposedBy: actor.userId },
     });
     if (refusals?.length) return { refusals };
     const [written] = await tx
@@ -94,7 +97,7 @@ export async function writeEffect(
       .from(requirementRevisions)
       .where(eq(requirementRevisions.fromSuggestionId, row.id));
     const req = await rowIn(tx, projectId, target.id);
-    const supersededBy = `suggestion ${row.id} was accepted as a new draft revision of this requirement`;
+    const supersededBy = `suggestion ${row.id} was accepted as a new proposed revision of this requirement`;
     await transition(tx, SUGGESTION_MACHINE, {
       to: 'stale',
       from: 'proposed',
@@ -111,6 +114,7 @@ export async function writeEffect(
         requirementId: target.id,
         requirement: requirementKey(req.reqSeq),
         revision: written?.revision ?? 0,
+        state: 'proposed',
       },
     };
   }
@@ -140,6 +144,7 @@ export async function writeEffect(
         requirementId: created.id,
         requirement: requirementKey(req.reqSeq),
         revision: 1,
+        state: 'draft',
         ...(designs.length ? { designs } : {}),
       },
     };

@@ -30,6 +30,7 @@ export {
   insertContractWaitIn,
   issuesSettledBy,
   liveWaitOn,
+  lockContractsIn,
   retractContractWaitIn,
   settleContractWaitsIn,
 } from './contract-waits.js';

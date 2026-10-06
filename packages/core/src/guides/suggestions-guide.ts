@@ -14,7 +14,7 @@ export const SUGGESTIONS_GUIDE: CoreGuide = {
   title: 'Suggestions: propose, and let an approver decide',
   summary:
     'What an agent writes instead of changing a requirement, an issue or a feedback item it may not decide: the seven kinds and their targets, the base revision a suggestion is checked against twice, the open-queue cap, who accepts, and what accepting each kind writes.',
-  version: 1,
+  version: 2,
   body: `## Suggestions: propose, and let an approver decide
 
 A suggestion is a proposed change that waits on a decision instead of changing anything. An agent, the
@@ -26,10 +26,10 @@ effect is written in the accept's own transaction and points back at it. The doo
 ### The kinds, and what each targets
 | Kind | Target | Accepting it writes |
 |---|---|---|
-| \`revision_diff\` | a requirement | a new **draft** revision on that requirement, authored by the producer; never a current one, so the requirement's own propose and accept still follow |
+| \`revision_diff\` | a requirement | a new revision on that requirement, authored by the producer and **proposed** by whoever accepts the suggestion (the accept is its propose); never a current one, so the requirement's own accept, which re-baselines it, still follows |
 | \`requirement_draft\` | an issue, or an approved journey design (a first requirement) | a new requirement at revision 1, a draft; on a journey it is linked to that design and the approved \`designs\` it names. A design not approved is \`SUGGESTION_DESIGN_NOT_APPROVED\`, one the project lacks \`SUGGESTION_DESIGN_UNKNOWN\`, and a second on a journey \`SUGGESTION_JOURNEY_SUGGESTED\` |
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
-| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until they are promoted, and the build gate holds each until its design is approved |
+| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\`, linked as the build of the pinned design it builds and waiting on each provider version its \`contractWaits\` names, in one transaction; nothing dispatches until they are promoted, the build gate holds each until its design is approved, and a wait holds it until a version at or above it is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
 | \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement, drops it naming the requirement it repeats (\`REQUIREMENT_DUPLICATE_TARGET_INVALID\` for itself, an unknown or a dropped one; \`REQUIREMENT_HAS_LIVE_ISSUES\` while live issues link to it) |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
@@ -73,6 +73,15 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   \`steps\` names the steps of that design the issue builds, stored on its build link; a step the
   design's latest revision does not hold is \`WORKFLOW_NODE_UNKNOWN\`, and steps on an issue that
   builds no design \`SUGGESTION_BUILD_STEPS_UNBUILT\`.
+- \`contractWaits\` \`[{ contract, minVersion, dueAt? }]\` names, per issue, the provider versions it
+  builds against that are not approved yet; each is written as the issue's wait (\`contract >= minVersion\`)
+  in the accept's transaction, so what is accepted is what holds the issue. A wait is checked at write and
+  at accept as \`POST /api/issues/:id/contract-waits\` checks it: a contract the project's interface
+  neither publishes nor consumes is \`CONTRACT_WAIT_CONTRACT_UNKNOWN\`, a version outside the provider's
+  scheme \`CONTRACT_WAIT_VERSION_NOT_IN_SCHEME\`, a malformed or past \`dueAt\`
+  \`CONTRACT_WAIT_DUE_MALFORMED\` / \`CONTRACT_WAIT_DUE_PAST\`, and a second wait of one issue on the same
+  contract \`CONTRACT_WAIT_DUPLICATE\`, each at its path. A version already approved settles its wait as
+  it is written; the accept's effect names each wait per issue.
 
 ### Deciding
 - **accept** \`{ reason? }\` and **reject** \`{ reason }\` take

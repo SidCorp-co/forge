@@ -7,7 +7,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 1,
+  version: 2,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -107,7 +107,8 @@ on the project (project admin, or an org owner or admin), person or agent alike,
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
-and accepting one writes a new **draft** revision, never a current one.
+and accepting one writes a new revision **proposed** by the accepting holder, never a current one: the
+accept of that revision, which re-baselines it, is the one act it still owes.
 
 ### Contract requests from another project
 \`POST /api/projects/:id/contract-requests { contract: "<provider>/<contract>", title, reason, criteria }\`,

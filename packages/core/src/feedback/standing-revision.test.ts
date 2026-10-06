@@ -9,7 +9,7 @@ describe('a revision-routed item waits on whoever owes the next act of its revis
   it('waits on a person while the proposal is undecided', () => {
     const w = planned({
       status: 'proposed',
-      revisionLive: false,
+      revisionState: null,
       delivered: false,
       requirement: 'REQ-1',
       revision: null,
@@ -18,23 +18,36 @@ describe('a revision-routed item waits on whoever owes the next act of its revis
     expect(w.act).toBe('be accepted');
   });
 
-  it('waits on a person to make the accepted revision current', () => {
+  it('names the accept of the proposed revision the suggestion accept wrote as the act owed', () => {
     const w = planned({
       status: 'accepted',
-      revisionLive: false,
+      revisionState: 'proposed',
       delivered: false,
       requirement: 'REQ-1',
       revision: 2,
     });
     expect(w.kind).toBe('person');
-    expect(w.who).toBe('REQ-1 r2');
-    expect(w.act).toBe('be made current');
+    expect(w.who).toBe('BA or owner');
+    expect(w.act).toBe('accept revision 2 of REQ-1');
+    expect(w.ref).toBe('REQ-1');
+  });
+
+  it('names its author proposing a revision a signer returned to draft', () => {
+    const w = planned({
+      status: 'accepted',
+      revisionState: 'draft',
+      delivered: false,
+      requirement: 'REQ-1',
+      revision: 2,
+    });
+    expect(w.kind).toBe('person');
+    expect(w.act).toBe('propose revision 2 of REQ-1');
   });
 
   it('waits on the delivering work, not a person, once the revision is current', () => {
     const w = planned({
       status: 'accepted',
-      revisionLive: true,
+      revisionState: 'current',
       delivered: false,
       requirement: 'REQ-1',
       revision: 2,
