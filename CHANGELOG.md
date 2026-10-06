@@ -8,16 +8,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A breaking contract version names every issue building its flow, and each re-plan flag opens a task.**
+  Issues tracing the requirement's BCs join the broken binding's list; the two legacy failure causes
+  are rewritten and their alias deleted.
+
 ## [0.4.0-dev.50] - 2026-10-06
 
 Breakdowns carry contract waits; consumers adopt additive contract versions in one act
 
 
 ### Fixed
-
-- **A breaking contract version names every issue building its flow, and each re-plan flag opens a task.**
-  Issues tracing the requirement's BCs join the broken binding's list; the two legacy failure causes
-  are rewritten and their alias deleted.
 
 - **A breakdown files its issues' contract waits, and an accepted revision suggestion is proposed.**
   Each item's `contractWaits` is checked like the wait door and written in the accept; a
