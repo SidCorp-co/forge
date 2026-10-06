@@ -39,15 +39,25 @@ function redactLine(line: string): string {
   } catch {
     return redactQueryParams(line);
   }
-  let changed = false;
-  const redacted: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    // `err` went through `serializeError`, which read the error itself; a second, blind pass would
-    // take the database's reason that follows the params along with them.
-    redacted[key] = key === 'err' ? value : redactQueryParams(value);
-    if (redacted[key] !== value) changed = true;
-  }
-  return changed ? `${JSON.stringify(redacted)}\n` : line;
+  const redacted = besideErr(parsed, (rest) => redactQueryParams(rest));
+  return redacted === parsed ? line : `${JSON.stringify(redacted)}\n`;
+}
+
+/**
+ * `record` with `redact` applied to everything but `err` as ONE record, so a `query` keeps its
+ * `params` beside it. `err` is left as it is: `serializeError` read the error itself, and a second,
+ * blind pass would take the database's reason that follows the params along with them.
+ */
+function besideErr(
+  record: Record<string, unknown>,
+  redact: (rest: Record<string, unknown>) => unknown,
+): Record<string, unknown> {
+  const { err, ...rest } = record;
+  const out = redact(rest);
+  if (out === rest) return record;
+  return Object.hasOwn(record, 'err')
+    ? { ...(out as object), err }
+    : (out as Record<string, unknown>);
 }
 
 /** The error a call logs: its message text reads it, and pino takes `msg` from it when none is named. */
@@ -84,9 +94,7 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
   if (typeof first === 'object' && first !== null && !(first instanceof Error)) {
-    const entries = Object.entries(first);
-    const next = entries.map(([k, v]) => [k, k === 'err' ? v : clean(v)] as const);
-    if (next.some(([, v], i) => v !== entries[i]?.[1])) first = Object.fromEntries(next);
+    first = besideErr(first as Record<string, unknown>, clean);
   }
   if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
     rest = [redactQueryParams(err.message, err), ...rest];

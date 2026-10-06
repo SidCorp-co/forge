@@ -104,6 +104,10 @@ describe('the core logger', () => {
       (log: Logger, err: Error) => log.warn({ ctx: [err] }, 'failed'),
     ],
     [
+      'spread into the context itself',
+      (log: Logger, err: Error) => log.error({ ...err }, 'failed'),
+    ],
+    [
       'nine objects deep with no err beside it',
       (log: Logger, err: Error) => {
         let deep: object = { error: err };
