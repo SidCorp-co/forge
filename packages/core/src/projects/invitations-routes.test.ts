@@ -58,10 +58,12 @@ beforeEach(() => {
 });
 
 describe('invitationRoutes — GET /:token', () => {
-  it('404 when token not found', async () => {
+  it('404 INVITATION_NOT_FOUND when token not found, never a code read as a bad credential', async () => {
     selectLimit.mockResolvedValueOnce([]);
     const res = await buildApp().request('/api/invitations/missing-token');
     expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVITATION_NOT_FOUND');
   });
 
   it('410 ALREADY_ACCEPTED when invite already consumed', async () => {
@@ -157,6 +159,20 @@ describe('invitationRoutes — POST /:token/accept', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('INVITATION_EMAIL_MISMATCH');
+  });
+
+  it('404 INVITATION_NOT_FOUND for an invitation token nothing holds', async () => {
+    const token = await signUserToken(USER_ID);
+    selectLimit.mockResolvedValueOnce([{ id: USER_ID, email: 'u@e.co' }]);
+    consumeInvitationToken.mockResolvedValueOnce({ status: 'invalid' });
+
+    const res = await buildApp().request('/api/invitations/tok/accept', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('INVITATION_NOT_FOUND');
   });
 
   it('410 EXPIRED_TOKEN', async () => {

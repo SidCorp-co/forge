@@ -24,8 +24,11 @@ interface InviteInfo {
   expiresAt: string;
 }
 
+const INVALID_LINK = "This invitation link is invalid or was revoked.";
+
 const ERROR_COPY: Record<string, string> = {
-  INVALID_TOKEN: "This invitation link is invalid or was revoked.",
+  INVITATION_NOT_FOUND: INVALID_LINK,
+  INVALID_INVITATION_TOKEN: INVALID_LINK,
   EXPIRED_TOKEN: "This invitation has expired — ask for a new one.",
   ALREADY_ACCEPTED: "This invitation was already accepted.",
   INVITATION_EMAIL_MISMATCH:
@@ -54,7 +57,7 @@ function AcceptInvite() {
 
   useEffect(() => {
     if (!token) {
-      setLoadError(ERROR_COPY.INVALID_TOKEN ?? "Missing invitation token.");
+      setLoadError(INVALID_LINK);
       return;
     }
     apiClient<InviteInfo>(`${base}/${encodeURIComponent(token)}`)

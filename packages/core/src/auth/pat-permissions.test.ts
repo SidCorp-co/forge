@@ -8,6 +8,7 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 import { scopeForMethod } from '../middleware/pat-rest-surface.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
+  PAT_EXCLUSION_DOORS,
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_LEVELS,
@@ -159,9 +160,12 @@ describe('what is kept out of the grant grammar', () => {
     }
   });
 
-  it('carries a reason on every entry', () => {
-    for (const [pattern, why] of Object.entries(PAT_UNGRANTABLE)) {
-      expect(why.trim(), pattern).not.toBe('');
+  it('carries a reason on every entry, naming the door its advice sends a caller to', () => {
+    for (const [pattern, { admits, reason }] of Object.entries(PAT_UNGRANTABLE)) {
+      expect(reason.trim(), pattern).not.toBe('');
+      expect(reason, `${pattern} admits '${admits}', and its reason never says so`).toContain(
+        PAT_EXCLUSION_DOORS[admits].names,
+      );
     }
   });
 });

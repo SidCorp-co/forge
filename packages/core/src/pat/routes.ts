@@ -146,11 +146,12 @@ patRoutes.post(
       (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
     );
     if (fenced && accountOnly.length > 0) {
+      const one = accountOnly.length === 1;
       throw new HTTPException(400, {
         message:
-          `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account ` +
-          'permissions, whose routes resolve no project, and this token is fenced to projects. ' +
-          'Drop them, or mint the token with no project list.',
+          `${accountOnly.join(', ')} ${one ? 'is an account permission' : 'are account permissions'}` +
+          ', whose routes resolve no project, and this token is fenced to projects. ' +
+          `Drop ${one ? 'it' : 'them'}, or mint the token with no project list.`,
         cause: {
           code: 'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
           details: { accountOnly, sent: body.permissions },
