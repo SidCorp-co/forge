@@ -1,8 +1,10 @@
 # The question entity has a writer core mines from a comment, and no writer tells an open screen
 
-**Removed when:** an ask, answer or void publishes a realtime event open screens refetch on and
-`blocked.rs`'s `park_for_human` is wired or deleted, and forge-plugin ISS-2317 has shipped `forge
-record question`, which dev ISS-138 carries. The change that lands it deletes this file.
+**Removed when:** forge-plugin ISS-2317 has shipped `forge record question`, so the plugin writes the
+question through `POST /api/questions` and core stops mining it from a comment, which dev ISS-138
+carries. The change that lands it deletes this file. (The realtime half landed: an ask, answer, void
+or expiry is a `question.changed` frame the open screens refetch on; `park_for_human` was deleted in
+ISS-216.)
 
 First measured 2026-09-23 against `main` at `710ab641` and the installed plugin at `3.36.262`
 (ISS-1210); rewritten 2026-09-27 by ISS-1257, which coupled a question to the issue it stops
@@ -86,15 +88,8 @@ with the runner's tests (ISS-216), and core's TypeScript tests are deleted on de
 - **A person's answer at a rung other than `needs_info` reaches no session.** `answer-resume` hands
   an answer to the session that asked only while the issue is parked; a run that asked about
   finished work reads the answer back with `GET /api/questions/:id`.
-- **No browser is told a question changed.** An ask or an answer publishes no websocket event, and
-  since neither moves the issue, an Issues list or an issue page already open shows the marker,
-  `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or
-  its own poll — which the issue page's question read skips while the issue holds none).
 - **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
   are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
-- The runner's blocked-run park (`arm_bounded`, `park_for_human`) never had a caller outside its
-  own tests and was deleted in ISS-216, so no run declares itself parked on a person, and
-  `parkedOnAHuman` matches nothing on a box.
 
 ## Honest costs
 

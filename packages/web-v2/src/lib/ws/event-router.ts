@@ -51,6 +51,16 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			}
 			return;
 		}
+		case "question.changed": {
+			// A question moves the marker the Issues list, the needs-you rows and the issue banner read.
+			scheduleInvalidation(qc, ["questions"]);
+			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, ["issues", "standing"]);
+			scheduleInvalidation(qc, ["needs-you"]);
+			scheduleInvalidation(qc, ["attention"]);
+			if (data?.issueId) scheduleInvalidation(qc, ["issue", data.issueId]);
+			return;
+		}
 		case "issue.pipelineHealth.changed": {
 			scheduleInvalidation(qc, ["issues", "standing"]);
 			if (data?.issueId) {
