@@ -380,8 +380,8 @@ const RULES = [
         ? 'no .github/workflows/ci.yml'
         : branchFaults.length > 0
           ? branchFaults.join(' · ')
-          : `${gatedBranches || '(none)'}, in all three${target ? `, merge target ${target} among them` : ' (no merge target here to check them against)'}`,
-    why: 'a workflow trigger cannot read a variable, so the branches CI gates are written three times over — the push trigger, the pull-request trigger, and the step that decides a tree a pull request already proved. A branch in one list and not the others is a pull request that runs no CI at all, or a whole gate re-run on every merge into it, and the first of those reports nothing: a pull request with no CI shows no failure, only an absence nobody is looking at. Three lists that agree on a set the merge target is not in are consistent and gate nothing, which is the same absence reached from the other side (ISS-1304)',
+          : `${gatedBranches || '(none)'}, in all four${target ? `, merge target ${target} among them` : ' (no merge target here to check them against)'}`,
+    why: 'a workflow trigger cannot read a variable, so the branches CI gates are written four times over — the push trigger, the pull-request trigger, the step that decides a tree a pull request already proved, and the bases a dispatched run may choose. A branch in one list and not the others is a pull request that runs no CI at all, or a whole gate re-run on every merge into it, and the first of those reports nothing: a pull request with no CI shows no failure, only an absence nobody is looking at. Lists that agree on a set the merge target is not in are consistent and gate nothing, which is the same absence reached from the other side (ISS-1304)',
   },
   {
     id: 'R12',
@@ -424,15 +424,20 @@ function shortfall(name) {
 
 console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
 
+// A rule that did not run is no claim either way, so the profile is undecided only while nothing
+// that did run failed: one FAIL already decides it, and the run says so and exits 1 below.
 if (blocked > 0) {
   console.error(
     `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run gave\n` +
-      'no measurement. No claim is made about the profile either way: a rule that did not run\n' +
-      'is not a rule this repo fails. Each line below says which tool and why. Exit 2.\n',
+      (failed > 0
+        ? `no measurement. ${failed} rule(s) that did run FAIL above, so the profile is not met\n` +
+          'whatever the unrun rules would say. Each line below says which tool and why.\n'
+        : 'no measurement. No claim is made about the profile either way: a rule that did not run\n' +
+          'is not a rule this repo fails. Each line below says which tool and why. Exit 2.\n'),
   );
   for (const r of RULES.filter((x) => x.blocked)) console.error(`  ${r.id}: ${r.blocked}`);
   console.error('');
-  process.exit(2);
+  if (failed === 0) process.exit(2);
 }
 
 if (!claimed) {

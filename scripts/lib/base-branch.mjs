@@ -241,23 +241,64 @@ function provedBranches(text) {
   return found.length > 0 ? [...new Set(found)] : null;
 }
 
-/** The three branch sets one workflow names: both triggers, and the shell of `PROVED_STEP`. */
+/**
+ * The branches a dispatched run may name as its base: the `options` of `workflow_dispatch`'s `base`
+ * input. A `base` that is not a `choice` gives `{ type }` with no options, since free text admits
+ * any branch, a typo included, and a typo still spends every heavy job.
+ */
+function dispatchBases(body) {
+  const at = body.findIndex((l) => /^ {2}workflow_dispatch:\s*$/.test(l));
+  if (at === -1) return null;
+  let i = at + 1;
+  for (; i < body.length && !/^ {2}\S/.test(body[i]); i += 1) {
+    if (/^ {6}base:\s*$/.test(body[i])) break;
+  }
+  if (i >= body.length || /^ {2}\S/.test(body[i])) return null;
+  let type = null;
+  let options = null;
+  for (let j = i + 1; j < body.length && /^ {8}/.test(body[j]); j += 1) {
+    const typed = /^ {8}type:\s*(\S+)\s*$/.exec(body[j]);
+    if (typed) type = unquote(typed[1]);
+    const inline = /^ {8}options:\s*\[([^\]]*)\]\s*$/.exec(body[j]);
+    if (inline) options = inline[1].split(',').map(unquote).filter(Boolean);
+    if (/^ {8}options:\s*$/.test(body[j])) {
+      options = [];
+      for (let k = j + 1; k < body.length; k += 1) {
+        const item = /^ {10}-\s*(.+?)\s*$/.exec(body[k]);
+        if (!item) break;
+        options.push(unquote(item[1]));
+      }
+    }
+  }
+  return type === 'choice' && options !== null ? { type, options } : { type, options: null };
+}
+
+/** The four branch sets one workflow names: both triggers, the shell of `PROVED_STEP`, and the
+ * bases a dispatched run may choose. */
 export function ciBranches(text) {
   const body = onBlock(text) ?? [];
   return {
     push: branchesUnder(body, 'push'),
     pullRequest: branchesUnder(body, 'pull_request'),
     proved: provedBranches(text),
+    dispatch: dispatchBases(body),
   };
 }
 
-/** Which of those three disagree, and whether three agreeing lists leave `target` out. */
+/** Which of those four disagree, and whether four agreeing lists leave `target` out. */
 export function branchSetFaults(text, target = null) {
   const sets = ciBranches(text);
+  const DISPATCH = 'on.workflow_dispatch.inputs.base';
+  if (sets.dispatch && sets.dispatch.options === null) {
+    return [
+      `${DISPATCH}: type ${sets.dispatch.type ?? '(none)'}, which takes any text — make it \`type: choice\` whose \`options\` are the gated branches, so a mistyped base is refused at dispatch rather than spending every heavy job`,
+    ];
+  }
   const named = [
     ['on.push.branches', sets.push],
     ['on.pull_request.branches', sets.pullRequest],
     [`the \`${PROVED_STEP}\` step`, sets.proved],
+    [`${DISPATCH} options`, sets.dispatch?.options ?? null],
   ];
   const missing = named.filter(([, v]) => v === null);
   if (missing.length > 0) return missing.map(([name]) => `${name}: not found`);
@@ -269,7 +310,7 @@ export function branchSetFaults(text, target = null) {
 
   if (target && !named[0][1].includes(target)) {
     return [
-      `all three name ${agreed || '(nothing)'}, and the merge target \`${target}\` is not among them`,
+      `all four name ${agreed || '(nothing)'}, and the merge target \`${target}\` is not among them`,
     ];
   }
   return [];
