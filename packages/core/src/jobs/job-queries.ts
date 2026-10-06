@@ -19,6 +19,7 @@ const jobGateColumns = {
   ackedAt: jobs.ackedAt,
   error: jobs.error,
   killRequestedAt: jobs.killRequestedAt,
+  cancellationRequested: jobs.cancellationRequested,
 } as const;
 
 /** The shape every device/lifecycle gate handler works from. */
@@ -27,7 +28,7 @@ export type JobGateRow = {
 };
 
 /**
- * One job as the ingest and lifecycle GATES see it — the eight scalar columns
+ * One job as the ingest and lifecycle GATES see it — the nine scalar columns
  * those handlers actually read, never the prompt or failure payloads.
  *
  * Authorisation belongs to the caller, as with {@link readJob}.

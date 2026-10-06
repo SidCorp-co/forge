@@ -4,6 +4,7 @@
  * that follows it, in the order the finish has always run them.
  */
 
+import { settleConfirmedCancel } from './cancel-job.js';
 import { settleTranscriptAndUsage } from './finalize-done.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
@@ -11,6 +12,7 @@ import type { JobGateRow } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { type SalvageRecord, salvageSet } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
+import type { RetryOutcome } from './retry.js';
 import { finishJobFromRunner } from './service.js';
 
 export async function failJobFromRunner(
@@ -19,6 +21,20 @@ export async function failJobFromRunner(
   deviceId: string,
 ) {
   const error = await scrubJobOutput([job.id], input.error);
+  // A person asked to cancel this job, and its process is over however it ended: that is the
+  // cancel taking effect, not a failure to retry.
+  if (job.cancellationRequested) {
+    const cancelled = await settleConfirmedCancel({
+      jobId: job.id,
+      deviceId,
+      reason: `cancel confirmed: the runner reported the job's process over (${error})`,
+      error,
+    });
+    if (!cancelled) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
+    settleTranscriptAndUsage(cancelled);
+    const retry: RetryOutcome = { scheduled: false, reason: 'cancellation_requested' };
+    return { jobId: cancelled.id, status: cancelled.status, error: cancelled.error, retry };
+  }
   const updated = await finishJobFromRunner({
     jobId: job.id,
     from: job.status,

@@ -173,6 +173,15 @@ jobEventsRoutes.post(
     if (TERMINAL_STATUSES.has(job.status)) {
       throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }
+    // A pool pane's heartbeat is the one channel to its box that a lost `job.cancel` frame
+    // cannot take with it: the box closes the pane and acks the kill (`cancel-job.ts:
+    // settleConfirmedCancel`).
+    if (job.cancellationRequested) {
+      throw refuseJob(
+        'JOB_CANCEL_REQUESTED',
+        'a cancel was requested for this job: close its process and post kill-ack `killed`',
+      );
+    }
 
     if (job.agentSessionId) await syncLinkedSession(job.agentSessionId, events, device.id);
 

@@ -63,17 +63,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       throw refuseJob('NOT_CANCELLABLE', 'job state changed mid-request');
     }
 
-    await syncAgentSessionLifecycle(updated, 'cancelled');
-
-    await pushJobChanged(updated, 'job.cancelled', {
-      jobId: updated.id,
-      projectId: updated.projectId,
-      status: 'cancelled',
-    });
-
-    if (updated.issueId) {
-      await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
-    }
+    await announceCancelled(updated);
 
     return {
       jobId: updated.id,
@@ -110,6 +100,52 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
     status: updated.status,
     cancellationRequested: updated.cancellationRequested,
   };
+}
+
+type JobRow = typeof jobs.$inferSelect;
+
+/** What a job ending `cancelled` owes everyone else: its session, its watchers, its issue's health. */
+async function announceCancelled(row: JobRow): Promise<void> {
+  await syncAgentSessionLifecycle(row, 'cancelled');
+  await pushJobChanged(row, 'job.cancelled', {
+    jobId: row.id,
+    projectId: row.projectId,
+    status: 'cancelled',
+  });
+  if (row.issueId) await publishPipelineHealthChanged(row.projectId, [row.issueId]);
+}
+
+/**
+ * A dispatched job a person asked to cancel, settled `cancelled` once the box it was dispatched
+ * to says its process is over: a kill-ack `killed`, or a failure report. Until then the job stays
+ * `dispatched`, because its process may still be running. Answers the settled row, or null where
+ * the job is not a dispatched, cancel-requested job on `deviceId` — which the caller's own path
+ * then answers.
+ */
+export async function settleConfirmedCancel(args: {
+  jobId: string;
+  deviceId: string;
+  reason: string;
+  error?: string;
+}): Promise<JobRow | null> {
+  const [row] = (
+    await transition(db, JOB_MACHINE, {
+      to: 'cancelled',
+      from: 'dispatched',
+      set: { finishedAt: new Date(), ...(args.error === undefined ? {} : { error: args.error }) },
+      where: and(
+        eq(jobs.id, args.jobId),
+        eq(jobs.deviceId, args.deviceId),
+        eq(jobs.cancellationRequested, true),
+      ),
+      reason: args.reason,
+      actor: { type: 'runner', id: args.deviceId },
+      source: 'cancel',
+    })
+  ).rows;
+  if (!row) return null;
+  await announceCancelled(row);
+  return row;
 }
 
 const auditFor = (row: { id: string; issueId: string | null }, previousStatus: string) =>
