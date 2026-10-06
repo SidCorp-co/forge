@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.61] - 2026-10-06
+
+Cancelling a pool job stops it; approvals carry the approver's note
+
 ### Added
 
 - **An approval can carry the approver's note.** An approver writes the conditions of a design's approval on the approval, such as a revision still owed or an accepted deviation. The revision shows it; the master and the build read it.
