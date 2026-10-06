@@ -112,3 +112,47 @@ fn a_composer_with_nothing_standing_reads_nothing() {
     assert_eq!(standing(pane), Standing::Nothing);
     assert_eq!(standing(""), Standing::Nothing);
 }
+
+const USAGE_LIMIT: &str = concat!(
+    "\n",
+    " You've hit your usage limit\n",
+    "\n",
+    " What do you want to do?\n",
+    "\n",
+    " \u{276f} 1. Stop and wait for limit to reset\n",
+    "   2. Wait here, then continue automatically at 3:40pm (Asia/Saigon)\n",
+    "   3. Ask your admin\n",
+    "\n",
+    " Enter to confirm \u{b7} Esc to cancel\n",
+);
+
+#[test]
+fn the_usage_limit_choice_list_is_read_with_its_printed_reset() {
+    match standing(USAGE_LIMIT) {
+        Standing::UsageLimit { highlighted, reset } => {
+            assert!(
+                highlighted.starts_with("1. Stop and wait")
+                    || highlighted.starts_with("Stop and wait"),
+                "{highlighted}"
+            );
+            assert_eq!(reset.as_deref(), Some("3:40pm (Asia/Saigon)"));
+        }
+        other => panic!("read as {other:?}"),
+    }
+}
+
+#[test]
+fn a_usage_limit_list_that_prints_no_reset_still_reads_as_one() {
+    let bare = USAGE_LIMIT.replace(" at 3:40pm (Asia/Saigon)", "");
+    assert!(matches!(
+        standing(&bare),
+        Standing::UsageLimit { reset: None, .. }
+    ));
+}
+
+#[test]
+fn a_list_naming_only_one_of_the_two_rows_is_not_the_usage_limit() {
+    let only = USAGE_LIMIT.replace("Stop and wait for limit to reset", "Stop here");
+    assert!(!matches!(standing(&only), Standing::UsageLimit { .. }));
+    assert!(!matches!(standing(BASH), Standing::UsageLimit { .. }));
+}

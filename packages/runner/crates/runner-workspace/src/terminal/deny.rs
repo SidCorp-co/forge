@@ -41,6 +41,8 @@ pub enum Step {
     Typed,
     /// The dialog was still standing after Enter.
     Submit,
+    /// The usage-limit list was still standing after Escape.
+    Dismiss,
 }
 
 impl Step {
@@ -53,6 +55,7 @@ impl Step {
             Step::Amend => "Tab on No never opened the row for the reason",
             Step::Typed => "the No row never read back the reason typed into it",
             Step::Submit => "the dialog was still standing after Enter",
+            Step::Dismiss => "the usage-limit list was still standing after Escape",
         }
     }
 }
@@ -204,6 +207,37 @@ impl Tmux {
         self.gone(name, asked).await
     }
 
+    /// Dismiss the account usage-limit list standing on `name` with Escape, and
+    /// wait for it to leave. Never a numbered choice: each is a decision about
+    /// the account's session that is a person's. Refused where what stands is
+    /// no longer that list.
+    pub async fn dismiss_usage_limit(&self, name: &str) -> Result<(), Stopped> {
+        let still = |s: &Option<Standing>| matches!(s, Some(Standing::UsageLimit { .. }));
+        let first = self.standing(name).await;
+        if !still(&first) {
+            return Err(Stopped::At {
+                step: Step::Start,
+                read: shown(first.as_ref()),
+            });
+        }
+        let target = super::pane_target(name);
+        self.ok(&["send-keys", "-t", &target, "Escape"]).await?;
+        let deadline = Instant::now() + STEP_WITHIN;
+        loop {
+            let read = self.standing(name).await;
+            if read.is_some() && !still(&read) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(Stopped::At {
+                    step: Step::Dismiss,
+                    read: shown(read.as_ref()),
+                });
+            }
+            tokio::time::sleep(POLL).await;
+        }
+    }
+
     /// Read the pane until `wanted` holds of the dialog on it, for at most `within`.
     async fn until(
         &self,
@@ -255,6 +289,7 @@ fn shown(read: Option<&Standing>) -> String {
     match read {
         None => "nothing tmux could capture".into(),
         Some(Standing::Nothing) => "no choice list".into(),
+        Some(Standing::UsageLimit { .. }) => "the account usage-limit choice list".into(),
         Some(Standing::Other { highlighted, .. }) => {
             format!("another choice list, at \u{ab}{highlighted}\u{bb}")
         }

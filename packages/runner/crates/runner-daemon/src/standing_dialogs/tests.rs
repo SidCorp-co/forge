@@ -107,7 +107,7 @@ async fn drawn(tmux: &Tmux, name: &str) {
     while Instant::now() < deadline {
         if matches!(
             tmux.standing(name).await,
-            Some(Standing::Permission(_) | Standing::Other { .. })
+            Some(Standing::Permission(_) | Standing::Other { .. } | Standing::UsageLimit { .. })
         ) {
             return;
         }
@@ -122,6 +122,7 @@ fn of<'a>(out: &'a [Outcome], pane: &str) -> &'a Outcome {
             Outcome::Answered { pane: p, .. }
             | Outcome::Stopped { pane: p, .. }
             | Outcome::Cannot { pane: p, .. }
+            | Outcome::UsageLimit { pane: p, .. }
             | Outcome::Moved { pane: p } => p == pane,
         })
         .unwrap_or_else(|| panic!("no outcome for {pane}: {out:?}"))
@@ -171,7 +172,7 @@ async fn dialogs_standing_before_the_daemon_starts_are_answered_or_named_and_nev
         tokio::time::sleep(Duration::from_millis(600)).await;
         std::fs::write(gone, "").unwrap();
     });
-    let first = sweep.pass(&tmux, Some(&config)).await;
+    let first = sweep.pass(&tmux, Some(&config), &NoCore).await;
     vanishing.await.unwrap();
 
     assert_eq!(
@@ -222,7 +223,7 @@ async fn dialogs_standing_before_the_daemon_starts_are_answered_or_named_and_nev
 
     one_answer_recorded_as_the_sweep_s(&config);
 
-    let next = sweep.pass(&tmux, Some(&config)).await;
+    let next = sweep.pass(&tmux, Some(&config), &NoCore).await;
     match of(&next, "forge-master-p") {
         Outcome::Answered { reason, .. } => {
             assert_eq!(reason, "denied Overwrite file: victim.txt")
@@ -322,6 +323,21 @@ fn permission(d: &Dialog, highlighted: usize, amend: Option<&str>) -> Vec<String
     lines
 }
 
+fn limit_list() -> Vec<String> {
+    vec![
+        RULE.repeat(80),
+        " You've hit your usage limit".into(),
+        String::new(),
+        " What do you want to do?".into(),
+        String::new(),
+        " \u{276f} 1. Stop and wait for limit to reset".into(),
+        "   2. Wait here, then continue automatically at 3:40pm (UTC)".into(),
+        "   3. Ask your admin".into(),
+        String::new(),
+        " Enter to confirm \u{b7} Esc to cancel".into(),
+    ]
+}
+
 fn trust() -> Vec<String> {
     vec![
         RULE.repeat(80),
@@ -369,6 +385,8 @@ fn fake_claude_code_pane() {
     loop {
         let lines = match kind.as_str() {
             "trust" => trust(),
+            "limit" if dir.join("gone").exists() => composer(),
+            "limit" | "limit-stuck" => limit_list(),
             "vanish" if dir.join("go").exists() => composer(),
             _ if at >= DIALOGS.len() => composer(),
             _ => permission(
@@ -385,6 +403,12 @@ fn fake_claude_code_pane() {
             continue;
         };
         note("keys", &char::from(b).to_string());
+        if kind == "limit" || kind == "limit-stuck" {
+            if kind == "limit" && b == 0x1b {
+                note("gone", "");
+            }
+            continue;
+        }
         if kind == "trust" || kind == "vanish" || at >= DIALOGS.len() {
             continue;
         }
@@ -413,4 +437,109 @@ fn fake_claude_code_pane() {
             _ => {}
         }
     }
+}
+
+/// Records what a sweep told core about the account.
+struct Told(std::sync::Mutex<Vec<(Option<u64>, String)>>, bool);
+
+impl LimitReporter for Told {
+    async fn usage_limit(
+        &self,
+        resets_in_seconds: Option<u64>,
+        detail: &str,
+    ) -> runner_platform::error::Result<()> {
+        if self.1 {
+            return Err(runner_platform::error::Error::Other("core is down".into()));
+        }
+        self.0
+            .lock()
+            .unwrap()
+            .push((resets_in_seconds, detail.into()));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn the_usage_limit_list_is_reported_to_core_then_dismissed_with_escape_and_never_chosen() {
+    if !tmux_or_skip(
+        "the_usage_limit_list_is_reported_to_core_then_dismissed_with_escape_and_never_chosen",
+    ) {
+        return;
+    }
+    let root = Scratch::new();
+    let limited = root.pane("forge-master-lim", "limit", Some("p1"));
+    let trust = root.pane("forge-job-trust", "trust", Some("p2"));
+    let tmux = Tmux::on(root.socket());
+    drawn(&tmux, "forge-master-lim").await;
+    drawn(&tmux, "forge-job-trust").await;
+    let told = Told(Default::default(), false);
+    let mut sweep = DialogSweep::new(Duration::from_millis(500));
+    let out = sweep.pass(&tmux, None, &told).await;
+    match of(&out, "forge-master-lim") {
+        Outcome::UsageLimit {
+            resets_in_seconds, ..
+        } => {
+            assert!(resets_in_seconds.is_some_and(|s| s > 0 && s <= 24 * 3600))
+        }
+        other => panic!("read as {other:?}"),
+    }
+    assert_eq!(told.0.lock().unwrap().len(), 1);
+    assert_eq!(
+        read(&limited.join("keys")),
+        "\u{1b}",
+        "only Escape was sent"
+    );
+    assert!(matches!(
+        of(&out, "forge-job-trust"),
+        Outcome::Cannot { .. }
+    ));
+    assert_eq!(
+        read(&trust.join("keys")),
+        "",
+        "another choice list was keyed"
+    );
+}
+
+#[tokio::test]
+async fn a_usage_limit_list_core_was_not_told_about_is_left_standing() {
+    if !tmux_or_skip("a_usage_limit_list_core_was_not_told_about_is_left_standing") {
+        return;
+    }
+    let root = Scratch::new();
+    let limited = root.pane("forge-master-lim", "limit", None);
+    let tmux = Tmux::on(root.socket());
+    drawn(&tmux, "forge-master-lim").await;
+    let mut sweep = DialogSweep::new(Duration::from_millis(500));
+    let out = sweep
+        .pass(&tmux, None, &Told(Default::default(), true))
+        .await;
+    assert!(matches!(
+        of(&out, "forge-master-lim"),
+        Outcome::Stopped { .. }
+    ));
+    assert_eq!(
+        read(&limited.join("keys")),
+        "",
+        "a list core was never told of was dismissed"
+    );
+}
+
+#[tokio::test]
+async fn a_usage_limit_list_escape_does_not_close_is_named_not_chosen() {
+    if !tmux_or_skip("a_usage_limit_list_escape_does_not_close_is_named_not_chosen") {
+        return;
+    }
+    let root = Scratch::new();
+    let limited = root.pane("forge-master-lim", "limit-stuck", None);
+    let tmux = Tmux::on(root.socket());
+    drawn(&tmux, "forge-master-lim").await;
+    let mut sweep = DialogSweep::new(Duration::from_millis(500));
+    let out = sweep
+        .pass(&tmux, None, &Told(Default::default(), false))
+        .await;
+    match of(&out, "forge-master-lim") {
+        Outcome::Stopped { why, .. } => assert!(why.contains("Escape"), "{why}"),
+        other => panic!("read as {other:?}"),
+    }
+    assert_eq!(read(&limited.join("keys")), "\u{1b}");
 }

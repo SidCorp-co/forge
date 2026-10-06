@@ -1,0 +1,1 @@
+**The runner box stops hanging.** Core requests carry a deadline, a refused close is sent once, old scratch is swept, an unreadable MCP file is reported, and a usage-limit choice list is reported to core and dismissed with Escape.
