@@ -83,12 +83,14 @@ pub async fn open_pass(
     session_id: &str,
     verb: &str,
     issue_key: Option<&str>,
+    trigger: &str,
 ) -> std::result::Result<String, PassError> {
     let body = serde_json::json!({
         "op": "open",
         "sessionId": session_id,
         "verb": verb,
         "issueKey": issue_key,
+        "trigger": trigger,
     });
     pass_call(client, body).await
 }
@@ -98,14 +100,16 @@ pub async fn close_pass(
     session_id: &str,
     pass_id: &str,
     dispatched: &[String],
+    refused: Option<(&str, &str)>,
 ) -> std::result::Result<String, PassError> {
     let body = serde_json::json!({
         "op": "close",
         "sessionId": session_id,
         "passId": pass_id,
-        "dispatched": dispatched,
+        "dispatched": if refused.is_some() { &[][..] } else { dispatched },
         "skipped": [],
         "parked": [],
+        "refused": refused.map(|(reason, detail)| serde_json::json!({ "reason": reason, "detail": detail })),
     });
     pass_call(client, body).await
 }
@@ -154,6 +158,24 @@ pub(crate) fn pass_refusal(status: u16, text: &str) -> Option<PassError> {
         .unwrap_or_default()
         .to_string();
     Some(PassError::Refused { code, detail })
+}
+
+/// Tell core the dialog this box read on a master's pane, or that none stands
+/// (`None`). `dialog` is the text and where it was read: `pane` or `hooks`.
+pub async fn report_dialog(
+    client: &CoreClient,
+    session_id: &str,
+    dialog: Option<(&str, &str)>,
+) -> Result<()> {
+    let body = serde_json::json!({
+        "sessionId": session_id,
+        "dialog": dialog.map(|(text, source)| serde_json::json!({ "text": text, "source": source })),
+    });
+    let req = client
+        .post("/api/devices/me/master-session/dialog")
+        .json(&body);
+    status::send_within(req, "master-session/dialog", CALL_DEADLINE).await?;
+    Ok(())
 }
 
 pub async fn report_limit(

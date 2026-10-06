@@ -260,6 +260,7 @@ export const STATE_READINGS = {
 	masterState: {
 		in_pass: ["In a pass", "run", "●"],
 		idle: ["Idle", "neutral", "○"],
+		waiting_person: ["Waiting on a person", "you", "?"],
 		silent: ["Silent", "err", "!"],
 		none: ["No master", "you", "?"],
 	} satisfies Record<MasterState, Reading>,
@@ -464,6 +465,11 @@ export const ENUM_LABELS = {
 		release: "Release",
 		park: "Park",
 	} satisfies Record<MasterVerb, string>,
+	masterPassRefusal: {
+		usage_limit: "Usage limit",
+		rate_limit: "Rate limit",
+		auth: "Credential refused",
+	},
 	runExpirySource: {
 		claim: "Claim",
 		silence_reap: "Silence reap",

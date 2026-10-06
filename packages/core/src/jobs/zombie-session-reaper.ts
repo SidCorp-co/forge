@@ -8,7 +8,7 @@ import type { LoopScope } from './loop-monitor.js';
 import { getLoopThresholds } from './loop-monitor-thresholds.js';
 import { jobsPorts } from './ports.js';
 import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
-import { CLIENT_SESSION_KINDS, heartbeatBeatSql, heartbeatReapedSql } from './session-kinds.js';
+import { CLIENT_SESSION_KINDS, heartbeatSilentSql } from './session-kinds.js';
 
 export interface ZombieSessionReapResult {
   queueTimedOut: number;
@@ -47,10 +47,7 @@ export async function reapZombieSessions(
       to: 'failed',
       set: { failureReason: 'heartbeat_timeout', updatedAt: now },
       where: and(
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
-        sql`${heartbeatBeatSql(sql`${agentSessions}`)} < ${heartbeatCutoff.toISOString()}`,
-        heartbeatReapedSql(sql`${agentSessions}`),
+        heartbeatSilentSql(sql`${agentSessions}`, heartbeatCutoff.toISOString()),
         ...(projectFilter ? [projectFilter] : []),
       ),
       reason: 'heartbeat_timeout',

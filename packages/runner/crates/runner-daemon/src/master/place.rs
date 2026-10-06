@@ -500,14 +500,15 @@ pub(crate) async fn ensure_master(
         .await;
     }
     tracing::info!(
-        "[master] {}: resident session {name} {} in {} — `tmux attach -t {name}` to watch it",
+        "[master] {}: resident session {name} {} in {} — `{}` to watch it",
         resolved.slug,
         match (started, resume.as_deref()) {
             (false, _) => "was already up, and this pass started nothing".to_string(),
             (true, Some(id)) => format!("resumed from conversation {id}"),
             (true, None) => "cold-started".to_string(),
         },
-        resolved.repo_path.display()
+        resolved.repo_path.display(),
+        terminal::attach_command(&name)
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);

@@ -49,6 +49,21 @@ export function passNotOpenRefusal(args: {
   };
 }
 
+export function refusedWithWorkRefusal(args: {
+  refused: { reason: string } | null;
+  dispatched: string[];
+  skipped: unknown[];
+  parked: string[];
+}): MasterRefusal | null {
+  if (!args.refused) return null;
+  if (args.dispatched.length + args.skipped.length + args.parked.length === 0) return null;
+  return {
+    code: 'MASTER_PASS_REFUSED_WITH_WORK',
+    path: '/refused',
+    detail: `a pass refused before it ran (${args.refused.reason}) did no work, so it reports none: send dispatched, skipped and parked empty, or close it without refused if its turn ran`,
+  };
+}
+
 export function sessionEndedRefusal(status: string, terminal: boolean): MasterRefusal | null {
   if (!terminal) return null;
   return {

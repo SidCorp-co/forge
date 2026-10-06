@@ -147,6 +147,13 @@ function questionFacts(
   };
 }
 
+function paneDialogOf(raw: unknown): { text: string; seenAt: Date } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as { text?: unknown; seenAt?: unknown };
+  if (typeof d.text !== 'string' || typeof d.seenAt !== 'string') return null;
+  return { text: d.text, seenAt: new Date(d.seenAt) };
+}
+
 function masterFacts(t: Tables, masterId: string | null, took: Date) {
   if (!masterId) return { master: null, pass: null };
   const m = t.masterById.get(masterId);
@@ -162,6 +169,7 @@ function masterFacts(t: Tables, masterId: string | null, took: Date) {
       name: m ? str(m.name) : null,
       live: m?.live === true,
       lastBeatAt: m ? date(m.last_beat) : null,
+      dialog: paneDialogOf(m?.pane_dialog),
     },
     pass: pass
       ? { id: String(pass.id), verb: String(pass.verb), startedAt: must(pass.started_at) }

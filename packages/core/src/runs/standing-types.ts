@@ -129,7 +129,14 @@ export interface RunFacts {
   releaseAttempt: { stage: string; verdict: string | null; startedAt: Date } | null;
   runFlip: KernelFlip | null;
   sessionFlip: KernelFlip | null;
-  master: { sessionId: string; name: string | null; live: boolean; lastBeatAt: Date | null } | null;
+  master: {
+    sessionId: string;
+    name: string | null;
+    live: boolean;
+    lastBeatAt: Date | null;
+    /** The dialog the box last reported its pane stopped on (`metadata.paneDialog`), if any. */
+    dialog: { text: string; seenAt: Date } | null;
+  } | null;
   pass: { id: string; verb: string; startedAt: Date } | null;
   attempt: { n: number; retryOf: string | null; of: string } | null;
 }

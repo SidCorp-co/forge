@@ -49,7 +49,10 @@ says when, or \`failsBy\` says that no silence reaper times the run out. A run t
 running again. A person wait is never stuck.
 
 ### The project master
-\`…/masters/standing\` answers the master's state (\`in_pass\`, \`idle\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots. \`…/masters/passes\` pages
-the stored passes newest first; read \`hasMore\` before calling a history complete.`,
+\`…/masters/standing\` answers the master's state (\`in_pass\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
+pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots. \`waiting_person\` is a pane
+stopped on a dialog the box reported; \`waitingOn\` names it, and every run that pane hosts reads waiting on a person too.
+\`…/masters/passes\` pages the stored passes newest first, each with its \`trigger\` (\`nudge\`, or \`unprompted\` for a
+turn the box saw start without asking) and, closed, \`refused\` when its turn was refused before it ran: a refused pass is
+not an idle one. Read \`hasMore\` before calling a history complete.`,
 };

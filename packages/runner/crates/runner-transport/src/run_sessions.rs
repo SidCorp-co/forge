@@ -290,6 +290,10 @@ pub struct LeaseState {
     /// (ISS-1245).
     #[serde(default)]
     pub issue_over: Option<bool>,
+    /// The issue is over or parked (`needs_info`, `on_hold`), so no run works
+    /// it now. `None` as for `issue_over`.
+    #[serde(default)]
+    pub issue_resting: Option<bool>,
 }
 
 /// Where one lease lives, named by the project it was taken for.
@@ -362,6 +366,7 @@ pub async fn lease_state(
             return Ok(LeaseState {
                 held_by_this_device: false,
                 issue_over: None,
+                issue_resting: None,
             });
         }
         return Err(Error::Other(status::refused(

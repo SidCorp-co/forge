@@ -14,6 +14,13 @@ use runner_transport::CoreClient;
 
 pub(crate) const NUDGE_VERB: &str = "dispatch";
 
+/// A pass the runner opened before typing its nudge.
+pub(crate) const BY_NUDGE: &str = "nudge";
+
+/// A pass the runner opened for a turn it saw start with no nudge of its own:
+/// a person typing at the pane, or the master taking up a task notification.
+pub(crate) const UNPROMPTED: &str = "unprompted";
+
 pub(crate) const TICK: Duration = Duration::from_secs(5);
 
 pub(crate) const ADOPTED_FROM_CORE: &str = "core";
@@ -105,7 +112,37 @@ pub(crate) fn named_pass_id(detail: &str) -> Option<String> {
     None
 }
 
-async fn settle(client: &CoreClient, led: &mut Ledger, pass: &MasterPass, why: &str) -> bool {
+/// The refusal the master's account wrote for a turn started at or after
+/// `opened_at`, read off the conversation's own records: a pass whose turn was
+/// refused before it ran is closed refused, never as an idle pass.
+pub(crate) fn refusal_since(
+    newest: Option<&crate::master_limit::Decisive>,
+    opened_at: i64,
+) -> Option<(&'static str, String)> {
+    let d = newest?;
+    if d.at < opened_at {
+        return None;
+    }
+    match &d.verdict {
+        crate::master_limit::Verdict::Refused(r) => Some((r.reason.wire(), r.detail.clone())),
+        _ => None,
+    }
+}
+
+fn refusal_of(seen: Option<&Activity>, opened_at: i64) -> Option<(&'static str, String)> {
+    let path = seen?.transcript.as_deref()?;
+    let tail = crate::master_limit::read_tail(std::path::Path::new(path))?;
+    let newest = crate::master_limit::newest_record(&tail, crate::master_limit::now_unix());
+    refusal_since(newest.as_ref(), opened_at)
+}
+
+async fn settle(
+    client: &CoreClient,
+    led: &mut Ledger,
+    pass: &MasterPass,
+    why: &str,
+    refused: Option<(&'static str, String)>,
+) -> bool {
     let dispatched = match led.issues_declared_since(&pass.session_id, pass.opened_at) {
         Ok(keys) => keys,
         Err(e) => {
@@ -117,17 +154,32 @@ async fn settle(client: &CoreClient, led: &mut Ledger, pass: &MasterPass, why: &
             return false;
         }
     };
-    let gone = match master_api::close_pass(client, &pass.session_id, &pass.pass_id, &dispatched)
-        .await
+    let refused_ref = refused.as_ref().map(|(r, d)| (*r, d.as_str()));
+    let gone = match master_api::close_pass(
+        client,
+        &pass.session_id,
+        &pass.pass_id,
+        &dispatched,
+        refused_ref,
+    )
+    .await
     {
         Ok(_) => {
-            tracing::info!(
-                "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — {why}",
-                pass.project_id,
-                pass.pass_id,
-                pass.verb,
-                dispatched.len()
-            );
+            match refused_ref {
+                Some((reason, detail)) => tracing::warn!(
+                    "[master] {}: pass {} ({}) closed refused ({reason}: {detail}) — its turn did not run",
+                    pass.project_id,
+                    pass.pass_id,
+                    pass.verb
+                ),
+                None => tracing::info!(
+                    "[master] {}: pass {} ({}) closed, {} issue(s) dispatched — {why}",
+                    pass.project_id,
+                    pass.pass_id,
+                    pass.verb,
+                    dispatched.len()
+                ),
+            }
             true
         }
         Err(PassError::Refused { code, detail }) => {
@@ -180,15 +232,113 @@ pub(crate) async fn reconcile(
     {
         let live = masters.live_for_project(&pass.project_id).map(|(s, _)| s);
         let seen = activity.get(&pass.session_id);
-        match judge(pass, process, live.as_deref(), seen.as_ref()) {
-            Judged::Open => {}
+        let settled = match judge(pass, process, live.as_deref(), seen.as_ref()) {
+            Judged::Open => false,
             Judged::TurnEnded => {
-                settle(client, led, pass, "the turn its nudge started has ended").await;
+                let refused = refusal_of(seen.as_ref(), pass.opened_at);
+                settle(client, led, pass, "the turn it covers has ended", refused).await
             }
-            Judged::Abandoned(a) => {
-                settle(client, led, pass, a.why()).await;
+            Judged::Abandoned(a) => settle(client, led, pass, a.why(), None).await,
+        };
+        if settled {
+            if let Some(seen) = seen.as_ref() {
+                masters.note_prompts_settled(&pass.project_id, &pass.session_id, seen.prompts);
             }
         }
+    }
+    for (project_id, session_id) in masters.live_sessions() {
+        if only.is_some_and(|id| id != project_id) {
+            continue;
+        }
+        open_unprompted(
+            client,
+            masters,
+            activity,
+            led,
+            process,
+            &project_id,
+            &session_id,
+        )
+        .await;
+    }
+}
+
+/// The prompt count to record as an unprompted pass's start, where `seen`
+/// shows a turn running that no open pass covers and that began after the
+/// last pass settled. `None` otherwise.
+pub(crate) fn unprompted_turn(
+    pass_open: bool,
+    seen: Option<&Activity>,
+    settled_at: Option<u64>,
+) -> Option<u64> {
+    if pass_open {
+        return None;
+    }
+    let seen = seen?;
+    if !matches!(seen.doing(), Doing::Working | Doing::AwaitingPermission) {
+        return None;
+    }
+    (seen.prompts > settled_at.unwrap_or(0)).then(|| seen.prompts.saturating_sub(1))
+}
+
+/// Open a pass for a turn the master started without a nudge from this box,
+/// so `masters/passes` records every turn, not only the ones it asked for.
+async fn open_unprompted(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    activity: &Activities,
+    led: &mut Ledger,
+    process: &str,
+    project_id: &str,
+    session_id: &str,
+) {
+    let pass_open = match led.master_pass_for(project_id) {
+        Ok(open) => open.is_some(),
+        Err(_) => return,
+    };
+    let seen = activity.get(session_id);
+    let Some(prompts) = unprompted_turn(
+        pass_open,
+        seen.as_ref(),
+        masters.prompts_settled(project_id, session_id),
+    ) else {
+        return;
+    };
+    match master_api::open_pass(client, session_id, NUDGE_VERB, None, UNPROMPTED).await {
+        Ok(pass_id) => {
+            let row = MasterPass {
+                project_id: project_id.to_string(),
+                session_id: session_id.to_string(),
+                pass_id,
+                verb: NUDGE_VERB.to_string(),
+                issue_key: None,
+                opened_at: now_secs(),
+                opened_by: process.to_string(),
+                prompts_at_nudge: Some(prompts),
+            };
+            if let Err(e) = led.open_master_pass(&row) {
+                tracing::error!(
+                    "[master] {project_id}: core opened unprompted pass {} and this box could not record it ({e}); closing it now",
+                    row.pass_id
+                );
+                let _ = master_api::close_pass(client, session_id, &row.pass_id, &[], None).await;
+                return;
+            }
+            tracing::info!(
+                "[master] {project_id}: pass {} opened for a turn this box did not nudge (a person at the pane, or a task notification)",
+                row.pass_id
+            );
+        }
+        Err(PassError::Refused { code, detail }) => {
+            // Settled as seen so the same turn is not asked about every tick.
+            masters.note_prompts_settled(project_id, session_id, prompts + 1);
+            tracing::warn!(
+                "[master] {project_id}: opening an unprompted pass was refused {code}: {detail}"
+            );
+        }
+        Err(PassError::Unreached(e)) => tracing::warn!(
+            "[master] {project_id}: could not open an unprompted pass: {e} — the next tick asks again"
+        ),
     }
 }
 
@@ -241,8 +391,14 @@ pub(crate) async fn open_for_nudge(
             return;
         }
     }
-    let opened =
-        master_api::open_pass(client, nudged.session_id, NUDGE_VERB, nudged.issue_key).await;
+    let opened = master_api::open_pass(
+        client,
+        nudged.session_id,
+        NUDGE_VERB,
+        nudged.issue_key,
+        BY_NUDGE,
+    )
+    .await;
     match opened {
         Ok(pass_id) => {
             let row = MasterPass {
@@ -262,7 +418,7 @@ pub(crate) async fn open_for_nudge(
                     row.pass_id
                 );
                 if let Err(e) =
-                    master_api::close_pass(client, &row.session_id, &row.pass_id, &[]).await
+                    master_api::close_pass(client, &row.session_id, &row.pass_id, &[], None).await
                 {
                     tracing::error!(
                         "[master] {}: pass {} could not be closed either: {e} — the next open is refused MASTER_PASS_ALREADY_OPEN and adopted from there",

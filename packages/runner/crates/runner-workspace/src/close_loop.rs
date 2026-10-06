@@ -62,6 +62,16 @@ pub trait LeaseKeeper: Send + Sync {
     ) -> Result<Option<bool>> {
         Ok(None)
     }
+
+    /// Whether the issue rests at core: over, or parked at `needs_info` or
+    /// `on_hold`, so no run works it now. `None` as for [`Self::issue_is_over`].
+    async fn issue_rests(
+        &self,
+        _project_id: Option<&str>,
+        _issue_key: &str,
+    ) -> Result<Option<bool>> {
+        Ok(None)
+    }
 }
 
 /// What the ledger says, with no process inspected.

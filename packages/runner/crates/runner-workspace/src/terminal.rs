@@ -83,6 +83,24 @@ fn fits_a_unix_socket(path: &str) -> bool {
     path.len() <= 100
 }
 
+/// The command an operator types to watch `name`: masters run on this box's
+/// own tmux socket, so an attach without `-S` reaches the default server,
+/// which holds no such session.
+pub fn attach_command(name: &str) -> String {
+    attach_command_on(socket_path().as_deref(), name)
+}
+
+fn attach_command_on(socket: Option<&std::path::Path>, name: &str) -> String {
+    match socket {
+        Some(sock) => format!(
+            "tmux -S {} attach -t {}",
+            shell_quote(&sock.to_string_lossy()),
+            shell_quote(name)
+        ),
+        None => format!("tmux attach -t {}", shell_quote(name)),
+    }
+}
+
 fn socket_args() -> Vec<String> {
     match socket_path() {
         Some(p) => vec!["-S".into(), p.to_string_lossy().into_owned()],
@@ -577,6 +595,16 @@ async fn read_prompt(target: &str) -> composer::Composer {
     }
 }
 
+/// The highlighted option of a choice list `name`'s pane is stopped on, or
+/// `None` where it shows none or could not be read. A choice list is a dialog
+/// only a person answers: Enter there decides it, so no nudge reaches the pane.
+pub async fn pane_dialog(name: &str) -> Option<String> {
+    match read_prompt(&pane_target(name)).await {
+        composer::Composer::Menu { highlighted } => Some(composer::excerpt(&highlighted, 200)),
+        _ => None,
+    }
+}
+
 /// Type `text` into a pane and submit it.
 ///
 /// Enter submits the whole composer, so a composer already holding text is
@@ -733,9 +761,91 @@ async fn still_there(name: &str) -> Result<bool> {
 /// `projects//…` to Forge.
 pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
     let mut env = pane_env_from(|k| std::env::var_os(k));
+    let found = pane_path(
+        std::env::var_os("PATH"),
+        std::env::var_os("HOME").map(std::path::PathBuf::from),
+        claude_dir(),
+    );
+    for name in &found.missing {
+        tracing::error!(
+            "[terminal] a pane for {project_slug} is starting and no `{name}` resolves on this daemon's PATH or in the usual install directories: every plugin hook in it that runs `{name}` fails with `{name}: not found`. Install it, or put its directory on the runner service's PATH, and restart the pane"
+        );
+    }
+    if let Some(path) = found.path {
+        env.push(("PATH".into(), path));
+    }
     env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
     env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
     env
+}
+
+/// The binaries a pane's plugin hooks are run with. A pane inherits the tmux
+/// server's environment, and the server is started by `systemd-run --user`,
+/// whose PATH holds none of a user's install directories.
+const PANE_BINARIES: [&str; 1] = ["node"];
+
+/// The PATH a pane is started with, and the pane binaries it still cannot
+/// reach.
+#[derive(Debug, PartialEq, Eq)]
+struct PanePath {
+    path: Option<String>,
+    missing: Vec<&'static str>,
+}
+
+fn claude_dir() -> Option<std::path::PathBuf> {
+    let bin = std::path::Path::new(runner_platform::process::resolve_claude_bin());
+    bin.is_absolute()
+        .then(|| bin.parent().map(std::path::Path::to_path_buf))
+        .flatten()
+}
+
+/// This daemon's PATH, with the directory of each pane binary it lacks put in
+/// front where one is found beside `claude` or in a usual install directory.
+fn pane_path(
+    daemon_path: Option<std::ffi::OsString>,
+    home: Option<std::path::PathBuf>,
+    claude_dir: Option<std::path::PathBuf>,
+) -> PanePath {
+    let mut dirs: Vec<std::path::PathBuf> = daemon_path
+        .as_deref()
+        .map(|p| std::env::split_paths(p).collect())
+        .unwrap_or_default();
+    let mut fallbacks: Vec<std::path::PathBuf> = claude_dir.into_iter().collect();
+    if let Some(home) = home.as_deref() {
+        fallbacks.push(home.join(".local/bin"));
+        fallbacks.push(home.join(".volta/bin"));
+        fallbacks.push(home.join(".bun/bin"));
+        if let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            let mut versions: Vec<std::path::PathBuf> = entries
+                .filter_map(|e| e.ok().map(|e| e.path().join("bin")))
+                .collect();
+            versions.sort();
+            fallbacks.extend(versions.into_iter().rev());
+        }
+    }
+    fallbacks.push("/usr/local/bin".into());
+    fallbacks.push("/usr/bin".into());
+    let mut missing = Vec::new();
+    for name in PANE_BINARIES {
+        if dirs
+            .iter()
+            .any(|d| runner_platform::exe::is_runnable(&d.join(name)))
+        {
+            continue;
+        }
+        match fallbacks
+            .iter()
+            .find(|d| runner_platform::exe::is_runnable(&d.join(name)))
+        {
+            Some(dir) => dirs.insert(0, dir.clone()),
+            None => missing.push(name),
+        }
+    }
+    let path = (!dirs.is_empty())
+        .then(|| std::env::join_paths(&dirs).ok())
+        .flatten()
+        .map(|p| p.to_string_lossy().into_owned());
+    PanePath { path, missing }
 }
 
 // cm:guard a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
