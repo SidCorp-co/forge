@@ -98,6 +98,13 @@ describe('redactQueryParams', () => {
     );
   });
 
+  it('lets no rendering found inside a driver message hold part of it in place', () => {
+    const driver = driverError('invalid input: "params: abcSECRET"', { code: '22P02' });
+    const inner = new DrizzleQueryError('select $1', ['params: abcSECRET'], driver);
+    const outer = new DrizzleQueryError('select $1', ['abc'], inner);
+    expect(redactQueryParams(driver.message, outer)).toBe(REDACTED);
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);

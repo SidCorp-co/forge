@@ -58,12 +58,38 @@ function readChain(err: unknown): ChainReading {
     cur = link.cause;
   }
   reading.driverMessages = drivers.filter((m) => reading.values.some((v) => m.includes(v)));
-  // Longest first: a shorter rendering or value that prefixes a longer one would otherwise hold
-  // part of it in place and leave the rest out of every later match.
-  for (const list of [reading.renderings, reading.values, reading.driverMessages]) {
-    list.sort((a, b) => b.length - a.length);
-  }
   return reading;
+}
+
+type Span = [start: number, end: number];
+
+function occurrences(text: string, needle: string, from: number, to: number): Span[] {
+  const spans: Span[] = [];
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) {
+    spans.push([at + from, at + needle.length - to]);
+  }
+  return spans;
+}
+
+/**
+ * Every span of the ORIGINAL text that carries a bound value, overlapping spans merged, so one
+ * redaction cannot rewrite the text another one still has to find.
+ */
+function boundSpans(text: string, chain: ChainReading): Span[] {
+  const spans: Span[] = [];
+  for (const r of chain.renderings) spans.push(...occurrences(text, `params: ${r}`, 8, 0));
+  for (const m of chain.driverMessages) spans.push(...occurrences(text, m, 0, 0));
+  for (const v of chain.values) {
+    if (v.length >= BARE_VALUE_MIN) spans.push(...occurrences(text, v, 0, 0));
+  }
+  spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const merged: Span[] = [];
+  for (const span of spans) {
+    const last = merged.at(-1);
+    if (last && span[0] < last[1]) last[1] = Math.max(last[1], span[1]);
+    else merged.push([...span]);
+  }
+  return merged;
 }
 
 function redactText(text: string, chain: ChainReading | null): string {
@@ -71,13 +97,16 @@ function redactText(text: string, chain: ChainReading | null): string {
   const held = markerAbsentFrom(text);
   let out = text;
   if (chain) {
-    for (const r of chain.renderings) out = out.split(`params: ${r}`).join(`params: ${held}`);
-    for (const m of chain.driverMessages) out = out.split(m).join(held);
+    const spans = boundSpans(text, chain);
+    out = '';
+    let at = 0;
+    for (const [from, to] of spans) {
+      out += `${text.slice(at, from)}${held}`;
+      at = to;
+    }
+    out += text.slice(at);
   }
   out = out.replace(failedQueryParams(held), `$1${REDACTED}`);
-  if (chain) {
-    for (const v of chain.values) if (v.length >= BARE_VALUE_MIN) out = out.split(v).join(REDACTED);
-  }
   return out.split(held).join(REDACTED);
 }
 
