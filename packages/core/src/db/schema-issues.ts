@@ -139,8 +139,8 @@ export const issues = pgTable(
     acceptanceCriteria: text('acceptance_criteria'),
     sessionContext: jsonb('session_context'),
     // ISS-199 — user-facing release notes. Written by forge-clarify per
-    // issue, read by forge-release at close time to append a CHANGELOG.md
-    // `## [Unreleased]` bullet. Shape validated at the app layer; see
+    // issue, read by forge-release at close time to write a changelog
+    // entry. Shape validated at the app layer; see
     // `release-notes.ts` for the zod schema.
     releaseNotes: jsonb('release_notes').$type<ReleaseNotes | null>(),
     // ISS-137 — Layer 2 branch config (per-issue override) lives here under

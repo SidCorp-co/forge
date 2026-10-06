@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { mergeTarget } from './lib/base-branch.mjs';
 import { BASIS, baseRevision } from './lib/baseline-ratchet.mjs';
+import { FRAGMENT_DIR, fragmentNameFor } from './lib/changelog-fragments.mjs';
 import { ROOT } from './lib/gate.mjs';
 import { CORRECTION_SPAN, ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
@@ -32,6 +33,49 @@ function readWorkingTree(rel) {
     return readFileSync(path, 'utf8');
   } catch {
     return null;
+  }
+}
+
+/** Every file under changelog.d/ at a revision, as `{ file, text }`; a revision without it holds none. */
+function fragmentsAt(rev) {
+  let listing;
+  try {
+    listing = execFileSync('git', ['ls-tree', '--name-only', `${rev}:${FRAGMENT_DIR}`], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return [];
+  }
+  return listing
+    .split('\n')
+    .filter(Boolean)
+    .map((file) => ({ file, text: readAt(rev, `${FRAGMENT_DIR}/${file}`) ?? '' }));
+}
+
+/** Every file under changelog.d/ in the working tree. A directory is listed so the gate names it. */
+function fragmentsHere() {
+  const dir = join(ROOT, FRAGMENT_DIR);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).map((d) => ({
+    file: d.name,
+    text: d.isFile() ? readFileSync(join(dir, d.name), 'utf8') : '',
+  }));
+}
+
+/** The branch this change is on, as a fragment name a refusal can hand back. */
+function branchName() {
+  if (process.env.GITHUB_HEAD_REF) return fragmentNameFor(process.env.GITHUB_HEAD_REF);
+  try {
+    const ref = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return fragmentNameFor(ref === 'HEAD' ? '' : ref);
+  } catch {
+    return fragmentNameFor('');
   }
 }
 
@@ -94,7 +138,7 @@ function main() {
   if (head === null) {
     console.error(
       `release-record: could not run — ${RECORD} is absent. The record is not a file this repo\n` +
-        `may stop keeping; if it truly moves, retarget its five readers in the same change.`,
+        `may stop keeping; if it truly moves, retarget scripts/cut-release.sh and this gate with it.`,
     );
     return 2;
   }
@@ -116,6 +160,8 @@ function main() {
     head,
     base: rev === null ? null : readAt(rev, RECORD),
     amnesty: declared,
+    fragments: { head: fragmentsHere(), base: rev === null ? [] : fragmentsAt(rev) },
+    fragmentName: branchName(),
   });
 
   if (verdict.code === 2) {
@@ -136,7 +182,7 @@ function main() {
   }
 
   console.log(
-    `release-record: ${verdict.entries} entr${verdict.entries === 1 ? 'y' : 'ies'} held across ${verdict.sections} section(s)`,
+    `release-record: ${verdict.entries} entr${verdict.entries === 1 ? 'y' : 'ies'} held across ${verdict.sections} section(s) and ${FRAGMENT_DIR}/`,
   );
   return 0;
 }
