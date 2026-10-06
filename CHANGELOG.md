@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.65] - 2026-10-06
+
+Feedback items can be retargeted to the requirement that records their rule
+
+### Added
+
+- **An approver can correct what a feedback item is about.** An item filed about a screen moves to the requirement that later records its rule, at any phase, and that requirement lists it. Its history names the target it replaced.
+
 ## [0.4.0-dev.64] - 2026-10-06
 
 Each change keeps its release note in its own file until release
