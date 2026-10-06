@@ -35,7 +35,12 @@ struct MePluginsResponse {
 }
 
 pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin>> {
-    let parsed: MePluginsResponse =
-        crate::status::fetch(client.get("/api/devices/me/plugins"), "me/plugins").await?;
+    let parsed: MePluginsResponse = crate::status::fetch(
+        client
+            .get("/api/devices/me/plugins")
+            .timeout(crate::LONG_DEADLINE),
+        "me/plugins",
+    )
+    .await?;
     Ok(parsed.plugins)
 }

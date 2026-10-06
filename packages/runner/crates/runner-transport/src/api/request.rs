@@ -109,7 +109,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         None => {}
     }
 
-    let resp = match rb.send().await {
+    let resp = match rb.timeout(crate::LONG_DEADLINE).send().await {
         Ok(r) => r,
         Err(e) => {
             let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));

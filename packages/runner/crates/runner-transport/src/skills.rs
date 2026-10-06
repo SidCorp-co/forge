@@ -69,7 +69,11 @@ pub async fn pull_manifest(
     project_id: &str,
 ) -> Result<Vec<SkillManifestEntry>> {
     let path = format!("/api/devices/me/skills?projectId={project_id}");
-    let resp = status::sent(client.get(&path), "skills manifest request").await?;
+    let resp = status::sent(
+        client.get(&path).timeout(crate::LONG_DEADLINE),
+        "skills manifest request",
+    )
+    .await?;
     if !resp.status().is_success() {
         return Err(map_status("skills manifest", resp.status()));
     }
@@ -84,7 +88,11 @@ pub async fn pull_content(
     skill_id: &str,
 ) -> Result<SkillContent> {
     let path = format!("/api/devices/me/skills/{skill_id}/content?projectId={project_id}");
-    let resp = status::sent(client.get(&path), "skill content request").await?;
+    let resp = status::sent(
+        client.get(&path).timeout(crate::LONG_DEADLINE),
+        "skill content request",
+    )
+    .await?;
     if !resp.status().is_success() {
         return Err(map_status("skill content", resp.status()));
     }

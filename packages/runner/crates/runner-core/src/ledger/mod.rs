@@ -174,6 +174,13 @@ pub struct Run {
     /// conversation runs elsewhere (ISS-1312, run e67c08e0).
     pub host_pid: Option<u32>,
     pub host_start: Option<String>,
+    /// When core refused this run's close with a constraint its bytes can never
+    /// satisfy, and the sweep stopped re-sending it. This is NOT the session
+    /// being over: `session_terminal_at` stays what core says, read back by the
+    /// close loop, so a refused close never records a session core did not close.
+    pub close_refused_at: Option<i64>,
+    /// The constraints core named, one line each.
+    pub close_refusal: Option<String>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -489,7 +496,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
-        host_ended_by, host_pid, host_start
+        host_ended_by, host_pid, host_start, close_refused_at, close_refusal
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -605,6 +612,8 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         host_ended_by: row.get(35)?,
         host_pid: row.get::<_, Option<i64>>(36)?.map(|p| p as u32),
         host_start: row.get(37)?,
+        close_refused_at: row.get(38)?,
+        close_refusal: row.get(39)?,
     })
 }
 

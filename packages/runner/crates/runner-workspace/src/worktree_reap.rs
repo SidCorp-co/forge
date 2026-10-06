@@ -154,6 +154,21 @@ impl HeldTrees {
         Ok(Self(held))
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test(held: std::collections::HashMap<PathBuf, String>) -> Self {
+        Self(held)
+    }
+
+    /// The run holding a tree that is `entry`, lies inside it, or contains it.
+    /// Both spellings of each held path are compared, as [`Self::holder`] does.
+    pub fn holder_overlapping(&self, entry: &Path) -> Option<&str> {
+        let real = entry.canonicalize().ok();
+        self.0.iter().find_map(|(held, run_id)| {
+            let hit = |e: &Path| held.starts_with(e) || e.starts_with(held);
+            (hit(entry) || real.as_deref().is_some_and(hit)).then_some(run_id.as_str())
+        })
+    }
+
     fn holder(&self, path: &Path) -> Option<&str> {
         path.canonicalize()
             .ok()
