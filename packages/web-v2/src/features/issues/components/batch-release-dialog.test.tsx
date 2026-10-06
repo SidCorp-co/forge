@@ -37,13 +37,16 @@ function answer(status: number, body: unknown) {
   );
 }
 
-function accepted(verification: "probed" | "unverified") {
+function accepted(verification: "probed" | "unverified", more: Record<string, unknown> = {}) {
   answer(201, {
     runId: "run-1",
     jobId: "job-1",
     issueIds: ISSUES.map((i) => i.id),
     gateStatus: "awaiting_release",
     verification,
+    carried: null,
+    warnings: [],
+    ...more,
   });
 }
 
@@ -168,6 +171,19 @@ describe("a batch release the server accepts", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Batch release started — 2 issues")).toBeInTheDocument();
     expect(screen.getByText(/close unverified/i)).toBeInTheDocument();
+  });
+
+  it("says the cut it promotes and each warning the server answered with", async () => {
+    accepted("probed", {
+      carried: { kind: "read", live: "production", start: "main", cut: "d".repeat(40), issues: [], cutBelow: [] },
+      warnings: [{ code: "RELEASE_CARRIED_UNREAD", message: "Nothing read what this release carries." }],
+    });
+    draw();
+    press();
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/It promotes dddddddddddd\./)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing read what this release carries\./)).toBeInTheDocument();
   });
 });
 

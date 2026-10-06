@@ -21,6 +21,8 @@ import { readProjectBranches } from '../projects/service.js';
 /** GitHub pages a compare's commits; past this many pages the range is too long to read whole. */
 const PAGE_SIZE = 100;
 const PAGE_LIMIT = 10;
+/** The most commits one release range is read to, so the most landings a batch can be asked to decide. */
+export const RANGE_COMMIT_LIMIT = PAGE_SIZE * PAGE_LIMIT;
 
 export interface RangeCommit {
   sha: string;
@@ -96,7 +98,7 @@ async function readPages(
       return `${client.fullName} stopped answering ${base}...${head} at ${commits.length} of the ${read.total_commits} commits it reported`;
     }
   }
-  return `${base}...${head} holds more than ${PAGE_SIZE * PAGE_LIMIT} commits, more than one release range is read for`;
+  return `${base}...${head} holds more than ${RANGE_COMMIT_LIMIT} commits, more than one release range is read for`;
 }
 
 async function headOf(client: GitHubRepoClient, branch: string): Promise<string | null> {

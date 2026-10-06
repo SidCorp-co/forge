@@ -187,6 +187,25 @@ describe('a release batch names every issue its range carries', () => {
     expect(prompt).toContain('`ship-unverified`');
   });
 
+  it('takes a decision for every carried issue when the range carries more than a roster holds', async () => {
+    const shas = Array.from({ length: 52 }, (_, i) => (i + 1).toString(16).padStart(40, 'e'));
+    staging(shas.map((s, i) => ({ sha: s, parents: [i === 0 ? BASE : (shas[i - 1] as string)] })));
+    const roster = await landed('awaiting_release', shas[0] as string);
+    const carried = [];
+    for (const s of shas.slice(1)) {
+      carried.push({
+        issueId: await landed('needs_info', s),
+        decision: 'ship-unverified',
+        why: 'unjudged',
+      });
+    }
+
+    const res = await press({ issueIds: [roster], carried });
+
+    expect(res.status).toBe(201);
+    expect((res.body.carried as { issues: unknown[] }).issues).toHaveLength(51);
+  });
+
   it('accepts a revert where the range reverts the landing', async () => {
     const revert = commit('c', sha('b'), `Revert\n\nThis reverts commit ${sha('b')}.`);
     staging([commit('a', BASE), commit('b', sha('a')), revert]);

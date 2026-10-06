@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { RELEASE_ROSTER_LIMIT } from './blocker-sentences.js';
 import { resolveReleaseChannels } from './channel.js';
+import { RANGE_COMMIT_LIMIT } from './cut-range.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import {
   attemptReading,
@@ -96,7 +96,7 @@ const createBodySchema = z
           z.object({ issueId: z.uuid(), decision: z.literal('cut-below') }).strict(),
         ]),
       )
-      .max(RELEASE_ROSTER_LIMIT)
+      .max(RANGE_COMMIT_LIMIT)
       .optional(),
   })
   .strict();

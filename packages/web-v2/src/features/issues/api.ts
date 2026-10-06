@@ -185,7 +185,30 @@ export interface CreateReleaseBatchResult {
   issueIds: string[];
   gateStatus: string;
   verification: "probed" | "unverified";
+  /** The cut this release promotes and each off-roster issue its range carries (ISS-1386). */
+  carried: CreatedCarried | null;
+  warnings: { code: string; message: string }[];
 }
+
+export interface CreatedCarriedIssue {
+  issueId: string;
+  displayId: string;
+  status: string;
+  landing: string;
+  decision: CarriedDecisionBody["decision"];
+  why?: string;
+}
+
+export type CreatedCarried =
+  | { kind: "not-read" | "unbound" | "unread"; why: string }
+  | {
+      kind: "read";
+      live: string;
+      start: string;
+      cut: string;
+      issues: CreatedCarriedIssue[];
+      cutBelow: CreatedCarriedIssue[];
+    };
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
 

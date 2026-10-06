@@ -47,7 +47,9 @@ The create answer carries `carried` (the cut and each issue with its decision) a
 release job's prompt (`packages/core/src/release-batch/prompt.ts`) tells the agent the exact cut to promote, not the branch head. The
 release screen's readiness (`packages/core/src/release-batch/readiness.ts:loadReleaseReadiness`) runs the same check before anyone
 presses. The batch release dialog lists each carried issue with Ship unverified (a reason is
-required), Reverted or Cut below, and sends the decisions when release is pressed again.
+required), Reverted or Cut below, and sends the decisions when release is pressed again. Once the
+batch opens, its notice names the cut and each warning the create answered with. A create takes a
+decision for as many issues as the range can hold commits, which is more than a roster may name.
 
 A refused create claims no issue and leaves no open run.
 

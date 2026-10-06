@@ -351,14 +351,18 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["release-roster"] });
+      const said = [
+        ...(result.carried?.kind === "read" ? [`It promotes ${result.carried.cut.slice(0, 12)}.`] : []),
+        ...(result.verification === "unverified"
+          ? [
+              "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
+            ]
+          : []),
+        ...result.warnings.map((w) => w.message),
+      ];
       toast({
         title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
-        ...(result.verification === "unverified"
-          ? {
-              description:
-                "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
-            }
-          : {}),
+        ...(said.length > 0 ? { description: said.join(" ") } : {}),
         tone: "success",
       });
     },
