@@ -55,6 +55,13 @@ a step you could not complete, a procedure that does not fit what you actually f
   a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on
   production, so the roster keeps its claims and stays at its \`release\` step for a person to settle.
   Report each issue where the abort's answer says it is.
+→ When what stopped you is a person's to fix — a credential this box lacks, an access grant, a
+  decision — say so in the abort: \`"blocker":{"owes":"human","waitingFor":"<what they must do>"}\`.
+  The roster then stays at the gate held for that person, and no automatic release or schedule cuts
+  it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
+  what stopped you, and the next cut takes the roster again.
+→ If you pushed this release's tag before aborting, pass \`"tagged":true\`: the version is then
+  spent. Without it, a batch that shipped nothing hands its version back to the next one.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy

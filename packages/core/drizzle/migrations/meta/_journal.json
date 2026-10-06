@@ -2696,6 +2696,13 @@
       "when": 1818892800000,
       "tag": "0416_a_master_pass_names_its_trigger_and_its_refusal",
       "breakpoints": true
+    },
+    {
+      "idx": 417,
+      "version": "7",
+      "when": 1818979200000,
+      "tag": "0417_a_release_number_is_spent_only_when_it_leaves",
+      "breakpoints": true
     }
   ]
 }

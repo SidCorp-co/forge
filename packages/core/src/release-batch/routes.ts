@@ -1,3 +1,4 @@
+import { RELEASE_HOLD_OWERS } from '@forge/contracts/releases';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -122,6 +123,20 @@ const abortBodySchema = z
      * door did before the choice existed (ISS-1199).
      */
     promotedRoster: z.enum(['hold', 'return-to-gate']).optional(),
+    /**
+     * Who has to act before this roster can release, and what they owe. `human` holds the roster
+     * from every unattended cut until a person acts; absent, the roster goes back to the gate for
+     * the next cut, as it did before the field existed.
+     */
+    blocker: z
+      .object({
+        owes: z.enum(RELEASE_HOLD_OWERS),
+        waitingFor: z.string().trim().min(1).max(500),
+      })
+      .strict()
+      .optional(),
+    /** Whether this run pushed its release tag before it aborted, which spends its version. */
+    tagged: z.boolean().optional(),
   })
   .strict();
 
@@ -182,12 +197,14 @@ releaseBatchRoutes.post(
   zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const { reason, promotedRoster } = c.req.valid('json');
+    const { reason, promotedRoster, blocker, tagged } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
     const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
       promotedRoster,
+      blocker,
+      tagged,
     });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },

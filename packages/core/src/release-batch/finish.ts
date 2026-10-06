@@ -16,6 +16,7 @@ import {
   writeRunMetadata,
 } from '../pipeline/index.js';
 import {
+  type AbortBlocker,
   abortedError,
   batchAborted,
   closedBeforeAbort,
@@ -30,6 +31,7 @@ import {
 } from './channel.js';
 import { refuseLostReleaseClaim } from './claim-conflicts.js';
 import { verifyByDeploymentRecord } from './deployment-verify.js';
+import { abortBlockedHold, abortBlockedIssues, writeReleaseHolds } from './hold.js';
 import { FENCE_LOST, notVerifiedRefusal, reasonOf, refuseRelease } from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
@@ -257,6 +259,8 @@ export async function finishReleaseBatch(
 /** What the recovery did to the roster, and what the abort did to the run row. `alreadyClosed` is
  *  every roster issue closed when the abort ran, claimed or not (`closedBeforeAbort`). */
 interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
+  /** Issues back at the gate and held there for the person the blocker names (`RELEASE_ABORT_BLOCKED`). */
+  heldForPerson: string[];
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -277,6 +281,8 @@ type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
+  blocker?: AbortBlocker | undefined;
+  tagged?: boolean | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -290,6 +296,8 @@ export async function abortReleaseBatch(
     reason,
     by: actorUserId,
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+    blocker: options.blocker,
+    tagged: options.tagged,
   });
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
@@ -301,6 +309,10 @@ export async function abortReleaseBatch(
   const roster = held ? 'held' : 'released';
   const alreadyClosed = await closedBeforeAbort(runId, recovery.alreadyClosed);
   await settleAbortStamp(runId, stampId, { roster, closed: alreadyClosed });
+  const heldForPerson =
+    options.blocker?.owes === 'human' && !held
+      ? await holdForPerson(runId, recovery.claimsCleared, reason, options.blocker)
+      : [];
 
   await closeRunIfOneShot(runId, 'cancelled');
 
@@ -308,6 +320,7 @@ export async function abortReleaseBatch(
 
   return {
     ...recovery,
+    heldForPerson,
     alreadyClosed,
     run: {
       status: after.cancelled ? 'cancelled' : after.was,
@@ -315,4 +328,36 @@ export async function abortReleaseBatch(
       cancelledFrom: after.cancelled ? after.was : null,
     },
   };
+}
+
+/**
+ * The roster an abort put back at the gate, held there for the person its blocker names, so no
+ * unattended cut opens the same batch on the same refusal (ISS-234: three cuts in six minutes, two
+ * versions burned). Written after the recovery: the hold is guarded on the row waiting unclaimed.
+ */
+async function holdForPerson(
+  runId: string,
+  issueIds: readonly string[],
+  reason: string,
+  blocker: AbortBlocker,
+): Promise<string[]> {
+  const [run] = await db
+    .select({ projectId: pipelineRuns.projectId, version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run || issueIds.length === 0) return [];
+  const hold = abortBlockedHold({
+    projectId: run.projectId,
+    version: run.version,
+    reason,
+    waitingFor: blocker.waitingFor,
+  });
+  await writeReleaseHolds({
+    projectId: run.projectId,
+    issueIds,
+    holdFor: () => hold,
+    now: new Date(),
+  });
+  return [...(await abortBlockedIssues(issueIds))];
 }

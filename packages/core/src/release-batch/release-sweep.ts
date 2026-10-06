@@ -15,6 +15,7 @@ import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { resolveReleaseGate } from './gate.js';
 import {
+  abortBlockedIssues,
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
@@ -194,7 +195,10 @@ async function sweepProject(
     return;
   }
 
-  const waiting = await waitingIssueIds(projectId);
+  // First, so no later hold replaces the abort's: a row a person owes is not weighed at all.
+  const atGate = await waitingIssueIds(projectId);
+  const blocked = await abortBlockedIssues(atGate);
+  const waiting = atGate.filter((id) => !blocked.has(id));
   if (waiting.length === 0) return;
   const owner = (await loadCreatedBy(projectId)) ?? null;
   const base = { projectId, now, result };
