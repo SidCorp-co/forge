@@ -315,9 +315,18 @@ describe('what else a design write or decision does to a waiting park', () => {
     expect(await statusOf(linked)).toBe('open');
   });
 
-  it('hands back by the park it read at the decision, even when the answer resumed the issue first', async () => {
+  it('reads the park inside the decision, and hands back by that reading once the issue has resumed', async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { parkedAtDecision, settleDesignIssue } = await import(
+      '../../src/workflows/design-issue.js'
+    );
+    const parked = await plantIssue('open');
+    ok(await park(parked, { needs: 'which SLA applies?' }));
     const resumed = await plantIssue('awaiting_release', new Date('2026-10-02T09:19:03Z'));
-    const { settleDesignIssue } = await import('../../src/workflows/design-issue.js');
+    expect(await db.transaction((tx) => parkedAtDecision(tx, parked))).toBe(true);
+    expect(await db.transaction((tx) => parkedAtDecision(tx, resumed))).toBe(false);
+    expect(await db.transaction((tx) => parkedAtDecision(tx, null))).toBe(false);
+
     const handed = await settleDesignIssue({
       projectId,
       flow: 'resumed-before-hand-back-flow',
