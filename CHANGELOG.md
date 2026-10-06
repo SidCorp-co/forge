@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler
+  rescues only a lost wake: never after a newer decision, and a delivered rescue backs off
+  2, 4…32 minutes, six in all per change.
+
 - **A master parks a row held for a person instead of leaving it open.** A hold on a ruling,
   approval or answer goes to `needs_info`; left `open` behind a decision, core woke the master
   every minute.
