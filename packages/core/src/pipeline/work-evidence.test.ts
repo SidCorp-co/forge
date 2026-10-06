@@ -326,7 +326,10 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
   });
 
   it.each([
-    ['standard', "a person's mark records no commit Forge read, so it does not clear this"],
+    [
+      'standard',
+      "a person's mark naming a commit is checked only for the repository holding it, not read as this issue's landing, so it does not clear this",
+    ],
     ['website', 'a landing it names is not evidence, whoever marks it'],
     ['kiosk', 'none of `standard`, `website`'],
   ])(

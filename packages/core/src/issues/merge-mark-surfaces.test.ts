@@ -56,6 +56,16 @@ vi.mock('./read-service.js', () => ({
   findIssueById: async () => issueAfter,
 }));
 // The project's shape is `landing-evidence.ts`'s own read; here it stands on a git project.
+// A git mark's commit is resolved by the project's repository (ISS-1350); this one holds every
+// commit asked for, padded out to the whole sha it resolves a prefix to.
+vi.mock('./commit-landing.js', async (original) => ({
+  ...(await original<typeof import('./commit-landing.js')>()),
+  resolveMarkCommit: async ({ commit }: { commit: string }) => ({
+    ok: true as const,
+    sha: commit.toLowerCase().padEnd(40, '0'),
+    repository: 'SidCorp-co/specimen',
+  }),
+}));
 vi.mock('./landing-evidence.js', async (original) => ({
   ...(await original<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => 'git',

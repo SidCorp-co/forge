@@ -27,7 +27,8 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { repo } from '../helpers/commit-landing-fixture.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -37,6 +38,12 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// ISS-1350 — a mark naming a commit on a git project is resolved by the repository, so every case
+// here that names one stands on the repository stand-in rather than on a GitHub nobody bound.
+vi.mock('../../src/integrations/github/client.js', async (importOriginal) =>
+  (await import('../helpers/commit-landing-fixture.js')).fakeGitHubClient(await importOriginal()),
+);
+
 type Mods = {
   issueMergeRoutes: typeof import('../../src/issues/merge-routes.js')['issueMergeRoutes'];
   issueRoutes: typeof import('../../src/issues/routes.js')['issueRoutes'];
@@ -45,6 +52,12 @@ type Mods = {
 };
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+/** The commit the repository resolves `feedface1234567` to. */
+const FEEDFACE = 'feedface123456789abcdef0123456789abcdef0';
+/** The one commit the repository holds starting with `abc1234`, the shortest sha a mark takes. */
+const ABC = 'abc1234f60718293a4b5c6d7e8f90123456789ab';
+/** A whole sha no commit in the repository has. */
+const ABSENT = '0e1cf5dadf2b1b3be9ba1b81c5e9cb4012345678';
 
 let harness: TestDatabase;
 let mods: Mods;
@@ -189,6 +202,11 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  repo.down = null;
+  repo.reads.length = 0;
+  repo.commits = new Map(
+    [SHA, FEEDFACE, ABC].map((sha) => [sha, { message: 'fix: the work', on: ['main'] }]),
+  );
 });
 
 describe('ISS-959 B — the merged mark records its commit', () => {
@@ -233,8 +251,9 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     await mark(id, token, { target: 'base', commit: 'feedface1234567' });
     const said = (await commentsOn(id)).join('\n');
     // ISS-1126 reworded this sentence so it names the KIND of mark; the property it holds is
-    // unchanged — both commits appear, and the trail says which one the column took.
-    expect(said).toContain('feedface1234567');
+    // unchanged — both commits appear, and the trail says which one the column took. ISS-1350: the
+    // caller's commit appears as the full sha the repository resolved its abbreviation to.
+    expect(said).toContain(FEEDFACE);
     expect(said).toContain(SHA);
     expect(said).toContain('is not what the column holds');
     expect(said).toContain('merge Forge observed');
@@ -365,7 +384,8 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     expect((await mark(short.id, short.token, { target: 'base', commit: 'abc1234' })).status).toBe(
       200,
     );
-    expect((await commentsOn(short.id)).join('\n')).toContain('abc1234');
+    // ISS-1350 — the trail names the commit the repository resolved, never the abbreviation sent.
+    expect((await commentsOn(short.id)).join('\n')).toContain(`commit=${ABC}`);
 
     const tooShort = await seed();
     expect(
@@ -390,5 +410,71 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     expect((await storedMark(id)).merged_commit_sha).toBeNull();
     await mark(id, token, { target: 'base' });
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
+  });
+});
+
+describe('ISS-1350 — a mark naming a commit the repository does not resolve is refused at the door', () => {
+  async function refused(res: Response, code: string) {
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe(code);
+    return body.message;
+  }
+
+  it("refuses a person's commit the repository lacks, naming it and the repository, and writes nothing", async () => {
+    const { id, token } = await seed();
+    const said = await refused(
+      await mark(id, token, { target: 'base', commit: ABSENT }),
+      'COMMIT_NOT_IN_REPOSITORY',
+    );
+    expect(said).toContain(`GitHub finds no commit ${ABSENT} in ${repo.fullName}`);
+    expect(await storedMark(id)).toEqual({ merged_at: null, merged_commit_sha: null });
+    expect(await commentsOn(id)).toEqual([]);
+  });
+
+  it('refuses it beside a merge Forge observed, rather than keeping it as an overruled claim', async () => {
+    const { id, token } = await seed();
+    await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });
+    await refused(
+      await mark(id, token, { target: 'base', commit: ABSENT }),
+      'COMMIT_NOT_IN_REPOSITORY',
+    );
+    expect(await storedMark(id)).toEqual({ merged_at: null, merged_commit_sha: null });
+  });
+
+  it('refuses it on a second mark, leaving the stored sha as the first mark wrote it', async () => {
+    const { id, token } = await seed();
+    await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });
+    await mark(id, token, { target: 'base' });
+    await refused(
+      await mark(id, token, { target: 'base', commit: ABSENT }),
+      'COMMIT_NOT_IN_REPOSITORY',
+    );
+    expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
+  });
+
+  it('refuses a short sha the repository resolves to no single commit', async () => {
+    const { id, token } = await seed();
+    const said = await refused(
+      await mark(id, token, { target: 'base', commit: 'dead123' }),
+      'COMMIT_NOT_IN_REPOSITORY',
+    );
+    expect(said).toContain(`GitHub resolves no single commit from dead123 in ${repo.fullName}`);
+    expect((await storedMark(id)).merged_at).toBeNull();
+  });
+
+  it('refuses a commit COMMIT_UNVERIFIED where the repository cannot be read, and takes a mark naming none', async () => {
+    repo.down = 'no_binding';
+    const { id, token } = await seed();
+    const said = await refused(
+      await mark(id, token, { target: 'base', commit: SHA }),
+      'COMMIT_UNVERIFIED',
+    );
+    expect(said).toContain('mark it naming no commit');
+    expect((await storedMark(id)).merged_at).toBeNull();
+    const named = await mark(id, token, { target: 'base' });
+    expect(named.status).toBe(200);
+    expect(await storedMark(id)).toMatchObject({ merged_commit_sha: null });
+    expect((await storedMark(id)).merged_at).not.toBeNull();
   });
 });
