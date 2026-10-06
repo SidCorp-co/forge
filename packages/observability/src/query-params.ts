@@ -165,15 +165,24 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
   return redactRecord(value, chain, depth) ?? value;
 }
 
+/** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */
+function errorsWithin(value: unknown, found: unknown[], seen: Set<unknown>, depth: number): void {
+  if (typeof value !== 'object' || value === null || seen.has(value) || depth > MAX_DEPTH) return;
+  seen.add(value);
+  if (value instanceof Error) found.push(value);
+  for (const v of Object.values(value)) errorsWithin(v, found, seen, depth + 1);
+}
+
 /**
  * `value` with every bound parameter of a failed SQL statement replaced by `[Redacted]`, the same
- * reference where there was none. `err`, the error `value` was made from (or every error it was
- * made from, as an array), lets the statement and the driver's reason survive; without it a failed
- * query's text is redacted to its end. An `Error` inside `value` that carries one comes back as the
- * plain object it would serialize as.
+ * reference where there was none. `err`, the error `value` was made from (or every error, as an
+ * array), and every `Error` inside `value` let the statement and the driver's reason survive and
+ * name the values to find anywhere in it; without any, a failed query's text is redacted to its
+ * end. An `Error` inside `value` that carries one comes back as the plain object it serializes as.
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
-  const errs = err === undefined ? [] : Array.isArray(err) ? err : [err];
+  const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
+  errorsWithin(value, errs, new Set(), 0);
   const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
   return redactValue(value, chain, 0) as T;
 }

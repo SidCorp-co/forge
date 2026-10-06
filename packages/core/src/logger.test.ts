@@ -113,6 +113,10 @@ describe('the core logger', () => {
         log.error({ error: err, reason: `duplicate ${EMAIL}` }, 'failed'),
     ],
     [
+      'interpolated after text repeating a bound value',
+      (log: Logger, err: Error) => log.error(`duplicate ${EMAIL}: %j`, { error: err }),
+    ],
+    [
       'nine objects deep with no err beside it',
       (log: Logger, err: Error) => {
         let deep: object = { error: err };

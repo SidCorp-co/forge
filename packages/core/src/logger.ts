@@ -104,7 +104,8 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   let [first, ...rest] = args;
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
-  if (typeof first === 'object' && first !== null && !(first instanceof Error)) {
+  if (typeof first === 'string') first = clean(first);
+  else if (typeof first === 'object' && first !== null && !(first instanceof Error)) {
     first = besideErr(first as Record<string, unknown>, clean);
   }
   if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
