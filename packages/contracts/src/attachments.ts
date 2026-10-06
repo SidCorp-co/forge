@@ -45,6 +45,16 @@ export const ATTACHMENT_REFUSAL_CODES = [
 	"EMPTY_FILE",
 	"INVALID_NAME",
 	"ATTACHMENT_NAME_TAKEN",
+	"UPLOAD_OPERATION_REUSED",
+	"UPLOAD_IN_PROGRESS",
+	"UPLOAD_OUTCOME_UNKNOWN",
 ] as const;
 
 export type AttachmentRefusalCode = (typeof ATTACHMENT_REFUSAL_CODES)[number];
+
+/** A ticket minted twice under one operation id for different files, and a replay whose first PUT has not finished or never recorded its answer. */
+export const ATTACHMENT_REFUSAL_STATUSES = {
+	UPLOAD_OPERATION_REUSED: 409,
+	UPLOAD_IN_PROGRESS: 409,
+	UPLOAD_OUTCOME_UNKNOWN: 409,
+} as const;

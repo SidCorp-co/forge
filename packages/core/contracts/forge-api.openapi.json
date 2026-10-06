@@ -3797,11 +3797,17 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "operationId": {
+                    "maxLength": 128,
+                    "minLength": 8,
+                    "type": "string"
                   }
                 },
                 "required": [
                   "name",
-                  "mime"
+                  "mime",
+                  "operationId"
                 ],
                 "type": "object"
               }

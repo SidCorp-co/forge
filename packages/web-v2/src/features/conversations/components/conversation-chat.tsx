@@ -390,7 +390,9 @@ function useOutbox(o: {
         const fresh = !settled && messages.length === 0;
         const attachmentIds = [...(stored.current.get(next.id) ?? [])];
         for (const file of (next.files ?? []).slice(attachmentIds.length)) {
-          const put = await upload.mutateAsync({ conversationId: id, file });
+          // one operation per queued message and file position: a retry of this message sends the same id
+          const operationId = `${next.id}:${attachmentIds.length}`;
+          const put = await upload.mutateAsync({ conversationId: id, file, operationId });
           attachmentIds.push(put.id);
           stored.current.set(next.id, [...attachmentIds]);
         }

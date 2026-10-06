@@ -62,6 +62,8 @@ const attachmentTicketSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     mime: z.string().trim().min(1).max(255),
+    /** One per file the caller means to store: minted again on a retry, so a lost answer stores nothing twice. */
+    operationId: z.string().trim().min(8).max(128),
   })
   .strict();
 
@@ -81,7 +83,7 @@ conversationAttachmentRoutes.post(
   zValidator('json', attachmentTicketSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { name, mime } = c.req.valid('json');
+    const { name, mime, operationId } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
 
@@ -92,6 +94,7 @@ conversationAttachmentRoutes.post(
       uploaderDeviceId: null,
       name,
       mime,
+      operationId,
     });
     return c.json(
       {
@@ -102,7 +105,7 @@ conversationAttachmentRoutes.post(
         expiresAt: ticket.expiresAt.toISOString(),
         expiresInMs: UPLOAD_TICKET_TTL_MS,
       },
-      201,
+      ticket.replay ? 200 : 201,
     );
   },
 );
