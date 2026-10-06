@@ -110,8 +110,7 @@ describe('a release batch whose job no box ever took', () => {
     // there was already something to preserve.
     const b = await insertIssue();
     const { runId, jobId } = await claim([a, b]);
-    // ISS-1337: a release refuses before its press to claim an issue with no mark, so the mark is
-    // withdrawn after the claim — the one way an issue in a batch can still lack one.
+    // A release refuses to claim an unmarked issue (ISS-1337), so the mark goes after the claim.
     await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
     const before = new Map([
       [a, (await stored(a)).mergedAt],

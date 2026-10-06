@@ -169,8 +169,6 @@ describe('release batch finish E2E', () => {
       // exactly as it found them.
       const b = await insertIssue();
       const { runId } = await claim([a, b]);
-      // ISS-1337: a release refuses before its press to claim an issue with no mark, so the mark is
-      // withdrawn after the claim — the one way an issue in a batch can still lack one.
       await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
       const before = new Map([
         [a, (await stored(a)).mergedAt],
@@ -218,8 +216,6 @@ describe('release batch finish E2E', () => {
       // stamp as well as to clear none.
       const b = await insertIssue();
       const { runId } = await claim([a, b]);
-      // ISS-1337: a release refuses before its press to claim an issue with no mark, so the mark is
-      // withdrawn after the claim — the one way an issue in a batch can still lack one.
       await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
       const before = new Map([
         [a, (await stored(a)).mergedAt],

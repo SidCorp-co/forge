@@ -1,9 +1,5 @@
-// What the finish's close would refuse each roster issue for, read before the press (ISS-1337).
-//
-// A release batch closes its roster only at the finish, through `transitionIssueStatus`. A row that
-// close refuses is released and handed back to the gate, said only after the run. This reads the same
-// refusals the close makes, by calling the close's own predicates, so the roster, readiness and both
-// release doors can say it while the press is still a choice: `docs/modules/release/release-batch.md`.
+// What the finish's close would refuse each roster issue for, read before the press by calling the
+// close's own predicates (ISS-1337): `docs/modules/release/release-batch.md`.
 
 import { db } from '../db/client.js';
 import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
@@ -11,7 +7,6 @@ import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
 
-/** The close refusals a release reads ahead; every other one the close can make needs no roster row. */
 export type CloseShortfallCode =
   | 'CLOSE_REQUIRES_SHIPPED'
   | 'OPEN_QUESTIONS'
