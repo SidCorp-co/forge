@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A resumed master's brief turn now closes its pass when the turn ends, and a pass whose master stays quiet for 600 seconds is closed as abandoned, so new admissible work is no longer held from an idle master.
+
 ## [0.4.0-dev.55] - 2026-10-06
 
 Onboarding confirm carries the owner's request; coded chat turn errors; recorded issue decisions

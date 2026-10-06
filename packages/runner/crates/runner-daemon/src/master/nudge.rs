@@ -142,8 +142,16 @@ pub(crate) fn pass_in_flight(
         return false;
     };
     let live = masters.get(project_id).map(|(session_id, _)| session_id);
-    master_pass::judge(&pass, master_pass::this_process(), live.as_deref(), seen)
-        == master_pass::Judged::Open
+    let now = agent_activity::now_ms();
+    let written = master_pass::written_ms(seen);
+    master_pass::judge(
+        &pass,
+        master_pass::this_process(),
+        live.as_deref(),
+        seen,
+        now,
+        written,
+    ) == master_pass::Judged::Open
 }
 
 /// The capacity refusal this master's pane is sitting behind, if any.
@@ -329,7 +337,9 @@ pub(crate) struct NudgePass<'a> {
 }
 
 impl NudgePass<'_> {
-    pub(crate) async fn open(&self, ledger: &mut Option<Ledger>) {
+    /// `typed` is whether the claimed nudge is typed into the pane, or is the
+    /// brief a pane placed this sweep was already handed.
+    pub(crate) async fn open(&self, ledger: &mut Option<Ledger>, typed: bool) {
         let masters = self.shared.masters;
         let (Some(led), Some((session_id, _))) = (ledger.as_mut(), masters.get(self.project_id))
         else {
@@ -340,6 +350,7 @@ impl NudgePass<'_> {
             session_id: &session_id,
             issue_key: self.issue_key,
             turns: self.shared.activity.get(&session_id).map(|a| a.turns),
+            typed,
         };
         let process = master_pass::this_process();
         let activity = self.shared.activity;
@@ -428,5 +439,65 @@ mod tests {
         assert!(asked_this_sweep(&[], &owed, None));
         assert!(nudge(&owed).contains("feedback item owes a triage (FB-2)"));
         assert!(!asked_this_sweep(&[], &[], None));
+    }
+
+    /// FB-82, dev 2026-10-06: forge-master-forge was resumed at 14:51:43 and
+    /// handed its brief, and the same sweep claimed a nudge it never typed. The
+    /// brief's turn ended at 14:55:16; its pass stood open past 15:56 and held
+    /// six newly admitted issues' nudge behind it.
+    #[test]
+    fn a_resumed_panes_brief_turn_closes_its_pass_and_frees_the_nudge_it_held() {
+        use runner_core::agent_activity::{Activities, Event, Report};
+        use runner_core::ledger::MasterPass;
+        const T0: i64 = 1_791_298_308;
+        let a = Activities::new();
+        let hook = |event, at_ms| {
+            a.record(
+                "s",
+                Report {
+                    event,
+                    at: at_ms,
+                    subject: None,
+                    conversation: Some("6d1fb615"),
+                    transcript: None,
+                },
+            )
+        };
+        let briefed = hook(Event::PromptSubmitted, T0 * 1000 + 349);
+        let turn = master_pass::unprompted_turn(false, Some(&briefed), None)
+            .expect("the brief's turn got no pass");
+        let mut row = MasterPass {
+            project_id: "p".into(),
+            session_id: "s".into(),
+            pass_id: "d6a0f8c9".into(),
+            verb: master_pass::NUDGE_VERB.into(),
+            issue_key: None,
+            opened_at: turn.started_at,
+            opened_by: "me".into(),
+            turns_at_nudge: Some(turn.turns_before),
+        };
+        let claimed = master_pass::Nudged {
+            project_id: "p",
+            session_id: "s",
+            issue_key: None,
+            turns: Some(briefed.turns),
+            typed: types_nudge(PaneState::Resumed, true),
+        };
+        if let Some(turns) = master_pass::start_after_nudge(&claimed) {
+            row.turns_at_nudge = turns;
+        }
+        let stopped = hook(Event::Stopped, (T0 + 208) * 1000);
+        assert_eq!(
+            master_pass::judge(&row, "me", Some("s"), Some(&stopped), 0, None),
+            master_pass::Judged::TurnEnded,
+            "a nudge that was never typed moved the pass past the brief's turn, so the pane's Stop closed nothing"
+        );
+        let now = Instant::now();
+        let last = Nudge {
+            digest: 1,
+            at: now,
+            prompts: Some(1),
+        };
+        assert!(nudge_due(Some(last), 2, now, SinceNudge::Ran, false, false));
     }
 }

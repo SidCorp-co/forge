@@ -25,6 +25,11 @@ pub(crate) const TICK: Duration = Duration::from_secs(5);
 
 pub(crate) const ADOPTED_FROM_CORE: &str = "core";
 
+/// How long an open pass stands with nothing from its master — no hook and no
+/// transcript write, children's included — before it is closed as abandoned.
+/// The same 600s core's `SESSION_SILENCE_TIMEOUT_S` calls a master silent after.
+pub(crate) const QUIET_BOUND_MS: i64 = 600_000;
+
 static THIS_PROCESS: LazyLock<String> = LazyLock::new(|| uuid::Uuid::new_v4().to_string());
 
 pub(crate) fn this_process() -> &'static str {
@@ -43,6 +48,7 @@ pub(crate) enum Abandoned {
     Restarted,
     Orphaned,
     SessionGone,
+    Quiet,
 }
 
 impl Abandoned {
@@ -51,6 +57,7 @@ impl Abandoned {
             Self::Restarted => "opened by the daemon process before this one, so the hook counts its turn was measured against are gone and the turn can no longer be judged; closed as abandoned at the restart",
             Self::Orphaned => "core held it open with no record on this box (an open whose answer never arrived); closed as abandoned",
             Self::SessionGone => "its master session is no longer the one this box serves the project under; closed with the session",
+            Self::Quiet => "abandoned: its master reported no hook and wrote no transcript for the quiet bound, so its turn can no longer be told from a pane idle at its prompt; it stops holding nudges",
         }
     }
 }
@@ -70,11 +77,15 @@ pub(crate) fn turn_ended(seen: Option<&Activity>, pass: &MasterPass) -> bool {
         && matches!(seen.doing(), Doing::Idle | Doing::AwaitingChildren)
 }
 
+/// `now_ms` is the clock this judgement is made at, and `written_ms` the last
+/// write to the conversation `seen` names, children's included.
 pub(crate) fn judge(
     pass: &MasterPass,
     process: &str,
     live_session: Option<&str>,
     seen: Option<&Activity>,
+    now_ms: i64,
+    written_ms: Option<i64>,
 ) -> Judged {
     if pass.opened_by == ADOPTED_FROM_CORE {
         return Judged::Abandoned(Abandoned::Orphaned);
@@ -88,7 +99,35 @@ pub(crate) fn judge(
     if turn_ended(seen, pass) {
         return Judged::TurnEnded;
     }
+    if quiet_past_bound(pass, seen, now_ms, written_ms) {
+        return Judged::Abandoned(Abandoned::Quiet);
+    }
     Judged::Open
+}
+
+/// Whether nothing has come from the pass's master — no hook, no transcript
+/// write, nothing since the pass opened — for [`QUIET_BOUND_MS`]. A pane
+/// stopped on a question a person owes is waiting, not quiet: the nudge the
+/// pass would stop holding would be typed into that dialog.
+fn quiet_past_bound(
+    pass: &MasterPass,
+    seen: Option<&Activity>,
+    now_ms: i64,
+    written_ms: Option<i64>,
+) -> bool {
+    if seen.is_some_and(|s| s.doing() == Doing::AwaitingPermission) {
+        return false;
+    }
+    let last_life = [
+        Some(pass.opened_at.saturating_mul(1000)),
+        seen.map(|s| s.last_event_at),
+        written_ms,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .unwrap_or(i64::MAX);
+    now_ms.saturating_sub(last_life) >= QUIET_BOUND_MS
 }
 
 pub(crate) fn nudged_issue(
@@ -163,6 +202,12 @@ pub(crate) fn refused_pass(
         return None;
     }
     turn.refusal.clone()
+}
+
+/// When the conversation `seen` names was last written, children's included.
+pub(crate) fn written_ms(seen: Option<&Activity>) -> Option<i64> {
+    let path = seen.and_then(|s| s.transcript.as_deref())?;
+    runner_core::transcript_age::last_written(std::path::Path::new(path))
 }
 
 fn turn_of(seen: Option<&Activity>, opened_at: i64) -> TurnRecord {
@@ -298,13 +343,24 @@ pub(crate) async fn reconcile(
     {
         let live = masters.live_for_project(&pass.project_id).map(|(s, _)| s);
         let seen = activity.get(&pass.session_id);
-        let settled = match judge(pass, process, live.as_deref(), seen.as_ref()) {
+        let written = written_ms(seen.as_ref());
+        let now = runner_core::agent_activity::now_ms();
+        let settled = match judge(pass, process, live.as_deref(), seen.as_ref(), now, written) {
             Judged::Open => false,
             Judged::TurnEnded => {
                 let turn = turn_of(seen.as_ref(), pass.opened_at);
                 settle(client, led, pass, "the turn it covers has ended", &turn).await
             }
             Judged::Abandoned(a) => {
+                if a == Abandoned::Quiet {
+                    tracing::warn!(
+                        "[master] {}: pass {} ({}) abandoned — nothing from its master for {}s, so it no longer holds this project's nudges",
+                        pass.project_id,
+                        pass.pass_id,
+                        pass.verb,
+                        QUIET_BOUND_MS / 1000
+                    );
+                }
                 settle(client, led, pass, a.why(), &TurnRecord::default()).await
             }
         };
@@ -416,6 +472,45 @@ pub(crate) struct Nudged<'a> {
     pub session_id: &'a str,
     pub issue_key: Option<&'a str>,
     pub turns: Option<u64>,
+    /// Whether this nudge is typed into the pane. A pane placed this sweep is
+    /// handed its brief instead, and the brief's turn is already running.
+    pub typed: bool,
+}
+
+/// The turn count an open pass's start moves to for `nudged`, or `None` where
+/// it stays where it is.
+///
+/// Only a typed nudge begins a turn after the one the pass already covers. A
+/// placement's brief IS that turn: moved to the count that already includes
+/// it, the pass waits for a turn nothing will start, and the pane's Stop
+/// closes nothing (FB-82, dev 2026-10-06).
+pub(crate) fn start_after_nudge(nudged: &Nudged<'_>) -> Option<Option<u64>> {
+    nudged.typed.then_some(nudged.turns)
+}
+
+/// Move the start of the pass already open to this nudge, where the nudge
+/// begins a turn after the one that pass covers.
+fn move_open_pass(led: &Ledger, open: &MasterPass, nudged: &Nudged<'_>) {
+    let Some(turns) = start_after_nudge(nudged) else {
+        tracing::debug!(
+            "[master] {}: pass {} covers the brief this pane was handed, which is this claim's nudge, so its start stays",
+            nudged.project_id,
+            open.pass_id
+        );
+        return;
+    };
+    if let Err(e) = led.renudge_master_pass(&open.pass_id, turns) {
+        tracing::warn!(
+            "[master] {}: cannot move pass {}'s start to this nudge ({e}); it closes on the turn the earlier nudge started",
+            nudged.project_id,
+            open.pass_id
+        );
+    }
+    tracing::debug!(
+        "[master] {}: pass {} is still open, so this nudge asks for the turn it already covers",
+        nudged.project_id,
+        open.pass_id
+    );
 }
 
 pub(crate) async fn open_for_nudge(
@@ -437,18 +532,7 @@ pub(crate) async fn open_for_nudge(
     .await;
     match led.master_pass_for(nudged.project_id) {
         Ok(Some(open)) => {
-            if let Err(e) = led.renudge_master_pass(&open.pass_id, nudged.turns) {
-                tracing::warn!(
-                    "[master] {}: cannot move pass {}'s start to this nudge ({e}); it closes on the turn the earlier nudge started",
-                    nudged.project_id,
-                    open.pass_id
-                );
-            }
-            tracing::debug!(
-                "[master] {}: pass {} is still open, so this nudge asks for the turn it already covers",
-                nudged.project_id,
-                open.pass_id
-            );
+            move_open_pass(led, &open, nudged);
             return;
         }
         Ok(None) => {}
@@ -570,6 +654,88 @@ mod tests {
             r#"{{"type":"assistant","isApiErrorMessage":true,"apiErrorStatus":429,"error":"rate_limit","timestamp":"{at}","uuid":"r","message":{{"model":"<synthetic>","content":[{{"type":"text","text":"You've hit your limit"}}]}},"quotaLimits":{{"status":"rejected","resetsAt":{}}}}}"#,
             T0 + 3600
         )
+    }
+
+    fn pass_from(opened_at: i64, turns_at_nudge: u64) -> MasterPass {
+        MasterPass {
+            project_id: "p".into(),
+            session_id: "s".into(),
+            pass_id: "x".into(),
+            verb: NUDGE_VERB.into(),
+            issue_key: None,
+            opened_at,
+            opened_by: "me".into(),
+            turns_at_nudge: Some(turns_at_nudge),
+        }
+    }
+
+    #[test]
+    fn a_pass_whose_master_is_quiet_past_the_bound_is_abandoned() {
+        let a = Activities::new();
+        report(&a, Event::PromptSubmitted, T0 * 1000);
+        let idle = report(&a, Event::Stopped, (T0 + 200) * 1000);
+        // A pass waiting on a turn nothing starts: the nudge it waits on never came.
+        let row = pass_from(T0, 1);
+        let quiet_from = (T0 + 200) * 1000;
+        assert_eq!(
+            judge(
+                &row,
+                "me",
+                Some("s"),
+                Some(&idle),
+                quiet_from + QUIET_BOUND_MS - 1,
+                None
+            ),
+            Judged::Open
+        );
+        assert_eq!(
+            judge(
+                &row,
+                "me",
+                Some("s"),
+                Some(&idle),
+                quiet_from + QUIET_BOUND_MS,
+                None
+            ),
+            Judged::Abandoned(Abandoned::Quiet),
+            "a pass whose master said nothing for the bound still held its nudges"
+        );
+        // A transcript still being written is a master still working.
+        assert_eq!(
+            judge(
+                &row,
+                "me",
+                Some("s"),
+                Some(&idle),
+                quiet_from + QUIET_BOUND_MS,
+                Some(quiet_from + 1),
+            ),
+            Judged::Open
+        );
+        // A session that never reported is measured from the pass's own open.
+        assert_eq!(
+            judge(
+                &row,
+                "me",
+                Some("s"),
+                None,
+                T0 * 1000 + QUIET_BOUND_MS,
+                None
+            ),
+            Judged::Abandoned(Abandoned::Quiet)
+        );
+        // A pane stopped on a person's question is waiting on that person.
+        let asked = report(&a, Event::PermissionRequested, (T0 + 300) * 1000);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&asked), i64::MAX, None),
+            Judged::Open
+        );
+        // An ended turn is closed as one, whatever the clock says.
+        let ended = pass_from(T0, 0);
+        assert_eq!(
+            judge(&ended, "me", Some("s"), Some(&idle), i64::MAX, None),
+            Judged::TurnEnded
+        );
     }
 
     fn report(a: &Activities, event: Event, at_ms: i64) -> Activity {
@@ -701,7 +867,10 @@ mod tests {
             opened_by: "me".into(),
             turns_at_nudge: Some(turn.turns_before),
         };
-        assert_eq!(judge(&row, "me", Some("s"), Some(&seen)), Judged::TurnEnded);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&seen), 0, None),
+            Judged::TurnEnded
+        );
     }
 
     #[test]
@@ -722,18 +891,21 @@ mod tests {
         let notified = report(&a, Event::Stopped, (T0 + 40) * 1000);
         assert_eq!(notified.turns, 2);
         assert_eq!(
-            judge(&row, "me", Some("s"), Some(&notified)),
+            judge(&row, "me", Some("s"), Some(&notified), 0, None),
             Judged::Open,
             "the nudge's pass closed on a turn that began before it was typed"
         );
         report(&a, Event::PromptSubmitted, (T0 + 41) * 1000);
         let nudged = report(&a, Event::Stopped, (T0 + 50) * 1000);
         assert_eq!(
-            judge(&row, "me", Some("s"), Some(&nudged)),
+            judge(&row, "me", Some("s"), Some(&nudged), 0, None),
             Judged::TurnEnded
         );
         row.opened_at = T0 + 60;
-        assert_eq!(judge(&row, "me", Some("s"), Some(&nudged)), Judged::Open);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&nudged), 0, None),
+            Judged::Open
+        );
     }
 
     #[test]
@@ -753,6 +925,9 @@ mod tests {
             opened_by: "me".into(),
             turns_at_nudge: Some(turn.turns_before),
         };
-        assert_eq!(judge(&row, "me", Some("s"), Some(&seen)), Judged::TurnEnded);
+        assert_eq!(
+            judge(&row, "me", Some("s"), Some(&seen), 0, None),
+            Judged::TurnEnded
+        );
     }
 }

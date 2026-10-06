@@ -622,10 +622,11 @@ pub(crate) async fn sweep(
             held.is_some(),
             pass_open,
         );
+        let typed = types_nudge(pane, claimed);
         if claimed {
-            pass.open(ledger).await;
+            pass.open(ledger, typed).await;
         }
-        if types_nudge(pane, claimed) {
+        if typed {
             let slug = &resolved.slug;
             nudge_master(masters, &runner.project_id, slug, held.as_ref(), &inbox).await;
         }
