@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.67] - 2026-10-06
+
+Outdated masters holding runs keep getting nudged, then drain to a replacement
+
+### Fixed
+
+- **An outdated master that holds runs is now kept and nudged**, so owed triage no longer starves behind it. It drains, declaring no new run, until core can replace it; the master's standing says since when and why.
+
 ## [0.4.0-dev.66] - 2026-10-06
 
 Core decides when interrupted runs end and idle chats close, not the box

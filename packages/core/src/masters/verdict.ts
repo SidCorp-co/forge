@@ -131,47 +131,68 @@ function unresumable(facts: MasterFacts): string | null {
 }
 
 /**
- * An outdated pane is replaced only where it holds no run whose subagent may still work, its turn is
- * over, work waits for a successor and the successor can resume its conversation; every reason that
- * holds against it is named.
+ * What an outdated pane's replacement waits on: every reason that holds against it, named, and
+ * whether it drains. A pane drains, taking no new run, wherever its successor could resume its
+ * conversation, so that what it holds runs out and the replacement is reached; a pane whose
+ * successor would start cold is not drained, since nothing would be placed in its stead.
  */
-export function outdatedVerdict(facts: MasterFacts, outdated: string): MasterVerdict {
-  const left: string[] = [];
+export interface OutdatedHold {
+  why: string;
+  heldBy: string[];
+  drain: boolean;
+}
+
+/** Null where the pane is current, unjudged or absent. */
+export function outdatedHold(facts: MasterFacts): OutdatedHold | null {
+  if (facts.pane !== 'alive' || facts.outdated === null) return null;
+  const heldBy: string[] = [];
   if (!workWaits(facts)) {
-    left.push('its project has no admissible work, so a successor would have nothing to take up');
+    heldBy.push('its project has no admissible work, so a successor would have nothing to take up');
   }
   const { holding, turn } = facts;
   if (holding.kind === 'these' && holding.working.length > 0) {
-    left.push(
+    heldBy.push(
       `it holds ${holding.working.length} open run(s) whose subagent may still be working: ${holding.working.join('; ')}`,
     );
   }
-  if (holding.kind === 'unknown') left.push(holding.why);
-  if (turn.kind === 'in_turn') left.push(turn.what);
+  if (holding.kind === 'unknown') heldBy.push(holding.why);
+  if (turn.kind === 'in_turn') heldBy.push(turn.what);
   if (turn.kind === 'unknown') {
-    left.push('neither its hooks nor its transcript can say whether its turn is over');
+    heldBy.push('neither its hooks nor its transcript can say whether its turn is over');
   }
   const cold = unresumable(facts);
-  if (cold) left.push(cold);
-  if (left.length > 0) {
-    return {
-      act: 'leave',
-      reason: 'outdated',
-      because: `outdated (${outdated}): ${left.join('; ')}`,
-    };
-  }
+  if (cold) heldBy.push(cold);
+  return { why: facts.outdated, heldBy, drain: cold === null };
+}
+
+/** An outdated pane nothing holds is replaced, resuming its conversation; null where something holds it. */
+function outdatedReplace(facts: MasterFacts, hold: OutdatedHold): MasterVerdict | null {
+  if (hold.heldBy.length > 0) return null;
+  const { holding } = facts;
   const inherited = holding.kind === 'these' ? holding.over : [];
   return {
     act: 'replace',
     reason: 'outdated',
     resume: facts.conversation.id,
     nudge: passAsked(facts),
-    because: `outdated (${outdated}) and ${
+    because: `outdated (${hold.why}) and ${
       inherited.length === 0
         ? 'holds no run and no turn'
         : `holds no turn and no run still working; its successor inherits ${inherited.join('; ')}`
     }`,
   };
+}
+
+/**
+ * A kept pane's account of being outdated: why, what its replacement waits on, and whether it
+ * drains. Being outdated decides replacement only, so the pane is nudged on a current master's timing.
+ */
+function outdatedKept(hold: OutdatedHold): string {
+  return `outdated (${hold.why}), and its replacement waits: ${hold.heldBy.join('; ')}. ${
+    hold.drain
+      ? 'It drains meanwhile: it is driven for the work it is owed and takes no new run, so what it holds runs out'
+      : 'It is not drained, since its successor would start cold and nothing would be placed in its stead'
+  }`;
 }
 
 /** A pane the box cannot hear is ended only where a successor would be placed in its stead. */
@@ -270,7 +291,8 @@ function placeVerdict(facts: MasterFacts): MasterVerdict {
 /**
  * The whole of the placement and retirement decision for one project's master on one box. An
  * outdated pane that may be replaced is; a deaf one is judged next, since a pane nobody can hear
- * holds nothing an outdated pane is left standing for; an outdated one left after that stays undriven.
+ * holds nothing an outdated pane is kept for; any other pane is kept and driven, an outdated one
+ * draining toward its replacement.
  */
 export function masterVerdict(facts: MasterFacts, record: MasterRecord): MasterVerdict {
   const held = withheld(facts, record);
@@ -279,10 +301,16 @@ export function masterVerdict(facts: MasterFacts, record: MasterRecord): MasterV
   if (!workWaits(facts) && facts.work.jobPanes === 0 && idleStay(facts) === null) {
     return { act: 'retire', because: retireBecause(facts) };
   }
-  const outdated = facts.outdated !== null ? outdatedVerdict(facts, facts.outdated) : null;
-  if (outdated?.act === 'replace') return outdated;
+  const outdated = outdatedHold(facts);
+  const replace = outdated ? outdatedReplace(facts, outdated) : null;
+  if (replace) return replace;
   if (facts.capability === 'stale') return deafVerdict(facts);
-  if (outdated) return outdated;
   const nudge = nudgeDue(facts, record.passOpen);
-  return { act: 'keep', nudge: nudge.due, because: nudge.because };
+  if (!outdated) return { act: 'keep', nudge: nudge.due, drain: false, because: nudge.because };
+  return {
+    act: 'keep',
+    nudge: nudge.due,
+    drain: outdated.drain,
+    because: `${outdatedKept(outdated)}; nudge: ${nudge.because}`,
+  };
 }

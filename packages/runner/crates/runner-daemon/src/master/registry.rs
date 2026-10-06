@@ -69,6 +69,10 @@ pub(crate) struct Registry {
     /// account is given once per pane and reason rather than once a sweep
     /// (ISS-1379).
     pub(crate) outdated: HashMap<String, String>,
+    /// Per project, the master session core last kept draining and why: a
+    /// draining master is outdated, and the box admits no new run declaration
+    /// from that session so what it holds runs out and core replaces it.
+    pub(crate) draining: HashMap<String, (String, String)>,
     /// Per project, the master session and the dialog last reported to core
     /// for its pane, so a dialog standing for an hour is one report.
     pub(crate) dialog_said: HashMap<String, (String, Option<String>)>,
@@ -241,6 +245,35 @@ impl Masters {
             Some(said) => reg.outdated.insert(project_id.to_string(), said.clone()) != Some(said),
             None => reg.outdated.remove(project_id).is_some(),
         }
+    }
+
+    /// Remember whether core keeps `session` draining (`None`: it does not),
+    /// answering whether that is news since the last sweep.
+    pub(crate) fn note_draining(
+        &self,
+        project_id: &str,
+        session: &str,
+        because: Option<String>,
+    ) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match because {
+            Some(because) => {
+                let now = (session.to_string(), because);
+                reg.draining.insert(project_id.to_string(), now.clone()) != Some(now)
+            }
+            None => reg.draining.remove(project_id).is_some(),
+        }
+    }
+
+    /// Why `session` may declare no new run for the project, where core's
+    /// last verdict kept that very session draining. A successor's session
+    /// is never the drained one, so a replacement declares at once.
+    pub(crate) fn draining(&self, project_id: &str, session: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.draining
+            .get(project_id)
+            .filter(|(drained, _)| drained == session)
+            .map(|(_, because)| because.clone())
     }
 
     /// Whether `dialog` on `session`'s pane is news to core, and remember it.
@@ -527,5 +560,29 @@ impl Masters {
             .values()
             .find(|m| m.session_id == session_id)
             .map(|m| m.name.clone())
+    }
+}
+
+#[cfg(test)]
+mod draining_tests {
+    use super::*;
+
+    #[test]
+    fn a_drained_session_is_refused_and_its_successor_is_not() {
+        let masters = Masters::new();
+        assert!(masters.note_draining("p", "s1", Some("outdated".into())));
+        assert!(
+            !masters.note_draining("p", "s1", Some("outdated".into())),
+            "the same drain said twice is not news"
+        );
+        assert_eq!(masters.draining("p", "s1").as_deref(), Some("outdated"));
+        assert_eq!(
+            masters.draining("p", "s2"),
+            None,
+            "a successor's session was refused for its predecessor's drain"
+        );
+        assert_eq!(masters.draining("q", "s1"), None);
+        assert!(masters.note_draining("p", "s1", None));
+        assert_eq!(masters.draining("p", "s1"), None);
     }
 }

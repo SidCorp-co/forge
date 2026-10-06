@@ -184,7 +184,7 @@ describe('outdated: replace once nothing it holds is working', () => {
     expect(v.because).toContain('r1 (ISS-1)');
   });
 
-  it('leaves it, naming every reason that holds', () => {
+  it('keeps it, naming every reason its replacement waits on', () => {
     const v = masterVerdict(
       alive({
         outdated,
@@ -196,7 +196,7 @@ describe('outdated: replace once nothing it holds is working', () => {
       }),
       online,
     );
-    expect(v).toMatchObject({ act: 'leave', reason: 'outdated' });
+    expect(v).toMatchObject({ act: 'keep', nudge: false, drain: false });
     for (const said of [
       'no admissible work',
       'r2 (ISS-2)',
@@ -208,13 +208,81 @@ describe('outdated: replace once nothing it holds is working', () => {
     expect(v.because).not.toContain('r1');
   });
 
-  it('leaves it where what it holds or its turn cannot be read', () => {
+  it('keeps it where what it holds or its turn cannot be read', () => {
     expect(
       masterVerdict(alive({ outdated, holding: { kind: 'unknown', why: 'mid-carry' } }), online),
-    ).toMatchObject({ act: 'leave' });
+    ).toMatchObject({ act: 'keep', drain: true });
     expect(masterVerdict(alive({ outdated, turn: { kind: 'unknown' } }), online)).toMatchObject({
-      act: 'leave',
+      act: 'keep',
+      drain: true,
     });
+  });
+});
+
+// forge-dev 2026-10-07: forge-master-forge was placed under an older runner and dispatched back to
+// back, so every sweep found it holding a run; "left running, not nudged" for two hours while FB-86..91
+// sat untriaged. Being outdated decides replacement only: a kept pane is driven like a current one.
+describe('outdated: kept and driven while it holds runs, draining toward its replacement', () => {
+  const outdated = 'placed under 1.0.0, this box runs 1.1.0';
+  const busy = {
+    outdated,
+    work: { ...noWork, owed: 6 },
+    holding: { kind: 'these' as const, working: ['r7 (ISS-7)'], over: [] },
+  };
+
+  it('owed feedback reaches an outdated master that holds a working run: kept and nudged', () => {
+    const v = masterVerdict(alive(busy), online);
+    expect(v).toMatchObject({ act: 'keep', nudge: true, drain: true });
+    expect(v.because).toContain(outdated);
+    expect(v.because).toContain('r7 (ISS-7)');
+  });
+
+  it('is nudged on the timing a current master is, an open pass holding a changed digest', () => {
+    const changed = {
+      digest: 'd2',
+      last: { digest: 'd1', agoSeconds: 0 },
+      since: 'working' as const,
+    };
+    expect(
+      masterVerdict(alive({ ...busy, nudge: changed }), { ...online, passOpen: true }),
+    ).toMatchObject({ act: 'keep', nudge: false, drain: true });
+    expect(masterVerdict(alive({ ...busy, nudge: changed }), online)).toMatchObject({
+      act: 'keep',
+      nudge: true,
+    });
+  });
+
+  it('a turn still running holds the replacement but not the nudge', () => {
+    const v = masterVerdict(
+      alive({ ...busy, holding: { kind: 'nothing' }, turn: { kind: 'in_turn', what: 'busy' } }),
+      online,
+    );
+    expect(v).toMatchObject({ act: 'keep', nudge: true, drain: true });
+  });
+
+  it('does not drain a pane whose successor would start cold, since nothing would replace it', () => {
+    const v = masterVerdict(
+      alive({ ...busy, conversation: { id: null, transcript: 'absent', elsewhere: 'none' } }),
+      online,
+    );
+    expect(v).toMatchObject({ act: 'keep', nudge: true, drain: false });
+    expect(v.because).toContain('recorded no conversation');
+  });
+
+  it('a current master is never drained', () => {
+    expect(masterVerdict(alive({ work: { ...noWork, owed: 1 } }), online)).toMatchObject({
+      act: 'keep',
+      drain: false,
+    });
+  });
+
+  it('once its runs are over and its turn ended it is replaced, its successor nudged', () => {
+    expect(
+      masterVerdict(
+        alive({ ...busy, holding: { kind: 'these', working: [], over: ['r7'] } }),
+        online,
+      ),
+    ).toMatchObject({ act: 'replace', reason: 'outdated', nudge: true });
   });
 });
 
@@ -257,7 +325,7 @@ describe('deaf: a pane the box cannot hear', () => {
         alive({ outdated: 'old build', turn: { kind: 'in_turn', what: 'busy' } }),
         online,
       ),
-    ).toMatchObject({ act: 'leave', reason: 'outdated' });
+    ).toMatchObject({ act: 'keep', drain: true });
   });
 
   it('an unreadable capability map is no evidence about the pane: kept and driven', () => {

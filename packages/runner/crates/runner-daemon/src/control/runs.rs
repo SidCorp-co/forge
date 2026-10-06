@@ -119,6 +119,15 @@ pub(crate) fn run_declare_as(
     }
     // Every row below is keyed by the project's id, never by the slug it was named by.
     let project_id = serves.as_str();
+    // A graceful stop, as a CI agent drains for an upgrade: finish what is
+    // held, take nothing new. Core decided it; the box only refuses by it.
+    if let Some(live) = ctl.masters.get(project_id).map(|(session, _)| session) {
+        if let Some(because) = ctl.masters.draining(project_id, &live) {
+            return ClaimReply::refused(format!(
+                "this master is draining and declares no new run: {because}. Leave the issue unclaimed for its successor, which core places on the first sweep that finds no run this pane holds still working and it at its prompt, resuming this conversation. Nothing was recorded"
+            ));
+        }
+    }
     if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
         return ClaimReply::refused(format!(
             "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"

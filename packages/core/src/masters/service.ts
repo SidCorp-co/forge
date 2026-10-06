@@ -2,6 +2,7 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterOutdated,
   MasterPassCloseReason,
   MasterPassRefusal,
   MasterPassSkip,
@@ -23,7 +24,14 @@ import {
   setMaxJobPanes,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { closedPassOf, openPassOf, PASS_COLUMNS, readClosedPass, readOpenPass } from './read.js';
+import {
+  closedPassOf,
+  openPassOf,
+  PASS_COLUMNS,
+  readClosedPass,
+  readOpenPass,
+  storedOutdated,
+} from './read.js';
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
@@ -31,7 +39,7 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
-import { masterVerdict } from './verdict.js';
+import { masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
@@ -218,7 +226,10 @@ export async function judgeMaster(args: {
     });
   }
   const [master] = await db
-    .select({ id: agentSessions.id })
+    .select({
+      id: agentSessions.id,
+      outdated: sql<unknown>`${agentSessions.metadata} -> 'outdated'`,
+    })
     .from(agentSessions)
     .where(
       and(
@@ -230,5 +241,35 @@ export async function judgeMaster(args: {
     )
     .limit(1);
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
-  return masterVerdict(args.facts, { runnerStatus: runner.status, passOpen });
+  const verdict = masterVerdict(args.facts, { runnerStatus: runner.status, passOpen });
+  if (master && verdict.act === 'keep') {
+    await recordOutdated(master.id, master.outdated, outdatedHold(args.facts));
+  }
+  return verdict;
+}
+
+/**
+ * What the master standing serves about a kept pane's being outdated, written only when it changed;
+ * `since` holds from the first verdict that judged it outdated until one judges it current.
+ */
+async function recordOutdated(
+  sessionId: string,
+  stored: unknown,
+  hold: OutdatedHold | null,
+): Promise<void> {
+  const was = storedOutdated(stored);
+  if (hold === null) {
+    if (stored !== null && stored !== undefined) {
+      await mergeSessionMetadata(sessionId, { outdated: null });
+    }
+    return;
+  }
+  const now: MasterOutdated = {
+    since: was?.since ?? new Date().toISOString(),
+    why: hold.why,
+    heldBy: hold.heldBy,
+    draining: hold.drain,
+  };
+  if (was && JSON.stringify(was) === JSON.stringify(now)) return;
+  await mergeSessionMetadata(sessionId, { outdated: scrubSecretsDeep(now) });
 }
