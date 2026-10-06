@@ -2,11 +2,6 @@
 
 use serde::Deserialize;
 
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-#[cfg(target_os = "macos")]
-use std::os::macos::fs::MetadataExt;
-
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, Deserialize)]
