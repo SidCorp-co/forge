@@ -8,15 +8,19 @@
 
 ## [Unreleased]
 
-## [0.4.0-dev.42] - 2026-10-06
-
-Release numbers stay spent, head reads honour the repository, building runs read as building
-
-
 ### Fixed
 
 - **An undelivered reply shows a reason, not a driver error.** The window keeps a coded sentence; the
   raw error goes to logs only. A session transcript past 20,000 entries says so and loads the rest.
+- **Forking a private agent chat is the owner's.** Another writer is refused
+  `AGENT_CHAT_OWNER_FORBIDDEN` with no transcript; a fork belongs to its caller. Regenerate replays
+  its prompt once, on a cold start. A `constructor` entry type is refused `UNREPRESENTABLE_ENTRY`.
+
+## [0.4.0-dev.42] - 2026-10-06
+
+Release numbers stay spent, head reads honour the repository, building runs read as building
+
+### Fixed
 
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
   version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
@@ -27,10 +31,6 @@ Release numbers stay spent, head reads honour the repository, building runs read
 - **A building run reads as building.** A claim taken in another checkout no longer makes it stuck;
   slots count job panes, declared runs beside them; the issue page and per-issue run reads find group
   runs; a landed handback says so.
-
-- **Forking a private agent chat is the owner's.** Another writer is refused
-  `AGENT_CHAT_OWNER_FORBIDDEN` with no transcript; a fork belongs to its caller. Regenerate replays
-  its prompt once, on a cold start. A `constructor` entry type is refused `UNREPRESENTABLE_ENTRY`.
 
 ## [0.4.0-dev.41] - 2026-10-06
 
