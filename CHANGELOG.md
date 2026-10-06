@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.54] - 2026-10-06
+
+Needs you lists only the viewer's acts; notifications name their project
+
 ### Fixed
 
 - **Needs you lists only your acts.** Harness reports, agent-written drafts and per-issue release
