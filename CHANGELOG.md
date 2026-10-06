@@ -22,6 +22,9 @@
 - **A chat turn core refuses is failed by its code.** Only `SESSION_TERMINATED` or `SESSION_CANCELLED`
   stops a turn quietly; `SEQ_TAKEN_BY_CORE` and every other 4xx mark the session failed, naming the
   code, instead of dropping the rest of the turn.
+- **A dev checkout's orientation reaches its worktrees and never blocks a pull.** It is written into
+  the excluded `CLAUDE.local.md`, the committed orientation is excluded from loading, and an older
+  runner's skip-worktree mark is lifted.
 
 ## [0.4.0-dev.42] - 2026-10-06
 
