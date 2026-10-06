@@ -96,6 +96,11 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
 - how it closes once cleared: a release record naming the commit production serves, or the next
   batch.
 
+Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
+`releasing`, still claimed, because the code may be on production. Its comment names the same
+refusal, and in place of the last point it says how to settle a promoted roster: abort the batch
+with `promotedRoster: return-to-gate`, or settle the issue by hand.
+
 A close that failed without a refusal names the error and says the close is sent again once that
 error is gone. The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.

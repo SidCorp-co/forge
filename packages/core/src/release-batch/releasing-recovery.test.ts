@@ -58,4 +58,17 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('The refusal named no blocking object.');
     expect(said).toContain('What clears it: mark it merged');
   });
+
+  it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
+      projectId: PROJECT,
+      version: '2.0.0',
+      destination: 'releasing',
+      held: 'This batch recorded a promotion; abort it to settle.',
+    });
+    expect(said).toContain('This batch recorded a promotion; abort it to settle.');
+    expect(said).toContain('Clear the reason above first');
+    expect(said).not.toContain('The issue is at');
+  });
 });

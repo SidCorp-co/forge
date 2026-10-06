@@ -87,6 +87,33 @@ describe('a release finish that cannot close an issue', () => {
     expect(said).toContain(`POST /api/projects/${projectId}/release-records`);
   });
 
+  it('names the refusal on a batch that recorded a promotion, where the issue stays claimed', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { openAttempt } = await import('../../src/release-batch/ledger.js');
+    const held = await fx.insertIssue();
+    const free = await fx.insertIssue();
+    const { runId, version } = await fx.claim([held, free]);
+    await openAttempt({
+      runId,
+      stage: 'promote',
+      idempotencyKey: 'promote-1',
+      commit: 'a'.repeat(40),
+    });
+    const question = await askOn(held);
+
+    const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+
+    expect(result.closed).toEqual([free]);
+    expect((await fx.stored(held)).status).toBe('releasing');
+    const said = await lastComment(held);
+    expect(said).toContain('`OPEN_QUESTIONS`');
+    expect(said).toContain(`open question ${question}`);
+    expect(said).toContain('What clears it: this issue holds 1 open question');
+    expect(said).toContain(`shipped as version ${version}`);
+    expect(said).toContain('stay at `releasing`');
+    expect(said).toContain(`/release-batches/${runId}/abort`);
+  });
+
   it('writes the comment as the device owner when a device finished the batch', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const held = await fx.insertIssue();

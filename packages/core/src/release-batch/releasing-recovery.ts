@@ -92,8 +92,10 @@ export function refusedCloseComment(args: {
   projectId: string;
   version: string | null;
   destination: IssueStatus;
+  /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
+  held?: string | undefined;
 }): string {
-  const { refusal, projectId, version, destination } = args;
+  const { refusal, projectId, version, destination, held } = args;
   const shipped = version ? `as version ${version}` : 'with this batch';
   const why =
     refusal.kind === 'refused'
@@ -103,8 +105,11 @@ export function refusedCloseComment(args: {
             : 'The refusal named no blocking object.'
         } What clears it: ${refusal.detail}`
       : `The close failed before it reached a decision, with: ${refusal.message}. Nothing refused it and no object blocks it; send the close again once that error is gone.`;
+  const opening = `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n`;
+  if (held)
+    return `${opening}${held} Clear the reason above first, or that close is refused again.`;
   return (
-    `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n` +
+    opening +
     `The issue is at \`${destination}\` and its code is live with that release. Once the reason above ` +
     `is cleared, close it against what production serves with POST /api/projects/${projectId}/release-records, ` +
     'naming the commit production is serving, or put it in the next batch.'
@@ -313,11 +318,20 @@ async function noteOnRoster(
   if (!options.comment || !author) return;
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
+    const refusal = options.refusals?.get(issue.id);
     try {
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: author,
-        body: `${options.reason}. ${note(issue.projectId)}`,
+        body: refusal
+          ? refusedCloseComment({
+              refusal,
+              projectId: issue.projectId,
+              version: options.version ?? null,
+              destination: 'releasing',
+              held: note(issue.projectId),
+            })
+          : `${options.reason}. ${note(issue.projectId)}`,
       });
     } catch (err) {
       logger.warn({ err, issueId: issue.id }, 'release-batch: promotion note failed');
