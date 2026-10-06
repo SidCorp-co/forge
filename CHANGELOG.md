@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.37] - 2026-10-06
+
+Standing tells the truth, the UI goes flat, and bind provisions its checkout
+
+
 ### Fixed
 
 - **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
