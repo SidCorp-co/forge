@@ -4259,7 +4259,11 @@ async fn supervise(
             Some(PlacedPane {
                 output: Some((path, from)),
                 ..
-            }) => pane_exit::classify(path, *from),
+            }) => pane_exit::classify(
+                path,
+                *from,
+                lived.is_some_and(|l| l < pane_exit::EARLY_EXIT),
+            ),
         };
         let counted = masters.count_exit(project_id, lived, &exit);
         if let Some(n) = counted.ended {
@@ -11371,7 +11375,7 @@ mod servers_refusal_walk_tests {
         std::fs::write(
             &stub,
             format!(
-                "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nsleep 1\nif [ -e '{}' ]; then printf 'Error: other\\r\\n'; exit 1; fi\nprintf '\\033[31mError:\\033[8Gsettings\\033[17Gunreadable\\033[39m\\r\\r\\n'\n",
+                "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nsleep 1\nif [ -e '{}' ]; then printf 'Error: other\\r\\n'; exit 1; fi\nprintf '\\033[31mError:\\033[8Gsettings\\033[17Gunreadable\\033[29G(request\\033[38Greq_011CT%s)\\033[39m\\r\\r\\n' \"$$\"\n",
                 other.display()
             ),
         )
@@ -11509,7 +11513,10 @@ mod servers_refusal_walk_tests {
             );
         }
 
-        let why = "it exited having printed last: \"Error: settings unreadable\"";
+        // Each stub prints its own pid as a request id, the way an API error
+        // names its request: the words differ on every placement, and they
+        // are still one reason (ISS-1385, from ISS-1343's judging).
+        let why = "it exited having printed last: \"Error: settings unreadable (request req_011CT";
         assert_eq!(
             lines_with("WARN", why),
             1,
@@ -11561,12 +11568,14 @@ mod servers_refusal_walk_tests {
                 assert_eq!(r.pane, "forge-master-sweepex", "criterion 2");
                 assert_eq!(r.in_a_row, 4, "criterion 2: the four exits read so far");
                 assert!(r.lived_secs.is_some_and(|s| s < 90), "criterion 2: {r:?}");
-                assert_eq!(
-                    r.exit,
-                    pane_exit::Exit::Printed {
-                        last: "Error: settings unreadable".into()
-                    },
-                    "criterion 2"
+                assert!(
+                    matches!(
+                        &r.exit,
+                        pane_exit::Exit::Printed { last }
+                            if last.starts_with("Error: settings unreadable (request req_011CT")
+                    ),
+                    "criterion 2: {:?}",
+                    r.exit
                 );
             }
             other => panic!("criterion 2: the exit is kept for `master status`: {other:?}"),

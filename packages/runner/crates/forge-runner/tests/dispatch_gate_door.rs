@@ -545,3 +545,52 @@ fn a_runner_pane_no_record_names_is_let_through_and_named() {
         "{marks}"
     );
 }
+
+const DIALOG_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","transcript_path":"/x.jsonl","cwd":"/tmp/x","permission_mode":"bypassPermissions","hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Merge PR #836 now?","header":"PR #836","options":[{"label":"Merge","description":"land it"},{"label":"Hold","description":"wait"}],"multiSelect":false}]},"tool_use_id":"toolu_01Dialog"}"#;
+
+/// ISS-1385 criterion 15: a dialog planted in a master pane on a runner-shaped
+/// tmux server is refused by the registered command, naming the route.
+#[test]
+fn a_dialog_opened_in_a_master_pane_is_refused_naming_the_route() {
+    use forge_runner_core::daemon::master_question::{ROUTE_LATER, ROUTE_OPEN};
+    let scratch = Scratch::new("dialog");
+    let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-master-e2e", DIALOG_PAYLOAD)
+    else {
+        return;
+    };
+    let v: serde_json::Value = serde_json::from_str(&printed).expect("the gate printed json");
+    let out = &v["hookSpecificOutput"];
+    assert_eq!(out["permissionDecision"], "deny", "{printed}");
+    let why = out["permissionDecisionReason"].as_str().unwrap_or("");
+    assert!(
+        why.contains("never waits in a dialog")
+            && why.contains(ROUTE_OPEN)
+            && why.contains(ROUTE_LATER),
+        "the refusal names the rule and the route: {why}"
+    );
+}
+
+/// ISS-1385 criterion 7: a job pane's dialog is not this rule's subject.
+#[test]
+fn a_dialog_opened_in_a_job_pane_is_let_through_unmarked() {
+    let scratch = Scratch::new("dialogjob");
+    let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-job-j42", DIALOG_PAYLOAD)
+    else {
+        return;
+    };
+    assert_eq!(printed, "{}");
+    assert!(!config_dir_at(scratch.path())
+        .join("gate-marks.jsonl")
+        .exists());
+}
+
+/// ISS-1385 criterion 6: a person's own session is never this rule's subject.
+#[test]
+fn a_dialog_opened_off_the_runners_server_is_let_through_unmarked() {
+    let scratch = Scratch::new("dialogoff");
+    let config_dir = config_dir_at(scratch.path());
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    let printed = run_gate_tokenless(&command, scratch.path(), DIALOG_PAYLOAD);
+    assert_eq!(printed, "{}");
+    assert!(!config_dir.join("gate-marks.jsonl").exists());
+}

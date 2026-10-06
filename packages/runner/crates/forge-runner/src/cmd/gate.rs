@@ -1,5 +1,6 @@
 //! `gate` — the pane's own `PreToolUse` hook, asking whether the work its
-//! master is about to hand out has been declared.
+//! master is about to hand out has been declared, and refusing a question
+//! dialog a master pane opens (`daemon::master_question`, ISS-1385).
 //!
 //! Sibling of `hook`, and deliberately not part of it. That verb reports and
 //! must never answer anything, so it prints `{}` the moment stdin is drained;
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 use clap::Args as ClapArgs;
 use forge_runner_core::daemon::degraded::{mark, Kind, Mark, Run, Source};
 use forge_runner_core::daemon::dispatch_gate::Dispatch;
+use forge_runner_core::daemon::master_question::{self, Caller as DialogCaller, Verdict};
 use forge_runner_core::daemon::{control, session_tokens};
 
 const ANSWER_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
@@ -362,10 +364,89 @@ async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String 
     }
 }
 
+/// The tool a payload names, where it names one.
+pub fn tool_named(payload: &[u8]) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(payload)
+        .ok()?
+        .get("tool_name")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Which pane a call came from, from its `$TMUX`, the runner's tmux socket,
+/// and — only where the two match — its tmux session name. Read at the call,
+/// never from anything written at placement, so a master placed by an earlier
+/// build is this rule's subject as soon as its box serves this one.
+pub fn dialog_caller(
+    tmux: Option<&str>,
+    runner_socket: Option<&Path>,
+    session_name: impl FnOnce(&Path) -> Result<String, String>,
+) -> DialogCaller {
+    let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
+        return DialogCaller::NotOurs;
+    };
+    let mut parts = tmux.rsplitn(3, ',');
+    let (Some(_session), Some(_pid), Some(socket)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return DialogCaller::Unknown(format!(
+            "$TMUX is `{tmux}`, which is not the `<socket>,<pid>,<session>` tmux sets"
+        ));
+    };
+    let Some(runner) = runner_socket else {
+        return DialogCaller::Unknown(
+            "the runner's tmux socket could not be resolved, so whether this process runs on it is unknown"
+                .to_string(),
+        );
+    };
+    if !same_file(Path::new(socket), runner) {
+        return DialogCaller::NotOurs;
+    }
+    match session_name(runner) {
+        Ok(name) => DialogCaller::Session(name),
+        Err(why) => DialogCaller::Unknown(why),
+    }
+}
+
+/// The gate's answer to a question dialog, marking an allowance it could not
+/// decide.
+async fn answer_dialog(dir: Option<&Path>) -> String {
+    let tmux = std::env::var("TMUX").ok();
+    let socket = forge_runner_core::daemon::terminal::socket_path();
+    let named = match (tmux.as_deref(), socket.as_deref()) {
+        (Some(t), Some(sock)) if !t.is_empty() => Some(session_of_this_pane(sock).await),
+        _ => None,
+    };
+    let caller = dialog_caller(tmux.as_deref(), socket.as_deref(), |_| {
+        named.unwrap_or_else(|| Err("this process's tmux session was not asked".into()))
+    });
+    match master_question::decide(master_question::DIALOG_TOOL, &caller) {
+        Verdict::Allow => ALLOW.to_string(),
+        Verdict::Deny(why) => deny(&why),
+        Verdict::AllowUndecided(why) => {
+            if let Some(dir) = dir {
+                mark(
+                    dir,
+                    &Mark::new(
+                        Kind::Degraded,
+                        Source::Hook,
+                        &why,
+                        Run::Unknown(NO_RUN_HERE),
+                    ),
+                );
+            }
+            ALLOW.to_string()
+        }
+    }
+}
+
 pub async fn run(args: Args) {
     let payload = drain();
     if args.event != "PreToolUse" {
         println!("{ALLOW}");
+        return;
+    }
+    if tool_named(&payload).as_deref() == Some(master_question::DIALOG_TOOL) {
+        println!("{}", answer_dialog(config_dir().as_deref()).await);
         return;
     }
     let d = match dispatch_in(&payload) {
@@ -960,6 +1041,81 @@ mod tests {
         assert!(
             !why.contains("master kill") && why.contains("kill-session -t '=forge-master-a-2'"),
             "{why}"
+        );
+    }
+
+    const ASK: &str = r#"{"session_id":"d5953edb","hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Merge PR #836?","header":"PR","options":[{"label":"yes"},{"label":"no"}],"multiSelect":false}]},"tool_use_id":"toolu_04"}"#;
+
+    #[test]
+    fn a_dialog_is_recognised_by_the_tool_it_names() {
+        assert_eq!(
+            tool_named(ASK.as_bytes()).as_deref(),
+            Some("AskUserQuestion")
+        );
+        assert_eq!(
+            tool_named(AN_ORDINARY_TOOL_CALL.as_bytes()).as_deref(),
+            Some("Read")
+        );
+        assert_eq!(tool_named(b"not json"), None);
+        assert!(
+            matches!(dispatch_in(ASK.as_bytes()), Payload::NotADispatch),
+            "a dialog is no dispatch, so the declaration check never sees it"
+        );
+    }
+
+    fn caller(
+        tmux: Option<&str>,
+        runner: Option<&str>,
+        name: Option<Result<&str, &str>>,
+    ) -> DialogCaller {
+        dialog_caller(tmux, runner.map(Path::new), |_| {
+            name.expect("the session is asked only of a process on the runner's server")
+                .map(str::to_string)
+                .map_err(str::to_string)
+        })
+    }
+
+    /// ISS-1385 criteria 1, 6, 7 and 8, at the classification.
+    #[test]
+    fn a_dialog_caller_is_placed_by_its_server_and_its_session_name() {
+        let on = Some("/home/u/.config/forge-runner/tmux.sock,4242,3");
+        assert_eq!(
+            caller(on, Some(RUNNER_SOCK), Some(Ok("forge-master-a"))),
+            DialogCaller::Session("forge-master-a".into())
+        );
+        assert_eq!(caller(None, Some(RUNNER_SOCK), None), DialogCaller::NotOurs);
+        assert_eq!(
+            caller(Some("/tmp/tmux-1000/default,1,0"), Some(RUNNER_SOCK), None),
+            DialogCaller::NotOurs,
+            "the operator's own tmux is not the runner's"
+        );
+        for (got, want) in [
+            (caller(on, None, None), "socket could not be resolved"),
+            (caller(Some("garbage"), Some(RUNNER_SOCK), None), "garbage"),
+            (
+                caller(on, Some(RUNNER_SOCK), Some(Err("tmux did not say"))),
+                "tmux did not say",
+            ),
+        ] {
+            match got {
+                DialogCaller::Unknown(why) => assert!(why.contains(want), "{why}"),
+                other => panic!("expected unknown naming {want}: {other:?}"),
+            }
+        }
+    }
+
+    /// ISS-1385 criterion 9: the dialog path is taken for that one tool alone.
+    #[test]
+    fn only_the_dialog_tool_takes_the_dialog_path() {
+        let body = SOURCE
+            .split("pub async fn run(args: Args) {")
+            .nth(1)
+            .expect("the verb's body");
+        assert!(
+            body.contains(
+                "if tool_named(&payload).as_deref() == Some(master_question::DIALOG_TOOL)"
+            ),
+            "the dialog path is guarded by the tool's name"
         );
     }
 

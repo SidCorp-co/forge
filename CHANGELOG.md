@@ -3136,6 +3136,9 @@
 
 ### Fixed
 
+- **A master pane can no longer stop on a question dialog.** The box refuses it and names how to
+  put the question on the issue at each status (ISS-1385).
+
 - **A pane placed after a reboot finds `forge-runner`, `forge`, `claude` and `node`.** The runner
   builds the pane's PATH, and places no pane that would lack one (ISS-1390).
 
