@@ -820,9 +820,13 @@ mod tests {
         // `doctest = false` keeps `cargo test` from running them, and an
         // explicit `cargo test --doc` runs them anyway, so the library refuses
         // to be collected for one, whatever form the doc's code takes.
+        // By line, because a Windows checkout holds this file with CRLF endings.
         let lib = std::fs::read_to_string(crates.join("forge-runner-core/src/lib.rs")).unwrap();
+        let lib: Vec<&str> = lib.lines().collect();
         assert!(
-            lib.contains(concat!("#[cfg(doc", "test)]\ncompile_error!(")),
+            lib.windows(2)
+                .any(|pair| pair[0] == concat!("#[cfg(doc", "test)]")
+                    && pair[1].starts_with("compile_error!(")),
             "forge-runner-core's lib.rs refuses `cargo test --doc` by name"
         );
         let doctests_on: toml::Table = toml::from_str("[lib]\ndoctest = true").unwrap();
