@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler
+  rescues only a lost wake: never after a newer decision, and a delivered rescue backs off
+  2, 4…32 minutes, six in all per change.
 - **Reads around a wait name the right party.** Issue list rows say which gate withholds them,
   contract versions carry their own decision, and revision-routed feedback waits on delivery, not a
   person, once its revision is current.

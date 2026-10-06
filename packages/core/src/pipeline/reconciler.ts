@@ -20,6 +20,11 @@ import {
 } from './ports.js';
 import { mintReconcilerActor, reconcilerActorFor } from './reconciler-actor.js';
 import {
+  RESCUE_DELIVERY_LIMIT,
+  recordDeliveredRescue,
+  rescuesNotDue,
+} from './rescue-wake-ledger.js';
+import {
   buildWedgeResetBody,
   readWedgeLease,
   wedgeLeaseHoldsTheIssue,
@@ -49,14 +54,20 @@ export async function runReconcilerOnce(): Promise<{
   let stale = 0;
   let autonomousReset = 0;
 
+  // An issue is rescued only when a wake for it may have been lost: never once a decision recorded
+  // on it post-dates its last change (its master has read it as it stands and held it), and a
+  // rescue that reached a box is redelivered on the ledger's backoff, not every minute.
+  const notDue = await rescuesNotDue(AUTONOMOUS_ENTRY_STATUS, Date.now());
   const stuck = await db.execute<{
     id: string;
     project_id: string;
     status: string;
     created_by: string | null;
     reopen_count: number;
+    changed_at: string;
   }>(sql`
-    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by
+    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
+           i.updated_at::text AS changed_at
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
@@ -65,6 +76,16 @@ export async function runReconcilerOnce(): Promise<{
         SELECT 1 FROM jobs j
         WHERE j.issue_id = i.id
           AND j.status IN ('queued','dispatched')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM comments c
+        WHERE c.issue_id = i.id
+          AND c.intent = 'decision'
+          AND c.created_at >= i.updated_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_to_recordset(${notDue}::jsonb) AS w(id uuid, at text)
+        WHERE w.id = i.id AND w.at::timestamptz = i.updated_at
       )
     LIMIT ${STUCK_ISSUE_LIMIT}
   `);
@@ -87,6 +108,17 @@ export async function runReconcilerOnce(): Promise<{
 
       if (boxes === 0) continue;
 
+      if (recordDeliveredRescue(row.id, row.changed_at, Date.now())) {
+        logger.warn(
+          { issueId: row.id, status: row.status, rescues: RESCUE_DELIVERY_LIMIT },
+          'reconciler: the masters were woken for this issue as many times as a lost wake is owed, and none dispatched it or recorded a decision; it is not rescued again until it changes',
+        );
+        traceStep({
+          category: 'pipeline.reconciler.rescue_exhausted',
+          level: 'warning',
+          data: { issueId: row.id, status: row.status, rescues: RESCUE_DELIVERY_LIMIT },
+        });
+      }
       rescued++;
       traceStep({
         category: 'pipeline.reconciler.enqueued_missing',
