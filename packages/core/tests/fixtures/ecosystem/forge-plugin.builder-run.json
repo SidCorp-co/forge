@@ -1,0 +1,41 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/builder-run-v1.json",
+  "version": 1,
+  "id": "f4ac9d2b-4a5e-4f6d-9b72-8d9e0f1a2b34",
+  "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+  "project": "8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3",
+  "trigger": { "kind": "joined", "sha": "9c1e5f0a7b3d2e4c6a8b0d1f3e5a7c9b1d3f5e7a" },
+  "steps": [
+    { "name": "scan", "status": "succeeded" },
+    { "name": "classify", "status": "succeeded" },
+    { "name": "write-links", "status": "running", "detail": "one of two links written" }
+  ],
+  "findings": [
+    {
+      "classification": "matched",
+      "site": {
+        "path": "cli/src/commands/issue.ts",
+        "line": 42,
+        "operation": "GET /api/issues/{id}"
+      },
+      "contract": { "provider": "da368b0a-8e21-4763-9d90-8f7b9d0c7115", "slug": "forge-api" }
+    },
+    {
+      "classification": "outside_ecosystem",
+      "site": {
+        "path": "cli/src/update.ts",
+        "line": 9,
+        "operation": "GET /repos/{owner}/{repo}/releases"
+      },
+      "host": "api.github.com"
+    },
+    {
+      "classification": "unknown",
+      "site": { "path": "cli/src/net.ts", "line": 88, "operation": "fetch(url)" },
+      "note": "The URL is built at run time."
+    }
+  ],
+  "links": ["c17f6a9e-1d2b-4c3a-8e4f-5a6b7c8d9e01"],
+  "createdAt": "2026-10-01T09:00:00.000Z",
+  "updatedAt": "2026-10-01T09:05:00.000Z"
+}
