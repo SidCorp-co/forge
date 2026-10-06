@@ -100,6 +100,11 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
       cause: { code: 'CONFLICT', details: { error: failedInsert() } },
     });
   });
+  app.get('/failed-query-deep-in-details', () => {
+    let details: unknown = { error: failedInsert() };
+    for (let i = 0; i < 40; i++) details = { inner: details };
+    throw new HTTPException(409, { message: 'conflict', cause: { code: 'CONFLICT', details } });
+  });
   app.notFound(notFoundHandler);
   app.onError(handler);
   return app;
@@ -192,6 +197,7 @@ describe('error middleware', () => {
     '/failed-query-http',
     '/failed-query-details',
     '/failed-query-error-in-details',
+    '/failed-query-deep-in-details',
   ])("answers %s with none of the failed query's bound params outside production", async (path) => {
     const text = await (await makeApp().request(path)).text();
     expect(text).not.toMatch(LEAKS);
@@ -214,6 +220,7 @@ describe('error middleware in production', () => {
     '/failed-query-http',
     '/failed-query-details',
     '/failed-query-error-in-details',
+    '/failed-query-deep-in-details',
   ])("answers %s with none of the failed query's bound params", async (path) => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.resetModules();

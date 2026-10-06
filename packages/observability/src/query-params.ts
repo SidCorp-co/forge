@@ -1,7 +1,7 @@
 export const REDACTED = '[Redacted]';
 
 const SQLSTATE = /^[0-9A-Z]{5}$/;
-const MAX_DEPTH = 16;
+const MAX_DEPTH = 32;
 const MAX_CHAIN = 8;
 /** Searched for bare from this length; a shorter value would rewrite ordinary words. */
 const BARE_VALUE_MIN = 6;
@@ -149,7 +149,8 @@ function redactRecord(
 
 function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
   if (typeof value === 'string') return redactText(value, chain);
-  if (depth > MAX_DEPTH) return value;
+  // Past the bound nothing was read, so nothing is vouched for: the subtree goes, not through.
+  if (depth > MAX_DEPTH) return typeof value === 'object' && value !== null ? REDACTED : value;
   if (Array.isArray(value)) {
     const next = value.map((v) => redactValue(v, chain, depth + 1));
     return next.some((v, i) => v !== value[i]) ? next : value;

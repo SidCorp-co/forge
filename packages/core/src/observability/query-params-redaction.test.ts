@@ -113,6 +113,16 @@ describe('redactQueryParams', () => {
     expect(text).toContain('insert into');
   });
 
+  it('withholds a subtree deeper than it reads rather than passing it through', () => {
+    let deep: unknown = { error: duplicate() };
+    for (let i = 0; i < 17; i++) deep = { inner: deep };
+    expect(JSON.stringify(redactQueryParams(deep))).not.toContain(HASH);
+    for (let i = 0; i < 40; i++) deep = { inner: deep };
+    const text = JSON.stringify(redactQueryParams(deep));
+    expect(text).not.toContain(HASH);
+    expect(text).toContain(REDACTED);
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);
