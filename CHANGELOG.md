@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.49] - 2026-10-06
+
+Masters stop being re-woken for held rows; waits name the right party
+
+
 ### Fixed
 
 - **An open issue its master decided to hold is no longer re-woken every minute.** The reconciler
