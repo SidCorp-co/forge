@@ -40,14 +40,13 @@ import {
   useRegenerateTurn,
   useSendMessage,
   useSession,
-  TURN_PAGE_CAP,
-  TURN_PAGE_SIZE,
-  useSessionTurns,
+  useSessionTurnPages,
 } from "../hooks";
 import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { SessionComposer } from "./session-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
+import { TurnsTruncated } from "./turns-truncated";
 import { Conversation } from "./conversation";
 import { NewOutput } from "./new-output";
 import { DisclosureScope } from "../disclosure";
@@ -65,9 +64,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const copyShareLink = useCopyShareLink();
   const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
-  const [turnPages, setTurnPages] = useState({ sessionId, pages: TURN_PAGE_CAP });
-  const pages = turnPages.sessionId === sessionId ? turnPages.pages : TURN_PAGE_CAP;
-  const turnsQ = useSessionTurns(sessionId, pages);
+  const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
   const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
@@ -366,25 +363,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                 />
               )}
               {!fromMessages && turnsQ.data?.nextCursor && (
-                <div
-                  data-testid="turns-truncated"
-                  className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle pt-3"
-                >
-                  <p className="fg-body-sm text-muted">
-                    Showing the first {turnsQ.data.turns.length.toLocaleString()} entries — later
-                    entries were not loaded.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={turnsQ.isFetching}
-                    onClick={() => setTurnPages({ sessionId, pages: pages + TURN_PAGE_CAP })}
-                    className="fg-body-sm text-accent-text hover:underline disabled:text-muted disabled:no-underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                  >
-                    {turnsQ.isFetching
-                      ? "Loading…"
-                      : `Load the next ${(TURN_PAGE_CAP * TURN_PAGE_SIZE).toLocaleString()}`}
-                  </button>
-                </div>
+                <TurnsTruncated loaded={turnsQ.data.turns.length} loading={turnsQ.isFetching} onLoad={loadMoreTurns} />
               )}
               {stage && (
                 <div className="mt-3">

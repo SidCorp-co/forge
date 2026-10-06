@@ -1,6 +1,7 @@
 "use client";
 
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
@@ -29,6 +30,14 @@ export function useSessionTurns(id: string | undefined, pages: number = TURN_PAG
     // Keeps the loaded turns on screen while more pages load, never across sessions.
     placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === id ? prev : undefined),
   });
+}
+
+/** The session's turns, plus the act that loads the next `TURN_PAGE_CAP` pages past a cap. */
+export function useSessionTurnPages(id: string) {
+  const [loaded, setLoaded] = useState({ id, pages: TURN_PAGE_CAP });
+  const pages = loaded.id === id ? loaded.pages : TURN_PAGE_CAP;
+  const turnsQ = useSessionTurns(id, pages);
+  return { turnsQ, loadMoreTurns: () => setLoaded({ id, pages: pages + TURN_PAGE_CAP }) };
 }
 
 export const TURN_PAGE_SIZE = 500;
