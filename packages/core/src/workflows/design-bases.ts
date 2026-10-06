@@ -89,11 +89,29 @@ export function readBases(
 
 function stateOf(b: BaseReading): string {
   if (b.designStatus === 'missing') return 'is no workflow of this project';
+  if (b.approvedRevision !== null && b.approvedRevision !== b.revision) {
+    return `is no longer the approved revision: "${b.workflow}" is approved at revision ${b.approvedRevision} now${
+      b.designStatus === 'approved'
+        ? ''
+        : ` and stands ${b.designStatus ?? 'outside the design lifecycle'}`
+    }, so this design rests on a stale base`;
+  }
   const approved =
     b.approvedRevision === null
       ? 'no approved revision'
       : `approved revision ${b.approvedRevision}`;
   return `is ${b.designStatus ?? 'not in a design lifecycle'}, with ${approved}`;
+}
+
+/** The refusal approving `doc` would meet on its bases right now, or null: read before anyone tries
+ *  to approve it, so a proposed design resting on a moved base names its writer, not its approver. */
+export function standingBaseRefusal(
+  revision: number,
+  doc: unknown,
+  held: readonly Pick<StoredWorkflow, 'flow' | 'designStatus' | 'approvedRevision'>[],
+): DesignRefusal | null {
+  const bases = basesOfStored(doc);
+  return bases.length > 0 ? baseApprovalRefusal(revision, readBases(bases, held)) : null;
 }
 
 // A design is approved only while every base it declares stands approved at the revision
@@ -112,6 +130,6 @@ export function baseApprovalRefusal(
       .map((b) => `"${b.workflow}" rev ${b.revision}, which ${stateOf(b)}`)
       .join(
         '; ',
-      )}. A design is approved only once every base it declares is approved at the revision it names: approve the base first, or write this design again naming the base revision that is approved.`,
+      )}. A design is approved only once every base it declares is approved at the revision it names: approve the base first, or write this design again with basedOn re-pinned to the base revision that is approved.`,
   };
 }

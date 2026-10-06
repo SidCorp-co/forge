@@ -28,7 +28,8 @@ names the workflow it builds is not dispatched while that design is not approved
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
 2. **Propose.** \`POST …/workflows/:workflow/design/propose\` with the revision you wrote and \`issue\`, the issue the design is
-   drawn under (a revision a later write proposes inherits it). The approver now sees it on
+   drawn under. A later write that proposes again names it with \`issue\` beside \`baseRevision\`; without one it
+   inherits the superseded revision's issue while that issue is still open, and none once it is closed. The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
 3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
    waits, \`returned\` carries the approver's reason, \`approved\` names the revision. A return reopens
@@ -83,8 +84,9 @@ it builds on. A base naming the design itself, a flow the project does not hold,
 never held, or one flow twice is refused at the write (\`WORKFLOW_BASE_SELF\`, \`WORKFLOW_BASE_UNKNOWN\`,
 \`WORKFLOW_BASE_DUPLICATE\`). Approving a revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\` while any
 base it declares is not approved at the revision it names — returned, still proposed, never approved, or
-approved at another revision — and the refusal names each base and its state. Approve the base first, or
-write the design again naming the base revision that is approved. Prose that cites another design is
+approved at another revision — and the refusal names each base and its state. The same reading stands
+before anyone tries: a proposed design whose base moved reads as waiting on its writer to re-pin \`basedOn\`,
+not on its approver. Approve the base first, or write the design again naming the base revision that is approved. Prose that cites another design is
 never read as a base.
 
 An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria

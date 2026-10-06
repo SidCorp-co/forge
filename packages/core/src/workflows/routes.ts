@@ -161,6 +161,7 @@ workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c
       writer: writerOf(c),
       baseRevision: body.baseRevision,
       raw: body.document,
+      issue: body.issue,
     }),
     body.ignored,
   );

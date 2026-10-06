@@ -22,6 +22,7 @@ import {
   writeIssueRelations,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import {
@@ -32,6 +33,7 @@ import {
 } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/index.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
+import { reviseSuggestion as reviseProposed } from './propose.js';
 import {
   headOf,
   type Row,
@@ -51,7 +53,44 @@ import {
   type SuggestionOutcome,
 } from './write.js';
 
-export { createSuggestion, reviseSuggestion } from './propose.js';
+export { createSuggestion } from './propose.js';
+
+/**
+ * A reviewer's edit of a feedback triage, accepted in the same request when the reviewer may route
+ * the feedback: the reviser already holds suggestions.approve (revising rejects the original), so a
+ * second call to accept their own edit cost one more act and left the feedback reading `proposed`
+ * between them (HOP run 2026-10-05, FB-2). Any other kind, or a reviewer without feedback.approve,
+ * leaves the revision proposed as the suggestion lifecycle draws it.
+ */
+export async function reviseSuggestion(
+  input: Parameters<typeof reviseProposed>[0],
+): Promise<SuggestionOutcome> {
+  const revised = await reviseProposed(input);
+  if (!revised.ok || revised.suggestion.kind !== 'feedback_triage') return revised;
+  const mayRoute = await permissionRefusalFor(
+    actorFor(input.actor.userId, input.actor.agency),
+    'feedback.approve',
+    projectResource(input.projectId),
+    'routing a feedback item',
+  );
+  if (mayRoute) return revised;
+  const accepted = await acceptSuggestion({
+    projectId: input.projectId,
+    id: revised.suggestion.id,
+    actor: input.actor,
+    reason: `accepted by its reviewer in the revise that wrote it (revises ${input.id})${
+      input.reason?.trim() ? `: ${input.reason.trim()}` : ''
+    }`,
+  });
+  if (accepted.ok) return { ...accepted, created: true };
+  // The revise committed: answer with the revision as it stands (proposed), never with a refusal
+  // that would read as though nothing was written. Accepting it again names the refusal.
+  logger.warn(
+    { suggestionId: revised.suggestion.id, refusals: accepted.refusals.map((r) => r.code) },
+    'suggestions: a revised feedback triage was written and its acceptance in the same act was refused',
+  );
+  return revised;
+}
 export type { SuggestionOutcome } from './write.js';
 
 // Workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate

@@ -9,7 +9,14 @@ export interface IgnoredField {
 }
 
 type ReadBack =
-  | { ok: true; baseRevision: number | null; document: unknown; ignored: IgnoredField[] }
+  | {
+      ok: true;
+      baseRevision: number | null;
+      document: unknown;
+      ignored: IgnoredField[];
+      /** The issue a write that proposes the design again is drawn under, by key or uuid. */
+      issue?: string;
+    }
   | { ok: false; refusals: WorkflowRefusal[] };
 
 // what GET /api/projects/:id/workflows/:workflow wraps around the document, and stamps inside it
@@ -20,7 +27,7 @@ const shapeError = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'CONFIG_WRITE_SHAPE' } });
 
 /**
- * A PUT body is `{ baseRevision, document }`, and what GET returned is accepted as it stands: the
+ * A PUT body is `{ baseRevision, document, issue? }`, and what GET returned is accepted as it stands: the
  * fields the server owns are dropped and reported, and `revision` is the base when no
  * `baseRevision` is sent.
  */
@@ -47,6 +54,16 @@ export function readBackOf(raw: unknown, workflowId: string): ReadBack {
       );
     }
   }
+  let issue: string | undefined;
+  if ('issue' in body) {
+    if (typeof body.issue !== 'string' || !body.issue.trim() || body.issue.length > 200) {
+      throw shapeError(
+        'issue must be the key or uuid of the issue this write is drawn under, a non-empty string of at most 200 characters',
+      );
+    }
+    issue = body.issue.trim();
+    delete body.issue;
+  }
   const document = body.document;
   if (isRecord(document)) {
     const stripped: Record<string, unknown> = { ...document };
@@ -72,5 +89,5 @@ export function readBackOf(raw: unknown, workflowId: string): ReadBack {
     }
     body.document = stripped;
   }
-  return { ok: true, ...envelopeOf(body), ignored };
+  return { ok: true, ...envelopeOf(body), ignored, ...(issue ? { issue } : {}) };
 }

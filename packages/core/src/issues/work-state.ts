@@ -6,9 +6,9 @@
  * cm:edge contract -> packages/core/src/db/schema-issue-work-state.ts — the columns and their checks.
  */
 
-import { eq, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
+import { type IssueStatus, issues } from '../db/schema.js';
 import {
   type IssueWorkStateRow,
   issueWorkState,
@@ -60,15 +60,41 @@ export async function setWorkStep(
   issueId: string,
   step: WorkStep | null,
   now: Date = new Date(),
+  opts: { restart?: boolean } = {},
 ): Promise<void> {
   const held = await readWorkStateForUpdate(executor, issueId);
-  if ((held?.step ?? null) === step) return;
+  if ((held?.step ?? null) === step && !opts.restart) return;
   const steps = nextStepLog(held?.steps ?? [], step, now);
   const values = { step, stepStartedAt: step === null ? null : now, steps, updatedAt: now };
   await executor
     .insert(issueWorkState)
     .values({ issueId, ...values })
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
+}
+
+/**
+ * A new run over issues already in progress starts their step over at triage: the step an earlier
+ * run reached, or a park kept, is not where this run is (HOP run 2026-10-05: ISS-1 re-dispatched to
+ * write a design revision read `test` from the day before). The run's own step writes move it on.
+ */
+export async function restartStepsForNewRun(
+  executor: Executor,
+  projectId: string,
+  seqs: readonly number[],
+  now: Date = new Date(),
+): Promise<void> {
+  if (seqs.length === 0) return;
+  const rows = await executor
+    .select({ id: issues.id })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        inArray(issues.issSeq, [...seqs]),
+        eq(issues.status, 'in_progress'),
+      ),
+    );
+  for (const row of rows) await setWorkStep(executor, row.id, 'triage', now, { restart: true });
 }
 
 async function readWorkStateForUpdate(

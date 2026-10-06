@@ -11,6 +11,7 @@ import {
 } from './assistant/index.js';
 import { runHeartbeatTick } from './conversations/index.js';
 import {
+  reapAbandonedDeclarations,
   reapDeadMasterHolds,
   reapDeadRunSessions,
   reapSilentMasters,
@@ -154,6 +155,13 @@ export function coreTimers(): Timer[] {
         const reaped = await reapDeadRunSessions();
         if (reaped.length > 0) {
           logger.info({ reaped: reaped.length }, 'run-session-reaper: sweep returned runs');
+        }
+        const abandoned = await reapAbandonedDeclarations();
+        if (abandoned > 0) {
+          logger.info(
+            { abandoned },
+            'run-session-reaper: closed declarations the box stopped re-sending',
+          );
         }
       },
     },

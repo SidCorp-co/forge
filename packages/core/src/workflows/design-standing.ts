@@ -18,6 +18,8 @@ interface DesignHeadFacts {
 interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
   canDecide: boolean;
+  /** The refusal approving the proposed revision would meet on its bases now (`standingBaseRefusal`). */
+  baseUnapproved?: { code: string; detail: string } | null;
 }
 
 const wait = (
@@ -48,6 +50,14 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const writer = input.latest?.author ?? 'Master';
   switch (input.status) {
     case 'proposed':
+      if (input.baseUnapproved) {
+        return wait(
+          'agent',
+          writer,
+          're-pin basedOn',
+          `${input.baseUnapproved.code}: ${input.baseUnapproved.detail} Its approver cannot approve it until its writer writes it again with basedOn re-pinned`,
+        );
+      }
       return proposedWait(input, input.proposedRevision ?? latest ?? 1);
     case 'returned':
       return wait(

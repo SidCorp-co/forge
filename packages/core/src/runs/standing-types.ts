@@ -39,6 +39,14 @@ export interface RunFacts {
     openPhase: string | undefined;
     pauseReason: string | null;
     releaseVersion: string | null;
+    /** The take refusal a box's declaration is queued behind, until core admits it. */
+    declarationRefusal: {
+      code: string;
+      gate: string;
+      detail: string;
+      at: Date;
+      attempts: number;
+    } | null;
   };
   issue:
     | (RunIssueRef & {

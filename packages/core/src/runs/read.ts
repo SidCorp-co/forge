@@ -208,7 +208,13 @@ export async function readRunStanding(
   runId: string,
   viewer: RunViewer | null,
 ): Promise<RunStandingDetail | null> {
-  const [one] = await baseRuns(projectId, sql`r.id = ${runId}::uuid`, 1, 0);
+  // A box names its run by its own id (the declaration), core by the pipeline run's: both resolve.
+  const [one] = await baseRuns(
+    projectId,
+    sql`(r.id = ${runId}::uuid OR r.metadata ->> 'boxRunId' = ${runId})`,
+    1,
+    0,
+  );
   if (!one) return null;
   const { ctx } = await contextFor(projectId, viewer);
   const [run] = await standingsOf(projectId, [one], ctx);
@@ -244,7 +250,13 @@ export async function runWaitingOf(
   projectId: string,
   runId: string,
 ): Promise<RunStanding['waitingOn'] | null> {
-  const [one] = await baseRuns(projectId, sql`r.id = ${runId}::uuid`, 1, 0);
+  // A box names its run by its own id (the declaration), core by the pipeline run's: both resolve.
+  const [one] = await baseRuns(
+    projectId,
+    sql`(r.id = ${runId}::uuid OR r.metadata ->> 'boxRunId' = ${runId})`,
+    1,
+    0,
+  );
   if (!one) return null;
   const { ctx } = await contextFor(projectId, null);
   const [run] = await standingsOf(projectId, [one], ctx);

@@ -1,4 +1,5 @@
 import { type DesignStatus, WORKFLOW_DESIGN_MACHINE } from '@forge/contracts/design-status';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -172,6 +173,20 @@ const designColumns = {
   designIssueId: projectWorkflowDesigns.designIssueId,
 };
 
+// A revision a write proposes again is drawn under the issue the one it supersedes named, while that
+// issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38 though it was
+// drawn under ISS-64 (FB-54), and a return then reopens nothing. Past that the writer names it.
+async function inheritedDesignIssue(tx: Tx, workflowId: string): Promise<string | null> {
+  const prior = (await designsOf(tx, workflowId))[0]?.designIssueId ?? null;
+  if (!prior) return null;
+  const [issue] = await tx
+    .select({ status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, prior))
+    .limit(1);
+  return issue && !ISSUE_TERMINAL_STATUSES.includes(issue.status) ? prior : null;
+}
+
 export async function insertDesign(
   tx: Tx,
   input: {
@@ -186,7 +201,7 @@ export async function insertDesign(
   const designIssueId =
     input.designIssueId !== undefined
       ? input.designIssueId
-      : ((await designsOf(tx, input.workflowId))[0]?.designIssueId ?? null);
+      : await inheritedDesignIssue(tx, input.workflowId);
   await tx.insert(projectWorkflowDesigns).values({
     workflowId: input.workflowId,
     revision: input.revision,

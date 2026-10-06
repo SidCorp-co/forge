@@ -31,8 +31,16 @@ import {
 export type { KernelFlip, RunFacts, StandingContext } from './standing-types.js';
 
 function stepFor(f: RunFacts, live: boolean): RunStep {
+  const stepAt = f.workState?.stepStartedAt ?? null;
+  if (live && f.workState?.step && stepAt && stepAt.getTime() < f.run.startedAt.getTime()) {
+    return {
+      source: 'none',
+      step: null,
+      detail: `issue_work_state.step reads ${f.workState.step} since ${stepAt.toISOString()}, before this run started at ${f.run.startedAt.toISOString()}: an earlier run or a park left it, and this run has reported no step of its own`,
+    };
+  }
   if (live && f.workState?.step) {
-    return { source: 'work_state', step: f.workState.step, since: iso(f.workState.stepStartedAt) };
+    return { source: 'work_state', step: f.workState.step, since: iso(stepAt) };
   }
   const read = stepOf(f.run.rawLane, f.run.currentStep, f.run.openPhase);
   if (read.source === 'none') {

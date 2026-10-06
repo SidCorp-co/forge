@@ -11,6 +11,7 @@ import { activityLog } from '../../db/schema-activity.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
 import type { Actor } from '../activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
+import { mintRecordQuestion } from './question-record.js';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
 interface MirroredComment {
@@ -54,6 +55,8 @@ export async function mirrorCommentRecord(
       `EVENT_KIND_KERNEL_ONLY: this comment's \`forge-record: ${record.kind}\` is stored as prose only — a ${record.kind} record is kernel evidence core writes in the transaction of the move itself, so no comment or caller writes one. Say what the move needs in the transition's \`reason\`, and core records it`,
     ];
   }
+  const asked =
+    record.kind === 'question' ? await mintRecordQuestion(comment, record, actor, tx) : [];
   await writeRecordEvent(
     {
       issueId: comment.issueId,
@@ -66,7 +69,7 @@ export async function mirrorCommentRecord(
     },
     tx,
   );
-  return [];
+  return asked;
 }
 
 export async function dropCommentMirror(commentId: string, tx: Tx): Promise<void> {

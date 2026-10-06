@@ -183,6 +183,22 @@ function runPart(b: BaseRun, lane: RunFacts['run']['rawLane'], t: Tables): RunFa
     openPhase: str(phase?.phase) ?? undefined,
     pauseReason: str(metadataObject(b.metadata).pauseReason),
     releaseVersion: b.release_version,
+    declarationRefusal: declarationRefusalOf(metadataObject(b.metadata).declarationRefusal),
+  };
+}
+
+function declarationRefusalOf(raw: unknown): RunFacts['run']['declarationRefusal'] {
+  const r = metadataObject(raw);
+  const code = str(r.code);
+  const gate = str(r.gate);
+  const at = str(r.at);
+  if (!code || !gate || !at || Number.isNaN(Date.parse(at))) return null;
+  return {
+    code,
+    gate,
+    detail: str(r.detail) ?? '',
+    at: new Date(at),
+    attempts: Number(r.attempts) || 1,
   };
 }
 

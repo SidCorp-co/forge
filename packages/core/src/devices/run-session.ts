@@ -33,6 +33,7 @@ import {
   type IssueLeaseRelease,
   refuseHeldTakeForSeqs,
   releaseIssueLeaseRow,
+  restartStepsForNewRun,
   takeIssueLeases,
 } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -50,6 +51,13 @@ import {
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
+import {
+  type BoxRunSession,
+  declarationLockKey,
+  promoteQueuedDeclaration,
+  queueableRefusal,
+  recordRefusedDeclaration,
+} from './run-session-queued.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
@@ -109,11 +117,12 @@ async function openSessionForBoxRun(
     deviceId: string;
     boxRunId: string;
   },
-): Promise<RunSession | null> {
+): Promise<BoxRunSession | null> {
   const [row] = await executor
     .select({
       sessionId: agentSessions.id,
       runId: pipelineRuns.id,
+      status: agentSessions.status,
     })
     .from(agentSessions)
     .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
@@ -126,7 +135,7 @@ async function openSessionForBoxRun(
       ),
     )
     .limit(1);
-  return row ? { sessionId: row.sessionId, runId: row.runId } : null;
+  return row ? { sessionId: row.sessionId, runId: row.runId, status: row.status } : null;
 }
 
 export async function openRunSession(args: {
@@ -145,7 +154,7 @@ export async function openRunSession(args: {
       deviceId: args.deviceId,
       boxRunId: args.boxRunId,
     });
-    if (existing) {
+    if (existing && existing.status !== 'queued') {
       logger.info(
         { ...existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
         'run-session: this box run already has a session, answering with it rather than opening a second',
@@ -180,55 +189,96 @@ export async function openRunSession(args: {
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), and a flow's build without its approved design (ISS-53) are refused as the job claim refuses them
-  await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
-  const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
-  const spec: OneShotRunSpec = {
-    projectId: args.projectId,
-    kind: 'system',
-    metadata: {
-      type: RUN_SESSION_KIND,
-      deviceId: args.deviceId,
-      [RUN_ISSUES_METADATA_KEY]: canonical.keys,
-      [RUN_GROUP_METADATA_KEY]: canonical.keys,
-      [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
-      ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
-      ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
-    },
+  const boxRunId = args.boxRunId;
+  const identity = {
+    type: RUN_SESSION_KIND,
+    deviceId: args.deviceId,
+    ...(boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: boxRunId } : {}),
   };
-  const claimed = await db.transaction(async (tx) => {
-    if (args.boxRunId) {
-      await lockXact(tx, 'runSession', `${args.deviceId}:${args.boxRunId}`);
-      const winner = await openSessionForBoxRun(tx, {
+  // A refused take still leaves the box's run standing somewhere: queued behind its refusal.
+  const queueIfRefused = async (err: unknown) => {
+    const refusal = queueableRefusal(err);
+    if (!boxRunId || !refusal) return;
+    await recordRefusedDeclaration(
+      {
         deviceId: args.deviceId,
-        boxRunId: args.boxRunId,
+        projectId: args.projectId,
+        boxRunId,
+        name: args.name,
+        keys: canonical.keys,
+        masterSessionId,
+        baseMetadata: identity,
+      },
+      refusal,
+      (tx) => openSessionForBoxRun(tx, { deviceId: args.deviceId, boxRunId }),
+    );
+  };
+  try {
+    await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
+  } catch (err) {
+    await queueIfRefused(err);
+    throw err;
+  }
+  const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
+  const metadata = {
+    ...identity,
+    [RUN_ISSUES_METADATA_KEY]: canonical.keys,
+    [RUN_GROUP_METADATA_KEY]: canonical.keys,
+    [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
+    ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
+  };
+  const spec: OneShotRunSpec = { projectId: args.projectId, kind: 'system', metadata };
+  const claimed = await db
+    .transaction(async (tx) => {
+      let queued: BoxRunSession | null = null;
+      if (boxRunId) {
+        await lockXact(tx, 'runSession', declarationLockKey(args.deviceId, boxRunId));
+        const winner = await openSessionForBoxRun(tx, { deviceId: args.deviceId, boxRunId });
+        if (winner && winner.status !== 'queued') return { existing: winner };
+        queued = winner;
+      }
+      if (queued) {
+        await promoteQueuedDeclaration(tx, queued, metadata);
+        await takeIssueLeases(tx, {
+          projectId: args.projectId,
+          deviceId: args.deviceId,
+          sessionId: queued.sessionId,
+          runId: queued.runId,
+          issueKeys: canonical.keys,
+        });
+        await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+        return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
+      }
+      const run = await insertOneShotRun(tx, spec);
+      const row = await insertSessionRow(tx, {
+        projectId: args.projectId,
+        deviceId: args.deviceId,
+        pipelineRunId: run.id,
+        title: `run: ${args.name}`,
+        kind: RUN_SESSION_KIND,
+        parentSessionId: masterSessionId,
+        status: 'running',
+        startedAt: new Date(),
+        lastHeartbeatAt: new Date(),
+        metadata: { terminalName: args.name, deviceId: args.deviceId },
       });
-      if (winner) return { existing: winner };
-    }
-    const run = await insertOneShotRun(tx, spec);
-    const row = await insertSessionRow(tx, {
-      projectId: args.projectId,
-      deviceId: args.deviceId,
-      pipelineRunId: run.id,
-      title: `run: ${args.name}`,
-      kind: RUN_SESSION_KIND,
-      parentSessionId: masterSessionId,
-      status: 'running',
-      startedAt: new Date(),
-      lastHeartbeatAt: new Date(),
-      metadata: { terminalName: args.name, deviceId: args.deviceId },
+      // Inside the transaction on purpose: a key somebody live already holds
+      // rolls the run and the session back with it, so a refused open leaves a
+      // box with nothing rather than with half a group.
+      await takeIssueLeases(tx, {
+        projectId: args.projectId,
+        deviceId: args.deviceId,
+        sessionId: row.id,
+        runId: run.id,
+        issueKeys: canonical.keys,
+      });
+      await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+      return { opened: { sessionId: row.id, runId: run.id } };
+    })
+    .catch(async (err: unknown) => {
+      await queueIfRefused(err);
+      throw err;
     });
-    // Inside the transaction on purpose: a key somebody live already holds
-    // rolls the run and the session back with it, so a refused open leaves a
-    // box with nothing rather than with half a group.
-    await takeIssueLeases(tx, {
-      projectId: args.projectId,
-      deviceId: args.deviceId,
-      sessionId: row.id,
-      runId: run.id,
-      issueKeys: canonical.keys,
-    });
-    return { opened: { sessionId: row.id, runId: run.id } };
-  });
   if (claimed.existing) {
     logger.info(
       { ...claimed.existing, boxRunId: args.boxRunId, deviceId: args.deviceId },

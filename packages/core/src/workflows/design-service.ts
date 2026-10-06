@@ -13,7 +13,12 @@ import {
   designApproverRefusal,
   proposeRefusal,
 } from './design.js';
-import { baseApprovalRefusal, basesOfStored, readBases } from './design-bases.js';
+import {
+  baseApprovalRefusal,
+  basesOfStored,
+  readBases,
+  standingBaseRefusal,
+} from './design-bases.js';
 import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
@@ -60,11 +65,12 @@ async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
 
 async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   const approver = approvalPermission('workflow-designs');
-  const [designs, builds, prefix, requirements] = await Promise.all([
+  const [designs, builds, prefix, requirements, held] = await Promise.all([
     designsOf(db, row.id),
     buildsOf(db, [row.id]),
     activeIssuePrefix(row.projectId),
     designRequirementsOf(row.id),
+    row.designStatus === 'proposed' ? workflowsOf(db, row.projectId) : [],
   ]);
   const names = await userNames([
     ...designs.map((d) => d.proposedByUser),
@@ -90,7 +96,13 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
     approvedRevision: row.approvedRevision,
     approver,
     canDecide,
-    waitingOn: designWaitingOn({ ...head, latest, canDecide }),
+    waitingOn: designWaitingOn({
+      ...head,
+      latest,
+      canDecide,
+      baseUnapproved:
+        awaiting !== null ? standingBaseRefusal(awaiting, designs[0]?.document, held) : null,
+    }),
     revisions: designs.map((d) => ({
       revision: d.revision,
       designIssueId: d.designIssueId,
