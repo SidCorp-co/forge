@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.48] - 2026-10-06
+
+Agent sessions read true, and pane agents run the daemon's own forge-runner
+
+
 ### Fixed
 
 - **Agent sessions read true.** The session screen shows each refusal as `CODE: sentence`;
