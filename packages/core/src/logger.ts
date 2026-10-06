@@ -50,11 +50,27 @@ function redactLine(line: string): string {
   return changed ? `${JSON.stringify(redacted)}\n` : line;
 }
 
-/** The error a call logs, which pino would also take its `msg` from when the call names none. */
+/** The error a call logs: its message text reads it, and pino takes `msg` from it when none is named. */
 function loggedError(first: unknown): Error | null {
   if (first instanceof Error) return first;
-  const obj = first as { err?: unknown; msg?: unknown } | null;
-  return obj?.err instanceof Error && obj.msg === undefined ? obj.err : null;
+  const err = (first as { err?: unknown } | null)?.err;
+  return err instanceof Error ? err : null;
+}
+
+/**
+ * The call's text redacted against the error it logs, which only this hook still holds: a driver
+ * message repeating a short bound value is told only by the values the error carries.
+ */
+function redactCall(args: unknown[], err: Error): unknown[] {
+  let [first, ...rest] = args;
+  rest = rest.map((a) => (typeof a === 'string' ? redactQueryParams(a, err) : a));
+  const named = first as { msg?: unknown };
+  if (!(first instanceof Error) && typeof named.msg === 'string') {
+    first = { ...named, msg: redactQueryParams(named.msg, err) };
+  } else if (typeof rest[0] !== 'string') {
+    rest = [redactQueryParams(err.message, err), ...rest];
+  }
+  return [first, ...rest];
 }
 
 /** pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`. */
@@ -72,10 +88,8 @@ export const loggerOptions: LoggerOptions = {
   hooks: {
     logMethod(args, method) {
       const err = loggedError(args[0]);
-      if (err && typeof args[1] !== 'string') {
-        return method.apply(this, [args[0] as object, redactQueryParams(err.message, err)]);
-      }
-      return method.apply(this, args);
+      if (!err) return method.apply(this, args);
+      return method.apply(this, redactCall(args, err) as Parameters<typeof method>);
     },
     streamWrite: redactLine,
   },

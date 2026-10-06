@@ -5,12 +5,22 @@ const MAX_DEPTH = 16;
 const MAX_CHAIN = 8;
 /** Searched for bare from this length; a shorter value would rewrite ordinary words. */
 const BARE_VALUE_MIN = 6;
-/** Holds a redaction's place while the pattern runs, so the pattern does not take it again. */
-const HELD = String.fromCharCode(0xe000);
+const PRIVATE_USE = String.fromCharCode(0xe000);
+
+/**
+ * A marker the text does not contain, holding a redaction's place while the pattern runs so the
+ * pattern does not take it again. Built per text: one fixed character could be a bound value's own.
+ */
+function markerAbsentFrom(text: string): string {
+  let marker = PRIVATE_USE;
+  while (text.includes(marker)) marker += PRIVATE_USE;
+  return marker;
+}
+
 /** Drizzle's `Failed query: <sql>\nparams: <values>`, the values running to the end of the text. */
-const FAILED_QUERY_PARAMS = new RegExp(
-  `(Failed query: [\\s\\S]*?\\nparams: )(?!${HELD})[\\s\\S]*$`,
-);
+function failedQueryParams(held: string): RegExp {
+  return new RegExp(`(Failed query: [\\s\\S]*?\\nparams: )(?!${held})[\\s\\S]*$`);
+}
 
 interface ChainReading {
   renderings: string[];
@@ -52,16 +62,18 @@ function readChain(err: unknown): ChainReading {
 }
 
 function redactText(text: string, chain: ChainReading | null): string {
+  if (!chain && !text.includes('Failed query: ')) return text;
+  const held = markerAbsentFrom(text);
   let out = text;
   if (chain) {
-    for (const r of chain.renderings) out = out.split(`params: ${r}`).join(`params: ${HELD}`);
-    for (const m of chain.driverMessages) out = out.split(m).join(HELD);
+    for (const r of chain.renderings) out = out.split(`params: ${r}`).join(`params: ${held}`);
+    for (const m of chain.driverMessages) out = out.split(m).join(held);
   }
-  out = out.replace(FAILED_QUERY_PARAMS, `$1${REDACTED}`);
+  out = out.replace(failedQueryParams(held), `$1${REDACTED}`);
   if (chain) {
     for (const v of chain.values) if (v.length >= BARE_VALUE_MIN) out = out.split(v).join(REDACTED);
   }
-  return out.split(HELD).join(REDACTED);
+  return out.split(held).join(REDACTED);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

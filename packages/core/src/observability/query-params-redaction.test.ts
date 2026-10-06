@@ -79,6 +79,13 @@ describe('redactQueryParams', () => {
     expect(JSON.stringify(redactQueryParams(line))).not.toMatch(/argon2|dup@example/);
   });
 
+  it('takes no bound value that opens with the redaction marker for a redaction already made', () => {
+    const forged = `${String.fromCharCode(0xe000)}SENTINEL`;
+    const err = new DrizzleQueryError('select $1', [forged], driverError('x', { code: 'XX000' }));
+    expect(redactQueryParams(err.message)).not.toContain('SENTINEL');
+    expect(redactQueryParams(err.message, err)).not.toContain('SENTINEL');
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);

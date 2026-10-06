@@ -65,6 +65,32 @@ describe('the core logger', () => {
     expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22P02');
   });
 
+  it('redacts a message the call names itself against the error it logs', () => {
+    const pg = Object.assign(new Error('rejected input: abc'), {
+      severity: 'ERROR',
+      code: '22023',
+    });
+    Object.defineProperty(pg, 'parameters', { value: ['abc'], enumerable: false });
+    const { lines, log } = capture();
+    log.error({ err: pg }, pg.message);
+    log.error({ err: pg }, 'failed with %s', pg.message);
+    log.error({ err: pg, msg: pg.message });
+    for (const line of lines) expect(line).not.toContain('abc');
+    expect(lines).toHaveLength(3);
+    expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22023');
+  });
+
+  it('keeps a bound value that opens with the redaction marker out of an interpolated message', () => {
+    const failed = new DrizzleQueryError(
+      'select $1',
+      [`${String.fromCharCode(0xe000)}SENTINEL`],
+      new Error('x'),
+    );
+    const { lines, log } = capture();
+    log.error(`lookup failed: ${failed.message}`);
+    expect(lines[0]).not.toContain('SENTINEL');
+  });
+
   it('still names the statement, the SQLSTATE and the constraint', () => {
     const { lines, log } = capture();
     log.error({ err: failedInsert() }, 'http.unhandled');
