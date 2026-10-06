@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.71] - 2026-10-06
+
+Feedback items track every issue carrying them; core judges master pass outcomes
+
+### Changed
+
+- **A feedback item can be carried by several issues.** Triage links one issue or a list of them; the item lists every carrier with its status, and reads resolved only once each carrier still carrying it has shipped.
+- **Core now judges how a master pass ended, what a master is owed, and its limit hold.** Verdicts answer { verdict, work }; passes close by op settle; the /me owed routes and /me/issues/admissible are deleted. Deploy core first.
+
 ## [0.4.0-dev.70] - 2026-10-06
 
 Runner answers permission dialogs already standing when it starts

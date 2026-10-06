@@ -1,1 +1,0 @@
-**Core now judges how a master pass ended, what a master is owed, and its limit hold.** Verdicts answer { verdict, work }; passes close by op settle; the /me owed routes and /me/issues/admissible are deleted. Deploy core first.
