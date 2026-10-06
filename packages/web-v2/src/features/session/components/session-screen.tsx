@@ -40,12 +40,13 @@ import {
   useRegenerateTurn,
   useSendMessage,
   useSession,
-  useSessionTurns,
+  useSessionTurnPages,
 } from "../hooks";
 import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { SessionComposer } from "./session-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
+import { TurnsTruncated } from "./turns-truncated";
 import { Conversation } from "./conversation";
 import { NewOutput } from "./new-output";
 import { DisclosureScope } from "../disclosure";
@@ -63,7 +64,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const copyShareLink = useCopyShareLink();
   const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
-  const turnsQ = useSessionTurns(sessionId);
+  const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
   const [railOpen, setRailOpen] = useState(false);
   // Desktop context-rail collapse (persisted). Below lg the rail is a SlideOver.
   const [railCollapsed, setRailCollapsed] = usePersistedState("web-v2:context-rail", false);
@@ -360,6 +361,9 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
                     editTurn.mutate({ turnId, content, expectedEditedAt })
                   }
                 />
+              )}
+              {!fromMessages && turnsQ.data?.nextCursor && (
+                <TurnsTruncated loaded={turnsQ.data.turns.length} loading={turnsQ.isFetching} onLoad={loadMoreTurns} />
               )}
               {stage && (
                 <div className="mt-3">

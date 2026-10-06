@@ -26,7 +26,13 @@ import { isRefusal } from '../lib/refusal.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
 import { composeReply, silence } from './turn-compose.js';
-import type { ConversationTurnRequest, TurnOutcome, TurnReply } from './turn-request.js';
+import {
+  type ConversationTurnRequest,
+  REPLY_NOT_DELIVERED,
+  REPLY_NOT_DELIVERED_REASON,
+  type TurnOutcome,
+  type TurnReply,
+} from './turn-request.js';
 
 export type {
   ConversationTurnRequest,
@@ -175,7 +181,8 @@ async function deliverReply(
     reportFailure(err, { tags: { area: 'conversations', phase: 'deliver' }, extra: where });
     return {
       kind: 'undeliverable',
-      reason: err instanceof Error ? err.message : String(err),
+      code: REPLY_NOT_DELIVERED,
+      reason: REPLY_NOT_DELIVERED_REASON,
       reply: reply.message.text,
     };
   }

@@ -371,7 +371,12 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
     case 'undeliverable':
       return {
         decision: 'undetermined',
-        detail: { reason: outcome.reason, attempted: true, undeliveredReply: outcome.reply },
+        detail: {
+          code: outcome.code,
+          reason: outcome.reason,
+          attempted: true,
+          undeliveredReply: outcome.reply,
+        },
       };
     default:
       return { decision: 'undetermined', detail: { reason: outcome.reason, attempted: true } };

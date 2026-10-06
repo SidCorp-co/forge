@@ -1,6 +1,7 @@
 "use client";
 
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
@@ -16,27 +17,42 @@ export function useSession(id: string | undefined) {
   });
 }
 
-/** Session turns. Keyed `['agent-session', id, 'turns']` — WS-invalidated. */
-export function useSessionTurns(id: string | undefined) {
+/**
+ * Session turns, the first `pages` pages of `TURN_PAGE_SIZE`. Keyed
+ * `['agent-session', id, 'turns', pages]` — the WS prefix invalidation still reaches it. A non-null
+ * `nextCursor` means later turns exist and were not loaded; raise `pages` to load them.
+ */
+export function useSessionTurns(id: string | undefined, pages: number = TURN_PAGE_CAP) {
   return useQuery({
-    queryKey: ["agent-session", id, "turns"],
-    queryFn: () => fetchAllTurns(id as string),
+    queryKey: ["agent-session", id, "turns", pages],
+    queryFn: () => fetchAllTurns(id as string, pages),
     enabled: !!id,
+    // Keeps the loaded turns on screen while more pages load, never across sessions.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === id ? prev : undefined),
   });
 }
 
-const TURN_PAGE_CAP = 40;
+/** The session's turns, plus the act that loads the next `TURN_PAGE_CAP` pages past a cap. */
+export function useSessionTurnPages(id: string) {
+  const [loaded, setLoaded] = useState({ id, pages: TURN_PAGE_CAP });
+  const pages = loaded.id === id ? loaded.pages : TURN_PAGE_CAP;
+  const turnsQ = useSessionTurns(id, pages);
+  return { turnsQ, loadMoreTurns: () => setLoaded({ id, pages: pages + TURN_PAGE_CAP }) };
+}
 
-export async function fetchAllTurns(id: string): Promise<TurnsResponse> {
+export const TURN_PAGE_SIZE = 500;
+export const TURN_PAGE_CAP = 40;
+
+export async function fetchAllTurns(id: string, pages: number = TURN_PAGE_CAP): Promise<TurnsResponse> {
   const turns: TurnRow[] = [];
   let after: string | undefined;
-  for (let page = 0; page < TURN_PAGE_CAP; page++) {
-    const res = await sessionApi.getTurns(id, { after, limit: 500 });
+  for (let page = 0; page < pages; page++) {
+    const res = await sessionApi.getTurns(id, { after, limit: TURN_PAGE_SIZE });
     turns.push(...res.turns);
     if (!res.nextCursor) return { turns, nextCursor: null };
     after = res.nextCursor;
   }
-  return { turns, nextCursor: null };
+  return { turns, nextCursor: after ?? null };
 }
 
 /** Invalidate the whole `['agent-session', id]` family after a mutation. */

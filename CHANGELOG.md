@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **An undelivered reply shows a reason, not a driver error.** The window keeps a coded sentence; the
+  raw error goes to logs only. A session transcript past 20,000 entries says so and loads the rest.
+
 - **A release number is spent unless proven unspent.** A run that pushed, then failed, keeps its
   version; only a job no box took, or an abort saying `pushed:false`, hands it back. A version
   reference resolves to the shipped run.
