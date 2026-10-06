@@ -6,9 +6,6 @@
  * sweep tick leaves on the rows.
  */
 
-import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -16,6 +13,7 @@ import {
   recordForgeDeployment,
   type CoolifyTarget as Target,
 } from '../helpers/coolify-deployments.js';
+import { type GitHubDouble, startGitHubDouble } from '../helpers/github-double.js';
 import {
   createTestProject,
   createTestUser,
@@ -34,55 +32,10 @@ const RUNNER_BUILD = '07f2009aaccccccccccccccccccccccccccccccc';
 const LACKING = '82ce8f4ddddddddddddddddddddddddddddddddd';
 const RUNNER_FILE = 'packages/runner/crates/forge-runner/src/cmd/top/render.rs';
 
-process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
-const { privateKey: APP_PRIVATE_KEY } = generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-});
+/** The start branch's head; the promotion range up to it carries nothing off the roster. */
+const MAIN_HEAD = '9a1b2c3d4e5f60718293a4b5c6d7e8f901234567';
 
-/** What the GitHub double answers: `compare` keyed `base...head`, `commits` keyed by sha. */
-interface Repo {
-  compare: Map<string, { status: string; files: string[] }>;
-  parents: Map<string, string>;
-  asked: string[];
-}
-
-let server: Server;
-let apiBase: string;
-const repo: Repo = { compare: new Map(), parents: new Map(), asked: [] };
-
-async function startGitHub(): Promise<string> {
-  server = createServer((req, res) => {
-    const url = req.url ?? '';
-    repo.asked.push(url);
-    const send = (status: number, body: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(body));
-    };
-    if (url.includes('/access_tokens')) {
-      return send(201, { token: 'ghs_installation_token', expires_at: '2099-01-01T00:00:00Z' });
-    }
-    const compared = /\/compare\/([^/?]+)$/.exec(url.split('?')[0] ?? '');
-    if (compared) {
-      const answer = repo.compare.get(decodeURIComponent(compared[1] ?? ''));
-      if (!answer) return send(404, { message: 'No common ancestor between these commits.' });
-      return send(200, {
-        status: answer.status,
-        files: answer.files.map((filename) => ({ filename })),
-      });
-    }
-    const commit = /\/commits\/([0-9a-f]+)$/.exec(url);
-    if (commit) {
-      const parent = repo.parents.get(commit[1] ?? '');
-      if (!parent) return send(404, { message: 'No commit found' });
-      return send(200, { sha: commit[1], parents: [{ sha: parent }] });
-    }
-    return send(404, { message: `the double serves no ${url}` });
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-}
+let repo: GitHubDouble;
 
 let harness: TestDatabase;
 let projectId: string;
@@ -96,11 +49,11 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   await registerIntegrationsForTest();
-  apiBase = await startGitHub();
+  repo = await startGitHubDouble();
 }, 60_000);
 
 afterAll(async () => {
-  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (repo) await repo.close();
   if (harness) await harness.cleanup();
 });
 
@@ -110,26 +63,6 @@ const fx = releaseBatchFixture(
 );
 
 const APP: Target = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
-
-async function bindGitHub(): Promise<void> {
-  const store = await import('../../src/integrations/store.js');
-  const connection = await store.createConnection({
-    ownerType: 'user',
-    ownerId,
-    provider: 'github',
-    displayName: 'GitHub App test',
-    secrets: { appId: randomUUID(), privateKey: APP_PRIVATE_KEY, webhookSecret: 'whs' },
-  });
-  await store.createBinding({
-    connectionId: connection.id,
-    projectId,
-    provider: 'github',
-    role: 'service',
-    label: '',
-    config: { owner: 'SidCorp-co', repo: 'forge', installationId: 1, apiBaseUrl: apiBase },
-    integrationSecret: 'whs',
-  });
-}
 
 /** Core is served at `commit`, as Forge deployed it through the live Coolify binding. */
 async function serveCore(commit: string): Promise<void> {
@@ -191,9 +124,9 @@ async function readinessHeld(): Promise<string[]> {
 beforeEach(async () => {
   await truncateAll(harness.db);
   coolify.deployments.clear();
-  repo.compare.clear();
-  repo.parents.clear();
-  repo.asked.length = 0;
+  repo.reset();
+  repo.heads.set('main', MAIN_HEAD);
+  repo.compare.set(`production...${MAIN_HEAD}`, { status: 'ahead', commits: [] });
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (
@@ -202,7 +135,7 @@ beforeEach(async () => {
     })
   ).id;
   await fx.seedReleaseRunner();
-  await bindGitHub();
+  await repo.bind(projectId, ownerId);
 });
 
 describe('a served descendant carries the judged commit', () => {

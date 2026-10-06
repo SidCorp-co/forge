@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **A release names every issue it would ship unnamed.** An issue landed in a promotion's range
+  but left off the batch holds the release until someone decides: ship it unverified, with why;
+  reverted; or cut below it (ISS-1386).
+
 - **A release no box has started says so.** Its run screen says why and when it is handed back, and
   a claimed issue on the release gate reads "in a release", not "shipping now" (ISS-1323).
 

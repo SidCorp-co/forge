@@ -60,6 +60,20 @@ export class ReleaseRuntimeUnroutedError extends Error {
   }
 }
 
+/** The release's range carries an issue nobody decided, or a decision or a cut that does not hold. */
+export class ReleaseCarriedError extends Error {
+  constructor(
+    public readonly code:
+      | 'RELEASE_CARRIES_UNDECIDED'
+      | 'RELEASE_CARRIED_DECISION_REFUSED'
+      | 'RELEASE_CUT_DROPS_ROSTER',
+    message: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = 'ReleaseCarriedError';
+  }
+}
+
 /** The roster read for this project cannot be cut as one release. */
 export class ReleaseRosterUnusableError extends Error {
   constructor(
@@ -121,6 +135,10 @@ function errorFor(
     case 'RELEASE_RUNTIME_UNROUTED':
       // Roster-scoped like the arm above, and refused by name for the same reason.
       return new ReleaseRuntimeUnroutedError(String(first.details?.missing ?? 'unknown'));
+    case 'RELEASE_CARRIES_UNDECIDED':
+    case 'RELEASE_CARRIED_DECISION_REFUSED':
+    case 'RELEASE_CUT_DROPS_ROSTER':
+      return new ReleaseCarriedError(first.code, first.message);
     case 'RELEASE_CHECK_UNEVALUATED':
       return new ReleaseCheckUnevaluatedError(String(first.details?.check ?? 'unknown'));
   }

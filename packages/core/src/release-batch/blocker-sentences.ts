@@ -6,6 +6,7 @@
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
+import type { CarriedCheck, CarriedDecision, CarriedReading } from './carried.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
@@ -31,12 +32,16 @@ export type ReleaseBlockerCode =
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
   | 'RELEASE_RUNTIME_UNROUTED'
+  | 'RELEASE_CARRIES_UNDECIDED'
+  | 'RELEASE_CARRIED_DECISION_REFUSED'
+  | 'RELEASE_CUT_DROPS_ROSTER'
   | 'RELEASE_CHECK_UNEVALUATED';
 
 export type ReleaseWarningCode =
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
   | 'RELEASE_CRITERIA_HELD_BACK'
-  | 'RELEASE_CRITERIA_UNCORROBORATED';
+  | 'RELEASE_CRITERIA_UNCORROBORATED'
+  | 'RELEASE_CARRIED_UNREAD';
 
 /** Every reason this project answers with, whether or not it stops a release. */
 export type ReleaseReasonCode = ReleaseBlockerCode | ReleaseWarningCode;
@@ -69,6 +74,8 @@ export interface ReleaseBlockerReport {
   channels: ReleaseChannel[] | null;
   blockers: ReleaseBlocker[];
   warnings: ReleaseWarning[];
+  /** What the release's range carries beyond its roster, where a reading was passed (ISS-1386). */
+  carried?: CarriedCheck | undefined;
 }
 
 export type ReleaseDoor = 'batch' | 'record';
@@ -82,6 +89,10 @@ export interface CollectReleaseBlockersOptions {
   serving?: ServingReading | undefined;
   /** Read beside `serving` (ISS-1368), or why it failed; absent, equality alone weighs a verdict. */
   weighing?: Weighing | string | undefined;
+  /** The release range, read by the caller (ISS-1386); absent, the batch door judges no range. */
+  carried?: CarriedReading | undefined;
+  /** What the caller decided for each issue that range carries off the roster. */
+  decisions?: readonly CarriedDecision[] | undefined;
 }
 
 /**
@@ -104,6 +115,9 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
   if (at >= 0) rest.splice(at, 1);
   return rest;
 }
+
+const CARRIED_WAYS_OUT =
+  'None of them ships without a decision. Send one per issue with the batch: `ship-unverified` with what is unverified; `revert` once its landing is reverted on the branch being promoted; or `cut-below`, which releases only what landed before it. Or move the issue to the release gate and name it on the roster.';
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
@@ -136,6 +150,11 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
+  RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${CARRIED_WAYS_OUT}`,
+  RELEASE_CARRIED_DECISION_REFUSED:
+    'A decision sent with this batch for an issue its range carries does not hold. Correct each one named and send the batch again.',
+  RELEASE_CUT_DROPS_ROSTER:
+    'A `cut-below` moves the release below the landing of issues this batch names, so it would name issues it does not ship. Take them off the roster, or decide the carried issue another way.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -170,10 +189,14 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_RUNTIME_UNROUTED: [],
+  RELEASE_CARRIES_UNDECIDED: [],
+  RELEASE_CARRIED_DECISION_REFUSED: [],
+  RELEASE_CUT_DROPS_ROSTER: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
   RELEASE_CRITERIA_UNCORROBORATED: [],
+  RELEASE_CARRIED_UNREAD: [],
 };
 
 export function remedyCostClause(cost: RemedyAct): string {
@@ -313,6 +336,8 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
   }
+  const carried = carriedSentence(code, details);
+  if (carried) return carried;
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
     return unroutedSentence(remedy, details.missing, details);
   }
@@ -345,6 +370,37 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** The three carried codes, composed from the range and the issues the check named (ISS-1386). */
+function carriedSentence(
+  code: ReleaseBlockerCode,
+  details: Record<string, unknown> | undefined,
+): string | null {
+  const short = (sha: unknown) => `\`${String(sha).slice(0, 12)}\``;
+  if (code === 'RELEASE_CARRIES_UNDECIDED' && Array.isArray(details?.carried)) {
+    const carried = details.carried as Array<{ displayId: string; status: string }>;
+    const each = carried.map((i) => `\`${i.displayId}\` at \`${i.status}\``).join(', ');
+    return `This release promotes \`${String(details.start)}\` at ${short(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${carried.length} issue(s) this batch does not name: ${each}. ${CARRIED_WAYS_OUT}`;
+  }
+  if (code === 'RELEASE_CARRIED_DECISION_REFUSED' && Array.isArray(details?.refused)) {
+    const refused = details.refused as Array<{ displayId: string; decision: string; why: string }>;
+    const each = refused.map((r) => `\`${r.displayId}\` \`${r.decision}\`: ${r.why}`).join('; ');
+    return `${refused.length} decision(s) sent with this batch do not hold — ${each}. Correct each one and send the batch again.`;
+  }
+  if (code === 'RELEASE_CUT_DROPS_ROSTER' && Array.isArray(details?.displayIds)) {
+    const named = (details.displayIds as string[]).map((id) => `\`${id}\``).join(', ');
+    return `A \`cut-below\` moves this release to ${short(details.cut)}, which leaves the landing of roster issue(s) ${named} above the cut, so the batch would name issues it does not ship. Take them off the roster, or decide the carried issue another way.`;
+  }
+  return null;
+}
+
+/** The warning a promote chain with no repository bound to read its range gets instead. */
+export function carriedUnreadWarningSentence(why: string): string {
+  return withCosts(
+    'RELEASE_CARRIED_UNREAD',
+    `This project promotes a branch onto production and binds no GitHub repository, so Forge could not read which landings this release carries beyond the issues it names (${why}). Bind the repository under ${INTEGRATIONS_TAB}, and every release from then on names each issue its range carries.`,
+  );
 }
 
 /** How many issues a refusal is about, and which, by the id a screen shows (ISS-1346). */

@@ -30,7 +30,14 @@ import {
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { closedBeforeAbort, settleAbortStamp, stampAbort } from './abort-stamp.js';
-import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
+import { collectReleaseBlockers, type ReleaseWarning, releaseBlockerError } from './blockers.js';
+import {
+  type CarriedDecision,
+  type CarriedRecord,
+  carriedRecord,
+  noteShipUnverified,
+  readCarried,
+} from './carried.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimConflictAt } from './claim-conflicts.js';
 import {
@@ -42,6 +49,7 @@ import {
 } from './errors.js';
 import { assertFinishable, readReleaseRun } from './finish-precondition.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import {
@@ -50,7 +58,6 @@ import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
-import { RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
 import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
@@ -65,6 +72,8 @@ export interface CreateReleaseBatchArgs {
    * refused by name unless it names this project's highest release and that release never shipped.
    */
   recutOf?: string | undefined;
+  /** A decision for each issue the release's range carries off the roster (ISS-1386). */
+  carried?: CarriedDecision[] | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -84,6 +93,10 @@ export interface CreateReleaseBatchResult {
   openedAfterRelease: boolean;
   /** `unverified` where no live binding declares a probe, which every issue it closes says. */
   verification: ReleaseVerification;
+  /** The cut, and how each off-roster landing was decided. */
+  carried: CarriedRecord | null;
+  /** What changes how this release runs without stopping it, said where the press is answered. */
+  warnings: ReleaseWarning[];
 }
 
 export async function createReleaseBatch(
@@ -98,6 +111,8 @@ export async function createReleaseBatch(
   const report = await collectReleaseBlockers(projectId, {
     issueIds: args.issueIds,
     door: 'batch',
+    carried: await readCarried(projectId, args.carried ?? []),
+    decisions: args.carried,
   });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
@@ -160,6 +175,7 @@ export async function createReleaseBatch(
       openedAfterRelease,
       verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
+      carried: carriedRecord(report.carried),
     },
   };
   const { run, version } = await db.transaction(async (tx) => {
@@ -210,6 +226,7 @@ export async function createReleaseBatch(
     releaseChain: project.releaseChain,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
+    carried: carriedRecord(report.carried),
     issues: issueRows.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(batchPrefix, r.issSeq) : r.id,
@@ -247,6 +264,7 @@ export async function createReleaseBatch(
     throw err;
   }
 
+  await noteShipUnverified({ runId: run.id, version, check: report.carried, userId });
   return {
     runId: run.id,
     jobId,
@@ -256,6 +274,8 @@ export async function createReleaseBatch(
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
     openedAfterRelease,
     verification: verification.kind,
+    carried: carriedRecord(report.carried),
+    warnings: report.warnings,
   };
 }
 

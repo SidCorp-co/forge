@@ -40,6 +40,7 @@ vi.mock('../runners/select.js', () => ({
 }));
 
 const {
+  carriedUnreadWarningSentence,
   collectReleaseBlockers,
   heldBackWarningSentence,
   REMEDY_COST,
@@ -70,6 +71,9 @@ const BLOCKER_CODES = [
   'BATCH_IN_FLIGHT',
   'RELEASE_CRITERIA_UNEARNED',
   'RELEASE_RUNTIME_UNROUTED',
+  'RELEASE_CARRIES_UNDECIDED',
+  'RELEASE_CARRIED_DECISION_REFUSED',
+  'RELEASE_CUT_DROPS_ROSTER',
   'RELEASE_CHECK_UNEVALUATED',
 ] as const;
 
@@ -77,6 +81,7 @@ const WARNING_CODES = [
   'RELEASE_RUNNER_PREFERENCE_UNMET',
   'RELEASE_CRITERIA_HELD_BACK',
   'RELEASE_CRITERIA_UNCORROBORATED',
+  'RELEASE_CARRIED_UNREAD',
 ] as const;
 
 const HELD = [{ issueId: 'u-9', displayId: 'ISS-9', criteria: [1, 2] }];
@@ -86,6 +91,35 @@ const UNROUTED: ServingReading = {
   missing: 'this project has no active deploy binding',
   route: 'declare `verify.probes` on the live deploy binding',
 };
+
+const RANGE = { live: 'production', start: 'main', cut: 'a'.repeat(40) };
+const CARRIED_MESSAGES: Array<{ code: ReasonCode; message: string }> = [
+  {
+    code: 'RELEASE_CARRIES_UNDECIDED',
+    message: releaseBlockerSentence('RELEASE_CARRIES_UNDECIDED', {
+      ...RANGE,
+      carried: [
+        { issueId: 'u-9', displayId: 'ISS-9', status: 'needs_info', landing: 'b'.repeat(40) },
+      ],
+    }),
+  },
+  {
+    code: 'RELEASE_CARRIED_DECISION_REFUSED',
+    message: releaseBlockerSentence('RELEASE_CARRIED_DECISION_REFUSED', {
+      ...RANGE,
+      refused: [{ issueId: 'u-9', displayId: 'ISS-9', decision: 'revert', why: 'no revert' }],
+    }),
+  },
+  {
+    code: 'RELEASE_CUT_DROPS_ROSTER',
+    message: releaseBlockerSentence('RELEASE_CUT_DROPS_ROSTER', {
+      ...RANGE,
+      issueIds: ['u-3'],
+      displayIds: ['ISS-3'],
+    }),
+  },
+  { code: 'RELEASE_CARRIED_UNREAD', message: carriedUnreadWarningSentence('no binding') },
+];
 
 /** Every message this project can print, code by code, composed as its door composes it. */
 function everyMessage(): Array<{ code: ReasonCode; message: string }> {
@@ -125,6 +159,7 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
       code: 'RELEASE_CRITERIA_HELD_BACK' as ReasonCode,
       message: heldBackWarningSentence(HELD, UNROUTED),
     },
+    ...CARRIED_MESSAGES,
   ];
 }
 

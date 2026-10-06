@@ -189,6 +189,10 @@ export interface CreateReleaseBatchResult {
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";
 
+export type CarriedDecisionBody =
+  | { issueId: string; decision: "ship-unverified"; why: string }
+  | { issueId: string; decision: "revert" | "cut-below" };
+
 export const releaseBatchApi = {
   /** `GET …/release-batches/roster` — waiting, oldest first. Parsed, not cast. */
   roster: async (projectId: string) => {
@@ -196,13 +200,13 @@ export const releaseBatchApi = {
     return parseReleaseRoster(await apiClient<unknown>(endpoint), endpoint);
   },
 
-  /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
-  create: (projectId: string, issueIds: string[]) =>
+  /** `POST /api/projects/:projectId/release-batches` — create + claim a batch (ISS-1386 `carried`). */
+  create: (projectId: string, issueIds: string[], carried?: CarriedDecisionBody[]) =>
     apiClient<CreateReleaseBatchResult>(
       `/projects/${projectId}/release-batches`,
       {
         method: "POST",
-        body: JSON.stringify({ issueIds }),
+        body: JSON.stringify(carried && carried.length > 0 ? { issueIds, carried } : { issueIds }),
       },
     ),
 };

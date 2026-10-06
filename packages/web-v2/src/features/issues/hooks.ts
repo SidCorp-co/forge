@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -341,8 +341,12 @@ export function useReleaseRoster(projectId: string | undefined) {
 export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefusal?: () => boolean } = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
-    mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
+  return useMutation<
+    CreateReleaseBatchResult,
+    unknown,
+    { issueIds: string[]; carried?: CarriedDecisionBody[] }
+  >({
+    mutationFn: ({ issueIds, carried }) => releaseBatchApi.create(projectId, issueIds, carried),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
