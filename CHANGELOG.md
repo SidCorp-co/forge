@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A pane's agent runs the daemon's own `forge-runner`.** The pane PATH is set by the pane command
+  itself (`env PATH=…`), since tmux hands a new pane the starting client's PATH over `-e PATH`.
+
 - **A job's claim shows in the Agents run list at once.** The claim sends a `job.dispatched` frame
   to the job's readers inside its own transaction; the runner no longer listens for
   `job.cancelRequested`, a frame it never receives.

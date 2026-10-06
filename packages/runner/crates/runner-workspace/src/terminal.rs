@@ -473,26 +473,7 @@ pub async fn ensure(
         return Ok(false);
     }
     ensure_server().await;
-    let cwd = cwd.to_string_lossy().to_string();
-    let mut args: Vec<String> = vec![
-        "new-session".into(),
-        "-d".into(),
-        "-s".into(),
-        name.into(),
-        "-c".into(),
-        cwd,
-        "-x".into(),
-        "220".into(),
-        "-y".into(),
-        "60".into(),
-    ];
-    for (k, v) in env {
-        args.push("-e".into());
-        args.push(format!("{k}={v}"));
-    }
-    args.push("--".into());
-    args.extend(argv.iter().cloned());
-
+    let args = new_session_args(name, cwd, argv, env);
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = tmux(&borrowed).await?;
     if !out.status.success() {
@@ -505,6 +486,46 @@ pub async fn ensure(
         pipe_pane(name, path).await;
     }
     Ok(true)
+}
+
+/// The `new-session` a pane is started with.
+///
+/// A `PATH` in `env` is also set by the pane's own command, through `env PATH=… <argv>`. tmux
+/// gives a new pane the PATH of the client that ran `new-session`, over the `-e PATH` that client
+/// passed (tmux 3.6 `spawn.c:spawn_pane`: "The session one is replaced from the client"), and the
+/// client here is this daemon, whose PATH is the one the pane's was computed to correct: every
+/// pane ran the first `forge-runner` on the daemon's PATH while `show-environment` named the
+/// right one. Set in the command, it is also what `respawn-pane` without a command re-runs
+/// (tmux(1), `respawn-pane`: "the command used when the pane was created").
+fn new_session_args(
+    name: &str,
+    cwd: &std::path::Path,
+    argv: &[String],
+    env: &[(String, String)],
+) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "new-session".into(),
+        "-d".into(),
+        "-s".into(),
+        name.into(),
+        "-c".into(),
+        cwd.to_string_lossy().into_owned(),
+        "-x".into(),
+        "220".into(),
+        "-y".into(),
+        "60".into(),
+    ];
+    for (k, v) in env {
+        args.push("-e".into());
+        args.push(format!("{k}={v}"));
+    }
+    args.push("--".into());
+    if let Some((_, path)) = env.iter().find(|(k, _)| k == "PATH") {
+        args.push("env".into());
+        args.push(format!("PATH={path}"));
+    }
+    args.extend(argv.iter().cloned());
+    args
 }
 
 async fn pipe_pane(name: &str, path: &std::path::Path) {
@@ -756,3 +777,6 @@ async fn still_there(name: &str) -> Result<bool> {
         .status
         .success())
 }
+
+#[cfg(all(test, unix))]
+mod tests;
