@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **The lint budget prints how many files it scanned.** Verify read the count of files with lint
+  debt as the scanned count, so a tree with no lint debt left read as a check that never ran.
+
 - **Standing tells the truth about refused runs, parks and designs.** A refused declaration reads
   queued behind its refusal; a new run restarts the step; agent parks, returned designs and stale
   bases name what they wait on; question records ask.

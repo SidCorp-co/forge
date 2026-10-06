@@ -68,6 +68,7 @@ function linterFault(scope) {
 }
 
 function collect(scopes) {
+  let scannedTotal = 0;
   const measured = {};
   const said = {};
   const scopeOf = new Map();
@@ -87,6 +88,7 @@ function collect(scopes) {
     const summary = parsed.summary ?? {};
     const scanned = (summary.changed ?? 0) + (summary.unchanged ?? 0);
     if (!Number.isFinite(scanned) || scanned === 0) silent.push(scope.cwd);
+    else scannedTotal += scanned;
 
     const broken = diags.find((d) => String(d.category ?? '').startsWith('internalError'));
     if (broken) {
@@ -112,7 +114,7 @@ function collect(scopes) {
       error: `biome scanned no files in ${silent.join(', ')} — scope matched nothing`,
     };
   }
-  return { measured, said, scopeOf };
+  return { measured, said, scopeOf, scanned: scannedTotal };
 }
 
 const git = (args) => gitOut(args)?.trim() ?? null;
@@ -166,7 +168,7 @@ if (cfg.error) {
   process.exit(2);
 }
 
-const { measured, said, scopeOf, error } = collect(cfg.scopes);
+const { measured, said, scopeOf, scanned, error } = collect(cfg.scopes);
 if (error) {
   console.error(`check-lint-budget: ${error}`);
   process.exit(2);
@@ -273,7 +275,7 @@ if (mode === '--all' && matchers.length > 0) {
 }
 
 console.log(
-  `lint-budget: ${Object.keys(measured).length} file(s) with lint debt, ${total(measured)} violation(s) frozen against the baseline`,
+  `lint-budget: ${scanned} file(s) scanned, ${Object.keys(measured).length} with lint debt, ${total(measured)} violation(s) frozen against the baseline`,
 );
 for (const [scope, n] of currentByScope)
   console.log(drainedLine(scope, n, baseline.original[scope]));
