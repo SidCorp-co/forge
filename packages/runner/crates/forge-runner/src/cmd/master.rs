@@ -577,7 +577,7 @@ fn presence_detail(
             "pane: tmux could not be asked about {name}, so whether it runs is not known here and no exit is reported for it"
         )],
         (MasterPresence::Alive, Some(on)) => vec![
-            format!("on screen {on}. Its screen shows that dialog now, so nothing has been typed into it and its session has not started"),
+            format!("on screen {on}. Its screen shows that dialog now, and its session waits on that answer before it starts"),
             format!("last exit {}", last_exit()),
         ],
         (MasterPresence::Alive, None) => Vec::new(),
