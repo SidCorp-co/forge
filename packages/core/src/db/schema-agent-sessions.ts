@@ -46,9 +46,6 @@ export const agentSessions = pgTable(
     /** Who owns this session, as CORE issued it — never as a box reported it. */
     parentSessionId: uuid('parent_session_id'),
     diff: jsonb('diff'),
-    pipelineControl: jsonb('pipeline_control').$type<
-      import('@forge/contracts/pipeline-control').PipelineControl | null
-    >(),
     pipelineTelemetry: jsonb('pipeline_telemetry'),
     pipelineHealth: jsonb('pipeline_health').$type<
       import('@forge/contracts/pipeline-control').PipelineHealth | null

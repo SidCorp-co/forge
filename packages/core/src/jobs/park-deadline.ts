@@ -160,7 +160,8 @@ export async function reapUnansweredParks(
  * next turn past the residency is told closed on its box with `agent:close`, every pass until the
  * box reports it closed. A box that has not answered within the hour after is read as gone, and the
  * row says the residency is over without it. A session with a turn in flight (`queued`/`running`)
- * is not waiting for one: its runtime state is still the one the turn before it ended on.
+ * is not waiting for one, though its runtime state reads the one the turn before ended on until the
+ * box's first beat of this turn, and for the whole turn on a box older than that beat.
  */
 export async function closeIdleResidents(
   now: Date = new Date(),

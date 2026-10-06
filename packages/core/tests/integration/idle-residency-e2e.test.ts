@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { api } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestDevice, createTestProject, createTestUser, rows } from '../helpers/factories.js';
 
@@ -12,6 +13,7 @@ const MIN = 60_000;
 let projectId = '';
 let ownerId = '';
 let deviceId = '';
+let boxToken = '';
 
 beforeAll(async () => {
   testEnv();
@@ -20,6 +22,9 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   deviceId = await createTestDevice(ownerId);
+  const { mintPat } = await import('../../src/credentials/pat.js');
+  boxToken = (await mintPat({ userId: ownerId, name: 'box', deviceId, projectIds: [projectId] }))
+    .plaintext;
 }, 120_000);
 
 afterAll(async () => {
@@ -114,7 +119,7 @@ describe('one residency clock: a whole loop-monitor pass over a resident chat se
     const { runLoopMonitor } = await import('../../src/jobs/loop-monitor.js');
     const now = new Date();
     // A turn moves the row to running and stamps its beat; the runtime state stays the one the box
-    // reported at the end of the turn before, until this turn's own end is reported.
+    // reported at the end of the turn before, until the box's first beat of this turn.
     const turn = await chat(20 * MIN, 'awaiting_input', now, 'running');
     await runLoopMonitor(now, { projectId });
     expect(await statusOf(turn)).toBe('running');
@@ -128,5 +133,40 @@ describe('one residency clock: a whole loop-monitor pass over a resident chat se
     await runLoopMonitor(now, { projectId });
     expect(await statusOf(park)).toBe('failed/residency_expired');
     expect(await closesTold(park)).toBe(0);
+  });
+});
+
+describe('a chat turn in flight is alive while its box beats it', () => {
+  /** A chat whose second turn was dispatched `agoMs` ago and has not ended: its run and its beat date from then. */
+  async function turnInFlight(agoMs: number, now: Date): Promise<string> {
+    const runId = randomUUID();
+    const sessionId = randomUUID();
+    const at = new Date(now.getTime() - agoMs).toISOString();
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}, 'interactive', 'running', ${at}::timestamptz)
+    `);
+    await db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, runtime_state,
+                                  started_at, last_heartbeat_at, claude_session_id)
+      VALUES (${sessionId}, ${projectId}, ${ownerId}, ${runId}, 'chat', 'running', ${deviceId}, 'awaiting_input',
+              ${at}::timestamptz, ${at}::timestamptz, ${randomUUID()})
+    `);
+    return sessionId;
+  }
+
+  it('keeps a 25-minute turn whose box beat it, and still fails one whose box went silent', async () => {
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/one-shot-reap.js');
+    const now = new Date();
+    const beaten = await turnInFlight(25 * MIN, now);
+    const silent = await turnInFlight(25 * MIN, now);
+    const beat = await api(boxToken, 'PATCH', `/api/agent-sessions/${beaten}`, {
+      runtimeState: 'working',
+    });
+    expect(beat.status).toBe(200);
+    await reapOrphanedOneShotRuns(new Date(), { projectId });
+    expect(await statusOf(beaten)).toBe('running');
+    expect(await runtimeOf(beaten)).toBe('working');
+    expect(await statusOf(silent)).toBe('failed/heartbeat_timeout');
   });
 });

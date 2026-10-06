@@ -1,19 +1,5 @@
 import { z } from "zod";
 
-// The shape of the agent_sessions.pipeline_control jsonb column, which the column is typed as.
-export const pipelineControlSchema = z
-	.object({
-		paused: z.boolean(),
-		pausedBy: z.string().uuid().nullable(),
-		pausedAt: z.iso.datetime().nullable(),
-		reason: z.string().max(2000).nullable(),
-		abort: z.boolean(),
-		updatedAt: z.iso.datetime(),
-	})
-	.strict();
-
-export type PipelineControl = z.infer<typeof pipelineControlSchema>;
-
 export const failureKindEnum = z.enum([
 	"code",
 	"infra",
