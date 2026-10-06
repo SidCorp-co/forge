@@ -279,6 +279,21 @@ async fn take_the_directory(
     crate::workspace::worktree::remove_at(&repo_root.to_string_lossy(), worktree, &why).await
 }
 
+/// A run other than `run_id` that the ledger holds on `worktree`, by the rows
+/// the sweep keeps a checkout for (`Ledger::held_worktrees`), and by any
+/// spelling of the path that resolves alike.
+fn another_holder(ledger: &Ledger, run_id: &str, worktree: &Path) -> Result<Option<String>> {
+    let here = worktree.canonicalize().ok();
+    Ok(ledger
+        .held_worktrees()?
+        .into_iter()
+        .find(|(path, holder)| {
+            holder != run_id
+                && (path == worktree || here.is_some() && path.canonicalize().ok() == here)
+        })
+        .map(|(_, holder)| holder))
+}
+
 /// What this release may do about the path the run names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Held {
@@ -389,6 +404,25 @@ pub async fn force_terminal(
         run_id,
         worktree,
     )?;
+
+    // Another run the ledger still holds on the same checkout is working in it,
+    // or owes it a release of its own. The sweep keeps such a checkout
+    // (`worktree_reap`, "still holds it in the ledger"), and the release now
+    // reads the same rows: before it, the release of one run removed the tree
+    // a second, unended run held, in a gap between its agent's commands (judge
+    // iss-1378-a823d04f, runs b229ea3b and a8401d85). Asked before anything is
+    // salvaged, committed or pushed from the tree, which would be that run's
+    // work moved under it.
+    if held == Held::Ours {
+        if let Some(other) = another_holder(ledger, run_id, worktree)? {
+            return Err(Error::Other(format!(
+                "refusing to {verb:?} run {run_id}: run {other} still holds {} in the ledger, so \
+                 the checkout stays for it, as the sweep keeps it — nothing was preserved, pushed \
+                 or removed",
+                worktree.display()
+            )));
+        }
+    }
 
     // One credential for this release, resolved from what this box provisioned
     // rather than from what a git child happens to read (ISS-1250). It is read
@@ -863,6 +897,78 @@ mod tests {
             run.ended_reason.as_deref(),
             Some("the park was abandoned by hand")
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Judge iss-1378-a823d04f, runs b229ea3b and a8401d85: a second run the
+    /// ledger still holds on the same checkout keeps it through the first
+    /// run's release, as the sweep keeps it, and nothing is committed or pushed
+    /// from under it. Once that run is over too, the release goes through.
+    #[tokio::test]
+    async fn a_release_leaves_a_checkout_another_open_run_still_holds() {
+        let (root, wt) = repo("another-holder").await;
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let spelled_otherwise = root.join(".worktrees/../.worktrees/ISS-964");
+        led.create_run_group(NewRun {
+            run_id: "run-2".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-2".into(),
+            worktree_path: spelled_otherwise,
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-965".into()],
+        })
+        .unwrap();
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+        let head = |dir: &Path| {
+            let dir = dir.to_path_buf();
+            async move {
+                let out = tokio::process::Command::new("git")
+                    .args(["rev-parse", "HEAD"])
+                    .current_dir(&dir)
+                    .output()
+                    .await
+                    .unwrap();
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            }
+        };
+        let before = head(&wt).await;
+
+        let why = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err("another run holds the checkout")
+        .to_string();
+        assert!(
+            why.contains("run run-2 still holds") && why.contains("nothing was preserved"),
+            "{why}"
+        );
+        assert!(wt.exists(), "the checkout stays for run-2");
+        assert_eq!(head(&wt).await, before, "nothing was committed under run-2");
+        assert!(
+            wt.join("work.txt").exists(),
+            "run-2's uncommitted work is where it left it"
+        );
+        assert_eq!(led.run("run-1").unwrap().unwrap().ended_by, None);
+
+        led.end_run("run-2", "operator", "its report is in")
+            .unwrap();
+        force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect("nobody else holds it now");
+        assert!(!wt.exists(), "released once no other run holds it");
         let _ = std::fs::remove_dir_all(&root);
     }
 
