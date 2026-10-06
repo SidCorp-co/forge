@@ -91,7 +91,9 @@ async function resolveRoster(
       out,
     );
     if (!named) return undefined;
-    const ids = named.map((r) => r.id);
+    // In the order the caller named them: a SELECT keeps no order, and every refusal lists these.
+    const held = new Set(named.map((r) => r.id));
+    const ids = [...new Set(issueIds)].filter((id) => held.has(id));
     return { ids, unclaimed: ids };
   }
   const rows = await evaluate(
@@ -221,7 +223,9 @@ async function rosterBlockers(
         .from(issues)
         .innerJoin(projects, eq(projects.id, issues.projectId))
         .where(inArray(issues.id, issueIds));
+      const at = new Map(issueIds.map((id, i) => [id, i]));
       return rows
+        .sort((a, b) => (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0))
         .map((r) => ({ id: r.id, lane: laneOf({ declared: r.declared, kind: r.kind }), row: r }))
         .filter((r) => landingShortfall(r.row, r.lane) !== null);
     },
@@ -229,7 +233,8 @@ async function rosterBlockers(
   );
   if (!unmerged) return;
   // An issue may declare its own lane, so one roster can hold both shapes, and each is owed the
-  // sentence naming its own route: one blocker per shape, in roster order.
+  // sentence naming its own route: one blocker per shape, in roster order, which the rows were
+  // sorted into above.
   for (const shape of [...new Set(unmerged.map((r) => r.lane.shape))]) {
     const ids = unmerged.filter((r) => r.lane.shape === shape).map((r) => r.id);
     const displayIds = await namedAs(ids);

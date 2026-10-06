@@ -139,9 +139,19 @@ describe('which marks count as landed, per shape', () => {
 });
 
 describe('the route a refusal names is the one the shape has', () => {
-  it('names mark_merged and no landing on the git shape', () => {
-    expect(landingRoute(GIT)).toContain('`mark_merged` naming where it landed');
-    expect(landingRoute(GIT)).not.toContain('landing');
+  it('names mark_merged with a commit on the git shape, and a declaration for a change that lands no file', () => {
+    const route = landingRoute(GIT);
+    expect(route).toContain('`mark_merged`, naming the commit it landed at in `data.commit`');
+    expect(route).toContain('`landingShape: outside_git`');
+    // `landing` on this lane is refused LANDING_NOT_THIS_SHAPE, so it is never the route offered.
+    expect(route).not.toContain('naming where it landed');
+  });
+
+  it('ends on the act the refused caller takes next', () => {
+    expect(landingRoute(GIT)).toContain('then close.');
+    expect(landingRoute(OUTSIDE, 'asserted', 'enter this status')).toContain(
+      'then enter this status.',
+    );
   });
 
   it('names data.landing on the outside-git shape, and asks for no commit', () => {

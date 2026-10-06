@@ -1,11 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues, type LandingShape } from '../db/schema.js';
+import { issueLabels, issues, type LandingShape, projects } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
-import { landingShapeMarkStandsDetail } from './landing-evidence.js';
+import { landingShapeMarkStandsDetail, landingShapeOf } from './landing-evidence.js';
 import { type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -29,16 +29,35 @@ export type IssueUpdateInput = {
 };
 
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const row = await writeIssueFields(input);
-  await announceContractInput(input.issueId, row.projectId, input.updates);
+  const { row, wrote } = await writeIssueFields(input);
+  if (wrote) await announceContractInput(input.issueId, row.projectId, input.updates);
   return row;
 }
 
-async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
+/** Column keys a write may carry that record the write itself rather than change the issue. */
+const WRITE_STAMPS: ReadonlySet<string> = new Set(['updatedAt']);
+
+/** The declaration is the only thing this write changes, so a value equal to the one stored is
+ *  a no-op: it is answered with the row as it stands and nothing, `updated_at` included, moves. */
+function declarationOnly(input: IssueUpdateInput): boolean {
+  const keys = Object.keys(input.updates).filter((k) => !WRITE_STAMPS.has(k));
+  return (
+    keys.length === 1 &&
+    keys[0] === 'declaredLandingShape' &&
+    input.labelIds === undefined &&
+    input.expect === undefined
+  );
+}
+
+async function writeIssueFields(
+  input: IssueUpdateInput,
+): Promise<{ row: IssueRow; wrote: boolean }> {
   const { issueId, updates, labelIds, expect, actor } = input;
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
   const shape = updates.declaredLandingShape as LandingShape | null | undefined;
   if (shape !== undefined) guard.push(shapeUnderNoMarkGuard(shape));
+  const noOpPossible = shape !== undefined && declarationOnly(input);
+  if (noOpPossible) guard.push(shapeMovesGuard(shape));
 
   return db.transaction(async (tx) => {
     if (updates.sessionContext !== undefined && !expect) {
@@ -50,6 +69,10 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(and(eq(issues.id, issueId), ...guard))
       .returning();
     if (!row) {
+      if (noOpPossible) {
+        const [held] = await tx.select().from(issues).where(eq(issues.id, issueId)).limit(1);
+        if (held && held.declaredLandingShape === shape) return { row: held, wrote: false };
+      }
       if (shape !== undefined) await refuseShapeOverMark(tx, issueId, shape);
       if (expect) await refuseMovedSessionContext(tx, issueId);
       throw new IssueUpdateNotFound(issueId);
@@ -88,7 +111,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       }
     }
 
-    return row;
+    return { row, wrote: true };
   });
 }
 
@@ -183,6 +206,11 @@ function shapeUnderNoMarkGuard(next: LandingShape | null) {
   return sql`(${issues.mergedAt} IS NULL OR ${issues.declaredLandingShape} IS NOT DISTINCT FROM ${next}::text)`;
 }
 
+/** The declaration-only write lands only where it changes the declaration. */
+function shapeMovesGuard(next: LandingShape | null) {
+  return sql`${issues.declaredLandingShape} IS DISTINCT FROM ${next}::text`;
+}
+
 /** Zero rows under the lane guard: re-read, and where a mark stands, say so with what it holds. */
 async function refuseShapeOverMark(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -195,24 +223,34 @@ async function refuseShapeOverMark(
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
       declared: issues.declaredLandingShape,
+      kind: projects.kind,
+      projectId: projects.id,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!current || current.mergedAt === null || current.declared === sent) return;
-  throw new LandingShapeMarkStands(current.declared, sent, mergeMarkKindOf(current));
+  throw new LandingShapeMarkStands({
+    held: current.declared,
+    sent,
+    project: landingShapeOf(current.kind, current.projectId),
+    mark: mergeMarkKindOf(current),
+  });
 }
 
 /** `landingShape` was sent while a merged mark stands on the issue; nothing was written. */
 export class LandingShapeMarkStands extends Error {
   readonly code = 'LANDING_SHAPE_MARK_STANDS';
-  constructor(
-    readonly held: LandingShape | null,
-    readonly sent: LandingShape | null,
-    readonly mark: MergeMarkKind,
-  ) {
-    super(landingShapeMarkStandsDetail({ held, sent, mark }));
+  readonly held: LandingShape | null;
+  readonly sent: LandingShape | null;
+  readonly mark: MergeMarkKind;
+  constructor(args: Parameters<typeof landingShapeMarkStandsDetail>[0]) {
+    super(landingShapeMarkStandsDetail(args));
     this.name = 'LandingShapeMarkStands';
+    this.held = args.held;
+    this.sent = args.sent;
+    this.mark = args.mark;
   }
 }
 

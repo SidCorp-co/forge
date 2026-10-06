@@ -220,14 +220,15 @@ describe('a project that lands in git (kind standard) closes exactly as before',
     expect((await stored(id)).status).toBe('closed');
   });
 
-  it("refuses a close with no mark in today's words, naming mark_merged and no landing", async () => {
+  it('refuses a close with no mark, naming a commit and the declaration, never a landing on this lane', async () => {
     const w = await world('standard');
     const id = await seedIssue(w);
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('this issue carries no `merged_at`');
-    expect(refusal.message).toContain('`mark_merged` naming where it landed, then close');
-    expect(refusal.message).not.toContain('landing');
+    expect(refusal.message).toContain('naming the commit it landed at in `data.commit`');
+    expect(refusal.message).toContain('`landingShape: outside_git`');
+    expect(refusal.message).not.toContain('naming where it landed');
   });
 
   it('refuses a landing at both doors by name, and writes no merged_at', async () => {

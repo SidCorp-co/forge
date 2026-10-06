@@ -183,7 +183,7 @@ describe('findUnmetEntryCriteria', () => {
       issueId: ISSUE_ID,
       declared: ['work_evidence'],
     });
-    expect(findMissingWorkEvidenceMock).toHaveBeenCalledWith(ISSUE_ID, expect.anything(), 'anyone');
+    expect(findMissingWorkEvidenceMock).toHaveBeenCalledWith(ISSUE_ID, expect.anything(), 'criterion');
     expect(shortfall?.unmet).toEqual([
       { key: 'work_evidence', detail: 'no branch, commit or code handoff is recorded' },
     ]);
@@ -314,7 +314,7 @@ describe('readEntryCriteriaStrict', () => {
     expect(missingWorkEvidenceStrictMock).toHaveBeenCalledWith(
       ISSUE_ID,
       expect.anything(),
-      'anyone',
+      'criterion',
     );
     expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
     expect(reading.unmet).toEqual([
