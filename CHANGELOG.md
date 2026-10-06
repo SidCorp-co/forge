@@ -10,9 +10,9 @@
 
 ### Changed
 
-- **A master's state stops lying.** A pane frozen on a dialog reads waiting on a person, every
-  turn and every refused turn is a recorded pass, stale run declarations close, panes start with
-  `node` on PATH, and `master status` attaches through its socket.
+- **A master's state stops lying.** A pane stuck on a dialog reads waiting on a person, every
+  turn, refused ones included, is a recorded pass, stale declarations close, panes get `node` on
+  PATH, and `master status` names its socket.
 
 - **The agent-report token grant is named `agent-reports`.** Stored `feedback:*` grants are
   rewritten to `agent-reports:*`, every notification carries a severity, and seven unset env
