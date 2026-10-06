@@ -42,7 +42,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
     }),
   );
 
-  const provisions: Provision[] = [];
+  const provisions: Array<Provision & { orientation: string }> = [];
   const reports: ProvisionReport[] = [];
   for (const [i, outcome] of settled.entries()) {
     const row = rows[i];
@@ -60,7 +60,13 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
       });
       continue;
     }
-    if (outcome.value.provision) provisions.push(outcome.value.provision);
+    const built = outcome.value.provision;
+    if (built) {
+      provisions.push({
+        ...built,
+        orientation: devicesPorts().checkoutOrientation(built.projectId, built.slug),
+      });
+    }
     reports.push(...outcome.value.reports);
   }
 

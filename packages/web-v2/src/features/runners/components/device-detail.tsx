@@ -24,6 +24,8 @@ import {
 	type DeviceRow,
 	type DeviceRunnerAssignment,
 	deviceBinariesRead,
+	deviceDiskStale,
+	diskRootLine,
 	deviceBuildChip,
 	deviceGateBanner,
 	runnerHealth,
@@ -94,6 +96,65 @@ function DeviceBinaries({ device }: { device: DeviceRow }) {
 				</div>
 			)}
 			{read.stale && <p className="fg-caption text-subtle">{read.stale}.</p>}
+		</div>
+	);
+}
+
+const DISK_VERDICT_LABEL = {
+	clear: "clear",
+	unmeasurable: "unreadable",
+	tight: "tight",
+	critical: "critical",
+} as const;
+
+/**
+ * What each filesystem this box writes its runs' scratch into had left, as core
+ * judged it, one hairline row per root. Under the critical threshold a run that
+ * cannot create a file fails in whatever way its own tooling fails.
+ */
+function DeviceDisk({ device }: { device: DeviceRow }) {
+	const disk = device.disk;
+	const stale = disk ? deviceDiskStale(disk) : null;
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="fg-label">Scratch disk</span>
+			{disk === null ? (
+				<p className="fg-body-sm text-subtle">
+					Not reported. This box&rsquo;s runner build does not say what its scratch
+					filesystems have left.
+				</p>
+			) : (
+				<div className="flex flex-col divide-y divide-line-subtle">
+					{disk.roots.map((r) => (
+						<div key={r.root} className="flex flex-col gap-0.5 py-2">
+							<span className="inline-flex items-center gap-2">
+								<code className="fg-body-sm font-semibold text-fg">{r.root}</code>
+								<span
+									className={
+										r.verdict === "critical"
+											? "fg-caption text-danger"
+											: r.verdict === "clear"
+												? "fg-caption text-subtle"
+												: "fg-caption text-amber-700 dark:text-amber-300"
+									}
+								>
+									{DISK_VERDICT_LABEL[r.verdict]}
+									{r.axis && r.verdict !== "clear" ? ` on ${r.axis}` : ""}
+								</span>
+							</span>
+							<span className="fg-body-sm text-subtle">{diskRootLine(r)}</span>
+						</div>
+					))}
+				</div>
+			)}
+			{disk && disk.verdict !== "clear" && disk.verdict !== "unmeasurable" && (
+				<p className="fg-caption text-subtle">
+					Tight is under {disk.tightFreePercent}% free on either axis, critical under{" "}
+					{disk.criticalFreePercent}%. The worktree sweep does not reclaim scratch outside a
+					repository.
+				</p>
+			)}
+			{stale && <p className="fg-caption text-subtle">{stale}.</p>}
 		</div>
 	);
 }
@@ -175,6 +236,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 			</div>
 
 			<DeviceBinaries device={device} />
+			<DeviceDisk device={device} />
 		</div>
 	);
 }

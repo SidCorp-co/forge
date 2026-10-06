@@ -24,6 +24,19 @@
 //! reading and the signal is never signalled, and every pid this box does end
 //! is named in the journal by pid and command line.
 //!
+//! **Priced amnesty: residence proves where a process is, not whose it is.** A
+//! process an operator started by hand inside a checkout no run holds, and that
+//! is being given back, is ended with it; the journal names it, so the cost is a
+//! surprise that can be traced rather than a silent one. What closes it is a
+//! marker the run's processes inherit and a stranger does not: an environment
+//! variable set where the agent is spawned (`runner_agent::claude_code`,
+//! `runner_workspace::terminal`), read back from `/proc/<pid>/environ` the way
+//! `runner_daemon::serving::serves` reads one. A pane's process inherits the tmux
+//! server's environment, not the client's, so the variable has to ride the
+//! pane's own command, and a process started before the marker carries none.
+//! Ends at the first report of a process this attribution ended that should not
+//! have been.
+//!
 //! The reading needs no `cfg`. It is taken off a process root handed in, so a
 //! test plants one — and it answers three ways rather than two. A root that is
 //! not there is a platform keeping no such table; a root that is there and will
@@ -90,6 +103,15 @@ pub enum Reading {
     },
     /// This platform keeps no process table at the root it was asked about, so
     /// the question cannot be put here at all.
+    ///
+    /// **Priced amnesty: macOS and Windows are not covered.** A removal there
+    /// proceeds as it did before ISS-1271, with a `warn` saying it could not
+    /// look, so a listener leaked on those platforms is as invisible as it ever
+    /// was. Refusing instead would stop worktree reclaim on both over a leak
+    /// measured only on Linux, and the portable reading (`proc_pidinfo` with
+    /// `PROC_PIDVNODEPATHINFO` behind `libproc` on macOS) is one this
+    /// repository's CI cannot exercise. Ends at the first orphaned listener
+    /// observed on a non-Linux box.
     NoTable(String),
     /// The table is there and could not be read. A caller that treated this as
     /// an empty list would be asserting something nothing measured.
@@ -572,6 +594,18 @@ impl Clearing<'_> {
     /// it (consult 8064e5 F1). Nothing loops on it: a checkout that keeps
     /// growing residents is refused, and the refusal is what a caller is bound
     /// by.
+    ///
+    /// **Priced amnesty: the window between that reading and the removal.** A
+    /// process can move into the checkout after the fresh reading returns and
+    /// before `git worktree remove` takes the directory, and the removal then
+    /// succeeds over it. Closing that needs an admission barrier, not a third
+    /// scan: quarantine the tree with `git worktree move`, scan the quarantined
+    /// path, remove it. That move refuses a worktree holding submodules and
+    /// changes the path every journal line names, so it is a change of its own.
+    /// Until then [`Clearing::stranded`] names, at the next sweep, every process
+    /// living in a deleted path under a worktree root. Ends at a process
+    /// observed arriving inside that window in the field, or a second issue
+    /// asking for the quarantine on its own terms.
     pub async fn clear(&self, worktree: &Path) -> Ending {
         let ended = match residents_of(self.proc_root, worktree) {
             Reading::NoTable(why) => return Ending::NoTable(why),

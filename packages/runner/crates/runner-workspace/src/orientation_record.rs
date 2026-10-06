@@ -238,12 +238,14 @@ pub struct Bound {
     pub slug: String,
     pub project_id: Option<String>,
     pub repo: PathBuf,
+    /// What core served for the project; `None` where it was not reached.
+    pub orientation: Option<String>,
 }
 
 async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
-    let Some(project_id) = b.project_id.as_deref() else {
+    if b.project_id.is_none() {
         return Outcome::NoProject;
-    };
+    }
     if !b.repo.is_dir() {
         return Outcome::NoCheckout;
     }
@@ -258,7 +260,9 @@ async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
         Err(detail) => return Outcome::Failed { detail },
     };
     Outcome::of(&orientation::write_orientation(
-        &b.repo, project_id, &b.slug,
+        &b.repo,
+        b.orientation.as_deref(),
+        &b.slug,
     ))
 }
 

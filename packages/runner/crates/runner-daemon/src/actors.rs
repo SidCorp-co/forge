@@ -246,8 +246,13 @@ pub(crate) async fn cred_watch(
     }
 }
 
-/// The heartbeat, carrying the gate and pool-read conditions.
-pub(crate) async fn heartbeat(client: Arc<CoreClient>, cancel: watch::Receiver<bool>) {
+/// The heartbeat, carrying the gate, pool-read and binary conditions and the
+/// newest disk reading [`headroom`] took.
+pub(crate) async fn heartbeat(
+    client: Arc<CoreClient>,
+    disk: watch::Receiver<Option<Vec<runner_proto::disk::Root>>>,
+    cancel: watch::Receiver<bool>,
+) {
     // The verdict this loop last shouted about, so a gate failing open says so
     // once rather than every thirty seconds. Held here and not on disk: a daemon
     // that starts into a gate already failing open states what it inherited.
@@ -255,10 +260,13 @@ pub(crate) async fn heartbeat(client: Arc<CoreClient>, cancel: watch::Receiver<b
     let period = std::time::Duration::from_secs(heartbeat::INTERVAL_SECS);
     let mut ticks = Ticks::new(period, cancel);
     while ticks.next().await.is_some() {
-        let conditions = heartbeat_conditions(
-            runner_platform::config::config_dir().as_deref(),
-            agent_activity::now_ms(),
-        );
+        let conditions = heartbeat::Conditions {
+            disk: disk.borrow().clone(),
+            ..heartbeat_conditions(
+                runner_platform::config::config_dir().as_deref(),
+                agent_activity::now_ms(),
+            )
+        };
         if let Some(g) = conditions.gate.as_ref() {
             let _ = announce_gate(g, &mut shouted);
         }
@@ -340,39 +348,42 @@ pub(crate) async fn worktree_reap(cfg: Arc<Config>, mut cancel_rx: watch::Receiv
     }
 }
 
+/// Start [`headroom`], answering the receiver the heartbeat reads its newest
+/// reading from: `None` until the first reading is taken.
+pub(crate) fn spawn_headroom(
+    cancel: watch::Receiver<bool>,
+) -> watch::Receiver<Option<Vec<runner_proto::disk::Root>>> {
+    let (disk, read) = watch::channel(None);
+    tokio::spawn(headroom(disk, cancel));
+    read
+}
+
 /// What the box has left, on its own clock rather than the reap sweep's: the
-/// box that raised ISS-1260 crossed both thresholds inside four hours.
-pub(crate) async fn headroom(cancel: watch::Receiver<bool>) {
+/// box that raised ISS-1260 crossed both of core's thresholds inside four
+/// hours. Each reading is handed to the heartbeat, which carries it to core.
+async fn headroom(
+    disk: watch::Sender<Option<Vec<runner_proto::disk::Root>>>,
+    cancel: watch::Receiver<bool>,
+) {
     use runner_workspace::headroom::{self, TICK};
     let roots = headroom::scratch_roots();
-    let mut watch = headroom::Watch::default();
     let mut ticks = Ticks::new(TICK, cancel);
     while ticks.next().await.is_some() {
-        // `statvfs` blocks, and a scratch root on an
-        // unresponsive network or FUSE mount blocks for as
-        // long as that mount does. On a worker thread that
-        // stalls the daemon's other tasks, so it goes to the
-        // blocking pool, where waiting on it yields and every
-        // other task keeps running (consult 404196 F1).
-        //
-        // Awaited plainly, so at most one reading is ever out:
-        // a select that let this task walk away would abandon
-        // the handle and start another on the next tick, which
-        // is one hung thread per tick instead of one
-        // (consult 825bfe F1). What that costs, and why a
-        // killable probe is not taken here, is priced in
-        // `headroom`'s own note on `read`.
+        // `statvfs` blocks for as long as a hung network or FUSE mount does, so
+        // it goes to the blocking pool, awaited plainly so at most one reading
+        // is ever out (consult 404196 F1, 825bfe F1).
         let here = roots.clone();
         let survey = tokio::task::spawn_blocking(move || headroom::survey(&here))
             .await
-            .unwrap_or_else(|e| headroom::Survey {
-                at: std::path::PathBuf::from("<none>"),
-                reading: headroom::Reading::Refused(format!("the reading did not finish ({e})")),
-                beside: Vec::new(),
+            .unwrap_or_else(|e| {
+                vec![runner_proto::disk::Root::new(
+                    "<none>",
+                    runner_proto::disk::Reading::Refused {
+                        refused: format!("the reading did not finish ({e})"),
+                    },
+                )]
             });
-        if let Some(report) = watch.tick(std::time::Instant::now(), survey.reading.verdict()) {
-            headroom::say(&survey, &report);
-        }
+        disk.send_replace(Some(survey));
     }
 }
 
@@ -639,6 +650,12 @@ fn warn_refused(refused: &heartbeat::Refused) {
              cannot read is reaching nobody but this box's own status and log"
         );
     }
+    if let Some(r) = &refused.disk {
+        tracing::warn!(
+            "[headroom] core refused this box's disk reading: {r} — how much its scratch \
+             filesystems have left is reaching nobody"
+        );
+    }
     if let Some(r) = &refused.binaries {
         tracing::warn!(
             "[binaries] core refused this box's missing-binary report: {r} — which pane binaries \
@@ -746,6 +763,7 @@ fn heartbeat_conditions(
         pool: pool_reads::report(dir, now_ms).ok(),
         binaries,
         dialogs: runner_core::dialog_answer::report(dir),
+        disk: None,
     }
 }
 

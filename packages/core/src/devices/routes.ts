@@ -12,6 +12,7 @@ import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { answerCheckoutHead, patchDeviceRunnerCheckout } from '../runners/index.js';
 import { heartbeatBinaries, withDeviceBinaries } from './binary-report.js';
 import { annotateDeviceBuilds } from './build-state.js';
+import { heartbeatDisk, withDeviceDisk } from './disk-report.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
@@ -43,6 +44,8 @@ const heartbeatBodySchema = z
     pool: z.unknown().optional(),
     // Read by `heartbeatBinaries`, for the reason `gate` is.
     binaries: z.unknown().optional(),
+    // Read by `heartbeatDisk`, for the reason `gate` is.
+    disk: z.unknown().optional(),
   })
   .strict();
 async function ownedDevice(id: string, userId: string) {
@@ -72,7 +75,9 @@ deviceOwnerRoutes.get('/me/devices', zValidator('query', ownerDevicesQuery), asy
   // release AND the runner head on the default branch. The second is what catches
   // a release that was never cut, where every box reports the number the last one
   // carried and nothing reads as behind.
-  const annotated = withDeviceBinaries(withDeviceGate(await annotateDeviceBuilds(rows)));
+  const annotated = withDeviceDisk(
+    withDeviceBinaries(withDeviceGate(await annotateDeviceBuilds(rows))),
+  );
   // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
   return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
 });
@@ -187,10 +192,14 @@ deviceAuthRoutes.post(
 
     const gate = heartbeatGate(input.gate, device.id);
     const binaries = heartbeatBinaries(input.binaries, device.id);
+    const disk = heartbeatDisk(input.disk, device);
 
     const beat = await recordHeartbeat(
       device.id,
-      heartbeatPatch({ ...input, gate: gate.report, binaries: binaries.report }, new Date()),
+      heartbeatPatch(
+        { ...input, gate: gate.report, binaries: binaries.report, disk: disk.report },
+        new Date(),
+      ),
       input.pool,
     );
     if (!beat) throw unauth();
@@ -209,6 +218,7 @@ deviceAuthRoutes.post(
       serverTime: new Date().toISOString(),
       ...gate.ack,
       ...binaries.ack,
+      ...disk.ack,
       ...beat.poolAck,
     });
   },

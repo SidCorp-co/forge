@@ -1,4 +1,5 @@
 import { type BinaryReport, storedBinaryReport } from './binary-report.js';
+import { type DiskReport, storedDiskReport } from './disk-report.js';
 import { type GateReport, storedGateReport } from './gate-report.js';
 
 interface HeartbeatReport {
@@ -7,6 +8,7 @@ interface HeartbeatReport {
   capabilities?: Record<string, unknown> | undefined;
   gate?: GateReport | undefined;
   binaries?: BinaryReport | undefined;
+  disk?: DiskReport | undefined;
 }
 
 export interface DevicePatch {
@@ -16,6 +18,7 @@ export interface DevicePatch {
   capabilities?: Record<string, unknown>;
   gateReport?: unknown;
   binaryReport?: unknown;
+  diskReport?: unknown;
 }
 
 /**
@@ -34,5 +37,6 @@ export function heartbeatPatch(report: HeartbeatReport, now: Date): DevicePatch 
     ...(report.binaries !== undefined
       ? { binaryReport: storedBinaryReport(report.binaries, now) }
       : {}),
+    ...(report.disk !== undefined ? { diskReport: storedDiskReport(report.disk, now) } : {}),
   };
 }

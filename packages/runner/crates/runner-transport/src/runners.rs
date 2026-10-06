@@ -40,6 +40,10 @@ pub struct MeRunner {
     /// pass log so an operator can tell a 5-hour window from a dead credential.
     #[serde(default)]
     pub limit_reason: Option<String>,
+    /// The orientation a checkout of this project carries, served by core so the
+    /// daemon's start writes what a provision would. `None` from an older core.
+    #[serde(default)]
+    pub orientation: Option<String>,
 }
 
 /// List the projects this device is assigned to. `401` maps to a clear

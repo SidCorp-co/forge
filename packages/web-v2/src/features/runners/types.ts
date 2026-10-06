@@ -51,6 +51,11 @@ export interface DeviceRow {
 	 * at pane start and no screen could read it.
 	 */
 	binaries: DeviceBinaries | null;
+	/**
+	 * What each filesystem this box writes its runs' scratch into had left at its
+	 * last reading, judged by core; `null` where it has never reported one.
+	 */
+	disk: DeviceDisk | null;
 	createdAt: string;
 }
 
@@ -64,7 +69,8 @@ export interface DeviceRow {
  * behind several of the runners the Overview counts, and `projectNames` holds
  * one entry per assignment.
  */
-export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate" | "binaries"> {
+export interface OrgDeviceRow
+	extends Omit<DeviceRow, "capabilities" | "gate" | "binaries" | "disk"> {
 	runnerCount: number;
 	projectNames: string[];
 }
@@ -317,6 +323,61 @@ export function deviceBinariesRead(
 				? null
 				: `last reported ${asSpan(age)} ago, so this may no longer be true`,
 	};
+}
+
+export type DiskVerdict = "clear" | "unmeasurable" | "tight" | "critical";
+
+/** One scratch root as core judged it: the box's figures, or why it had none. */
+export interface DiskRootRead {
+	root: string;
+	bytesFree?: number;
+	bytesTotal?: number;
+	inodesFree?: number;
+	inodesTotal?: number;
+	refused?: string;
+	bytesFreePercent: number | null;
+	inodesFreePercent: number | null;
+	verdict: DiskVerdict;
+	axis: "bytes" | "inodes" | null;
+}
+
+export interface DeviceDisk {
+	receivedAt: string;
+	verdict: DiskVerdict;
+	roots: DiskRootRead[];
+	tightFreePercent: number;
+	criticalFreePercent: number;
+}
+
+/** One root as a line: both axes, so the one that did not cross is read beside the one that did. */
+export function diskRootLine(r: DiskRootRead): string {
+	if (r.refused !== undefined) return `no reading: ${r.refused}`;
+	const bytes =
+		r.bytesFreePercent === null
+			? "bytes: no total stated"
+			: `${r.bytesFreePercent}% bytes free (${binarySize(r.bytesFree ?? 0)} of ${binarySize(r.bytesTotal ?? 0)})`;
+	const inodes =
+		r.inodesFreePercent === null
+			? "inodes: no total stated"
+			: `${r.inodesFreePercent}% inodes free (${(r.inodesFree ?? 0).toLocaleString()} of ${(r.inodesTotal ?? 0).toLocaleString()})`;
+	return `${bytes} · ${inodes}`;
+}
+
+function binarySize(bytes: number): string {
+	const units = ["E", "P", "T", "G", "M", "K"] as const;
+	for (const [i, unit] of units.entries()) {
+		const scale = 1024 ** (units.length - i);
+		if (bytes >= scale) return `${(bytes / scale).toFixed(1)}${unit}`;
+	}
+	return `${bytes}B`;
+}
+
+/** Where the disk report is old enough that it may no longer be the box's present condition. */
+export function deviceDiskStale(disk: DeviceDisk, now: number = Date.now()): string | null {
+	const age = now - Date.parse(disk.receivedAt);
+	return Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
+		? null
+		: `last reported ${asSpan(age)} ago, so this may no longer be true`;
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */

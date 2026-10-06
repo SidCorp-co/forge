@@ -60,6 +60,11 @@ export const devices = pgTable(
      * core heard it. A condition it is in, like `gateReport`; `devices/binary-report.ts` reads it.
      */
     binaryReport: jsonb('binary_report'),
+    /**
+     * What each scratch root's filesystem had left at the box's last reading, with the time core
+     * heard it. A condition it is in, like `gateReport`; `devices/disk-report.ts` judges it.
+     */
+    diskReport: jsonb('disk_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
     // the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number

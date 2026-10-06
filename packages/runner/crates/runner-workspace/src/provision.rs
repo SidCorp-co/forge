@@ -290,7 +290,7 @@ pub(crate) async fn checkout_lock(
 
 /// Write the checkout's orientation, answering what its provision result records.
 fn orient(repo_path: &Path, p: &Provision) -> Option<String> {
-    let said = orientation::write_orientation(repo_path, &p.project_id, &p.slug);
+    let said = orientation::write_orientation(repo_path, p.orientation.as_deref(), &p.slug);
     let entry = orientation_record::Entry::now(
         &p.slug,
         repo_path,
