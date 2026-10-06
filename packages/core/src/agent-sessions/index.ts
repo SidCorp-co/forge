@@ -19,6 +19,7 @@ export {
   markSessionTerminal,
 } from './recovery-stats.js';
 export { agentSessionEventsRetention } from './retention.js';
+export { sessionAudienceById } from './session-access.js';
 export {
   agentRefusalText,
   mintSessionCredential,

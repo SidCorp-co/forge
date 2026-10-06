@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **A person's chat is theirs again, frames included.** Its live frames reach only its owner and
+  project admins, never the project room; reads gate on the `kind` column, not a `metadata.type`
+  nothing has written since ISS-1136.
 - **A master pass is refused only when nothing ran in it.** A usage limit after work closes it as
   ran, keeping the ledger's dispatched list. An unprompted pass opens at its prompt; a turn shorter
   than one tick gets one.

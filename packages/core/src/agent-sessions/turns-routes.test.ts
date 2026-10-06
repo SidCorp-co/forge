@@ -106,6 +106,7 @@ function sessionOf(over: Record<string, unknown>) {
     repoPath: '/r',
     claudeSessionId: 'claude-old',
     updatedAt: new Date(0),
+    kind: 'chat',
     metadata: {},
     ...over,
   };
@@ -130,7 +131,7 @@ describe('POST /:id/fork reads a private agent chat only as its owner may', () =
   });
 
   it("refuses a project writer forking another person's agent chat, and answers no transcript", async () => {
-    state.session = sessionOf({ metadata: { type: 'agent' } });
+    state.session = sessionOf({ kind: 'chat' });
     const res = await post(`/${SESSION_ID}/fork`, { fromTurnId: TURN_ID });
     const text = await res.text();
     expect(res.status).toBe(403);
@@ -140,7 +141,7 @@ describe('POST /:id/fork reads a private agent chat only as its owner may', () =
   });
 
   it("lets the owner fork their own agent chat, and the fork is the caller's", async () => {
-    state.session = sessionOf({ userId: CALLER, metadata: { type: 'agent' } });
+    state.session = sessionOf({ userId: CALLER, kind: 'chat' });
     const res = await post(`/${SESSION_ID}/fork`, { fromTurnId: TURN_ID });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { userId: string; messages: unknown[] };
@@ -150,14 +151,14 @@ describe('POST /:id/fork reads a private agent chat only as its owner may', () =
 
   it("lets a project.admin fork another person's agent chat, owned by the admin", async () => {
     state.role = 'admin';
-    state.session = sessionOf({ metadata: { type: 'agent' } });
+    state.session = sessionOf({ kind: 'chat' });
     const res = await post(`/${SESSION_ID}/fork`, { fromTurnId: TURN_ID });
     expect(res.status).toBe(201);
     expect(((await res.json()) as { userId: string }).userId).toBe(CALLER);
   });
 
-  it('creates a fork of a shared (non-agent) session as the caller, not the parent owner', async () => {
-    state.session = sessionOf({ metadata: {} });
+  it('creates a fork of a shared (unattended) chat as the caller, not the parent owner', async () => {
+    state.session = sessionOf({ kind: 'chat', metadata: { unattended: true } });
     const res = await post(`/${SESSION_ID}/fork`, { fromTurnId: TURN_ID });
     expect(res.status).toBe(201);
     expect(((await res.json()) as { userId: string }).userId).toBe(CALLER);

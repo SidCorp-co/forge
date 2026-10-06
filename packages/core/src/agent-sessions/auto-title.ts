@@ -78,6 +78,9 @@ export async function applyAutoTitleAsync(args: ApplyAutoTitleArgs): Promise<voi
         projectId: agentSessions.projectId,
         deviceId: agentSessions.deviceId,
         status: agentSessions.status,
+        kind: agentSessions.kind,
+        userId: agentSessions.userId,
+        metadata: agentSessions.metadata,
       });
     if (!row) return;
     broadcastSession(row, 'agent-session.updated');

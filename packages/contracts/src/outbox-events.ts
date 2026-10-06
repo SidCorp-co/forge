@@ -445,13 +445,18 @@ export interface OutboxEventPayloads {
 		data: Record<string, unknown>;
 		rooms: ReadonlyArray<"project" | "device">;
 	};
-	/** An agent session was opened or changed status; told to its project's room and its box's. */
+	/**
+	 * An agent session was opened or changed status. A project-wide session is told to its project's
+	 * room and its box's; a person's own chat only to the rooms of `userIds`, the people who may read it.
+	 */
 	"session.changed": {
 		sessionId: string;
 		projectId: string;
 		deviceId: string | null;
 		event: string;
 		extra: Record<string, unknown>;
+		projectWide: boolean;
+		userIds: string[];
 	};
 	/** A device's state changed or its owner is told of a login step; told to the owner's room, then the box's. */
 	"device.pushed": {
@@ -460,10 +465,14 @@ export interface OutboxEventPayloads {
 		event: string;
 		data: Record<string, unknown>;
 	};
-	/** A session moved, or its box is sent a frame; told to the project's room, then the box's. */
+	/**
+	 * A session moved, or its box is sent a frame; told to the project's room (none when null), the
+	 * box's, then each of `userIds` — the readers of a person's own chat, whose frames skip the other two.
+	 */
 	"session.pushed": {
 		projectId: string | null;
 		deviceId: string | null;
+		userIds: string[];
 		event: string;
 		data: Record<string, unknown>;
 	};

@@ -180,6 +180,7 @@ export function registerWsBroadcastSubscribers(): void {
   on('session.pushed', (p) => {
     if (p.projectId) pub(projectRoom(p.projectId), p.event, p.data);
     if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
+    for (const userId of p.userIds) pub(userRoom(userId), p.event, p.data);
   });
 
   on('issue.pushed', (p) => {
@@ -206,7 +207,10 @@ export function registerWsBroadcastSubscribers(): void {
       deviceId: p.deviceId,
       ...p.extra,
     };
-    pub(projectRoom(p.projectId), p.event, data);
-    if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, data);
+    if (p.projectWide) {
+      pub(projectRoom(p.projectId), p.event, data);
+      if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, data);
+    }
+    for (const userId of p.userIds) pub(userRoom(userId), p.event, data);
   });
 }
