@@ -58,22 +58,40 @@ function loggedError(first: unknown): Error | null {
 }
 
 /**
- * The call's text redacted against the error it logs, which only this hook still holds: a driver
- * message repeating a short bound value is told only by the values the error carries.
+ * `value` with every `Error` inside it serialized as `err` is, so an error carried in context or
+ * interpolated with `%j` brings its message and SQLSTATE and none of its bound values.
  */
-function redactCall(args: unknown[], err: Error): unknown[] {
-  let [first, ...rest] = args;
-  rest = rest.map((a) => redactQueryParams(a, err));
-  const named = first as { msg?: unknown };
-  if (!(first instanceof Error)) {
-    first = Object.fromEntries(
-      Object.entries(first as object).map(([k, v]) => [
-        k,
-        k === 'err' ? v : redactQueryParams(v, err),
-      ]),
-    );
+function withErrorsSerialized(value: unknown, depth = 0): unknown {
+  if (value instanceof Error) return serializeError(value);
+  if (depth >= 8 || typeof value !== 'object' || value === null) return value;
+  if (!Array.isArray(value) && Object.prototype.toString.call(value) !== '[object Object]') {
+    return value;
   }
-  if (typeof named.msg !== 'string' && typeof rest[0] !== 'string') {
+  const entries = Object.entries(value);
+  const next = entries.map(([k, v]) => [k, withErrorsSerialized(v, depth + 1)] as const);
+  if (next.every(([, v], i) => v === entries[i]?.[1])) return value;
+  return Array.isArray(value) ? next.map(([, v]) => v) : Object.fromEntries(next);
+}
+
+/**
+ * The call's arguments with every error in them serialized and, where the call logs an error, its
+ * text redacted against that error, which only this hook still holds: a driver message repeating a
+ * short bound value is told only by the values the error carries.
+ */
+function redactCall(args: unknown[], err: Error | null): unknown[] {
+  const clean = (v: unknown) => {
+    const serialized = withErrorsSerialized(v);
+    return err ? redactQueryParams(serialized, err) : serialized;
+  };
+  let [first, ...rest] = args;
+  rest = rest.map(clean);
+  const named = first as { msg?: unknown };
+  if (typeof first === 'object' && first !== null && !(first instanceof Error)) {
+    const entries = Object.entries(first);
+    const next = entries.map(([k, v]) => [k, k === 'err' ? v : clean(v)] as const);
+    if (next.some(([, v], i) => v !== entries[i]?.[1])) first = Object.fromEntries(next);
+  }
+  if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
     rest = [redactQueryParams(err.message, err), ...rest];
   }
   return [first, ...rest];
@@ -94,7 +112,6 @@ export const loggerOptions: LoggerOptions = {
   hooks: {
     logMethod(args, method) {
       const err = loggedError(args[0]);
-      if (!err) return method.apply(this, args);
       return method.apply(this, redactCall(args, err) as Parameters<typeof method>);
     },
     streamWrite: redactLine,

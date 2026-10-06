@@ -93,6 +93,26 @@ describe('the core logger', () => {
     expect(lines[0]).not.toContain('SENTINEL');
   });
 
+  it.each([
+    [
+      'beside the err it logs',
+      (log: Logger, err: Error) => log.error({ err }, 'failed %j', { error: err }),
+    ],
+    ['with no err beside it', (log: Logger, err: Error) => log.error('failed %j', { error: err })],
+    [
+      'in context with no err beside it',
+      (log: Logger, err: Error) => log.warn({ ctx: [err] }, 'failed'),
+    ],
+  ])('serializes an error interpolated or carried %s without its bound values', (_, write) => {
+    const { lines, log } = capture();
+    write(log, failedInsert());
+    expect(lines).toHaveLength(1);
+    const line = lines[0] ?? '';
+    JSON.parse(line);
+    expect(line).not.toContain(HASH);
+    expect(line).not.toContain(EMAIL);
+  });
+
   it('still names the statement, the SQLSTATE and the constraint', () => {
     const { lines, log } = capture();
     log.error({ err: failedInsert() }, 'http.unhandled');
