@@ -229,30 +229,57 @@ pub(crate) fn clear_session_in(dir: &Path, slug: &str) -> Result<()> {
     }
 }
 
-/// What [`write_session`] would write for these servers, as the bytes on disk.
+/// What a sweep finds when it compares a LIVE pane's session file with what
+/// core resolves now.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SessionConfigRead {
+    Matches,
+    Differs,
+    /// The file exists and cannot be read (a permission fault, bytes that are
+    /// not UTF-8). Not "absent": nothing was established about its contents,
+    /// so it may be neither called matching nor rewritten over.
+    Unreadable(String),
+}
+
+/// What [`write_session`] would write for these servers, compared with the
+/// bytes on disk.
 ///
 /// The comparison a sweep makes against a LIVE pane: a pane carries the MCP
 /// configuration it was started with and cannot be told a new one, so the only
 /// question worth asking is whether the file it was given still says what core
 /// says now.
-pub fn session_matches(slug: &str, servers: &serde_json::Map<String, Value>) -> bool {
-    session_matches_in(&mcp_read_dir(), slug, servers)
+pub fn read_session_config(
+    slug: &str,
+    servers: &serde_json::Map<String, Value>,
+) -> SessionConfigRead {
+    read_session_config_in(&mcp_read_dir(), slug, servers)
 }
 
-pub(crate) fn session_matches_in(
+pub(crate) fn read_session_config_in(
     dir: &Path,
     slug: &str,
     servers: &serde_json::Map<String, Value>,
-) -> bool {
+) -> SessionConfigRead {
     let path = session_path_in(dir, slug);
-    let on_disk = std::fs::read_to_string(&path).ok();
-    match (on_disk, servers.is_empty()) {
+    let on_disk = match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return SessionConfigRead::Unreadable(format!("{}: {e}", path.display()));
+        }
+    };
+    let matches = match (on_disk, servers.is_empty()) {
         // No file and nothing to declare: a pane started with no `--mcp-config`
         // is exactly what this project asks for.
         (None, true) => true,
         (None, false) => false,
         (Some(_), true) => false,
         (Some(text), false) => session_servers(&text).as_ref() == Some(servers),
+    };
+    if matches {
+        SessionConfigRead::Matches
+    } else {
+        SessionConfigRead::Differs
     }
 }
 
@@ -260,7 +287,7 @@ pub(crate) fn session_matches_in(
 /// text is not the document [`write_session`] writes.
 ///
 /// Takes the TEXT and not a path, so a caller that has already read the file
-/// judges the bytes it read. [`session_matches`] reads by path, and the master
+/// judges the bytes it read. [`read_session_config`] reads by path, and the master
 /// sweep rewrites that file on every pass for a live pane, so two reads of one
 /// path can answer about two different files (ISS-1191). `None` and a map that
 /// differs are also two answers here rather than one: a pane started from a
@@ -367,5 +394,45 @@ mod brief_tests {
         let path = write_job_brief_in(dir.path(), "forge-job-x", "go").unwrap();
         clear_job_session_in(dir.path(), "forge-job-x").unwrap();
         assert!(!path.exists());
+    }
+}
+
+#[cfg(test)]
+mod read_tests {
+    use super::*;
+
+    fn servers() -> serde_json::Map<String, Value> {
+        let mut m = serde_json::Map::new();
+        m.insert("forge".into(), serde_json::json!({"command": "x"}));
+        m
+    }
+
+    #[test]
+    fn an_absent_file_over_nothing_declared_matches_and_over_servers_differs() {
+        let dir = std::env::temp_dir().join(format!("forge-sess-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(
+            read_session_config_in(&dir, "p", &serde_json::Map::new()),
+            SessionConfigRead::Matches
+        );
+        assert_eq!(
+            read_session_config_in(&dir, "p", &servers()),
+            SessionConfigRead::Differs
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_unreadable_and_never_matches() {
+        let dir = std::env::temp_dir().join(format!("forge-sess-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Not valid UTF-8: read_to_string fails with something other than NotFound.
+        std::fs::write(session_path_in(&dir, "p"), [0xff, 0xfe, 0x00]).unwrap();
+        let got = read_session_config_in(&dir, "p", &serde_json::Map::new());
+        assert!(
+            matches!(got, SessionConfigRead::Unreadable(_)),
+            "an unreadable session file read as {got:?}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
