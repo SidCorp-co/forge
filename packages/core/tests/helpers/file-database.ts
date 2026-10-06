@@ -26,6 +26,10 @@ process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET ??= 'integration-secret-at-least-32-characters-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-pepper-at-least-32-characters-long';
 
+await import('../../src/index.js');
+const { registerAllIntegrations } = await import('../../src/integration-registry.js');
+registerAllIntegrations();
+
 afterAll(async () => {
   const { closeDb } = await import('../../src/db/client.js');
   await closeDb();

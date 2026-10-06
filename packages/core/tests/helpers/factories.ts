@@ -119,3 +119,14 @@ export async function bindTestRunner(
   `);
   return id;
 }
+
+/**
+ * Seeds a status under the kernel's transaction flag (`db/kernel-marker.ts`): for a case whose
+ * subject is what a reader does with a row at that status, not how the row got there.
+ */
+export async function seedIssueStatus(issueId: string, status: string): Promise<void> {
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  await withKernelMarker(db, (tx) =>
+    tx.execute(sql`UPDATE issues SET status = ${status} WHERE id = ${issueId}`),
+  );
+}

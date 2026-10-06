@@ -9,7 +9,7 @@
 
 import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
@@ -317,9 +317,10 @@ interface ReleaseHoldTally {
 }
 
 /**
- * Write one hold onto each row. A row already held for the same words keeps its record; a changed
- * reason clears the standing record and adds the new one in one transaction, guarded on the row
- * still waiting unclaimed at the gate, so a row a release took in between is left as it is.
+ * Write one hold onto each row. A row already held for the same words keeps its record, read again
+ * under the row's lock so two writers racing to one reason leave one record; a changed reason
+ * clears the standing record and adds the new one in one transaction, guarded on the row still
+ * waiting unclaimed at the gate, so a row a release took in between is left as it is.
  */
 export async function writeReleaseHolds(args: {
   projectId: string;
@@ -344,7 +345,10 @@ export async function writeReleaseHolds(args: {
            AND release_batch_run_id IS NULL
          FOR UPDATE
       `)) as unknown as unknown[];
-      if (waiting.length === 0) return false;
+      if (waiting.length === 0) return 'skipped' as const;
+      if (sameReleaseHold((await standingHolds([issueId], tx)).get(issueId) ?? null, hold)) {
+        return 'unchanged' as const;
+      }
       await tx
         .update(releaseHolds)
         .set({ clearedAt: args.now })
@@ -358,16 +362,18 @@ export async function writeReleaseHolds(args: {
         waitingFor: hold.waitingFor,
         heldAt: args.now,
       });
-      return true;
+      return 'written' as const;
     });
-    if (wrote) tally.written += 1;
-    else tally.skipped += 1;
+    tally[wrote] += 1;
   }
   return tally;
 }
 
-async function standingHolds(issueIds: readonly string[]): Promise<Map<string, ReleaseHold>> {
-  const rows = await db
+async function standingHolds(
+  issueIds: readonly string[],
+  exec: Tx = db,
+): Promise<Map<string, ReleaseHold>> {
+  const rows = await exec
     .select({
       issueId: releaseHolds.issueId,
       code: releaseHolds.code,
