@@ -98,8 +98,8 @@ metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list b
 
 ### Reading the list
 \`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer: a holder of
-\`feedback.approve\` to triage a new or reopened item or a triaged one whose carrier died (the project's master for a high or
-critical one it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
+\`feedback.approve\` to triage a new or reopened item or a triaged one whose carrier died (the project's master, where one is
+live, for any item it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
 makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and the
 reporter to verify a resolved one. It reads \`You\` only where the viewer holds that act.
 \`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a

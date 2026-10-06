@@ -34,6 +34,22 @@ async function liveMasterOn(
   return row ?? null;
 }
 
+/** Whether any box holds a live resident master for the project, whichever box that is. */
+export async function projectHasLiveMaster(projectId: string, executor: Tx = db): Promise<boolean> {
+  const [row] = await executor
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.projectId, projectId),
+        eq(agentSessions.kind, MASTER_SESSION_KIND),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /**
  * Whether `sessionId` is a master session core issued to this box (of `projectId` where given),
  * and, with `live`, one that has not ended.

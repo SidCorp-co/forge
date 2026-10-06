@@ -31,7 +31,7 @@ describe('feedback-lifecycle start: the master wake for filed feedback', () => {
     expect(OUTBOX_CONSUMERS['feedback.filed']).toContain('master-wake');
   });
 
-  it.each(['high', 'critical'] as const)(
+  it.each(['low', 'medium', 'high', 'critical'] as const)(
     'wakes every box for %s feedback, naming it',
     async (severity) => {
       await consumerOf('feedback.filed', 'master-wake')?.handle(
@@ -49,12 +49,4 @@ describe('feedback-lifecycle start: the master wake for filed feedback', () => {
       ]);
     },
   );
-
-  it.each(['low', 'medium'] as const)('wakes nobody for %s feedback', async (severity) => {
-    await consumerOf('feedback.filed', 'master-wake')?.handle(
-      { projectId: 'p1', feedbackId: 'f1', severity },
-      {} as never,
-    );
-    expect(published).toEqual([]);
-  });
 });

@@ -19,6 +19,7 @@ import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
+import { projectHasLiveMaster } from '../devices/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -63,10 +64,15 @@ export interface Linked {
   >;
   roots: Map<string, Row>;
   names: Map<string, string>;
-  /** Items of these rows the project's master owes a triage. */
+  /** Items of these rows the project's live master owes a triage; none where no master is live. */
   masterOwed: Set<string>;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
   release: CarrierRelease | null;
+}
+
+/** The items a live master owes a triage: with no master live, nobody is woken for them, so none. */
+async function masterOwed(projectId: string) {
+  return (await projectHasLiveMaster(projectId)) ? owedTriages(projectId) : [];
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -187,7 +193,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       rows.some((r) => r.route === 'issue' && r.routedIssueId === i.id),
   );
   const [owed, release] = await Promise.all([
-    rows.some((r) => r.status === 'new' || r.status === 'reopened') ? owedTriages(projectId) : [],
+    rows.some((r) => r.status === 'new' || r.status === 'reopened') ? masterOwed(projectId) : [],
     atGate ? releaseOf(projectId) : null,
   ]);
   return {

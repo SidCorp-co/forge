@@ -1,11 +1,12 @@
 //! Which of a project's feedback items owe its master a triage.
 //!
-//! A `master.wake` with `source: "feedback"` says only that a high or critical
-//! item was filed; core's room has no buffer, so the sweep reads this state on
-//! every pass and an untriaged item is master work whether or not its wake was
-//! heard. Which items are owed — the severities, the statuses, an open
-//! clarification waiting on the reporter — is core's answer, from
-//! `feedback/device-owed-routes.ts`; this box carries it and decides none of it.
+//! A `master.wake` with `source: "feedback"` says only that an item was filed,
+//! at whatever severity; core's room has no buffer, so the sweep reads this
+//! state on every pass and an untriaged item is master work whether or not its
+//! wake was heard. Which items are owed and in what order — the statuses, an
+//! open clarification waiting on the reporter, severity first — is core's
+//! answer, from `feedback/device-owed-routes.ts`; this box carries it and
+//! decides none of it.
 
 use crate::channel_inbox::UnansweredDocument;
 use crate::CoreClient;

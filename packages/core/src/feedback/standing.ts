@@ -125,7 +125,7 @@ export interface StandingViewer {
 export type CarrierRelease = 'none' | 'approval' | 'manual' | 'automatic';
 
 export interface StandingFacts {
-  /** A high or critical item the project's master owes a triage (`owed-triage.ts:owedTriages`). */
+  /** An item the project's live master owes a triage (`owed-triage.ts:owedTriages`). */
   masterOwesTriage: boolean;
   /** Set only where the item is planned on an issue standing at `awaiting_release`. */
   carrierRelease: CarrierRelease | null;
@@ -157,7 +157,7 @@ function waitingOf(
             'agent',
             "The project's master",
             'triage it',
-            `${phase}: high or critical feedback owes the project's master a triage; a holder of feedback.approve may triage it first`,
+            `${phase}: untriaged feedback owes the project's master a triage; a holder of feedback.approve may triage it first`,
           ),
         );
       return {

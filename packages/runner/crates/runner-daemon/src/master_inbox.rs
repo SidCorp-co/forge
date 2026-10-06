@@ -30,7 +30,7 @@ pub enum WakeSource {
     Comment,
     /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown.
     Requirement,
-    /// Feedback was filed at high or critical severity.
+    /// Feedback was filed, at whatever severity.
     Feedback,
     /// A frame naming no source.
     ///

@@ -241,7 +241,7 @@ pub(crate) async fn read_feedback_inbox(
             let why = e.to_string();
             if masters.note_inbox_read(&key, Some(why.clone())) {
                 tracing::warn!(
-                    "[master] {slug}: cannot read which feedback items owe a triage ({why}) — this pass is decided without them, and high or critical feedback is not triaged until the read succeeds"
+                    "[master] {slug}: cannot read which feedback items owe a triage ({why}) — this pass is decided without them, and no filed feedback is triaged until the read succeeds"
                 );
             }
             Vec::new()

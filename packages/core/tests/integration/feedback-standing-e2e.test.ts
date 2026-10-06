@@ -18,12 +18,12 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 
-type Who = 'owner' | 'member' | 'viewer';
+type Who = 'owner' | 'member' | 'viewer' | 'box';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let box = '';
 let publish: MockInstance;
-const ids = { target: '', low: '', high: '', carrierKey: '', carrier: '' };
+const ids = { target: '', low: '', high: '', medium: '', carrierKey: '', carrier: '' };
 
 beforeAll(async () => {
   testEnv();
@@ -40,10 +40,12 @@ beforeAll(async () => {
   await addProjectMember(projectId, viewer, 'viewer');
   box = await createTestDevice(owner);
   await bindTestRunner(projectId, box);
+  const { issueDeviceCredential } = await import('../../src/devices/credential.js');
   say = requester(app, {
     owner: await signUserToken(owner),
     member: await signUserToken(member),
     viewer: await signUserToken(viewer),
+    box: await issueDeviceCredential({ deviceId: box, holderUserId: owner }),
   });
   ids.target = ok(
     await say('owner', 'POST', `/api/projects/${projectId}/issues`, { title: 'The board view' }),
@@ -81,8 +83,13 @@ async function feedbackWakes(): Promise<Doc[]> {
     .map((e) => ({ room: e.room, ...e.data }));
 }
 
-describe('a low item waits on a holder of feedback.approve, and says so to each viewer', () => {
-  it('is the owner’s own act, and wakes no master', async () => {
+async function owedList(): Promise<Doc[]> {
+  const read = ok(await say('box', 'GET', `/api/devices/me/feedback/owed?projectId=${projectId}`));
+  return read.items.map((i: Doc) => ({ key: i.key, severity: i.severity }));
+}
+
+describe('with no live master, an untriaged item waits on a holder of feedback.approve', () => {
+  it('is the owner’s own act, and its filing still wakes the bound box', async () => {
     await settleOutbox();
     publish.mockClear();
     ids.low = await file('low', 'The board drops a column on resize');
@@ -90,7 +97,9 @@ describe('a low item waits on a holder of feedback.approve, and says so to each 
       attentionGroup: 'needs_you',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
-    expect(await feedbackWakes()).toEqual([]);
+    expect(await feedbackWakes()).toEqual([
+      expect.objectContaining({ room: `device:${box}`, projectId, severity: 'low' }),
+    ]);
   });
 
   it('names the permission to a member and a viewer who do not hold it', async () => {
@@ -105,22 +114,50 @@ describe('a low item waits on a holder of feedback.approve, and says so to each 
       });
     }
   });
-});
 
-describe('a high item is owed to the project master', () => {
-  it('wakes the master on the bound box and reads as the master’s act', async () => {
-    await settleOutbox();
-    publish.mockClear();
+  it('does not name an absent master even for a high item', async () => {
     ids.high = await file('high', 'Saving the board loses every card');
-    expect(await feedbackWakes()).toEqual([
-      expect.objectContaining({ room: `device:${box}`, projectId, severity: 'high' }),
-    ]);
     expect(await standingAs('owner', ids.high)).toEqual({
-      attentionGroup: 'moving',
-      waitingOn: expect.objectContaining({ kind: 'agent', who: "The project's master" }),
+      attentionGroup: 'needs_you',
+      waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
   });
+});
 
+describe('with a live master, every untriaged item is owed to it, most severe first', () => {
+  beforeAll(async () => {
+    const { ensureMasterSession } = await import('../../src/devices/master-session.js');
+    await ensureMasterSession({ deviceId: box, projectId, name: 'master' });
+  });
+
+  it('wakes the master for a medium item and lists it between the high and the low', async () => {
+    await settleOutbox();
+    publish.mockClear();
+    ids.medium = await file('medium', 'The board forgets its filter on reload');
+    expect(await feedbackWakes()).toEqual([
+      expect.objectContaining({ room: `device:${box}`, projectId, severity: 'medium' }),
+    ]);
+    expect(await owedList()).toEqual([
+      { key: ids.high, severity: 'high' },
+      { key: ids.medium, severity: 'medium' },
+      { key: ids.low, severity: 'low' },
+    ]);
+  });
+
+  it.each(['low', 'medium', 'high'] as const)(
+    'reads a %s item as the master’s act, whoever reads it',
+    async (severity) => {
+      for (const who of ['owner', 'member'] as const) {
+        expect(await standingAs(who, ids[severity])).toEqual({
+          attentionGroup: 'moving',
+          waitingOn: expect.objectContaining({ kind: 'agent', who: "The project's master" }),
+        });
+      }
+    },
+  );
+});
+
+describe('a high item is triaged onto an issue', () => {
   it('refuses a triage from a member who lacks feedback.approve', async () => {
     const res = await say('member', 'POST', at(`/${ids.high}/triage`), {
       route: 'issue',

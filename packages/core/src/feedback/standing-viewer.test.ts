@@ -30,7 +30,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
     expect(s.attentionGroup).toBe('needs_you');
   });
 
-  it('names the project master for a high or critical item it owes a triage, whoever reads it', () => {
+  it('names the project master for an item it owes a triage, whoever reads it', () => {
     const s = feedbackStandingOf('new', null, null, 'Reporter', viewer({ canTriage: true }), null, {
       masterOwesTriage: true,
       carrierRelease: null,
