@@ -10,11 +10,17 @@
 
 ### Fixed
 
-- A resumed master's brief turn now closes its pass when the turn ends, and a pass whose master stays quiet for 600 seconds is closed as abandoned, so new admissible work is no longer held from an idle master.
-
 - Two racing release sweeps write one hold, not two; two agents updating one issue's session state can no longer both succeed against the same earlier read.
 
 - **Ecosystem, feedback and workflow paths are proven against a migrated database.** Channel, notices, links, design wakes, contract and breakdown waits, adopt, impact, re-plan tasks, feedback standing and onboarding requests each have a suite that goes red when its rule breaks.
+
+## [0.4.0-dev.56] - 2026-10-06
+
+A restarted master closes its first pass and no longer stalls on idle passes
+
+### Fixed
+
+- A resumed master's brief turn now closes its pass when the turn ends, and a pass whose master stays quiet for 600 seconds is closed as abandoned, so new admissible work is no longer held from an idle master.
 
 ## [0.4.0-dev.55] - 2026-10-06
 
