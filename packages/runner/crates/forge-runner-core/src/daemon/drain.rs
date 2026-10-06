@@ -224,6 +224,8 @@ pub struct Drain {
     socket: Socket,
     /// The last update not installed, carried on every record written.
     refused: Mutex<Option<serving::UpdateRefused>>,
+    /// The release a probation put back, which no update installs again.
+    held_back: Mutex<Option<serving::UpdateRefused>>,
 }
 
 impl Drain {
@@ -249,6 +251,7 @@ impl Drain {
             identity: Record::this_process(now_ms()),
             socket: Socket::new(),
             refused: Mutex::new(refused),
+            held_back: Mutex::new(None),
         };
         drain.publish(None);
         drain
@@ -483,6 +486,20 @@ impl Drain {
         self.publish(state);
     }
 
+    /// The release a probation put back, which the update checks skip, or
+    /// `None` once another release is installed: `status` says so while it
+    /// stands.
+    pub fn update_held_back(&self, held: Option<serving::UpdateRefused>) {
+        let mut at = self.held_back.lock().unwrap_or_else(|p| p.into_inner());
+        if *at == held {
+            return;
+        }
+        *at = held;
+        drop(at);
+        let state = self.lock().state.clone();
+        self.publish(state);
+    }
+
     /// A later check installed an update or found none newer, so the last
     /// refusal no longer describes this box.
     pub fn update_settled(&self) {
@@ -506,6 +523,11 @@ impl Drain {
             drain,
             update_refused: self
                 .refused
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone(),
+            update_held_back: self
+                .held_back
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .clone(),
@@ -976,10 +998,6 @@ mod tests {
         assert_eq!(handing.await.unwrap(), Drained::Idle);
     }
 
-    /// The interleaving no paused clock can stop at: the server counts a
-    /// request and acknowledges between two reads inside one loop turn of
-    /// `closing_window`. Only reading the acknowledgement first makes a count
-    /// read after it complete, so the order is asserted on the source itself.
     /// ISS-1378 criterion 16: the record carries a refused update until a
     /// later check settles it.
     #[test]
@@ -1008,6 +1026,35 @@ mod tests {
         );
     }
 
+    /// ISS-1378 criterion 15: a release a probation put back is on the
+    /// record while it is held back, a check finding nothing newer does not
+    /// take it off, and an install of another release does.
+    #[test]
+    fn a_held_back_release_stays_on_the_record_until_another_is_installed() {
+        let dir = crate::test_scratch::Scratch::new("drain-held");
+        let drain = Drain::new(Some(dir.path().to_path_buf()));
+        let held = serving::UpdateRefused {
+            version: "0.17.99".into(),
+            why: "it started 3 times on probation without staying up".into(),
+            at_ms: 1,
+        };
+        drain.update_held_back(Some(held.clone()));
+        let read = || serving::read(dir.path()).unwrap().unwrap();
+        assert_eq!(read().update_held_back, Some(held.clone()));
+        drain.update_settled();
+        assert_eq!(
+            read().update_held_back,
+            Some(held),
+            "nothing newer is not another release"
+        );
+        drain.update_held_back(None);
+        assert_eq!(read().update_held_back, None);
+    }
+
+    /// The interleaving no paused clock can stop at: the server counts a
+    /// request and acknowledges between two reads inside one loop turn of
+    /// `closing_window`. Only reading the acknowledgement first makes a count
+    /// read after it complete, so the order is asserted on the source itself.
     #[test]
     fn the_window_reads_the_acknowledgement_before_the_count() {
         let source = crate::test_scratch::lf(include_str!("drain.rs"));

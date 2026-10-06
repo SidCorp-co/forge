@@ -74,6 +74,11 @@ pub struct Record {
     /// judge 3, finding 2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_refused: Option<UpdateRefused>,
+    /// The release this daemon will not install because a probation put it
+    /// back, for as long as the record of that stands beside the build
+    /// (ISS-1378, criterion 15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_held_back: Option<UpdateRefused>,
 }
 
 /// An update that was not installed, and why.
@@ -96,6 +101,7 @@ impl Record {
             started_at_ms: now_ms,
             drain: None,
             update_refused: None,
+            update_held_back: None,
         }
     }
 
@@ -800,6 +806,14 @@ pub fn lines(
             u.why
         ));
     }
+    if let Some(u) = &record.update_held_back {
+        out.push(format!(
+            "{INDENT}the update to {} is held back, put back {} ago — {}",
+            u.version,
+            ago(now_ms, u.at_ms),
+            u.why
+        ));
+    }
     out
 }
 
@@ -988,6 +1002,7 @@ mod tests {
             started_at_ms: NOW - 3_600_000,
             drain,
             update_refused: None,
+            update_held_back: None,
         }
     }
 
@@ -1023,6 +1038,31 @@ mod tests {
         )
         .join("\n");
         assert!(!quiet.contains("was not installed"), "{quiet}");
+    }
+
+    /// ISS-1378 criterion 15: `status` names a release a probation put back
+    /// and says that the update checks skip it.
+    #[test]
+    fn status_names_a_release_held_back_after_its_probation() {
+        let mut r = rec("0.17.91", None);
+        r.update_held_back = Some(UpdateRefused {
+            version: "0.17.99".into(),
+            why: "it started 3 times on probation without staying up for 60s, so the build before it was put back, and no update installs 0.17.99 again until a release other than it is offered".into(),
+            at_ms: NOW - 5 * 60_000,
+        });
+        let out = lines(
+            &Ok(Some(r)),
+            &probe(|_| true, |_| Some("777".into())),
+            "0.17.91",
+            "abc1234",
+            NOW,
+        )
+        .join("\n");
+        assert!(
+            out.contains("the update to 0.17.99 is held back, put back 5m ago")
+                && out.contains("no update installs 0.17.99 again"),
+            "{out}"
+        );
     }
 
     fn probe(alive: fn(u32) -> bool, ticks: fn(u32) -> Option<String>) -> Probe {

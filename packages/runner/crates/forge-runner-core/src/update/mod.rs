@@ -76,6 +76,21 @@ pub struct UpdateOutcome {
     pub to: String,
 }
 
+/// What an update check came to.
+pub enum Applied {
+    /// The release is not newer than this build.
+    UpToDate,
+    /// The release was installed.
+    Installed(UpdateOutcome),
+    /// The release is the build an earlier probation put back, so it was not
+    /// downloaded (ISS-1378).
+    HeldBack {
+        rejected: probation::Rejected,
+        /// The install path the record stands beside.
+        exe: std::path::PathBuf,
+    },
+}
+
 /// Resolve the manifest URL: an explicit config value wins, else derive it from
 /// the core URL. Returns None when neither is available.
 pub fn manifest_url(configured: Option<&str>, core_url: Option<&str>) -> Option<String> {
@@ -126,13 +141,28 @@ fn parse(v: &str) -> (u64, u64, u64) {
 }
 
 /// Download the matching asset, verify its sha256, and atomically replace the
-/// running executable. Returns Ok(None) when already up to date.
-pub async fn apply(
-    manifest: &Manifest,
-    keep: Option<&ServedBuild>,
-) -> Result<Option<UpdateOutcome>> {
+/// running executable, unless the release is not newer or is the build a
+/// probation put back.
+///
+/// Every update route comes through here, the daemon's check and a hand
+/// `forge-runner update` alike, so the record a put-back leaves is read in one
+/// place, before anything is downloaded.
+pub async fn apply(manifest: &Manifest, keep: Option<&ServedBuild>) -> Result<Applied> {
     if !is_newer(&manifest.version, CURRENT_VERSION) {
-        return Ok(None);
+        return Ok(Applied::UpToDate);
+    }
+    // Resolved rather than taken raw, because this is the second update in a
+    // process that never restarted after the first: `/proc/self/exe` then reads
+    // `<path> (deleted)`, and renaming over THAT writes a file called
+    // `forge-runner (deleted)` while the binary everything invokes stays at the
+    // build it was (ISS-1200).
+    let own = crate::exe::own()?;
+    let claim = Claim::of(manifest);
+    if let Some(rejected) = held_back(&own.path, &claim)? {
+        return Ok(Applied::HeldBack {
+            rejected,
+            exe: own.path,
+        });
     }
     let asset = manifest
         .assets
@@ -159,12 +189,6 @@ pub async fn apply(
         }
     }
 
-    // Resolved rather than taken raw, because this is the second update in a
-    // process that never restarted after the first: `/proc/self/exe` then reads
-    // `<path> (deleted)`, and renaming over THAT writes a file called
-    // `forge-runner (deleted)` while the binary everything invokes stays at the
-    // build it was (ISS-1200).
-    let own = crate::exe::own()?;
     if let Some(was) = &own.replaced_from {
         tracing::warn!(
             "[update] this process started on {} which was replaced while it ran — installing over {}, the build standing there now",
@@ -172,12 +196,25 @@ pub async fn apply(
             own.path.display()
         );
     }
-    install(&own.path, &bytes, &Claim::of(manifest), keep).await?;
+    install(&own.path, &bytes, &claim, keep).await?;
 
-    Ok(Some(UpdateOutcome {
+    Ok(Applied::Installed(UpdateOutcome {
         from: CURRENT_VERSION.to_string(),
         to: manifest.version.clone(),
     }))
+}
+
+/// The build an earlier probation put back from `exe`, where it is the one
+/// `claim` names. A record that cannot be read refuses the update rather than
+/// letting the build it may name through.
+pub fn held_back(exe: &std::path::Path, claim: &Claim) -> Result<Option<probation::Rejected>> {
+    match probation::rejected(exe) {
+        Ok(Some(r)) if r.names(claim) => Ok(Some(r)),
+        Ok(_) => Ok(None),
+        Err(why) => Err(Error::Other(format!(
+            "not installed: the record of a build an earlier probation put back is unreadable, and read as absent it would let that build be installed again — {why}"
+        ))),
+    }
 }
 
 /// What a downloaded build must say it is before it is installed.
@@ -352,8 +389,22 @@ pub async fn install_within(
         }
     }
     #[cfg(not(unix))]
-    let _ = (claim, keep, bound);
+    let _ = (keep, bound);
     std::fs::rename(&tmp, exe)?;
+    // Another release stands at the install path now, so a build an earlier
+    // probation put back holds nothing back any more.
+    if let Ok(Some(r)) = probation::rejected(exe) {
+        if !r.names(claim) {
+            if let Err(e) = probation::clear_rejected(exe) {
+                tracing::warn!(
+                    "[update] {} is installed and the record holding {} back could not be removed from {} ({e})",
+                    claim.version,
+                    r.version,
+                    probation::rejected_path(exe).display()
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -504,6 +555,24 @@ mod tests {
         assert!(
             body.contains("crate::exe::own()"),
             "apply must resolve the path it installs over"
+        );
+    }
+
+    /// ISS-1378 criterion 15: every route that installs reads the hold
+    /// before it downloads anything.
+    #[test]
+    fn apply_reads_the_hold_before_it_downloads() {
+        let source = crate::test_scratch::lf(include_str!("mod.rs"));
+        let body = source
+            .split("pub async fn apply(")
+            .nth(1)
+            .and_then(|s| s.split("\n}\n").next())
+            .expect("apply's body");
+        let hold = body.find("held_back(").expect("apply reads the hold");
+        let download = body.find("reqwest::").expect("apply downloads");
+        assert!(
+            hold < download,
+            "the held-back build is downloaded before the hold is read"
         );
     }
 
@@ -722,6 +791,40 @@ mod tests {
                 "rc=0 forge-runner 0.1.0 (served0)",
                 "the build this process serves, not 0.2.0"
             );
+            drop(dir);
+        }
+
+        /// ISS-1378 criterion 15: the record a put-back leaves holds back the
+        /// release it names, and an install of another release lifts it.
+        #[tokio::test]
+        async fn a_put_back_build_is_held_back_until_another_release_is_installed() {
+            let (dir, exe) = a_box("pre-held");
+            let rejected = probation::Rejected {
+                version: "0.2.0".into(),
+                commit: Some("bad0000".into()),
+                starts: probation::LIMIT,
+                at_ms: 1,
+            };
+            probation::reject(&exe, &rejected).unwrap();
+            let held = Claim {
+                version: "0.2.0".into(),
+                commit: Some("bad0000".into()),
+            };
+            assert_eq!(held_back(&exe, &held).unwrap(), Some(rejected));
+            assert_eq!(
+                held_back(&exe, &claim()).unwrap(),
+                None,
+                "a re-cut 0.2.0 is another"
+            );
+            install(&exe, GOOD.as_bytes(), &claim(), Some(&ServedBuild::new()))
+                .await
+                .expect("installed");
+            assert_eq!(probation::rejected(&exe), Ok(None), "lifted by the install");
+            std::fs::write(probation::rejected_path(&exe), "{").unwrap();
+            let why = held_back(&exe, &held)
+                .expect_err("unreadable refuses")
+                .to_string();
+            assert!(why.contains("not installed"), "{why}");
             drop(dir);
         }
 
