@@ -38,6 +38,11 @@ struct File {
     path: Arc<Path>,
     /// The byte after the last whole line read.
     cursor: u64,
+    /// The file's length when it was last read to an unfinished last line:
+    /// until it changes, that line is not read again, so a tail its writer
+    /// never finished costs one read rather than every pass's budget
+    /// (whole-set read at e625249d4, F1).
+    unfinished_at: Option<u64>,
     /// Lines naming usage this file held that could not be counted.
     bad: usize,
     /// Responses in this file carrying no `message.id` or `requestId`.
@@ -94,6 +99,7 @@ impl Reader {
             let file = self.files.entry(path.clone()).or_insert_with(|| File {
                 path: Arc::from(path.as_path()),
                 cursor: 0,
+                unfinished_at: None,
                 bad: 0,
                 unkeyed: 0,
             });
@@ -102,7 +108,7 @@ impl Reader {
                 // response seen before merges into itself.
                 file.cursor = 0;
             }
-            if stopped || file.cursor >= *len {
+            if stopped || file.cursor >= *len || file.unfinished_at == Some(*len) {
                 continue;
             }
             let left = budget.map(|b| b.saturating_sub(pass.read));
@@ -121,7 +127,7 @@ impl Reader {
                 pass.bad += f.bad;
                 pass.unkeyed += f.unkeyed;
                 pass.done += f.cursor.min(*len);
-                if stopped {
+                if stopped && f.unfinished_at != Some(*len) {
                     pass.outstanding += len.saturating_sub(f.cursor);
                 }
             }
@@ -234,6 +240,7 @@ fn read_from(
         line.clear();
         let n = r.read_until(b'\n', &mut line)?;
         if n == 0 || line.last() != Some(&b'\n') {
+            file.unfinished_at = (n > 0).then_some(file.cursor + n as u64);
             return Ok((read + n as u64, false));
         }
         let at = file.cursor;
@@ -526,6 +533,31 @@ mod tests {
         let mut r = Reader::default();
         r.pass(dir.path(), NOW + 60_000, Some(2_000)).unwrap();
         assert_eq!(r.responses().count(), 1);
+    }
+
+    /// Whole-set read at e625249d4, F1: an oversized tail its writer never
+    /// finished is read once, not every pass, so the transcripts after it
+    /// are reached; finished, it is read and counted once.
+    #[test]
+    fn an_unfinished_tail_left_as_it_was_is_not_read_again() {
+        let dir = Scratch::new("spend-read");
+        let tail = format!("{{\"pad\":\"{}", "x".repeat(5_000));
+        let a = write(dir.path(), "p/a.jsonl", &tail);
+        let b = line(&at(NOW + 2_000), "/r", ("m2", "q2"), "a", [2, 0, 0, 0]);
+        write(dir.path(), "p/b.jsonl", &b);
+        let mut r = Reader::default();
+        let budget = Some(2_000);
+        let first = r.pass(dir.path(), NOW + 60_000, budget).unwrap();
+        assert!(!first.complete, "{first:?}");
+        let second = r.pass(dir.path(), NOW + 60_000, budget).unwrap();
+        assert!(second.complete, "{second:?}");
+        assert_eq!(second.read, b.len() as u64, "b alone, a's tail not again");
+        assert_eq!(r.responses().count(), 1);
+        let finished = line(&at(NOW + 1_000), "/r", ("m1", "q1"), "a", [1, 0, 0, 0]);
+        std::fs::write(&a, format!("{tail}\n{finished}")).unwrap();
+        r.pass(dir.path(), NOW + 60_000, None).unwrap();
+        r.pass(dir.path(), NOW + 60_000, None).unwrap();
+        assert_eq!(r.responses().count(), 2, "the finished line once");
     }
 
     /// Whole-set read at 07832d1f4, F1: a response whose lines straddle the
