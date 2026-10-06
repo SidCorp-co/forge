@@ -62,7 +62,7 @@ describe('an agreed requirement to break down', () => {
       }),
       201,
     );
-    req = made.key ?? made.requirement?.key;
+    req = made.key;
     expect(req).toMatch(/^REQ-\d+$/);
     ok(await say('plugin', 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
     ok(
@@ -125,13 +125,13 @@ describe('a breakdown item carries its contract waits', () => {
       ),
       201,
     );
-    ids.suggestion = proposed.id ?? proposed.suggestion?.id;
+    ids.suggestion = proposed.suggestion.id;
     const accepted = ok(
       await say('plugin', 'POST', at(`/suggestions/${ids.suggestion}/accept`), {
         reason: 'the plan the plugin works',
       }),
     );
-    const effect = accepted.effect ?? accepted.suggestion?.effect;
+    const effect = accepted.effect;
     const [filed] = effect.issues;
     expect(filed.contractWaits).toEqual([
       {
@@ -187,13 +187,13 @@ describe('an accepted revision_diff lands its revision proposed', () => {
       }),
       201,
     );
-    const sid = proposed.id ?? proposed.suggestion?.id;
+    const sid = proposed.suggestion.id;
     const accepted = ok(
       await say('plugin', 'POST', at(`/suggestions/${sid}/accept`), {
         reason: 'agreed with forge',
       }),
     );
-    const effect = accepted.effect ?? accepted.suggestion?.effect;
+    const effect = accepted.effect;
     expect(effect).toMatchObject({ requirement: req, revision: 2, state: 'proposed' });
     const read = ok(await say('plugin', 'GET', at(`/requirements/${req}`)));
     expect(read.latestRevision).toEqual({ revision: 2, state: 'proposed' });

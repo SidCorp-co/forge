@@ -63,12 +63,12 @@ async function file(severity: string, title: string): Promise<string> {
     await say('member', 'POST', at(''), { kind: 'bug', severity, title, issue: ids.target }),
     201,
   );
-  return (made.feedback?.key ?? made.key) as string;
+  return made.feedback.key as string;
 }
 
 async function standingAs(who: Who, key: string): Promise<Doc> {
   const list = ok(await say(who, 'GET', at('')));
-  const row = (list.items ?? list.feedback).find((f: Doc) => f.key === key);
+  const row = list.feedback.find((f: Doc) => f.key === key);
   expect(row, `${key} is on ${who}'s list`).toBeDefined();
   return { attentionGroup: row.attentionGroup, waitingOn: row.waitingOn };
 }
@@ -130,7 +130,7 @@ describe('a high item is owed to the project master', () => {
   });
 
   it('files the carrier issue with the bands the triage names', async () => {
-    const res = ok(
+    ok(
       await say('owner', 'POST', at(`/${ids.high}/triage`), {
         route: 'issue',
         createIssue: { complexity: 's', category: 'bug', priority: 'high' },
@@ -145,7 +145,6 @@ describe('a high item is owed to the project master', () => {
     );
     expect(carrier).toMatchObject({ complexity: 's', category: 'bug', priority: 'high' });
     ids.carrier = carrier.id;
-    expect(res).toBeTruthy();
     expect(await standingAs('member', ids.high)).toEqual({
       attentionGroup: 'moving',
       waitingOn: expect.objectContaining({ kind: 'issue', act: 'ship', ref: ids.carrierKey }),
