@@ -111,6 +111,11 @@ which you record on the issue as above, and a row that genuinely needs a person 
 `needs_info` with the question written on it. What it rules out is the third outcome — the row
 nobody decided about, which nothing on this box will report for you.
 
+A pass-over is for a row you will take yourself once a slot or an order frees it. A row held for a
+person's act — a ruling, an approval, an answer — is not a pass-over: park it at `needs_info` with
+that act as the question, so it leaves the backlog and comes back when the person acts. Left at
+`open` behind a decision, it stays admissible, and core keeps waking you for it.
+
 **A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
 an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`
 included, which no admissible read lists. Read the thread, reply to that comment in its thread

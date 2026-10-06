@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A master parks a row held for a person instead of leaving it open.** A hold on a ruling,
+  approval or answer goes to `needs_info`; left `open` behind a decision, core woke the master
+  every minute.
+
 - **High or critical feedback now prompts the master.** The box reads which items core says owe a
   triage on every sweep and nudges the master naming them; the master skill gains the feedback
   method.
