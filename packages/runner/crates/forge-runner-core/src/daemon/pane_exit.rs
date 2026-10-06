@@ -317,32 +317,60 @@ pub fn classify(path: &Path, from: u64, early: bool) -> Exit {
 }
 
 /// What two exits have to share to be one reason. Last words are compared with
-/// every volatile token masked — a word carrying a digit, other than a number
-/// of three digits or fewer — so a request id, a uuid, a pid or a duration
-/// that differs per run does not make each exit a reason of its own
-/// (ISS-1343 judging: `API Error: 529 overloaded (request req_<id>)` warned on
-/// every placement). A tail cut to [`LAST_WORDS`] starts mid-word, and where
-/// it is cut moves with those tokens' lengths, so its first word is dropped.
+/// every volatile token masked as `#` — a word carrying a digit — so a request
+/// id, a uuid, a pid or a duration that differs per run does not make each
+/// exit a reason of its own (ISS-1343 judging: `API Error: 529 overloaded
+/// (request req_<id>)` warned on every placement). The one number kept is a
+/// status code: three digits from 100 to 599 straight after a word naming an
+/// error, a status, HTTP or a code, so `API Error: 529` and `API Error: 500`
+/// stay two reasons while `pid 812` and `pid 4242` are one (ISS-1385 judging).
+/// A tail cut to [`LAST_WORDS`] starts mid-word, and where it is cut moves with
+/// those tokens' lengths, so its first word is dropped.
 pub fn reason_key(exit: &Exit) -> String {
     let Exit::Printed { last } = exit else {
         return format!("{exit:?}");
     };
+    format!("printed:{}", masked(last))
+}
+
+/// `last` with its volatile tokens masked, as [`reason_key`] compares it.
+fn masked(last: &str) -> String {
     let mut words = last.split_whitespace();
     if last.starts_with('…') {
         words.next();
     }
-    let masked: Vec<&str> = words
-        .map(|w| {
-            let core = w.trim_matches(|c: char| !c.is_alphanumeric());
-            let plain = core.len() <= 3 && core.chars().all(|c| c.is_ascii_digit());
-            if core.chars().any(|c| c.is_ascii_digit()) && !plain {
-                "#"
-            } else {
-                w
-            }
-        })
-        .collect();
-    format!("printed:{}", masked.join(" "))
+    let mut before = "";
+    let mut out: Vec<String> = Vec::new();
+    for w in words {
+        let core = w.trim_matches(|c: char| !c.is_alphanumeric());
+        let named = before
+            .trim_matches(|c: char| !c.is_alphanumeric())
+            .to_ascii_lowercase();
+        let status = core.len() == 3
+            && core.parse::<u16>().is_ok_and(|n| (100..=599).contains(&n))
+            && ["error", "status", "http", "code"].contains(&named.as_str());
+        out.push(if core.chars().any(|c| c.is_ascii_digit()) && !status {
+            // The punctuation around the token is kept: it is not volatile.
+            w.replacen(core, "#", 1)
+        } else {
+            w.to_string()
+        });
+        before = w;
+    }
+    out.join(" ")
+}
+
+/// What the exits a named condition groups shared, in words: printed last
+/// words with their ids masked, since each exit carried ids of its own, and
+/// any other exit as it is, since those are grouped only when they are equal.
+fn shared(exit: &Exit) -> String {
+    match exit {
+        Exit::Printed { last } => format!(
+            "it exited having printed last, with every id and number that differs per exit shown as `#`: \"{}\"",
+            masked(last)
+        ),
+        other => other.to_string(),
+    }
 }
 
 /// Consecutive early exits of one project's pane for one reason.
@@ -468,8 +496,9 @@ pub fn journal(slug: &str, name: &str, lived: Option<Duration>, exit: &Exit, in_
     match in_a_row {
         0 | 1 => Say::Warn(line),
         n if n == NAMED_AFTER => Say::Error(format!(
-            "[master] {slug}: {name} has been read gone within {}s of each of its last {n} placements, each time because {exit}. One condition, said here once rather than on every placement: this box goes on placing a pane on each sweep whose gates admit one, because it decides nothing from a count of exits (ISS-933), and `forge-runner master status {slug}` carries the running count{tail}",
-            EARLY_EXIT.as_secs()
+            "[master] {slug}: {name} has been read gone within {}s of each of its last {n} placements, each time because {}. One condition, said here once rather than on every placement: this box goes on placing a pane on each sweep whose gates admit one, because it decides nothing from a count of exits (ISS-933), and `forge-runner master status {slug}` carries the running count{tail}",
+            EARLY_EXIT.as_secs(),
+            shared(exit)
         )),
         n => Say::Quiet(format!("{line} ({n} early exits in a row for this reason)")),
     }
@@ -1038,6 +1067,27 @@ mod tests {
             "a status code is not an id"
         );
         assert_ne!(key("Error: boom"), key("Error: other"));
+        assert_eq!(
+            key("lost pid 812 after 45 seconds"),
+            key("lost pid 4242 after 3136 seconds"),
+            "a short number is an id like a long one, wherever no status code stands"
+        );
+        assert_ne!(
+            key("API Error: 404 not found"),
+            key("API Error: 529 not found"),
+            "a status code after `Error:` stays the reason"
+        );
+
+        // The named line says what the three shared, not the third's own id
+        // as though all three carried it (ISS-1385 judging, 7a64e9eb #1).
+        let Say::Error(named) = &said[2] else {
+            panic!("the third is the named condition: {said:?}")
+        };
+        assert!(!named.contains("req_9"), "{named}");
+        assert!(
+            named.contains("\"API Error: 529 overloaded (request #)\""),
+            "{named}"
+        );
     }
 
     /// ISS-1385 criterion 18: a pane that lived past the window is not

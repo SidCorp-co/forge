@@ -1014,7 +1014,7 @@ impl Masters {
             changed
         };
         if changed {
-            let _ = (slug, &why);
+            keep_unplaced(slug, Some(&why));
         }
         changed
     }
