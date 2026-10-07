@@ -130,6 +130,14 @@ const EFFECT: Rule[] = [
     key: "standing.effect.follow",
     vars: (g) => ({ names: g.names ?? "" }),
   },
+  {
+    re: new RegExp("^Cuts the oldest (?<limit>\\d+) merged issues as this release and leaves (?:the other (?<rest>\\d+)|the others) at the release gate for the next one\\.$"),
+    key: "releases.effect.split",
+    vars: (g, l) => ({
+      limit: g.limit ?? "",
+      left: g.rest ? productCopy(l)("releases.effect.splitRest", { n: g.rest }) : productCopy(l)("releases.effect.splitOthers"),
+    }),
+  },
 ];
 
 /** Core's sentences on a feedback item that are not whose turn it is: why a shipped fix told nobody, the reason an automatic verify records, why triage ran with no dedup. */

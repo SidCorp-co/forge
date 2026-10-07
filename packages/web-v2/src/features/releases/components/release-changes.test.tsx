@@ -3,6 +3,8 @@
 import type { ReleaseChanges } from "@forge/contracts/releases";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { labelCopy } from "@/lib/i18n/labels";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { changesSentence, WhatChanges } from "./release-changes";
 
 const changes: ReleaseChanges = {
@@ -74,7 +76,7 @@ describe("What changes", () => {
   it("says a release of design revisions alone ships nothing", () => {
     const design = changes.surfaces[2];
     if (!design) throw new Error("fixture lost its design surface");
-    expect(changesSentence({ surfaces: [design], risks: [], unclassified: [], boxRead: [], shipsNothing: true })).toBe(
+    expect(changesSentence({ surfaces: [design], risks: [], unclassified: [], boxRead: [], shipsNothing: true }, productCopy("en"), labelCopy("en"))).toBe(
       "Ships nothing: every change in it is a design revision.",
     );
   });

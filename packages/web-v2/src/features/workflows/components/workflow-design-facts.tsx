@@ -1,6 +1,6 @@
 "use client";
 
-import { HEALTH_MARKER_KINDS, HEALTH_MARKER_LABELS, type WorkflowHealth } from "@forge/contracts/workflow-health";
+import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { useState } from "react";
@@ -8,7 +8,8 @@ import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
 import { DisclosureToggle } from "@/features/releases/components/release-bits";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
-import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
@@ -18,34 +19,42 @@ import { HealthMark } from "./health-parts";
  * each opening its source record. Counts show whether or not the canvas overlay is on.
  */
 function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
   const total = health.markers.length;
   const groups = markersByKind(health.markers);
   return (
-    <FactsGroup title="Health" count={total ? `Markers ${total}` : undefined} testId="facts-health">
+    <FactsGroup title={t("workflows.col.health")} count={total ? t("workflows.facts.markers", { n: total }) : undefined} testId="facts-health">
       {!health.rooted.rooted ? (
         <p className="mb-2 text-12-5 text-muted" data-testid="health-unrooted">
-          Unrooted: {health.rooted.missing.map((m) => (m === "approved_revision" ? "no approved revision" : "no requirement links it")).join(" and ")}, so the code is not observed against it.
+          {t("workflows.facts.unrooted", {
+            why: health.rooted.missing
+              .map((m) => (m === "approved_revision" ? t("workflows.facts.noApproved") : t("workflows.facts.noRequirement")))
+              .join(t("workflows.facts.and")),
+          })}
         </p>
       ) : health.observation === null ? (
         <p className="mb-2 text-12-5 text-muted" data-testid="health-not-observed">
-          The code has not been observed yet; every step reads planned.
+          {t("workflows.facts.notObserved")}
         </p>
       ) : (
-        <p className="mb-2 text-12-5 text-muted" title={formatStamp(health.observation.createdAt)} data-testid="health-observed">
-          Code observed at <span className="font-mono">{health.observation.atSha.slice(0, 8)}</span> against r{health.observation.revision} · {formatRelativeTime(health.observation.createdAt)}
+        <p className="mb-2 text-12-5 text-muted" title={time.dateTime(health.observation.createdAt)} data-testid="health-observed">
+          {t("workflows.facts.observedAt")} <span className="font-mono">{health.observation.atSha.slice(0, 8)}</span>{" "}
+          {t("workflows.facts.againstR", { r: health.observation.revision })} · {time.relative(health.observation.createdAt)}
         </p>
       )}
       <ul className="grid grid-cols-2 gap-x-3 gap-y-1" data-testid="health-counts">
         {HEALTH_MARKER_KINDS.map((k) => (
           <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-12-5" data-kind={k} title={k}>
-            <span className={health.counts[k] ? "text-fg" : "text-subtle"}>{HEALTH_MARKER_LABELS[k]}</span>
+            <span className={health.counts[k] ? "text-fg" : "text-subtle"}>{label("healthMarker", k)}</span>
             <span className={`font-mono tabular-nums ${health.counts[k] ? "font-semibold" : "text-subtle"}`}>{health.counts[k]}</span>
           </li>
         ))}
       </ul>
       {health.needsYou > 0 ? (
-        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you" title="Sources waiting on a person, and Rewrite-due or Not in design nodes with no decision">
-          Needs a person: {health.needsYou}
+        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you" title={t("workflows.facts.needsPersonHint")}>
+          {t("workflows.facts.needsPerson", { n: health.needsYou })}
         </p>
       ) : null}
       {groups.length ? (
@@ -59,7 +68,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
                 {g.markers.map((m) => {
                   const href = sourceHref(slug, health.flow, m.source);
                   return (
-                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-12-5 first:border-t-0" data-testid="health-marker">
+                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target, t)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-12-5 first:border-t-0" data-testid="health-marker">
                       <span className="flex min-w-0 items-center gap-1.5">
                         {href ? (
                           <Link href={href} className="flex-none font-mono text-12 font-semibold text-link hover:underline" title={`${m.source.type} · ${m.rule}`}>
@@ -70,7 +79,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
                             {m.source.key}
                           </span>
                         )}
-                        <span className="min-w-0 truncate text-subtle">{targetWords(m.target)}</span>
+                        <span className="min-w-0 truncate text-subtle">{targetWords(m.target, t)}</span>
                       </span>
                       <span className="text-muted">{m.reason}</span>
                     </li>
@@ -87,35 +96,37 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
 
 /** design-reconciliation `reconciled-view`: the state, the dev version that carried it, and the BCs proven, read from core. */
 function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const r = health.reconciliation;
   return (
-    <FactsGroup title="Reconciliation" testId="facts-reconciliation">
+    <FactsGroup title={t("workflows.facts.reconciliation")} testId="facts-reconciliation">
       <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="reconciliation-state" data-state={r.state}>
         <span className="flex-none">
           <StatusBadge family="reconciliation" value={r.state} />
         </span>
         <span className="min-w-0">{r.rule.charAt(0).toUpperCase() + r.rule.slice(1)}.</span>
       </p>
-      <Fact label="Version" testId="reconciliation-version">
+      <Fact label={t("workflows.facts.version")} testId="reconciliation-version">
         {r.version ? (
-          <span className="font-mono text-12-5" title={r.version.releasedAt ? `Released ${formatStamp(r.version.releasedAt)}` : undefined}>
+          <span className="font-mono text-12-5" title={r.version.releasedAt ? t("workflows.facts.releasedAt", { at: time.dateTime(r.version.releasedAt) }) : undefined}>
             {r.version.version}
           </span>
         ) : (
-          <span className="text-muted">No released version carries it yet</span>
+          <span className="text-muted">{t("workflows.facts.noVersion")}</span>
         )}
       </Fact>
-      <Fact label="BCs proven" testId="reconciliation-criteria">
+      <Fact label={t("workflows.facts.bcsProven")} testId="reconciliation-criteria">
         {r.criteria.total === 0 ? (
-          <span className="text-muted">No business criterion traces this design</span>
+          <span className="text-muted">{t("workflows.facts.noBc")}</span>
         ) : (
-          <span className="font-mono tabular-nums text-12-5" title="Business criteria tracing this design whose latest verdict passed">
-            {r.criteria.proven} of {r.criteria.total}
+          <span className="font-mono tabular-nums text-12-5" title={t("workflows.facts.bcsProvenHint")}>
+            {t("workflows.facts.of", { a: r.criteria.proven, b: r.criteria.total })}
           </span>
         )}
       </Fact>
       {r.issues.length ? (
-        <Fact label="Carried by" testId="reconciliation-issues">
+        <Fact label={t("workflows.facts.carriedBy")} testId="reconciliation-issues">
           {r.issues.map((k) => (
             <Link key={k} href={issueHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
               {k}
@@ -128,10 +139,11 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
 }
 
 function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
+  const t = useCopy();
   return (
-    <FactsGroup title="Requirement" count={d.requirements.length > 1 ? `Linked ${d.requirements.length}` : undefined} testId="facts-requirement">
+    <FactsGroup title={t("workflows.facts.requirement")} count={d.requirements.length > 1 ? t("workflows.facts.linked", { n: d.requirements.length }) : undefined} testId="facts-requirement">
       {d.requirements.length === 0 ? (
-        <FactsEmpty>No requirement links this design.</FactsEmpty>
+        <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
       ) : (
         <ul className="grid gap-1.5">
           {d.requirements.map((r) => (
@@ -143,7 +155,7 @@ function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
                 {r.title}
               </span>
               {r.pinnedRevision !== null ? (
-                <span className="flex-none font-mono text-11-5 text-subtle" title={`${r.key}'s agreed baseline pins revision ${r.pinnedRevision} of this design`}>
+                <span className="flex-none font-mono text-11-5 text-subtle" title={t("workflows.facts.pinned", { key: r.key, r: r.pinnedRevision })}>
                   r{r.pinnedRevision}
                 </span>
               ) : null}
@@ -157,8 +169,9 @@ function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
 }
 
 function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
+  const t = useCopy();
   return (
-    <FactsGroup title="Build gate" count={d.builds.length ? `Issues ${d.builds.length}` : undefined} testId="facts-build-gate">
+    <FactsGroup title={t("workflows.facts.buildGate")} count={d.builds.length ? t("workflows.facts.issues", { n: d.builds.length }) : undefined} testId="facts-build-gate">
       <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="build-gate" data-open={d.gate.open}>
         <span className="flex-none">
           <StatusBadge family="buildGate" value={d.gate.open ? "open" : "held"} />
@@ -166,7 +179,7 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
         <span className="min-w-0">{d.gate.rule.charAt(0).toUpperCase() + d.gate.rule.slice(1)}.</span>
       </p>
       {d.builds.length === 0 ? (
-        <FactsEmpty>No issue builds this design yet.</FactsEmpty>
+        <FactsEmpty>{t("workflows.facts.noBuild")}</FactsEmpty>
       ) : (
         <ul className="grid gap-1.5">
           {d.builds.map((b) => (
@@ -187,46 +200,43 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
 }
 
 /** What the design's health says, in a BA's words; the kernel's terms sit behind Technical detail. */
-export function healthSentences(health: WorkflowHealth): string[] {
+export function healthSentences(health: WorkflowHealth, t: Copy): string[] {
   const out: string[] = [];
   if (!health.rooted.rooted) {
-    const why = health.rooted.missing.map((m) => (m === "approved_revision" ? "it has no approved revision yet" : "no requirement follows it"));
-    out.push(`The code is not being compared with this design: ${why.join(" and ")}.`);
+    const why = health.rooted.missing.map((m) => (m === "approved_revision" ? t("workflows.plain.noApproved") : t("workflows.plain.noRequirement")));
+    out.push(t("workflows.plain.notCompared", { why: why.join(t("workflows.facts.and")) }));
   } else if (health.observation === null) {
-    out.push("The code has not been compared with this design yet.");
+    out.push(t("workflows.plain.notComparedYet"));
   } else {
     const n = health.markers.length;
-    out.push(
-      n === 0
-        ? "The code agrees with this design."
-        : `The code differs from this design in ${n} ${n === 1 ? "place" : "places"}.`,
-    );
+    out.push(n === 0 ? t("workflows.plain.agrees") : t(n === 1 ? "workflows.plain.differs.one" : "workflows.plain.differs.many", { n }));
   }
   if (health.needsYou > 0) {
-    out.push(`${health.needsYou} ${health.needsYou === 1 ? "difference needs" : "differences need"} a person to decide.`);
+    out.push(t(health.needsYou === 1 ? "workflows.plain.needDecide.one" : "workflows.plain.needDecide.many", { n: health.needsYou }));
   }
   return out;
 }
 
 /** Whether the code and the approved design are confirmed to match, as one sentence. */
-export function reconciliationSentence(health: WorkflowHealth): string {
+export function reconciliationSentence(health: WorkflowHealth, t: Copy): string {
   const r = health.reconciliation;
-  if (r.state === "reconciled") return r.version ? `The released code matches the approved design (version ${r.version.version}).` : "The code matches the approved design.";
-  return "The code and the approved design are not yet confirmed to match.";
+  if (r.state === "reconciled") return r.version ? t("workflows.plain.matchesReleased", { version: r.version.version }) : t("workflows.plain.matches");
+  return t("workflows.plain.notConfirmed");
 }
 
 /** Whether work may start from the design, as one sentence. */
-export function buildGateSentence(d: WorkflowDesign): string {
-  return d.gate.open ? "Work can start from this design." : "Work on this design is on hold until it is approved.";
+export function buildGateSentence(d: WorkflowDesign, t: Copy): string {
+  return d.gate.open ? t("workflows.plain.canStart") : t("workflows.plain.onHold");
 }
 
 function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth | undefined }) {
+  const t = useCopy();
   return (
-    <FactsGroup title="Where it stands" testId="facts-plain-status">
+    <FactsGroup title={t("workflows.facts.whereItStands")} testId="facts-plain-status">
       <ul className="grid gap-1 text-13 leading-relaxed-1-6" data-testid="plain-status">
-        {health ? healthSentences(health).map((t) => <li key={t}>{t}</li>) : null}
-        {health ? <li>{reconciliationSentence(health)}</li> : null}
-        <li>{buildGateSentence(d)}</li>
+        {health ? healthSentences(health, t).map((s) => <li key={s}>{s}</li>) : null}
+        {health ? <li>{reconciliationSentence(health, t)}</li> : null}
+        <li>{buildGateSentence(d, t)}</li>
       </ul>
     </FactsGroup>
   );
@@ -234,11 +244,12 @@ function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth 
 
 /** The kernel's own terms for the same facts (markers, reconciliation state, build gate), collapsed. */
 function TechnicalDetail({ d, slug, health }: { d: WorkflowDesign; slug: string; health: WorkflowHealth | undefined }) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
-    <section aria-label="Technical detail" data-testid="design-technical">
+    <section aria-label={t("workflows.technicalDetail")} data-testid="design-technical">
       <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="px-0 py-2 text-13" testId="design-technical-toggle">
-        Technical detail
+        {t("workflows.technicalDetail")}
       </DisclosureToggle>
       {open ? (
         <div>
@@ -262,6 +273,8 @@ interface DesignFactsProps {
 }
 
 export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health }: DesignFactsProps) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const latest = d.revisions[0] ?? null;
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
   const shownState = d.revisions.find((r) => r.revision === shownRevision)?.state ?? null;
@@ -271,7 +284,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
   return (
     <div data-testid="design-facts">
       {shown.summary ? (
-        <FactsGroup title="About" testId="facts-about">
+        <FactsGroup title={t("workflows.facts.about")} testId="facts-about">
           <p className="line-clamp-5 text-13 leading-relaxed-1-6 text-fg" title={shown.summary} data-testid="design-summary">
             {shown.summary}
           </p>
@@ -279,17 +292,16 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
       ) : null}
       <PlainStatus d={d} health={health} />
       <Requirements d={d} slug={slug} />
-      <FactsGroup title="Properties" testId="facts-properties">
-        <Fact label="Revision" testId="fact-revision">
+      <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
+        <Fact label={t("workflows.facts.revision")} testId="fact-revision">
           <span className="font-mono text-12-5">r{shownRevision}</span>
           {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
         </Fact>
-        <Fact label="Approved" testId="fact-approved">
+        <Fact label={t("workflows.facts.approved")} testId="fact-approved">
           {approved ? (
             <span className="grid min-w-0 basis-full gap-0.5">
-              <span title={approved.decidedAt ? `Approved ${formatStamp(approved.decidedAt)}` : undefined}>
-                Rev {approved.revision}
-                {approved.decidedByName ? ` by ${approved.decidedByName}` : ""}
+              <span title={approved.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined}>
+                {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
               </span>
               {approved.reason ? (
                 <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approved.reason} data-testid="fact-approved-note">
@@ -298,33 +310,31 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
               ) : null}
             </span>
           ) : d.approvedRevision !== null ? (
-            <span>Rev {d.approvedRevision}</span>
+            <span>{t("workflows.facts.rev", { r: d.approvedRevision })}</span>
           ) : (
-            <span className="text-muted">Not approved yet</span>
+            <span className="text-muted">{t("workflows.facts.notApproved")}</span>
           )}
         </Fact>
-        <Fact label="Approver">
-          <span title={`Whoever holds ${d.approver} on the project: a project admin, or an org owner or admin, person or agent`}>
-            Anyone allowed to approve designs
-          </span>
+        <Fact label={t("workflows.facts.approver")}>
+          <span title={t("workflows.facts.approverHint", { perm: d.approver })}>{t("workflows.facts.approverAnyone")}</span>
         </Fact>
-        <Fact label="Template">
-          <span title={template ? `${template.id}@${template.version}` : "No template: drawn before templates"}>{template?.title ?? "None"}</span>
+        <Fact label={t("workflows.facts.template")}>
+          <span title={template ? `${template.id}@${template.version}` : t("workflows.facts.noTemplate")}>{template?.title ?? t("workflows.facts.none")}</span>
         </Fact>
-        <Fact label={unit === "states" ? "States" : "Steps"}>
+        <Fact label={unit === "states" ? t("workflows.tab.states") : t("workflows.tab.steps")}>
           <span>
             {shown.steps.length}
             <span className="text-muted">
               {" "}
-              · {owned} with an owner · {deadlines} {deadlines === 1 ? "deadline" : "deadlines"}
+              · {t("workflows.facts.withOwner", { n: owned })} · {t(deadlines === 1 ? "workflows.count.deadline.one" : "workflows.count.deadline.many", { n: deadlines })}
             </span>
           </span>
         </Fact>
-        <Fact label="Drawn by">
-          <span title={latest ? `Proposed ${formatStamp(latest.proposedAt)}` : undefined}>{latest ? (latest.proposedByName ?? latest.proposedBy) : record.writerName}</span>
+        <Fact label={t("workflows.facts.drawnBy")}>
+          <span title={latest ? t("workflows.facts.proposedAt", { at: time.dateTime(latest.proposedAt) }) : undefined}>{latest ? (latest.proposedByName ?? latest.proposedBy) : record.writerName}</span>
         </Fact>
-        <Fact label="Updated">
-          <span title={formatStamp(record.document.updatedAt)}>{formatRelativeTime(record.document.updatedAt)}</span>
+        <Fact label={t("workflows.col.updated")}>
+          <span title={time.dateTime(record.document.updatedAt)}>{time.relative(record.document.updatedAt)}</span>
         </Fact>
       </FactsGroup>
       <TechnicalDetail d={d} slug={slug} health={health} />

@@ -1,0 +1,1 @@
+**Releases and Workflows read in the interface language you chose.** Release and workflow pages, the diagram tools and the built-in diagram templates show Vietnamese menus, labels, hints and dates; notes, titles, comments and a project's own templates stay as written.

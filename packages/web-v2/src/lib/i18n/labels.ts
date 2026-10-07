@@ -37,6 +37,7 @@ import {
 } from "@forge/contracts/requirements";
 import { SUGGESTION_STATUS_LABELS } from "@forge/contracts/suggestions";
 import { HEALTH_MARKER_LABELS } from "@forge/contracts/workflow-health";
+import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { copyOr } from "./product-copy";
 
 // The words the contracts give an enum value (a requirement's state, a feedback's phase, an area of
@@ -48,6 +49,16 @@ const labelsOf = <V extends { label: string }>(m: Record<string, V>): Record<str
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.label]));
 const hintsOf = <V extends { hint: string | null }>(m: Record<string, V>): Record<string, string> =>
   Object.fromEntries(Object.entries(m).flatMap(([k, v]) => (v.hint ? [[k, v.hint]] : [])));
+
+// The built-in workflow templates' words, keyed `<template id>.<element id>`: a node type, a band
+// and a line kind take their words from the template they belong to, since two templates may give one
+// id different words. A project's own template is never here: its words are its author's.
+const builtin = <E extends { id: string }>(
+  of: (t: (typeof BUILTIN_WORKFLOW_TEMPLATES)[number]) => readonly E[],
+  word: (e: E) => string | undefined,
+): Record<string, string> =>
+  Object.fromEntries(BUILTIN_WORKFLOW_TEMPLATES.flatMap((t) => of(t).flatMap((e) => (word(e) ? [[`${t.id}.${e.id}`, word(e) as string]] : []))));
+const bandsOf = (t: (typeof BUILTIN_WORKFLOW_TEMPLATES)[number]) => (t.lanes.from === "template" ? t.lanes.bands : []);
 
 const sentencesOf = (m: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.replace(/^[a-z_-]+: /, "")]));
@@ -82,6 +93,13 @@ export const LABEL_GROUPS = {
   workStep: WORK_STEP_LABELS,
   issueCategory: ISSUE_CATEGORY_LABELS,
   suggestionStatus: SUGGESTION_STATUS_LABELS,
+  templateTitle: Object.fromEntries(BUILTIN_WORKFLOW_TEMPLATES.map((t) => [t.id, t.title])),
+  templateNode: builtin((t) => t.nodeTypes, (n) => n.label),
+  templateNodeHint: builtin((t) => t.nodeTypes, (n) => n.tooltip),
+  templateBand: builtin(bandsOf, (b) => b.label),
+  templateBandHint: builtin(bandsOf, (b) => b.tooltip),
+  templateEdge: builtin((t) => t.edgeKinds, (k) => k.label),
+  templateEdgeHint: builtin((t) => t.edgeKinds, (k) => k.tooltip),
   // what a state means, for the tooltip: the contracts write `value: sentence` and the badge shows the sentence
   hintRequirementState: sentencesOf(REQUIREMENT_STATE_HINTS),
   hintBcVerdict: sentencesOf(BC_VERDICT_HINTS),

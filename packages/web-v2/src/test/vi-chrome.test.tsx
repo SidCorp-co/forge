@@ -5,6 +5,10 @@ import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
+// The canvas itself is drawn by React Flow, which jsdom cannot lay out; its chrome is rendered on its own ("Workflow canvas").
+vi.mock("@/features/workflows/canvas/workflow-canvas", () => ({ WorkflowCanvas: () => null }));
+// A query no screen was seeded with stays pending rather than reaching for a network.
+vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 // Words that are English chrome and have a Vietnamese word in the locale file. A screen rendered in vi
 // that still shows one of them has a string that never went through the locale file. Brand and
@@ -13,13 +17,16 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
-  "criteria", "proposal", "owner", "coverage", "summary", "scope", "accept", "reject", "defer", "drop", "created", "updated",
-  "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry", "step", "ago",
-  "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "reopen", "severity", "carried by", "sent",
-  "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered",
-  "confirm", "what happened", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of",
-  "original", "until", "subject", "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send",
-  "suggested",
+  "release train", "coming next", "approve", "return", "criteria", "proven", "maintenance", "what users get", "technical", "notes", "checks", "issues in this release",
+  "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason", "designs", "diagram", "steps",
+  "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all", "walk through", "zoom", "fit", "minimap",
+  "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users", "external systems", "where it stands", "properties", "template",
+  "drawn by", "the code", "trace", "if", "who owns what", "newest first", "proposal", "coverage", "summary", "scope", "accept", "reject",
+  "defer", "drop", "created", "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry",
+  "step", "ago", "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "reopen", "severity", "carried by",
+  "sent", "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered", "confirm",
+  "what happened", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of", "original", "until", "subject",
+  "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send", "suggested",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -29,7 +36,9 @@ const wordsIn = (root: HTMLElement): string[] => {
   for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
     for (const a of ["aria-label", "title", "placeholder"]) {
       const v = el.getAttribute(a);
-      if (v) out.push(v);
+      // a state badge's tooltip leads with its raw value (`shipped · ...`), kept in English on purpose
+      const raw = el.getAttribute("data-value");
+      if (v) out.push(a === "title" && raw && v.startsWith(`${raw} · `) ? v.slice(raw.length + 3) : v);
     }
   }
   return out;
@@ -40,8 +49,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      // a snake_case value (`in_progress`) is an identifier the tooltip names on purpose, not chrome
-      if (new RegExp(`[^\\p{L}_]${w.trim()}[^\\p{L}_]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`) or a field in code quotes (`persona`) is an identifier the text names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_.\`-]${w.trim()}[^\\p{L}_\`]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

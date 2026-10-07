@@ -5,8 +5,11 @@ import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { productCopy } from "@/lib/i18n/product-copy";
 import type { WorkflowDesign } from "../types";
 import { buildGateSentence, healthSentences, reconciliationSentence, WorkflowDesignFacts } from "./workflow-design-facts";
+
+const en = productCopy("en");
 
 const KERNEL = /Unrooted|Not reconciled|Held|Markers|workflow-designs\.approve|rooted/;
 
@@ -28,11 +31,11 @@ const design = { gate: { open: false, rule: "held until approved" }, builds: [],
 
 describe("the design rail's plain sentences", () => {
   it("say why the code is not compared, without the word Unrooted", () => {
-    const [first] = healthSentences(health());
+    const [first] = healthSentences(health(), en);
     expect(first).toBe("The code is not being compared with this design: it has no approved revision yet and no requirement follows it.");
     expect(first).not.toMatch(KERNEL);
-    expect(reconciliationSentence(health())).not.toMatch(KERNEL);
-    expect(buildGateSentence(design)).toBe("Work on this design is on hold until it is approved.");
+    expect(reconciliationSentence(health(), en)).not.toMatch(KERNEL);
+    expect(buildGateSentence(design, en)).toBe("Work on this design is on hold until it is approved.");
   });
 
   it("count the differences and the ones that wait on a person", () => {
@@ -42,7 +45,7 @@ describe("the design rail's plain sentences", () => {
       markers: [{}, {}] as never,
       needsYou: 1,
     });
-    expect(healthSentences(h)).toEqual(["The code differs from this design in 2 places.", "1 difference needs a person to decide."]);
+    expect(healthSentences(h, en)).toEqual(["The code differs from this design in 2 places.", "1 difference needs a person to decide."]);
   });
 });
 

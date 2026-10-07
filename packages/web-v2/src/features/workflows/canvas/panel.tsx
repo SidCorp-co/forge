@@ -6,6 +6,8 @@ import { Button, IconButton, Kicker, SectionTitle } from "@/design";
 import type { WorkflowStep } from "../types";
 import { type Canvas, type CanvasEdge, edgeText, purposeOf, titleOf } from "./model";
 import { HealthMark } from "../components/health-parts";
+import { rewriteWords } from "../health";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { TypeChip } from "./nodes";
 import type { CanvasHealth } from "./workflow-canvas";
 import { WireframeThumb } from "./wireframe-thumb";
@@ -28,11 +30,12 @@ interface PanelProps {
 
 /** The selected step's markers, each with its reason, opening its source record. */
 function StepHealth({ health, id }: { health: CanvasHealth; id: string }) {
+  const t = useCopy();
   const h = health.nodes.get(id);
   if (!h || (h.markers.length === 0 && !h.rewrite)) return null;
   return (
-    <Sec title="Health">
-      {h.rewrite ? <p className="mb-1.5 text-13 font-semibold">{h.rewrite}</p> : null}
+    <Sec title={t("workflows.col.health")}>
+      {h.rewrite ? <p className="mb-1.5 text-13 font-semibold">{rewriteWords(h.rewrite, t)}</p> : null}
       <ul className="m-0 grid list-none p-0" data-testid="panel-health">
         {h.markers.map((m) => {
           const href = health.hrefOf(m);
@@ -92,9 +95,10 @@ function List({ items, mono = false }: { items?: string[]; mono?: boolean }) {
   );
 }
 
-const close = (onClose: () => void) => (
-  <IconButton icon="x" size="sm" type="button" onClick={onClose} aria-label="Close" />
-);
+function Close({ onClose }: { onClose: () => void }) {
+  const t = useCopy();
+  return <IconButton icon="x" size="sm" type="button" onClick={onClose} aria-label={t("workflows.panel.close")} />;
+}
 
 function Rules({ step }: { step: WorkflowStep }) {
   const rows = step.node?.conditions;
@@ -112,8 +116,9 @@ function Rules({ step }: { step: WorkflowStep }) {
 
 /** What happens next, in the design's own words: each line out of the step and the condition it takes. */
 function Next({ c, id, onStep }: { c: Canvas; id: string; onStep: (id: string) => void }) {
+  const t = useCopy();
   const out = c.edges.filter((e) => e.from === id);
-  if (out.length === 0) return <p className="m-0 text-14">The flow ends here.</p>;
+  if (out.length === 0) return <p className="m-0 text-14">{t("workflows.panel.flowEnds")}</p>;
   return (
     <ul className="m-0 grid gap-1 pl-4.5 text-14">
       {out.map((e) => {
@@ -122,10 +127,10 @@ function Next({ c, id, onStep }: { c: Canvas; id: string; onStep: (id: string) =
           <li key={e.id}>
             {edgeText(e) ? (
               <>
-                If <b>{edgeText(e)}</b> →{" "}
+                {t("workflows.panel.if")} <b>{edgeText(e)}</b> →{" "}
               </>
             ) : (
-              "Then → "
+              `${t("workflows.panel.then")} → `
             )}
             <Button type="button" variant="ghost" size="sm" className="h-auto p-0 font-semibold text-link hover:bg-transparent hover:underline" onClick={() => onStep(e.to)}>
               {to ? titleOf(to) : e.to}
@@ -139,6 +144,7 @@ function Next({ c, id, onStep }: { c: Canvas; id: string; onStep: (id: string) =
 }
 
 function Links({ c, id, onEdge }: { c: Canvas; id: string; onEdge: (id: string) => void }) {
+  const t = useCopy();
   const link = (e: CanvasEdge, out: boolean) => {
     const other = c.steps.get(out ? e.to : e.from);
     return (
@@ -154,12 +160,12 @@ function Links({ c, id, onEdge }: { c: Canvas; id: string; onEdge: (id: string) 
   return (
     <>
       {inn.length ? (
-        <Sec title="Comes from">
+        <Sec title={t("workflows.panel.comesFrom")}>
           <div className="grid gap-1">{inn.map((e) => link(e, false))}</div>
         </Sec>
       ) : null}
       {out.length ? (
-        <Sec title="Leads to">
+        <Sec title={t("workflows.panel.leadsTo")}>
           <div className="grid gap-1">{out.map((e) => link(e, true))}</div>
         </Sec>
       ) : null}
@@ -168,6 +174,7 @@ function Links({ c, id, onEdge }: { c: Canvas; id: string; onEdge: (id: string) 
 }
 
 function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge: (id: string) => void }) {
+  const t = useCopy();
   const n = step.node;
   const band = c.bands.find((b) => b.steps.includes(step.id));
   return (
@@ -177,68 +184,68 @@ function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge:
       {n?.wireframe?.svg ? <WireframeThumb attachment={n.wireframe.svg} title={titleOf(step)} /> : null}
       <Facts
         rows={[
-          ["Stage", band?.label ?? c.laneOf(step.id)],
-          ["Owner", n?.owner],
-          ["Deadline", n?.sla],
-          ["Persona", n?.persona ? (c.doc as { personas?: { id: string; label: string }[] }).personas?.find((p) => p.id === n.persona)?.label ?? n.persona : null],
-          ["Expected", n?.expectedOutcome],
-          ["Trigger", n?.trigger],
-          ["Validation", n?.validation],
-          ["State", n?.variant],
-          ["Event", n?.event ? <span key="event" className="font-mono">{n.event}</span> : null],
-          ["Route", n?.route ? <span key="route" className="font-mono">{n.route}</span> : null],
-          ["Channel", n?.channel],
-          ["Carries", n?.payload?.join(", ")],
-          ["Values", n?.values?.join(" · ")],
-          ["Maps to", n?.mapsTo],
-          ["Done once", n?.idempotency],
+          [t("workflows.panel.stage"), band?.label ?? c.laneOf(step.id)],
+          [t("workflows.owner"), n?.owner],
+          [t("workflows.deadline"), n?.sla],
+          [t("workflows.panel.persona"), n?.persona ? (c.doc as { personas?: { id: string; label: string }[] }).personas?.find((p) => p.id === n.persona)?.label ?? n.persona : null],
+          [t("workflows.panel.expected"), n?.expectedOutcome],
+          [t("workflows.panel.trigger"), n?.trigger],
+          [t("workflows.panel.validation"), n?.validation],
+          [t("workflows.unit.state"), n?.variant],
+          [t("workflows.panel.event"), n?.event ? <span key="event" className="font-mono">{n.event}</span> : null],
+          [t("workflows.panel.route"), n?.route ? <span key="route" className="font-mono">{n.route}</span> : null],
+          [t("workflows.panel.channel"), n?.channel],
+          [t("workflows.panel.carries"), n?.payload?.join(", ")],
+          [t("workflows.panel.values"), n?.values?.join(" · ")],
+          [t("workflows.panel.mapsTo"), n?.mapsTo],
+          [t("workflows.panel.doneOnce"), n?.idempotency],
           [
-            "Links to",
+            t("workflows.panel.linksTo"),
             n?.refs?.length ? (
               <span key="refs" className="font-mono">
                 {n.refs.map((r) => `${r.flow}/${r.step}`).join(", ")}
               </span>
             ) : null,
           ],
-          ["Design id", <span key="id" className="font-mono">{step.id}</span>],
+          [t("workflows.panel.designId"), <span key="id" className="font-mono">{step.id}</span>],
         ]}
       />
       {n?.conditions?.length ? (
-        <Sec title="Decisions">
+        <Sec title={t("workflows.tab.decisions")}>
           <Rules step={step} />
         </Sec>
       ) : null}
       {n?.tests?.length ? (
-        <Sec title="Checked against">
+        <Sec title={t("workflows.panel.checkedAgainst")}>
           <List items={n.tests} />
         </Sec>
       ) : null}
       {n?.dataShown?.length ? (
-        <Sec title="Shows">
+        <Sec title={t("workflows.panel.shows")}>
           <List items={n.dataShown} />
         </Sec>
       ) : null}
       {n?.actions?.length ? (
-        <Sec title="Offers">
+        <Sec title={t("workflows.panel.offers")}>
           <List items={n.actions} />
         </Sec>
       ) : null}
       {n?.permissions?.length ? (
-        <Sec title="May">
+        <Sec title={t("workflows.panel.may")}>
           <List items={n.permissions} />
         </Sec>
       ) : null}
       {n?.inputs?.length ? (
-        <Sec title="Inputs">
+        <Sec title={t("workflows.panel.inputs")}>
           <List items={n.inputs} mono />
         </Sec>
       ) : null}
       {n?.outputs?.length ? (
-        <Sec title="Outputs">
+        <Sec title={t("workflows.panel.outputs")}>
           <List items={n.outputs} mono />
         </Sec>
       ) : null}
-      <Sec title="Contract">
+      <Sec title={t("workflows.panel.contract")}>
         <p className="m-0 whitespace-pre-wrap text-13">{step.does}</p>
       </Sec>
       <Links c={c} id={step.id} onEdge={onEdge} />
@@ -247,6 +254,7 @@ function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge:
 }
 
 function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (id: string) => void }) {
+  const t = useCopy();
   const k = edge.contract;
   const name = (id: string) => {
     const s = c.steps.get(id);
@@ -268,21 +276,21 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
       </div>
       <Facts
         rows={[
-          ["Kind", edge.kind.label],
-          ["Re-evaluates", k?.reevaluates],
-          ["Condition", k?.condition],
-          ["Action", k?.action ? <span key="action" className="font-mono">{k.action}</span> : null],
-          ["Sends", k?.payload?.join(", ")],
-          ["Over", k?.protocol],
-          ["On failure", k?.onFailure],
-          ["Idempotency", k?.idempotency],
+          [t("workflows.panel.kind"), edge.kind.label],
+          [t("workflows.panel.reevaluates"), k?.reevaluates],
+          [t("workflows.panel.condition"), k?.condition],
+          [t("workflows.panel.action"), k?.action ? <span key="action" className="font-mono">{k.action}</span> : null],
+          [t("workflows.panel.sends"), k?.payload?.join(", ")],
+          [t("workflows.panel.over"), k?.protocol],
+          [t("workflows.panel.onFailure"), k?.onFailure],
+          [t("workflows.panel.idempotency"), k?.idempotency],
         ]}
       />
-      <Sec title="Data passed along">
+      <Sec title={t("workflows.panel.dataPassed")}>
         {mapping.length ? (
           <Facts rows={mapping.map(([to, from]) => [to, <span key={to} className="font-mono">← {from}</span>])} />
         ) : (
-          <p className="m-0 text-13 text-subtle">No mapping declared.</p>
+          <p className="m-0 text-13 text-subtle">{t("workflows.panel.noMapping")}</p>
         )}
       </Sec>
     </>
@@ -290,6 +298,7 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
 }
 
 export function DetailPanel(p: PanelProps) {
+  const t = useCopy();
   const { canvas: c, selection, walk } = p;
   const stepId = selection && "step" in selection ? selection.step : null;
   const step = stepId ? c.steps.get(stepId) : undefined;
@@ -299,10 +308,10 @@ export function DetailPanel(p: PanelProps) {
     body = (
       <>
         <div className="flex items-center justify-between">
-          <span className="fg-overline">Walk-through finished</span>
-          {close(p.onClose)}
+          <span className="fg-overline">{t("workflows.walk.finished")}</span>
+          <Close onClose={p.onClose} />
         </div>
-        <SectionTitle className="fg-h3 mb-1.5 mt-1">You have seen all {walk.order.length} steps</SectionTitle>
+        <SectionTitle className="fg-h3 mb-1.5 mt-1">{t("workflows.walk.seenAll", { n: walk.order.length })}</SectionTitle>
         <p className="mb-3 text-13-5 text-muted">{c.doc.summary}</p>
         {p.decision}
       </>
@@ -313,9 +322,9 @@ export function DetailPanel(p: PanelProps) {
       <>
         <div className="flex items-center justify-between">
           <span className="fg-overline">
-            Walk-through · {walk.at + 1} of {walk.order.length}
+            {t("workflows.walk.progress", { at: walk.at + 1, of: walk.order.length })}
           </span>
-          {close(p.onClose)}
+          <Close onClose={p.onClose} />
         </div>
         <div className="my-1.5 h-1 overflow-hidden rounded-2 bg-sunken">
           <i className="block h-full rounded-2 bg-accent" style={{ width: `${((walk.at + 1) / walk.order.length) * 100}%` }} />
@@ -337,19 +346,19 @@ export function DetailPanel(p: PanelProps) {
           </p>
         ) : null}
         {step.node?.conditions?.length ? (
-          <Sec title="How it decides">
+          <Sec title={t("workflows.walk.howDecides")}>
             <Rules step={step} />
           </Sec>
         ) : null}
-        <Sec title="What happens next">
+        <Sec title={t("workflows.walk.whatNext")}>
           <Next c={c} id={step.id} onStep={p.onStep} />
         </Sec>
         <div className="mt-4 flex gap-2">
           <Button className="flex-1" variant="secondary" disabled={walk.at === 0} onClick={() => p.onWalk(walk.at - 1)}>
-            ‹ Back
+            ‹ {t("workflows.walk.back")}
           </Button>
           <Button className="flex-1" variant="primary" onClick={() => p.onWalk(walk.at + 1)}>
-            {last ? "Finish ✓" : "Next ›"}
+            {last ? `${t("workflows.walk.finish")} ✓` : `${t("workflows.walk.next")} ›`}
           </Button>
         </div>
       </>
@@ -359,7 +368,7 @@ export function DetailPanel(p: PanelProps) {
       <>
         <div className="flex items-center justify-between">
           <TypeChip type={c.typeOf(step.id)} />
-          {close(p.onClose)}
+          <Close onClose={p.onClose} />
         </div>
         <StepPanel c={c} step={step} onEdge={p.onEdge} />
         {p.health?.on ? <StepHealth health={p.health} id={step.id} /> : null}
@@ -371,7 +380,7 @@ export function DetailPanel(p: PanelProps) {
       <>
         <div className="flex items-center justify-between">
           <span className="fg-overline">{edge.kind.label}</span>
-          {close(p.onClose)}
+          <Close onClose={p.onClose} />
         </div>
         <EdgePanel c={c} edge={edge} onStep={p.onStep} />
       </>

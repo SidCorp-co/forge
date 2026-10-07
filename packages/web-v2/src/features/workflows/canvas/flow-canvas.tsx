@@ -6,7 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { type Language, ViewBar } from "./controls";
 import { EDGE_TYPES } from "./edges";
 import { Frame } from "./frame";
-import { readCanvas } from "./model";
+import { useCanvasModel } from "./model";
 import { type BandRowData, NODE_TYPES, type StepNodeData } from "./nodes";
 import { hue, tint } from "./style";
 import { useCanvasLayout } from "./use-canvas-layout";
@@ -46,7 +46,7 @@ function nodeStroke(n: Node) {
 export function FlowCanvas(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, health = null } = props;
   const rf = useReactFlow();
-  const c = useMemo(() => readCanvas(doc, template), [doc, template]);
+  const c = useCanvasModel(doc, template);
   const banded = c.bands.length > 0;
   const f = useStepFocus(c);
   const { focus, hits, walk } = f;

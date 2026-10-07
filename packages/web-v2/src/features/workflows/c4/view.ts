@@ -19,6 +19,7 @@ export interface ViewNode {
   kind: NodeKind | "focal" | "group";
   column: Column;
   name: string;
+  /** A folded box's or the focal system's tooltip; a single element's is drawn from `node` in the interface language. */
   tip: string;
   /** The design steps the box stands for, for selection, search and the walk-through. */
   steps: string[];
@@ -66,7 +67,7 @@ const leaf = (n: GraphNode, frame: string | null): ViewNode => ({
   kind: n.kind,
   column: COLUMN[n.kind],
   name: n.name,
-  tip: [n.title, n.owner ? `Owner: ${n.owner}` : null, n.purpose].filter(Boolean).join("\n"),
+  tip: n.title,
   steps: [n.id],
   frame,
   members: [],

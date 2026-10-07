@@ -9,7 +9,8 @@ import { memo } from "react";
 import { Button, PageSectionTitle, TemplateIcon } from "@/design";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
-import type { NodeHealthView } from "../health";
+import { type NodeHealthView, rewriteWords } from "../health";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { WorkflowStep } from "../types";
 import type { BandSummary } from "./model";
 import { titleOf, purposeOf } from "./model";
@@ -68,6 +69,7 @@ export function TypeChip({ type }: { type: TemplateNodeType }) {
 
 /** A node's markers: one dot per kind zoomed out, a chip per kind on a full card, each opening its source; then its rewrite reading. */
 function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hrefOf: StepNodeData["hrefOf"] }) {
+  const t = useCopy();
   if (h.kinds.length === 0 && !h.rewrite) return null;
   return (
     <div className="wfc-health" data-testid="node-health">
@@ -84,8 +86,8 @@ function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hre
         );
       })}
       {h.rewrite ? (
-        <span className="wfc-rewrite" data-due={h.rewrite === "Rewrite due" || undefined} data-testid="node-rewrite">
-          {h.rewrite}
+        <span className="wfc-rewrite" data-due={h.rewrite === "due" || undefined} data-testid="node-rewrite">
+          {rewriteWords(h.rewrite, t)}
         </span>
       ) : null}
     </div>
@@ -93,6 +95,7 @@ function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hre
 }
 
 function StepCard({ data }: NodeProps & { data: StepNodeData }) {
+  const t = useCopy();
   const { step, type, full, contract } = data;
   const n = step.node;
   return (
@@ -151,7 +154,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
           ) : null}
           {contract && n?.outputs?.length ? (
             <span className="wfc-mono" data-rule="true">
-              out: {n.outputs.join(" · ")}
+              {t("workflows.node.out")} {n.outputs.join(" · ")}
             </span>
           ) : null}
         </>
@@ -161,6 +164,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
 }
 
 function BandCard({ data }: NodeProps & { data: BandNodeData }) {
+  const t = useCopy();
   const { summary } = data;
   return (
     <div className="wfc-card" data-summary="true" data-rel={data.rel} data-hit={data.hits > 0} data-testid="workflow-band">
@@ -168,7 +172,7 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
       <div className="wfc-sum">
         <PageSectionTitle className="fg-h4">{data.label}</PageSectionTitle>
         <span className="wfc-count">
-          {summary.count} {summary.count === 1 ? "step" : "steps"}
+          {t(summary.count === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n: summary.count })}
         </span>
       </div>
       <div className="wfc-types">
@@ -183,17 +187,17 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
       <div className="wfc-badges">
         <span className="wfc-badge">
           <User size={12} aria-hidden />
-          {summary.owners === 0 ? "no owner named" : `${summary.owners} ${summary.owners === 1 ? "owner" : "owners"}`}
+          {summary.owners === 0 ? t("workflows.node.noOwner") : t(summary.owners === 1 ? "workflows.count.owner.one" : "workflows.count.owner.many", { n: summary.owners })}
         </span>
         {summary.deadlines > 0 ? (
           <span className="wfc-badge" data-tone="sla">
             <Clock size={12} aria-hidden />
-            {summary.deadlines} {summary.deadlines === 1 ? "deadline" : "deadlines"}
+            {t(summary.deadlines === 1 ? "workflows.count.deadline.one" : "workflows.count.deadline.many", { n: summary.deadlines })}
           </span>
         ) : null}
         {data.hits > 0 ? (
           <span className="wfc-badge" data-tone="hits">
-            {data.hits} found
+            {t("workflows.node.found", { n: data.hits })}
           </span>
         ) : null}
       </div>
@@ -202,6 +206,7 @@ function BandCard({ data }: NodeProps & { data: BandNodeData }) {
 }
 
 function BandRow({ data }: NodeProps & { data: BandRowData }) {
+  const t = useCopy();
   return (
     <div className="wfc-row" style={{ background: tint(data.colour, data.odd ? 4 : 7) }}>
       <Button
@@ -210,7 +215,7 @@ function BandRow({ data }: NodeProps & { data: BandRowData }) {
         size="sm"
         className="wfc-row-label nodrag nopan"
         aria-expanded={data.open}
-        title={`${data.tooltip} — click to ${data.open ? "fold" : "open"}`}
+        title={`${data.tooltip} — ${t(data.open ? "workflows.node.clickFold" : "workflows.node.clickOpen")}`}
         onClick={(e) => {
           e.stopPropagation();
           data.onToggle();

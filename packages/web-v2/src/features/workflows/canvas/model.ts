@@ -5,6 +5,9 @@ import {
   type TemplateNodeType,
   type WorkflowTemplate,
 } from "@forge/contracts/workflow-templates";
+import { useMemo } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { WorkflowBody, WorkflowEdgeContract, WorkflowStep } from "../types";
 
 /** A line the canvas draws: an `after` line (with its contract, if the design gives one) or a return edge. */
@@ -37,19 +40,22 @@ export interface Canvas {
   edges: CanvasEdge[];
 }
 
-const GENERIC_KIND: TemplateEdgeKind = {
+/** The line a template does not name, in the interface language. */
+const genericKind = (t: Copy): TemplateEdgeKind => ({
   id: "flow",
-  label: "Flow",
-  tooltip: "The next step.",
+  label: t("workflows.canvas.flowKind"),
+  tooltip: t("workflows.canvas.flowKindHint"),
   direction: "forward",
   required: [],
   line: "solid",
   colour: "neutral",
-};
+});
 
-const genericType = (id: string): TemplateNodeType => ({
+/** The step type a design names that its template does not hold; the canvas's own default `STEP` reads in the interface language. */
+const DEFAULT_TYPE = "STEP";
+const genericType = (id: string, t: Copy): TemplateNodeType => ({
   id,
-  label: id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
+  label: id === DEFAULT_TYPE ? t("workflows.unit.step") : id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
   tooltip: id,
   icon: "circle",
   colour: "slate",
@@ -66,12 +72,19 @@ export function templateFor(
   return templates.find((t) => t.id === ref.id && t.version === ref.version) ?? null;
 }
 
-export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null): Canvas {
+/** `readCanvas` in the interface language, read again only when the design, its template or the language changes. */
+export function useCanvasModel(doc: Canvas["doc"], template: WorkflowTemplate | null): Canvas {
+  const t = useCopy();
+  return useMemo(() => readCanvas(doc, template, t), [doc, template, t]);
+}
+
+export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null, t: Copy): Canvas {
+  const GENERIC_KIND = genericKind(t);
   const steps = new Map(doc.steps.map((s) => [s.id, s]));
   const types = new Map((template?.nodeTypes ?? []).map((t) => [t.id, t]));
   const typeOf = (id: string) => {
-    const type = steps.get(id)?.node?.type ?? template?.defaultNodeType ?? "STEP";
-    return types.get(type) ?? genericType(type);
+    const type = steps.get(id)?.node?.type ?? template?.defaultNodeType ?? DEFAULT_TYPE;
+    return types.get(type) ?? genericType(type, t);
   };
   const kinds = new Map((template?.edgeKinds ?? []).map((k) => [k.id, k]));
   const kindOf = (named: string | undefined, from: string, to: string) => {
@@ -110,7 +123,7 @@ export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null
   const placed = new Set(bands.flatMap((b) => b.steps));
   const stray = doc.steps.filter((s) => !placed.has(s.id)).map((s) => s.id);
   if (banded && stray.length > 0) {
-    bands.push({ id: "__unplaced", label: "Unplaced", tooltip: "Steps that name no band of the template.", steps: stray });
+    bands.push({ id: "__unplaced", label: t("workflows.canvas.unplaced"), tooltip: t("workflows.canvas.unplacedHint"), steps: stray });
     for (const id of stray) bandOf.set(id, "__unplaced");
   }
   const lanes = new Map(

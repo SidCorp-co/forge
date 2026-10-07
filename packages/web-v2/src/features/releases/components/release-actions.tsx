@@ -2,11 +2,13 @@
 
 import { useRef, useState } from "react";
 import { Button, Field, Popover, Textarea } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useCutRelease, useReleaseDecision } from "../hooks";
 import type { ReleaseDetail } from "../types";
 import { RefusalText } from "./release-bits";
 
 function ReturnWithReason({ projectId, runId, approvalId }: { projectId: string; runId: string; approvalId: string }) {
+  const t = useCopy();
   const decide = useReleaseDecision(projectId);
   const anchor = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
@@ -15,7 +17,7 @@ function ReturnWithReason({ projectId, runId, approvalId }: { projectId: string;
     <>
       <span ref={anchor} className="inline-flex">
         <Button type="button" size="sm" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="release-return">
-          Return with reason
+          {t("releases.returnWithReason")}
         </Button>
       </span>
       <Popover open={open} anchor={anchor} onDismiss={() => setOpen(false)} placement="bottom-end" takesFocus className="w-[320px] bg-surface p-3 shadow-md">
@@ -34,22 +36,22 @@ function ReturnWithReason({ projectId, runId, approvalId }: { projectId: string;
             );
           }}
         >
-          <Field label="Why it goes back">
+          <Field label={t("releases.whyBack")}>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
-              placeholder="What the master should answer before it asks again"
+              placeholder={t("releases.whyBackPlaceholder")}
               data-testid="release-return-reason"
             />
           </Field>
           <RefusalText error={decide.error} />
           <span className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" size="sm" disabled={!reason.trim()} loading={decide.isPending}>
-              Return with reason
+              {t("releases.returnWithReason")}
             </Button>
           </span>
         </form>
@@ -59,6 +61,7 @@ function ReturnWithReason({ projectId, runId, approvalId }: { projectId: string;
 }
 
 export function ReleaseActions({ projectId, r }: { projectId: string; r: ReleaseDetail }) {
+  const t = useCopy();
   const decide = useReleaseDecision(projectId);
   const cut = useCutRelease(projectId);
   const decision = r.can.decide && r.approval && r.runId ? { runId: r.runId, approvalId: r.approval.id } : null;
@@ -76,7 +79,7 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
             onClick={() => decide.mutate({ ...decision, body: { decision: "approve" } })}
             data-testid="release-approve"
           >
-            Approve release
+            {t("releases.approve")}
           </Button>
           <RefusalText error={decide.error} />
         </>
@@ -90,7 +93,7 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
             onClick={() => cut.mutate(r.issues.map((i) => i.id))}
             data-testid="release-cut"
           >
-            Cut {r.version}
+            {t("releases.cut", { version: r.version })}
           </Button>
           <RefusalText error={cut.error} />
         </>
