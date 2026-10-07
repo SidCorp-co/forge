@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.131] - 2026-10-07
+
+Tokens must state their grant; waits name people; retired paths removed
+
+### Fixed
+
+- **Every wait names the people who can act.** Feedback, forecasts, runs, automation and releases name the writers, admins or approvers by name, or say nobody holds it and where to grant it. A blocked draft now waits on its blocker.
+
+### Removed
+
+- **Three second paths are gone.** `PUT /api/projects/:id/content-language` (Settings writes the project document), the integrations list's duplicate `bindings` key (it answers `items`), and a job session's park frame, now refused `JOB_SESSION_PARK_RETIRED`.
+
+### Security
+
+- **A token whose grant was never stated now reaches nothing.** Every door refuses it `PAT_GRANT_UNSTATED` instead of reading it as full access, the token list says to re-mint it, and minting without a grant is refused.
+
 ## [0.4.0-dev.130] - 2026-10-07
 
 Questions owned by no issue reach needs-you, and the question block reads Vietnamese
