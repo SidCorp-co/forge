@@ -14,14 +14,14 @@ import {
   Button,
   EmptyState,
   enumLabel,
-  ErrorState,
+ 
   GroupedList,
   ListSearch,
   LEGEND,
   type ListGroup,
   type ListRowView,
   PageTitle,
-  ProjectLoader,
+  QueryBoundary,
   rememberListOrigin,
   StatusBadge,
   standingGroups,
@@ -36,7 +36,6 @@ import {
   visibleRows,
   WaitingOn,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFeedbackList } from "../hooks";
@@ -160,63 +159,51 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
       </TopBarActions>
     </>
   );
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ProjectLoader label="loading feedback…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
-      {title}
-      {creating ? (
-        <FeedbackForm
-          projectId={projectId}
-          onDone={(key) => {
-            setCreating(false);
-            if (key) peek.set(key);
-          }}
-        />
-      ) : null}
-      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="toolbar" />
-            <ListSearch noun="feedback" value={text} onChange={(q) => setParams({ q: q || null })} />
-          </div>
-          {all.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState title="No feedback yet" message="Feedback is what a BA, a tester or a user says about a requirement, an issue, a release, a workflow or a screen." />
+    <QueryBoundary query={q} loadingLabel="loading feedback…" title={title} height="60vh" retry="always">
+      {() => (
+        <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
+          {title}
+          {creating ? (
+            <FeedbackForm
+              projectId={projectId}
+              onDone={(key) => {
+                setCreating(false);
+                if (key) peek.set(key);
+              }}
+            />
+          ) : null}
+          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+                <ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="toolbar" />
+                <ListSearch noun="feedback" value={text} onChange={(q) => setParams({ q: q || null })} />
+              </div>
+              {all.length === 0 ? (
+                <div className="px-5 py-10">
+                  <EmptyState title="No feedback yet" message="Feedback is what a BA, a tester or a user says about a requirement, an issue, a release, a workflow or a screen." />
+                </div>
+              ) : (
+                <>
+                  <Funnel rows={all} />
+                  <GroupedList
+                    ariaLabel="Feedback"
+                    groups={groups}
+                    fold={fold}
+                    row={row}
+                    selected={peek.open}
+                    onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                    empty="Nothing matches this search."
+                  />
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              <Funnel rows={all} />
-              <GroupedList
-                ariaLabel="Feedback"
-                groups={groups}
-                fold={fold}
-                row={row}
-                selected={peek.open}
-                onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                empty="Nothing matches this search."
-              />
-            </>
-          )}
+            {peek.open ? (
+              <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
+            ) : null}
+          </div>
         </div>
-        {peek.open ? (
-          <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-        ) : null}
-      </div>
-    </div>
+      )}
+    </QueryBoundary>
   );
 }

@@ -74,6 +74,7 @@ export { PreviewPane } from "./patterns/preview-pane";
 export { HtmlArtifact } from "./patterns/html-artifact";
 export { ForgeMascot } from "./patterns/forge-mascot";
 export { ProjectLoader } from "./patterns/mascot-loaders";
+export { QueryBoundary } from "./patterns/query-boundary";
 
 export { BoardRowSkeleton, KanbanColumnSkeleton, SessionRowSkeleton, ProjectCardSkeleton } from "./skeletons";
 
