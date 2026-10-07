@@ -17,6 +17,7 @@ const ACT = [
   "verifying", "starting", "declare a production environment", "declare where releases land", "cut the issues that are waiting", "bring an issue to the release gate", "split this release into smaller releases",
   "write the release note", "mark the merge", "declare a source probe on production", "pair a runner", "bring a runner online", "a release is running", "judge the criteria still owed",
   "give production a way to be read", "a check could not run", "label a runner for releases", "verdicts not re-read",
+  "approve: no person on this project can write until a project admin grants write under Settings → Members",
 ];
 const EFFECT = [
   "Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.",

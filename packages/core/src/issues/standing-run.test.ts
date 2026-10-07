@@ -33,6 +33,7 @@ const input = (
   releaseApproval: false,
   releaseNoted: true,
   viewer: { userId: 'u1', canWrite: true },
+  writers: [],
   withheld: null,
   now,
   ...over,

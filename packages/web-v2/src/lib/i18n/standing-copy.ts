@@ -123,6 +123,15 @@ const ACT: Rule[] = [
   { re: new RegExp("^a check could not run$"), key: "standing.act.checkCouldNotRun" },
   { re: new RegExp("^label a runner for releases$"), key: "standing.act.labelRunner" },
   { re: new RegExp("^verdicts not re-read$"), key: "standing.act.verdictsNotReread" },
+  {
+    // the act a person's turn names where no person holds write (FB-104): its own act, then where it is granted
+    re: new RegExp("^(?<act>.+): no person on this project can write until a project admin grants write under Settings → Members$"),
+    key: "standing.act.noWriter",
+    vars: (g, l) => {
+      const act = apply(ACT, g.act ?? "", l);
+      return act === null ? null : { act };
+    },
+  },
 ];
 
 const EFFECT: Rule[] = [
