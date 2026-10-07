@@ -25,6 +25,7 @@ export {
   artifactsCarriedFor,
   type Carrier,
   carriageOfIssue,
+  carrierEnded,
   type InheritedArtifact,
   type IssueCarriage,
   readCarriers,

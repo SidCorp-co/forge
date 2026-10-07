@@ -14,7 +14,7 @@ import {
   readStorefrontPublished,
   type StorefrontServed,
 } from '../integrations/index.js';
-import { type Carrier, readCarriers } from '../issues/index.js';
+import { type Carrier, carrierEnded, readCarriers } from '../issues/index.js';
 import type { ReleaseChannel } from './plan.js';
 import {
   type Judged,
@@ -127,7 +127,7 @@ function judgeCarried(
       `${carrier.key} is claimed by this same release, so no later release carries it: it is this release's to ship. Mark it as ${c.issue}'s own landing (unmark, then mark again without \`carriedBy\`) and it is verified here`,
     );
   }
-  if (carrier.status === 'closed' || carrier.status === 'dropped') {
+  if (carrierEnded(carrier.status)) {
     return refuse(
       `${carrier.key} is \`${carrier.status}\`, so no release of it will ship this artifact`,
     );

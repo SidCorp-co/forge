@@ -4,6 +4,7 @@
 // the carrying-from issue reports the artifact carried, and the carrier's landing inherits it, so
 // the carrier's own release verifies it.
 
+import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
@@ -13,7 +14,9 @@ import { formatIssueRef, parseIssueRef } from '../lib/issue-ref.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import { isUuid } from './issue-route-ref.js';
 
-const SHIPPED = new Set(['closed', 'dropped']);
+/** A carrier that has closed or dropped: no release of it will ship anything more. */
+export const carrierEnded = (status: string) =>
+  (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(status as IssueStatus);
 
 /** The issue a `carriedBy` names in this project, or why it names none. */
 export interface Carrier {
@@ -118,7 +121,7 @@ export async function resolveCarriage(args: {
         index,
       };
     }
-    if (SHIPPED.has(carrier.status)) {
+    if (carrierEnded(carrier.status)) {
       return {
         ok: false,
         code: 'ARTIFACT_CARRIER_SHIPPED',
