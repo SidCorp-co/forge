@@ -19,7 +19,10 @@ On a chain that promotes by `merge-branch`, everything between the live branch a
 reaches production, named or not. So the create reads that range first:
 
 - `packages/core/src/release-batch/cut-range.ts:readRangeTo` pins the start branch's head — that commit is the **cut** — and reads
-  `compare(live...cut)` from the project's GitHub binding, every page of it.
+  every commit the cut holds that the live branch does not, from the project's repository: through its
+  GitHub binding (`compare(live...cut)`, every page of it), or, where the project has no binding, with
+  git as the deploy key attached to it (ISS-1398; the route is
+  `packages/core/src/projects/repository-access.ts:withRepository`'s, below).
 - `packages/core/src/release-batch/carried.ts:readCarried` names every issue of the project whose landing commit is in the range and
   that is not on the roster, whatever its status: a `needs_info` issue, one being judged, or one
   closed while its landing never reached the live branch.
@@ -39,8 +42,8 @@ Each outcome has its own code:
 | an issue in the range holds no decision | `RELEASE_CARRIES_UNDECIDED` (409), each issue named with its status and the ways out |
 | a decision that does not hold | `RELEASE_CARRIED_DECISION_REFUSED` (409), the issue and why |
 | a cut-below that drops a roster member | `RELEASE_CUT_DROPS_ROSTER` (409), each member it drops |
-| the bound repository fails to answer | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503) |
-| the project has no GitHub binding | not refused: warning `RELEASE_CARRIED_UNREAD`, saying how to bind it |
+| the repository fails to answer, on either route | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503) |
+| the project has neither a GitHub binding nor a deploy key | not refused: warning `RELEASE_CARRIED_UNREAD`, naming what to attach under Git access, and the GitHub binding only for a github.com remote |
 | a publish chain or a cherry-pick crossing | not refused: `carried.kind` is `not-read` with its reason |
 
 The create answer carries `carried` (the cut and each issue with its decision) and the warnings. The
@@ -132,3 +135,27 @@ with `promotedRoster: return-to-gate`, or settle the issue by hand.
 A close that failed without a refusal names the error and says the close is sent again once that
 error is gone. The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.
+
+## 4. Which route reads the repository (ISS-1398)
+
+Every repository read a release takes — the carried range above, and the weighing the automatic
+release judges a verdict with (`packages/core/src/release-batch/runtime-weighing.ts:readWeighingNow`:
+whether what production serves descends from the commit a verdict was judged at, the files the two
+differ in, and the files a landing changed) — goes through one port,
+`packages/core/src/projects/repository-reader.ts:RepositoryReader`, which
+`packages/core/src/projects/repository-access.ts:withRepository` hands out:
+
+- **The project's active GitHub binding**, where it has one. A binding that exists and cannot be
+  used is refused in GitHub's words; it never falls back to the key.
+- **Otherwise the SSH deploy key attached under Settings → Runners → Git access**, beside an SSH
+  repository URL — the same key a runner clones with. `packages/core/src/git/repository-reading.ts`
+  reads with plain git: every branch's commits once per reading (`--filter=tree:0`), and only the
+  trees of the commits a file question compares (`--depth=1 --filter=blob:none`), never a file's
+  contents, each fetch held to the byte and time budget of `packages/core/src/git/bounded-fetch.ts`.
+  This is how a project hosted on GitLab, or anywhere but GitHub, is read; no host API is asked.
+- **Neither**: no read is taken. The weighing's criterion stays unearned with the reason beside it,
+  naming the SSH clone URL and deploy key to attach.
+
+A read that fails on either route is a reason, never an answer: a carriage that could not be read
+leaves the criterion weighed by equality alone, so a failed read can hold a verdict and never earn
+one.
