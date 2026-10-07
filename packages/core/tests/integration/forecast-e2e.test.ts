@@ -22,6 +22,7 @@ interface World {
   userId: string;
   token: string;
   runnerId: string;
+  deviceId: string;
   seq: number;
 }
 
@@ -40,21 +41,28 @@ async function world(): Promise<World> {
     userId: user.id,
     token: await userToken(user.id),
     runnerId,
+    deviceId: device,
     seq: 0,
   };
 }
 
 async function issue(
   w: World,
-  over: { status: string; createdAt: Date; mergedAt?: Date | null; waitingKind?: string },
+  over: {
+    status: string;
+    createdAt: Date;
+    mergedAt?: Date | null;
+    waitingKind?: string;
+    priority?: string;
+  },
 ): Promise<{ id: string; key: string }> {
   const id = randomUUID();
   w.seq += 1;
   await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, waiting_kind)
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, waiting_kind, priority)
     VALUES (${id}, ${w.projectId}, ${w.seq}, ${`issue ${w.seq}`}, ${over.status}, ${w.userId},
             ${over.createdAt.toISOString()}, ${over.mergedAt?.toISOString() ?? null},
-            ${over.waitingKind ?? null})
+            ${over.waitingKind ?? null}, ${over.priority ?? 'medium'})
   `);
   return { id, key: `ISS-${w.seq}` };
 }
@@ -174,5 +182,22 @@ describe('forecast below the history floor', () => {
     const f = (await read(w, `/issues/${key}`)).forecast as Body;
     expect(f).toMatchObject({ kind: 'not_enough_history', n: 5, floor: 10, label: 'forecast' });
     expect(f).not.toHaveProperty('p50At');
+  });
+});
+
+describe('dispatch order honours priority', () => {
+  it('hands a newer high issue to the master before an older medium one, and forecasts it earlier', async () => {
+    const w = await world();
+    await landHistory(w, HISTORY);
+    const older = await issue(w, { status: 'open', createdAt: ago(3), priority: 'medium' });
+    const newer = await issue(w, { status: 'open', createdAt: ago(1), priority: 'high' });
+    const { readAdmissibleIssues } = await import('../../src/devices/admissible.js');
+    const listed = await readAdmissibleIssues({ deviceId: w.deviceId, projectId: w.projectId });
+    expect(listed.items.map((i) => i.issueKey)).toEqual([newer.key, older.key]);
+    const high = (await read(w, `/issues/${newer.key}`)).forecast as Body;
+    const medium = (await read(w, `/issues/${older.key}`)).forecast as Body;
+    expect(high).toMatchObject({ kind: 'forecast', ahead: 0 });
+    expect(medium).toMatchObject({ kind: 'forecast', ahead: 1, aheadKeys: [newer.key] });
+    expect(high.p50Minutes as number).toBeLessThan(medium.p50Minutes as number);
   });
 });

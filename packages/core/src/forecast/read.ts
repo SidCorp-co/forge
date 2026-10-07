@@ -1,7 +1,7 @@
 /**
  * One simulation over a project's open work: the queue off the issue standing read model (who each
  * issue waits on, its live `blocks` edges) in the admissible list's own order
- * (`devices/admissible.ts`, oldest first), through `model.ts`. Computed on each read, so a
+ * (`devices/admissible.ts`: priority first, then oldest), through `model.ts`. Computed on each read, so a
  * transition moves the next answer with no projection to keep.
  */
 
@@ -11,7 +11,7 @@ import {
   type ForecastPaused,
   type ProjectForecast,
 } from '@forge/contracts/forecast';
-import { activeIssuePrefix, listIssueStanding } from '../issues/index.js';
+import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
 import { readEffectivePolicy } from '../project-config/index.js';
@@ -53,6 +53,9 @@ export async function simulate(projectId: string, now: Date): Promise<Facts> {
     standing.issues.map((r) => r.id),
   );
   const byId = new Map(rows.map((r) => [r.id, r]));
+  // the admissible list's own order, from the one comparator both read (issues/dispatch-order.ts)
+  const queue = [...standing.issues].sort(compareDispatchOrder);
+  const rankOf = new Map(queue.map((r, at) => [r.id, at]));
   const items: WorkItem[] = [];
   for (const s of standing.issues) {
     const row = byId.get(s.id);
@@ -69,7 +72,7 @@ export async function simulate(projectId: string, now: Date): Promise<Facts> {
       landedAt: row.merged_at ? new Date(row.merged_at) : null,
       ended: row.status === 'dropped' ? row.status : null,
       startedAt: inFlight ? new Date(row.started_at ?? now) : null,
-      rank: new Date(row.created_at).getTime(),
+      rank: rankOf.get(s.id) ?? queue.length,
       // a blocker that landed frees its dependent's run, and a dropped one no longer holds it
       blockedBy: s.standing.blockedBy
         .filter((b) => !b.landed && !LANDED_STATUSES.includes(b.status) && b.status !== 'dropped')
