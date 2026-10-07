@@ -139,6 +139,14 @@ describe('sealQueryError', () => {
     expect(stack).not.toMatch(/[\ue000-\ue001]/);
   });
 
+  it('holds no sealed message whole where it sits inside a bound value a sink still has to find', () => {
+    const err = sealQueryError(
+      new DrizzleQueryError('select $1', ['secret0value'], pgRefusal('0', { code: 'P0001' }, [])),
+    );
+    expect(redactQueryParams({ copied: 'secret0value' }, err).copied).toBe(REDACTED);
+    expect(redactedMessage(err)).toBe(err.message);
+  });
+
   it('reads no redaction it made as a value, however often a transaction seals it', () => {
     const err = new DrizzleQueryError(
       'select $1::uuid',

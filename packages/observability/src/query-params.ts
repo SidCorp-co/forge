@@ -152,47 +152,53 @@ function mergeSpans(spans: Span[]): Span[] {
   return merged;
 }
 
-/** `text` with each sealed message swapped for a token, and the swap back. */
-function keepSealed(text: string, sealed: string[]): [string, (t: string) => string] {
-  if (sealed.length === 0) return [text, (t) => t];
-  const kept = [...new Set(sealed)].sort((a, b) => b.length - a.length);
-  const taken: [from: number, to: number, index: number][] = [];
+type Mark = [from: number, to: number, kept: number];
+
+/** Where each sealed message stands in `text`, longest first, clear of every span already taken. */
+function sealedSpans(text: string, kept: string[], taken: Span[]): Mark[] {
+  const found: Mark[] = [];
+  const clear = (from: number, to: number) =>
+    ![...taken, ...found].some(([f, t]) => from < t && f < to);
   kept.forEach((m, i) => {
     for (const [from, to] of occurrences(text, m, 0, 0)) {
-      if (!taken.some(([f, t]) => from < t && f < to)) taken.push([from, to, i]);
+      if (clear(from, to)) found.push([from, to, i]);
     }
   });
-  taken.sort((a, b) => a[0] - b[0]);
+  return found;
+}
+
+/**
+ * `text` redacted against `chain`: its bound values found first, in the original text, then each
+ * sealed message clear of them held whole, so no pattern reads a sealed message as a raw one.
+ */
+function redactText(text: string, chain: ChainReading | null): string {
+  if (!chain && !text.includes('Failed query: ') && !quotesAValue(text)) return text;
+  const bound = chain ? boundSpans(text, chain) : [];
+  const kept = [...new Set(chain?.sealed ?? [])].sort((a, b) => b.length - a.length);
+  const sealed = sealedSpans(
+    text,
+    kept,
+    bound.filter(([from, to]) => to > from),
+  );
+  // An empty query's rendering is a point; inside a sealed message it holds nothing to redact.
+  const inSealed = ([from, to]: Span) => sealed.some(([f, t]) => f <= from && to <= t);
+  const marks: Mark[] = [
+    ...bound.filter((span) => !inSealed(span)).map(([from, to]): Mark => [from, to, -1]),
+    ...sealed,
+  ].sort((a, b) => a[0] - b[0]);
+  const held = markerAbsentFrom(text);
   const keep = markerAbsentFrom(text, KEPT_USE);
   let out = '';
   let at = 0;
-  for (const [from, to, i] of taken) {
-    out += `${text.slice(at, from)}${keep}${i}${keep}`;
+  for (const [from, to, i] of marks) {
+    out += `${text.slice(at, from)}${i < 0 ? held : `${keep}${i}${keep}`}`;
     at = to;
   }
   out += text.slice(at);
-  const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
-  return [out, (t) => t.replace(token, (_, i) => kept[Number(i)] ?? '')];
-}
-
-function redactText(original: string, chain: ChainReading | null): string {
-  if (!chain && !original.includes('Failed query: ') && !quotesAValue(original)) return original;
-  const [text, restore] = keepSealed(original, chain?.sealed ?? []);
-  const held = markerAbsentFrom(text);
-  let out = text;
-  if (chain) {
-    const spans = boundSpans(text, chain);
-    out = '';
-    let at = 0;
-    for (const [from, to] of spans) {
-      out += `${text.slice(at, from)}${held}`;
-      at = to;
-    }
-    out += text.slice(at);
-  }
   out = out.replace(failedQueryParams(held), `$1${held}`);
   if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
-  return restore(out.split(held).join(REDACTED));
+  const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
+  return out.split(held).join(REDACTED).replace(token, (_, i) => kept[Number(i)] ?? '');
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
