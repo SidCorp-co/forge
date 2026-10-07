@@ -63,7 +63,7 @@ type Release = {
   attentionGroup: string;
   waitingOn: { kind: string; who: string; act: string };
   gates: Array<{ code: string; title: string; sentence: string; detail: string }>;
-  can: { cut: boolean; decide: boolean };
+  can: { cut: boolean; decide: boolean; split: boolean };
   requirementsCompleted: Array<{
     key: string;
     completes: boolean;
@@ -166,7 +166,7 @@ describe('a draft release reads its gate as words', () => {
       counts: { stuck: 0, waiting: 1, needs_you: 0 },
     });
     const draft = await detail('owner', '0.1.0');
-    expect(draft.can).toEqual({ cut: false, decide: false });
+    expect(draft.can).toEqual({ cut: false, decide: false, split: false });
     expect(draft.gates).toHaveLength(1);
     expect(draft.gates[0]).toMatchObject({
       code: 'RELEASE_RECORD_MISSING',

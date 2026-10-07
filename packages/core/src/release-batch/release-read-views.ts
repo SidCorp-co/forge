@@ -2,19 +2,21 @@
 
 import { releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNotesSections } from '@forge/contracts/release-notes';
-import type {
-  IssueLandingReading,
-  ReleaseApprovalView,
-  ReleaseAttemptView,
-  ReleaseContentGroup,
-  ReleaseDetail,
-  ReleaseFeedbackView,
-  ReleaseGateView,
-  ReleaseIssueView,
-  ReleaseNoteSection,
-  ReleasePerson,
-  ReleaseState,
-  ReleaseSummary,
+import {
+  type IssueLandingReading,
+  RELEASE_ROSTER_LIMIT,
+  type ReleaseApprovalView,
+  type ReleaseAttemptView,
+  type ReleaseContentGroup,
+  type ReleaseDetail,
+  type ReleaseFeedbackView,
+  type ReleaseGateView,
+  type ReleaseIssueView,
+  type ReleaseNoteSection,
+  type ReleasePerson,
+  type ReleaseSplit,
+  type ReleaseState,
+  type ReleaseSummary,
 } from '@forge/contracts/releases';
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
@@ -132,10 +134,35 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
   );
 }
 
+const mergedTime = (at: Date | null | undefined) => at?.getTime() ?? Number.POSITIVE_INFINITY;
+
+/**
+ * The act RELEASE_ROSTER_OVERSIZE names (`release-gates.ts` OWED): the oldest merged issues, as many
+ * as one release carries, cut as this release — offered only where that is the draft's one blocker,
+ * since a split leaves every other reason standing on the part it cuts.
+ */
+function splitOf(p: Part, s: Shared): ReleaseSplit | null {
+  const blockers = p.gates.filter((g) => g.kind === 'blocker');
+  if (p.state !== 'draft' || s.viewer?.isAdmin !== true) return null;
+  if (blockers.length === 0 || blockers.some((g) => g.code !== 'RELEASE_ROSTER_OVERSIZE'))
+    return null;
+  const oldest = p.issueIds
+    .flatMap((id) => s.facts.issues.get(id) ?? [])
+    .sort(
+      (a, b) =>
+        mergedTime(a.merged.at) - mergedTime(b.merged.at) ||
+        a.key.localeCompare(b.key, 'en', { numeric: true }),
+    )
+    .slice(0, RELEASE_ROSTER_LIMIT)
+    .map((i) => i.id);
+  return { issueIds: oldest, rest: p.issueIds.length - oldest.length };
+}
+
 export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const turn = turnFor(p, s);
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const { owner, act } = ownerOf(p, s);
+  const split = splitOf(p, s);
   const reqs = [
     ...new Set(
       facts.flatMap((i) => {
@@ -170,7 +197,9 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
         s.viewer?.isAdmin === true &&
         !p.gates.some((g) => g.kind === 'blocker'),
       decide: s.viewer?.mayApprove === true && approvalFacts(p)?.decision === null,
+      split: split !== null,
     },
+    split,
     openedAt: iso(p.openedAt),
     releasedAt: iso(p.releasedAt),
     at: lastChange(p, s),
