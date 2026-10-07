@@ -1,118 +1,126 @@
-// Where a release's version lives, and the only writer of it.
+// Where a release's version lives, and the only writer of it (ADR 0011).
 //
-// TWO READERS, not interchangeable. `highestSpentVersion` spans every release row whose number may
-// exist outside Forge, and an ended row counts unless it is PROVEN unspent: its job never reached a
-// box, or its abort said `pushed:false` (no branch, no tag). A run that pushed and then died says
-// nothing, so silence keeps the number. A proven-unspent row hands its number back and the next batch
-// wears it; the ended row keeps `release_version` as the number it tried (ISS-234's dev.35 and
-// dev.36). The precedent is semantic-release, changesets and release-please, which all
-// derive the next version from the last one published and keep no allocator. `currentReleaseVersion`
-// answers what is SERVING and reads the ship stamp, because `cancelConcludedRun` flips a `completed`
-// run to `cancelled` while its bytes are still live. The partial unique index is only the backstop.
+// A version names a RELEASE, not an attempt. The first cut of a roster claims a version; every
+// re-cut of the same roster wears it again until it ships, unless something outside Forge already
+// carries it — a pushed tag, a release commit, a published artifact, a notice sent — and then the
+// next attempt takes a new version and records why, naming the carrier. Which version is the rule's
+// (`version-rule.ts:decideVersion`); this module reads the runs it decides over and writes the
+// answer. `currentReleaseVersion` answers what is SERVING and reads the ship stamp, because
+// `cancelConcludedRun` flips a `completed` run to `cancelled` while its bytes are still live. The
+// partial unique index `pipeline_runs_release_version_uq` is only the backstop.
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { stampReleaseVersion } from '../pipeline/index.js';
+import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { refuseRelease } from './refuse.js';
+import { blockerRefusal, refuseRelease } from './refuse.js';
+import { formatReleaseVersion, type PrereleaseLine, parseReleaseVersion } from './version.js';
 import {
-  compareReleaseVersions,
-  formatReleaseVersion,
-  isStorableReleaseVersion,
-  nextReleaseVersion,
-  type PrereleaseLine,
-  parseReleaseVersion,
-  RELEASE_VERSION_SHAPE,
-  type ReleaseVersion,
-} from './version.js';
+  cutRecordOf,
+  decideVersion,
+  type LineageRun,
+  lineageOf,
+  type VersionDecision,
+} from './version-rule.js';
 
 /** Allocation is serialized per project, so a second writer of the column is refused, not retried. */
 const versionConflict = (projectId: string, version: string) =>
   refuseRelease(
     'RELEASE_VERSION_CONFLICT',
     `${version} could not be cut for project ${projectId}: the row already carried a version, or ` +
-      'another release on this project already wears that number. Allocation is serialized per ' +
+      'another release on this project still wears that number. Allocation is serialized per ' +
       'project, so this means a writer other than `cutReleaseVersion` set ' +
       '`pipeline_runs.release_version`. Nothing was cut.',
   );
-/** Serialize allocation per project for the transaction, so two cuts queue rather than race. */
-async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
+
+/**
+ * Serialize allocation per project for the transaction, so two cuts queue rather than race. Every
+ * writer of what the rule reads off an ended attempt — what carries its version — takes it too
+ * (`carried.ts`), so a cut never decides on a carrier reading a declaration is about to change.
+ */
+export async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
   await lockXact(tx, 'releaseVersion', projectId);
 }
 
-interface ReleaseRowReading {
-  runId: string;
-  version: ReleaseVersion;
-  status: string;
-  shipped: boolean;
+/** The same lock, for a writer that holds a run id: taken before any lock on the run's row. */
+export async function lockRunVersions(tx: Tx, runId: string): Promise<void> {
+  const rows = await tx.execute<{ project_id: string }>(
+    sql`SELECT project_id FROM pipeline_runs WHERE id = ${runId}`,
+  );
+  const projectId = rows[0]?.project_id;
+  if (projectId) await lockProjectVersions(tx, projectId);
 }
 
-/**
- * Whether a run's release job was ever taken by a box. A job a master holds counts: its pane may be
- * starting. A run with no such job never ran its procedure, so nothing it did can be outside Forge.
- */
-const REACHED_A_BOX = sql`EXISTS (
-  SELECT 1 FROM jobs j
-  WHERE j.pipeline_run_id = r.id AND (j.dispatched_at IS NOT NULL OR j.held_by IS NOT NULL)
-)`;
+const idsIn = (list: unknown): string[] =>
+  Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
 
-/**
- * What makes a cut number spent. Read on the row and its ledger, never stored. A shipped, live,
- * finished or promoted row is spent whatever else it says; any other ended row is spent unless it
- * proves nothing left Forge, because a pushed commit or tag is invisible from here.
- */
-const NUMBER_SPENT = sql`(
-  r.release_released_at IS NOT NULL
-  OR r.status NOT IN ('cancelled', 'failed')
-  OR r.metadata ? 'finish'
-  OR EXISTS (SELECT 1 FROM release_attempts a WHERE a.run_id = r.id)
-  OR (${REACHED_A_BOX} AND r.metadata -> 'abort' ->> 'pushed' IS DISTINCT FROM 'false')
-)`;
-
-// ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,
-// and a prerelease's `-dev.N` tail has no integer-array cast; the shape CHECK on the column is what
-// makes every stored value parse.
-export async function highestSpentVersion(
-  executor: Tx,
+/** Every release-batch run of the project the rule decides over, `except` the one being cut. */
+export async function readLineageRuns(
+  executor: Pick<Tx, 'execute'>,
   projectId: string,
-): Promise<ReleaseRowReading | null> {
+  except: string | null = null,
+): Promise<LineageRun[]> {
   const rows = await executor.execute<{
     id: string;
     release_version: string;
     status: string;
-    release_released_at: Date | null;
+    started_at: Date | string;
+    finished_at: Date | string | null;
+    release_released_at: Date | string | null;
+    metadata: Record<string, unknown> | null;
+    reached_box: boolean;
+    has_job: boolean;
   }>(sql`
-    SELECT r.id, r.release_version, r.status, r.release_released_at
+    SELECT r.id, r.release_version, r.status, r.started_at, r.finished_at, r.release_released_at, r.metadata,
+           EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id
+                     AND (j.dispatched_at IS NOT NULL OR j.held_by IS NOT NULL)) AS reached_box,
+           EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id) AS has_job
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.release_version IS NOT NULL
-      AND ${NUMBER_SPENT}
+      AND r.metadata ->> 'source' = 'release-batch'
+      AND (${except}::uuid IS NULL OR r.id <> ${except}::uuid)
   `);
-  let highest: ReleaseRowReading | null = null;
-  for (const row of rows) {
-    const version = parseReleaseVersion(row.release_version);
-    if (!version) {
-      throw versionConflict(
-        projectId,
-        `${row.release_version} (stored on run ${row.id}, which is not ${RELEASE_VERSION_SHAPE})`,
-      );
-    }
-    if (highest && compareReleaseVersions(version, highest.version) <= 0) continue;
-    highest = {
-      runId: row.id,
-      version,
-      status: row.status,
-      shipped: row.release_released_at !== null,
+  return rows.map((r) => {
+    const metadata = r.metadata ?? {};
+    return {
+      id: r.id,
+      version: r.release_version,
+      startedAt: new Date(r.started_at),
+      status: r.status,
+      releasedAt: r.release_released_at === null ? null : new Date(r.release_released_at),
+      endedAt: r.finished_at === null ? null : new Date(r.finished_at),
+      roster: idsIn(metadata.issueIds),
+      reachedBox: r.reached_box,
+      hasJob: r.has_job,
+      metadata,
     };
-  }
-  return highest;
+  });
+}
+
+/** Every release's attempts on this project, as the read model shows them. */
+export async function readLineage(projectId: string) {
+  const runs = await readLineageRuns(db, projectId);
+  return { runs, ...lineageOf(runs) };
 }
 
 export async function releaseLineOf(projectId: string): Promise<PrereleaseLine | null> {
   const declared = (await readProjectDocument(projectId))?.document.release?.prerelease;
   const of = declared ? parseReleaseVersion(declared.of) : null;
   return declared && of ? { of, label: declared.label } : null;
+}
+
+/** The version a cut of `roster` would wear now, and how it was decided. Reads only. */
+export async function decideRosterVersion(
+  projectId: string,
+  roster: readonly string[],
+): Promise<VersionDecision> {
+  const [runs, line] = await Promise.all([
+    readLineageRuns(db, projectId),
+    releaseLineOf(projectId),
+  ]);
+  return decideVersion(runs, roster, line);
 }
 
 /** The version the last release to SHIP cut. `null` when no release here has ever shipped. */
@@ -129,18 +137,46 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
   return rows[0]?.release_version ?? null;
 }
 
-function ruleAboveHighest(
+/** The details `RELEASE_VERSION_UNDECIDED` is composed from, at every door that reads it. */
+export function undecidedDetails(
   projectId: string,
-  next: ReleaseVersion,
-  highest: ReleaseRowReading | null,
-): void {
-  if (!highest || compareReleaseVersions(next, highest.version) > 0) return;
-  // A prerelease line declared below what this project already spent would hand out a lower
+  d: Extract<VersionDecision, { kind: 'undecided' }>,
+  chain: readonly LineageRun[],
+): Record<string, unknown> {
+  const at = chain.findIndex((r) => r.id === d.silent.id);
+  return {
+    projectId,
+    version: d.version,
+    runId: d.silent.id,
+    attempt: at === -1 ? d.attempt - 1 : at + 1,
+  };
+}
+
+/** A decision that names no version to wear, refused by its own rule's name. Nothing is cut. */
+function refuseDecision(
+  projectId: string,
+  d: Exclude<VersionDecision, { kind: 'first' | 'reused' | 'bumped' }>,
+  runs: readonly LineageRun[],
+): never {
+  if (d.kind === 'undecided') {
+    const { headOf, attemptsOf } = lineageOf(runs);
+    const chain = attemptsOf.get(headOf.get(d.recutOf.id)?.id ?? d.recutOf.id) ?? [d.recutOf];
+    throw blockerRefusal('RELEASE_VERSION_UNDECIDED', undecidedDetails(projectId, d, chain));
+  }
+  if (d.kind === 'exhausted') {
+    throw refuseRelease(
+      'RELEASE_VERSION_EXHAUSTED',
+      `the next version for project ${projectId} would be ${formatReleaseVersion(d.next)}, and a ` +
+        'release version holds at most nine digits per component. Nothing was cut. Raise the ' +
+        'major digit by hand on the next release row to start a fresh sequence.',
+    );
+  }
+  // A prerelease line declared below what this project already claimed would hand out a lower
   // version after a higher one; the line is the operator's to raise, never skipped forward here.
   throw refuseRelease(
     'RELEASE_VERSION_LINE_BEHIND',
-    `the next version for project ${projectId} would be ${formatReleaseVersion(next)}, and this ` +
-      `project already spent ${formatReleaseVersion(highest.version)}. Nothing was cut. Raise ` +
+    `the next version for project ${projectId} would be ${formatReleaseVersion(d.next)}, and this ` +
+      `project already claimed ${formatReleaseVersion(d.highest)}. Nothing was cut. Raise ` +
       '`release.prerelease.of` in the project document to the release the line now previews.',
   );
 }
@@ -148,31 +184,29 @@ function ruleAboveHighest(
 interface CutReleaseVersionArgs {
   runId: string;
   projectId: string;
+  /** The roster the run was cut with: what decides whether this is a re-cut. */
+  issueIds: readonly string[];
 }
 
 /**
  * The only writer of `pipeline_runs.release_version`. Called on the executor that inserted the
- * release row, so no committed release row ever exists without a version.
+ * release row, so no committed release row ever exists without a version; the rule it was given is
+ * written beside it (`metadata.versionCut`) in the same unit, so the page reads why, never guesses.
  */
 export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Promise<string> {
-  const { runId, projectId } = args;
+  const { runId, projectId, issueIds } = args;
   await lockProjectVersions(tx, projectId);
 
-  const highest = await highestSpentVersion(tx, projectId);
-  const line = await releaseLineOf(projectId);
-  const next = nextReleaseVersion(highest?.version ?? null, line);
-  // Refused here rather than at the column, which would name itself instead of the rule.
-  if (!isStorableReleaseVersion(next)) {
-    throw refuseRelease(
-      'RELEASE_VERSION_EXHAUSTED',
-      `the next version for project ${projectId} would be ${formatReleaseVersion(next)}, and a ` +
-        'release version holds at most nine digits per component. Nothing was cut. Raise the ' +
-        'major digit by hand on the next release row to start a fresh sequence.',
-    );
+  const [runs, line] = await Promise.all([
+    readLineageRuns(tx, projectId, runId),
+    releaseLineOf(projectId),
+  ]);
+  const decision = decideVersion(runs, issueIds, line);
+  if (decision.kind !== 'first' && decision.kind !== 'reused' && decision.kind !== 'bumped') {
+    refuseDecision(projectId, decision, runs);
   }
-  ruleAboveHighest(projectId, next, highest);
-  const version = formatReleaseVersion(next);
-
+  const { version } = decision;
   if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
+  await writeRunMetadata(runId, { merge: { versionCut: cutRecordOf(decision) }, touch: false }, tx);
   return version;
 }

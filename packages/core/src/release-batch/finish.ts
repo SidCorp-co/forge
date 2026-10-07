@@ -2,6 +2,7 @@
 // claimed issue once the probes agree and completes the run; abort cancels it and closes no issue.
 // Both hand the claims to `releasing-recovery.ts`.
 
+import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
@@ -23,6 +24,7 @@ import {
   settleAbortStamp,
   stampAbort,
 } from './abort-stamp.js';
+import { recordCarried, refuseContradiction } from './carried.js';
 import {
   type CloseVerification,
   closeVerification,
@@ -45,6 +47,7 @@ import {
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
 import { verifyDeployed } from './verify.js';
+import { lockRunVersions } from './version-store.js';
 
 interface FinishReleaseBatchResult {
   closed: string[];
@@ -298,6 +301,8 @@ interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
   blocker?: AbortBlocker | undefined;
   pushed?: boolean | undefined;
+  /** What outside Forge carries this release's version (`carried.ts`); absent says nothing. */
+  carried?: readonly ReleaseVersionCarrier[] | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -306,13 +311,24 @@ export async function abortReleaseBatch(
   actorUserId: string,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
+  refuseContradiction(options.pushed, options.carried);
   // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
-  const stampId = await stampAbort(runId, {
-    reason,
-    by: actorUserId,
-    holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
-    blocker: options.blocker,
-    pushed: options.pushed,
+  // What it says left the box is written under the version lock a re-cut decides under.
+  const stampId = await db.transaction(async (tx) => {
+    await lockRunVersions(tx, runId);
+    const id = await stampAbort(
+      runId,
+      {
+        reason,
+        by: actorUserId,
+        holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+        blocker: options.blocker,
+        pushed: options.pushed,
+      },
+      tx,
+    );
+    if (options.carried) await recordCarried(runId, options.carried, actorUserId, tx);
+    return id;
   });
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,

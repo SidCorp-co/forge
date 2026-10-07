@@ -5,8 +5,9 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
@@ -138,11 +139,21 @@ const abortBodySchema = z
       .optional(),
     /**
      * Whether this run pushed anything for this release (the release commit to any branch, or its
-     * tag). Only `false` hands the version back to the next batch; absent keeps it spent.
+     * tag). `false` says nothing left the box, and the next attempt at this roster wears this
+     * version again; absent says nothing, and that attempt is refused `RELEASE_VERSION_UNDECIDED`
+     * until somebody says (ADR 0011).
      */
     pushed: z.boolean().optional(),
+    /**
+     * What outside Forge now carries this release's version — each pushed tag, release commit,
+     * published artifact or notice sent, by the name it goes by there. Any one makes the next
+     * attempt take a new version, and its page names this. `[]` says nothing does.
+     */
+    carried: carriedSchema.optional(),
   })
   .strict();
+
+const carriedBodySchema = z.object({ carried: carriedSchema }).strict();
 
 /**
  * `account` has a floor because it is the whole of Rule 2 of ISS-1129: a release
@@ -201,7 +212,7 @@ releaseBatchRoutes.post(
   zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const { reason, promotedRoster, blocker, pushed } = c.req.valid('json');
+    const { reason, promotedRoster, blocker, pushed, carried } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
@@ -209,8 +220,29 @@ releaseBatchRoutes.post(
       promotedRoster,
       blocker,
       pushed,
+      carried,
     });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
+  },
+);
+
+releaseBatchRoutes.post(
+  '/:projectId/release-batches/:runId/carried',
+  zValidator('param', runParamSchema),
+  zValidator(
+    'json',
+    carriedBodySchema,
+    invalid(
+      'the body is { carried: [{ kind: "tag" | "commit" | "artifact" | "notice", name }] }, `[]` when nothing outside Forge carries the version',
+      'RELEASE_CARRIED_SHAPE',
+    ),
+  ),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await loadRunForProject(runId, projectId, userId);
+    const { carried } = c.req.valid('json');
+    return c.json(await declareCarried({ projectId, runId, carried, by: userId }));
   },
 );
 

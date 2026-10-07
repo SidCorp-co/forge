@@ -197,6 +197,81 @@ export interface ReleaseSplit {
 	rest: number;
 }
 
+/**
+ * What outside Forge can carry a release's version once an attempt has worn it (ADR 0011): a pushed
+ * `tag`, a release `commit` on a branch (its changelog entry or version bump), a published
+ * `artifact` (a package, an image, a storefront release that names the version), or a `notice` sent
+ * to people. Any one of them makes the next attempt take a new version, and the page names it.
+ */
+export const RELEASE_VERSION_CARRIER_KINDS = [
+	"tag",
+	"commit",
+	"artifact",
+	"notice",
+] as const;
+export type ReleaseVersionCarrierKind =
+	(typeof RELEASE_VERSION_CARRIER_KINDS)[number];
+
+export interface ReleaseVersionCarrier {
+	kind: ReleaseVersionCarrierKind;
+	/** As the outside world names it: `v0.3.0`, `@acme/app@0.3.0`, "release notes emailed to customers". */
+	name: string;
+}
+
+/**
+ * How an attempt came to wear its version: `first` cut of a roster nothing cut before, `reused` from
+ * the attempt before it on the same roster, `bumped` past it because something outside Forge
+ * carries that one, another release already wears it, or the declared prerelease line moved off it; `unrecorded` on a run cut before the
+ * rule was recorded on the run.
+ */
+export const RELEASE_VERSION_DECISIONS = [
+	"first",
+	"reused",
+	"bumped",
+	"unrecorded",
+] as const;
+export type ReleaseVersionDecision = (typeof RELEASE_VERSION_DECISIONS)[number];
+
+export interface ReleaseVersionRule {
+	decided: ReleaseVersionDecision;
+	/** The version the attempt before this one wore; null on a first cut and where unrecorded. */
+	from: string | null;
+	/** Where `bumped` for what carries `from`: each artifact, as recorded. */
+	carriers: ReleaseVersionCarrier[];
+	/** Where `bumped` because the prerelease line moved: the line now declared, `<of>-<label>`. */
+	line: string | null;
+	/** Where `bumped` because another release's attempt already wears `from` (one cut before ADR 0011 handed it on). */
+	taken: boolean;
+}
+
+/** One attempt at a release: one cut of its roster, how it ended and who ended it. */
+export interface ReleaseCutView {
+	/** 1-based, in the order the attempts were cut. */
+	n: number;
+	runId: string;
+	/** The version this attempt wore; an attempt cut before ADR 0011 may wear another than the release. */
+	version: string;
+	cutAt: string;
+	cutBy: ReleasePerson | null;
+	outcome: VersionStatus;
+	endedAt: string | null;
+	/** The finish refusal that ended it, word for word, where one did. */
+	refusal: { code: string | null; text: string } | null;
+	/** The abort's own reason, word for word, where it was aborted. */
+	abortReason: string | null;
+	/** Who ended it: the abort's or the finish's actor; null where Forge ended it itself or it is still open. */
+	decidedBy: ReleasePerson | null;
+	rule: ReleaseVersionRule;
+	/** What outside Forge carries this attempt's version: `[]` where it was said nothing does, `null` where nobody said. */
+	carried: ReleaseVersionCarrier[] | null;
+}
+
+/** Where a version that did not ship went: the release that carried the same roster on. */
+export interface ReleaseContinuation {
+	version: string;
+	shipped: boolean;
+}
+
 export interface ReleaseSummary
 	extends Standing<ReleaseAttentionGroup, ReleaseWaitingKind> {
 	key: string;
@@ -223,6 +298,10 @@ export interface ReleaseSummary
 	openedAt: string | null;
 	releasedAt: string | null;
 	at: string;
+	/** How many attempts this release has been cut in; 0 on a draft nobody cut yet. */
+	cutCount: number;
+	/** Where this version's roster went on, when a later attempt wears another version; null otherwise. */
+	continuedAs: ReleaseContinuation | null;
 }
 
 /**
@@ -549,6 +628,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 	approvers: ReleasePerson[];
 	approvalRequired: boolean;
 	attempts: ReleaseAttemptView[];
+	/** Every attempt at this release, first first (ADR 0011). */
+	cuts: ReleaseCutView[];
 	production: { name: string | null; url: string | null } | null;
 	/** `null` where the run recorded no verification and the project declares no way to prove one. */
 	verifiedBy: ReleaseVerifiedBy | null;
@@ -578,6 +659,7 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_POOL_EMPTY",
 	"NO_RUNNER_ONLINE",
 	"BATCH_IN_FLIGHT",
+	"RELEASE_VERSION_UNDECIDED",
 	"RELEASE_CRITERIA_UNEARNED",
 	"RELEASE_RUNTIME_UNROUTED",
 	"RELEASE_CHECK_UNEVALUATED",
@@ -620,12 +702,19 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RUN_NOT_OPEN",
 	"RELEASE_NOTHING_RECORDED",
 	"RELEASE_ALL_SHIPPED_EARLIER",
+	"RELEASE_CARRIED_CONTRADICTS",
+	"RELEASE_CARRIED_SHAPE",
+	"RELEASE_CARRIED_RUN_OPEN",
+	"RELEASE_CARRIED_SHIPPED",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_CLAIM_LOST: 409,
 	RELEASE_FINISH_LEASE_LOST: 409,
 	RELEASE_VERSION_CONFLICT: 409,
+	RELEASE_VERSION_UNDECIDED: 409,
+	RELEASE_CARRIED_RUN_OPEN: 409,
+	RELEASE_CARRIED_SHIPPED: 409,
 	CLAIM_CONFLICT: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 

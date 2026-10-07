@@ -27,8 +27,8 @@ export const releaseRunVersionColumns = {
 } as const;
 
 /** Unique per project among the rows still holding their number, and `int[]`-comparable. A run
- *  that ended unshipped leaves the index, so the next batch may wear the number it tried; whether it
- *  may is `release-batch/version-store.ts:highestSpentVersion`'s to say, and this is the backstop. */
+ *  that ended unshipped leaves the index, so a re-cut of its roster may wear the number it tried;
+ *  whether it may is `release-batch/version-rule.ts:decideVersion`'s to say, and this is the backstop. */
 export function releaseRunIdentity(t: { projectId: AnyPgColumn; releaseVersion: AnyPgColumn }) {
   return {
     releaseVersionUq: uniqueIndex('pipeline_runs_release_version_uq')

@@ -60,10 +60,12 @@ a step you could not complete, a procedure that does not fit what you actually f
   The roster then stays at the gate held for that person, and no automatic release or schedule cuts
   it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
   what stopped you, and the next cut takes the roster again.
-→ Say what you pushed: \`"pushed":false\` only when NOTHING of this release left the box — no
-  release commit on any branch and no tag. The version then goes back to the next batch. If you
-  pushed either, or cannot tell, pass \`"pushed":true\` or leave it out: the version stays spent,
-  because a second batch wearing it would collide with what you pushed.
+→ Say what now carries this release's version outside Forge: \`"carried":[{"kind":"tag","name":"v1.4.0"}]\`,
+  one entry per pushed tag, release commit (\`commit\`), published artifact (\`artifact\`) or notice
+  sent to people (\`notice\`), by the name it goes by there; \`"carried":[]\` when NOTHING left the
+  box. With nothing carried, the next attempt at this roster wears the same version again; with
+  anything carried, it takes a new version and its page names what you listed. Left out, the next
+  attempt is refused \`RELEASE_VERSION_UNDECIDED\` until somebody says, so look before you leave it out.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy
