@@ -21,13 +21,3 @@ export function inlineCode(text: string): ReactNode[] {
 	}
 	return out;
 }
-
-/** Copy with **bold** words and `code` spans, drawn the way the design system draws each. */
-export function inlineRich(text: string): ReactNode[] {
-	// The pieces are a fixed split of one static sentence: their order never changes between renders.
-	// biome-ignore-start lint/suspicious/noArrayIndexKey: positions in a fixed split of static copy
-	return text.split("**").flatMap((part, i) =>
-		part === "" ? [] : i % 2 === 1 ? [<b key={`b${i}`}>{inlineCode(part)}</b>] : inlineCode(part).map((n, j) => <span key={`p${i}-${j}`}>{n}</span>),
-	);
-	// biome-ignore-end lint/suspicious/noArrayIndexKey: positions in a fixed split of static copy
-}

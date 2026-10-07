@@ -1,208 +1,177 @@
 "use client";
 
+// Settings → Delivery → Release state: what a release can do right now, read from core's release
+// readiness. Each reason is core's own reading of it (`gates`, the words a release's page uses), drawn
+// by its weight: a project as it normally stands (nothing waiting, a release already running) is a
+// neutral line, a reason a release cannot start keeps its severity. What the project has not written
+// down yet is fixed here, in the page.
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { Badge, Banner, PageSectionTitle, ErrorState, Skeleton } from "@/design";
-import { statusReading } from "@/design/vocabulary";
+import { useState, type ReactNode } from "react";
+import { Button, ErrorState, LEGEND, Skeleton, Textarea } from "@/design";
+import { GateLine, type GateTone } from "@/features/releases/components/release-bits";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { inlineCode } from "./inline-code";
-import { useReleaseReadiness } from "../hooks";
+import { useReleaseReadiness, useWriteKnowledge } from "../hooks";
+import { settingsHref } from "../sections";
 import type { ReleaseReadiness } from "../types";
 
-const DOCUMENT_GAPS = new Set(["release-target", "verify-probes"]);
+type Gap = ReleaseReadiness["gaps"][number];
 
-const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
+/** The reasons that describe how a project stands rather than something wrong with it. */
+const STATE_CODES = new Set(["RELEASE_ROSTER_EMPTY", "BATCH_IN_FLIGHT", "NO_RELEASE_GATE"]);
 
-/** What the badge says about where a landed change goes — the words a reader of the screen uses. */
-function pathText(r: ReleaseReadiness, t: Copy): string {
-  if (!r.production) return t("runs.releaseCard.pathNone");
-  if (r.promotions.length === 0) return t("runs.releaseCard.pathNoMove");
-  return t(r.promotions.length === 1 ? "runs.releaseCard.pathPromotionsOne" : "runs.releaseCard.pathPromotionsMany", { n: r.promotions.length });
+const toneOf = (g: ReleaseReadiness["gates"][number]): GateTone =>
+	STATE_CODES.has(g.code) ? "state" : g.kind === "blocker" ? "problem" : "warning";
+
+/** The knowledge entries a release owes, each written here by a person. */
+const KNOWLEDGE_GAPS: Partial<Record<Gap, { name: ProductCopyKey; why: ProductCopyKey; placeholder: string }>> = {
+	"build-commands": { name: "settings.project.release.gap.buildCommands", why: "settings.project.release.gap.buildCommandsWhy", placeholder: "pnpm install\npnpm build" },
+	"test-commands": { name: "settings.project.release.gap.testCommands", why: "settings.project.release.gap.testCommandsWhy", placeholder: "pnpm test" },
+	"release-procedure": { name: "settings.project.release.gap.releaseProcedure", why: "settings.project.release.gap.releaseProcedureWhy", placeholder: "1. …" },
+};
+
+/** The gaps a field elsewhere on this page or on Connections closes. */
+const FIELD_GAPS: Partial<Record<Gap, { why: ProductCopyKey; act: ProductCopyKey; section: "delivery" | "connections"; anchor: string }>> = {
+	"release-target": { why: "settings.project.release.gap.releaseTarget", act: "settings.project.release.gap.toEnvironments", section: "delivery", anchor: "environments" },
+	"verify-probes": { why: "settings.project.release.gap.verifyProbes", act: "settings.project.release.gap.toProbes", section: "delivery", anchor: "environments" },
+	rollback: { why: "settings.project.release.gap.rollback", act: "settings.project.release.gap.toConnection", section: "connections", anchor: "integrations" },
+	"rollback-prose": { why: "settings.project.release.gap.rollbackProse", act: "settings.project.release.gap.toConnection", section: "connections", anchor: "integrations" },
+};
+
+function stateLine(r: ReleaseReadiness, t: Copy): string {
+	if (!r.declarationRead) return t("settings.project.release.unread");
+	if (r.hasReleaseGate && r.production) return t("settings.project.release.gated", { env: r.production.environment });
+	if (r.targetUndeclared) return t("settings.project.release.undeclaredTarget");
+	return t("settings.project.release.noRelease");
 }
 
-/** The path as its branches, each named with the promotion that reaches it. */
-function pathBranches(r: ReleaseReadiness, t: Copy): string {
-  const start = r.defaultBranch ?? t("runs.releaseCard.noGit");
-  if (r.promotions.length === 0) return start;
-  return [start, ...r.promotions.map((p) => `${p.via} → ${p.to}`)].join("  ");
+function Dot({ tone }: { tone: "attention" }) {
+	return <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: tone === "attention" ? LEGEND.you.dot : undefined }} />;
 }
 
-// A sentence with one word in bold: the word stands in the copy as this mark and is split out here.
-const MARK = "\u0001";
-function withBold(sentence: string, word: string): ReactNode {
-  const [before = "", after = ""] = sentence.split(MARK);
-  return (
-    <>
-      {before}
-      <b>{word}</b>
-      {after}
-    </>
-  );
+function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; gap: NonNullable<(typeof KNOWLEDGE_GAPS)[Gap]> }) {
+	const t = useCopy();
+	const write = useWriteKnowledge(projectId);
+	const [open, setOpen] = useState(false);
+	const [body, setBody] = useState("");
+	const name = t(gap.name);
+	return (
+		<li className="flex items-start gap-2 py-2 text-13" data-gap={slug}>
+			<Dot tone="attention" />
+			<div className="min-w-0 flex-1">
+				<p>
+					<b className="font-semibold">{t("settings.project.release.gap.notWritten", { name })}</b> {t(gap.why)}
+				</p>
+				{open ? (
+					<div className="mt-2 space-y-2">
+						<Textarea aria-label={name} value={body} rows={5} className="font-mono" translate="no" placeholder={gap.placeholder} onChange={(e) => setBody(e.target.value)} />
+						{write.isError && (
+							<p role="alert" className="fg-caption" style={{ color: "var(--red-600)" }}>
+								{formatApiError(write.error)}
+							</p>
+						)}
+						<div className="flex gap-2">
+							<Button
+								variant="primary"
+								size="sm"
+								disabled={body.trim() === ""}
+								loading={write.isPending}
+								onClick={() => write.mutate({ slug, title: name, body }, { onSuccess: () => setOpen(false) })}
+							>
+								{t("settings.project.release.gap.save", { name: name.toLowerCase() })}
+							</Button>
+							<Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+								{t("common.cancel")}
+							</Button>
+						</div>
+					</div>
+				) : (
+					<Button variant="ghost" size="sm" className="mt-1 -ml-2" onClick={() => setOpen(true)}>
+						{t("settings.project.release.gap.write", { name: name.toLowerCase() })}
+					</Button>
+				)}
+			</div>
+		</li>
+	);
 }
 
-const awaitingRelease = (language: string) => statusReading("issue", "awaiting_release", language).label;
-
-function stateLine(r: ReleaseReadiness, t: Copy, language: string) {
-  // An unreadable declaration is not a project that declares nothing. Saying so
-  // would be the substitution this whole section exists to stop (ISS-1127).
-  if (!r.declarationRead) return <>{t("runs.releaseCard.stateUnread")}</>;
-  if (r.hasReleaseGate) return withBold(t("runs.releaseCard.stateGate", { status: MARK }), awaitingRelease(language));
-  if (r.targetUndeclared) return <>{t("runs.releaseCard.stateUndeclared")}</>;
-  return <>{t("runs.releaseCard.stateNone")}</>;
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+	return (
+		<div>
+			<dt className="fg-caption text-subtle">{label}</dt>
+			<dd className="fg-body-sm text-fg">{children}</dd>
+		</div>
+	);
 }
 
-function SectionShell({ heading, children }: { heading: ReactNode; children: ReactNode }) {
-  return (
-    <div className="mt-6 border-t border-line pt-5">
-      {heading}
-      {children}
-    </div>
-  );
+function ChannelFacts({ r }: { r: ReleaseReadiness }) {
+	const t = useCopy();
+	if (!r.hasReleaseGate) return null;
+	const unread = t("settings.project.release.fact.unread");
+	return (
+		<dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-3">
+			<Fact label={t("settings.project.release.fact.runner")}>
+				{!r.channelsRead ? unread : r.releaseRunnerLabel ? <span className="font-mono">{r.releaseRunnerLabel}</span> : t("settings.project.release.fact.anyRunner")}
+			</Fact>
+			<Fact label={t("settings.project.release.fact.rollback")}>
+				{!r.channelsRead ? unread : t(`settings.project.release.fact.rollbackMode.${r.rollbackMode ?? "none"}` as ProductCopyKey)}
+			</Fact>
+			<Fact label={t("settings.project.release.fact.proof")}>
+				{!r.channelsRead ? unread : r.hasVerify ? t("settings.project.release.fact.probe") : t("settings.project.release.fact.recordOnly")}
+			</Fact>
+		</dl>
+	);
 }
 
 export function ReleaseSection({ projectId, slug }: { projectId: string; slug: string }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const q = useReleaseReadiness(projectId);
-  const heading = (r?: ReleaseReadiness) => (
-    <div>
-      <PageSectionTitle className="fg-label text-fg">{t("runs.releaseCard.heading")}</PageSectionTitle>
-      <p className="fg-caption mt-0.5 text-muted">
-        {withBold(t("runs.releaseCard.intro", { status: MARK }), awaitingRelease(language))} {r ? stateLine(r, t, language) : null}
-      </p>
-    </div>
-  );
-
-  if (q.isLoading)
-    return (
-      <SectionShell heading={heading()}>
-        <div className="mt-3 space-y-2">
-          <Skeleton className="h-8 w-full rounded-md" />
-          <Skeleton className="h-8 w-1/2 rounded-md" />
-        </div>
-      </SectionShell>
-    );
-  if (q.isError)
-    return (
-      <SectionShell heading={heading()}>
-        <div className="mt-3">
-          <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-        </div>
-      </SectionShell>
-    );
-  const r = q.data;
-  if (!r) return null;
-
-  return (
-    <SectionShell heading={heading(r)}>
-      {r.declarationRead && <ReadinessFacts r={r} />}
-      {r.declarationRead && !r.hasReleaseGate && (
-        <p className="fg-caption mt-3 text-muted">
-          {r.targetUndeclared && r.targetUndeclaredReason ? (
-            inlineCode(r.targetUndeclaredReason)
-          ) : (
-            t("runs.releaseCard.noGateNote")
-          )}{" "}
-          {inlineCode(t("runs.releaseCard.projectDocumentDoor"))}
-        </p>
-      )}
-      <Notices
-        title={t("runs.releaseCard.blockers")}
-        items={r.blockers.map((b) => ({ ...b, tone: b.evaluated ? "danger" : "attention" }))}
-      />
-      <Notices
-        title={t("runs.releaseCard.warnings")}
-        items={r.warnings.map((w) => ({ ...w, tone: "attention" }))}
-      />
-      {r.gaps.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <h4 className="fg-caption text-subtle">{t("runs.releaseCard.undeclared")}</h4>
-          {r.gaps.map((g) => (
-            <Banner key={g} tone="attention">
-              {inlineCode(t(`runs.releaseCard.gap.${g}` as ProductCopyKey))}{" "}
-              {FACT_GAPS.has(g) ? (
-                inlineCode(t("runs.releaseCard.knowledgeDoor"))
-              ) : DOCUMENT_GAPS.has(g) ? (
-                inlineCode(t("runs.releaseCard.projectDocumentDoor"))
-              ) : (
-                <Link href={`/projects/${slug}/settings?tab=integrations`} className="underline">
-                  {t("runs.releaseCard.setOnConnection")}
-                </Link>
-              )}
-            </Banner>
-          ))}
-        </div>
-      )}
-    </SectionShell>
-  );
-}
-
-function Notices({
-  title,
-  items,
-}: {
-  title: string;
-  items: { code: string; message: string; tone: "danger" | "attention" }[];
-}) {
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-4 space-y-2">
-      <h4 className="fg-caption text-subtle">{title}</h4>
-      {items.map((n) => (
-        <Banner key={`${n.code}:${n.message}`} tone={n.tone}>
-          <span className="font-mono">{n.code}</span> — {inlineCode(n.message)}
-        </Banner>
-      ))}
-    </div>
-  );
-}
-
-function Fact({ label, mono, children }: { label: string; mono?: boolean; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="fg-caption text-subtle">{label}</dt>
-      <dd className={mono ? "fg-body-sm font-mono text-fg" : "fg-body-sm text-fg"}>{children}</dd>
-    </div>
-  );
-}
-
-function ReadinessFacts({ r }: { r: ReleaseReadiness }) {
-  const t = useCopy();
-  const unread = t("runs.releaseCard.unread");
-  return (
-    <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-      <Fact label={t("runs.releaseCard.fact.release")}>
-        <Badge tone={r.hasReleaseGate ? "accent" : "neutral"}>{pathText(r, t)}</Badge>
-      </Fact>
-      <Fact label={t("runs.releaseCard.fact.path")} mono>
-        {pathBranches(r, t)}
-      </Fact>
-      <Fact label={t("runs.releaseCard.fact.production")}>
-        {r.production ? (
-          <>
-            <span className="font-mono">{r.production.environment}</span>
-            {" — "}
-            {!r.channelsRead ? unread : r.providers.join(", ")}, {t(`runs.releaseCard.trigger.${r.production.trigger}` as ProductCopyKey)}
-          </>
-        ) : (
-          "—"
-        )}
-      </Fact>
-      <Fact label={t("runs.releaseCard.fact.runnerLabel")}>
-        {!r.channelsRead ? (
-          unread
-        ) : r.releaseRunnerLabel ? (
-          <span className="font-mono">{r.releaseRunnerLabel}</span>
-        ) : (
-          t("runs.releaseCard.noRunnerLabel")
-        )}
-      </Fact>
-      <Fact label={t("runs.releaseCard.fact.rollback")}>
-        {!r.channelsRead ? unread : t(`runs.releaseCard.rollback.${r.rollbackMode ?? "none"}` as ProductCopyKey)}
-      </Fact>
-      <Fact label={t("runs.releaseCard.fact.verifiedBy")}>{!r.channelsRead ? unread : r.hasVerify ? t("runs.releaseCard.verifiedProbe") : t("runs.releaseCard.verifiedNothing")}</Fact>
-    </dl>
-  );
+	const t = useCopy();
+	const q = useReleaseReadiness(projectId);
+	const heading = <h3 className="fg-h3 text-accent-text!">{t("settings.project.release.title")}</h3>;
+	if (q.isLoading) return <div>{heading}<Skeleton className="mt-3 h-16 w-full rounded-md" /></div>;
+	if (q.isError || !q.data) return <div>{heading}<ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} /></div>;
+	const r = q.data;
+	const knowledge = r.gaps.filter((g) => KNOWLEDGE_GAPS[g]);
+	const fields = r.gaps.filter((g) => FIELD_GAPS[g]);
+	return (
+		<section aria-label={t("settings.project.release.title")}>
+			{heading}
+			<p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{stateLine(r, t)}</p>
+			{r.declarationRead && <ChannelFacts r={r} />}
+			{r.gates.length > 0 && (
+				<>
+					<h4 className="fg-label mt-5 text-fg">{t("settings.project.release.now")}</h4>
+					<ul className="divide-y divide-line-subtle">
+						{r.gates.map((g) => (
+							<GateLine key={`${g.code}:${g.sentence}`} gate={g} slug={slug} tone={toneOf(g)} />
+						))}
+					</ul>
+				</>
+			)}
+			{knowledge.length + fields.length > 0 && (
+				<>
+					<h4 className="fg-label mt-5 text-fg">{t("settings.project.release.owed")}</h4>
+					<ul className="divide-y divide-line-subtle">
+						{knowledge.map((g) => (
+							<KnowledgeGap key={g} projectId={projectId} slug={g} gap={KNOWLEDGE_GAPS[g] as NonNullable<(typeof KNOWLEDGE_GAPS)[Gap]>} />
+						))}
+						{fields.map((g) => {
+							const gap = FIELD_GAPS[g] as NonNullable<(typeof FIELD_GAPS)[Gap]>;
+							return (
+								<li key={g} className="flex items-start gap-2 py-2 text-13" data-gap={g}>
+									<Dot tone="attention" />
+									<p className="min-w-0 flex-1">
+										{t(gap.why)}{" "}
+										<Link href={settingsHref(slug, gap.section, gap.anchor)} className="font-semibold text-link hover:underline">
+											{t(gap.act)}
+										</Link>
+									</p>
+								</li>
+							);
+						})}
+					</ul>
+				</>
+			)}
+		</section>
+	);
 }

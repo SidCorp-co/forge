@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ConversationMessage,
   type ConversationWindow,
+  silenceDetailSentence,
   silenceSentence,
   threadEntries,
   turnFailureOf,
@@ -86,5 +87,23 @@ describe("a silence a turn recorded", () => {
   it("reads as a sentence, never as the provider's raw reason", () => {
     expect(silenceSentence("not-mentioned")).toBe("Nobody asked the agent here, so it stayed quiet.");
     expect(silenceSentence("Error: 529 overloaded_error {\"type\":\"error\"}")).toBe("The agent did not answer here.");
+  });
+});
+
+describe("a group room the agent stayed out of says why", () => {
+  it("names who asked it to stop, and that a mention brings it back", () => {
+    expect(silenceDetailSentence("nothing-to-say", { reason: "asked-to-stop", by: "cuong", since: "2026-09-15T02:26:04Z" })).toBe(
+      "Asked to stop by cuong. The agent stays quiet in this room until someone mentions it.",
+    );
+    expect(silenceDetailSentence("nothing-to-say", { reason: "quiet-until-mentioned", by: "cuong", since: "2026-09-15T02:26:04Z" })).toMatch(
+      /^Quiet since .+, as asked by cuong\. The agent answers here again once someone mentions it\.$/,
+    );
+  });
+
+  it("says a message for someone else was theirs, and falls back to the decision's sentence", () => {
+    expect(silenceDetailSentence("nothing-to-say", { reason: "addressed-to-person" })).toBe(
+      "This was addressed to someone else, so the agent stayed quiet.",
+    );
+    expect(silenceDetailSentence("guard-dormant", null)).toBe("Left unanswered: no person has spoken here for a long time.");
   });
 });

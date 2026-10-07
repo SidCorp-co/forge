@@ -166,6 +166,11 @@ export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: Sco
         <FactsGroup title={t("releases.production")} testId="facts-production">
           <Fact label={t("releases.environment")}>{r.production.name ?? t("releases.notDeclared")}</Fact>
           {r.state === "shipped" ? <Fact label={t("releases.serving")}>{r.current ? t("releases.thisRelease") : t("releases.laterRelease")}</Fact> : null}
+          {r.verifiedBy ? (
+            <Fact label={t("releases.verifiedBy")} testId="release-verified-by">
+              {t(`releases.verifiedBy.${r.verifiedBy.kind}`, { provider: r.verifiedBy.provider ?? "" })}
+            </Fact>
+          ) : null}
           {r.production.url ? (
             <Fact label={t("releases.address")}>
               <a className="truncate text-link hover:underline" href={r.production.url} target="_blank" rel="noreferrer">

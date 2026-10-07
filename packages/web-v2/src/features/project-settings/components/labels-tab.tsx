@@ -10,7 +10,7 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 import {
-  Badge,
+
   Button,
   PageSection,
   PageSectionBody,
@@ -23,12 +23,14 @@ import {
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProjectLabel } from "../types";
 import { useCreateLabel, useDeleteLabel, useLabels } from "../hooks";
 
 const DEFAULT_COLOR = "#6b7280";
 
 export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const t = useCopy();
   const labelsQ = useLabels(projectId);
   const create = useCreateLabel(projectId);
   const remove = useDeleteLabel(projectId);
@@ -44,7 +46,8 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-4">Labels</SectionTitle>
+        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.work.labels")}</SectionTitle>
+        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.work.labelsLead")}</p>
 
         {labelsQ.isLoading ? (
           <div className="space-y-2">
@@ -54,7 +57,7 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
         ) : labelsQ.isError ? (
           <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
         ) : plainLabels.length === 0 ? (
-          <EmptyState title="No labels yet" message="Create a label to organize issues." mascot={false} />
+          <EmptyState title={t("settings.project.work.noLabels")} message={t("settings.project.work.noLabelsBody")} mascot={false} />
         ) : (
           <ul className="divide-y divide-line-subtle">
             {plainLabels.map((label) => (
@@ -70,7 +73,8 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
 
         {canEdit && (
           <AddByName
-            placeholder="New label name"
+            placeholder={t("settings.project.work.newLabel")}
+            ariaLabel={t("settings.project.work.newLabel")}
             loading={create.isPending}
             onAdd={(name, done) =>
               create.mutate(
@@ -88,15 +92,15 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              aria-label="Label color"
+              aria-label={t("settings.project.work.labelColor")}
               className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-1"
             />
           </AddByName>
         )}
         <ConfirmDelete
           target={pendingDelete}
-          title="Delete label"
-          consequence="is removed from every issue carrying it. This cannot be undone."
+          title={t("settings.project.work.deleteLabel")}
+          consequence={t("settings.project.work.deleteLabelBody")}
           remove={remove}
           onClose={() => setPendingDelete(null)}
         />
@@ -106,15 +110,18 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
 }
 
 function LabelRow({ label, onDelete, deleting }: { label: ProjectLabel; onDelete?: () => void; deleting: boolean }) {
+  const t = useCopy();
   return (
     <li className="flex items-center justify-between gap-3 py-2">
       <span className="flex min-w-0 items-center gap-2">
         <span aria-hidden className="h-3 w-3 shrink-0 rounded-full border border-line" style={{ background: label.color }} />
         <span className="truncate text-fg">{label.name}</span>
-        <Badge tone="neutral">{label.color}</Badge>
+        <span className="fg-caption font-mono text-subtle" translate="no">
+          {label.color}
+        </span>
       </span>
       {onDelete && (
-        <IconButton icon="trash" aria-label={`Delete label ${label.name}`} onClick={onDelete} disabled={deleting} />
+        <IconButton icon="trash" aria-label={t("settings.project.work.deleteLabelNamed", { name: label.name })} onClick={onDelete} disabled={deleting} />
       )}
     </li>
   );
@@ -134,6 +141,7 @@ export function AddByName({
   loading: boolean;
   children?: ReactNode;
 }) {
+  const t = useCopy();
   const [value, setValue] = useState("");
   const add = () => {
     if (value.trim()) onAdd(value.trim(), () => setValue(""));
@@ -161,7 +169,7 @@ export function AddByName({
         onClick={add}
         className="min-h-11"
       >
-        Add
+        {t("settings.project.people.add")}
       </Button>
     </div>
   );
@@ -181,12 +189,13 @@ export function ConfirmDelete({
   remove: ReturnType<typeof useDeleteLabel>;
   onClose: () => void;
 }) {
+  const t = useCopy();
   return (
     <ConfirmDialog
       open={target !== null}
       title={title}
       message={`${target?.name ?? ""} ${consequence}`}
-      confirmLabel="Delete"
+      confirmLabel={t("settings.project.raw.delete")}
       tone="danger"
       loading={remove.isPending}
       onConfirm={() => {

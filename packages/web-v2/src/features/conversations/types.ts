@@ -3,6 +3,7 @@ import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
+import { formatDateTime } from "@/lib/i18n/format";
 
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
 export type ConversationShape = "direct" | "group";
@@ -210,6 +211,32 @@ export const SILENCE_REASON: Record<SilenceDecision, ProductCopyKey> = {
   undetermined: "conversations.silence.undetermined",
   stopped: "conversations.silence.stopped",
 };
+
+/**
+ * The sentence for a silence whose window named why the agent stayed out of a group room (core
+ * `window-decision.ts:hearGroup`), or the decision's own sentence when it named nothing more.
+ */
+export function silenceDetailSentence(decision: SilenceDecision, detail: unknown, language = "en"): string {
+  const t = productCopy(language);
+  const d = (detail ?? {}) as { reason?: unknown; by?: unknown; since?: unknown };
+  const by = typeof d.by === "string" && d.by ? t("conversations.silence.by", { who: d.by }) : "";
+  const when =
+    typeof d.since === "string" && !Number.isNaN(Date.parse(d.since))
+      ? t("conversations.silence.since", { when: formatDateTime(d.since, language) })
+      : "";
+  switch (d.reason) {
+    case "asked-to-stop":
+      return t("conversations.silence.askedToStop", { by });
+    case "quiet-until-mentioned":
+      return t("conversations.silence.quietUntilMentioned", { when, by });
+    case "addressed-to-person":
+      return t("conversations.silence.addressedToPerson");
+    case "not-mentioned":
+      return t("conversations.silence.notMentioned");
+    default:
+      return t(SILENCE_REASON[decision]);
+  }
+}
 
 /**
  * A reply core composed and could not deliver (`assistant/window-decision.ts:routedOutcome`): the

@@ -6,67 +6,65 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useEffectiveConfig, useEnvironmentState } from "@/features/project-config/hooks";
 import type { EffectiveLayer, EnvironmentState, ProbeOutcome } from "@/features/project-config/types";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 
-const LAYER_TEXT: Record<EffectiveLayer, string> = {
-	project: "project document",
-	policy: "policy",
-	"testing-profile": "testing profile",
-	"device-binding": "device binding",
-	binding: "binding",
-};
+const layerText = (t: Copy, layer: EffectiveLayer) => t(`settings.project.raw.layer.${layer}` as ProductCopyKey);
 
 const clip = (text: string) => (text.length > 160 ? `${text.slice(0, 159)}…` : text);
 
 export function EffectiveSection({ projectId }: { projectId: string }) {
+	const t = useCopy();
 	const q = useEffectiveConfig(projectId);
 	const heading = (
 		<>
-			<PageSectionTitle className="fg-label text-fg">Effective config</PageSectionTitle>
-			<p className="fg-body-sm mt-1 mb-3 text-muted">
-				What a run reads, computed on read: each value with the layer and revision it came from.
-			</p>
+			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.effective")}</PageSectionTitle>
+			<p className="fg-body-sm mt-1 mb-3 text-muted">{t("settings.project.raw.effectiveLead")}</p>
 		</>
 	);
 	if (q.isLoading) return <Skeleton className="mt-6 h-32 w-full rounded-md" />;
 	if (!q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
 	const e = q.data;
 	return (
-		<section aria-label="Effective config" className="mt-6 border-t border-line pt-5">
+		<section aria-label={t("settings.project.raw.effective")} className="mt-6 border-t border-line pt-5">
 			{heading}
 			{!e.declared ? (
-				<Banner tone="attention">No project document is declared, so there is no effective config to explain.</Banner>
+				<Banner tone="attention">{t("settings.project.raw.effectiveNone")}</Banner>
 			) : (
 				<>
 					<p className="fg-caption mb-2 text-subtle">
-						Read at project document revision {e.revision}
-						{e.device ? `, for device ${e.device}` : ", as a person — no device binding layer applies to a browser"}.
+						{e.device
+							? t("settings.project.raw.effectiveReadDevice", { revision: e.revision, device: e.device })
+							: t("settings.project.raw.effectiveReadPerson", { revision: e.revision })}
 					</p>
 					{e.undeclared.length > 0 && (
 						<p className="fg-caption mb-2 text-subtle">
-							Not declared: {e.undeclared.map((l) => LAYER_TEXT[l]).join(", ")}.
+							{t("settings.project.raw.effectiveUndeclared", { layers: e.undeclared.map((l) => layerText(t, l)).join(", ") })}
 						</p>
 					)}
 					<Table>
 						<THead>
 							<TR>
-								<TH>Value</TH>
-								<TH>From</TH>
-								<TH>Revision</TH>
-								<TH>Holds</TH>
+								<TH>{t("settings.project.raw.colValue")}</TH>
+								<TH>{t("settings.project.raw.colFrom")}</TH>
+								<TH>{t("settings.project.raw.colRevision")}</TH>
+								<TH>{t("settings.project.raw.colHolds")}</TH>
 							</TR>
 						</THead>
 						<TBody>
 							{Object.entries(e.values).map(([pointer, v]) => (
 								<TR key={pointer}>
 									<TD>
-										<code>{pointer}</code>
+										<code translate="no">{pointer}</code>
 									</TD>
 									<TD>
-										<Badge tone="cobalt">{LAYER_TEXT[v.from]}</Badge>
+										<Badge tone="cobalt">{layerText(t, v.from)}</Badge>
 									</TD>
 									<TD>{v.revision ?? "—"}</TD>
 									<TD>
-										<code className="break-all">{clip(canonicalJson(v.value))}</code>
+										<code className="break-all" translate="no">
+											{clip(canonicalJson(v.value))}
+										</code>
 									</TD>
 								</TR>
 							))}
@@ -78,31 +76,32 @@ export function EffectiveSection({ projectId }: { projectId: string }) {
 	);
 }
 
-function probeLine(p: ProbeOutcome): string {
+function probeLine(p: ProbeOutcome, t: Copy): string {
 	switch (p.status) {
 		case "confirmed":
-			return `serves ${p.observed}`;
+			return t("settings.project.raw.probeServes", { observed: p.observed });
 		case "mismatch":
-			return `serves ${p.observed}, expected ${p.expected}`;
+			return t("settings.project.raw.probeMismatch", { observed: p.observed, expected: p.expected });
 		case "uncompared":
-			return `serves ${p.observed}; ${p.error}`;
+			return `${t("settings.project.raw.probeServes", { observed: p.observed })}; ${p.error}`;
 		case "unreachable":
 			return p.error;
 	}
 }
 
-function sourceLine(s: Extract<EnvironmentState, { deployment: unknown }>["source"]): string {
+function sourceLine(s: Extract<EnvironmentState, { deployment: unknown }>["source"], t: Copy): string {
 	if (s.kind === "revision") return s.revision.slice(0, 12);
-	return s.kind === "unrecorded" ? "not recorded by the platform" : "not a git project";
+	return s.kind === "unrecorded" ? t("settings.project.raw.sourceUnrecorded") : t("settings.project.raw.sourceNonGit");
 }
 
 function EnvironmentRow({ env }: { env: EnvironmentState }) {
+	const t = useCopy();
 	return (
-		<section className="border-t border-line-subtle pt-3" aria-label={`Environment ${env.environment}`}>
+		<section className="border-t border-line-subtle pt-3" aria-label={t("settings.project.delivery.environmentNamed", { name: env.environment })}>
 			<div className="flex flex-wrap items-center gap-2">
 				<MonoTag>{env.environment}</MonoTag>
 				<StatusBadge family="deployment" value={env.state} />
-				<span className="fg-caption text-subtle">Evidence: {enumLabel("environmentEvidence", env.evidence)}</span>
+				<span className="fg-caption text-subtle">{t("settings.project.raw.evidence", { evidence: enumLabel("environmentEvidence", env.evidence) })}</span>
 			</div>
 			{env.state === "unknown" ? (
 				<p className="fg-body-sm mt-2 text-muted">
@@ -111,33 +110,34 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 			) : (
 				<dl className="fg-body-sm mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
 					<div>
-						<dt className="fg-caption text-subtle">Deployed revision</dt>
-						<dd className="font-mono">{sourceLine(env.source)}</dd>
+						<dt className="fg-caption text-subtle">{t("settings.project.raw.deployedRevision")}</dt>
+						<dd className="font-mono">{sourceLine(env.source, t)}</dd>
 					</div>
 					<div>
-						<dt className="fg-caption text-subtle">Deployment</dt>
+						<dt className="fg-caption text-subtle">{t("settings.project.raw.deployment")}</dt>
 						<dd>
-							{env.deployment.provider} <code>{env.deployment.id}</code> <StatusBadge family="deployment" value={env.deployment.status} /> at {env.deployment.at}
+							{env.deployment.provider} <code translate="no">{env.deployment.id}</code> <StatusBadge family="deployment" value={env.deployment.status} />{" "}
+							{env.deployment.at}
 						</dd>
 					</div>
 					<div>
-						<dt className="fg-caption text-subtle">Artifact</dt>
-						<dd>{env.artifact ? `${enumLabel("artifactKind", env.artifact.kind)} ${env.artifact.id}` : "none reported by the platform"}</dd>
+						<dt className="fg-caption text-subtle">{t("settings.project.raw.artifact")}</dt>
+						<dd>{env.artifact ? `${enumLabel("artifactKind", env.artifact.kind)} ${env.artifact.id}` : t("settings.project.raw.noArtifact")}</dd>
 					</div>
 					<div>
-						<dt className="fg-caption text-subtle">Probes</dt>
+						<dt className="fg-caption text-subtle">{t("settings.project.raw.probes")}</dt>
 						<dd>
 							{env.probes && env.probes.length > 0 ? (
 								<ul className="space-y-1">
 									{env.probes.map((p) => (
 										<li key={`${p.url}:${p.identifies}`}>
 											<StatusBadge family="probe" value={p.status} /> <code>{p.url}</code> ({p.identifies}) —{" "}
-											{probeLine(p)}
+											{probeLine(p, t)}
 										</li>
 									))}
 								</ul>
 							) : (
-								"none declared"
+								t("settings.project.raw.noProbes")
 							)}
 						</dd>
 					</div>
@@ -148,25 +148,24 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 }
 
 export function EnvironmentStateSection({ projectId }: { projectId: string }) {
+	const t = useCopy();
 	const q = useEnvironmentState(projectId);
 	const noDocument = q.error instanceof ApiError && q.error.code === "PROJECT_DOCUMENT_NOT_FOUND";
 	return (
-		<section aria-label="Environment state" className="mt-6 border-t border-line pt-5">
-			<PageSectionTitle className="fg-label text-fg">Environments</PageSectionTitle>
-			<p className="fg-body-sm mt-1 mb-3 text-muted">
-				What each environment runs, read from its deployment record and its runtime probes.
-			</p>
+		<section aria-label={t("settings.project.raw.environmentState")} className="mt-6 border-t border-line pt-5">
+			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.environmentState")}</PageSectionTitle>
+			<p className="fg-body-sm mt-1 mb-3 text-muted">{t("settings.project.raw.environmentStateLead")}</p>
 			{q.isLoading ? (
 				<Skeleton className="h-24 w-full rounded-md" />
 			) : noDocument ? (
-				<Banner tone="attention">No project document is declared, so it names no environment.</Banner>
+				<Banner tone="attention">{t("settings.project.raw.environmentNone")}</Banner>
 			) : !q.data ? (
 				<ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
 			) : q.data.environments.length === 0 ? (
-				<p className="fg-caption text-subtle">Project document revision {q.data.revision} declares no environment.</p>
+				<p className="fg-caption text-subtle">{t("settings.project.raw.environmentEmpty", { revision: q.data.revision })}</p>
 			) : (
 				<div className="space-y-2">
-					<p className="fg-caption text-subtle">Read against project document revision {q.data.revision}.</p>
+					<p className="fg-caption text-subtle">{t("settings.project.raw.environmentReadAt", { revision: q.data.revision })}</p>
 					{q.data.environments.map((env) => (
 						<EnvironmentRow key={env.environment} env={env} />
 					))}

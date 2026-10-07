@@ -12,8 +12,10 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
+import { type RecordedVerification, releaseVerifiedBy } from './channel.js';
 import { readFinishRecord } from './finish-record.js';
 import { readLandingReadings } from './landing-surfaces.js';
+import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts } from './release-facts.js';
@@ -55,6 +57,7 @@ async function draftPart(projectId: string): Promise<Part | null> {
     attempts: [],
     approvals: [],
     gates: gateViews(report.blockers, report.warnings),
+    verification: null,
     commit: null,
   };
 }
@@ -81,8 +84,17 @@ function runPart(
     attempts,
     approvals,
     gates: [],
+    verification: recordedVerificationOf(run.metadata),
     commit: finishedCommit(run.metadata),
   };
+}
+
+/** The verification a run stamped on its row, or `null` where it stamped none it could name. */
+function recordedVerificationOf(metadata: unknown): RecordedVerification | null {
+  const value = (metadata as { verification?: unknown } | null)?.verification;
+  return (RECORDED_VERIFICATIONS as readonly unknown[]).includes(value)
+    ? (value as RecordedVerification)
+    : null;
 }
 
 async function productionOf(projectId: string, current: string | null): Promise<ReleaseProduction> {
@@ -207,6 +219,7 @@ export async function readRelease(
     }),
   );
   const prod = read.ok ? read.path.production : null;
+  const verifiedBy = await releaseVerifiedBy(projectId, part.verification);
   const feedbackAnswered = await feedbackAnsweredBy(
     projectId,
     part.issueIds,
@@ -219,5 +232,6 @@ export async function readRelease(
     prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
     landings,
     feedbackAnswered,
+    verifiedBy,
   );
 }

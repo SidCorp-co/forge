@@ -34,7 +34,7 @@ describe("Show me on a What's new entry", () => {
 
   it("links a settings tour to the tab it runs on", async () => {
     panel(feedOf([entry("e1", "new", "2026-10-07T08:00:00Z", { tour: { id: "integrations", revision: 1 } })]));
-    expect(await screen.findByTestId("whats-new-tour-link")).toHaveAttribute("href", "/projects/forge/settings?tab=integrations&tour=integrations");
+    expect(await screen.findByTestId("whats-new-tour-link")).toHaveAttribute("href", "/projects/forge/settings?tab=connections&tour=integrations");
   });
 
   it("offers nothing where no project is open", () => {

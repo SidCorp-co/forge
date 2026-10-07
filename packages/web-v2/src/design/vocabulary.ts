@@ -229,6 +229,8 @@ export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>([
   "question",
   "stewardAction",
   "runStep",
+  "deployment",
+  "probe",
 ]);
 
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,

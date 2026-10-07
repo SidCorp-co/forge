@@ -56,7 +56,7 @@ const ENGLISH_CHROME = [
   "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
   "required", "quick capture", "capture", "attach", "context", "description", "optional", "choose files", "summary",
   "schedule", "schedules", "fires", "fired", "sessions", "turns", "duration", "started", "stalled", "abort", "owns", "silence",
-  "participants", "what the agent sees", "add agent", "add person", "skills", "plugins", "pinned ref", "marketplace", "not declared", "blockers", "warnings",
+  "participants", "what the agent sees", "add agent", "add person", "skills", "plugins", "pinned ref", "not declared", "blockers", "warnings",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

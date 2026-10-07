@@ -1,0 +1,1 @@
+**The chat assistant no longer refuses right figures, files twice, or talks over a group.** Product counts and 1.061 pass the progress screen; a rewrite reuses its filing; tagged-person messages and stop requests quiet a room; promotion archives chat_logs.

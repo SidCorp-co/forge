@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
@@ -24,13 +24,13 @@ import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
   AGENT_TURN_LABEL,
-  SILENCE_REASON,
   type AgentTurn,
   type AgentTurnState,
   type ConversationMessage,
   type ConversationWindow,
   type ConversationProgressEntry,
   type OutboxMessage,
+  silenceDetailSentence,
   silenceSentence,
   threadEntries,
   turnFailureOf,
@@ -327,6 +327,7 @@ export function ConversationThread({
   afterEntry?: (entryId: string) => React.ReactNode;
 }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
   const firstDesignsId = messages.find((m) => m.blocks?.some((b) => b.type === "designs"))?.id;
   const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
@@ -394,7 +395,7 @@ export function ConversationThread({
                 ? t("conversations.thread.undelivered", { reason: undelivered.reason })
                 : failure
                   ? `${failure.reason} (${failure.code})`
-                  : t(SILENCE_REASON[entry.decision])}
+                  : silenceDetailSentence(entry.decision, entry.detail, language)}
             </p>
             {undelivered && (
               <p className="fg-body-sm mt-1 whitespace-pre-wrap" data-testid="thread-undelivered-reply">

@@ -25,7 +25,10 @@ import {
   registerPhaseJournalClose,
 } from './pipeline/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
-import { registerReleaseBatchClaimSubscriber } from './release-batch/index.js';
+import {
+  registerReleaseApprovalWake,
+  registerReleaseBatchClaimSubscriber,
+} from './release-batch/index.js';
 import { registerRequirementDelivery } from './requirements/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
@@ -45,6 +48,7 @@ export function registerOutboxConsumers(): void {
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();
+  registerReleaseApprovalWake();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();

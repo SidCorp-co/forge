@@ -112,7 +112,7 @@ export {
   updateConnection,
   writeConnectionSecrets,
 } from './store.js';
-export { readStorefrontDrafts } from './storefront-draft-read.js';
+export { readStorefrontDrafts, readStorefrontPublished } from './storefront-draft-read.js';
 export type {
   AdapterContext,
   AgentPath,
@@ -140,6 +140,7 @@ export {
   type GitCredentialMint,
   type IntegrationDeclaration,
   type StorefrontDraftReading,
+  type StorefrontPublishedReading,
 } from './types.js';
 export {
   assertVaultBootSafety,

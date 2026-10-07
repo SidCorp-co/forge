@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.122] - 2026-10-07
+
+Storefront releases finish by checking what the provider publishes
+
+### Fixed
+
+- **A storefront release closes on what its provider publishes, and an approval wakes its run.** Finish checks each issue's landed Autoflow draft against the published graph, refusing by issue and identity; a decided approval reaches the release session.
+
+## [0.4.0-dev.121] - 2026-10-07
+
+Project settings grouped into six sections, every value an editable field in words
+
+### Changed
+
+- **Project settings are grouped and edited in words.** Six sections replace ten tabs; repository, branches, environments, release path and language are fields saved by one bar, release state reads as sentences, and owed knowledge is written in place.
+
 ## [0.4.0-dev.120] - 2026-10-07
 
 Writers named on waiting issues, honest release pages, attachments on feedback

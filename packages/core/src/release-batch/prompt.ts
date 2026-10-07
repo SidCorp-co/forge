@@ -123,6 +123,8 @@ function renderProcedure(plan: ReleasePlan): string {
     blocks.push(
       `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
     );
+  } else if (plan.channels.some((c) => c.providerRecord)) {
+    blocks.push(PROVIDER_PROOF);
   } else if (plan.channels.length > 0) {
     blocks.push(DEPLOYMENT_PROOF);
   }
@@ -132,6 +134,9 @@ function renderProcedure(plan: ReleasePlan): string {
 
 const DEPLOYMENT_PROOF = `### Proof (production's deployment record)
 The production environment declares no runtime probe identifying the source, so when you call \`finish\` the server reads the commit production's own deployment record names — the finished deployment the platform reports — and closes the roster only when it is the \`commit\` you pass, the whole SHA you pushed. A finish naming no commit, a deployment that has not finished, or a platform that records no commit is refused \`RELEASE_NOT_VERIFIED\` and nothing closes. Read the verdict with \`state\`: \`finish.verification\` reads \`deployment\`.`;
+
+const PROVIDER_PROOF = `### Proof (what the storefront provider publishes)
+This project's work lives on a storefront, so there is no commit to prove: when you call \`finish\` the server reads what production's provider publishes now and closes the roster only when it carries every issue's landing — the storefront draft each issue's verdicts judged is the graph published, or the published graph first went live after that draft was judged. A landing it does not carry (a workflow left unpublished, a later revert) is refused \`RELEASE_NOT_VERIFIED\` naming the issue, the workflow and both identities, and nothing closes. \`commit\` is not read here. Read the verdict with \`state\`: \`finish.verification\` reads \`provider\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

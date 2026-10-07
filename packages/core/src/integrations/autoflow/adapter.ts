@@ -11,6 +11,7 @@ import {
 import { type AutoflowGqlResult, autoflowGql } from './client.js';
 import { autoflowStorefrontDrafts } from './draft.js';
 import { autoflowBaseUrl, autoflowGraphqlUrl, autoflowMcpUrl } from './endpoints.js';
+import { autoflowStorefrontPublished } from './published.js';
 import {
   AUTOFLOW_INJECTION_MIN_LIFETIME_MS,
   AUTOFLOW_REFRESH_MARGIN_MS,
@@ -270,4 +271,5 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
   adapter: autoflowAdapterMethods,
   storefrontTarget: autoflowStorefrontTarget,
   storefrontDrafts: autoflowStorefrontDrafts,
+  storefrontPublished: autoflowStorefrontPublished,
 });

@@ -215,6 +215,28 @@ export interface ReleaseSummary
 	at: string;
 }
 
+/**
+ * How a release's close is proved: `probed` by production's source probes, `deployment` by the
+ * commit production's deployment record names, `provider` by what a storefront provider reports it
+ * publishes against each issue's landed draft (core `release-batch/provider-verify.ts`).
+ * `unverified` is a close from before the deployment check, kept as it was recorded.
+ */
+export const RELEASE_VERIFICATIONS = [
+	"probed",
+	"deployment",
+	"provider",
+	"unverified",
+] as const;
+export type RecordedReleaseVerification =
+	(typeof RELEASE_VERIFICATIONS)[number];
+
+/** How this release is (or, before its run records it, will be) proved, and through which provider. */
+export interface ReleaseVerifiedBy {
+	kind: RecordedReleaseVerification;
+	/** The production binding's provider as a person reads it (`Autoflow`), or `null` where none is bound. */
+	provider: string | null;
+}
+
 export type ReleaseProduction =
 	| {
 			ok: true;
@@ -474,6 +496,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 	approvalRequired: boolean;
 	attempts: ReleaseAttemptView[];
 	production: { name: string | null; url: string | null } | null;
+	/** `null` where the run recorded no verification and the project declares no way to prove one. */
+	verifiedBy: ReleaseVerifiedBy | null;
 	head: string | null;
 }
 

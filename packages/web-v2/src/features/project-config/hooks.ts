@@ -2,6 +2,7 @@
 
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { configApi } from "./api";
 import type { V1Write, V1Written } from "./types";
@@ -83,13 +84,15 @@ export const useBindingDocuments = (id: string | undefined) =>
 export const useSecretNames = (id: string | undefined) =>
 	useRead(keys.secrets(id), id, configApi.listSecretNames);
 
-export const useWriteSecret = (id: string | undefined) =>
-	useToastedMutation({
+export function useWriteSecret(id: string | undefined) {
+	const t = useCopy();
+	return useToastedMutation({
 		mutationFn: (write: { scope: string; name: string; value: string }) =>
 			configApi.putSecret(id as string, write.scope, write.name, write.value),
 		invalidates: [keys.secrets(id)],
-		saved: (saved) => `A value is stored for ${saved.ref}`,
+		saved: (saved) => t("settings.project.toast.secretStored", { ref: saved.ref }),
 	});
+}
 
 export const useEffectiveConfig = (id: string | undefined) =>
 	useRead(keys.effective(id), id, configApi.getEffective);
@@ -97,43 +100,46 @@ export const useEffectiveConfig = (id: string | undefined) =>
 export const useEnvironmentState = (id: string | undefined) =>
 	useRead(keys.environments(id), id, configApi.getEnvironmentState);
 
-const useDocumentWrite = (
+function useDocumentWrite(
 	id: string | undefined,
 	owner: readonly unknown[],
-	what: string,
 	send: (id: string, write: V1Write) => Promise<V1Written>,
 	alsoChanges: readonly (readonly unknown[])[] = [],
-) =>
-	useToastedMutation({
+) {
+	const t = useCopy();
+	return useToastedMutation({
 		mutationFn: (write: V1Write) => send(id as string, write),
 		invalidates: [...documentWrittenKeys(id, owner), ...alsoChanges],
-		saved: (saved) => `${what} saved at revision ${saved.revision}`,
+		saved: (saved) => t("settings.project.toast.documentSaved", { revision: saved.revision }),
 	});
+}
 
 /** The project's slug and name are projected from this document, so every read of the project
  *  row — its detail and the console list — changes with it. */
 export const useWriteProjectDocument = (id: string | undefined) =>
-	useDocumentWrite(id, keys.project(id), "Project document", configApi.putProjectDocument, [
+	useDocumentWrite(id, keys.project(id), configApi.putProjectDocument, [
 		["project", id],
 		["projects"],
 	]);
 
 export const useWritePolicy = (id: string | undefined) =>
-	useDocumentWrite(id, keys.policy(id), "Policy", configApi.putPolicy);
+	useDocumentWrite(id, keys.policy(id), configApi.putPolicy);
 
 export const useWriteTestingProfile = (id: string | undefined, profileId: string) =>
-	useDocumentWrite(id, keys.profiles(id), `Testing profile ${profileId}`, (project, write) =>
+	useDocumentWrite(id, keys.profiles(id), (project, write) =>
 		configApi.putTestingProfile(project, profileId, write),
 	);
 
 export const useWriteBinding = (id: string | undefined, bindingId: string) =>
-	useDocumentWrite(id, keys.bindings(id), "Binding", (project, write) =>
+	useDocumentWrite(id, keys.bindings(id), (project, write) =>
 		configApi.putBinding(project, bindingId, write),
 	);
 
-export const useDeleteTestingProfile = (id: string | undefined) =>
-	useToastedMutation({
+export function useDeleteTestingProfile(id: string | undefined) {
+	const t = useCopy();
+	return useToastedMutation({
 		mutationFn: (profileId: string) => configApi.deleteTestingProfile(id as string, profileId),
 		invalidates: [keys.profiles(id), keys.effective(id)],
-		saved: (out) => `Testing profile ${out.profileId} deleted`,
+		saved: (out) => t("settings.project.toast.profileDeleted", { id: out.profileId }),
 	});
+}

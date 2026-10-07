@@ -46,7 +46,8 @@ export interface CreateReleaseBatchResult {
    * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
    */
   openedAfterRelease: boolean;
-  /** `deployment` where production declares no source probe: its deployment record must name the commit. */
+  /** `deployment` where production declares no source probe: its deployment record must name the commit;
+   *  `provider` where the work lives on a storefront whose provider reports what it publishes. */
   verification: ReleaseVerification;
 }
 

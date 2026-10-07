@@ -18,7 +18,11 @@ import {
 import { bindingTemplate, policyTemplate, projectTemplate, testingProfileTemplate } from "../config-templates";
 import type { V1Read } from "@/features/project-config/types";
 import { NAME } from "../secret-refs";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { DocumentEditor } from "./document-editor";
+import { IDENTITY_POINTERS, PROJECT_IDENTITY } from "./document-fields";
+
+const KEYED_IDENTITY = [...IDENTITY_POINTERS, "/id"];
 
 const UNDECLARED: V1Read = { declared: false, revision: null, document: null };
 
@@ -34,13 +38,15 @@ export function ProjectDocumentSection({
 	project: { id: string; slug: string; name: string };
 	canEdit: boolean;
 }) {
+	const t = useCopy();
 	const q = useProjectDocument(project.id);
 	const write = useWriteProjectDocument(project.id);
 	if (!q.data) return <Loading query={q} />;
 	return (
 		<DocumentEditor
-			title="Project document"
-			description="Where work is made, how a workspace builds, what proves a change, the environments it goes live in, the promotions between branches, rollback and the pinned executor."
+			title={t("settings.project.raw.projectDocument")}
+			description={t("settings.project.raw.projectDocumentLead")}
+			fixed={PROJECT_IDENTITY}
 			read={q.data}
 			template={projectTemplate(project)}
 			canEdit={canEdit}
@@ -51,20 +57,15 @@ export function ProjectDocumentSection({
 }
 
 export function PolicyDocumentSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+	const t = useCopy();
 	const q = usePolicyDocument(projectId);
 	const write = useWritePolicy(projectId);
 	if (!q.data) return <Loading query={q} />;
 	return (
 		<DocumentEditor
-			title="Policy"
-			description={
-				<>
-					Who judges a change (<code>qa</code>), whether queued issues start on their own (<code>intake</code>), and
-					for each status the model and the tools it runs without (<code>states</code>, <code>permissions</code>).
-					Dispatch reads this document and nothing else.
-					{!q.data.declared && " With none declared, nothing dispatches for this project."}
-				</>
-			}
+			title={t("settings.project.raw.policy")}
+			description={`${t("settings.project.raw.policyLead")}${q.data.declared ? "" : ` ${t("settings.project.raw.policyUndeclared")}`}`}
+			fixed={IDENTITY_POINTERS}
 			read={q.data}
 			template={policyTemplate()}
 			canEdit={canEdit}
@@ -82,10 +83,12 @@ function ProfileEditor(props: {
 	onReload: () => unknown;
 	actions?: ReactNode;
 }) {
+	const t = useCopy();
 	const write = useWriteTestingProfile(props.projectId, props.profileId);
 	return (
 		<DocumentEditor
-			title={`Testing profile ${props.profileId}`}
+			title={t("settings.project.raw.profileNamed", { id: props.profileId })}
+			fixed={KEYED_IDENTITY}
 			read={props.read}
 			template={testingProfileTemplate(props.profileId)}
 			canEdit={props.canEdit}
@@ -104,7 +107,7 @@ function RefusedBanner({ err }: { err: unknown }) {
 				? formatApiError(err)
 				: refusals.map((r) => (
 						<p key={`${r.code}:${r.path}`}>
-							<code>{r.code}</code> at <code>{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
+							<code translate="no">{r.code}</code> <code translate="no">{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
 						</p>
 					))}
 		</Banner>
@@ -112,6 +115,7 @@ function RefusedBanner({ err }: { err: unknown }) {
 }
 
 export function TestingProfilesSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+	const t = useCopy();
 	const q = useTestingProfiles(projectId);
 	const remove = useDeleteTestingProfile(projectId);
 	const [name, setName] = useState("");
@@ -120,16 +124,13 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 	const held = new Set(q.data.profiles.map((p) => p.profileId));
 	const pending = adding.filter((id) => !held.has(id));
 	const nameError =
-		name === "" || NAME.test(name) ? (held.has(name) ? `${name} is already declared.` : undefined) : "A profile id matches ^[a-z][a-z0-9-]{0,62}$.";
+		name === "" || NAME.test(name) ? (held.has(name) ? t("settings.project.raw.profileExists", { id: name }) : undefined) : t("settings.project.raw.profileIdRule");
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<PageSectionTitle className="fg-label text-fg">Testing profiles</PageSectionTitle>
-			<p className="fg-body-sm mt-1 text-muted">
-				How a tester gets into an environment: actors and services, each naming a <code>secret://</code> reference, never
-				a value. An environment names its profile in <code>environments.&lt;name&gt;.testing</code>.
-			</p>
+			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.profiles")}</PageSectionTitle>
+			<p className="fg-body-sm mt-1 text-muted">{t("settings.project.raw.profilesLead")}</p>
 			{q.data.profiles.length === 0 && pending.length === 0 && (
-				<p className="fg-caption mt-2 text-subtle">No testing profile is declared.</p>
+				<p className="fg-caption mt-2 text-subtle">{t("settings.project.raw.noProfiles")}</p>
 			)}
 			{remove.isError && <RefusedBanner err={remove.error} />}
 			{q.data.profiles.map((p) => (
@@ -143,7 +144,7 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 					actions={
 						canEdit && (
 							<Button variant="ghost" size="sm" loading={remove.isPending} onClick={() => remove.mutate(p.profileId)}>
-								Delete
+								{t("settings.project.raw.delete")}
 							</Button>
 						)
 					}
@@ -155,7 +156,7 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 			{canEdit && (
 				<div className="mt-4 flex flex-wrap items-end gap-2">
 					<div className="w-64">
-						<Field label="New profile id" error={nameError}>
+						<Field label={t("settings.project.raw.newProfile")} error={nameError}>
 							<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="forge-beta" />
 						</Field>
 					</div>
@@ -167,7 +168,7 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 							setName("");
 						}}
 					>
-						Add a testing profile
+						{t("settings.project.raw.addProfile")}
 					</Button>
 				</div>
 			)}
@@ -176,10 +177,12 @@ export function TestingProfilesSection({ projectId, canEdit }: { projectId: stri
 }
 
 function BindingEditor(props: { projectId: string; bindingId: string; read: V1Read; canEdit: boolean; onReload: () => unknown }) {
+	const t = useCopy();
 	const write = useWriteBinding(props.projectId, props.bindingId);
 	return (
 		<DocumentEditor
-			title={`Binding ${props.bindingId}`}
+			title={t("settings.project.raw.bindingNamed", { id: props.bindingId })}
+			fixed={KEYED_IDENTITY}
 			read={props.read}
 			template={bindingTemplate(props.bindingId)}
 			canEdit={props.canEdit}
@@ -190,6 +193,7 @@ function BindingEditor(props: { projectId: string; bindingId: string; read: V1Re
 }
 
 export function BindingsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+	const t = useCopy();
 	const q = useBindingDocuments(projectId);
 	const [adding, setAdding] = useState<string[]>([]);
 	if (!q.data) return <Loading query={q} />;
@@ -197,18 +201,15 @@ export function BindingsSection({ projectId, canEdit }: { projectId: string; can
 	const pending = adding.filter((id) => !held.has(id));
 	return (
 		<div className="mt-6 border-t border-line pt-5">
-			<PageSectionTitle className="fg-label text-fg">Bindings</PageSectionTitle>
-			<p className="fg-body-sm mt-1 text-muted">
-				What a connection is bound to in this project: a deploy target, a storefront source or a service. Each keeps one
-				role; the project document names a binding by its id.
-			</p>
+			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.bindings")}</PageSectionTitle>
+			<p className="fg-body-sm mt-1 text-muted">{t("settings.project.raw.bindingsLead")}</p>
 			{q.data.unrepresentable.map((u) => (
 				<Banner key={u.id} tone="attention">
-					Binding <code>{u.id}</code> ({u.provider}, {enumLabel("bindingRole", u.role)}) has no binding-document form: {u.reason}
+					{t("settings.project.raw.unrepresentable", { id: u.id, provider: u.provider, role: enumLabel("bindingRole", u.role) })} {u.reason}
 				</Banner>
 			))}
 			{q.data.bindings.length === 0 && pending.length === 0 && (
-				<p className="fg-caption mt-2 text-subtle">No binding is declared.</p>
+				<p className="fg-caption mt-2 text-subtle">{t("settings.project.raw.noBindings")}</p>
 			)}
 			{q.data.bindings.map((b) => (
 				<BindingEditor
@@ -225,7 +226,7 @@ export function BindingsSection({ projectId, canEdit }: { projectId: string; can
 			))}
 			{canEdit && (
 				<Button variant="secondary" className="mt-4" onClick={() => setAdding((a) => [...a, crypto.randomUUID()])}>
-					Add a binding
+					{t("settings.project.raw.addBinding")}
 				</Button>
 			)}
 		</div>

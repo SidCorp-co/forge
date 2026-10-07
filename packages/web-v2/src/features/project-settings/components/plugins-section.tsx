@@ -6,7 +6,6 @@ import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { inlineRich } from "./inline-code";
 import { useUpdatePlugins } from "../hooks";
 import type { PluginDesignation, ProjectAgentConfig } from "../types";
 
@@ -22,10 +21,10 @@ interface DraftRow extends PluginDesignation {
 }
 
 function rowError(p: DraftRow, t: Copy): string | null {
-  if (!p.marketplace.trim()) return t("skills.err.marketplace");
-  if (!NAME_RE.test(p.name.trim())) return t("skills.err.name");
+  if (!p.marketplace.trim()) return t("settings.project.plugins.marketplaceRequired");
+  if (!NAME_RE.test(p.name.trim())) return t("settings.project.plugins.nameRule");
   const ref = p.pinnedRef?.trim();
-  if (ref && !SHA_RE.test(ref)) return t("skills.err.sha");
+  if (ref && !SHA_RE.test(ref)) return t("settings.project.plugins.shaRule");
   return null;
 }
 
@@ -38,21 +37,15 @@ const stripKey = (r: PluginDesignation): PluginDesignation => ({
 const sameList = (a: DraftRow[], b: PluginDesignation[]) =>
   JSON.stringify(a.map(stripKey)) === JSON.stringify(b.map(stripKey));
 
-function Heading() {
-  const t = useCopy();
-  return (
-    <div>
-      <PageSectionTitle className="fg-label text-fg">{t("skills.heading")}</PageSectionTitle>
-      <p className="fg-caption mt-0.5 text-muted">{inlineRich(t("skills.headingHint"))}</p>
-    </div>
-  );
-}
-
 export function PluginsSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const t = useCopy();
   const projectQ = useProject(projectId);
   return (
-    <div className="mt-6 border-t border-line pt-5">
-      <Heading />
+    <div id="plugins" className="mt-6 scroll-mt-24 border-t border-line pt-5">
+      <div>
+        <PageSectionTitle className="fg-label text-fg">{t("settings.project.plugins.title")}</PageSectionTitle>
+        <p className="fg-caption mt-0.5 text-muted">{t("settings.project.plugins.lead")}</p>
+      </div>
       {projectQ.isError ? (
         <div className="mt-3">
           <ErrorState message={formatApiError(projectQ.error)} onRetry={() => projectQ.refetch()} />
@@ -80,7 +73,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keyed` only mints row keys from a ref.
   useEffect(() => setDraft(pluginsOf(agentConfig).map(keyed)), [agentConfig]);
 
-  const errors = draft.map((r) => rowError(r, t));
+  const errors = draft.map((p) => rowError(p, t));
   const firstError = errors.find((e): e is string => e !== null) ?? null;
   const dirty = !sameList(draft, pluginsOf(agentConfig));
   const addRow = () => setDraft((d) => [...d, keyed({ marketplace: "", name: "", pinnedRef: null })]);
@@ -90,10 +83,10 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
       {draft.length === 0 ? (
         <div className="mt-3">
           <EmptyState
-            title={t("skills.empty.title")}
-            message={t("skills.empty.message")}
+            title={t("settings.project.plugins.emptyTitle")}
+            message={t("settings.project.plugins.emptyBody")}
             mascot
-            action={canEdit ? { label: t("skills.add"), onClick: addRow } : undefined}
+            action={canEdit ? { label: t("settings.project.plugins.add"), onClick: addRow } : undefined}
           />
         </div>
       ) : (
@@ -114,7 +107,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
         <div className="mt-3 space-y-3">
           {draft.length > 0 && (
             <Button variant="secondary" onClick={addRow}>
-              {t("skills.add")}
+              {t("settings.project.plugins.add")}
             </Button>
           )}
           {firstError && <Banner tone="attention">{firstError}</Banner>}
@@ -125,15 +118,15 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
             onClick={() => update.mutate(draft.map(stripKey))}
             className="min-h-11"
           >
-            {t("skills.save")}
+            {t("settings.project.plugins.save")}
           </Button>
         </div>
       )}
       <ConfirmDialog
         open={removing !== null}
-        title={t("skills.remove.title")}
-        message={t("skills.remove.message")}
-        confirmLabel={t("skills.remove.confirm")}
+        title={t("settings.project.plugins.removeTitle")}
+        message={t("settings.project.plugins.removeBody")}
+        confirmLabel={t("settings.project.plugins.remove")}
         tone="danger"
         onClose={() => setRemoving(null)}
         onConfirm={() => {
@@ -162,7 +155,7 @@ function PluginRow({
   return (
     <li className="py-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label={t("skills.field.marketplace")} hint={t("skills.field.marketplaceHint")}>
+        <Field label={t("settings.project.plugins.marketplace")} hint={t("settings.project.plugins.marketplaceHint")}>
           <Input
             value={p.marketplace}
             onChange={(e) => onPatch({ marketplace: e.target.value })}
@@ -170,10 +163,10 @@ function PluginRow({
             placeholder="SidCorp-co/forge-plugin"
           />
         </Field>
-        <Field label={t("skills.field.name")} hint={t("skills.field.nameHint")}>
+        <Field label={t("settings.project.plugins.name")} hint={t("settings.project.plugins.nameHint")}>
           <Input value={p.name} onChange={(e) => onPatch({ name: e.target.value })} disabled={!canEdit} placeholder="forge" />
         </Field>
-        <Field label={t("skills.field.pinned")} hint={t("skills.field.pinnedHint")}>
+        <Field label={t("settings.project.plugins.pinned")} hint={t("settings.project.plugins.pinnedHint")}>
           <Input
             value={p.pinnedRef ?? ""}
             onChange={(e) => onPatch({ pinnedRef: e.target.value.trim() || null })}
@@ -189,12 +182,12 @@ function PluginRow({
               {error}
             </p>
           ) : (
-            <Badge tone={p.pinnedRef ? "neutral" : "accent"}>{p.pinnedRef ? t("skills.badge.pinned") : t("skills.badge.tracksHead")}</Badge>
+            <Badge tone={p.pinnedRef ? "neutral" : "accent"}>{p.pinnedRef ? t("settings.project.plugins.isPinned") : t("settings.project.plugins.tracksHead")}</Badge>
           )}
         </div>
         {canEdit && (
           <Button variant="ghost" onClick={onRemove}>
-            {t("skills.remove.confirm")}
+            {t("settings.project.plugins.remove")}
           </Button>
         )}
       </div>

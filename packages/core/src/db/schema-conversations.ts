@@ -59,12 +59,21 @@ export interface ConversationOrigin {
 }
 
 /**
- * What a room may set for itself: the five routing keys and nothing else.
+ * A group room that told its handle to stop: since when, and who asked, until a message names the
+ * handle again.
+ */
+export interface RoomQuiet {
+  since: string;
+  by: string | null;
+}
+
+/**
+ * What a room may set for itself: the five routing keys, and the quiet a stop request leaves.
  */
 export type RoomPresence = Pick<
   PresenceConfig,
   'dormantMs' | 'backoffAfter' | 'loopBounceMs' | 'loopLimit' | 'answerInGroup'
->;
+> & { quiet?: RoomQuiet | undefined };
 
 export const conversations = pgTable(
   'conversations',

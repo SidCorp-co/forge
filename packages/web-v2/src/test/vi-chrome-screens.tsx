@@ -24,7 +24,8 @@ import { AUTOMATION_SCREENS } from "./vi-chrome-automation";
 import { AGENTS_SCREENS } from "./vi-chrome-agents";
 import { SESSIONS_SCREENS } from "./vi-chrome-sessions";
 import { CONVERSATION_SCREENS } from "./vi-chrome-conversations";
-import { SETTINGS_AGENTS_SCREENS } from "./vi-chrome-settings-agents";
+import { GATE_SCREENS } from "./vi-chrome-gate";
+import { PROJECT_SETTINGS_SCREENS } from "./vi-chrome-project-settings.fixture";
 import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
@@ -97,5 +98,5 @@ export const CHROME_SCREENS: ChromeScreen[] = [
   { name: "Feedback facts and history", render: feedbackFacts },
   { name: "Feedback triage and message forms", render: feedbackForms },
   { name: "Feedback filing form", render: feedbackFilingForm },
-  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS, ...AUTOMATION_SCREENS, ...AGENTS_SCREENS, ...SESSIONS_SCREENS, ...CONVERSATION_SCREENS, ...SETTINGS_AGENTS_SCREENS,
+  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS, ...AUTOMATION_SCREENS, ...AGENTS_SCREENS, ...SESSIONS_SCREENS, ...CONVERSATION_SCREENS, ...GATE_SCREENS, ...PROJECT_SETTINGS_SCREENS,
 ];
