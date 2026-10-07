@@ -143,7 +143,7 @@ function AwaySummary({ feed, t, locale, slug }: { feed: WhatsNewFeed; t: Copy; l
   );
 }
 
-export interface WhatsNewPanelProps {
+interface WhatsNewPanelProps {
   open: boolean;
   onClose: () => void;
   /** The feed as it stood when the panel opened, so the since-line still counts what was unread. */

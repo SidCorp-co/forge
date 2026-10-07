@@ -65,7 +65,7 @@ const refusalLabel = (r: NonNullable<MasterClosedPass["refused"]>) => enumLabel(
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>): string {
+function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>): string {
   const passes = `${r.refusedPasses} refused pass${r.refusedPasses === 1 ? "" : "es"}`;
   return `the account answered again after ${passes} since ${formatRelativeTime(r.refusedSince)}`;
 }

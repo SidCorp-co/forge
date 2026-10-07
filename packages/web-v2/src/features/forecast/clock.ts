@@ -13,7 +13,7 @@ export interface EtaClock {
 const DAY_MS = 86_400_000;
 const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-export interface Parts {
+interface Parts {
   y: number;
   m: number;
   d: number;

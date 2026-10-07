@@ -10,7 +10,7 @@ export type ProductCopyKey = keyof (typeof strings)["en"];
 const LANGUAGES = strings as unknown as Record<string, Partial<Record<ProductCopyKey, string>>>;
 
 /** The base language of a BCP-47 tag: `vi-VN` reads as `vi`. */
-function baseOf(tag: string | null | undefined): string {
+export function baseOf(tag: string | null | undefined): string {
   return (tag ?? "en").toLowerCase().split("-")[0] ?? "en";
 }
 

@@ -36,7 +36,7 @@ import { StatusPill } from "./status-pill";
 
 const ROLE_WORDS = new Set(["Service", "Source", "Deploy"]);
 
-export function isRepositoryCard(card: Pick<StatusCard, "key">): boolean {
+function isRepositoryCard(card: Pick<StatusCard, "key">): boolean {
   return card.key === "repository" || card.key.endsWith(":repository");
 }
 

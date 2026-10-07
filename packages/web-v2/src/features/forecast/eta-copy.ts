@@ -1,20 +1,17 @@
-import words from "./eta-copy.json";
+import { baseOf, copyLocale, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
 // The ETA column's words, in the project's content language (contracts `content-language.ts`): vi
-// where the project writes Vietnamese, English for every other tag. The words live in one locale
-// file, `eta-copy.json`, both languages side by side under the same keys; a `{name}` in a word is
-// filled here, and a key missing from either language is a type error.
+// where the project writes Vietnamese, English for every other tag. The words are the `eta.*` keys
+// of the one locale file, `lib/i18n/product-copy.json`, read through `productCopy`.
 
-export const ETA_LANGS = ["vi", "en"] as const;
+const ETA_LANGS = ["vi", "en"] as const;
 export type EtaLang = (typeof ETA_LANGS)[number];
 
 /** The ETA copy for a project's content language tag: vi for any vi tag, else English. */
 export const etaLangOf = (contentLanguage: string | null | undefined): EtaLang =>
-  contentLanguage?.toLowerCase().startsWith("vi") ? "vi" : "en";
+  baseOf(contentLanguage) === "vi" ? "vi" : "en";
 
-type Words = (typeof words)["en"];
-
-export interface EtaCopy {
+interface EtaCopy {
   /** The column header and the rail's label. */
   header: string;
   /** BCP 47 tag the full dates in a tooltip are drawn in. */
@@ -46,36 +43,36 @@ export interface EtaCopy {
   sortBy: string;
 }
 
-const fill = (word: string, values: Record<string, string | number>) =>
-  word.replace(/\{(\w+)\}/g, (_, k: string) => {
-    const v = values[k];
-    if (v === undefined) throw new Error(`eta-copy: "${word}" names {${k}}, which nothing fills`);
-    return String(v);
-  });
+const WEEKDAYS = ["eta.weekday.0", "eta.weekday.1", "eta.weekday.2", "eta.weekday.3", "eta.weekday.4", "eta.weekday.5", "eta.weekday.6"] as const;
+const MONTHS = [
+  "eta.month.1", "eta.month.2", "eta.month.3", "eta.month.4", "eta.month.5", "eta.month.6",
+  "eta.month.7", "eta.month.8", "eta.month.9", "eta.month.10", "eta.month.11", "eta.month.12",
+] as const satisfies readonly ProductCopyKey[];
 
-function copyOf(w: Words): EtaCopy {
+function copyOf(lang: EtaLang): EtaCopy {
+  const t = productCopy(lang);
   return {
-    header: w.header,
-    locale: w.locale,
-    today: w.today,
-    todayInline: w.todayInline,
-    tomorrow: w.tomorrow,
-    tomorrowInline: w.tomorrowInline,
-    yesterday: w.yesterday,
-    weekdays: w.weekdays,
-    date: (day, month) => fill(w.date, { d: day, dd: String(day).padStart(2, "0"), month: w.months[month - 1] ?? String(month) }),
-    latest: (when) => fill(w.latest, { when }),
-    latestInline: (when) => fill(w.latestInline, { when }),
-    waitsOn: (who) => fill(w.waitsOn, { who }),
-    thenCuts: (who) => fill(w.thenCuts, { who }),
-    within: (low, high, asOf) => fill(w.within, { low, high, asOf }),
-    notEnoughHistory: (n, floor) => fill(w.notEnoughHistory, { n, floor }),
-    notForecast: (status) => fill(w.notForecast, { status }),
-    nothingLinked: w.nothingLinked,
-    landed: (when) => fill(w.landed, { when }),
-    shipped: (version, when) => (version ? fill(w.shipped, { version, when }) : fill(w.shippedUnversioned, { when })).replace(/ \.$/, "."),
-    sortBy: w.sortBy,
+    header: t("eta.header"),
+    locale: copyLocale(lang),
+    today: t("eta.today"),
+    todayInline: t("eta.todayInline"),
+    tomorrow: t("eta.tomorrow"),
+    tomorrowInline: t("eta.tomorrowInline"),
+    yesterday: t("eta.yesterday"),
+    weekdays: WEEKDAYS.map((k) => t(k)),
+    date: (day, month) => t("eta.date", { d: day, dd: String(day).padStart(2, "0"), month: MONTHS[month - 1] ? t(MONTHS[month - 1] as ProductCopyKey) : String(month) }),
+    latest: (when) => t("eta.latest", { when }),
+    latestInline: (when) => t("eta.latestInline", { when }),
+    waitsOn: (who) => t("eta.waitsOn", { who }),
+    thenCuts: (who) => t("eta.thenCuts", { who }),
+    within: (low, high, asOf) => t("eta.within", { low, high, asOf }),
+    notEnoughHistory: (n, floor) => t("eta.notEnoughHistory", { n, floor }),
+    notForecast: (status) => t("eta.notForecast", { status }),
+    nothingLinked: t("eta.nothingLinked"),
+    landed: (when) => t("eta.landed", { when }),
+    shipped: (version, when) => (version ? t("eta.shipped", { version, when }) : t("eta.shippedUnversioned", { when })).replace(/ \.$/, "."),
+    sortBy: t("eta.sortBy"),
   };
 }
 
-export const ETA_COPY: Record<EtaLang, EtaCopy> = { vi: copyOf(words.vi), en: copyOf(words.en) };
+export const ETA_COPY: Record<EtaLang, EtaCopy> = { vi: copyOf("vi"), en: copyOf("en") };

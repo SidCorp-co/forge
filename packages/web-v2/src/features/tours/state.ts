@@ -3,7 +3,7 @@ import type { ProductStateView } from "@forge/contracts/product-state";
 import type { TourDefinition } from "./registry";
 
 /** How a person stands with a tour at its revision: finished it, not yet, or finished an older revision. */
-export type TourStanding = "seen" | "not_seen" | "updated";
+type TourStanding = "seen" | "not_seen" | "updated";
 
 export const tourKey = (id: string) => `${TOUR_KEY_PREFIX}${id}` as const;
 
