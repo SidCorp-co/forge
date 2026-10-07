@@ -175,11 +175,16 @@ export async function proposeDesign(input: {
         {
           code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD',
           path: '/issue',
-          detail: `${input.issue} builds workflow ${id}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
+          detail: `${input.issue} builds workflow ${row.flow}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
         },
       ];
     }
-    const drawing = await drawingIssueOf(tx, { projectId, workflowId: id, named: designIssueId });
+    const drawing = await drawingIssueOf(tx, {
+      projectId,
+      workflowId: id,
+      flow: row.flow,
+      named: designIssueId,
+    });
     if ('refusal' in drawing) return [drawing.refusal];
     await insertDesign(tx, {
       workflowId: id,

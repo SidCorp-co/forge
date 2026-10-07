@@ -116,7 +116,7 @@ export function designLandingNotice(
     return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it. ${names}${was} The approval moves no status: this issue's run, or the release that claims it, takes its next move.`;
   }
   if (outcome.action === 'none' && outcome.status === 'closed') {
-    return `${design} after this issue was closed. A closed issue has shipped, so the approval is not recorded as its landing and its merged mark stays as it shipped. A further change to this design names the issue that draws it.`;
+    return `${design} after this issue was closed. A closed issue has shipped, so the approval is not recorded as its landing and its merged mark stays as it shipped. To change this design again, name the issue drawing the change with \`issue\` on the write; a write that names none is refused while this issue is the last one the design was drawn under.`;
   }
   return null;
 }
