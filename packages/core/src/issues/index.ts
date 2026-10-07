@@ -1,5 +1,6 @@
 export { accountActor } from './account-actor.js';
 export { type Actor, resolveActor, safeRecordActivity } from './activity.js';
+export { runActivityFieldChangesBackfillOnce } from './activity-backfill.js';
 export { registerActivitySubscribers } from './activity-subscribers.js';
 export {
   principalAgency,
