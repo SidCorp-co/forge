@@ -7,6 +7,7 @@ import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
+import { resolveCarriage } from './carriage.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,
@@ -392,7 +393,21 @@ async function writeMarkTrail(
   return { mark, markDetail };
 }
 
-export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
+/** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */
+async function withCarriers(args: MergeMarkArgs, prior: IssueRow): Promise<MergeMarkArgs> {
+  if (args.op !== 'mark' || !args.artifacts?.some((a) => a.carriedBy !== undefined)) return args;
+  const carried = await resolveCarriage({
+    issueId: prior.id,
+    projectId: prior.projectId,
+    artifacts: args.artifacts,
+  });
+  if (!carried.ok) {
+    throw refuse(carried.code, carried.detail, `/artifacts/${carried.index}/carriedBy`);
+  }
+  return { ...args, artifacts: carried.artifacts };
+}
+
+export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   issue: IssueRow;
   action: 'merged' | 'already_merged' | 'unmarked';
   /**
@@ -408,8 +423,9 @@ export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
   /** What the row's landing names it changed after this call; null where it names nothing structured. */
   artifacts: LandingArtifact[] | null;
 }> {
-  const prior = await findIssueById(args.issue.id);
+  const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
+  const args = await withCarriers(input, prior);
   const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
 
   // The stamp, its audit comment and their events commit together or not at all.

@@ -158,6 +158,8 @@ const published = (
 
 function roster(issues: Record<number, CriterionWithVerdict[]>) {
   reads.roster = Object.entries(issues).map(([seq, criteria]) => ({
+    id: `issue-${seq}`,
+    inherited: [],
     key: `ISS-${seq}`,
     criteria,
     mergedAt: null,
@@ -306,6 +308,8 @@ describe('every landing kind a mark names is read against what the provider serv
   function marked(seq: number, artifacts: Array<{ surface: string; ref: string }>, extra = {}) {
     reads.roster = [
       {
+        id: `issue-${seq}`,
+        inherited: [],
         key: `ISS-${seq}`,
         criteria: [verdict('runtime')],
         mergedAt: MARKED,
@@ -424,6 +428,8 @@ describe('landingsOf', () => {
     const { landingsOf } = await import('./provider-landings.js');
     const found = landingsOf([
       {
+        id: 'issue-20',
+        inherited: [],
         key: 'ISS-20',
         criteria: [
           verdict('storefront_draft', { workflowId: '102', draftVersion: sha('1'), at: BEFORE }),

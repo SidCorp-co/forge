@@ -86,7 +86,7 @@ const detail = {
   issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent" }] }],
   changes: {
     surfaces: [
-      { surface: "ui", count: 2, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/a", change: "added", issues: ["ISS-1"] }] },
+      { surface: "ui", count: 2, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/a", change: "added", issues: ["ISS-1"], carriedBy: null }] },
       { surface: "api", count: 1, shipsNothing: false, issues: ["ISS-1"], artifacts: [] },
       { surface: "design", count: 1, shipsNothing: true, issues: ["ISS-1"], artifacts: [] },
     ],

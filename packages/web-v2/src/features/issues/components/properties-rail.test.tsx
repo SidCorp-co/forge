@@ -130,3 +130,23 @@ describe("the issue's category on the rail", () => {
     expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
   });
 });
+
+describe("an artifact carried between issues is said on both issues, flat", () => {
+  it("names the carrier on the issue that touched it, and what the carrier carries on the carrier", () => {
+    rail(
+      issue({
+        carriage: {
+          carriedBy: [{ ref: "workflow 193 @999dcf6d: access block", issue: "ISS-110" }],
+          carries: [{ ref: "workflow 96 @d00d9028: stamp block", from: "ISS-41" }],
+        },
+      }),
+    );
+    const by = screen.getByTestId("issue-carried-by");
+    expect(by).toHaveTextContent("ISS-110");
+    expect(by).toHaveTextContent("workflow 193 @999dcf6d: access block");
+    expect(screen.getByText("Carried by")).toBeInTheDocument();
+    expect(screen.getByTestId("issue-carries")).toHaveTextContent("from ISS-41");
+    expect(screen.getByRole("link", { name: "ISS-110" }).getAttribute("href")).toContain("ISS-110");
+    expect(productCopy("vi")("issues.rail.carriedBy")).toBe("Phát hành cùng"); // i18n-allow: asserts the vi carriage copy
+  });
+});

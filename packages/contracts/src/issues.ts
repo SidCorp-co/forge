@@ -1,5 +1,5 @@
-import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
 
 export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";
 
@@ -47,7 +47,8 @@ export const COMMIT_LANDING_REFUSAL_CODES = [
 	"COMMIT_NOT_LANDED",
 	"COMMIT_UNVERIFIED",
 ] as const;
-export type CommitLandingRefusalCode = (typeof COMMIT_LANDING_REFUSAL_CODES)[number];
+export type CommitLandingRefusalCode =
+	(typeof COMMIT_LANDING_REFUSAL_CODES)[number];
 
 export const MERGE_REFUSAL_CODES = [
 	"MERGE_MARK_REFUSED",
@@ -58,6 +59,10 @@ export const MERGE_REFUSAL_CODES = [
 	"MARK_ALREADY_STANDS",
 	"ARTIFACTS_NOT_THIS_SHAPE",
 	"ARTIFACTS_NOT_DESIGN",
+	"ARTIFACT_CARRIER_UNKNOWN",
+	"ARTIFACT_CARRIER_SELF",
+	"ARTIFACT_CARRIER_SHIPPED",
+	"ARTIFACT_CARRIER_DESIGN",
 	"CHANGED_PATHS_NOT_THIS_SHAPE",
 	"CHANGED_PATHS_UNMATCHED",
 	"TARGET_REQUIRED",
@@ -92,7 +97,8 @@ export const ISSUE_ATTACHMENT_REFUSAL_CODES = [
 	"PAYLOAD_TOO_LARGE",
 	"ATTACHMENT_NAME_TAKEN",
 ] as const;
-export type IssueAttachmentRefusalCode = (typeof ISSUE_ATTACHMENT_REFUSAL_CODES)[number];
+export type IssueAttachmentRefusalCode =
+	(typeof ISSUE_ATTACHMENT_REFUSAL_CODES)[number];
 
 export const DEPENDENCY_REFUSAL_CODES = [
 	"DEPENDENCY_REFUSED",
@@ -111,14 +117,16 @@ export const LABEL_ATTACH_REFUSAL_CODES = [
 	"PRIMARY_NOT_MODULE",
 	"MULTIPLE_PRIMARY",
 ] as const;
-export type LabelAttachRefusalCode = (typeof LABEL_ATTACH_REFUSAL_CODES)[number];
+export type LabelAttachRefusalCode =
+	(typeof LABEL_ATTACH_REFUSAL_CODES)[number];
 
 export const ISSUE_CREATE_REFUSAL_CODES = [
 	"ISSUE_CREATE_REFUSED",
 	"INVALID_STATUS",
 	"INVALID_DETECTOR_KEY",
 ] as const;
-export type IssueCreateRefusalCode = (typeof ISSUE_CREATE_REFUSAL_CODES)[number];
+export type IssueCreateRefusalCode =
+	(typeof ISSUE_CREATE_REFUSAL_CODES)[number];
 
 export const ISSUE_TAKE_REFUSAL_CODES = [
 	"ISSUE_TAKE_REFUSED",
@@ -146,7 +154,8 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"ASSIGNEE_NOT_MEMBER",
 	"STATUS_MOVES_BY_TRANSITION",
 ] as const;
-export type IssueUpdateRefusalCode = (typeof ISSUE_UPDATE_REFUSAL_CODES)[number];
+export type IssueUpdateRefusalCode =
+	(typeof ISSUE_UPDATE_REFUSAL_CODES)[number];
 
 export const ISSUE_UPDATE_REFUSAL_STATUSES = {
 	STATUS_MOVES_BY_TRANSITION: 400,

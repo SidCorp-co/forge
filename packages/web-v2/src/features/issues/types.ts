@@ -102,6 +102,11 @@ interface IssueWorkState extends IssueWorkStateRow {
 }
 
 
+export interface IssueCarriage {
+  carriedBy: Array<{ ref: string; issue: string }>;
+  carries: Array<{ ref: string; from: string }>;
+}
+
 export interface IssueRow {
   id: string;
   projectId: string;
@@ -126,6 +131,9 @@ export interface IssueRow {
   mergeMark?: MergeMarkKind;
   /** ISS-1327 — where the work landed outside git, on a mark that named one. */
   mergedLanding?: string | null;
+  /** What another issue's own release ships for this one (`carriedBy`), and what this one ships for
+   *  others (`carries`): core's reading of the marks' `artifacts[].carriedBy`. */
+  carriage?: IssueCarriage;
   /** ISS-1327 — what this issue's project accepts as landed; core's answer, never re-derived.
    *  `null` where the project declares no project document, so no `source.type`. */
   landingShape?: LandingShape | null;
