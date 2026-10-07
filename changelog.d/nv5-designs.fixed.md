@@ -1,0 +1,1 @@
+**The feedback machine now names the permission verify really takes.** Anyone on the project or the reporter verifies a resolved item, and the feedback guide tells of the automatic verify after the project's window.

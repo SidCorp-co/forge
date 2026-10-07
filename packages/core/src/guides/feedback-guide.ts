@@ -66,7 +66,7 @@ Two more phases are **read, never written**, from the work the item was routed t
   \`resolved\` once every other is closed, \`planned\` while any is open (waiting on each still open), and
   \`triaged\` only when every one was dropped.
 
-Nothing ever reads an item as \`verified\` on its own.
+Nothing reads an item as \`verified\`: a person verifies it, or Forge does after the verify window (below).
 
 ### Triage: a holder of feedback.approve picks the route and writes it in the same act
 - A person picks one of \`issue\`, \`revision\`, \`new_requirement\`, \`answer\`, \`duplicate\` or \`decline\`
@@ -127,8 +127,12 @@ route, declining included, closes the open question.
 
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
-  before its fix shipped, and never automatically. The reporter verifies their own item; anyone else
-  takes \`feedback.approve\` (\`PERMISSION_FORBIDDEN\` without it).
+  before its fix shipped. The reporter or anyone on the project (\`project.read\`) verifies, and the
+  decision records who and when (\`PERMISSION_FORBIDDEN\` to someone with no role on the project).
+- Nobody verifying is not left standing: every 15 minutes core dates the first sight of \`resolved\`,
+  and once the project's \`feedback.verifyWindowDays\` (default 7, 1 to 90) have run with no reply it
+  verifies the item as the system ("Verified automatically after N days with no reply") and tells each
+  reporter with a bell once. A reopen or a re-route clears the date.
 - \`verify-ask\` sends a resolved item to its reporter's bell, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.
@@ -149,8 +153,8 @@ metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list b
 \`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer: a holder of
 \`feedback.approve\` to triage a new or reopened item or a triaged one whose carrier died (the project's master, where one is
 live, for any item it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
-makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and the
-reporter to verify a resolved one. It reads \`You\` only where the viewer holds that act.
+makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and anyone
+to verify a resolved one, which is owed by nobody and so reads \`You\` for no one. It reads \`You\` only where the viewer holds that act.
 \`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a
 feedback item revises moves is in ${guideRef('requirement-lifecycle')}.`,
 };
