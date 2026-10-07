@@ -45,6 +45,31 @@ export function formatRelative(iso: string | null | undefined, language: string,
   return t("time.daysAgo", { n: Math.floor(h / 24) });
 }
 
+/** `42s`, `3m`, `4h`, `2d` and their Vietnamese reading: a span already measured, so a caller holding one instant grades every row against it. */
+export function formatElapsed(ms: number, language: string): string {
+  const t = productCopy(language);
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return t("common.age.seconds", { n: s });
+  const m = Math.floor(s / 60);
+  if (m < 60) return t("common.age.minutes", { n: m });
+  const h = Math.floor(m / 60);
+  if (h < 24) return t("common.age.hours", { n: h });
+  return t("common.age.days", { n: Math.floor(h / 24) });
+}
+
+/** `in 5 min`, `in 3h`, `in 2 days` and their Vietnamese reading: how long until an instant; empty when none is known. */
+export function formatCountdown(iso: string | null | undefined, language: string, now: number = Date.now()): string {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime() - now;
+  if (Number.isNaN(ms)) return "";
+  const t = productCopy(language);
+  if (ms <= 0) return t("common.countdown.now");
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return t("common.countdown.minutes", { n: Math.max(1, Math.round(ms / 60_000)) });
+  if (hours < 48) return t("common.countdown.hours", { n: hours });
+  return t("common.countdown.days", { n: Math.ceil(ms / 86_400_000) });
+}
+
 /** `5m`, `3h`, `2d`, `4w` and their Vietnamese reading: the compact age a list's age column shows. */
 export function formatAge(iso: string | null | undefined, language: string, now: number = Date.now()): string {
   if (!iso) return "";

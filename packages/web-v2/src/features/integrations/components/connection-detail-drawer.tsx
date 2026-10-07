@@ -9,6 +9,7 @@ import {
   Tabs,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
@@ -39,10 +40,12 @@ const SECTIONS = new Map(
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
 function ProviderSection({ provider, projectId }: { provider: string; projectId: string }) {
   const Section = SECTIONS.get(provider);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   if (!Section) {
     return (
       <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-        {providerLabel(provider)} has nothing to configure here.
+        {t("integrations.detail.nothingToConfigure", { provider: providerLabel(provider, language) })}
       </p>
     );
   }
@@ -77,6 +80,7 @@ function BindingsSection({
   currentProjectId: string;
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
+  const t = useCopy();
   const projectsQ = useProjectsIncludingArchived();
   // Org-owned connections (shared across the org) get a badge so it's clear
   // the credential isn't personal; managing it requires org admin.
@@ -95,10 +99,10 @@ function BindingsSection({
   return (
     <section className="mt-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <PageSectionTitle>Projects using this connection</PageSectionTitle>
+        <PageSectionTitle>{t("integrations.detail.projectsUsing")}</PageSectionTitle>
         {isOrgOwned && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-            org-shared
+            {t("integrations.detail.orgShared")}
           </span>
         )}
       </div>
@@ -132,10 +136,11 @@ function BindingsList({
   projectNames: Map<string, string>;
   currentProjectId: string;
 }) {
+  const t = useCopy();
   if (items.length === 0) {
     return (
       <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-        Only this project uses this connection.
+        {t("integrations.detail.onlyThisProject")}
       </p>
     );
   }
@@ -150,10 +155,10 @@ function BindingsList({
             className="flex items-center gap-3 py-2"
           >
             <span className="truncate text-fg">{name}</span>
-            <span className="fg-body-sm text-muted">{scopeLabel(b.role)}</span>
+            <span className="fg-body-sm text-muted">{scopeLabel(b.role, t)}</span>
             {isCurrent && (
               <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                this project
+                {t("integrations.detail.thisProject")}
               </span>
             )}
           </li>
@@ -236,6 +241,8 @@ export function ConnectionDetailDrawer({
   const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   if (!card || !provider) return null;
 
@@ -243,7 +250,7 @@ export function ConnectionDetailDrawer({
 
   const title = (
     <span className="flex items-center gap-2.5">
-      <span>{providerLabel(provider)}</span>
+      <span>{providerLabel(provider, language)}</span>
       <StatusPill card={card} />
     </span>
   );
@@ -255,8 +262,8 @@ export function ConnectionDetailDrawer({
           <>
             <Tabs
               tabs={[
-                { value: "config", label: "Configuration" },
-                { value: "deliveries", label: "Delivery log" },
+                { value: "config", label: t("integrations.detail.config") },
+                { value: "deliveries", label: t("integrations.detail.deliveries") },
               ]}
               value={tab}
               onChange={(v) => setTab(v as "config" | "deliveries")}

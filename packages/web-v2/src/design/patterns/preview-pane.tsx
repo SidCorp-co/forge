@@ -8,6 +8,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/design/primitives/button";
 import { Icon } from "@/design/icons/icon";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface PreviewPaneProps {
@@ -22,12 +23,13 @@ export interface PreviewPaneProps {
 
 export function PreviewPane({
   children,
-  label = "Preview",
+  label,
   open,
   onToggle,
   status,
   className,
 }: PreviewPaneProps) {
+  const t = useCopy();
   return (
     <div className={className}>
       <Button variant="ghost" size="sm" onClick={onToggle} aria-expanded={open}>
@@ -37,7 +39,7 @@ export function PreviewPane({
           className="mr-1 shrink-0 transition-transform duration-[150ms]"
           style={{ transform: open ? "rotate(90deg)" : "none" }}
         />
-        {label}
+        {label ?? t("common.preview")}
       </Button>
       {open && (
         <div className={cn("mt-2 overflow-x-auto rounded-md border border-line bg-sunken p-3")}>

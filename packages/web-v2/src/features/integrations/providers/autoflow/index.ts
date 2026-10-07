@@ -13,6 +13,5 @@ export const autoflow: ProviderModule = {
   target: (config) => text(config, "shop") ?? text(config, "storeSlug") ?? text(config, "storeName"),
   section: () => import("./section").then((m) => ({ default: m.AutoflowSection })),
   connectionSection: null,
-  connectionNote:
-    "The site an Autoflow binding builds is chosen per project, under project settings → Integrations; a successful Test fills in the workspace and site the token was minted for.",
+  connectionNote: "integrations.note.autoflow",
 };

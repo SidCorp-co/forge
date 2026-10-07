@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, PageSection, PageSectionBody, EmptyState, ErrorState, PageContainer, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
 import { OrgMembersCard } from "./org-members-card";
@@ -20,6 +21,7 @@ import { TopBarActions } from "@/design/primitives/top-bar-slot";
 export function OrgHome() {
   const router = useRouter();
   const { activeOrg } = useActiveOrg();
+  const t = useCopy();
 
   // null only while orgs/preferences resolve — render a light skeleton.
   if (!activeOrg) {
@@ -33,14 +35,14 @@ export function OrgHome() {
     );
   }
 
-  const label = activeOrg.isPersonal ? "Personal" : activeOrg.name;
+  const label = activeOrg.isPersonal ? t("overview.personal") : activeOrg.name;
 
   return (
     <PageContainer>
       <PageTitle>{label}</PageTitle>
       <TopBarActions>
         {activeOrg.isPersonal ? (
-          <Badge tone="neutral">Personal</Badge>
+          <Badge tone="neutral">{t("overview.personal")}</Badge>
         ) : (
           <EnumBadge family="role" value={activeOrg.role} />
         )}
@@ -60,20 +62,21 @@ export function OrgHome() {
 /** Personal workspace — projects only (no team-member management surface). */
 function PersonalOrgProjects({ orgId }: { orgId: string }) {
   const projectsQ = useOrgProjects(orgId);
+  const t = useCopy();
 
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Projects</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">Projects in your personal workspace.</p>
+        <SectionTitle className="fg-h3 mb-1">{t("settings.orgs.projects")}</SectionTitle>
+        <p className="fg-body-sm mb-4 text-muted">{t("settings.orgs.personalProjects")}</p>
         {projectsQ.isLoading ? (
           <Skeleton className="h-9 w-full rounded-md" />
         ) : projectsQ.isError ? (
           <ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
         ) : (projectsQ.data ?? []).length === 0 ? (
           <EmptyState
-            title="No projects yet"
-            message="Projects you create in your personal workspace will appear here."
+            title={t("settings.orgs.noProjectsTitle")}
+            message={t("settings.orgs.noProjectsBody")}
           />
         ) : (
           <ul className="divide-y divide-line-subtle">
@@ -85,7 +88,7 @@ function PersonalOrgProjects({ orgId }: { orgId: string }) {
                 >
                   <span className="min-w-0 truncate text-fg">{p.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    {p.archivedAt && <Badge tone="amber">archived</Badge>}
+                    {p.archivedAt && <Badge tone="amber">{t("integrations.edit.archived")}</Badge>}
                     <span className="fg-body-sm text-subtle">{p.slug}</span>
                   </span>
                 </Link>

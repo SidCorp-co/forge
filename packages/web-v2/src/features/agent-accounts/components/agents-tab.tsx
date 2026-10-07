@@ -34,6 +34,7 @@ import {
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import {
   useAgentAccounts,
@@ -57,6 +58,7 @@ export function AgentsTab() {
   const { projects } = useOrgScopedProjects();
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
+  const t = useCopy();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
   const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
@@ -64,15 +66,15 @@ export function AgentsTab() {
   if (activeOrg && !ORG_ROLE_PERMISSIONS[activeOrg.role].includes("org.admin")) {
     return (
       <EmptyState
-        title="Agents are managed by an org admin"
-        message="Ask an owner or admin of this organization to give an agent a credential."
+        title={t("settings.agents.adminOnly")}
+        message={t("settings.agents.adminOnlyBody")}
       />
     );
   }
 
   if (!orgId || agentsQ.isLoading) return <Skeleton className="h-40 w-full" />;
   if (agentsQ.isError) {
-    return <ErrorState title="Could not load agents" message={formatApiError(agentsQ.error)} />;
+    return <ErrorState title={t("settings.agents.loadFailed")} message={formatApiError(agentsQ.error)} />;
   }
 
   const agents = agentsQ.data ?? [];
@@ -82,7 +84,7 @@ export function AgentsTab() {
       const { plaintext } = await mint.mutateAsync(agent.userId);
       setRevealed({ userId: agent.userId, plaintext });
     } catch (err) {
-      toast({ title: "Could not mint a credential", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.agents.mintFailed"), description: formatApiError(err), tone: "error" });
     }
   }
 
@@ -91,12 +93,12 @@ export function AgentsTab() {
       const { revoked } = await revoke.mutateAsync(agent.userId);
       if (revealed?.userId === agent.userId) setRevealed(null);
       toast({
-        title: revoked === 0 ? "It held no live credential" : `Revoked ${revoked} credential(s)`,
-        description: `${agentLabel(agent)} keeps its place in every room it is in, and now shows as unreachable.`,
+        title: revoked === 0 ? t("settings.agents.heldNone") : t("settings.agents.revoked", { n: revoked }),
+        description: t("settings.agents.keepsPlace", { name: agentLabel(agent) }),
         tone: "success",
       });
     } catch (err) {
-      toast({ title: "Could not revoke", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.agents.revokeFailed"), description: formatApiError(err), tone: "error" });
     }
   }
 
@@ -108,7 +110,7 @@ export function AgentsTab() {
       });
       setRenaming(null);
     } catch (err) {
-      toast({ title: "Could not set the name", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.agents.nameFailed"), description: formatApiError(err), tone: "error" });
     }
   }
 
@@ -117,21 +119,17 @@ export function AgentsTab() {
   return (
     <div className="space-y-6">
       <header>
-        <SectionTitle className="fg-h3">Agents in {activeOrg?.name ?? "this organization"}</SectionTitle>
-        <p className="fg-body-sm mt-1">
-          An agent is addressed by its handle and read by its name. It can only act while it holds a
-          credential.
-        </p>
+        <SectionTitle className="fg-h3">
+          {t("settings.agents.title", { org: activeOrg?.name ?? t("settings.agents.thisOrg") })}
+        </SectionTitle>
+        <p className="fg-body-sm mt-1">{t("settings.agents.intro")}</p>
       </header>
 
       {revealed && (
         <PageSection>
           <PageSectionBody>
-            <PageSectionTitle className="mb-2">Copy this now — it is shown once</PageSectionTitle>
-            <p className="fg-body-sm mb-3">
-              Forge stores a hash of it, so there is nothing to read back. Losing it means minting
-              another.
-            </p>
+            <PageSectionTitle className="mb-2">{t("settings.agents.copyNow")}</PageSectionTitle>
+            <p className="fg-body-sm mb-3">{t("settings.agents.hashOnly")}</p>
             <MonoTag>{revealed.plaintext}</MonoTag>
             <div className="mt-3 flex gap-2">
               <Button
@@ -139,20 +137,20 @@ export function AgentsTab() {
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(revealed.plaintext);
-                    toast({ title: "Copied to clipboard", tone: "success" });
+                    toast({ title: t("settings.agents.copied"), tone: "success" });
                   } catch {
                     toast({
-                      title: "Copy failed",
-                      description: "Select and copy it by hand.",
+                      title: t("settings.agents.copyFailed"),
+                      description: t("settings.agents.copyByHand"),
                       tone: "error",
                     });
                   }
                 }}
               >
-                Copy
+                {t("settings.agents.copy")}
               </Button>
               <Button variant="ghost" onClick={() => setRevealed(null)}>
-                I have it
+                {t("settings.agents.haveIt")}
               </Button>
             </div>
           </PageSectionBody>
@@ -163,8 +161,8 @@ export function AgentsTab() {
 
       {agents.length === 0 ? (
         <EmptyState
-          title="No agents yet"
-          message="Create one above, or let one appear when a project is first spoken to in a room."
+          title={t("settings.agents.none")}
+          message={t("settings.agents.noneBody")}
         />
       ) : (
         <PageSection>
@@ -172,11 +170,11 @@ export function AgentsTab() {
             <Table>
               <THead>
                 <TR>
-                  <TH>Name</TH>
-                  <TH>Address</TH>
-                  <TH>Projects</TH>
-                  <TH>Can act</TH>
-                  <TH aria-label="Actions" />
+                  <TH>{t("settings.agents.name")}</TH>
+                  <TH>{t("settings.agents.address")}</TH>
+                  <TH>{t("settings.orgs.projects")}</TH>
+                  <TH>{t("settings.agents.canAct")}</TH>
+                  <TH aria-label={t("settings.agents.actions")} />
                 </TR>
               </THead>
               <TBody>
@@ -186,7 +184,7 @@ export function AgentsTab() {
                     <TR key={agent.userId}>
                       <TD>
                         {renaming?.userId === agent.userId ? (
-                          <Field label="Name" hint="Free text. Nothing resolves against it.">
+                          <Field label={t("settings.agents.name")} hint={t("settings.agents.nameHint")}>
                             <Input
                               value={renaming.value}
                               autoFocus
@@ -218,14 +216,14 @@ export function AgentsTab() {
                       <TD>
                         <MonoTag>{agentAddress(agent)}</MonoTag>
                       </TD>
-                      <TD>{agentProjectNames(agent, nameOf)}</TD>
+                      <TD>{agentProjectNames(agent, nameOf, t("settings.agents.noProjects"))}</TD>
                       <TD>
                         {reach.canAct ? (
-                          <Badge tone="green">Yes</Badge>
+                          <Badge tone="green">{t("settings.agents.yes")}</Badge>
                         ) : (
                           <div>
-                            <Badge tone="amber">No — {reach.why}</Badge>
-                            <p className="fg-body-sm mt-1">{reach.remedy}</p>
+                            <Badge tone="amber">{t("settings.agents.noWhy", { why: t(reach.why) })}</Badge>
+                            <p className="fg-body-sm mt-1">{t(reach.remedy)}</p>
                           </div>
                         )}
                       </TD>
@@ -236,14 +234,14 @@ export function AgentsTab() {
                             disabled={busy}
                             onClick={() => onMint(agent)}
                           >
-                            {agent.activeTokens > 0 ? "Mint another" : "Give a credential"}
+                            {agent.activeTokens > 0 ? t("settings.agents.mintAnother") : t("settings.agents.give")}
                           </Button>
                           <Button
                             variant="ghost"
                             disabled={busy || agent.activeTokens === 0}
                             onClick={() => onRevoke(agent)}
                           >
-                            Revoke
+                            {t("settings.agents.revoke")}
                           </Button>
                           <Button
                             variant="ghost"
@@ -252,7 +250,7 @@ export function AgentsTab() {
                               setSelfOpen(selfOpen === agent.userId ? null : agent.userId)
                             }
                           >
-                            {selfOpen === agent.userId ? "Close self" : "Self"}
+                            {selfOpen === agent.userId ? t("settings.agents.closeSelf") : t("settings.agents.self")}
                           </Button>
                         </div>
                       </TD>
@@ -263,7 +261,7 @@ export function AgentsTab() {
             </Table>
             {openAgent && (
               <div className="mt-6 border-t border-line pt-6">
-                <PageSectionTitle className="mb-3">Self of {agentLabel(openAgent)}</PageSectionTitle>
+                <PageSectionTitle className="mb-3">{t("settings.agents.selfOf", { name: agentLabel(openAgent) })}</PageSectionTitle>
                 <AgentSelfEditor
                   orgId={orgId}
                   agentUserId={openAgent.userId}

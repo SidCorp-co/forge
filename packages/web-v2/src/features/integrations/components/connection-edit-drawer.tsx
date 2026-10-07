@@ -26,7 +26,7 @@ import {
   statusReading,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectListItem } from "@/features/projects/types";
 import {
@@ -37,7 +37,7 @@ import {
   useUpdateConnection,
 } from "../hooks";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
-import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
+import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule, secretPlaceholderOf } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
@@ -58,7 +58,9 @@ function HeaderTitle({
   const update = useUpdateConnection();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const label = connection.displayName ?? providerLabel(connection.provider);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const label = connection.displayName ?? providerLabel(connection.provider, language);
 
   const save = () => {
     const next = draft.trim();
@@ -85,11 +87,11 @@ function HeaderTitle({
                 setEditing(false);
               }
             }}
-            aria-label="Connection name"
+            aria-label={t("integrations.edit.name")}
             className="w-52"
           />
           <Button variant="secondary" size="sm" loading={update.isPending} onClick={save}>
-            Save
+            {t("integrations.edit.save")}
           </Button>
         </span>
       ) : (
@@ -104,7 +106,7 @@ function HeaderTitle({
                 setEditing(true);
               }}
             >
-              Rename
+              {t("integrations.edit.rename")}
             </Button>
           )}
         </>
@@ -112,7 +114,7 @@ function HeaderTitle({
       <DirectoryStatusPill status={connection.directoryStatus} />
       {connection.ownerType === "org" && (
         <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-          org-shared
+          {t("integrations.detail.orgShared")}
         </span>
       )}
     </span>
@@ -133,7 +135,10 @@ function CredentialSection({
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
-  const checked = formatRelativeTime(connection.lastHealthAt);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  const checked = time.relative(connection.lastHealthAt);
   const module = providerModule(connection.provider);
   const secretField = module?.secretField ?? null;
 
@@ -160,27 +165,24 @@ function CredentialSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <PageSectionTitle>Credential</PageSectionTitle>
+      <PageSectionTitle>{t("integrations.edit.credential")}</PageSectionTitle>
       {canManage && secretField === null && (
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          {module?.connectionNote ??
-            `${providerLabel(connection.provider)}'s credential is not entered by hand and cannot be replaced here.`}
+          {module?.connectionNote
+            ? t(module.connectionNote)
+            : t("integrations.edit.notByHand", { provider: providerLabel(connection.provider, language) })}
         </p>
       )}
       {canManage && secretField !== null && (
         <Field
-          label="Replace key"
-          hint={
-            connection.hasSecrets
-              ? "A key is stored (never shown). Enter a new one to rotate — the previous key stays valid for 24h."
-              : "No credential stored yet. Enter one to activate this connection."
-          }
+          label={t("integrations.edit.replaceKey")}
+          hint={connection.hasSecrets ? t("integrations.edit.keyStored") : t("integrations.edit.noKey")}
         >
           <div className="flex items-center gap-2">
             <Input
               type="password"
               autoComplete="off"
-              placeholder={module?.secretPlaceholder ?? "API key"}
+              placeholder={secretPlaceholderOf(connection.provider, language) ?? t("integrations.edit.apiKey")}
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
@@ -191,7 +193,7 @@ function CredentialSection({
               loading={update.isPending}
               onClick={saveKey}
             >
-              Save key
+              {t("integrations.edit.saveKey")}
             </Button>
           </div>
         </Field>
@@ -199,19 +201,21 @@ function CredentialSection({
       <div className="flex items-center gap-3">
         {canManage && (
           <Button variant="secondary" size="sm" loading={test.isPending} onClick={runTest}>
-            Test connection
+            {t("integrations.edit.test")}
           </Button>
         )}
         <span className="fg-body-sm text-muted">
           {connection.lastHealthStatus
-            ? `Last health: ${statusReading("connection", connection.lastHealthStatus).label}${checked ? ` · ${checked}` : ""}`
-            : "never health-checked"}
-          {!connection.hasSecrets && " · no credential stored"}
+            ? `${t("integrations.row.lastHealth", { status: statusReading("connection", connection.lastHealthStatus, language).label })}${checked ? ` · ${checked}` : ""}`
+            : t("integrations.row.neverChecked")}
+          {!connection.hasSecrets && ` · ${t("integrations.row.noCredential")}`}
         </span>
       </div>
       {testResult && (
         <Banner tone={testResult.status === "ok" ? "success" : "danger"}>
-          {testResult.status === "ok" ? "Connection healthy" : `Test failed: ${statusReading("connection", testResult.status).label}`}
+          {testResult.status === "ok"
+            ? t("integrations.edit.healthy")
+            : t("integrations.edit.testFailed", { status: statusReading("connection", testResult.status, language).label })}
           {testResult.message ? ` — ${testResult.message}` : ""}
         </Banner>
       )}
@@ -230,14 +234,17 @@ function ConfigSection({
 }) {
   const module = providerModule(connection.provider);
   const Section = CONNECTION_SECTIONS.get(connection.provider);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   if (!Section) {
     return (
       <section className="flex flex-col gap-2">
-        <PageSectionTitle>Configuration</PageSectionTitle>
+        <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          {module?.connectionNote ??
-            `${providerLabel(connection.provider)} has no configuration at the credential tier.`}
+          {module?.connectionNote
+            ? t(module.connectionNote)
+            : t("integrations.edit.noConfig", { provider: providerLabel(connection.provider, language) })}
         </p>
       </section>
     );
@@ -273,6 +280,7 @@ function ProjectsSection({
   onRetry: () => void;
   onNavigate: () => void;
 }) {
+  const t = useCopy();
   const byId = useMemo(() => {
     const map = new Map<string, ProjectListItem>();
     for (const p of projects) map.set(p.id, p);
@@ -281,15 +289,14 @@ function ProjectsSection({
 
   return (
     <section className="flex flex-col gap-2">
-      <PageSectionTitle>Projects using it</PageSectionTitle>
+      <PageSectionTitle>{t("integrations.edit.projectsUsing")}</PageSectionTitle>
       {bindingsLoading ? (
         <Skeleton className="h-8 w-full" />
       ) : bindingsError ? (
         <ErrorState message={bindingsError} onRetry={onRetry} />
       ) : bindings.length === 0 ? (
         <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
-          No projects use this connection yet. Share it from a project&apos;s settings →
-          Integrations.
+          {t("integrations.edit.noProjects")}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line-subtle">
@@ -300,16 +307,16 @@ function ProjectsSection({
               <>
                 <span className="truncate text-fg">{project?.name ?? b.projectId}</span>
                 <span className="fg-body-sm text-muted">
-                  {scopeLabel(b.role)}
+                  {scopeLabel(b.role, t)}
                 </span>
                 {archived && (
                   <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                    archived
+                    {t("integrations.edit.archived")}
                   </span>
                 )}
                 {!b.active && (
                   <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                    binding disabled
+                    {t("integrations.edit.bindingDisabled")}
                   </span>
                 )}
                 {!archived && project && (
@@ -339,7 +346,7 @@ function ProjectsSection({
       )}
       {connection.ownerType === "org" && (
         <p className="fg-body-sm text-muted">
-          Org-shared — any project in the org can be bound to this connection.
+          {t("integrations.edit.orgSharedNote")}
         </p>
       )}
     </section>
@@ -359,10 +366,11 @@ function DangerZone({
   const update = useUpdateConnection();
   const remove = useRemoveConnection();
   const [confirming, setConfirming] = useState(false);
+  const t = useCopy();
 
   return (
     <section className="flex flex-col gap-3">
-      <PageSectionTitle>Danger zone</PageSectionTitle>
+      <PageSectionTitle>{t("integrations.edit.danger")}</PageSectionTitle>
       <div className="flex items-center gap-2">
         {connection.active ? (
           <Button
@@ -371,7 +379,7 @@ function DangerZone({
             loading={update.isPending}
             onClick={() => update.mutate({ id: connection.id, body: { active: false } })}
           >
-            Disable
+            {t("integrations.row.disable")}
           </Button>
         ) : (
           <Button
@@ -380,20 +388,23 @@ function DangerZone({
             loading={update.isPending}
             onClick={() => update.mutate({ id: connection.id, body: { active: true } })}
           >
-            Enable
+            {t("integrations.row.enable")}
           </Button>
         )}
         <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
-          Remove…
+          {t("integrations.edit.removeOpen")}
         </Button>
       </div>
       {confirming && (
         <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken px-3 py-2.5">
           <p className="fg-body-sm text-fg">
-            {affectedProjects.length > 0
-              ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`
-              : "No projects are actively using this connection. Removing it disables the stored credential."}{" "}
-            The connection stays listed as Disabled so it can be re-enabled later.
+            {affectedProjects.length === 0
+              ? t("integrations.edit.removeNone")
+              : t(affectedProjects.length === 1 ? "integrations.edit.removeOne" : "integrations.edit.removeMany", {
+                  n: affectedProjects.length,
+                  list: affectedProjects.join(", "),
+                })}{" "}
+            {t("integrations.edit.staysListed")}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -406,10 +417,10 @@ function DangerZone({
                 })
               }
             >
-              Remove connection
+              {t("integrations.edit.remove")}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
         </div>

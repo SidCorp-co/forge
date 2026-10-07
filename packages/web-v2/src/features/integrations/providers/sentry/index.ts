@@ -13,6 +13,5 @@ export const sentry: ProviderModule = {
   target: (config) => text(config, "host"),
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),
   connectionSection: null,
-  connectionNote:
-    "Sentry's host and the org/project targets an agent may name are edited per project, under project settings → Integrations.",
+  connectionNote: "integrations.note.sentry",
 };

@@ -6,8 +6,8 @@
 
 import { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { type ReactNode, useState } from "react";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
-import { statusLabel } from "../derive";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import {
@@ -18,12 +18,6 @@ import {
 
 const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_STATUSES);
 
-const REASON_TOAST: Record<ReasonStatus, string> = {
-  reopen: "Issue reopened",
-  needs_info: "Information requested",
-  on_hold: "Issue put on hold",
-  dropped: "Issue dropped",
-};
 
 interface RequestOptions {
   successMessage?: string;
@@ -51,6 +45,8 @@ interface GuardedTransition {
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
+  const t = useCopy();
+  const L = useLabel();
   const [prompt, setPrompt] = useState<{
     id: string;
     status: DialogMode;
@@ -76,12 +72,12 @@ export function useGuardedTransition(): GuardedTransition {
         id,
         status: toStatus as ReasonStatus,
         target: toStatus,
-        successMessage: opts?.successMessage ?? REASON_TOAST[toStatus as ReasonStatus],
+        successMessage: opts?.successMessage ?? t(`issues.toast.${toStatus as ReasonStatus}`),
         onSuccess: opts?.onSuccess,
       });
       return;
     }
-    const successMessage = opts?.successMessage ?? `Moved to ${statusLabel(toStatus)}`;
+    const successMessage = opts?.successMessage ?? t("issues.toast.movedTo", { status: L("issueStatus", toStatus) });
     transition.mutate(
       { id, toStatus },
       {
@@ -107,7 +103,7 @@ export function useGuardedTransition(): GuardedTransition {
       status: mode,
       target: first,
       targets,
-      successMessage: opts?.successMessage ?? (mode === "not_needed" ? "Question withdrawn" : "Moved"),
+      successMessage: opts?.successMessage ?? (mode === "not_needed" ? t("issues.toast.withdrawn") : t("issues.toast.moved")),
       onSuccess: opts?.onSuccess,
     });
   };

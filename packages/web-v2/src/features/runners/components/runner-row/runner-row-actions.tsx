@@ -1,5 +1,6 @@
 import { Button } from "@/design";
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useReprovision, useSetDeviceDisabled, useUnassignDeviceFromProject } from "../../hooks";
 import type { ProjectRunner } from "../../types";
 
@@ -17,6 +18,7 @@ export function RunnerRowActions({
 	const unassign = useUnassignDeviceFromProject(projectId);
 	const setDisabled = useSetDeviceDisabled();
 	const [confirmRemove, setConfirmRemove] = useState(false);
+	const t = useCopy();
 
 	if (confirmRemove) {
 		return (
@@ -32,14 +34,14 @@ export function RunnerRowActions({
 						})
 					}
 				>
-					Remove
+					{t("runners.row.remove")}
 				</Button>
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={() => setConfirmRemove(false)}
 				>
-					Cancel
+					{t("common.cancel")}
 				</Button>
 			</span>
 		);
@@ -60,7 +62,7 @@ export function RunnerRowActions({
 						})
 					}
 				>
-					Turn on
+					{t("runners.device.turnOn")}
 				</Button>
 			)}
 			{runner.deviceId && (
@@ -76,7 +78,7 @@ export function RunnerRowActions({
 						})
 					}
 				>
-					Re-provision
+					{t("runners.row.reprovision")}
 				</Button>
 			)}
 			<Button
@@ -85,7 +87,7 @@ export function RunnerRowActions({
 				icon="trash"
 				onClick={() => setConfirmRemove(true)}
 			>
-				Unassign
+				{t("runners.row.unassign")}
 			</Button>
 		</span>
 	);

@@ -27,6 +27,8 @@ import {
 import { useProjects } from "@/features/projects/hooks";
 import { useCurrentProject } from "@/features/projects/current-project";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import type { ProjectListItem } from "@/features/projects/types";
 import {
@@ -50,6 +52,7 @@ export function McpTab() {
   const projects = projectsQ.data ?? [];
   const currentProject = useCurrentProject();
   const [projectId, setProjectId] = useState<string | null>(null);
+  const t = useCopy();
   // A pick, else the project the person is working in — never the list's first
   // entry: the snippet is pasted unread, so a guessed project is a wrong config.
   const selectedProject =
@@ -67,40 +70,40 @@ export function McpTab() {
     );
   if (projectsQ.isError)
     return (
-      <ErrorState title="Couldn't load projects" message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+      <ErrorState title={t("settings.mcp.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
     );
   if (projects.length === 0)
     return (
       <EmptyState
-        title="No projects yet"
-        message="MCP clients connect to a specific project. Create or join a project, then come back for a config snippet."
+        title={t("settings.orgs.noProjectsTitle")}
+        message={t("settings.mcp.noProjects")}
       />
     );
 
   return (
     <div className="space-y-6">
       <Banner tone="info">
-        MCP clients authenticate with a personal access token. Create one on the{" "}
+        {t("settings.mcp.authLead")}{" "}
         <Link href={TOKENS_TAB_HREF} className="font-semibold text-fg underline underline-offset-2">
-          API Tokens
+          {t("shell.settings.tab.tokens")}
         </Link>{" "}
-        tab, then paste it into the snippet below in place of the placeholder.
+        {t("settings.mcp.authTail")}
       </Banner>
 
       <PageSection>
         <PageSectionBody>
-          <SectionTitle className="fg-h3 mb-4">Connect a client</SectionTitle>
+          <SectionTitle className="fg-h3 mb-4">{t("settings.mcp.connectClient")}</SectionTitle>
           <div className="space-y-4">
             <div>
-              <p className="fg-label mb-1.5">Endpoint</p>
+              <p className="fg-label mb-1.5">{t("settings.mcp.endpoint")}</p>
               <MonoTag>{endpoint}</MonoTag>
             </div>
-            <Field label="Project" hint="Sets the X-Forge-Project-Slug header — the project this client's tool calls are scoped to.">
+            <Field label={t("common.nav.project")} hint={t("settings.mcp.projectHint")}>
               <Select
                 options={projects.map((p) => ({ value: p.id, label: `${p.name} · ${p.slug}` }))}
                 value={selectedProject?.id ?? ""}
                 onChange={setProjectId}
-                placeholder="Choose a project…"
+                placeholder={t("settings.mcp.chooseProjectPlaceholder")}
               />
             </Field>
           </div>
@@ -114,8 +117,8 @@ export function McpTab() {
         </>
       ) : (
         <EmptyState
-          title="Choose a project"
-          message="Pick the project this client connects to, and its config snippet appears here."
+          title={t("settings.mcp.chooseProject")}
+          message={t("settings.mcp.chooseProjectBody")}
         />
       )}
     </div>
@@ -136,10 +139,12 @@ function SnippetPanel({
   const snippet = generateSnippet(client, { projectSlug: project.slug, mcpUrl: endpoint });
 
   const [copied, setCopied] = useState(false);
+  const t = useCopy();
+  const clients = CLIENTS.map((c) => (c.value === "generic" ? { ...c, label: t("settings.mcp.generic") } : c));
   useEffect(() => {
     if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
   }, [copied]);
 
   async function copySnippet() {
@@ -147,7 +152,7 @@ function SnippetPanel({
       await navigator.clipboard.writeText(snippet.content);
       setCopied(true);
     } catch {
-      toast({ title: "Copy failed", description: "Select and copy it manually.", tone: "error" });
+      toast({ title: t("settings.agents.copyFailed"), description: t("settings.agents.copyByHand"), tone: "error" });
     }
   }
 
@@ -155,7 +160,7 @@ function SnippetPanel({
       <PageSection>
         <PageSectionBody>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <SectionTitle className="fg-h3">Config snippet</SectionTitle>
+            <SectionTitle className="fg-h3">{t("settings.mcp.snippet")}</SectionTitle>
             <Button
               variant="secondary"
               size="sm"
@@ -163,35 +168,32 @@ function SnippetPanel({
               className="min-h-11"
               aria-live="polite"
             >
-              {copied ? "Copied ✓" : "Copy"}
+              {copied ? t("settings.mcp.copied") : t("settings.agents.copy")}
             </Button>
           </div>
           <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
-            This snippet configures <strong>{project.name}</strong>{" "}
-            <MonoTag>{project.slug}</MonoTag>
-            {currentProject && currentProject.id !== project.id ? (
-              <> — not {currentProject.name}, the project you are working in.</>
-            ) : currentProject ? (
-              <>, the project you are working in.</>
-            ) : (
-              "."
-            )}
+            {t("settings.mcp.configures")} <strong>{project.name}</strong> <MonoTag>{project.slug}</MonoTag>
+            {currentProject && currentProject.id !== project.id
+              ? t("settings.mcp.notCurrent", { name: currentProject.name })
+              : currentProject
+                ? t("settings.mcp.isCurrent")
+                : "."}
           </p>
 
           <div className="mb-3 overflow-x-auto">
-            <Tabs tabs={CLIENTS} value={client} onChange={(v) => setClient(v as ClientKind)} />
+            <Tabs tabs={clients} value={client} onChange={(v) => setClient(v as ClientKind)} />
           </div>
 
           <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
             {snippet.howTo === "command" ? (
               <>
-                Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
-                run this line once in a terminal.
+                {t("settings.mcp.replace")} <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag>{" "}
+                {t("settings.mcp.replaceRun")}
               </>
             ) : (
               <>
-                Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-                <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+                {t("settings.mcp.addTo")} <MonoTag>{snippet.filePath}</MonoTag> {t("settings.mcp.andReplace")}{" "}
+                <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> {t("settings.mcp.withToken")}
               </>
             )}
           </p>
@@ -235,25 +237,24 @@ function SnippetCode({ content }: { content: string }) {
 
 /** Map a failed test to a recovery hint so the error is actionable, not just a
  *  status code. Returns null when there's nothing better than the raw message. */
-function recoveryHint(err: unknown): ReactNode | null {
+function recoveryHint(err: unknown, t: Copy): ReactNode | null {
   if (err instanceof McpTestError) {
     if (err.status === 401)
       return (
         <>
-          The token is invalid, expired, or revoked. Create a new one on the{" "}
+          {t("settings.mcp.hint401")}{" "}
           <Link href={TOKENS_TAB_HREF} className="font-semibold underline underline-offset-2">
-            API Tokens
-          </Link>{" "}
-          tab.
+            {t("shell.settings.tab.tokens")}
+          </Link>
+          .
         </>
       );
-    if (err.status === 403)
-      return "The token works, but its owner isn't a member of the selected project. Pick another project or ask an owner for access.";
-    if (err.status === 429) return "Rate limit hit for this token. Wait a moment and try again.";
+    if (err.status === 403) return t("settings.mcp.hint403");
+    if (err.status === 429) return t("settings.mcp.hint429");
     return null;
   }
   // fetch() network failure (CORS, DNS, server down) surfaces as a TypeError.
-  return "The endpoint couldn't be reached from this browser. Check that the server is up and the URL is correct.";
+  return t("settings.mcp.hintUnreachable");
 }
 
 type TestState =
@@ -262,13 +263,14 @@ type TestState =
   | { status: "error"; error: string; hint: ReactNode | null };
 
 function TestOutcome({ test }: { test: TestState }) {
+  const t = useCopy();
   if (test.status === "ok")
     return (
       <div className="mt-4" role="status">
-        <Badge tone="accent">Connected · {test.result.toolsCount} tools</Badge>
+        <Badge tone="accent">{t("settings.mcp.connectedTools", { n: test.result.toolsCount })}</Badge>
         {test.result.sampleNames.length > 0 && (
           <div className="fg-caption mt-2 flex flex-wrap items-center gap-1.5">
-            <span>e.g.</span>
+            <span>{t("settings.mcp.eg")}</span>
             {test.result.sampleNames.map((n) => (
               <MonoTag key={n}>{n}</MonoTag>
             ))}
@@ -293,6 +295,7 @@ function TestOutcome({ test }: { test: TestState }) {
 function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectSlug: string }) {
   const [token, setToken] = useState("");
   const [test, setTest] = useState<TestState>({ status: "idle" });
+  const t = useCopy();
 
   async function run() {
     if (!token.trim()) return;
@@ -306,18 +309,16 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
           ? `${err.status}${err.code ? ` ${err.code}` : ""} — ${err.message}`
           : err instanceof Error
             ? err.message
-            : "Connection failed";
-      setTest({ status: "error", error, hint: recoveryHint(err) });
+            : t("integrations.provider.connectionFailed");
+      setTest({ status: "error", error, hint: recoveryHint(err, t) });
     }
   }
 
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Test connection</SectionTitle>
-        <p className="fg-caption mb-4">
-          Paste a token to verify it can reach this project over MCP. The token isn&apos;t saved.
-        </p>
+        <SectionTitle className="fg-h3 mb-1">{t("integrations.edit.test")}</SectionTitle>
+        <p className="fg-caption mb-4">{t("settings.mcp.testIntro")}</p>
         <form
           className="flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(e) => {
@@ -326,7 +327,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
           }}
         >
           <div className="flex-1">
-            <Field label="Personal access token">
+            <Field label={t("settings.mcp.pat")}>
               <Input
                 type="password"
                 autoComplete="off"
@@ -343,7 +344,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
             loading={test.status === "testing"}
             className="min-h-11"
           >
-            Test
+            {t("integrations.provider.test")}
           </Button>
         </form>
 

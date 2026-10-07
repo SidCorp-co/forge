@@ -7,10 +7,11 @@ import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Button, StatusChip } from "@/design";
 import { useId } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { runStatusChip } from "../derive";
-import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { PRIORITY_OPTIONS } from "./issue-table-row";
+import { usePriorityOptions } from "./issue-table-row";
 import { usePatchIssue } from "../hooks";
 import { useGuardedTransition } from "./use-guarded-transition";
 import type { IssueAgentStatus, IssuePriority, IssueStatus, PipelineHealth } from "../types";
@@ -48,7 +49,9 @@ export function IssueQuickActions({
   const pending = patch.isPending || isPending;
   const runChip = runStatusChip({ agentStatus, pipelineHealth });
   const refusalId = useId();
-  const refusal = heldByAgent(status, agentStatus) ? { id: refusalId, text: AGENT_HOLDS_EDIT } : null;
+  const t = useCopy();
+  const priorityOptions = usePriorityOptions();
+  const refusal = heldByAgent(status, agentStatus) ? { id: refusalId, text: agentHoldsEdit(t) } : null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
@@ -65,9 +68,9 @@ export function IssueQuickActions({
       {runChip && <StatusChip status={runChip} size="sm" domain="session" />}
       <span aria-hidden className="h-4 w-px flex-none" style={{ background: "var(--border-default)" }} />
       <InlineSelect
-        ariaLabel="Priority"
+        ariaLabel={t("issues.field.priority")}
         value={priority}
-        options={PRIORITY_OPTIONS}
+        options={priorityOptions}
         disabled={pending}
         refusal={refusal}
         onCommit={(p) => patch.mutate({ id: issueId, body: { priority: p as IssuePriority } })}
@@ -75,7 +78,7 @@ export function IssueQuickActions({
       />
       {slug && onOpenIssue && (
         <Button variant="ghost" size="sm" icon="list" className="ml-auto" onClick={onOpenIssue}>
-          Open issue
+          {t("issues.row.open")}
         </Button>
       )}
       {refusal && (

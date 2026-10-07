@@ -20,15 +20,11 @@ import {
   Tooltip,
   TR,
 } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import {
-  complexityLabel,
-  initials,
-  priorityLabel,
-  workStepOf,
-} from "../derive";
+import { initials, workStepOf } from "../derive";
 import { useStatusTone } from "../release-approval";
 import {
   deriveQueuedStep,
@@ -36,8 +32,8 @@ import {
   queuedChipStatus,
   type QueuedStepView,
 } from "../waiting";
-import { transitionLabels } from "../derive";
-import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { agentHoldsEdit, heldByAgent } from "../edit-lock";
+import { useGateReading } from "../gate-reading";
 import { sinceLastWrite } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
@@ -72,13 +68,12 @@ function useOpenIssue(slug: string, id: string) {
 
 /** ISS-700 — step · reason · time label for the Failed-badge tooltip. Falls
  *  back to a calm line when no failure data reached the row (AC #2). */
-function failureTooltipLabel(info?: IssueFailureInfo | null): string {
-  if (!info) return "No failure details available";
-  const step = info.failedStep.charAt(0).toUpperCase() + info.failedStep.slice(1);
-  const when = formatRelativeTime(info.failedAt);
+function failureTooltipLabel(t: Copy, step: string, when: string, info?: IssueFailureInfo | null): string {
+  if (!info) return t("issues.failure.none");
   const reason = info.failureReason?.trim();
   const short = reason && reason.length > 140 ? `${reason.slice(0, 139)}…` : reason;
-  return short ? `${step} failed · ${short} · ${when}` : `${step} failed · ${when}`;
+  const failed = t("issues.failure.stepFailed", { step });
+  return short ? `${failed} · ${short} · ${when}` : `${failed} · ${when}`;
 }
 
 const hasLiveAgent = (s: IssueRow["agentStatus"]): boolean =>
@@ -94,6 +89,9 @@ function AgentChip({
   agentStatus: IssueRow["agentStatus"];
   failureInfo?: IssueFailureInfo | null;
 }) {
+  const t = useCopy();
+  const L = useLabel();
+  const time = useTimeFormat();
   if (!hasLiveAgent(agentStatus)) return null;
   const status =
     agentStatus === "running"
@@ -104,7 +102,7 @@ function AgentChip({
   const chip = <StatusChip status={status} domain="session" size="sm" />;
   if (status !== "failed") return chip;
   return (
-    <Tooltip label={failureTooltipLabel(failureInfo)} multiline>
+    <Tooltip label={failureTooltipLabel(t, failureInfo ? L("workStep", failureInfo.failedStep) : "", failureInfo ? time.relative(failureInfo.failedAt) : "", failureInfo)} multiline>
       {chip}
     </Tooltip>
   );
@@ -131,17 +129,20 @@ export function StatusCell({ row }: { row: IssueRow }) {
  *  (or with "Queued" when nothing is). Colour resolves through an existing
  *  StatusKey's tone, like every other chip. */
 function QueuedChip({ step }: { step: QueuedStepView }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const gate = useGateReading(step.gate);
   const chip = (
     <StatusChip
       status={queuedChipStatus(step)}
       domain="session"
       size="sm"
-      label={step.gate?.short ?? "Queued"}
+      label={gate?.short ?? t("issues.queued")}
     />
   );
-  if (!step.gate) return chip;
+  if (!gate) return chip;
   return (
-    <Tooltip label={`${enumLabel("jobType", step.jobType)} · ${step.gate.detail}`} multiline>
+    <Tooltip label={`${enumLabel("jobType", step.jobType, language)} · ${gate.detail}`} multiline>
       {chip}
     </Tooltip>
   );
@@ -157,10 +158,11 @@ const PRIORITY_TONE: Record<IssuePriority, "red" | "amber" | "neutral"> = {
 
 /** Read-only priority pill. `none` collapses to a muted dash. */
 function PriorityCell({ priority }: { priority: IssuePriority }) {
+  const L = useLabel();
   if (priority === "none")
     return <span className="fg-caption text-subtle">—</span>;
   return (
-    <Badge tone={PRIORITY_TONE[priority]}>{priorityLabel(priority)}</Badge>
+    <Badge tone={PRIORITY_TONE[priority]}>{L("issuePriority", priority)}</Badge>
   );
 }
 
@@ -174,21 +176,22 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
+  const t = useCopy();
+  const L = useLabel();
   const items: MenuItem[] = [
-    { label: "Open issue", icon: "arrowRight", onSelect: open },
+    { label: t("issues.row.open"), icon: "arrowRight", onSelect: open },
   ];
 
   if (actions.canWrite === false) return items;
 
   if (heldByAgent(row.status, row.agentStatus)) {
-    items.push({ label: AGENT_HOLDS_EDIT, disabled: true, separatorBefore: true });
+    items.push({ label: agentHoldsEdit(t), disabled: true, separatorBefore: true });
     return items;
   }
 
-  const statusNames = transitionLabels(row.moves.map((g) => g.to));
-  for (const [i, g] of row.moves.entries()) {
+  for (const g of row.moves) {
     items.push({
-      label: `Status: ${statusNames[i]}`,
+      label: `${t("issues.field.status")}: ${L("issueStatus", g.to)}`,
       danger: g.kind === "discard",
       separatorBefore: g.startsGroup,
       onSelect: () => actions.transition({ id: row.id, toStatus: g.to }),
@@ -197,20 +200,20 @@ function useRowMenuItems(
   for (const p of ISSUE_PRIORITIES) {
     if (p === row.priority) continue;
     items.push({
-      label: `Priority: ${priorityLabel(p)}`,
+      label: `${t("issues.field.priority")}: ${L("issuePriority", p)}`,
       onSelect: () => actions.patch({ id: row.id, body: { priority: p } }),
     });
   }
   for (const c of ISSUE_COMPLEXITIES) {
     if (c === row.complexity) continue;
     items.push({
-      label: `Complexity: ${complexityLabel(c)}`,
+      label: `${t("issues.field.complexity")}: ${t(`issues.complexity.${c}` as never)}`,
       onSelect: () => actions.patch({ id: row.id, body: { complexity: c } }),
     });
   }
   if (row.complexity) {
     items.push({
-      label: "Complexity: clear",
+      label: `${t("issues.field.complexity")}: ${t("issues.complexity.clear")}`,
       onSelect: () => actions.patch({ id: row.id, body: { complexity: null } }),
     });
   }
@@ -228,6 +231,7 @@ function RowMenu({
   open: () => void;
 }) {
   const items = useRowMenuItems(row, actions, open);
+  const t = useCopy();
   return (
     <Menu
       align="right"
@@ -237,7 +241,7 @@ function RowMenu({
           icon="more"
           size="sm"
           variant="ghost"
-          aria-label="Row actions"
+          aria-label={t("issues.row.actions")}
           disabled={actions.isPending}
         />
       }
@@ -285,6 +289,7 @@ export function IssueTableRow({
   now: number;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);
+  const t = useCopy();
 
   return (
     <TR
@@ -307,7 +312,7 @@ export function IssueTableRow({
               checked={selection.selected}
               onChange={selection.onToggle}
               disabled={actions.isPending}
-              ariaLabel={`Select ${row.displayId}`}
+              ariaLabel={t("issues.row.select", { key: row.displayId })}
             />
           </span>
         </TD>
@@ -317,7 +322,7 @@ export function IssueTableRow({
           <button
             type="button"
             onClick={open}
-            aria-label={`Open ${row.displayId}`}
+            aria-label={t("issues.row.openKey", { key: row.displayId })}
             className="cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <MonoTag hue="cobalt">{row.displayId}</MonoTag>
@@ -330,7 +335,7 @@ export function IssueTableRow({
           <button
             type="button"
             onClick={open}
-            aria-label={`Open ${row.displayId}: ${row.title}`}
+            aria-label={t("issues.row.openTitled", { key: row.displayId, title: row.title })}
             className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">

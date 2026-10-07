@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { LiveReach, LiveReachCommit } from "../types";
 
 function short(sha: string): string {
@@ -9,10 +10,11 @@ function short(sha: string): string {
 
 /** What was compared and when, as text rather than only a hover, so a keyboard reader gets it too. */
 function Compared({ reach }: { reach: Extract<LiveReach, { baseSha: string }> }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   return (
     <span className="fg-caption font-mono">
-      {reach.baseBranch} {short(reach.baseSha)} vs {reach.deploysFrom} {short(reach.liveSha)} · read{" "}
-      {reach.measuredAt.slice(0, 16).replace("T", " ")}
+      {t("issues.reach.compared", { base: `${reach.baseBranch} ${short(reach.baseSha)}`, live: `${reach.deploysFrom} ${short(reach.liveSha)}`, at: time.dateTime(reach.measuredAt) })}
     </span>
   );
 }
@@ -23,12 +25,13 @@ function Compared({ reach }: { reach: Extract<LiveReach, { baseSha: string }> })
  * a native summary opens by Enter, Space or pointer.
  */
 function Unowned({ commits }: { commits: LiveReachCommit[] }) {
+  const t = useCopy();
   if (commits.length === 0) return null;
   const n = commits.length;
   return (
     <details className="flex flex-col items-end gap-1">
       <summary className="fg-caption cursor-pointer">
-        {n} waiting commit{n === 1 ? "" : "s"} belong{n === 1 ? "s" : ""} to no issue
+        {n === 1 ? t("issues.reach.unownedOne") : t("issues.reach.unownedMany", { n })}
       </summary>
       {commits.map((c) => (
         <span key={c.sha} className="fg-caption font-mono block" title={c.subject}>
@@ -44,11 +47,12 @@ function Unowned({ commits }: { commits: LiveReachCommit[] }) {
  * waiting commit is shown as exactly that, never as "live": core cannot prove the second.
  */
 export function LiveReachValue({ reach }: { reach: LiveReach }) {
+  const t = useCopy();
   if (reach.state === "not_on_live") {
     return (
       <div className="flex flex-col items-end gap-1">
-        <span title={`Waiting on ${reach.baseBranch} at ${short(reach.baseSha)}, not on ${reach.deploysFrom} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}>
-          <Badge tone="red">Not on production</Badge>
+        <span title={t("issues.reach.notOnLiveHint", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}>
+          <Badge tone="red">{t("issues.reach.notOnLive")}</Badge>
         </span>
         {reach.evidence.map((e) => (
           <span key={e.sha} className="fg-caption font-mono" title={e.subject}>
@@ -64,9 +68,9 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
       <div className="flex flex-col items-end gap-1">
         <span
           className="fg-caption"
-          title={`${reach.baseBranch} at ${short(reach.baseSha)} against ${reach.deploysFrom} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}
+          title={t("issues.reach.noneWaitingHint", { base: reach.baseBranch, baseSha: short(reach.baseSha), live: reach.deploysFrom, liveSha: short(reach.liveSha), at: reach.measuredAt })}
         >
-          Nothing waiting for {reach.deploysFrom}
+          {t("issues.reach.noneWaiting", { live: reach.deploysFrom })}
         </span>
         <Unowned commits={reach.unowned} />
         <Compared reach={reach} />
@@ -75,7 +79,7 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
   }
   return (
     <div className="flex flex-col items-end gap-1">
-      <Badge tone="amber">Not measured</Badge>
+      <Badge tone="amber">{t("issues.reach.notMeasured")}</Badge>
       <span className="fg-caption">{reach.reason}</span>
     </div>
   );

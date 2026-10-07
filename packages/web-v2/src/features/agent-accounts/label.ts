@@ -1,3 +1,4 @@
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { AgentAccountRow } from "./types";
 
 
@@ -11,12 +12,13 @@ export function agentLabel(agent: Pick<AgentAccountRow, "displayName" | "handle"
   return agent.email;
 }
 
-/** Every project this agent works on, as a person reads them. */
+/** Every project this agent works on, as a person reads them; `none` where it has none. */
 export function agentProjectNames(
   agent: Pick<AgentAccountRow, "projects">,
   nameOf: (projectId: string) => string | undefined,
+  none: string,
 ): string {
-  if (agent.projects.length === 0) return "none";
+  if (agent.projects.length === 0) return none;
   return agent.projects.map((p) => nameOf(p.id) ?? p.id).join(", ");
 }
 
@@ -25,7 +27,7 @@ export function agentAddress(agent: Pick<AgentAccountRow, "handle">): string {
   return agent.handle ? `@${agent.handle}` : "—";
 }
 
-export type Reach = { canAct: true } | { canAct: false; why: string; remedy: string };
+export type Reach = { canAct: true } | { canAct: false; why: ProductCopyKey; remedy: ProductCopyKey };
 
 /**
  * Whether this agent can act, and what to do about it when it cannot.
@@ -37,15 +39,13 @@ export function reachOf(
   if (agent.projects.length === 0) {
     return {
       canAct: false,
-      why: "belongs to no project",
-      remedy: agent.activeTokens > 0
-        ? "Add it to a project — its credential is fenced to one and reaches nothing until then."
-        : "Add it to a project, then give it a credential.",
+      why: "settings.agents.noProject",
+      remedy: agent.activeTokens > 0 ? "settings.agents.addFenced" : "settings.agents.addThenCredential",
     };
   }
   return {
     canAct: false,
-    why: "holds no live credential",
-    remedy: "Give it a credential — it cannot answer in a room without one.",
+    why: "settings.agents.noCredential",
+    remedy: "settings.agents.giveCredential",
   };
 }

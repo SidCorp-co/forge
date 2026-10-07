@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "@/design/icons/icon";
 import { Kbd } from "@/design/primitives/kbd";
@@ -37,13 +38,14 @@ export interface HelpButtonProps extends HelpContent {
  *  Composed from kit primitives + semantic tokens; a11y wired (aria-haspopup /
  *  aria-expanded, Esc + click-away close, focus returns to the trigger). */
 export function HelpButton({
-  label = "Help",
+  label,
   summary,
   actions,
   shortcuts,
   docPath,
-  docLabel = "Learn more in docs",
+  docLabel,
 }: HelpButtonProps) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -75,7 +77,7 @@ export function HelpButton({
         )}
       >
         <Icon name="help" size={15} />
-        {label}
+        {label ?? t("common.help.label")}
       </button>
 
       <Popover
@@ -86,13 +88,13 @@ export function HelpButton({
         takesFocus
         id={panelId}
         role="dialog"
-        aria-label="Page help"
+        aria-label={t("common.help.dialog")}
         className="forge-drop w-[320px] overflow-y-auto rounded-lg border border-line bg-surface shadow-lg"
       >
         <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-4 py-2.5">
           <span className="fg-label inline-flex items-center gap-1.5">
             <Icon name="help" size={15} className="text-subtle" />
-            About this page
+            {t("common.help.title")}
           </span>
           <button
             type="button"
@@ -100,7 +102,7 @@ export function HelpButton({
               setOpen(false);
               triggerRef.current?.focus();
             }}
-            aria-label="Close help"
+            aria-label={t("common.help.close")}
             className="inline-flex size-6 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
           >
             <Icon name="x" size={15} />
@@ -111,7 +113,7 @@ export function HelpButton({
 
           {actions && actions.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <Kicker>Primary actions</Kicker>
+              <Kicker>{t("common.help.actions")}</Kicker>
               <ul className="flex flex-col gap-1">
                 {actions.map((a) => (
                   <li key={a} className="fg-body-sm flex items-start gap-2 text-fg">
@@ -125,7 +127,7 @@ export function HelpButton({
 
           {shortcuts && shortcuts.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <Kicker>Keyboard shortcuts</Kicker>
+              <Kicker>{t("common.help.shortcuts")}</Kicker>
               <ul className="flex flex-col gap-1.5">
                 {shortcuts.map((s) => (
                   <li key={s.keys} className="flex items-center justify-between gap-2">
@@ -144,7 +146,7 @@ export function HelpButton({
               className="fg-body-sm inline-flex items-center gap-1.5 font-semibold text-[color:var(--link)] hover:underline"
             >
               <Icon name="book" size={14} />
-              {docLabel}
+              {docLabel ?? t("common.help.docs")}
               <Icon name="chevronRight" size={14} />
             </Link>
           )}

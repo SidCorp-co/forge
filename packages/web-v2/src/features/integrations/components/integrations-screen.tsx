@@ -27,6 +27,7 @@ import {
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgs } from "@/features/orgs/hooks";
@@ -45,22 +46,16 @@ const CLOSED_APPS_KEY = "web-v2:integrations-closed-apps";
 /** One identity for "nothing is shut under this filter", so reads do not re-allocate. */
 const EMPTY_APPS: string[] = [];
 
-const HELP_ACTIONS = [
-  "Click an app to open it, then a row — rename, replace the key, edit config, Test, drill into bound projects, or remove the connection",
-  "Disable / Enable — switch a credential off (every binding stops resolving) and back on",
-  "Binding-scoped settings (environment, webhooks, delivery log) stay in the project's settings → Integrations tab",
-  "Add connection — a connection is made by connecting a provider from the project it serves; pick the project and its Integrations tab opens",
-];
-
 /** Where a connection is made: the project it serves. The act names the project and goes there. */
 function AddConnection({ projects }: { projects: Array<{ id: string; slug: string; name: string }> }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
+  const t = useCopy();
   return (
     <>
       <span ref={anchor} className="inline-flex">
         <Button variant="primary" size="sm" icon="plus" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          Add connection
+          {t("integrations.add")}
         </Button>
       </span>
       <Popover
@@ -72,12 +67,9 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
         maxHeight={360}
         className="w-[300px] bg-surface p-3 shadow-md"
       >
-        <p className="fg-body-sm mb-2 text-muted">
-          A connection is made from the project it serves. Pick the project; its Integrations tab opens on the
-          provider list.
-        </p>
+        <p className="fg-body-sm mb-2 text-muted">{t("integrations.addBody")}</p>
         {projects.length === 0 ? (
-          <p className="fg-body-sm text-subtle">No project in this space yet.</p>
+          <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-line-subtle">
             {projects.map((p) => (
@@ -105,6 +97,8 @@ export function IntegrationsScreen() {
   const projectsQ = useProjectsIncludingArchived();
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("");
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   const orgNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -139,18 +133,18 @@ export function IntegrationsScreen() {
   const items = useMemo(
     () =>
       inScope.filter(
-        (c) => (provider === "" || c.provider === provider) && matchesQuery(c, query, projectName),
+        (c) => (provider === "" || c.provider === provider) && matchesQuery(c, query, projectName, language),
       ),
-    [inScope, provider, query, projectName],
+    [inScope, provider, query, projectName, language],
   );
 
   const ownerLabel = useCallback(
     (c: ConnectionDirectoryItem) =>
-      c.ownerType === "org" ? orgNameById.get(c.ownerId) ?? "Organization" : "Personal",
-    [orgNameById],
+      c.ownerType === "org" ? orgNameById.get(c.ownerId) ?? t("integrations.owner.org") : t("overview.personal"),
+    [orgNameById, t],
   );
 
-  const groups = useMemo(() => groupConnectionsByApp(items), [items]);
+  const groups = useMemo(() => groupConnectionsByApp(items, language), [items, language]);
 
   const spaceProjects = useMemo(
     () =>
@@ -202,21 +196,17 @@ export function IntegrationsScreen() {
   const selected = items.find((c) => c.id === selectedId) ?? null;
   const closeDrawer = useCallback(() => setSelectedId(null), []);
 
-  const scopeName = activeOrg
-    ? activeOrg.isPersonal
-      ? "your personal space"
-      : activeOrg.name
-    : "this workspace";
+  const scopeName = activeOrg ? (activeOrg.isPersonal ? t("integrations.scope.personal") : activeOrg.name) : t("integrations.scope.workspace");
 
   function renderEmpty() {
     if (inScope.length > 0) {
       return (
         <EmptyState
-          title="No connection matches"
-          message={`None of the ${inScope.length} connections in ${scopeName} match this filter.`}
+          title={t("integrations.empty.noMatch")}
+          message={t("integrations.empty.noMatchBody", { n: inScope.length, scope: scopeName })}
           mascot={false}
           action={{
-            label: "Clear filters",
+            label: t("integrations.empty.clearFilters"),
             onClick: () => {
               setQuery("");
               setProvider("");
@@ -228,16 +218,16 @@ export function IntegrationsScreen() {
     if (all.length > 0) {
       return (
         <EmptyState
-          title={`No connections in ${scopeName}`}
-          message={`You can see ${all.length} connection${all.length > 1 ? "s" : ""} in your other spaces — switch space in the sidebar to reach ${all.length > 1 ? "them" : "it"}.`}
+          title={t("integrations.empty.noneIn", { scope: scopeName })}
+          message={all.length > 1 ? t("integrations.empty.elsewhereMany", { n: all.length }) : t("integrations.empty.elsewhereOne")}
           mascot={false}
         />
       );
     }
     return (
       <EmptyState
-        title="No connections yet"
-        message="A connection is made by connecting a provider from the project it serves — Add connection picks the project."
+        title={t("integrations.empty.none")}
+        message={t("integrations.empty.noneBody")}
         mascot={false}
       />
     );
@@ -245,16 +235,12 @@ export function IntegrationsScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <PageTitle
-        hint={`The connections in ${scopeName}: credentials shared across projects. A project's own integrations are in its settings → Integrations.`}
-      >
-        Integrations
-      </PageTitle>
+      <PageTitle hint={t("integrations.hint", { scope: scopeName })}>{t("integrations.title")}</PageTitle>
       <TopBarActions>
         <AddConnection projects={spaceProjects} />
         <HelpButton
-          summary="A connection is a credential owned by you or one of your organizations (Coolify token, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
-          actions={HELP_ACTIONS}
+          summary={t("integrations.help")}
+          actions={[t("integrations.help.open"), t("integrations.help.disable"), t("integrations.help.binding"), t("integrations.help.add")]}
         />
       </TopBarActions>
 
@@ -264,28 +250,26 @@ export function IntegrationsScreen() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name, endpoint or project…"
-              aria-label="Search connections"
+              placeholder={t("integrations.search")}
+              aria-label={t("integrations.searchAria")}
             />
           </div>
           <div className="w-[200px] shrink-0">
             <NativeSelect
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
-              aria-label="Filter by provider"
+              aria-label={t("integrations.filterProvider")}
               options={[
-                { value: "", label: "All providers" },
+                { value: "", label: t("integrations.allProviders") },
                 ...providersPresent.map((p) => ({
                   value: p,
-                  label: providerLabel(p),
+                  label: providerLabel(p, language),
                 })),
               ]}
             />
           </div>
           <span className="fg-body-sm text-subtle">
-            {items.length === inScope.length
-              ? `${inScope.length} connections`
-              : `${items.length} of ${inScope.length} connections`}
+            {items.length === inScope.length ? t("integrations.count", { n: inScope.length }) : t("integrations.countOf", { n: items.length, total: inScope.length })}
           </span>
         </div>
       )}

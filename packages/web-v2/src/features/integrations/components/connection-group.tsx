@@ -13,6 +13,7 @@ import {
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { providerIcon } from "../providers/registry";
 import { ConnectionRow } from "./connection-row";
 
@@ -32,6 +33,7 @@ export function ConnectionGroupSection({
   onOpenConnection: (id: string) => void;
 }) {
   const rowsId = `connections-${group.provider}`;
+  const t = useCopy();
   return (
     <PageSection>
       <SectionTitle className="fg-h3">
@@ -54,7 +56,7 @@ export function ConnectionGroupSection({
             className="shrink-0 text-muted"
           />
           <span>{group.label}</span>
-          <span className="fg-body-sm font-normal text-muted">{groupSummary(group)}</span>
+          <span className="fg-body-sm font-normal text-muted">{groupSummary(group, t)}</span>
         </button>
       </SectionTitle>
       {/* The container the header's aria-controls names exists while the

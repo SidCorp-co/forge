@@ -92,7 +92,7 @@ describe("the ETA cell where there is no date", () => {
     expect(eta.kind).toBe("waits");
     expect(etaLines(eta, vi)).toEqual({ line: "Chờ Người ghi project", sub: null }); // i18n-allow: asserts the vi ETA copy
     expect(etaLines(eta, en).line).toBe("Waits on project writer");
-    expect(eta.detail).toBe("Người ghi project — answer a question. parked at needs_info"); // i18n-allow: asserts the vi ETA copy
+    expect(eta.detail).toBe("Người ghi project — trả lời một câu hỏi. parked at needs_info"); // i18n-allow: asserts the vi ETA copy; the act reads through the issue standing patterns, the reason stays as core wrote it
   });
 
   it("not enough history: a dash, the sample size in the tooltip", () => {

@@ -2,6 +2,7 @@
 
 import { Badge, Button } from "@/design";
 import { type ReactNode, useMemo, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useIntegrationsList } from "../hooks";
 import type { IntegrationSummary } from "../types";
 import { type BadgeView, ProviderCard } from "./shared";
@@ -37,13 +38,14 @@ export function MultiBindingSection({
   );
   const isLoading = list.isLoading;
   const [adding, setAdding] = useState(false);
+  const t = useCopy();
   return (
     <ProviderCard
       title={title}
-      badge={bindings.length > 0 ? { label: `${bindings.length} connected`, tone: "green" } : null}
+      badge={bindings.length > 0 ? { label: t("integrations.provider.nConnected", { n: bindings.length }), tone: "green" } : null}
     >
       <p className="fg-body-sm text-muted">{intro}</p>
-      {isLoading && <p className="fg-body-sm text-muted">Loading…</p>}
+      {isLoading && <p className="fg-body-sm text-muted">{t("integrations.provider.loading")}</p>}
       {!isLoading && bindings.length === 0 && <p className="fg-body-sm text-muted italic">{emptyText}</p>}
       {bindings.map((binding, idx) => renderRow(binding, idx === 0))}
       {adding ? (
@@ -71,15 +73,16 @@ export function BindingRowHeader({
   monoDefault?: boolean;
 }) {
   const label = binding.label;
+  const t = useCopy();
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
         {label || monoDefault ? (
           <span className="font-mono text-sm font-semibold">{label || "default"}</span>
         ) : (
-          <span className="fg-body-sm font-semibold text-muted">default</span>
+          <span className="fg-body-sm font-semibold text-muted">{t("integrations.provider.default")}</span>
         )}
-        {isDefault && <Badge tone="neutral">default</Badge>}
+        {isDefault && <Badge tone="neutral">{t("integrations.provider.default")}</Badge>}
       </div>
       <Badge tone={badge.tone}>{badge.label}</Badge>
     </div>

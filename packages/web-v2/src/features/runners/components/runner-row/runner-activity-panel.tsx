@@ -1,11 +1,14 @@
-import { EnumBadge, ErrorState, Skeleton, StatusBadge, sentenceCase, statusReading } from "@/design";
+import { EnumBadge, ErrorState, Skeleton, StatusBadge, statusReading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRunnerActivity } from "../../hooks";
 
 /** Lazy-loaded activity feed for one runner: status timeline + recent sessions. */
 export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	const activity = useRunnerActivity(runnerId, true);
+	const t = useCopy();
+	const time = useTimeFormat();
+	const language = useInterfaceLanguage();
 
 	if (activity.isLoading) {
 		return <Skeleton className="h-24 w-full" />;
@@ -24,10 +27,8 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	if (events.length === 0 && sessions.length === 0) {
 		return (
 			<p className="fg-body-sm text-subtle">
-				No recorded activity yet.
-				{typeof retentionDays === "number"
-					? ` Status history is kept for ${retentionDays} days.`
-					: null}
+				{t("runners.activity.none")}
+				{typeof retentionDays === "number" ? ` ${t("runners.activity.retention", { n: retentionDays })}` : null}
 			</p>
 		);
 	}
@@ -36,7 +37,7 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 		<div className="flex flex-col gap-4 border-l-2 border-line-subtle pl-3">
 			{sessions.length > 0 && (
 				<div className="flex flex-col gap-2">
-					<span className="fg-label">Recent sessions on this device</span>
+					<span className="fg-label">{t("runners.activity.sessions")}</span>
 					{sessions.map((s) => (
 						<div
 							key={s.id}
@@ -44,10 +45,10 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 						>
 							<div className="flex items-center justify-between gap-2">
 								<span className="truncate text-13 text-fg">
-									{s.title ?? "Untitled session"}
+									{s.title ?? t("runners.activity.untitled")}
 								</span>
 								<span className="fg-caption flex-none text-subtle">
-									{formatRelativeTime(s.updatedAt)}
+									{time.relative(s.updatedAt)}
 								</span>
 							</div>
 							<div className="flex items-center gap-1.5">
@@ -66,21 +67,24 @@ export function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 
 			{events.length > 0 && (
 				<div className="flex flex-col gap-1.5">
-					<span className="fg-label">Status history</span>
+					<span className="fg-label">{t("runners.activity.history")}</span>
 					{events.map((e) => (
 						<div
 							key={e.id}
 							className="flex items-center justify-between gap-2 text-12"
 						>
 							<span className="text-fg">
-								{e.oldStatus ? `${statusReading("device", e.oldStatus).label} → ` : ""}
-								<span className="font-semibold">{statusReading("device", e.newStatus).label}</span>
+								{e.oldStatus ? `${statusReading("device", e.oldStatus, language).label} → ` : ""}
+								<span className="font-semibold">{statusReading("device", e.newStatus, language).label}</span>
 								{e.reason && (
-									<span className="text-subtle"> · {sentenceCase(e.reason)}</span>
+									<span className="text-subtle">
+										{" · "}
+										<code className="font-mono text-11">{e.reason}</code>
+									</span>
 								)}
 							</span>
 							<span className="fg-caption flex-none text-subtle">
-								{formatRelativeTime(e.ts)}
+								{time.relative(e.ts)}
 							</span>
 						</div>
 					))}

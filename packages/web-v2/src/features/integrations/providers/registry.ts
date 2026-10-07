@@ -2,6 +2,8 @@
 import type { AgentPathKind } from "@forge/contracts/integrations";
 import type { ComponentType } from "react";
 import type { IconName } from "@/design";
+import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { copyOr, type ProductCopyKey } from "@/lib/i18n/product-copy";
 import { agent } from "./agent";
 import { autoflow } from "./autoflow";
 import { coolify } from "./coolify";
@@ -39,7 +41,8 @@ export interface ProviderModule {
   section: (() => Promise<{ default: ProjectSection }>) | null;
   /** The connection-tier config form, or null where this provider has nothing to edit there. */
   connectionSection: (() => Promise<{ default: ConnectionSection }>) | null;
-  connectionNote: string | null;
+  /** Where this provider's credential or config is kept instead, as a copy key. */
+  connectionNote: ProductCopyKey | null;
 }
 
 /** Every provider this build knows, in the order a list renders them. */
@@ -65,9 +68,22 @@ export function providerNames(): string[] {
   return PROVIDER_MODULES.map((m) => m.provider);
 }
 
-/** The label, falling back to the raw name — which is true, if bare. */
-export function providerLabel(provider: string): string {
-  return byName.get(provider)?.label ?? provider;
+/** The label, falling back to the raw name — which is true, if bare; in `language` where the locale file words it. */
+export function providerLabel(provider: string, language?: string): string {
+  const label = byName.get(provider)?.label ?? provider;
+  return language ? copyOr(language, `integrations.provider.${provider}`, label) : label;
+}
+
+/** A provider's label in the interface language. */
+export function useProviderLabel(): (provider: string) => string {
+  const language = useInterfaceLanguage();
+  return (provider) => providerLabel(provider, language);
+}
+
+/** The replace-key box's placeholder in `language`: a token prefix stays as it is, a described token is worded. */
+export function secretPlaceholderOf(provider: string, language: string): string | null {
+  const placeholder = byName.get(provider)?.secretPlaceholder ?? null;
+  return placeholder === null ? null : copyOr(language, `integrations.secret.${provider}`, placeholder);
 }
 
 export function providerIcon(provider: string): IconName {

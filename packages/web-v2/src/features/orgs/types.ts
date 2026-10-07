@@ -5,9 +5,9 @@ export type OrgRole = "owner" | "admin" | "member";
 export type MemberLens = "technical" | "product";
 
 /** UI labels + order for the lens assignment control. */
-export const MEMBER_LENS_OPTIONS: { value: MemberLens; label: string }[] = [
-  { value: "technical", label: "Technical" },
-  { value: "product", label: "Product" },
+export const MEMBER_LENS_OPTIONS: { value: MemberLens; label: "settings.orgs.lens.technical" | "settings.orgs.lens.product" }[] = [
+  { value: "technical", label: "settings.orgs.lens.technical" },
+  { value: "product", label: "settings.orgs.lens.product" },
 ];
 
 /** One row of `GET /api/orgs` — an org the caller belongs to + their role. */

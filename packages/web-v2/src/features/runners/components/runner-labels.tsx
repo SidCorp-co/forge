@@ -2,6 +2,7 @@
 
 import { Button, Input, MonoTag } from "@/design";
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useSetRunnerLabels } from "../hooks";
 
 export function parseLabels(raw: string): string[] {
@@ -28,6 +29,7 @@ export function RunnerLabels({
 	const save = useSetRunnerLabels(projectId);
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(labels.join(", "));
+	const t = useCopy();
 
 	if (editing) {
 		return (
@@ -42,14 +44,14 @@ export function RunnerLabels({
 				}}
 			>
 				<Input
-					aria-label="Runner labels"
+					aria-label={t("runners.labels.aria")}
 					value={draft}
 					onChange={(e) => setDraft(e.target.value)}
 					placeholder="release, gpu"
 					className="h-7 w-56 text-12"
 				/>
 				<Button type="submit" size="sm" variant="secondary" loading={save.isPending}>
-					Save labels
+					{t("runners.labels.save")}
 				</Button>
 				<Button
 					type="button"
@@ -60,7 +62,7 @@ export function RunnerLabels({
 						setEditing(false);
 					}}
 				>
-					Cancel
+					{t("common.cancel")}
 				</Button>
 			</form>
 		);
@@ -69,13 +71,13 @@ export function RunnerLabels({
 	return (
 		<div className="flex flex-wrap items-center gap-1.5">
 			{labels.length === 0 ? (
-				<span className="fg-caption text-subtle">no labels</span>
+				<span className="fg-caption text-subtle">{t("runners.labels.none")}</span>
 			) : (
 				labels.map((label) => <MonoTag key={label}>{label}</MonoTag>)
 			)}
 			{canEdit && (
 				<Button size="sm" variant="ghost" icon="settings" onClick={() => setEditing(true)}>
-					{labels.length === 0 ? "Add labels" : "Edit labels"}
+					{labels.length === 0 ? t("runners.labels.add") : t("runners.labels.edit")}
 				</Button>
 			)}
 		</div>

@@ -21,6 +21,8 @@ import { isFreshAuthError } from "@/features/auth/fresh-auth";
 import { reauthStartUrl } from "@/features/auth/oauth-api";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateToken, useReauth } from "../hooks";
@@ -43,6 +45,7 @@ import {
 
 const RETURN_PATH = "/settings?tab=tokens";
 
+// a sign-in provider's own name, which no language changes
 const PROVIDER_LABELS: Record<string, string> = {
   github: "GitHub",
   google: "Google",
@@ -65,6 +68,7 @@ export function TokenCreateForm({
   // Default to the password prompt while /auth/me is still resolving — a
   // password user seeing it a beat early beats an SSO user seeing nothing.
   const hasPassword = user?.hasPassword ?? true;
+  const t = useCopy();
 
   const [draft, setDraft] = useState<TokenDraft>(EMPTY_DRAFT);
   const [errors, setErrors] = useState<DraftErrors>({});
@@ -89,15 +93,13 @@ export function TokenCreateForm({
       },
       onError: (err) => {
         if (!isFreshAuthError(err)) {
-          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error" });
+          toast({ title: t("settings.tokens.createFailed"), description: formatApiError(err), tone: "error" });
           return;
         }
         setNeedsReauth(true);
         toast({
-          title: "Re-authenticate to continue",
-          description: hasPassword
-            ? "Confirm your password to create a token."
-            : "Confirm with your sign-in provider to create a token.",
+          title: t("settings.tokens.reauthToContinue"),
+          description: hasPassword ? t("settings.tokens.confirmPassword") : t("settings.tokens.confirmProvider"),
           tone: "info",
         });
       },
@@ -110,7 +112,7 @@ export function TokenCreateForm({
     reauth.mutate(password, {
       onSuccess: () => runCreate(input),
       onError: (err) =>
-        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error" }),
+        toast({ title: t("settings.tokens.reauth.failed"), description: formatApiError(err), tone: "error" }),
     });
   }
 
@@ -123,16 +125,16 @@ export function TokenCreateForm({
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-4">Create a token</SectionTitle>
+        <SectionTitle className="fg-h3 mb-4">{t("settings.tokens.createTitle")}</SectionTitle>
         <div className="space-y-4">
           <DraftFields draft={draft} setDraft={setDraft} errors={errors} menu={menu} />
           {needsReauth && hasPassword && (
-            <Field label="Confirm password" required hint="Token creation requires a recent sign-in.">
+            <Field label={t("settings.tokens.passwordLabel")} required hint={t("settings.tokens.recentSignIn")}>
               <Input
                 type="password"
                 value={password}
                 autoComplete="current-password"
-                placeholder="Your account password"
+                placeholder={t("settings.tokens.passwordPlaceholder")}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </Field>
@@ -150,7 +152,7 @@ export function TokenCreateForm({
                   onClick={onConfirmReauth}
                   className="min-h-11"
                 >
-                  Confirm &amp; create
+                  {t("settings.tokens.confirmCreate")}
                 </Button>
               )
             ) : (
@@ -164,7 +166,7 @@ export function TokenCreateForm({
                 }}
                 className="min-h-11"
               >
-                Create token
+                {t("settings.tokens.create")}
               </Button>
             )}
           </div>
@@ -188,21 +190,23 @@ function DraftFields({
   const projectsQ = useProjects();
   const set = <K extends keyof TokenDraft>(key: K, value: TokenDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
+  const t = useCopy();
+  const err = (key: ProductCopyKey | undefined) => (key ? t(key) : undefined);
   const projectOptions = [
-    { value: "", label: "None — user-level / all my projects" },
+    { value: "", label: t("settings.tokens.noneAll") },
     ...(projectsQ.data ?? []).map((p) => ({ value: p.id, label: `${p.name} (${p.slug})` })),
   ];
 
   return (
     <>
-      <Field label="Name" required error={errors.name}>
+      <Field label={t("settings.agents.name")} required error={err(errors.name)}>
         <Input
           value={draft.name}
-          placeholder="e.g. CI deploy token"
+          placeholder={t("settings.tokens.namePlaceholder")}
           onChange={(e) => set("name", e.target.value)}
         />
       </Field>
-      <Field label="Scopes" required error={errors.scopes} hint="What this token may do.">
+      <Field label={t("settings.tokens.scopes")} required error={err(errors.scopes)} hint={t("settings.tokens.scopesHint")}>
         <div className="flex flex-wrap gap-4 pt-1">
           {PAT_SCOPES.map((scope) => (
             <Checkbox
@@ -215,18 +219,18 @@ function DraftFields({
         </div>
       </Field>
       <Field
-        label="Permissions"
+        label={t("settings.tokens.permissionsLabel")}
         required
-        error={errors.permissions}
-        hint="Which of the API this token reaches. Full access covers every permission, including any added later."
+        error={err(errors.permissions)}
+        hint={t("settings.tokens.permissionsHint")}
       >
         <RadioGroup
           name="pat-grant"
           value={draft.grantMode}
           onChange={(v) => set("grantMode", v as TokenDraft["grantMode"])}
         >
-          <Radio value="full" label="Full access — every permission on the menu" />
-          <Radio value="named" label="Only the permissions I pick" />
+          <Radio value="full" label={t("settings.tokens.fullAll")} />
+          <Radio value="named" label={t("settings.tokens.named")} />
         </RadioGroup>
         {draft.grantMode === "named" && (
           <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -243,23 +247,19 @@ function DraftFields({
           </div>
         )}
       </Field>
-      <Field label="Expires" hint="Optional. Leave blank for a non-expiring token.">
+      <Field label={t("settings.tokens.expires")} hint={t("settings.tokens.expiresHint")}>
         <Input type="date" value={draft.expiresAt} onChange={(e) => set("expiresAt", e.target.value)} />
       </Field>
       <Field
-        label="Bind to a project"
-        hint={
-          projectsQ.isLoading
-            ? "Loading your projects…"
-            : "Optional. A project-level token works only against the chosen project, and MCP clients can drop the X-Forge-Project-Slug header."
-        }
+        label={t("settings.tokens.bind")}
+        hint={projectsQ.isLoading ? t("settings.tokens.loadingProjects") : t("settings.tokens.bindHint")}
       >
         <Select
           options={projectOptions}
           value={draft.boundProjectId}
           onChange={(v) => set("boundProjectId", v)}
           disabled={projectsQ.isLoading}
-          placeholder={projectsQ.isLoading ? "Loading…" : "None — user-level"}
+          placeholder={projectsQ.isLoading ? t("integrations.provider.loading") : t("settings.tokens.noneUser")}
         />
       </Field>
     </>
@@ -267,19 +267,16 @@ function DraftFields({
 }
 
 function SsoReauth({ providers, onStart }: { providers: string[]; onStart: (p: string) => void }) {
+  const t = useCopy();
   return (
     <Field
-      label="Re-authenticate"
-      hint={
-        providers.length > 0
-          ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
-          : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
-      }
+      label={t("settings.tokens.reauth")}
+      hint={providers.length > 0 ? t("settings.tokens.reauthHint") : t("settings.tokens.reauthNone")}
     >
       <div className="flex flex-wrap gap-3 pt-1">
         {providers.map((p) => (
           <Button key={p} variant="primary" onClick={() => onStart(p)} className="min-h-11">
-            Continue with {PROVIDER_LABELS[p] ?? p}
+            {t("settings.tokens.continueWith", { provider: PROVIDER_LABELS[p] ?? p })}
           </Button>
         ))}
       </div>

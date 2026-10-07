@@ -37,13 +37,33 @@ const ENGLISH_CHROME = [
   "home", "more", "navigate", "actions", "recent", "pinned", "no matches", "resolved", "invitation", "mention", "sound", "desktop",
   "save", "restore", "reply style", "instructions", "upload", "sketch", "caption", "withdraw", "authority", "options considered",
   "rollback", "removed", "release note", "gate", "verdict", "owes", "held back", "sidebar", "people", "live", "not found", "add project",
+  "priority", "assignee", "board", "wave", "blocked", "blocking", "queued", "running", "paused", "resume", "merged", "branch", "comment",
+  "comments", "runs", "open", "closed", "on hold", "move", "mark", "labels", "complexity", "category", "cost", "tokens", "dependencies",
+  "selected", "clear", "filter", "sort", "newest", "oldest", "previous", "heartbeat", "stale", "attempt", "cooldown", "answer", "question",
+  "who", "build", "plan", "estimated", "critical", "high", "medium", "low", "bug", "lease", "nobody", "everyone", "list", "table",
+  "spend", "online", "offline", "busy", "idle", "draining", "modules", "signals", "contracts", "slots", "holder", "since", "backlog",
+  "finished", "silent", "alive", "jobs", "median", "unclassified", "reopened", "dropped", "welcome", "personal", "quiet", "flow",
+  "window", "healthy", "select all", "in flight", "trailing", "chart", "today", "never", "oldest", "machine", "scope", "not on",
+  "device", "devices", "paired", "pair", "revoke", "manage", "turn on", "turn off", "last seen", "provision", "labels", "pool",
+  "resident", "unassign", "copy", "repo path", "disk", "binaries", "missing", "version", "drained", "retired", "mine", "organisation",
+  "counting", "read only", "unknown device", "untitled", "remove", "heartbeat", "failed pool", "rate limited", "usage limit", "next try", "refused",
+  "connection", "connections", "connected", "not connected", "credential", "integration", "integrations", "binding", "rotate", "disconnect",
+  "connect", "refresh", "configuration", "repository", "verify", "grant", "granted", "storefront", "room", "rooms", "site", "target",
+  "targets", "deliveries", "payload", "response", "enabled", "disabled", "inherited", "danger zone", "test connection", "store", "themes",
+  "commerce", "scopes", "access token", "refresh token", "api key", "server url", "base url", "project path", "secret token",
+  "trigger", "share", "will inject", "shadowed", "untested", "breaker", "application", "deploy target", "delivered", "inbound", "outbound",
+  "organizations", "members", "member", "slug", "expired", "role", "agents", "handle", "soul", "greeting", "glyph", "standing instructions",
+  "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
+  "required", "quick capture", "capture", "attach", "context", "description", "optional", "choose files", "summary",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
   const out: string[] = [];
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) out.push(n.textContent ?? "");
+  // text the page marks `translate="no"` (a scope, an event name, another product's menu path) is an identifier, not chrome
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest('[translate="no"]')) out.push(n.textContent ?? "");
   for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
+    if (el.closest('[translate="no"]')) continue;
     for (const a of ["aria-label", "title", "placeholder"]) {
       const v = el.getAttribute(a);
       // a state badge's tooltip leads with its raw value (`shipped · ...`) and an enum badge's ends with
@@ -61,8 +81,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`) or a field in code quotes (`persona`) is an identifier the text names on purpose, not chrome
-      if (new RegExp(`[^\\p{L}_.\`-]${w.trim()}[^\\p{L}_\`]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`), a field in code quotes (`persona`) or a path segment (`/srv/device`) is an identifier the text names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_.\`/-]${w.trim()}[^\\p{L}_\`/]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

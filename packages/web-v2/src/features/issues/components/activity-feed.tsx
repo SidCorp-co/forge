@@ -7,7 +7,8 @@
 
 import { formatFieldPath, isIssueUpdatedPayload } from "@forge/contracts/field-changes";
 import { Badge, EmptyState, EnumBadge, Icon, MonoTag, sentenceCase, StatusBadge, type IconName } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { ActivityItem } from "../types";
 
 interface Node {
@@ -15,7 +16,7 @@ interface Node {
   text: React.ReactNode;
 }
 
-function describe(item: ActivityItem): Node {
+function describe(item: ActivityItem, t: Copy): Node {
   const p = (item.payload ?? {}) as Record<string, unknown>;
   const from = typeof p.from === "string" ? p.from : undefined;
   const to = typeof p.to === "string" ? p.to : undefined;
@@ -25,31 +26,31 @@ function describe(item: ActivityItem): Node {
         icon: "pipeline",
         text: (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            Status {from && <StatusBadge family="issue" value={from} />} <Icon name="arrowRight" size={12} />{" "}
+            {t("issues.field.status")} {from && <StatusBadge family="issue" value={from} />} <Icon name="arrowRight" size={12} />{" "}
             {to && <StatusBadge family="issue" value={to} />}
           </span>
         ),
       };
     case "issue.created":
-      return { icon: "plus", text: "Issue created" };
+      return { icon: "plus", text: t("issues.activity.created") };
     case "issue.updated":
-      return { icon: "rename", text: describeUpdate(p) };
+      return { icon: "rename", text: describeUpdate(p, t) };
     case "issue.dependency.added":
-      return { icon: "link", text: "Dependency added" };
+      return { icon: "link", text: t("issues.activity.depAdded") };
     case "issue.dependency.removed":
-      return { icon: "link", text: "Dependency removed" };
+      return { icon: "link", text: t("issues.activity.depRemoved") };
     case "issue.labeled":
-      return { icon: "star", text: "Label added" };
+      return { icon: "star", text: t("issues.activity.labelAdded") };
     case "issue.unlabeled":
-      return { icon: "star", text: "Label removed" };
+      return { icon: "star", text: t("issues.activity.labelRemoved") };
     case "issue.assigned":
-      return { icon: "agent", text: "Assignee changed" };
+      return { icon: "agent", text: t("issues.activity.assigneeChanged") };
     case "issue.priorityChanged":
       return {
         icon: "alert",
         text: (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            Priority {from && <EnumBadge family="priority" value={from} />} <Icon name="arrowRight" size={12} />{" "}
+            {t("issues.field.priority")} {from && <EnumBadge family="priority" value={from} />} <Icon name="arrowRight" size={12} />{" "}
             {to && <EnumBadge family="priority" value={to} />}
           </span>
         ),
@@ -65,17 +66,17 @@ const NAMED_PATHS = 3;
 
 // An `issue.updated` row records the paths a write moved (`@forge/contracts` field-changes), so
 // the line names those paths rather than repeating the fields' values.
-function describeUpdate(payload: Record<string, unknown>): React.ReactNode {
-  if (!isIssueUpdatedPayload(payload) || payload.changes.length === 0) return "Updated (no change recorded)";
+function describeUpdate(payload: Record<string, unknown>, t: Copy): React.ReactNode {
+  if (!isIssueUpdatedPayload(payload) || payload.changes.length === 0) return t("issues.activity.updatedNone");
   const paths = payload.changes.map((c) => formatFieldPath(c.path));
   const rest = paths.length - NAMED_PATHS;
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      Updated{" "}
+      {t("issues.activity.updated")}{" "}
       {paths.slice(0, NAMED_PATHS).map((path) => (
         <MonoTag key={path}>{path}</MonoTag>
       ))}
-      {rest > 0 && <span>+{rest} more</span>}
+      {rest > 0 && <span>{t("issues.activity.more", { n: rest })}</span>}
     </span>
   );
 }
@@ -86,13 +87,15 @@ const DRAWN_ELSEWHERE = new Set(["record.transition"]);
 
 export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   const shown = items.filter((item) => !DRAWN_ELSEWHERE.has(item.action));
+  const t = useCopy();
+  const time = useTimeFormat();
   if (shown.length === 0) {
-    return <EmptyState title="No activity yet" message="Status changes and edits will show here." mascot={false} />;
+    return <EmptyState title={t("issues.activity.emptyTitle")} message={t("issues.activity.empty")} mascot={false} />;
   }
   return (
     <ol className="space-y-3">
       {shown.map((item) => {
-        const node = describe(item);
+        const node = describe(item, t);
         // Prefer the server-resolved actor (member email / agent device name)
         // over the bare actorType. Fall back to the raw type for older payloads;
         // never show just "user"/"device" when a name is available (ISS-519).
@@ -111,11 +114,11 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
                   <Badge tone="accent">
                     <span className="inline-flex items-center gap-1">
                       <Icon name="agent" size={11} />
-                      Agent
+                      {t("issues.assignee.agent")}
                     </span>
                   </Badge>
                 )}
-                <span>· {formatRelativeTime(item.createdAt)}</span>
+                <span title={time.dateTime(item.createdAt)}>· {time.relative(item.createdAt)}</span>
               </div>
             </div>
           </li>

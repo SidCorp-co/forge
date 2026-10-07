@@ -7,6 +7,7 @@
 
 import { Badge, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { useMemo, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { scopeLabel } from "../../components/status-pill";
 import { useConnections, useIntegrationsList } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
@@ -25,6 +26,7 @@ function ConnectedState({
   onChangeRepository: () => void;
 }) {
   const { owner, repo } = repository;
+  const t = useCopy();
 
   return (
     <PageSection>
@@ -33,7 +35,7 @@ function ConnectedState({
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <Badge>{scopeLabel(binding.role)}</Badge>
+          <Badge>{scopeLabel(binding.role, t)}</Badge>
           <a
             href={`https://github.com/${owner}/${repo}`}
             target="_blank"
@@ -43,7 +45,7 @@ function ConnectedState({
             {owner}/{repo}
           </a>
           <Button variant="ghost" size="sm" onClick={onChangeRepository}>
-            Change repository
+            {t("integrations.github.changeRepo")}
           </Button>
         </div>
 
@@ -62,6 +64,7 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   const connections = useConnections();
   const [forceCreate, setForceCreate] = useState(false);
   const [changing, setChanging] = useState(false);
+  const t = useCopy();
 
   const binding = useMemo(
     () => (list.data?.items ?? []).find((i) => i.provider === "github"),
@@ -82,7 +85,7 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   const connectionLabel =
     (binding
       ? (connections.data?.items ?? []).find((c) => c.id === binding.connectionId)?.displayName
-      : null) ?? "the existing GitHub App";
+      : null) ?? t("integrations.github.existingApp");
 
   if (binding && repository && !changing) {
     return (
@@ -112,7 +115,7 @@ export function GitHubSection({ projectId }: { projectId: string }) {
       <UseExistingApp
         projectId={projectId}
         connectionId={first.id}
-        connectionLabel={first.displayName ?? "the existing GitHub App"}
+        connectionLabel={first.displayName ?? t("integrations.github.existingApp")}
         onNeedNewApp={() => setForceCreate(true)}
       />
     );

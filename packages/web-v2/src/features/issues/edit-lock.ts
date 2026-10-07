@@ -1,4 +1,5 @@
 
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueAgentStatus, IssueStatus } from "./types";
 
 const ANSWERABLE_WHILE_RUNNING = new Set<IssueStatus>(["needs_info"]);
@@ -17,16 +18,13 @@ export function heldInSelection(
 }
 
 /** Said in place of a status move. */
-export const AGENT_HOLDS_MOVE =
-	"An agent is working this — your move would be overwritten";
+export const agentHoldsMove = (t: Copy): string => t("issues.lock.move");
 
 /** Said in place of a field edit. */
-export const AGENT_HOLDS_EDIT =
-	"An agent is working this — your edit would be overwritten";
+export const agentHoldsEdit = (t: Copy): string => t("issues.lock.edit");
 
 /** Said in place of a bulk action, naming how much of the selection is held. */
-export function agentHoldsSelection(held: number, total: number): string {
-	return held === total
-		? `An agent is working ${total === 1 ? "this issue" : `all ${total} selected issues`} — your change would be overwritten`
-		: `An agent is working ${held} of the ${total} selected issues — your change would be overwritten`;
+export function agentHoldsSelection(t: Copy, held: number, total: number): string {
+	if (held !== total) return t("issues.lock.someSelected", { held, total });
+	return total === 1 ? t("issues.lock.oneSelected") : t("issues.lock.allSelected", { total });
 }

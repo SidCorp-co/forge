@@ -2,6 +2,7 @@
 
 import { Banner, Button, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { AgentPathKind } from "@forge/contracts/integrations";
 import { type ReactNode, useState } from "react";
 import {
@@ -80,6 +81,7 @@ export function AddBindingForm({
   onCancel?: () => void;
   children: ReactNode;
 }) {
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-4">
       <span className="fg-label font-semibold">{title}</span>
@@ -99,7 +101,7 @@ export function AddBindingForm({
         </Button>
         {onCancel && (
           <Button variant="secondary" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         )}
       </div>
@@ -121,8 +123,9 @@ export function LabelField({
   onChange: (label: string) => void;
   error: string | null;
 }) {
+  const t = useCopy();
   return (
-    <Field label="Label" hint={hint} required>
+    <Field label={t("integrations.provider.label")} hint={hint} required>
       <Input placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value.toLowerCase())} />
       {error && <p className="fg-body-sm text-danger">{error}</p>}
     </Field>

@@ -24,6 +24,7 @@ import {
 } from "@/design";
 import { useResumeRun } from "@/features/run-control/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { useIssueProject } from "./use-issue-project";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
@@ -92,6 +93,7 @@ export function IssueDetailScreen({
   id,
 }: IssueDetailScreenProps) {
   const [tab, setTab] = useUrlTab(ISSUE_TABS);
+  const t = useCopy();
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
 
   useRoom(projectRoom(projectId));
@@ -184,11 +186,11 @@ export function IssueDetailScreen({
   });
 
   const tabs = [
-    { value: "overview" as const, label: "Overview" },
-    { value: "criteria" as const, label: "Criteria", count: criteriaQ.data?.criteria.length ?? checklist.length },
-    { value: "runs" as const, label: "Runs", count: stepOutcomes.length },
-    { value: "mockups" as const, label: "Mockups", count: mockupsQ.data?.returned },
-    { value: "activity" as const, label: "Activity", count: commentsQ.data?.totalCount },
+    { value: "overview" as const, label: t("issues.tab.overview") },
+    { value: "criteria" as const, label: t("issues.tab.criteria"), count: criteriaQ.data?.criteria.length ?? checklist.length },
+    { value: "runs" as const, label: t("issues.tab.runs"), count: stepOutcomes.length },
+    { value: "mockups" as const, label: t("common.mockups.title"), count: mockupsQ.data?.returned },
+    { value: "activity" as const, label: t("issues.tab.activity"), count: commentsQ.data?.totalCount },
   ];
 
   const badge = (
@@ -219,7 +221,7 @@ export function IssueDetailScreen({
     <ReleaseApprovalProvider value={standingQ.data?.releaseApproval}>
     <div className="min-h-full bg-app" ref={stickyHeader} data-testid="issue-detail">
       <DetailHeader
-        back={{ href: back, label: "Issues" }}
+        back={{ href: back, label: t("issues.screen.title") }}
         itemKey={issue.displayId}
         keyTitle={issue.id}
         title={issue.title}
@@ -245,7 +247,7 @@ export function IssueDetailScreen({
         rail={
           <FactsRail>
             {standingQ.data ? <IssueStandingFacts row={standingQ.data} slug={slug} /> : null}
-            <FactsGroup title="Properties" testId="facts-properties">
+            <FactsGroup title={t("issues.rail.properties")} testId="facts-properties">
               {properties}
             </FactsGroup>
           </FactsRail>
@@ -275,7 +277,7 @@ export function IssueDetailScreen({
           {agentState && <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} />}
         </div>
         <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="issue-tabs" />
-        <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+        <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("issues.tab.overview")}>
           <IssueTabBody
             tab={tab}
             issue={issue}
@@ -380,13 +382,14 @@ function useRememberIssue(id: string, slug: string, displayId: string | undefine
 }
 
 function IssueUnread({ query }: { query: ReturnType<typeof useIssue> }) {
+  const t = useCopy();
   return (
     <div className="grid min-h-[60vh] place-items-center">
       {query.isLoading ? (
-        <ProjectLoader label="loading issue…" />
+        <ProjectLoader label={t("issues.detail.loading")} />
       ) : (
         <ErrorState
-          title="Couldn't load issue"
+          title={t("issues.detail.loadFailed")}
           message={formatApiError(query.error)}
           onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
         />

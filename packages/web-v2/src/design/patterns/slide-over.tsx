@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Icon } from "@/design/icons/icon";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface SlideOverProps {
   open: boolean;
@@ -23,6 +24,7 @@ export function SlideOver({
   fitBody = false,
   hideHeader = false,
 }: SlideOverProps) {
+  const t = useCopy();
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
   return (
     <Sheet
@@ -49,7 +51,7 @@ export function SlideOver({
           <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
             <SheetTitle className="fg-h3">{title}</SheetTitle>
             <SheetClose
-              aria-label="Close"
+              aria-label={t("common.close")}
               className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
               <Icon name="x" size={18} />

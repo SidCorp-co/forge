@@ -13,6 +13,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { PageSection, PageSectionBody, Icon, MonoTag } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
+import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";
+import { enumLabel } from "@/design/vocabulary";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useGateReading } from "../gate-reading";
 import type { QueuedStepView } from "../waiting";
 import type { IssueAgentSession } from "../types";
 import { issueSessionsHref } from "@/lib/routes/agents";
@@ -30,10 +34,10 @@ interface LiveAgentPanelProps {
   issueId: string;
 }
 
-const HEARTBEAT_META: Record<IssueAgentSession["heartbeat"], { dot: string; label: string }> = {
-  alive: { dot: "var(--green-500)", label: "Heartbeat alive" },
-  stale: { dot: "var(--red-500)", label: "Heartbeat stale" },
-  unknown: { dot: "var(--ink-400)", label: "No heartbeat" },
+const HEARTBEAT_DOT: Record<IssueAgentSession["heartbeat"], string> = {
+  alive: "var(--green-500)",
+  stale: "var(--red-500)",
+  unknown: "var(--ink-400)",
 };
 
 export function LiveAgentPanel({ state, step, slug, issueId }: LiveAgentPanelProps) {
@@ -62,6 +66,8 @@ function LiveRow({
   issueId: string;
 }) {
   const [showOps, setShowOps] = useState(false);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   const running = session.status === "running";
   const startIso = session.startedAt ?? session.createdAt;
@@ -69,7 +75,7 @@ function LiveRow({
   const elapsed = useElapsed(Number.isNaN(startMs) ? undefined : startMs, running);
 
   const hb = session.heartbeat;
-  const hbMeta = HEARTBEAT_META[hb];
+  const hbMeta = { dot: HEARTBEAT_DOT[hb], label: t(`issues.live.heartbeat.${hb}`) };
 
   const device = session.deviceId ? session.deviceId.slice(0, 8) : null;
 
@@ -78,11 +84,11 @@ function LiveRow({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="inline-flex items-center gap-2">
           <Icon name="agent" size={16} />
-          <span className="fg-label">Agent {running ? "running" : "queued"}</span>
+          <span className="fg-label">{running ? t("issues.live.running") : t("issues.live.queued")}</span>
         </span>
-        <Stat icon="pipeline" label="Step" value={step} mono />
-        {device && <Stat icon="cpu" label="Runner" value={device} mono />}
-        <Stat icon="clock" label="Elapsed" value={elapsed} mono />
+        <Stat icon="pipeline" label={t("issues.live.step")} value={step === "—" ? step : enumLabel(step in WORK_STEP_LABELS ? "step" : "jobType", step, language)} mono />
+        {device && <Stat icon="cpu" label={t("issues.live.runner")} value={device} mono />}
+        <Stat icon="clock" label={t("issues.live.elapsed")} value={elapsed} mono />
         <span className="inline-flex items-center gap-1.5" title={hbMeta.label}>
           <span
             aria-hidden
@@ -101,7 +107,7 @@ function LiveRow({
         aria-expanded={showOps}
       >
         <Icon name={showOps ? "chevronDown" : "chevronRight"} size={13} />
-        Operator details
+        {t("issues.live.operatorDetails")}
       </button>
       {showOps && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
@@ -129,6 +135,11 @@ function QueuedRow({
   issueId: string;
 }) {
   const [showOps, setShowOps] = useState(false);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  const gate = useGateReading(step.gate);
+  const nextAttempt = time.countdown(step.retryAfterAt);
   const queuedMs = Date.parse(step.queuedAt);
   const waited = useElapsed(Number.isNaN(queuedMs) ? undefined : queuedMs, true);
 
@@ -137,22 +148,20 @@ function QueuedRow({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="inline-flex items-center gap-2">
           <Icon name="agent" size={16} />
-          <span className="fg-label">Agent queued</span>
+          <span className="fg-label">{t("issues.live.queued")}</span>
         </span>
-        <Stat icon="pipeline" label="Step" value={step.jobType} mono />
-        <Stat icon="clock" label="Waited" value={waited} mono />
-        {step.nextAttempt && (
-          <Stat icon="clock" label="Next attempt" value={step.nextAttempt} />
+        <Stat icon="pipeline" label={t("issues.live.step")} value={enumLabel("jobType", step.jobType, language)} mono />
+        <Stat icon="clock" label={t("issues.live.waited")} value={waited} mono />
+        {nextAttempt && (
+          <Stat icon="clock" label={t("issues.live.nextAttempt")} value={nextAttempt} />
         )}
         <TimelineLink slug={slug} issueId={issueId} />
       </div>
 
       <p className="fg-body-sm mt-2 text-muted">
-        {step.gate
-          ? step.gate.detail
-          : "The step is awaiting its turn — it dispatches on the next tick."}
+        {gate ? gate.detail : t("issues.live.awaitingTurn")}
       </p>
-      {step.gate && <p className="fg-caption mt-1 text-muted">{step.gate.who}</p>}
+      {gate && <p className="fg-caption mt-1 text-muted">{gate.who}</p>}
 
       <button
         type="button"
@@ -161,7 +170,7 @@ function QueuedRow({
         aria-expanded={showOps}
       >
         <Icon name={showOps ? "chevronDown" : "chevronRight"} size={13} />
-        Operator details
+        {t("issues.live.operatorDetails")}
       </button>
       {showOps && (
         <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
@@ -174,12 +183,13 @@ function QueuedRow({
 }
 
 function TimelineLink({ slug, issueId }: { slug: string; issueId: string }) {
+  const t = useCopy();
   return (
     <Link
       href={issueSessionsHref(slug, issueId)}
       className="fg-caption ml-auto inline-flex items-center gap-1 text-accent-text transition-opacity hover:opacity-80"
     >
-      View timeline
+      {t("issues.live.viewTimeline")}
       <Icon name="arrowRight" size={13} />
     </Link>
   );

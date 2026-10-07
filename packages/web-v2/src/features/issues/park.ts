@@ -6,7 +6,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { MenuItem } from "@/design";
-import { type ParkReading, statusLabel } from "./derive";
+import type { Copy } from "@/lib/i18n/product-copy";
+import type { ParkReading } from "./derive";
 import { issueDetailApi } from "./detail-api";
 import type { IssuePark, IssueStatus } from "./types";
 
@@ -31,12 +32,11 @@ export function useIssuePark(
 	return { state: "ready", park: q.data.park };
 }
 
-const ANSWER_LABEL = "Answer the question";
-const NOT_NEEDED_LABEL = "The question is not needed any more…";
-const MOVE_ANYWAY_LABEL = "Move anyway…";
-const NO_RUNG_LABEL = "Nothing says where this issue picks up again";
-const PARK_LOADING_LABEL = "Reading what this issue is waiting on…";
-const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so no resume is offered";
+/** The words the park menu is drawn in: the chrome reader and the issue status's own label. */
+export interface ParkWords {
+	t: Copy;
+	status: (s: IssueStatus) => string;
+}
 
 export interface ParkMenuActions {
 	answer: () => void;
@@ -64,13 +64,15 @@ export function parkMenuItems(args: {
 	reading: ParkReading;
 	ordinary: MenuItem[];
 	actions: ParkMenuActions;
+	words: ParkWords;
 }): MenuItem[] | null {
-	const { status, moves, reading, ordinary, actions } = args;
+	const { status, moves, reading, ordinary, actions, words } = args;
+	const { t } = words;
 	const parked = PARKED.has(status);
 	const map = moves.map((m) => m.to);
 	const anyway: MenuItem[] = [
 		{
-			label: MOVE_ANYWAY_LABEL,
+			label: t("issues.park.moveAnyway"),
 			separatorBefore: true,
 			disabled: map.length === 0,
 			onSelect: () => actions.moveAnyway(map),
@@ -78,31 +80,31 @@ export function parkMenuItems(args: {
 	];
 	if (reading.state !== "ready") {
 		if (!parked) return null;
-		const said = reading.state === "loading" ? PARK_LOADING_LABEL : PARK_ERROR_LABEL;
+		const said = reading.state === "loading" ? t("issues.park.loading") : t("issues.park.error");
 		return [{ label: said, disabled: true }, ...anyway];
 	}
 	const park = reading.park;
 	if (!park) return null;
 	const asks = park.asks;
-	const answer: MenuItem[] = asks ? [{ label: ANSWER_LABEL, onSelect: actions.answer }] : [];
+	const answer: MenuItem[] = asks ? [{ label: t("issues.park.answer"), onSelect: actions.answer }] : [];
 	if (park.shape === "question") {
 		const below = ordinary.map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item));
 		return [...answer, ...below];
 	}
-	return [...answer, ...resumeItems(park, asks, actions), ...setDownItems(map, actions), ...anyway];
+	return [...answer, ...resumeItems(park, asks, actions, words), ...setDownItems(map, actions, words), ...anyway];
 }
 
-function resumeItems(park: IssuePark, asks: boolean, actions: ParkMenuActions): MenuItem[] {
+function resumeItems(park: IssuePark, asks: boolean, actions: ParkMenuActions, { t, status }: ParkWords): MenuItem[] {
 	const at = park.resume.at;
-	if (!at) return [{ label: NO_RUNG_LABEL, disabled: true }];
-	const resume: MenuItem = { label: `Resume at ${statusLabel(at)}`, onSelect: () => actions.move(at) };
+	if (!at) return [{ label: t("issues.park.noRung"), disabled: true }];
+	const resume: MenuItem = { label: t("issues.park.resumeAt", { status: status(at) }), onSelect: () => actions.move(at) };
 	if (!asks) return [resume];
-	return [resume, { label: NOT_NEEDED_LABEL, onSelect: () => actions.notNeeded(at) }];
+	return [resume, { label: t("issues.park.notNeeded"), onSelect: () => actions.notNeeded(at) }];
 }
 
-function setDownItems(map: IssueStatus[], actions: ParkMenuActions): MenuItem[] {
+function setDownItems(map: IssueStatus[], actions: ParkMenuActions, { status }: ParkWords): MenuItem[] {
 	return SET_DOWN.filter((to) => map.includes(to)).map((to, i) => ({
-		label: statusLabel(to),
+		label: status(to),
 		danger: to === "dropped",
 		separatorBefore: i === 0,
 		onSelect: () => actions.move(to),

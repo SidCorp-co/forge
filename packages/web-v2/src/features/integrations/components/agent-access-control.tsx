@@ -5,13 +5,14 @@ import { useState } from "react";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts/integrations";
 import { Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useIsOrgAdmin, useUpdateProviderIntegration } from "../hooks";
 import type { IntegrationSummary } from "../types";
 
 /** The closed answer, and what a binding gets for not choosing. */
 export const AGENT_ACCESS_CLOSED: AgentAccess = "none";
 
-export const GRANT_LABEL = "Agents on this project may use this";
 
 /** The agent paths a binding grant applies to; `none` has no agent path and `permission` is decided by a project permission. */
 type GrantedPathKind = Exclude<AgentPathKind, "none" | "permission">;
@@ -19,18 +20,9 @@ type GrantedPathKind = Exclude<AgentPathKind, "none" | "permission">;
 const takesGrant = (pathKind: AgentPathKind): pathKind is GrantedPathKind =>
   pathKind === "direct-mcp" || pathKind === "core-mediated";
 
-const KIND_COPY: Record<GrantedPathKind, { granted: string; withheld: string }> = {
-  "direct-mcp": {
-    granted:
-      "This project's credential is handed to the runner box, and the agent calls the provider directly. Forge is outside that call path: it does not see the calls and cannot stop one.",
-    withheld:
-      "Granting this hands the project's credential to the runner box, and the agent then calls the provider directly. Forge is outside that call path: it does not see the calls and cannot stop one.",
-  },
-  "core-mediated": {
-    granted: "Forge holds the credential and makes the call on the agent's behalf.",
-    withheld:
-      "Granting this lets the agent ask Forge to call the provider. Forge holds the credential and makes the call; the agent never receives it.",
-  },
+const KIND_COPY: Record<GrantedPathKind, { granted: ProductCopyKey; withheld: ProductCopyKey }> = {
+  "direct-mcp": { granted: "integrations.access.directGranted", withheld: "integrations.access.directWithheld" },
+  "core-mediated": { granted: "integrations.access.coreGranted", withheld: "integrations.access.coreWithheld" },
 };
 
 export function agentAccessBody(
@@ -49,11 +41,9 @@ export function mayWriteAgentAccess(
   return pathKind === "direct-mcp" ? perms.isOrgAdmin : true;
 }
 
-/** Who the caller has to be, said in the same terms the server refuses in. */
-export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
-  return pathKind === "direct-mcp"
-    ? "This integration's credential is sent to the runner, so only an organisation owner or admin can grant it to agents."
-    : "Only a project admin can change this.";
+/** Who the caller has to be, said in the same terms the server refuses in, as a copy key. */
+export function agentAccessDeniedReason(pathKind: AgentPathKind): ProductCopyKey {
+  return pathKind === "direct-mcp" ? "integrations.access.deniedDirect" : "integrations.access.deniedProject";
 }
 
 /**
@@ -77,10 +67,11 @@ export function AgentAccessChoice({
   pathKind: AgentPathKind;
   canEdit: boolean;
   /** Who may change it, shown whenever `canEdit` is false. */
-  disabledReason?: string;
+  disabledReason?: ProductCopyKey;
   busy?: boolean;
   failure?: string | null;
 }) {
+  const t = useCopy();
   const copy = takesGrant(pathKind) ? KIND_COPY[pathKind] : undefined;
   if (!copy) return null;
 
@@ -90,18 +81,16 @@ export function AgentAccessChoice({
     <div className="flex flex-col gap-1.5">
       <span className="flex items-center gap-2">
         <Toggle
-          aria-label={GRANT_LABEL}
+          aria-label={t("integrations.access.grant")}
           checked={granted}
           onChange={(next) => onChange(next ? "all" : AGENT_ACCESS_CLOSED)}
           disabled={!canEdit || busy === true}
         />
-        <span className="fg-body-sm text-fg">{GRANT_LABEL}</span>
+        <span className="fg-body-sm text-fg">{t("integrations.access.grant")}</span>
       </span>
-      <p className="fg-body-sm text-muted">{granted ? copy.granted : copy.withheld}</p>
+      <p className="fg-body-sm text-muted">{t(granted ? copy.granted : copy.withheld)}</p>
       {!canEdit && (
-        <p className="fg-body-sm text-subtle">
-          {disabledReason ?? "Only a project admin can change this."}
-        </p>
+        <p className="fg-body-sm text-subtle">{t(disabledReason ?? "integrations.access.deniedProject")}</p>
       )}
       {failure && <p className="fg-body-sm text-[var(--red-600)]">{failure}</p>}
     </div>
@@ -125,7 +114,7 @@ export function AgentAccessControl({
   binding: Pick<IntegrationSummary, "id" | "agentAccess" | "agentPathKind">;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
-  disabledReason?: string;
+  disabledReason?: ProductCopyKey;
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const isOrgAdmin = useIsOrgAdmin(projectId);

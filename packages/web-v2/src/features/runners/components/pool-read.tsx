@@ -1,7 +1,7 @@
 "use client";
 
 import { Banner, useNow } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { RunnerPoolRead } from "../types";
 
 /**
@@ -10,16 +10,7 @@ import type { RunnerPoolRead } from "../types";
  */
 export const POOL_READ_STALE_MS = 5 * 60_000;
 
-const ago = (ms: number | null) =>
-	formatRelativeTime(ms === null ? null : new Date(ms).toISOString(), {
-		emptyLabel: "at an unrecorded time",
-	});
 
-/** "24h" for the window the box reported, whatever it was. */
-function windowLabel(ms: number): string {
-	const hours = Math.round(ms / 3_600_000);
-	return hours >= 1 ? `${hours}h` : `${Math.round(ms / 60_000)}m`;
-}
 
 /**
  * A box that could not read this project's job pool (ISS-1234). A failed read
@@ -38,48 +29,41 @@ export function PoolReadBanner({
 	// An open page must see a report go stale without a re-render from above.
 	const ticking = useNow(30_000, Boolean(poolRead) && given === undefined);
 	const now = given ?? ticking;
+	const t = useCopy();
+	const time = useTimeFormat();
 	if (!poolRead) return null;
+	const ago = (ms: number | null) => (ms === null ? "" : time.relative(new Date(ms).toISOString(), now)) || t("runners.poolRead.unrecorded");
+	/** "24h" for the window the box reported, whatever it was. */
+	const windowLabel = (ms: number) => {
+		const hours = Math.round(ms / 3_600_000);
+		return hours >= 1 ? t("common.age.hours", { n: hours }) : t("common.age.minutes", { n: Math.round(ms / 60_000) });
+	};
 	const { lastFailure } = poolRead;
 	const heard = Date.parse(poolRead.receivedAt);
 	const stale = Number.isNaN(heard) || now - heard > POOL_READ_STALE_MS;
-	const asOf = stale ? (
-		<>
-			{" "}
-			This is the box's last report,{" "}
-			{formatRelativeTime(poolRead.receivedAt, { emptyLabel: "at an unrecorded time" })}
-			; nothing newer has arrived from it.
-		</>
-	) : null;
+	const asOf = stale ? <> {t("runners.poolRead.lastReport", { when: time.relative(poolRead.receivedAt, now) || t("runners.poolRead.unrecorded") })}</> : null;
 
 	if (poolRead.verdict === "blind") {
 		return (
 			<Banner tone="danger">
-				<span className="font-semibold">
-					{stale
-						? "This box could not read the project's job pool when it last reported"
-						: "This box cannot read the project's job pool"}
-				</span>{" "}
-				— unread since {ago(poolRead.unreadSince)}, {poolRead.consecutive}{" "}
-				consecutive failed read(s). Newest:{" "}
-				<code className="font-mono text-12">{lastFailure.what}</code>. It sees no
-				queue while this lasts, which is not the same as an empty one.{asOf}
+				<span className="font-semibold">{stale ? t("runners.poolRead.blindStale") : t("runners.poolRead.blind")}</span>{" "}
+				— {t("runners.poolRead.unreadSince", { since: ago(poolRead.unreadSince), n: poolRead.consecutive })}{" "}
+				<code className="font-mono text-12">{lastFailure.what}</code>. {t("runners.poolRead.noQueue")}
+				{asOf}
 			</Banner>
 		);
 	}
 
-	const count = poolRead.countIsFloor
-		? `At least ${poolRead.failures}`
-		: `${poolRead.failures}`;
+	const count = poolRead.countIsFloor ? t("runners.poolRead.atLeast", { n: poolRead.failures }) : `${poolRead.failures}`;
 	const window = windowLabel(poolRead.windowMs);
 	return (
 		<Banner tone="attention">
 			<span className="font-semibold">
-				{count} failed pool read(s){" "}
-				{stale ? `in the ${window} before its last report` : `in the last ${window}`}
+				{stale ? t("runners.poolRead.failedBefore", { count, window }) : t("runners.poolRead.failedLast", { count, window })}
 			</span>{" "}
-			— newest {ago(lastFailure.at)}:{" "}
-			<code className="font-mono text-12">{lastFailure.what}</code>. Reading
-			again since {ago(poolRead.recoveredAt)}.{asOf}
+			— {t("runners.poolRead.newest", { when: ago(lastFailure.at) })}{" "}
+			<code className="font-mono text-12">{lastFailure.what}</code>. {t("runners.poolRead.readingAgain", { when: ago(poolRead.recoveredAt) })}
+			{asOf}
 		</Banner>
 	);
 }

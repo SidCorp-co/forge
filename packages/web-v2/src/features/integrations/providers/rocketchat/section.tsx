@@ -6,11 +6,12 @@
 
 import { Badge, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useMemo, useState } from "react";
 import { AgentAccessControl } from "../../components/agent-access-control";
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
-import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
+import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, Ticked, useBindingTest } from "../shared";
 import { AddRocketchatForm } from "./add-form";
 import type { RocketchatReadConfig } from "./config";
 import { RoomsField } from "./rooms-field";
@@ -18,8 +19,9 @@ import { RoomsField } from "./rooms-field";
 export function RocketchatSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const binding = useMemo(() => (list.data?.items ?? []).find((i) => i.provider === "rocketchat"), [list.data]);
+  const t = useCopy();
 
-  if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
+  if (list.isLoading) return <p className="fg-body-sm text-muted">{t("integrations.provider.loading")}</p>;
   if (!binding) return <AddRocketchatForm projectId={projectId} />;
   return (
     <div className="flex flex-col gap-4">
@@ -38,7 +40,8 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
   const [authToken, setAuthToken] = useState("");
   const [botUserId, setBotUserId] = useState("");
   const [showRotate, setShowRotate] = useState(false);
-  const badge = healthBadge(binding, { needsReauth: "Bot credential rejected" });
+  const t = useCopy();
+  const badge = healthBadge(binding, t, { needsReauth: t("integrations.rocket.rejected") });
 
   async function write(body: { config?: { rids: string[] }; secrets?: Record<string, string> }) {
     test.setError(null);
@@ -68,11 +71,9 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
       <p className="fg-body-sm text-muted">
-        The bot answers @-mentions in the bound rooms, reads the discussion, and can capture it as a{" "}
-        <span className="font-mono">draft</span> Forge issue. A human moves drafts to{" "}
-        <span className="font-mono">open</span> to start the pipeline.
+        <Ticked text={t("integrations.rocket.intro")} />
       </p>
-      <TestOutcome error={test.error} result={test.result} okFallback="Bot credential OK" />
+      <TestOutcome error={test.error} result={test.result} okFallback={t("integrations.rocket.ok")} />
       <RoomsField
         projectId={projectId}
         bindingId={binding.id}
@@ -90,21 +91,21 @@ function RocketchatBindingPanel({ projectId, binding }: { projectId: string; bin
         orgLocked={orgLocked}
         rotating={showRotate}
         setRotating={setShowRotate}
-        rotateLabel="Rotate credential"
-        saveLabel="Save credential"
+        rotateLabel={t("integrations.rocket.rotate")}
+        saveLabel={t("integrations.rocket.save")}
         onSave={saveCredential}
         saving={update.isPending}
         saveDisabled={!authToken.trim() && !botUserId.trim()}
         onTest={() => test.run(binding.id)}
         testing={test.pending}
-        confirmDelete="Disconnect the Rocket.Chat bot from this project?"
-        deleteLabel="Disconnect"
+        confirmDelete={t("integrations.rocket.confirmDisconnect")}
+        deleteLabel={t("integrations.rocket.disconnect")}
       />
       <AgentAccessControl
         projectId={projectId}
         binding={binding}
         canEdit={!orgLocked}
-        disabledReason="Org-shared credential — only an org owner/admin can grant it."
+        disabledReason="integrations.access.deniedOrgShared"
       />
     </div>
   );
@@ -116,19 +117,20 @@ function RotateFields(p: {
   botUserId: string;
   onBotUserId: (v: string) => void;
 }) {
+  const t = useCopy();
   return (
     <>
-      <Field label="New bot auth token" hint="Personal-access token of the bot user. Leave blank to keep the current one.">
+      <Field label={t("integrations.rocket.newToken")} hint={t("integrations.rocket.newTokenHint")}>
         <Input
           type="password"
           autoComplete="new-password"
-          placeholder="bot PAT…"
+          placeholder={t("integrations.rocket.patPlaceholder")}
           value={p.authToken}
           onChange={(e) => p.onAuthToken(e.target.value)}
         />
       </Field>
-      <Field label="Bot user ID" hint="Only needed if the bot account changed.">
-        <Input placeholder="bot user id…" value={p.botUserId} onChange={(e) => p.onBotUserId(e.target.value)} />
+      <Field label={t("integrations.rocket.userId")} hint={t("integrations.rocket.userIdRotateHint")}>
+        <Input placeholder={t("integrations.rocket.userIdPlaceholder")} value={p.botUserId} onChange={(e) => p.onBotUserId(e.target.value)} />
       </Field>
     </>
   );

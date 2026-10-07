@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface LightboxImage {
   id: string;
@@ -194,6 +195,7 @@ function LightboxHeader({
   resetZoom: () => void;
   onClose: () => void;
 }) {
+  const t = useCopy();
   return (
     <header className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3">
       <div className="flex min-w-0 items-center gap-2">
@@ -212,7 +214,7 @@ function LightboxHeader({
           type="button"
           onClick={() => zoomBy(-ZOOM_STEP)}
           disabled={scale <= MIN_SCALE}
-          aria-label="Zoom out"
+          aria-label={t("issues.image.zoomOut")}
           className={`${GLYPH} text-lg`}
         >
           &minus;
@@ -220,7 +222,7 @@ function LightboxHeader({
         <button
           type="button"
           onClick={resetZoom}
-          aria-label="Reset zoom"
+          aria-label={t("issues.image.resetZoom")}
           className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           {Math.round(scale * 100)}%
@@ -229,7 +231,7 @@ function LightboxHeader({
           type="button"
           onClick={() => zoomBy(ZOOM_STEP)}
           disabled={scale >= MAX_SCALE}
-          aria-label="Zoom in"
+          aria-label={t("issues.image.zoomIn")}
           className={`${GLYPH} text-lg`}
         >
           +
@@ -245,7 +247,7 @@ function LightboxHeader({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
           className={`${GLYPH} text-xl`}
         >
           &times;
@@ -256,6 +258,7 @@ function LightboxHeader({
 }
 
 function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index: number; onPick: (i: number) => void }) {
+  const t = useCopy();
   return (
     <div className="flex flex-none justify-start gap-2 overflow-x-auto px-3 py-2 sm:justify-center sm:px-4 sm:py-3">
       {images.map((img, i) => (
@@ -263,7 +266,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           key={img.id}
           type="button"
           onClick={() => onPick(i)}
-          aria-label={`View ${img.name}`}
+          aria-label={t("issues.image.view", { name: img.name })}
           aria-current={i === index}
           className={`flex-none overflow-hidden rounded-md border-2 transition-colors ${
             i === index
@@ -295,6 +298,7 @@ export function ImageLightbox({
   onClose: () => void;
   onIndexChange: (next: number) => void;
 }) {
+  const t = useCopy();
   const count = images.length;
   const current = images[index];
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -339,7 +343,7 @@ export function ImageLightbox({
       ref={panelRef}
       role="dialog"
       aria-modal="true"
-      aria-label={`Image ${index + 1} of ${count}: ${current.name}`}
+      aria-label={t("issues.image.position", { at: index + 1, of: count, name: current.name })}
       tabIndex={-1}
       className="fixed inset-0 z-[60] flex flex-col outline-none"
       style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
@@ -357,7 +361,7 @@ export function ImageLightbox({
           <button
             type="button"
             onClick={() => go(-1)}
-            aria-label="Previous image"
+            aria-label={t("issues.image.previous")}
             className="absolute left-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:left-3 sm:size-10"
           >
             &lsaquo;
@@ -390,7 +394,7 @@ export function ImageLightbox({
           <button
             type="button"
             onClick={() => go(1)}
-            aria-label="Next image"
+            aria-label={t("issues.image.next")}
             className="absolute right-2 z-10 flex size-11 items-center justify-center rounded-pill bg-white/10 text-2xl leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:right-3 sm:size-10"
           >
             &rsaquo;

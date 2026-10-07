@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, PageContainer, Skeleton } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useProjectsConsole } from '@/features/projects/hooks';
 import { formatApiError } from '@/lib/api/error';
+import { useCopy } from '@/lib/i18n/interface-language';
 import { usePulse } from '../hooks';
 import { ActionQueue } from './action-queue';
 import { FlowSection } from './flow-section';
@@ -19,11 +20,12 @@ export function OverviewScreen() {
   const { activeOrg, activeOrgId } = useActiveOrg();
   const pulse = usePulse(activeOrgId ?? undefined);
   const { items: allItems } = useProjectsConsole();
+  const t = useCopy();
 
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => setNowMs(Date.now()), []);
 
-  const orgLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
+  const orgLabel = activeOrg ? (activeOrg.isPersonal ? t('overview.personal') : activeOrg.name) : null;
   const data = pulse.data;
   const hasProjects = useMemo(() => (data ? data.work.perProject.length > 0 : false), [data]);
 
@@ -31,7 +33,7 @@ export function OverviewScreen() {
     return (
       <PageContainer>
         <ErrorState
-          title="Couldn't load your workspace"
+          title={t('overview.loadFailed')}
           message={formatApiError(pulse.error)}
           onRetry={() => pulse.refetch()}
         />
@@ -55,17 +57,9 @@ export function OverviewScreen() {
     return (
       <PageContainer className="grid min-h-[60vh] place-items-center">
         <EmptyState
-          title={
-            hasAnyProjects
-              ? `No projects in ${orgLabel ?? 'this organization'} yet`
-              : 'Welcome to Forge'
-          }
-          message={
-            hasAnyProjects
-              ? 'Create a project in this organization, or switch organizations from the chrome to see others.'
-              : 'Create your first project to start shipping issues through the pipeline. This dashboard fills in as work flows.'
-          }
-          action={{ label: 'New project', onClick: () => router.push('/projects?new=1') }}
+          title={hasAnyProjects ? t('overview.noProjectsIn', { org: orgLabel ?? t('overview.thisOrg') }) : t('overview.welcome')}
+          message={hasAnyProjects ? t('overview.noProjectsBody') : t('overview.welcomeBody')}
+          action={{ label: t('overview.newProject'), onClick: () => router.push('/projects?new=1') }}
         />
       </PageContainer>
     );
@@ -73,8 +67,8 @@ export function OverviewScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-4">
-      <PageTitle hint={`What the control plane is doing across ${orgLabel ?? 'your organization'}.`}>
-          Overview{orgLabel ? ` · ${orgLabel}` : ''}
+      <PageTitle hint={t('overview.hint', { org: orgLabel ?? t('overview.yourOrg') })}>
+          {t('overview.title')}{orgLabel ? ` · ${orgLabel}` : ''}
       </PageTitle>
 
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />

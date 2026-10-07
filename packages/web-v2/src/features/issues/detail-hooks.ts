@@ -3,6 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
 import { canonicalIssueId, issueQueryKey } from "./derive";
@@ -69,6 +70,7 @@ export function useRecordDecision(id: string) {
 export function useCreateComment(id: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: async (args: { body: string; parentId?: string; files?: File[] }) => {
       const created = await issueDetailApi.createComment(id, args.body, args.parentId);
@@ -82,7 +84,7 @@ export function useCreateComment(id: string) {
             await issueDetailApi.uploadCommentAttachment(created.id, file);
           } catch (err) {
             toast({
-              title: "Comment posted, but an attachment failed",
+              title: t("issues.toast.attachmentFailed"),
               description: `${file.name}: ${formatApiError(err)}`,
               tone: "error",
             });
@@ -96,7 +98,7 @@ export function useCreateComment(id: string) {
       qc.invalidateQueries({ queryKey: ["activities", id] });
     },
     onError: (err) => {
-      toast({ title: "Couldn't post comment", description: formatApiError(err), tone: "error" });
+      toast({ title: t("issues.toast.commentFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }

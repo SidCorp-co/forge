@@ -3,6 +3,7 @@
 
 import { type ChangeEvent, type KeyboardEvent, useState } from "react";
 import { Button, Input } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRevokeDevice } from "../hooks";
 
 function matches(typed: string, deviceName: string): boolean {
@@ -19,6 +20,7 @@ export function RevokeDeviceControl({
 	onDone: () => void;
 }) {
 	const revoke = useRevokeDevice();
+	const t = useCopy();
 	const [typed, setTyped] = useState("");
 	const ok = matches(typed, deviceName);
 
@@ -32,7 +34,7 @@ export function RevokeDeviceControl({
 			<Input
 				value={typed}
 				placeholder={deviceName}
-				aria-label={`Type ${deviceName} to confirm revoking it`}
+				aria-label={t("runners.revoke.aria", { name: deviceName })}
 				className="h-8 w-56"
 				onChange={(e: ChangeEvent<HTMLInputElement>) => setTyped(e.target.value)}
 				onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
@@ -47,7 +49,7 @@ export function RevokeDeviceControl({
 				disabled={!ok}
 				onClick={run}
 			>
-				Revoke
+				{t("runners.device.revoke")}
 			</Button>
 			<Button
 				variant="ghost"
@@ -57,7 +59,7 @@ export function RevokeDeviceControl({
 					onDone();
 				}}
 			>
-				Cancel
+				{t("common.cancel")}
 			</Button>
 		</span>
 	);

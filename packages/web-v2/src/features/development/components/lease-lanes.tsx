@@ -1,13 +1,10 @@
 "use client";
 
-import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { HoverCard, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
+import { HoverCard, LEGEND, statusReading, ToneBadge, Tooltip, WaitingOn } from "@/design";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
-import { formatStamp } from "@/lib/utils/format";
 import type { OverviewLane, OverviewMoving } from "../types";
-
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 
 const LABEL_FROM_SHARE = 0.09;
 
@@ -22,15 +19,18 @@ function ticksOf(from: number, to: number, most = 5): number[] {
 }
 
 function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: number; now: number }) {
+  const t = useCopy();
+  const L = useLabel();
+  const time = useTimeFormat();
   const pct = (ms: number) => `${(Math.min(Math.max((ms - from) / (to - from), 0), 1) * 100).toFixed(2)}%`;
   const segs = lane.segments.length
-    ? lane.segments.map((s) => ({ label: WORK_STEP_LABELS[s.step], a: new Date(s.startedAt).getTime(), b: s.endedAt ? new Date(s.endedAt).getTime() : now, open: s.endedAt === null }))
+    ? lane.segments.map((s) => ({ label: L("workStep", s.step), a: new Date(s.startedAt).getTime(), b: s.endedAt ? new Date(s.endedAt).getTime() : now, open: s.endedAt === null }))
     : lane.heldSince
-      ? [{ label: "Holding", a: new Date(lane.heldSince).getTime(), b: now, open: true }]
+      ? [{ label: t("overview.lane.holding"), a: new Date(lane.heldSince).getTime(), b: now, open: true }]
       : [];
   const leaseEnd = lane.lease?.expiresAt ? new Date(lane.lease.expiresAt).getTime() : null;
   return (
-    <div className="relative h-5 rounded-[3px] bg-sunken" role="img" aria-label={`${lane.key} run lane`}>
+    <div className="relative h-5 rounded-[3px] bg-sunken" role="img" aria-label={t("overview.lane.aria", { key: lane.key })}>
       {segs
         .filter((s) => s.b > from)
         .map((s) => (
@@ -39,7 +39,7 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
             className="absolute top-0.5 h-4 [&>span]:flex [&>span]:h-full [&>span]:w-full"
             style={{ left: pct(s.a), width: `calc(${pct(s.b)} - ${pct(s.a)})` }}
           >
-            <Tooltip label={`${s.label} · ${clock(s.a)} to ${s.open ? "now" : clock(s.b)}`}>
+            <Tooltip label={t("overview.lane.span", { step: s.label, from: time.clock(s.a), to: s.open ? t("overview.lane.now") : time.clock(s.b) })}>
               <span
                 className="items-center overflow-hidden whitespace-nowrap rounded-[3px] px-1.5 text-10 font-semibold text-on-accent"
                 style={{ background: s.open ? LEGEND.run.dot : "var(--ink-600)" }}
@@ -53,7 +53,7 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
         <div
           className="absolute top-[5px] h-2.5 rounded-[3px] border border-dashed"
           style={{ left: pct(now), width: `calc(${pct(leaseEnd)} - ${pct(now)})`, borderColor: LEGEND.run.dot }}
-          title={`Lease held until ${formatStamp(lane.lease?.expiresAt as string)}`}
+          title={t("overview.lane.leaseUntil", { at: time.dateTime(lane.lease?.expiresAt as string) })}
         />
       ) : null}
       <div aria-hidden className="absolute -bottom-1 -top-1 w-0 border-l-[1.5px] border-fg" style={{ left: pct(now) }} />
@@ -62,35 +62,37 @@ function Track({ lane, from, to, now }: { lane: OverviewLane; from: number; to: 
 }
 
 function LaneDetail({ lane }: { lane: OverviewLane }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   return (
     <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-12-5">
-      <dt className="text-muted">Holder</dt>
-      <dd className="min-w-0 break-all font-mono text-12">{lane.holder ?? "None recorded"}</dd>
+      <dt className="text-muted">{t("overview.lane.holder")}</dt>
+      <dd className="min-w-0 break-all font-mono text-12">{lane.holder ?? t("overview.lane.noneRecorded")}</dd>
       {lane.box ? (
         <>
-          <dt className="text-muted">Box</dt>
+          <dt className="text-muted">{t("overview.lane.box")}</dt>
           <dd className="font-mono text-12">{lane.box}</dd>
         </>
       ) : null}
       {lane.branch ? (
         <>
-          <dt className="text-muted">Branch</dt>
+          <dt className="text-muted">{t("overview.lane.branch")}</dt>
           <dd className="break-all font-mono text-12">{lane.branch}</dd>
         </>
       ) : null}
       {lane.lease ? (
         <>
-          <dt className="text-muted">Lease</dt>
+          <dt className="text-muted">{t("issues.facts.lease")}</dt>
           <dd className="flex flex-wrap items-center gap-1.5">
-            <StatusBadge family="lease" value={lane.lease.verdict} />
-            {lane.lease.expiresAt ? <span className="text-muted">until {formatStamp(lane.lease.expiresAt)}</span> : null}
+            <ToneBadge tone={statusReading("lease", lane.lease.verdict).tone} label={t(`issues.lease.${lane.lease.verdict}`)} title={lane.lease.verdict} value={lane.lease.verdict} />
+            {lane.lease.expiresAt ? <span className="text-muted">{t("overview.lane.until", { at: time.dateTime(lane.lease.expiresAt) })}</span> : null}
           </dd>
         </>
       ) : null}
       {lane.heldSince ? (
         <>
-          <dt className="text-muted">Since</dt>
-          <dd>{formatStamp(lane.heldSince)}</dd>
+          <dt className="text-muted">{t("overview.lane.since")}</dt>
+          <dd>{time.dateTime(lane.heldSince)}</dd>
         </>
       ) : null}
     </dl>
@@ -99,7 +101,9 @@ function LaneDetail({ lane }: { lane: OverviewLane }) {
 
 export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: string }) {
   const w = moving.window;
-  if (!w) return <p className="text-13 text-muted">Nothing is running. A run that holds a lease appears here with the steps it has been in.</p>;
+  const t = useCopy();
+  const time = useTimeFormat();
+  if (!w) return <p className="text-13 text-muted">{t("overview.lane.empty")}</p>;
   const from = new Date(w.from).getTime();
   const to = new Date(w.to).getTime();
   const now = new Date(w.now).getTime();
@@ -112,7 +116,7 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
               <Link href={issueHref(slug, lane.key)} className="truncate font-mono text-11-5 font-semibold text-link no-underline hover:underline" title={lane.title}>
                 {lane.key}
               </Link>
-              <HoverCard label={`Run on ${lane.key}`} content={<LaneDetail lane={lane} />} placement="bottom-start">
+              <HoverCard label={t("overview.lane.runOn", { key: lane.key })} content={<LaneDetail lane={lane} />} placement="bottom-start">
                 <WaitingOn w={lane.waitingOn} />
               </HoverCard>
             </div>
@@ -121,14 +125,14 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
         ))}
         <div />
         <div className="relative h-4 text-11 text-muted" aria-hidden>
-          {ticksOf(from, to).map((t) => (
-            <span key={t} className="absolute -translate-x-1/2 font-mono tabular-nums" style={{ left: `${(((t - from) / (to - from)) * 100).toFixed(2)}%` }}>
-              {clock(t)}
+          {ticksOf(from, to).map((tick) => (
+            <span key={tick} className="absolute -translate-x-1/2 font-mono tabular-nums" style={{ left: `${(((tick - from) / (to - from)) * 100).toFixed(2)}%` }}>
+              {time.clock(tick)}
             </span>
           ))}
         </div>
       </div>
-      <p className="mt-2.5 text-12 text-muted">Solid: steps the run has been in. Dashed: the lease still held. Line: now.</p>
+      <p className="mt-2.5 text-12 text-muted">{t("overview.lane.legend")}</p>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { Banner, Collapsible, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useIntegrationDeliveries } from "../hooks";
 import { redactSensitive } from "../derive";
 import type { IntegrationDelivery } from "../types";
@@ -18,6 +18,9 @@ import type { IntegrationDelivery } from "../types";
 function DeliveryRow({ row }: { row: IntegrationDelivery }) {
   const dirIcon: IconName = row.direction === "inbound" ? "inbox" : "arrowRight";
   const duration = typeof row.durationMs === "number" ? `${row.durationMs}ms` : "—";
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
 
   return (
     <Collapsible
@@ -25,13 +28,15 @@ function DeliveryRow({ row }: { row: IntegrationDelivery }) {
         <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1.5 text-muted">
             <Icon name={dirIcon} size={13} />
-            <span className="fg-body-sm">{enumLabel("direction", row.direction)}</span>
+            <span className="fg-body-sm">{enumLabel("direction", row.direction, language)}</span>
           </span>
-          <span className="font-mono text-12 text-fg">{row.eventName}</span>
+          <span className="font-mono text-12 text-fg" translate="no">
+            {row.eventName}
+          </span>
           <StatusBadge family="delivery" value={row.status} />
           <span className="ml-auto inline-flex items-center gap-3 text-subtle">
             <span className="fg-body-sm">{duration}</span>
-            <span className="fg-body-sm">{formatRelativeTime(row.createdAt, { emptyLabel: "—" })}</span>
+            <span className="fg-body-sm">{time.relative(row.createdAt) || "—"}</span>
           </span>
         </span>
       }
@@ -39,14 +44,14 @@ function DeliveryRow({ row }: { row: IntegrationDelivery }) {
       <div className="flex flex-col gap-3">
         {row.errorMessage && <Banner tone="danger">{row.errorMessage}</Banner>}
         <div>
-          <span className="fg-overline text-subtle">Payload</span>
+          <span className="fg-overline text-subtle">{t("integrations.delivery.payload")}</span>
           <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
             {JSON.stringify(redactSensitive(row.payload), null, 2)}
           </pre>
         </div>
         {row.response && (
           <div>
-            <span className="fg-overline text-subtle">Response</span>
+            <span className="fg-overline text-subtle">{t("integrations.delivery.response")}</span>
             <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
               {JSON.stringify(redactSensitive(row.response), null, 2)}
             </pre>
@@ -65,12 +70,13 @@ export function DeliveryLogViewer({
   bindingId: string | null;
 }) {
   const deliveries = useIntegrationDeliveries(projectId, bindingId);
+  const t = useCopy();
 
   if (!bindingId) {
     return (
       <EmptyState
-        title="No deliveries"
-        message="Save this integration to start recording deliveries."
+        title={t("integrations.delivery.none")}
+        message={t("integrations.delivery.saveFirst")}
         mascot={false}
       />
     );
@@ -90,7 +96,7 @@ export function DeliveryLogViewer({
 
   const items = deliveries.data?.items ?? [];
   if (items.length === 0) {
-    return <EmptyState title="No deliveries yet" message="Nothing has been dispatched or received." mascot={false} />;
+    return <EmptyState title={t("integrations.delivery.noneYet")} message={t("integrations.delivery.nothing")} mascot={false} />;
   }
 
   return (

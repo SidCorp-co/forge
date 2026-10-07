@@ -1,15 +1,16 @@
+"use client";
+
 import { Banner, Button } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /** Forge reads each deploy's outcome back from Coolify; nothing in Coolify to configure. */
 export function DeployConfirmationHint() {
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-      <span className="fg-label text-subtle">Deploy confirmation</span>
-      <span className="fg-body-sm">
-        Forge reads each deploy&apos;s outcome back from Coolify and holds the pipeline run open until every
-        target reports. Nothing to configure in Coolify — it sends no callback, so Forge asks instead.
-      </span>
-      <span className="fg-body-sm text-subtle">A deploy still unconfirmed after 30 minutes fails its run.</span>
+      <span className="fg-label text-subtle">{t("integrations.coolify.confirmation")}</span>
+      <span className="fg-body-sm">{t("integrations.coolify.confirmationBody")}</span>
+      <span className="fg-body-sm text-subtle">{t("integrations.coolify.confirmationTimeout")}</span>
     </div>
   );
 }
@@ -27,30 +28,26 @@ export function ProdGateSection({
   confirmPending: boolean;
   onConfirm: () => void;
 }) {
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-        <span className="fg-label text-subtle">Live approval gate</span>
+        <span className="fg-label text-subtle">{t("integrations.coolify.gate")}</span>
         <span className="fg-body-sm text-muted">
-          Where this binding reaches production — it is the binding the production environment names, or
-          deploys to an application that one does — a production deploy waits for the confirmation below
-          unless that environment deploys on land (<code>deployment.trigger: &quot;on-land&quot;</code>).
-          Confirming any other binding is refused.
+          {t("integrations.coolify.gateBody.lead")} (<code>deployment.trigger: &quot;on-land&quot;</code>).{" "}
+          {t("integrations.coolify.gateBody.tail")}
         </span>
       </div>
       <Banner tone="attention">
         <div className="flex flex-col gap-2">
-          <span className="fg-label">Live approval gate</span>
-          <span className="fg-body-sm">
-            Live deploys never auto-dispatch. Click confirm when ready to release the gate for an in-flight
-            pipeline run.
-          </span>
+          <span className="fg-label">{t("integrations.coolify.gate")}</span>
+          <span className="fg-body-sm">{t("integrations.coolify.gateNever")}</span>
           <div>
             <Button size="sm" loading={confirmPending} onClick={onConfirm}>
-              Confirm live deploy
+              {t("integrations.coolify.confirmLive")}
             </Button>
           </div>
-          <span className="font-mono text-10 text-subtle">integration: {integrationId}</span>
+          <span className="font-mono text-10 text-subtle">{t("integrations.coolify.integrationId", { id: integrationId })}</span>
         </div>
       </Banner>
     </div>

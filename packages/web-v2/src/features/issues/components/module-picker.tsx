@@ -23,6 +23,7 @@ import {
 } from "@/design";
 import { ancestorsOf } from "@/features/modules/tree";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules, useSetIssueModules } from "../hooks";
 import type { IssueLabel } from "../types";
 
@@ -51,6 +52,7 @@ export function ModulePicker({
   const router = useRouter();
   const modulesQ = useProjectModules(projectId);
   const save = useSetIssueModules(issueId);
+  const t = useCopy();
 
   const attached = useMemo(() => labels.filter((l) => l.kind === "module"), [labels]);
 
@@ -99,7 +101,7 @@ export function ModulePicker({
   }
 
   return (
-    <SlideOver open={open} onClose={onClose} title="Modules" width="clamp(360px, 40vw, 560px)">
+    <SlideOver open={open} onClose={onClose} title={t("issues.modules.title")} width="clamp(360px, 40vw, 560px)">
       {modulesQ.isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-6 w-24 rounded-md" />
@@ -109,29 +111,27 @@ export function ModulePicker({
         </div>
       ) : modulesQ.isError ? (
         <ErrorState
-          title="Couldn't load modules"
+          title={t("issues.modules.loadFailed")}
           message={formatApiError(modulesQ.error)}
           onRetry={() => modulesQ.refetch()}
         />
       ) : modules.length === 0 ? (
         <EmptyState
-          title="No modules defined"
-          message="No modules defined — add modules in project settings."
+          title={t("issues.modules.noneTitle")}
+          message={t("issues.modules.none")}
           mascot={false}
           action={{
-            label: "Open project settings",
+            label: t("issues.modules.openSettings"),
             onClick: () => router.push(`/projects/${slug}/settings?tab=modules`),
           }}
         />
       ) : (
         <div className="flex h-full flex-col gap-6">
           <section>
-            <PageSectionTitle className="fg-overline mb-2">Primary</PageSectionTitle>
-            <p className="fg-caption mb-2.5 text-muted">
-              The one module this issue belongs to. Pick at most one.
-            </p>
+            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.primary")}</PageSectionTitle>
+            <p className="fg-caption mb-2.5 text-muted">{t("issues.modules.primaryHint")}</p>
             <RadioGroup name="primary-module" value={primary} onChange={choosePrimary}>
-              <Radio value={NO_PRIMARY} label="No primary module" disabled={save.isPending} />
+              <Radio value={NO_PRIMARY} label={t("issues.modules.noPrimary")} disabled={save.isPending} />
               {modules.map((m) => (
                 <Radio key={m.id} value={m.id} label={m.label} disabled={save.isPending} />
               ))}
@@ -139,10 +139,8 @@ export function ModulePicker({
           </section>
 
           <section>
-            <PageSectionTitle className="fg-overline mb-2">Also touches</PageSectionTitle>
-            <p className="fg-caption mb-2.5 text-muted">
-              Every other module this issue reaches into.
-            </p>
+            <PageSectionTitle className="fg-overline mb-2">{t("issues.modules.also")}</PageSectionTitle>
+            <p className="fg-caption mb-2.5 text-muted">{t("issues.modules.alsoHint")}</p>
             <div className="flex flex-col gap-2.5">
               {modules
                 .filter((m) => m.id !== primary)
@@ -160,10 +158,10 @@ export function ModulePicker({
 
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
             <Button variant="ghost" onClick={onClose} disabled={save.isPending}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button variant="primary" loading={save.isPending} onClick={commit}>
-              Save
+              {t("issues.description.save")}
             </Button>
           </div>
         </div>

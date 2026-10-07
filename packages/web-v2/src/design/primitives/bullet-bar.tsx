@@ -1,3 +1,6 @@
+"use client";
+
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface BulletBarProps {
@@ -23,8 +26,9 @@ export function BulletBar({
   color = "var(--accent)",
   className,
 }: BulletBarProps) {
+  const t = useCopy();
   const share = total > 0 ? value / total : 0;
-  const text = valueText ?? `${value} of ${total}`;
+  const text = valueText ?? t("common.ofTotal", { value, total });
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>

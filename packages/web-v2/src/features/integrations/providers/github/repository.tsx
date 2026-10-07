@@ -2,6 +2,7 @@
 
 import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, NativeSelect, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useMemo, useState } from "react";
 import { AGENT_ACCESS_CLOSED, AgentAccessChoice, AgentAccessControl, agentAccessBody } from "../../components/agent-access-control";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
@@ -40,6 +41,7 @@ export function BindingControls({
   binding: IntegrationSummary;
 }) {
   const remove = useDeleteProviderIntegration(projectId);
+  const t = useCopy();
 
   return (
     <>
@@ -54,7 +56,7 @@ export function BindingControls({
           onClick={() => remove.mutate(binding)}
           disabled={remove.isPending}
         >
-          Disconnect from this project
+          {t("integrations.github.disconnect")}
         </Button>
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
       </div>
@@ -80,30 +82,31 @@ function RepositoryField({
     () => (repos.data?.repositories ?? []).map((r) => ({ value: r.fullName, label: r.fullName })),
     [repos.data],
   );
+  const t = useCopy();
 
   if (repos.isLoading) return <Spinner />;
   if (repos.isError) return <Banner tone="danger">{formatApiError(repos.error)}</Banner>;
   if (options.length === 0) {
     return (
       <Banner tone="attention">
-        This App has no repositories yet. Grant it some on GitHub, then reload.
+        {t("integrations.github.noRepos")}
       </Banner>
     );
   }
 
   return (
     <>
-      <Field label="Repository">
+      <Field label={t("integrations.github.repository")}>
         <NativeSelect
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          aria-label="Repository"
-          options={[{ value: "", label: "Choose a repository…" }, ...options]}
+          aria-label={t("integrations.github.repository")}
+          options={[{ value: "", label: t("integrations.github.chooseRepo") }, ...options]}
         />
       </Field>
       {repos.data?.truncated && (
         <p className="fg-body-sm text-subtle">
-          Showing the first pages of a large installation — not every repository is listed.
+          {t("integrations.github.truncated")}
         </p>
       )}
     </>
@@ -135,6 +138,7 @@ export function SetRepository({
   const update = useUpdateProviderIntegration(projectId);
   const current = repositoryOf(binding.config);
   const [fullName, setFullName] = useState(current ? `${current.owner}/${current.repo}` : "");
+  const t = useCopy();
 
   const chosen = (repos.data?.repositories ?? []).find((r) => r.fullName === fullName);
 
@@ -159,19 +163,19 @@ export function SetRepository({
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>{current ? "Change repository" : "Connect a repository"}</PageSectionTitle>
+        <PageSectionTitle>{current ? t("integrations.github.changeRepo") : t("integrations.github.connectRepoTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Using <span className="font-semibold">{connectionLabel}</span>. This project already has a
-          GitHub binding; picking here points that same binding at a repository.
+          {t("integrations.github.using")} <span className="font-semibold">{connectionLabel}</span>.{" "}
+          {t("integrations.github.alreadyBound")}
         </p>
 
         <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
 
         {!binding.bindingActive && (
           <p className="fg-body-sm text-muted">
-            This binding is switched off. Saving a repository switches it back on.
+            {t("integrations.github.switchedOff")}
           </p>
         )}
 
@@ -179,11 +183,11 @@ export function SetRepository({
 
         <div className="flex items-center gap-3">
           <Button onClick={submit} disabled={!chosen || update.isPending}>
-            {update.isPending ? "Saving…" : "Save repository"}
+            {update.isPending ? t("integrations.github.saving") : t("integrations.github.saveRepo")}
           </Button>
           {onDone && (
             <Button variant="ghost" size="sm" onClick={onDone}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
         </div>
@@ -215,6 +219,7 @@ export function UseExistingApp({
   const bind = useBindConnection(projectId);
   const [fullName, setFullName] = useState("");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
+  const t = useCopy();
 
   const chosen = (repos.data?.repositories ?? []).find((r) => r.fullName === fullName);
 
@@ -236,12 +241,12 @@ export function UseExistingApp({
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Connect a repository</PageSectionTitle>
+        <PageSectionTitle>{t("integrations.github.connectRepoTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Using <span className="font-semibold">{connectionLabel}</span>. One App serves every
-          project; this project just points at one of its repositories.
+          {t("integrations.github.using")} <span className="font-semibold">{connectionLabel}</span>.{" "}
+          {t("integrations.github.oneApp")}
         </p>
 
         <RepositoryField repos={repos} value={fullName} onChange={setFullName} />
@@ -257,10 +262,10 @@ export function UseExistingApp({
 
         <div className="flex items-center gap-3">
           <Button onClick={submit} disabled={!chosen || bind.isPending}>
-            {bind.isPending ? "Connecting…" : "Connect repository"}
+            {bind.isPending ? t("integrations.github.connecting") : t("integrations.github.connectRepo")}
           </Button>
           <Button variant="ghost" size="sm" onClick={onNeedNewApp}>
-            Create a separate App instead
+            {t("integrations.github.separateApp")}
           </Button>
         </div>
       </PageSectionBody>

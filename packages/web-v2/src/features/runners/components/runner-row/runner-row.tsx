@@ -8,7 +8,7 @@ import {
 	enumLabel,
 	useNow,
 } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useState } from "react";
 import { useClearRunnerError } from "../../hooks";
 import {
@@ -50,7 +50,9 @@ export function RunnerRow({
 	// Tick once a second while this runner is limited (live next-try countdown) OR
 	// busy (live elapsed counter on the current job).
 	const now = useNow(1000, Boolean(runner.limitReason) || Boolean(current));
-	const limit = runnerLimitDisplay(runner, now);
+	const t = useCopy();
+	const time = useTimeFormat();
+	const limit = runnerLimitDisplay(runner, useInterfaceLanguage(), now);
 
 	return (
 		<div className="flex flex-col gap-3 py-3">
@@ -71,14 +73,10 @@ export function RunnerRow({
 
 			<div className="flex items-center justify-between gap-2 text-subtle">
 				<span className="fg-caption truncate">
-					{runner.repoPath ? (
-						<code>{runner.repoPath}</code>
-					) : (
-						"no repo path set"
-					)}
+					{runner.repoPath ? <code>{runner.repoPath}</code> : t("runners.row.noRepoPath")}
 				</span>
 				<span className="fg-caption flex-none">
-					{formatRelativeTime(runner.lastSeenAt, { emptyLabel: "never seen" })}
+					{time.relative(runner.lastSeenAt) || t("runners.row.neverSeen")}
 				</span>
 			</div>
 
@@ -109,7 +107,7 @@ export function RunnerRow({
 					icon={showActivity ? "chevronDown" : "chevronRight"}
 					onClick={() => setShowActivity((s) => !s)}
 				>
-					{showActivity ? "Hide activity" : "Activity & logs"}
+					{showActivity ? t("runners.row.hideActivity") : t("runners.row.activity")}
 				</Button>
 			</div>
 			{showActivity && <RunnerActivityPanel runnerId={runner.runnerId} />}
@@ -128,17 +126,19 @@ function RunnerHeading({
 	deviceDisabled: boolean;
 }) {
 	const online = runner.deviceStatus === "online" && !deviceDisabled;
+	const t = useCopy();
+	const language = useInterfaceLanguage();
 	return (
 		<div className="flex min-w-0 items-center gap-2">
 			<HealthDot health={online ? "healthy" : "idle"} withLabel={false} />
 			<span className="truncate font-semibold text-fg">
-				{runner.deviceName ?? "Unknown device"}
+				{runner.deviceName ?? t("runners.row.unknownDevice")}
 			</span>
 			{deviceDisabled && (
 				<Badge tone="neutral">
 					<span className="inline-flex items-center gap-1">
 						<Icon name="alert" size={11} />
-						Device off
+						{t("runners.row.deviceOff")}
 					</span>
 				</Badge>
 			)}
@@ -155,7 +155,7 @@ function RunnerHeading({
 			    different clocks and a reader with one number on screen
 			    cannot tell which software a bug belongs to (ISS-1119). */}
 			<span className="fg-caption whitespace-nowrap text-muted">
-				{runnerVersionLabel(runner.agentVersion)}
+				{runnerVersionLabel(runner.agentVersion, language)}
 			</span>
 			<HealthDot
 				health={provisionHealth(runner.provisionStatus)}
@@ -167,23 +167,25 @@ function RunnerHeading({
 
 /** The job this runner is executing, with its live elapsed time, or Idle. */
 function CurrentJobLine({ current, now }: { current: ActiveRunnerJob | null; now: number }) {
+	const t = useCopy();
+	const language = useInterfaceLanguage();
 	if (!current) {
 		return (
 			<div className="flex items-center gap-2 px-1">
 				<HealthDot health="idle" withLabel={false} />
-				<span className="fg-body-sm text-subtle">Idle</span>
+				<span className="fg-body-sm text-subtle">{t("common.health.idle")}</span>
 			</div>
 		);
 	}
-	const elapsed = formatElapsed(current.startedAt, now);
+	const elapsed = formatElapsed(current.startedAt, language, now);
 	return (
 		<div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-1.5">
 			<HealthDot health="healthy" withLabel={false} />
 			<span className="fg-body-sm text-fg">
-				Running{" "}
-				<span className="font-semibold">{current.issueRef || "a job"}</span>
+				{t("runners.row.running")}{" "}
+				<span className="font-semibold">{current.issueRef || t("runners.row.aJob")}</span>
 				{current.stage && (
-					<span className="text-subtle"> · {enumLabel("jobType", current.stage)}</span>
+					<span className="text-subtle"> · {enumLabel("jobType", current.stage, language)}</span>
 				)}
 				{current.issueTitle && (
 					<span className="text-subtle"> — {current.issueTitle}</span>
@@ -211,6 +213,7 @@ function RunnerFaultBanner({
 	canEdit: boolean;
 }) {
 	const clearError = useClearRunnerError(projectId);
+	const t = useCopy();
 	const clearFaultButton = canEdit ? (
 		<Button
 			variant="secondary"
@@ -219,7 +222,7 @@ function RunnerFaultBanner({
 			loading={clearError.isPending}
 			onClick={() => clearError.mutate(runner.runnerId)}
 		>
-			Clear & retry
+			{t("runners.row.clearRetry")}
 		</Button>
 	) : undefined;
 
@@ -231,7 +234,7 @@ function RunnerFaultBanner({
 			>
 				<span className="font-semibold">
 					{limit.reason === "auth"
-						? `${limit.label} — fix the runner's credentials.`
+						? t("runners.row.fixCredentials", { label: limit.label })
 						: `${runnerLimitLine(limit)}.`}
 				</span>
 				{limit.printedText && <> {limit.printedText}</>}
@@ -247,7 +250,7 @@ function RunnerFaultBanner({
 	if (!runner.lastError) return null;
 	return (
 		<Banner tone="attention" action={clearFaultButton}>
-			<span className="font-semibold">Last error.</span>{" "}
+			<span className="font-semibold">{t("runners.row.lastError")}</span>{" "}
 			<code className="font-mono text-12">{runner.lastError}</code>
 		</Banner>
 	);
