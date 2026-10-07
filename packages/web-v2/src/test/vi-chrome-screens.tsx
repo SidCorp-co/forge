@@ -20,7 +20,7 @@ import { OVERVIEW_SCREENS } from "./vi-chrome-overview";
 import { RUNNER_SCREENS } from "./vi-chrome-runners";
 import { INTEGRATION_SCREENS } from "./vi-chrome-integrations.fixture";
 import { SETTINGS_SCREENS } from "./vi-chrome-settings";
-import { PROJECT_SETTINGS_SCREENS } from "./vi-chrome-project-settings";
+import { PROJECT_SETTINGS_SCREENS } from "./vi-chrome-project-settings.fixture";
 import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that

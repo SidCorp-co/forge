@@ -1,5 +1,5 @@
-import { selectAllSlugsFromKnowledge } from '../knowledge/index.js';
 import type { ReleaseGateView } from '@forge/contracts/releases';
+import { selectAllSlugsFromKnowledge } from '../knowledge/index.js';
 import type { DeploymentTrigger, Promotion } from '../project-config/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { missingProjectKnowledge } from '../projects/index.js';
@@ -10,8 +10,8 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
-import { gateViews } from './release-gates.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
+import { gateViews } from './release-gates.js';
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
