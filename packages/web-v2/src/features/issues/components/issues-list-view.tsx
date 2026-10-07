@@ -29,7 +29,7 @@ import {
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
-import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { usePathname } from "next/navigation";
@@ -175,11 +175,7 @@ export function IssuesListView({
         else next.delete(key);
       }
       const qs = next.toString();
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${pathname}${qs ? `?${qs}` : ""}`,
-      );
+      replaceLocationSearch(`${pathname}${qs ? `?${qs}` : ""}`);
     },
     [pathname],
   );
