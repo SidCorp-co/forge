@@ -119,6 +119,7 @@ const ACT: Rule[] = [
   { re: new RegExp("^pair a runner$"), key: "standing.act.pairRunner" },
   { re: new RegExp("^bring a runner online$"), key: "standing.act.runnerOnline" },
   { re: new RegExp("^a release is running$"), key: "standing.act.releaseRunning" },
+  { re: new RegExp("^queued behind (?<v>\\S+)$"), key: "standing.act.queuedBehind", vars: (g) => ({ v: g.v ?? "" }) },
   { re: new RegExp("^judge the criteria still owed$"), key: "standing.act.judgeCriteria" },
   { re: new RegExp("^give production a way to be read$"), key: "standing.act.productionReadable" },
   { re: new RegExp("^a check could not run$"), key: "standing.act.checkCouldNotRun" },

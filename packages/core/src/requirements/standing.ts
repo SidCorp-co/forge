@@ -461,7 +461,6 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       passing: coverage.filter((c) => c.verdict === 'passing').length,
       judged: coverage.filter((c) => c.verdict === 'passing' || c.verdict === 'failing').length,
       criteria: coverage.length,
-      issuesDone: live.filter((i) => i.status === 'closed').length,
       issuesRunning: live.filter((i) => i.status === 'in_progress').length,
       issuesTotal: live.length,
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,

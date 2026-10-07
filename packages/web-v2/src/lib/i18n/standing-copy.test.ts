@@ -17,7 +17,7 @@ const ACT = [
   "release it by hand and close it", "Approve release 0.1.0", "Approve the release that carries it", "cut the release that carries ISS-7", "cut 0.1.0, then approve it", "cut 0.1.0", "cut 0.1.0 and 2 more",
   "ship", "be agreed and delivered", "be resolved", "be accepted", "be delivered", "ask for approval", "approve or return 0.1.0", "no other admin can decide", "approve", "answer the return", "deploying",
   "verifying", "starting", "declare a production environment", "declare where releases land", "cut the issues that are waiting", "bring an issue to the release gate", "split this release into smaller releases",
-  "write the release note", "mark the merge", "declare a source probe on production", "pair a runner", "bring a runner online", "a release is running", "judge the criteria still owed",
+  "write the release note", "mark the merge", "declare a source probe on production", "pair a runner", "bring a runner online", "a release is running", "queued behind 0.2.0", "judge the criteria still owed",
   "give production a way to be read", "a check could not run", "label a runner for releases", "verdicts not re-read",
   "answer a question", "make a decision", "supply what it asks for", "resume it", "resume once: ISS-9 lands", "take on or drop", "shipped", "dropped", "working",
   "Build · 12 min", "Test", "design approval", "landed, waits on a judge", "landed · claim it and judge what landed", "running", "needs a person", "paused", "came back",

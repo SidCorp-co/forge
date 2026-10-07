@@ -280,7 +280,6 @@ export interface RequirementFacts {
 	/** Business criteria with a verdict either way (passing or failing). */
 	judged: number;
 	criteria: number;
-	issuesDone: number;
 	issuesRunning: number;
 	issuesTotal: number;
 	/** The open revision waiting on a sign-off, else null. */

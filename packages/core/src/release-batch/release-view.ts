@@ -33,7 +33,7 @@ interface TurnFacts {
   approvers: readonly ReleasePerson[];
   viewer: ViewerFacts | null;
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
-  gates: readonly { owner: ReleaseGateOwner }[];
+  gates: readonly { code: string; owner: ReleaseGateOwner }[];
   inFlight: ReleaseAttemptStage | null;
 }
 
@@ -52,6 +52,8 @@ const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
  * a release running, a check to retry — does it read as waiting on the system (F72).
  */
 function gatedTurn(f: TurnFacts): Turn {
+  const queued = queuedTurn(f);
+  if (queued) return queued;
   const owed = f.gates.find((g) => g.owner.kind !== 'system') ?? f.gates[0];
   const owner = (owed as { owner: ReleaseGateOwner }).owner;
   const more = f.gates.length > 1 ? ` and ${f.gates.length - 1} more` : '';
@@ -86,6 +88,26 @@ function gatedTurn(f: TurnFacts): Turn {
   return {
     attentionGroup: 'stuck',
     waitingOn: { kind: 'system', who: owner.who, act, rule, ...effect, ref: null, dueAt: null },
+  };
+}
+
+/**
+ * A draft held by nothing but the release already running is queued behind it, not stuck: the run
+ * finishes and the cut is free (JU-8). Any other reason beside it keeps the gated turn.
+ */
+function queuedTurn(f: TurnFacts): Turn | null {
+  const [only] = f.gates;
+  if (f.gates.length !== 1 || only?.code !== 'BATCH_IN_FLIGHT') return null;
+  return {
+    attentionGroup: 'queued',
+    waitingOn: {
+      kind: 'system',
+      who: 'Release run',
+      act: only.owner.act,
+      rule: `the release already running finishes before ${f.version} can be cut`,
+      ref: null,
+      dueAt: null,
+    },
   };
 }
 
