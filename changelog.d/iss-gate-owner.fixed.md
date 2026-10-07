@@ -1,0 +1,1 @@
+**A release-gate reason names who owes it, and wakes them.** A missing release note waits on the project's master by name, told once on its next pass with each issue; the release page links every issue a reason names.

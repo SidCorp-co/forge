@@ -70,7 +70,7 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
           </ViewHeading>
           <ul className="divide-y divide-line-subtle border-y border-line-subtle">
             {r.gates.map((g) => (
-              <GateLine key={g.code} gate={g} />
+              <GateLine key={g.code} gate={g} slug={slug} />
             ))}
           </ul>
         </section>
@@ -198,7 +198,7 @@ function NoteLine({ e }: { e: ReleaseNoteEntry }) {
   );
 }
 
-export function NotesPane({ r }: { r: ReleaseDetail }) {
+export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const { sections, withoutNotes } = r.notes;
   if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">No release notes yet.</p>;
   return (
@@ -215,11 +215,14 @@ export function NotesPane({ r }: { r: ReleaseDetail }) {
       ))}
       {withoutNotes.length > 0 ? (
         <section>
-          <ViewHeading>Without a note</ViewHeading>
+          <ViewHeading hint="The project's master writes each note; a comment on the issue reaches it">Without a note</ViewHeading>
           <ul className="grid gap-1 text-13 text-muted">
             {withoutNotes.map((w) => (
               <li key={w.key}>
-                <span className="font-mono text-12 text-link">{w.key}</span> {w.title}
+                <Link className="font-mono text-12 text-link hover:underline" href={issueHref(slug, w.key)}>
+                  {w.key}
+                </Link>{" "}
+                {w.title}
               </li>
             ))}
           </ul>

@@ -1,10 +1,12 @@
 "use client";
 
 import { RELEASE_STATE_LABELS } from "@forge/contracts/releases";
+import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
+import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
 import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
 
@@ -48,9 +50,24 @@ export function DisclosureToggle({
   );
 }
 
-export function GateLine({ gate }: { gate: ReleaseGateView }) {
+/** Each issue a gate names, as a link to it: the issue page is where its note is written and where a
+ *  comment reaches the master that owes it (F73). */
+function GateIssues({ issues, slug }: { issues: readonly string[]; slug: string }) {
+  return (
+    <span className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-12" data-testid="gate-issues">
+      {issues.map((key) => (
+        <Link key={key} href={issueHref(slug, key)} className="text-link hover:underline">
+          {key}
+        </Link>
+      ))}
+    </span>
+  );
+}
+
+export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }) {
   const [open, setOpen] = useState(false);
   const more = gate.issues.length > NAMED_IN_SENTENCE;
+  const owner = gate.owner;
   return (
     <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code}>
       <span
@@ -60,17 +77,19 @@ export function GateLine({ gate }: { gate: ReleaseGateView }) {
       />
       <span className="min-w-0 flex-1">
         <b className="font-semibold">{gate.title}.</b> {gate.sentence}
+        {owner.kind === "system" ? null : (
+          <span className="mt-0.5 block text-12-5 text-muted" data-testid="gate-owner">
+            {owner.who} owes it: {owner.act}.
+          </span>
+        )}
+        {gate.issues.length > 0 && !more ? <GateIssues issues={gate.issues} slug={slug} /> : null}
         {more ? (
           <>
             {" "}
             <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="gate-issues-toggle">
               {open ? "Hide the issues" : `All ${gate.issues.length} issues`}
             </DisclosureToggle>
-            {open ? (
-              <span className="mt-1 block font-mono text-12 text-muted" data-testid="gate-issues">
-                {gate.issues.join(", ")}
-              </span>
-            ) : null}
+            {open ? <GateIssues issues={gate.issues} slug={slug} /> : null}
           </>
         ) : null}
       </span>

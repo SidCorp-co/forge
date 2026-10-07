@@ -28,6 +28,7 @@ import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabul
 import type { ParkAnsweredView } from '@forge/contracts/park';
 import type { WaitingOn } from '@forge/contracts/standing';
 import { answeredWait } from './answered-wait.js';
+import { releaseTurn } from './standing-release.js';
 import { landedWait } from './strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
@@ -98,6 +99,8 @@ export interface IssueStandingInput {
   touchedAt: Date;
   /** Whether the project requires a person to approve a release (`release.approval.required`). */
   releaseApproval: boolean;
+  /** It carries a release note; at the gate, one without is refused `RELEASE_RECORD_MISSING`. */
+  releaseNoted: boolean;
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canWrite: boolean } | null;
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
@@ -105,7 +108,7 @@ export interface IssueStandingInput {
   now: Date;
 }
 
-type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
+export type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
 
 const wait = (
   kind: IssueWaitingKind,
@@ -133,14 +136,14 @@ const held = (lease: IssueLeaseView | null) =>
 
 // whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
 // needs_info or an open human question → a person answers; draft → a person takes it on or drops
-// it; awaiting_release → the master while a criterion no longer passes, else a person approves
-// where the project requires it, else queued for the release; a live lease or a job in flight →
+// it; awaiting_release → the master while a criterion no longer passes or no note is written, else
+// a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
 // (`strand-rules.ts:landedWait`); a takeable row the admissible list withholds → stuck, its
 // refusal named; in_progress with no holder or reopen → stuck; open or approved → queued for a
 // master slot.
-type Turn = { group: IssueAttentionGroup; waitingOn: IssueWaitingOn };
+export type Turn = { group: IssueAttentionGroup; waitingOn: IssueWaitingOn };
 
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -239,43 +242,6 @@ function personTurn(input: IssueStandingInput): Turn | null {
     return forPerson(viewer, 'take on or drop', 'a draft is not work until a person accepts it');
   }
   return null;
-}
-
-function releaseTurn(input: IssueStandingInput, running: boolean): Turn {
-  const { total, passing } = input.criteria;
-  if (passing < total) {
-    return {
-      group: 'stuck',
-      waitingOn: wait(
-        'master',
-        'Master',
-        'judge it again',
-        `${total - passing} of ${total} criteria have no verdict that passes now, such as one judged on a storefront draft the source has moved past or cannot read back; the release hold keeps it until a run judges them again`,
-      ),
-    };
-  }
-  if (input.releaseApproval) {
-    return {
-      group: 'queued',
-      waitingOn: wait(
-        'release',
-        'Release',
-        'Approve release on Releases',
-        'every criterion passed; this project requires a person to approve each release, once per release on Releases (Cut the version, then Approve release), never once per issue',
-      ),
-    };
-  }
-  return running
-    ? { group: 'moving', waitingOn: wait('run', 'Release', 'running', 'a release run holds it') }
-    : {
-        group: 'queued',
-        waitingOn: wait(
-          'release',
-          'Release',
-          'next release',
-          'every criterion passed; the project releases without an approval',
-        ),
-      };
 }
 
 function runningTurn(input: IssueStandingInput): Turn {
