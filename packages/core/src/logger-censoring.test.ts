@@ -4,6 +4,23 @@ import { describe, expect, it } from 'vitest';
 import { capture, failedInsert, HASH } from './logger.fixture.js';
 
 describe("the core logger's redact paths, censored before a hook reads them", () => {
+  it('censors a redact path a function holds before its toJSON reads it, and puts it back', () => {
+    const { lines, log } = capture();
+    const held = Object.assign(() => 'ordinary', {
+      password: 'ordinary-password',
+      toJSON() {
+        return { said: (this as { password: string }).password };
+      },
+    });
+    log.warn('j %j', held);
+    log.warn({ reading: held }, 'field');
+    expect(lines.map((line) => JSON.parse(line))).toMatchObject([
+      { msg: 'j {"said":"[Redacted]"}' },
+      { reading: { said: '[Redacted]' } },
+    ]);
+    expect(held.password).toBe('ordinary-password');
+  });
+
   it("asks a value's toJSON with the fields the logger censors by name already censored", () => {
     const { lines, log } = capture();
     const reading = () => ({

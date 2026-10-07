@@ -389,6 +389,32 @@ describe('redactQueryParams, reading a value as JSON reads it', () => {
     expect(asked).toBe(0);
   });
 
+  it('writes a function as JSON does once a hook ran, though a later hook gives it a toJSON', () => {
+    let asked = 0;
+    const late = () => {
+      const fn = () => 'ordinary';
+      const lateHook = {
+        get later() {
+          (fn as unknown as { toJSON: () => string }).toJSON = () => {
+            asked++;
+            return duplicate().message;
+          };
+          return 'kept';
+        },
+      };
+      return { fn, lateHook };
+    };
+    const listed = late();
+    expect(JSON.stringify(redactQueryParams([listed.fn, listed.lateHook]))).toBe(
+      '[null,{"later":"kept"}]',
+    );
+    const fields = late();
+    expect(JSON.stringify(redactQueryParams({ fn: fields.fn, hook: fields.lateHook }))).toBe(
+      '{"hook":{"later":"kept"}}',
+    );
+    expect(asked).toBe(0);
+  });
+
   it('still hands back the same data where there is nothing to redact', () => {
     const value = { reason: 'ordinary', nested: [{ id: 1 }] };
     expect(redactQueryParams(value)).toBe(value);

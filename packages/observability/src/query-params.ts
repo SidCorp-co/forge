@@ -517,7 +517,13 @@ function settled(rendered: unknown, walk: Walk, done = new Map<object, unknown>(
   done.set(rendered, own);
   if (!walk.made.has(own)) return own;
   const fields = own as Record<string, unknown>;
-  for (const key of Object.keys(fields)) fields[key] = settled(fields[key], walk, done);
+  for (const key of Object.keys(fields)) {
+    const field = settled(fields[key], walk, done);
+    // A function kept as itself could be handed a toJSON yet: written as JSON writes it now.
+    if (typeof field !== 'function') fields[key] = field;
+    else if (Array.isArray(own)) fields[key] = null;
+    else delete fields[key];
+  }
   return own;
 }
 

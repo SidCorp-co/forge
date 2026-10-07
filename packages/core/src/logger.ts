@@ -89,7 +89,9 @@ function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T):
   // The first pass follows data only; the second also each getter, and censors what lies past one.
   const visit = (at: unknown, path: string[], trail: object[], getters: boolean, past: boolean) => {
     const [head, ...tail] = path;
-    if (typeof at !== 'object' || at === null || head === undefined) return;
+    // A function JSON writes through its toJSON holds fields a path names as an object does.
+    if ((typeof at !== 'object' && typeof at !== 'function') || at === null) return;
+    if (head === undefined) return;
     const on = [...trail, at];
     let keys: string[];
     try {
