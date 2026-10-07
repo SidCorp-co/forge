@@ -628,7 +628,7 @@ fn box_sources(s: &Snapshot, a: &Assessment) -> String {
 }
 
 /// The legend's items, each a column, mark or verdict word and what it means.
-fn legend(form: Legend) -> Vec<String> {
+pub(crate) fn legend(form: Legend) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     match form {
         Legend::Full => {
@@ -660,6 +660,7 @@ fn legend(form: Legend) -> Vec<String> {
                     "… not read yet",
                     "· none",
                     "— no earlier reading, or nothing running",
+                    "$?+ no rate",
                 ]
                 .map(String::from),
             );

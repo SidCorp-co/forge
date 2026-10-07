@@ -91,6 +91,12 @@ impl Window {
     pub fn is_empty(&self) -> bool {
         self.tokens == [0; 4] && self.unpriced.is_empty()
     }
+
+    /// Whether any of its tokens are a priced model's, so that `cost` is a
+    /// figure at all: with none, it is no dollar zero but no figure.
+    pub fn priced(&self) -> bool {
+        self.tokens.iter().sum::<u64>() > self.unpriced.values().sum::<u64>()
+    }
 }
 
 /// The last 24 hours and the last 7 days.

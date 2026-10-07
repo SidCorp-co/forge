@@ -77,7 +77,8 @@ cache_read = 1.5
 
 A model with tokens and no rate, or a rate missing a key, is named, and every
 cost leaving its tokens out says so (`$12.30 + <model> unpriced`, `$12+` in the
-table); it is never priced as zero.
+table); it is never priced as zero. Where no model in a window has a rate, the
+cost reads `cost unread, <model> unpriced` (`$?+` in the table), never `$0.00`.
 
 ### `api` — the REST surface from a shell
 
