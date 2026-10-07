@@ -20,6 +20,7 @@ import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
+import { closeShippedEarlier, type ShippedEarlierDeps } from './shipped-earlier.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { liveCarriesRoster, readLiveCommit } from './verify.js';
 import { cutReleaseVersion } from './version-store.js';
@@ -155,12 +156,39 @@ function runnerPreferenceMet(
   return met;
 }
 
+/**
+ * The named ids less those an earlier release already shipped, which are closed against it here.
+ * A call whose every id was one of them has nothing to release: refused by name with the versions.
+ */
+async function withoutShippedEarlier(
+  projectId: string,
+  named: string[],
+  userId: string,
+  deps: ShippedEarlierDeps,
+): Promise<string[]> {
+  const earlier = await closeShippedEarlier({ projectId, issueIds: named, userId }, deps);
+  if (earlier.closed.length === 0) return named;
+  const shipped = new Set(earlier.closed.map((c) => c.issueId));
+  const rest = named.filter((id) => !shipped.has(id));
+  if (rest.length === 0) {
+    const where = earlier.closed.map((c) => `${c.issueId} in ${c.version}`).join(', ');
+    throw refuseRelease(
+      'RELEASE_ALL_SHIPPED_EARLIER',
+      `Every issue this call names was already shipped by an earlier release, so there is nothing to release: ${where}. Each is now closed against that release; no new release was cut.`,
+      '/issueIds',
+    );
+  }
+  return rest;
+}
+
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
+  deps: ShippedEarlierDeps = {},
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, userId } = args;
 
-  const { report, issueIds } = await admitBatch(projectId, args.issueIds);
+  const named = await withoutShippedEarlier(projectId, args.issueIds, userId, deps);
+  const { report, issueIds } = await admitBatch(projectId, named);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
   const gateStatus = RELEASE_GATE_STATUS;

@@ -226,7 +226,7 @@ export async function recoverStrandedReleasing(
 
 /** Release every claim on `runId`, and in the same transaction add the closed ones to the run's
  *  `metadata.rosterClosed`: without the claim, that is the only record this batch closed them. */
-async function releaseClaims(
+export async function releaseClaims(
   tx: Tx,
   runId: string,
 ): Promise<{ cleared: string[]; closed: string[] }> {

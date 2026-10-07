@@ -111,6 +111,32 @@ kernel hands the issue back to the status the run took it from. `awaiting_releas
 written only by a release that claimed the issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too
 (`CLOSE_REQUIRES_SHIPPED`).
 
+## A mark written after the release that shipped it
+
+An issue can reach `awaiting_release` after a release whose range already holds its work. That release
+never claimed it, so every later cut finds nothing new in its own range and aborts naming a person.
+`closeShippedEarlier` (`packages/core/src/release-batch/shipped-earlier.ts`) settles it as a kernel
+fact. It runs in the automatic sweep before a row held `RELEASE_ABORT_BLOCKED` is set aside, and at the
+top of `createReleaseBatch`, and it places the issue in a shipped release (a run whose finish is
+`finished`, with `finish.commit` the commit the probes verified live) by one of two evidences:
+
+- an `observed` mark names a commit: the release is the earliest whose commit holds it.
+- an `asserted` mark whose audit comment recorded a claimed commit (`mark_merged … commit=<sha>`, the
+  only place the tracker keeps it, read in exactly that shape) is placed like an observed one by that
+  commit, once the host confirms it; a claim in no shipped release is not placed by it.
+- an `asserted` mark with no claim the host confirms is placed by declaring commits: the
+  repository is asked which commits declare the issue, by `commitOwners`, in each of the last twelve
+  releases' own ranges. The release is the one whose range holds the last declaring commit, and only
+  where the range from the newest release to the branch head holds none: work still unreleased is not
+  shipped. A `landed` mark is outside git and is never placed this way.
+
+The issue is closed through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto
+that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a
+notice naming the version, and its hold is cleared. It adds no changelog fragment: its notes belong to
+the release that shipped it. A repository that cannot be read, or a range it will not give whole, is
+`SHIPPED_EARLIER_HOST_UNAVAILABLE` or `SHIPPED_EARLIER_UNREAD`: nothing moves and no version is inferred.
+A work older than twelve releases is not placed, and takes the normal path.
+
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides

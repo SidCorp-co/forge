@@ -28,6 +28,11 @@ export type LiveDivergence =
     }
   | { ok: false; reason: string };
 
+/** The commits `head` holds that `base` does not, oldest first as the host lists them. */
+export type HostRange =
+  | { ok: true; commits: WaitingCommit[]; complete: boolean }
+  | { ok: false; reason: string };
+
 export interface HostCommit {
   sha: string;
   message: string;
@@ -142,6 +147,8 @@ export interface SourceHost {
   /** Whether `branch` contains `sha`. */
   branchContains(branch: string, sha: string): Promise<boolean>;
   readDivergence(refs: BranchRefs): Promise<LiveDivergence>;
+  /** The commits between two commits (any refs the host resolves), never named by branch. */
+  readRange(base: string, head: string): Promise<HostRange>;
   /** A file's text at `ref`, held to the blob id the host names, or why there is none. */
   readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
 

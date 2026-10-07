@@ -41,4 +41,10 @@ export {
 } from './repo-projection.js';
 export { hostOfRepository, resolveSourceHost } from './resolve.js';
 export type * from './types.js';
-export type { LiveDivergence, ReviewEvent, SourceHost, WaitingCommit } from './types.js';
+export type {
+  HostRange,
+  LiveDivergence,
+  ReviewEvent,
+  SourceHost,
+  WaitingCommit,
+} from './types.js';
