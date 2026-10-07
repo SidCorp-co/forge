@@ -15,6 +15,7 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
     master: 'alive',
     liveMasterInProject: false,
     thisBoot: true,
+    bootEnded: false,
     bound: true,
     process: 'alive',
     ledgerDead: false,
@@ -96,6 +97,24 @@ describe('a declaration ended before anything else is read', () => {
       act: 'close',
       end: null,
     });
+  });
+  it('ends a run declared under a boot that has ended, whose master and agent ended with it', () => {
+    for (const o of [{ bound: true }, { bound: false }, { process: 'gone' as const }]) {
+      const v = runVerdict(subagent({ ...o, thisBoot: false, bootEnded: true }), live);
+      expect(v).toMatchObject({ act: 'close' });
+      expect(v.act === 'close' && v.end).toContain('rebooted');
+    }
+  });
+  it('ends nothing for its boot where the box cannot tell that boot ended, or the run is parked', () => {
+    expect(
+      runVerdict(subagent({ thisBoot: false, bootEnded: false }), live),
+    ).toMatchObject({ act: 'close', end: null });
+    expect(
+      runVerdict(subagent({ thisBoot: false, bootEnded: true, parkedOnHuman: true }), live),
+    ).toMatchObject({ act: 'keep' });
+    expect(
+      runVerdict(subagent({ thisBoot: false, bootEnded: true, ended: true }), live),
+    ).toMatchObject({ act: 'close', end: null });
   });
   it('ends a stale declaration whose checkout is gone and whose every issue rests', () => {
     const v = runVerdict(subagent({ checkoutGone: true, issueKeys: ['ISS-1', 'ISS-2'] }), {

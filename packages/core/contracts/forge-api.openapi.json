@@ -7239,6 +7239,9 @@
                           }
                         ]
                       },
+                      "bootEnded": {
+                        "type": "boolean"
+                      },
                       "bound": {
                         "type": "boolean"
                       },
@@ -7464,6 +7467,7 @@
                       "master",
                       "liveMasterInProject",
                       "thisBoot",
+                      "bootEnded",
                       "bound",
                       "process",
                       "ledgerDead",

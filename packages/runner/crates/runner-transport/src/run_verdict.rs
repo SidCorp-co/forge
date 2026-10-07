@@ -20,6 +20,9 @@ pub struct Facts {
     pub master: &'static str,
     pub live_master_in_project: bool,
     pub this_boot: bool,
+    /// The boot the run was declared under is known to have ended: this box
+    /// read its own boot and the run's, and they differ.
+    pub boot_ended: bool,
     pub bound: bool,
     /// `none`, `alive` or `gone`.
     pub process: &'static str,

@@ -528,6 +528,7 @@ async fn gather(
         master: read.wire(),
         live_master_in_project: parent.is_some(),
         this_boot: run.boot_id == boot_id,
+        boot_ended: boot_ended(&run.boot_id, boot_id),
         bound: run.agent_id.is_some(),
         process: match run.pid {
             None => "none",
@@ -563,6 +564,13 @@ async fn gather(
         close: None,
     };
     Ok(Gathered { facts, parent })
+}
+
+/// Whether the boot a run was declared under is known to have ended: both
+/// boots were read and they differ. A box that cannot read its boot, or a row
+/// that names none, cannot tell, and says so by claiming no ending.
+fn boot_ended(run_boot: &str, this_boot: &str) -> bool {
+    !run_boot.is_empty() && !this_boot.is_empty() && run_boot != this_boot
 }
 
 fn ago(now: i64, at: i64) -> u64 {

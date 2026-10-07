@@ -60,6 +60,18 @@ function unboundEnd(f: RunFacts): string | null {
   return `declared ${minutes(f.declaredAgoMs)}m ago and never bound to a subagent or a process, past the ${minutes(RUN_UNBOUND_BEFORE_END_MS)}m within which a declared run binds, so core ended it; its session and its leases go back by the close loop, and its issues can be declared again`;
 }
 
+/**
+ * A run declared under a boot of the box that has since ended: every process of that boot ended with
+ * it, its agent and the master that declared it included, so nothing of the run runs. Its master,
+ * resumed after the reboot, holds a new session and is refused the close, and nothing else ended
+ * such a row (ISS-1390, three rows on 2026-10-06). Ending it reclaims nothing on a pid of that boot,
+ * and its checkout stays where the other-boot rules leave it.
+ */
+function bootEnd(f: RunFacts): string | null {
+  if (!f.bootEnded || f.thisBoot || f.ended) return null;
+  return "declared under a boot this box has since rebooted out of, so every process of that boot, this run's agent and its master included, ended with it; core ended it, its session and its leases go back by the close loop, and its issues can be declared again";
+}
+
 function staleEnd(f: RunFacts, issues: RunIssues): string | null {
   const stale =
     f.process === 'none' &&
@@ -252,7 +264,7 @@ export function runVerdict(f: RunFacts, issues: RunIssues): RunVerdict {
         : 'it is parked on a question only a person answers, which no clock ends',
     };
   }
-  const end = f.close === null ? (unboundEnd(f) ?? staleEnd(f, issues)) : null;
+  const end = f.close === null ? (bootEnd(f) ?? unboundEnd(f) ?? staleEnd(f, issues)) : null;
   if (end !== null) return { act: 'close', end, because: end };
   const orphaned = !f.thisBoot || f.ledgerDead || master !== 'alive';
   const keptSubagent = !orphaned && f.bound && f.process === 'none';

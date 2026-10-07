@@ -231,10 +231,11 @@ pub(crate) fn say_standing(
                 format!("Its checkout {} is still held", run.worktree_path.display())
             };
             tracing::error!(
-                "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it \
-                 was declared under boot {} and this box is boot {}, and a run from another boot \
-                 is never reclaimed here, because its process and its pane cannot be read from \
-                 this one. {left}. Said once, not every sweep",
+                "[recovery] run {} ({issues}) is partially closed ({holds}): it was declared \
+                 under boot {} and this box is boot {}, so it is ended and its session and its \
+                 leases go back by the close loop, but its checkout is never released here, \
+                 because a process or a pane of another boot cannot be read from this one. \
+                 {left}. Said once, not every sweep",
                 run.run_id,
                 run.boot_id,
                 boot_id
