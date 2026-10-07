@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.79] - 2026-10-07
+
+Core is the one judge of an outdated pane and a limit record's freshness
+
+### Changed
+
+- **Core now judges a master's account limit and whether its pane is outdated; the runner box only reports.** The box posts its newest account record to `/api/devices/me/limit/record` and a pane's inputs as `placement`. Deploy core first.
+
+### Fixed
+
+- **A design write refused for naming no issue now names the right revision.** Since 0.4.0-dev.76 the refusal blamed the revision being replaced; it now names the earlier revision that carries the closed issue, and the workflow by its name.
+
+### Removed
+
+- **The runner ledger no longer creates the `questions` and `decisions` tables or the claim, revival, outdated and build columns.** Nothing read them; an upgraded box drops the two tables on open and keeps the columns inert.
+
 ## [0.4.0-dev.78] - 2026-10-07
 
 One QueryBoundary draws every query-backed screen's loading and failed shells
