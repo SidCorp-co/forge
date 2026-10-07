@@ -106,9 +106,10 @@ describe('a declaration ended before anything else is read', () => {
     }
   });
   it('ends nothing for its boot where the box cannot tell that boot ended, or the run is parked', () => {
-    expect(
-      runVerdict(subagent({ thisBoot: false, bootEnded: false }), live),
-    ).toMatchObject({ act: 'close', end: null });
+    expect(runVerdict(subagent({ thisBoot: false, bootEnded: false }), live)).toMatchObject({
+      act: 'close',
+      end: null,
+    });
     expect(
       runVerdict(subagent({ thisBoot: false, bootEnded: true, parkedOnHuman: true }), live),
     ).toMatchObject({ act: 'keep' });
