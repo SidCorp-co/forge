@@ -131,7 +131,7 @@ fn a_held_issue_with_nothing_written_refuses_naming_its_condition_and_the_issue(
 fn a_dirty_tree_refuses_naming_the_tree_and_its_paths() {
     let tree = PathBuf::from("/r/wt");
     let mut f = facts(&tree, vec![]);
-    let paths: Vec<String> = (0..12).map(|i| format!("f{i}.rs")).collect();
+    let paths: Vec<Uncommitted> = (0..12).map(|i| format!("f{i}.rs").into()).collect();
     f.dirty = Ok(paths);
     let v = decide(&f);
     let r = refused(&v);
@@ -255,12 +255,79 @@ fn refusals_in_a_row_count_one_run_and_reset_on_any_other_outcome() {
 
 #[test]
 fn porcelain_names_each_changed_path_once() {
-    let z = " M src/a.rs\0?? new.txt\0R  b.rs\0old-b.rs\0D  gone.rs\0";
+    let z = " M src/a.rs\0?? new.txt\0R  b.rs\0old-b.rs\0 D gone.rs\0D  rm.rs\0D  cached.rs\0?? cached.rs\0AD added-gone.rs\0";
+    let read = porcelain_paths(z);
     assert_eq!(
-        porcelain_paths(z),
-        vec!["src/a.rs", "new.txt", "b.rs", "gone.rs"]
+        read.iter().map(|u| u.path.as_str()).collect::<Vec<_>>(),
+        vec![
+            "src/a.rs",
+            "new.txt",
+            "b.rs",
+            "gone.rs",
+            "rm.rs",
+            "cached.rs",
+            "added-gone.rs"
+        ]
+    );
+    // Only `git rm`'s deletion is gone from both index and tree; `git rm
+    // --cached` leaves the file in the tree, and `AD` leaves it in the index.
+    assert_eq!(
+        read.iter()
+            .filter(|u| u.staged_gone)
+            .map(|u| u.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["rm.rs"]
     );
     assert!(porcelain_paths("").is_empty());
+}
+
+/// A deletion `git rm` staged matches no pathspec, so naming it on the
+/// `git add` line fails the whole line (exit 128): it is named in the
+/// sentence and left off the line, and the commit takes it as staged.
+#[test]
+fn a_staged_deletion_is_named_but_left_off_the_add_line() {
+    let tree = PathBuf::from("/r/wt");
+    let mut f = facts(&tree, vec![]);
+    f.dirty = Ok(vec![
+        "kept.rs".into(),
+        Uncommitted {
+            path: "work.rs".into(),
+            staged_gone: true,
+        },
+    ]);
+    let r = refused(&decide(&f)).to_string();
+    assert!(r.contains("uncommitted changes: kept.rs, work.rs."), "{r}");
+    assert!(r.contains("the commit takes it as staged"), "{r}");
+    assert_eq!(
+        heredoc(&r, "git -C"),
+        vec![
+            "git -C /r/wt add -A -- kept.rs && git -C /r/wt commit -F - <<'FORGE_TEXT'",
+            COMMIT_TEXT,
+            TEXT_END,
+        ]
+    );
+
+    f.dirty = Ok(vec![Uncommitted {
+        path: "work.rs".into(),
+        staged_gone: true,
+    }]);
+    let r = refused(&decide(&f)).to_string();
+    assert!(
+        r.contains("every change is a deletion already staged"),
+        "{r}"
+    );
+    assert!(
+        !r.contains("git add"),
+        "an empty `git add -A --` stages everything:\n{r}"
+    );
+    assert_eq!(
+        heredoc(&r, "git -C"),
+        vec![
+            "git -C /r/wt commit -F - <<'FORGE_TEXT'",
+            COMMIT_TEXT,
+            TEXT_END
+        ]
+    );
 }
 
 /// The lines of a refusal from the one starting `starts` through the heredoc

@@ -105,6 +105,34 @@ pub fn written_since(rows: &[Activity], declared_ms: i64) -> Since {
     Since::ReadFurther
 }
 
+/// One uncommitted path of a run's tree, as `git status` reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Uncommitted {
+    pub path: String,
+    /// Gone from the index and the tree alike, a deletion `git rm` already
+    /// staged: a pathspec naming it matches nothing, so `git add` refuses it
+    /// (exit 128) and the commit has to take it as staged.
+    pub staged_gone: bool,
+}
+
+impl From<&str> for Uncommitted {
+    fn from(path: &str) -> Self {
+        Uncommitted {
+            path: path.to_string(),
+            staged_gone: false,
+        }
+    }
+}
+
+impl From<String> for Uncommitted {
+    fn from(path: String) -> Self {
+        Uncommitted {
+            path,
+            staged_gone: false,
+        }
+    }
+}
+
 /// What one issue the run declared reads as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Issue {
@@ -128,7 +156,7 @@ pub struct Facts<'a> {
     /// Each declared issue by key, with what it read as.
     pub issues: Vec<(String, Issue)>,
     /// The tree's uncommitted paths, or why they could not be read.
-    pub dirty: Result<Vec<String>, String>,
+    pub dirty: Result<Vec<Uncommitted>, String>,
     /// The processes standing in the tree since the declaration, or why not read.
     pub standing: Result<Vec<Standing>, String>,
     /// How many of this run's stops were refused in a row before this one.
@@ -164,11 +192,17 @@ pub struct Verdict {
     pub unread: Vec<String>,
 }
 
-/// The dirty hint stages the paths the gate saw, every one of them and by
-/// name: a bare `git add -A` stages whatever else the tree holds, and the
-/// plugin's bash guard refuses it (`stage-everything`) where a pane has it.
-fn dirty_line(tree: &Path, paths: &[String]) -> String {
-    let shown = paths.iter().take(PATHS_SHOWN).cloned().collect::<Vec<_>>();
+/// The dirty hint stages the paths the gate saw by name: a bare `git add -A`
+/// stages whatever else the tree holds, and the plugin's bash guard refuses it
+/// (`stage-everything`) where a pane has it. A deletion already staged is left
+/// off the `git add` line, where it matches nothing and fails the whole line
+/// (8ebe8dbc1 named it there); the commit takes it from the index.
+fn dirty_line(tree: &Path, paths: &[Uncommitted]) -> String {
+    let shown = paths
+        .iter()
+        .take(PATHS_SHOWN)
+        .map(|u| u.path.as_str())
+        .collect::<Vec<_>>();
     let more = paths.len().saturating_sub(PATHS_SHOWN);
     let more = if more > 0 {
         format!(", and {more} more")
@@ -176,17 +210,42 @@ fn dirty_line(tree: &Path, paths: &[String]) -> String {
         String::new()
     };
     let quoted = sh_quote(&tree.display().to_string());
-    let staged = paths
+    let to_stage = paths
         .iter()
-        .map(|p| sh_quote(p))
-        .collect::<Vec<_>>()
-        .join(" ");
+        .filter(|u| !u.staged_gone)
+        .map(|u| sh_quote(&u.path))
+        .collect::<Vec<_>>();
+    let gone = paths.iter().filter(|u| u.staged_gone).count();
+    let commit = format!("git -C {quoted} commit -F - <<'{TEXT_END}'");
+    let (clear, command) = if to_stage.is_empty() {
+        (
+            "Clear it: every change is a deletion already staged (`git rm`), and the commit takes \
+             it as staged: run the lines below, with the commit message in place of the middle \
+             line."
+                .to_string(),
+            commit,
+        )
+    } else {
+        (
+            format!(
+                "Clear it: first delete what the run made and no longer needs (scratch files, \
+                 logs, output) and take those paths out of the `git add` line below; then run \
+                 the lines below, with the commit message in place of the middle line.{}",
+                if gone > 0 {
+                    " A deletion already staged (`git rm`) is not on the `git add` line: the \
+                     commit takes it as staged."
+                } else {
+                    ""
+                }
+            ),
+            format!(
+                "git -C {quoted} add -A -- {} && {commit}",
+                to_stage.join(" ")
+            ),
+        )
+    };
     format!(
-        "{} has uncommitted changes: {}{more}.\n  Clear it: first delete what the run made and no \
-         longer needs (scratch files, logs, output) and take those paths out of the `git add` line \
-         below; then run the lines below, with the commit message in place of the middle line. \
-         {}\ngit -C {quoted} add -A -- {staged} && git -C {quoted} commit -F - <<'{TEXT_END}'\n\
-         {COMMIT_TEXT}\n{TEXT_END}",
+        "{} has uncommitted changes: {}{more}.\n  {clear} {}\n{command}\n{COMMIT_TEXT}\n{TEXT_END}",
         tree.display(),
         shown.join(", "),
         as_written()
@@ -352,17 +411,30 @@ pub fn refused_in_a_row(journal: &str, run_id: &str) -> usize {
     n
 }
 
-/// `git status --porcelain=v1 -z` split into its paths, a rename's source
-/// dropped (its destination is the change).
-pub fn porcelain_paths(z: &str) -> Vec<String> {
-    let mut out = Vec::new();
+/// `git status --porcelain=v1 -z` split into its paths, each once, a
+/// rename's source dropped (its destination is the change). A path read as
+/// both a staged deletion and untracked (`git rm --cached`) is still in the
+/// tree, so it is not gone.
+pub fn porcelain_paths(z: &str) -> Vec<Uncommitted> {
+    let mut out: Vec<Uncommitted> = Vec::new();
+    let mut at: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut fields = z.split('\0').filter(|s| !s.is_empty());
     while let Some(entry) = fields.next() {
         let (code, path) = (
             entry.get(..2).unwrap_or(""),
             entry.get(3..).unwrap_or(entry),
         );
-        out.push(path.to_string());
+        let staged_gone = code == "D ";
+        match at.get(path) {
+            Some(&i) => out[i].staged_gone &= staged_gone,
+            None => {
+                at.insert(path.to_string(), out.len());
+                out.push(Uncommitted {
+                    path: path.to_string(),
+                    staged_gone,
+                });
+            }
+        }
         if code.starts_with('R') || code.starts_with('C') {
             fields.next();
         }

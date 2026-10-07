@@ -36,11 +36,6 @@ pub struct SlugSources<'a> {
 
 /// Build the request, or return the message the caller should refuse with.
 pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request, String> {
-    if let Some(b) = spec.data {
-        if !is_json(b) {
-            return Err("--data is not valid JSON".to_string());
-        }
-    }
     if spec.data.is_some() && !spec.form.is_empty() {
         return Err(
             "--data and -F are two bodies, and a request carries one: --data sends JSON, -F sends multipart/form-data — an attachment route takes -F file=@<path>"
@@ -52,6 +47,13 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
             "-f builds the JSON body itself, so it goes without --data and -F: a request carries one body"
                 .to_string(),
         );
+    }
+    // After the two-body refusals: a `--data` that should not be there at all
+    // is named as that, not as JSON to fix.
+    if let Some(b) = spec.data {
+        if !is_json(b) {
+            return Err("--data is not valid JSON".to_string());
+        }
     }
     let form = spec
         .form
@@ -216,6 +218,31 @@ mod tests {
             .unwrap_err();
             assert!(why.contains("-f builds the JSON body itself"), "{why}");
         }
+    }
+
+    /// Two bodies are refused as two bodies whatever `--data` holds: a run
+    /// half-way from `-d '{"body":...}'` to `-f body=@-` is told to drop
+    /// `-d`, not to fix JSON it no longer needs (ISS-297).
+    #[test]
+    fn two_bodies_are_refused_as_two_before_data_is_read_as_json() {
+        let fields = vec!["body=@-".to_string()];
+        let form = ["file=@shot.png".to_string()];
+        for data in ["It's prose, not JSON\n", "not json"] {
+            let why = build(
+                &RequestSpec {
+                    fields: &fields,
+                    stdin: Some("x"),
+                    ..spec(Some(data), &[])
+                },
+                &NO_SLUG,
+            )
+            .unwrap_err();
+            assert!(why.contains("-f builds the JSON body itself"), "{why}");
+            let why = build(&spec(Some(data), &form), &NO_SLUG).unwrap_err();
+            assert!(why.contains("--data and -F"), "{why}");
+        }
+        let why = build(&spec(Some("not json"), &[]), &NO_SLUG).unwrap_err();
+        assert_eq!(why, "--data is not valid JSON");
     }
 
     #[test]
