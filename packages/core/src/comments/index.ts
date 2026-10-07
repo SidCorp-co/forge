@@ -4,3 +4,4 @@ export { provideCommentPorts } from './ports.js';
 export { noteReviewOnIssue, registerReviewNotes } from './review-note.js';
 export { messageRefusalHttp } from './screen.js';
 export { insertComment } from './service.js';
+export { forgeDecisionsTool } from './tool.js';

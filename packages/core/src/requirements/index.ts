@@ -1,4 +1,5 @@
 export { dropAsDuplicateIn } from './acceptance.js';
+export { deferralOf } from './deferral-read.js';
 export { latestBaselineIn } from './baselines.js';
 export {
   provideInterfaceContracts,
@@ -23,3 +24,4 @@ export {
 export { linkIssueRefusal } from './rules.js';
 export { deliveredAmong, standingsOf } from './standing-read.js';
 export { lockRequirements } from './write-tx.js';
+export { forgeRequirementsTool } from './tool.js';

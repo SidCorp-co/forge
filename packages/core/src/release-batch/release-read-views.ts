@@ -17,13 +17,14 @@ import {
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
+  releaseVerifiedLevel,
 } from '@forge/contracts/releases';
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
 import type { RecordedVerification } from './channel.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
-import type { ReleaseFacts } from './release-facts.js';
+import type { IssueFact, ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
   headlineOf,
@@ -168,6 +169,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const { owner, act } = ownerOf(p, s);
   const split = splitOf(p, s);
+  const criteria = sumTotals(facts.map((i) => totalsOf(i.criteria.map((c) => c.standing))));
   const reqs = [
     ...new Set(
       facts.flatMap((i) => {
@@ -192,7 +194,13 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     ),
     issueCount: p.issueIds.length,
     requirements: reqs,
-    criteria: sumTotals(facts.map((i) => totalsOf(i.criteria.map((c) => c.standing)))),
+    criteria,
+    verified: {
+      level: releaseVerifiedLevel(criteria, p.verification),
+      proven: criteria.proven,
+      total: criteria.total,
+      check: p.verification,
+    },
     contents: contentsOf(p, s),
     owner,
     ownerAct: act,
@@ -228,18 +236,29 @@ function attemptView(a: ReleaseAttemptRow): ReleaseAttemptView {
   };
 }
 
-function noteSections(p: Part, s: Shared) {
-  const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
+const noteEntry = (i: IssueFact) => ({
+  key: i.key,
+  title: i.title,
+  userFacing: i.releaseNotes?.userFacing ?? '',
+  technical: i.releaseNotes?.technical ?? null,
+});
+
+/** A landing that names the design surface and nothing else: an approved design, not a user change. */
+const designOnly = (reading: IssueLandingReading | undefined): boolean => {
+  if (!reading) return false;
+  const surfaces = surfacesOf(reading);
+  return surfaces.length > 0 && surfaces.every((x) => x === 'design') && gapOf(reading) === null;
+};
+
+// what users get leaves out an issue whose landing only touched a design: it lists under the
+// approved designs instead (JU-11), so a design review is never read as a change people use
+function noteSections(p: Part, s: Shared, landings: ReadonlyMap<string, IssueLandingReading>) {
+  const all = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
+  const designs = all.filter((i) => designOnly(landings.get(i.id)));
+  const facts = all.filter((i) => !designs.includes(i));
   const sections: ReleaseNoteSection[] = CHANGELOG_SECTIONS.map((section) => ({
     section,
-    entries: facts
-      .filter((i) => i.releaseNotes?.section === section)
-      .map((i) => ({
-        key: i.key,
-        title: i.title,
-        userFacing: i.releaseNotes?.userFacing ?? '',
-        technical: i.releaseNotes?.technical ?? null,
-      })),
+    entries: facts.filter((i) => i.releaseNotes?.section === section).map(noteEntry),
   })).filter((x) => x.entries.length > 0);
   // a reader aid on the draft, not a gate: the release gate's own reasons are unchanged
   const attention = facts.flatMap((i) => {
@@ -251,6 +270,7 @@ function noteSections(p: Part, s: Shared) {
   });
   return {
     sections,
+    designs: designs.map(noteEntry),
     withoutNotes: facts.filter((i) => !i.releaseNotes).map((i) => ({ key: i.key, title: i.title })),
     language: s.contentLanguage,
     attention,
@@ -325,7 +345,7 @@ export function detailOf(
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
     issueCriteria: facts.map((i) => ({ key: i.key, title: i.title, criteria: i.criteria })),
-    notes: noteSections(p, s),
+    notes: noteSections(p, s, landings),
     gates: p.gates,
     approval: latest ? strip(latest) : null,
     approvals: p.approvals.map(strip),

@@ -20,7 +20,7 @@ import { holdersOf } from '../permissions/index.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
-interface IssueFact {
+export interface IssueFact {
   id: string;
   key: string;
   title: string;

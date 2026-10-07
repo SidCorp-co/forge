@@ -190,11 +190,14 @@ const SOONEST: Record<Forecast['kind'], number> = {
   ended: 4,
 };
 
-/** Each requirement with work still to land, soonest landing first, then the draft release. */
-export async function readComingNext(
+/**
+ * Every live requirement's scope, and what comes next: each requirement with work still to land,
+ * soonest landing first, then the draft release, all from one simulation.
+ */
+export async function readForecastLine(
   projectId: string,
   now: Date = new Date(),
-): Promise<ComingNextForecast> {
+): Promise<{ requirements: ScopeForecast[]; coming: ComingNextForecast }> {
   const draftRows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
   const { reads, scopes } = await allRequirementScopes(projectId, now, draftRows);
   const open = scopes.filter(
@@ -209,9 +212,20 @@ export async function readComingNext(
       a.key.localeCompare(b.key, undefined, { numeric: true }),
   );
   return {
-    ...stamp(reads.f.run.asOf),
-    projectId,
-    requirements: open,
-    draft: draftScope(reads, draftRows),
+    requirements: scopes,
+    coming: {
+      ...stamp(reads.f.run.asOf),
+      projectId,
+      requirements: open,
+      draft: draftScope(reads, draftRows),
+    },
   };
+}
+
+/** Each requirement with work still to land, soonest landing first, then the draft release. */
+export async function readComingNext(
+  projectId: string,
+  now: Date = new Date(),
+): Promise<ComingNextForecast> {
+  return (await readForecastLine(projectId, now)).coming;
 }
