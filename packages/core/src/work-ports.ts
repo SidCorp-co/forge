@@ -124,8 +124,8 @@ import {
   planDriftOf,
   plannedRevisionFor,
   requirementOfIssue,
-  requirementStatesOf,
   rowIn as requirementRowIn,
+  requirementStatesOf,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';

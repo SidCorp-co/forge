@@ -47,7 +47,7 @@ const standing = {
         { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", criterion: 2, verdict: null, verdictAt: null, stale: false },
       ],
     },
-    { code: "BC-3", body: "Tieu chi ba", verdict: "gap", issues: [] },
+    { code: "BC-3", body: "Tieu chi ba", verdict: "gap", issues: [], uncoveredReason: "Ly do" },
   ],
   owner: { id: "u1", name: "Lan", kind: "human" },
   touchedAt: at,

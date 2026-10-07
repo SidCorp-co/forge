@@ -9,8 +9,7 @@ vi.mock('../middleware/auth.js', async (importOriginal) => {
   return {
     ...real,
     requireAuth:
-      () =>
-      async (c: { set: (k: string, v: string) => void }, next: () => Promise<void>) => {
+      () => async (c: { set: (k: string, v: string) => void }, next: () => Promise<void>) => {
         c.set('userId', 'u1');
         c.set('agency', 'human');
         c.set('principal', 'session');
@@ -84,6 +83,9 @@ describe('POST /api/questions/:id/answer names every fault of its body at once (
   it('a body with round and one answer reaches the answer', async () => {
     const res = await answer({ round: 2, optionId: 'a' });
     expect(res.status).toBe(200);
-    expect(state.answered[0]).toMatchObject({ answer: { kind: 'option', optionId: 'a' }, round: 2 });
+    expect(state.answered[0]).toMatchObject({
+      answer: { kind: 'option', optionId: 'a' },
+      round: 2,
+    });
   });
 });

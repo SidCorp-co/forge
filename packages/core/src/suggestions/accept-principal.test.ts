@@ -12,8 +12,7 @@ vi.mock('../middleware/auth.js', async (importOriginal) => {
   return {
     ...real,
     requireAuth:
-      () =>
-      async (c: { set: (k: string, v: string) => void }, next: () => Promise<void>) => {
+      () => async (c: { set: (k: string, v: string) => void }, next: () => Promise<void>) => {
         c.set('userId', 'u1');
         c.set('agency', 'agent');
         if (state.device) c.set('patDeviceId', state.device);
@@ -57,7 +56,11 @@ describe('a REST accept carries the principal that made it (R-8)', () => {
   it("names the paired box whose credential accepted, as a REST create's createdByDeviceId does", async () => {
     state.device = 'device-7';
     await accept();
-    expect(state.accepted[0]?.actor).toEqual({ userId: 'u1', agency: 'agent', deviceId: 'device-7' });
+    expect(state.accepted[0]?.actor).toEqual({
+      userId: 'u1',
+      agency: 'agent',
+      deviceId: 'device-7',
+    });
   });
 
   it("names no box for an account's own credential", async () => {

@@ -30,7 +30,11 @@ vi.mock('../outbox/index.js', () => ({ emitEvent: async () => {}, emitEvents: as
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
 vi.mock('./ports.js', () => ({
   contractDrift: async () => null,
-  postIssueNotice: async (args: { body: string }) => ({ id: 'c1', body: args.body, parentId: null }),
+  postIssueNotice: async (args: { body: string }) => ({
+    id: 'c1',
+    body: args.body,
+    parentId: null,
+  }),
 }));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -109,7 +113,11 @@ describe('a code mark over a design approval stamp (H2)', () => {
   });
 
   it('keeps the box path: paths read for the commit are recorded where no host can read it', async () => {
-    readCommitLanding.mockResolvedValue({ ok: false, code: 'COMMIT_UNVERIFIED', detail: 'no host' });
+    readCommitLanding.mockResolvedValue({
+      ok: false,
+      code: 'COMMIT_UNVERIFIED',
+      detail: 'no host',
+    });
     const held = {
       mergedAt: stampedAt,
       mergedCommitSha: null,

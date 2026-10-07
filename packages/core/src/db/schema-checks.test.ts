@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
 import { is, SQL } from 'drizzle-orm';
 import { getTableConfig, PgDialect, PgTable } from 'drizzle-orm/pg-core';
-import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
 import { describe, expect, it } from 'vitest';
 
 const MIGRATIONS = join(__dirname, '..', '..', 'drizzle', 'migrations');
@@ -177,7 +177,10 @@ describe('the outbox event types the migrations seed are the registry', () => {
 
   it('an INSERT adds its literals and a later DELETE removes them', () => {
     const held = eventTypesInMigrations([
-      m('a', `INSERT INTO "outbox_event_types" ("type") VALUES ('x.a'), ('x.b') ON CONFLICT DO NOTHING;`),
+      m(
+        'a',
+        `INSERT INTO "outbox_event_types" ("type") VALUES ('x.a'), ('x.b') ON CONFLICT DO NOTHING;`,
+      ),
       m('b', `DELETE FROM "outbox_event_types" WHERE "type" IN ('x.a');`),
       m('c', `-- INSERT INTO "outbox_event_types" ("type") VALUES ('x.c');`),
     ]);

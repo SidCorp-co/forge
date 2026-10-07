@@ -14,6 +14,9 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 
+type Directions = { incoming: unknown[]; outgoing: unknown[] };
+type Relations = { blocks: Directions; relates: Directions; blockedBy: unknown[] };
+
 let token: string;
 let blocker: { id: string; key: string };
 let dependent: { id: string; key: string };
@@ -40,9 +43,7 @@ describe('GET /api/issues/:id carries its relations (R-5)', () => {
   it('the held issue names what holds it back, by kind and under blockedBy', async () => {
     const res = await api(token, 'GET', `/api/issues/${dependent.id}`);
     expect(res.status).toBe(200);
-    const relations = res.body.relations as Record<string, { incoming: unknown[]; outgoing: unknown[] }> & {
-      blockedBy: unknown[];
-    };
+    const relations = res.body.relations as Relations;
     expect(relations.blocks.incoming).toEqual([
       expect.objectContaining({ otherIssueId: blocker.id, blocking: true }),
     ]);
@@ -52,15 +53,18 @@ describe('GET /api/issues/:id carries its relations (R-5)', () => {
 
   it('the blocker names what it holds back, and nothing holds it', async () => {
     const res = await api(token, 'GET', `/api/issues/${blocker.id}`);
-    const relations = res.body.relations as Record<string, { incoming: unknown[]; outgoing: unknown[] }> & {
-      blockedBy: unknown[];
-    };
-    expect(relations.blocks.outgoing).toEqual([expect.objectContaining({ otherIssueId: dependent.id })]);
+    const relations = res.body.relations as Relations;
+    expect(relations.blocks.outgoing).toEqual([
+      expect.objectContaining({ otherIssueId: dependent.id }),
+    ]);
     expect(relations.blockedBy).toEqual([]);
   });
 
   it('an issue with no edge carries every kind empty, never an absent key', async () => {
     const res = await api(token, 'GET', `/api/issues/${loose.id}`);
-    expect(res.body.relations).toMatchObject({ blocks: { incoming: [], outgoing: [] }, blockedBy: [] });
+    expect(res.body.relations).toMatchObject({
+      blocks: { incoming: [], outgoing: [] },
+      blockedBy: [],
+    });
   });
 });

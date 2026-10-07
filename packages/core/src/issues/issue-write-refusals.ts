@@ -4,7 +4,7 @@ import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import type { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import { jsonPointer, RefusalError, type Refusal, refuser } from '../lib/refusal.js';
+import { jsonPointer, type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import { heldTakeRefusal } from './blocked-by.js';
 import { isProjectMember } from './read-service.js';
 

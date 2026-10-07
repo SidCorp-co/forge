@@ -127,7 +127,7 @@ const answerFields = z.object({
 });
 
 const ANSWER_SHAPE =
-  '{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question\'s options) or text (a free answer)';
+  "{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer)";
 
 const filled = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
 const isBody = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
