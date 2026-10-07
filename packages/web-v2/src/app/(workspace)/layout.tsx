@@ -217,6 +217,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
   return (
+    <CurrentProjectProvider project={railProject}>
     <ChatDockProvider value={dock}>
     <TopBarSlotProvider>
     <div className="flex h-dvh overflow-hidden bg-app">
@@ -280,10 +281,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <CurrentProjectProvider project={railProject}>
-            {children}
-            <TourLauncher />
-          </CurrentProjectProvider>
+          {children}
+          <TourLauncher />
         </main>
       </div>
 
@@ -299,5 +298,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     </div>
     </TopBarSlotProvider>
     </ChatDockProvider>
+    </CurrentProjectProvider>
   );
 }

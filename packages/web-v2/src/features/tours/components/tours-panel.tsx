@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { Button, SlideOver } from "@/design";
 import { useCurrentProject } from "@/features/projects/current-project";
-import { useWhatsNew } from "@/features/whats-new/hooks";
+import { useReleases } from "@/features/releases/hooks";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStartTour, useTourCopy, useTourStates } from "../hooks";
 import { tourHref } from "../links";
@@ -13,12 +13,12 @@ import { standingOf } from "../state";
 /** Where Help opens a tour: the page in front of the person when it is the tour's, else a page of the project. */
 function useTourTarget() {
   const project = useCurrentProject();
-  const feed = useWhatsNew().data;
-  const latest = feed?.days[0]?.entries[0]?.version;
+  const releases = useReleases(project?.id).data?.releases;
+  const latest = (releases?.find((r) => r.current) ?? releases?.[0])?.version; // any release carries the anchors
   return (tour: TourDefinition) =>
     tour.id === "release-what-changes"
-      ? tourHref(tour, feed?.projectSlug, { version: latest })
-      : tourHref(tour, project?.slug ?? feed?.projectSlug);
+      ? tourHref(tour, project?.slug, { version: latest })
+      : tourHref(tour, project?.slug);
 }
 
 /** Help → Tours: every tour, how the person stands with it at its revision, and a way to take it again. */
