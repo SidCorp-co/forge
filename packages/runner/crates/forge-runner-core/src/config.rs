@@ -732,7 +732,7 @@ mod tests {
         }
         let mut consts = crate::route_scan::Consts::new();
         for (_, tokens) in &files {
-            crate::route_scan::collect_consts(tokens, &mut consts);
+            crate::route_scan::collect_file(tokens, &mut consts);
         }
         let mut seen = std::collections::BTreeMap::<String, usize>::new();
         let mut sites = std::collections::BTreeMap::new();

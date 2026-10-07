@@ -91,7 +91,24 @@ pub(crate) fn lex(src: &str, file: &str) -> Vec<TokenTree> {
 /// Every `const` and `static` in `tokens`, at any depth, with the value it is defined with. The
 /// table a qualified or imported name resolves through, by its last identifier: every definition
 /// of that name in either crate, so one that is a route, or one the scan cannot read, counts.
-pub(crate) fn collect_consts(tokens: &[TokenTree], into: &mut Consts) {
+/// What one file adds to the table every qualified or imported name resolves through: its
+/// `const`s and `static`s, and each name a `use` renames, as a definition that is the path it
+/// renames. A const elsewhere that names `KEY` then resolves through `HOME_KEY` too where any
+/// file has `use keys::HOME_KEY as KEY`, rather than through an unrelated `KEY` alone.
+pub(crate) fn collect_file(tokens: &[TokenTree], into: &mut Consts) {
+    collect_consts(tokens, into);
+    for (name, paths) in bindings(tokens).aliases {
+        for path in paths {
+            if path.last() != Some(&name) {
+                into.entry(name.clone())
+                    .or_default()
+                    .push(Some(format!("\u{0}{}", path.join("::"))));
+            }
+        }
+    }
+}
+
+fn collect_consts(tokens: &[TokenTree], into: &mut Consts) {
     for t in tokens {
         if let TokenTree::Group(g) = t {
             collect_consts(&g.stream().into_iter().collect::<Vec<_>>(), into);
@@ -961,7 +978,7 @@ mod tests {
     fn scanned(src: &str) -> Scanned {
         let tokens = lex(src, "a fixture");
         let mut consts = Consts::new();
-        collect_consts(&tokens, &mut consts);
+        collect_file(&tokens, &mut consts);
         routes(&tokens, &consts, false)
     }
 
@@ -1209,6 +1226,24 @@ mod tests {
                 "fn f() { std::env::var_os(KEY); std::env::var_os(KEY); }",
             ),
             4,
+        );
+    }
+
+    /// The ninth whole-set read's F1: a const that names an imported one, read through a
+    /// qualified path from elsewhere, follows the import.
+    #[test]
+    fn a_const_naming_a_renamed_import_follows_it_from_anywhere() {
+        let src = r#"mod keys { pub const HOME_KEY: &str = concat!("HO", "ME"); }
+            mod unrelated { pub const KEY: &str = "FORGE_TOKEN"; }
+            mod reader { use super::keys::HOME_KEY as KEY; pub const READ: &str = KEY; }
+            fn f() { std::env::var_os(reader::READ); }"#;
+        counts(src, 2);
+        counts(
+            &src.replace(
+                "var_os(reader::READ); }",
+                "var_os(reader::READ); std::env::var_os(reader::READ); }",
+            ),
+            3,
         );
     }
 
