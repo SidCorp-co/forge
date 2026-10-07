@@ -2,6 +2,18 @@ export { clearRunnerLimit, stampRunnerLimit } from './apply-runner-limit.js';
 export { attributeFailureToRunner } from './attribute-failure.js';
 export { bootstrapRunnerAdapters } from './bootstrap.js';
 export {
+  ANCESTRY_PAIRS_MAX,
+  type AncestryPair,
+  answerCheckoutAncestry,
+  BOX_SILENT_REASONS,
+  type BoxAncestry,
+  type CheckoutAncestryAnswer,
+  type CheckoutAncestryDeps,
+  forgetSilentBoxes,
+  pairKey,
+  readCheckoutAncestry,
+} from './checkout-ancestry.js';
+export {
   answerCheckoutHead,
   type CheckoutHead,
   type CheckoutHeadAnswer,

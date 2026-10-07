@@ -20,6 +20,12 @@
  *   whose range holds its last declaring commit, and only where the range between the newest
  *   shipped release and the branch head holds none: work still unreleased is not shipped.
  *
+ * Where the project has no source host binding (or declares a local repository no host serves), the
+ * commit a mark names (observed, or the claim an asserted mark's audit line recorded) is asked of the
+ * box holding the project's bound checkout instead (`shipped-earlier-ancestry.ts` `boxReader`), and
+ * the issue's notice names that box-read evidence: the box, its checkout, origin and both shas. The
+ * declaring-commits path stays host-only: it reads ranges of commit messages, which no box serves.
+ *
  * Anything the repository cannot answer is a refusal by name and writes nothing: the issue takes
  * today's path, and a version is never inferred from a commit that could not be placed.
  */
@@ -39,6 +45,14 @@ import { closeRoster } from './finish.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { clearReleaseHolds } from './hold.js';
 import { releaseClaims } from './releasing-recovery.js';
+import {
+  type AncestryReader,
+  type BoxDeps,
+  boxReaderFor,
+  hostReader,
+  placeCommits,
+  type Witness,
+} from './shipped-earlier-ancestry.js';
 import type { ShippedEarlierUnsettled } from './shipped-earlier-hold.js';
 import { placeByKey, type ShippedRelease } from './shipped-earlier-keyed.js';
 
@@ -50,6 +64,8 @@ interface ClosedEarlier {
   commit: string;
   /** What placed it there, in words the issue's notice repeats. */
   evidence: string;
+  /** Who read the ancestry that placed it; absent where the declaring commits placed it. */
+  witness?: Witness;
 }
 
 /**
@@ -67,6 +83,8 @@ export interface ShippedEarlierResult {
 
 export interface ShippedEarlierDeps {
   host?: (projectId: string) => Promise<SourceHost>;
+  /** How a box is asked where the project has no source host; the live socket where absent. */
+  box?: BoxDeps;
 }
 
 interface ShippedEarlierArgs {
@@ -77,11 +95,6 @@ interface ShippedEarlierArgs {
 }
 
 const NOTHING: ShippedEarlierResult = { closed: [], unresolved: [] };
-
-// An ancestry answer that was "no" for the newest shipped release stays no until a newer one ships,
-// so a held row is not asked about again every tick. Keyed by the pair it answered for.
-const NOT_SHIPPED = new Set<string>();
-const NOT_SHIPPED_LIMIT = 5_000;
 
 /** Releases that shipped, oldest first. */
 async function shippedReleases(projectId: string): Promise<ShippedRelease[]> {
@@ -107,41 +120,6 @@ async function shippedReleases(projectId: string): Promise<ShippedRelease[]> {
       ? [{ runId: r.runId, version: r.version, commit: r.commit.toLowerCase() }]
       : [],
   );
-}
-
-/** Whether `release`'s commit holds `sha`: the release is at or ahead of it. */
-async function holds(host: SourceHost, sha: string, release: ShippedRelease): Promise<boolean> {
-  const status = await host.compare(sha, release.commit);
-  return status === 'ahead' || status === 'identical';
-}
-
-/**
- * The earliest of `releases` (oldest first) that holds `sha`, or null where the newest does not.
- * Releases on one branch only ever gain commits, so a release holding the commit is followed by
- * releases holding it and the earliest is found by halving.
- */
-async function earliestHolding(
-  host: SourceHost,
-  sha: string,
-  releases: readonly ShippedRelease[],
-): Promise<ShippedRelease | null> {
-  const newest = releases[releases.length - 1];
-  if (!newest) return null;
-  const key = `${sha}@${newest.commit}`;
-  if (NOT_SHIPPED.has(key)) return null;
-  if (!(await holds(host, sha, newest))) {
-    if (NOT_SHIPPED.size >= NOT_SHIPPED_LIMIT) NOT_SHIPPED.clear();
-    NOT_SHIPPED.add(key);
-    return null;
-  }
-  let lo = 0;
-  let hi = releases.length - 1;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (await holds(host, sha, releases[mid] as ShippedRelease)) hi = mid;
-    else lo = mid + 1;
-  }
-  return releases[lo] ?? null;
 }
 
 interface Candidate {
@@ -190,16 +168,36 @@ async function candidatesOf(projectId: string, issueIds: readonly string[]): Pro
   });
 }
 
-async function readerFor(
-  projectId: string,
-  deps: ShippedEarlierDeps,
-): Promise<SourceHost | { why: string }> {
+type Source =
+  | { kind: 'host'; host: SourceHost; reader: AncestryReader }
+  | { kind: 'box'; why: string; reader: AncestryReader }
+  | { kind: 'none'; why: string };
+
+/**
+ * The source host, or why there is none and, where none is bound at all, the box reader that stands
+ * in for it. A binding that exists and cannot serve stays its own refusal: a box never papers over it.
+ */
+async function readerFor(projectId: string, deps: ShippedEarlierDeps): Promise<Source> {
   try {
-    return await (deps.host ?? ((id) => resolveSourceHost(id, 'kernel')))(projectId);
+    const host = await (deps.host ?? ((id) => resolveSourceHost(id, 'kernel')))(projectId);
+    return { kind: 'host', host, reader: hostReader(host) };
   } catch (err) {
-    if (err instanceof SourceHostUnavailable) return { why: err.message };
-    throw err;
+    if (!(err instanceof SourceHostUnavailable)) throw err;
+    if (err.reason !== 'no_binding' && err.reason !== 'local_repository') {
+      return { kind: 'none', why: err.message };
+    }
+    return { kind: 'box', why: err.message, reader: await boxReaderFor(projectId, deps.box) };
   }
+}
+
+/** The evidence's provenance where a box read it, in the words the notice carries. */
+function witnessed(witness: Witness): string {
+  if (witness.via === 'source-host') return '';
+  return (
+    ` (box-read evidence: box ${witness.deviceId}, checkout ${witness.repoPath}, origin ${witness.origin}, ` +
+    `read ${witness.readAt}${witness.fetched ? ' after a fetch' : ''}: ` +
+    `\`git merge-base --is-ancestor ${witness.commit} ${witness.release}\` answered yes)`
+  );
 }
 
 /**
@@ -254,57 +252,90 @@ export async function closeShippedEarlier(
   const releases = await shippedReleases(projectId);
   if (releases.length === 0) return NOTHING;
 
-  const host = await readerFor(projectId, deps);
-  if ('why' in host) {
-    const detail = `the project's repository could not be read, so whether these issues shipped in an earlier release was not decided: ${host.why}`;
-    logger.warn({ projectId, issues: waiting.length }, `release-shipped-earlier: ${detail}`);
-    return {
-      closed: [],
-      unresolved: waiting.map((w) => ({
-        issueId: w.id,
-        code: 'SHIPPED_EARLIER_HOST_UNAVAILABLE' as const,
-        detail,
-      })),
-    };
+  const source = await readerFor(projectId, deps);
+  const unavailable = (why: string) =>
+    `the project's repository could not be read, so whether these issues shipped in an earlier release was not decided: ${why}`;
+  const hostUnavailable = (rows: readonly Candidate[], detail: string): Unresolved[] => {
+    if (rows.length === 0) return [];
+    logger.warn({ projectId, issues: rows.length }, `release-shipped-earlier: ${detail}`);
+    return rows.map((w) => ({
+      issueId: w.id,
+      code: 'SHIPPED_EARLIER_HOST_UNAVAILABLE' as const,
+      detail,
+    }));
+  };
+  if (source.kind === 'none') {
+    return { closed: [], unresolved: hostUnavailable(waiting, unavailable(source.why)) };
   }
 
   const unresolved: Unresolved[] = [];
-  const placement = new Map<string, { release: ShippedRelease; evidence: string }>();
+  const placement = new Map<
+    string,
+    { release: ShippedRelease; evidence: string; witness?: Witness }
+  >();
   const claimedBy = await claimedCommits(waiting.filter((w) => w.sha === null).map((w) => w.id));
+  const leads = new Map<string, string>();
   for (const row of waiting) {
     const lead = row.sha ?? claimedBy.get(row.id) ?? null;
-    if (lead === null) continue;
+    if (lead !== null) leads.set(row.id, lead);
+  }
+  const hostOnly = (why: string) =>
+    `${unavailable(why)}; a mark that claimed no commit is placed by the commits declaring it, which only a source host reads`;
+  if (source.kind === 'box' && leads.size === 0) {
+    return { closed: [], unresolved: hostUnavailable(waiting, hostOnly(source.why)) };
+  }
+  const commits = await placeCommits(source.reader, [...leads.values()], releases);
+  if ('silent' in commits) {
+    const why = source.kind === 'box' ? source.why : 'the source host gave no answer';
+    return {
+      closed: [],
+      unresolved: hostUnavailable(
+        waiting,
+        `${unavailable(why)}; nor did a box holding its checkout answer: ${commits.silent}`,
+      ),
+    };
+  }
+  for (const row of waiting) {
+    const lead = leads.get(row.id);
+    if (lead === undefined) continue;
+    const placed = commits.placed.get(lead);
+    if (placed) {
+      const said =
+        row.sha === null
+          ? `the commit its mark claimed, \`${lead}\`, is an ancestor of the release's`
+          : `its landing commit \`${lead}\` is an ancestor of the release's`;
+      placement.set(row.id, {
+        release: placed.release,
+        evidence: `${said}${witnessed(placed.witness)}`,
+        witness: placed.witness,
+      });
+      continue;
+    }
+    const why = commits.unread.get(lead);
+    if (why === undefined) continue;
+    const detail = `commit ${lead} could not be placed against the releases that shipped: ${why}`;
+    logger.warn({ projectId, issueId: row.id }, `release-shipped-earlier: ${detail}`);
+    unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
+  }
+  const keyed = waiting.filter((w) => w.sha === null && !placement.has(w.id));
+  if (source.kind === 'box') {
+    const unkeyed = keyed.filter((w) => !leads.has(w.id));
+    unresolved.push(...hostUnavailable(unkeyed, hostOnly(source.why)));
+  } else {
     try {
-      const release = await earliestHolding(host, lead, releases);
-      if (release) {
-        placement.set(row.id, {
+      for (const [id, release] of await placeByKey(source.host, projectId, releases, keyed)) {
+        placement.set(id, {
           release,
           evidence:
-            row.sha === null
-              ? `the commit its mark claimed, \`${lead}\`, is an ancestor of the release's`
-              : `its landing commit \`${lead}\` is an ancestor of the release's`,
+            "the last commit declaring it is in that release's range, and none is left unreleased",
         });
       }
     } catch (err) {
-      const detail = `commit ${lead} could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
-      logger.warn({ projectId, issueId: row.id }, `release-shipped-earlier: ${detail}`);
-      unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
-    }
-  }
-  const keyed = waiting.filter((w) => w.sha === null && !placement.has(w.id));
-  try {
-    for (const [id, release] of await placeByKey(host, projectId, releases, keyed)) {
-      placement.set(id, {
-        release,
-        evidence:
-          "the last commit declaring it is in that release's range, and none is left unreleased",
-      });
-    }
-  } catch (err) {
-    const detail = `the commits declaring these issues could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
-    logger.warn({ projectId, issues: keyed.length }, `release-shipped-earlier: ${detail}`);
-    for (const row of keyed) {
-      unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
+      const detail = `the commits declaring these issues could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
+      logger.warn({ projectId, issues: keyed.length }, `release-shipped-earlier: ${detail}`);
+      for (const row of keyed) {
+        unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
+      }
     }
   }
   const byRelease = new Map<string, { release: ShippedRelease; rows: Candidate[] }>();
@@ -337,12 +368,14 @@ export async function closeShippedEarlier(
         undefined,
       );
       for (const id of outcome.closed) {
-        const found = {
+        const placed = placement.get(id);
+        const found: ClosedEarlier = {
           issueId: id,
           version: release.version,
           runId: release.runId,
           commit: release.commit,
-          evidence: placement.get(id)?.evidence ?? 'a release holds its commits',
+          evidence: placed?.evidence ?? 'a release holds its commits',
+          ...(placed?.witness ? { witness: placed.witness } : {}),
         };
         closed.push(found);
         if (args.userId) {
@@ -369,7 +402,11 @@ export async function closeShippedEarlier(
   await clearReleaseHolds(closed.map((c) => c.issueId));
   if (closed.length > 0) {
     logger.info(
-      { projectId, closed: closed.map((c) => `${c.issueId}@${c.version}`) },
+      {
+        projectId,
+        closed: closed.map((c) => `${c.issueId}@${c.version}`),
+        witnesses: closed.flatMap((c) => (c.witness?.via === 'box-read' ? [c.witness] : [])),
+      },
       'release-shipped-earlier: issues closed against the earlier release that shipped their commit',
     );
   }

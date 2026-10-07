@@ -1,0 +1,1 @@
+**An issue an earlier release already shipped now closes on a project with no source host.** Forge asks the box holding the project's bound checkout whether the commit is in that release, and the notice names the box-read evidence.

@@ -12,6 +12,7 @@
 //! pool and reach this box through `pool_jobs`, which opens a pane per job and
 //! supervises it here (ISS-1080).
 mod actors;
+mod ancestry_read;
 pub mod control;
 pub mod dispatch;
 pub mod drain;

@@ -17,6 +17,7 @@ import {
   HISTORY,
   host,
   N,
+  sha,
   shippedEarlierWorld,
 } from '../helpers/shipped-earlier-world.js';
 
@@ -116,7 +117,7 @@ describe('what the sweep could not settle is on the row, beside the abort (never
 
   it('puts the clause on whatever hold a row that no abort holds is given', async () => {
     await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
-    const id = await marked(N);
+    const id = await marked(sha(0xf1));
 
     await sweepAutomaticReleases(new Date());
 
