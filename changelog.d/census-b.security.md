@@ -1,1 +1,0 @@
-**A token whose grant was never stated now reaches nothing.** Every door refuses it `PAT_GRANT_UNSTATED` instead of reading it as full access, the token list says to re-mint it, and minting without a grant is refused.
