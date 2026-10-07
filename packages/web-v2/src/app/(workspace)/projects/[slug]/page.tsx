@@ -23,6 +23,8 @@ import { useFeedbackList } from "@/features/feedback/hooks";
 import { useReleases } from "@/features/releases/hooks";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYou } from "@/features/needs-you/hooks";
+import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
+import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
 import { useProjectRef } from "@/features/projects/project-ref";
 import { useOnboardingState } from "@/features/onboarding/hooks";
@@ -51,6 +53,7 @@ export default function ProjectOverviewPage() {
   // A BA or PM's page: what needs them, how requirements and feedback stand, what lands this week and
   // what is late. Every figure is a read core answers; Development's own figures live on Development.
   const needsYouQ = useNeedsYou(projectId);
+  const statusQ = useProjectStatus(projectId);
   const requirementsQ = useRequirements(projectId);
   const feedbackQ = useFeedbackList(projectId);
   const releasesQ = useReleases(projectId);
@@ -125,6 +128,8 @@ export default function ProjectOverviewPage() {
       </header>
 
       <div className="space-y-6">
+        <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
+
         <BaFigures
           slug={project.slug}
           requirements={requirementsByState(requirementsQ.data?.requirements)}

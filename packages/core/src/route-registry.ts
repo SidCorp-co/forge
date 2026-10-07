@@ -119,6 +119,7 @@ import {
   projectConfigRoutes,
   projectConfigSchemaRoutes,
 } from './project-config/routes.js';
+import { projectStatusRoutes } from './project-status/routes.js';
 import {
   invitationRoutes,
   masterCharterRoutes,
@@ -244,6 +245,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', developmentOverviewRoutes);
   app.route('/api/projects', forecastRoutes);
   app.route('/api/projects', needsYouRoutes);
+  app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
   app.route('/api/projects', labelProjectRoutes);

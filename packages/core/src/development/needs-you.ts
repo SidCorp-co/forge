@@ -37,7 +37,7 @@ export interface NeedsYouViewer {
   mayWrite: boolean;
 }
 
-interface Row {
+export interface AttentionRow {
   entity: NeedsYouEntity;
   key: string;
   title: string;
@@ -45,7 +45,7 @@ interface Row {
   touchedAt: string | null;
 }
 
-function areaOf(rows: readonly Row[]): NeedsYouArea {
+function areaOf(rows: readonly AttentionRow[]): NeedsYouArea {
   const tally = new Map<string, number>();
   for (const row of rows) {
     const act = row.standing.waitingOn.act;
@@ -68,13 +68,18 @@ async function automationOf(projectId: string, userId: string, now: Date) {
   return readAutomationStanding(projectId, viewer, { firesLimit: AUTOMATION_FIRES_DEFAULT }, now);
 }
 
-const newestFirst = (a: Row, b: Row) => (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
+const newestFirst = (a: AttentionRow, b: AttentionRow) =>
+  (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
 
-export async function readNeedsYou(
+/**
+ * Every area's rows with their standing, and the lists they were read from: the one derivation
+ * needs-you filters to the viewer and the project status reads whom each row waits on from.
+ */
+export async function readAttention(
   projectId: string,
   viewer: NeedsYouViewer,
   now: Date = new Date(),
-): Promise<NeedsYouResponse> {
+) {
   const [requirements, feedback, releases, issues, contracts, automation, health, detached] =
     await Promise.all([
       listRequirementsAs(viewer, projectId),
@@ -92,7 +97,7 @@ export async function readNeedsYou(
     );
   }
   const items = feedback.list.feedback;
-  const rows: Record<NeedsYouAreaKey, Row[]> = {
+  const rows: Record<NeedsYouAreaKey, AttentionRow[]> = {
     requirements: requirements.map((r) => ({
       entity: 'requirement',
       key: r.key,
@@ -132,7 +137,7 @@ export async function readNeedsYou(
     designs: [...health.values()].flatMap((h) => designRowOf(h) ?? []),
     automation: [
       ...automation.schedules.map(
-        (s): Row => ({
+        (s): AttentionRow => ({
           entity: 'schedule',
           key: s.id,
           title: s.name,
@@ -141,7 +146,7 @@ export async function readNeedsYou(
         }),
       ),
       ...automation.reports.map(
-        (r): Row => ({
+        (r): AttentionRow => ({
           entity: 'report',
           key: r.id,
           title: r.summary,
@@ -151,12 +156,21 @@ export async function readNeedsYou(
       ),
     ],
   };
+  return { rows, requirements, releases, issues, feedback: items };
+}
+
+export async function readNeedsYou(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  now: Date = new Date(),
+): Promise<NeedsYouResponse> {
+  const { rows, requirements, feedback: items } = await readAttention(projectId, viewer, now);
   const owed = Object.fromEntries(
     Object.entries(rows).map(([area, list]) => [
       area,
       list.filter((r) => needsViewer(r.standing)).sort(newestFirst),
     ]),
-  ) as Record<NeedsYouAreaKey, Row[]>;
+  ) as Record<NeedsYouAreaKey, AttentionRow[]>;
   return {
     generatedAt: now.toISOString(),
     areas: Object.fromEntries(

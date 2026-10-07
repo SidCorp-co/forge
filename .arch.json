@@ -143,6 +143,9 @@
     "core-project-config": [
       "packages/core/src/project-config/**"
     ],
+    "core-project-status": [
+      "packages/core/src/project-status/**"
+    ],
     "core-projects": [
       "packages/core/src/projects/**"
     ],
@@ -295,6 +298,9 @@
     ],
     "web-feature-project-dashboard": [
       "packages/web-v2/src/features/project-dashboard/**"
+    ],
+    "web-feature-project-status": [
+      "packages/web-v2/src/features/project-status/**"
     ],
     "web-feature-project-settings": [
       "packages/web-v2/src/features/project-settings/**"
@@ -452,6 +458,7 @@
         "web-feature-shell",
         "web-feature-version",
         "web-feature-project-dashboard",
+        "web-feature-project-status",
         "web-feature-pairing",
         "web-feature-overview",
         "web-feature-operator",

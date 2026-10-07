@@ -175,7 +175,8 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
 
   const settled = await settleFirst(ctx, first, capture);
   if ('send' in settled) return settled;
-  return screenReply(ctx, settled, asks?.declared() ?? false, (instruction) => {
+  const offered = (writes.tools?.tools ?? []).map((t) => t.function.name);
+  return screenReply(ctx, settled, asks?.declared() ?? false, offered, (instruction) => {
     const again = capture ? roomSendCapture() : null;
     const asksAgain = asksCapture(req);
     const done = writes.doneSoFar();
@@ -234,7 +235,8 @@ type Retry = (instruction: string) => {
 };
 
 /**
- * Screen the reply, retrying where the door asks for it. `firstAsked` is whether the first attempt
+ * Screen the reply, retrying where the door asks for it. `offeredTools` are the tools the turn could
+ * call, which the screen holds a status claim to. `firstAsked` is whether the first attempt
  * called `await_reply`; a retry's own call replaces it, because the delivered text is the last
  * attempt's, and a code-authored line never awaits anything.
  */
@@ -242,6 +244,7 @@ async function screenReply(
   ctx: TurnContext,
   result: ExternalChatTurnResult,
   firstAsked: boolean,
+  offeredTools: readonly string[],
   retry: Retry,
 ): Promise<TurnReply> {
   const { req } = ctx;
@@ -256,6 +259,7 @@ async function screenReply(
     askedIn: confidentLanguageOf(req.message),
     toolResults: () => ctx.writes?.resultTexts() ?? [],
     first: result,
+    offeredTools,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
     fallback: req.sendMode === 'tool' || req.fallbacks === 'silence' ? 'none' : 'code-authored',

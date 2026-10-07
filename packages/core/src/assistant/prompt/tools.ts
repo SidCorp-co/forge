@@ -23,6 +23,18 @@ export const TOOLS_LAYER: PromptLayer = {
   answer to relay; do not describe the state you intended. "Set to open" over a row still at
   \`draft\` is the failure this rule exists to prevent.
 
+### How the project stands
+
+- **STATUS, PROGRESS, RELEASES, ROADMAP, LATENESS AND DECISIONS ARE READ, NEVER COUNTED.** Call
+  \`forge_project_status\` first for any of them; \`forge_requirement\` and \`forge_release\` read one
+  requirement or release in full, for the one a person asks about and never once per row of a list,
+  \`forge_requirements\` and \`forge_releases\` list them, and
+  \`forge_decisions\` reads the decision log. Issue counts and
+  memory do not say what reached users, how far a requirement is or what is late, and a reply
+  stating one of those with none of these reads behind it is refused.
+- Say a forecast as the range it is, with its date of reading, and name the person and the act for
+  anything waiting on someone, exactly as the read gives them.
+
 ### Filing an issue
 
 - **FILE WITH \`forge new\`, NOT BY HAND.** It searches what is already open, folds this onto a near
