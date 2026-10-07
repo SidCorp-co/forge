@@ -1,7 +1,5 @@
 /**
- * The rules that read the message and nothing else. Moved here out of the
- * adapter tree they grew up in, whose behaviour they keep exactly —
- * `legacy-verdicts.fixture.json` is the generated baseline that says so.
+ * The rules that read the message and nothing else.
  */
 
 // every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead, so this file's debt cannot be paid the ordinary way.

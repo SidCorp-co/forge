@@ -112,14 +112,13 @@ export function TokenList({
 
 /**
  * What this token may reach, in the three shapes the column has: full access
- * its minter chose, the names it was given, and the legacy shape a token
- * minted before a grant could be stated still carries — which reaches
- * everything too, and says so rather than reading as an absence.
+ * its minter chose, the names it was given, and a grant never stated — which
+ * every door refuses, so it reaches nothing and says to re-mint.
  */
 function GrantBadge({ token }: { token: PatToken }) {
   const t = useCopy();
   if (token.grant === "full") return <Badge tone="red">{t("settings.tokens.full")}</Badge>;
-  if (token.grant === "legacy") return <Badge tone="amber">{t("settings.tokens.legacy")}</Badge>;
+  if (token.grant === "unstated") return <Badge tone="amber">{t("settings.tokens.unstated")}</Badge>;
   const count = token.permissions?.length ?? 0;
   return (
     <Badge tone="neutral">

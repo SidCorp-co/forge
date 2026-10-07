@@ -139,7 +139,7 @@ export function createMcpServer(ctx: McpContext): Server {
       userId: principal.userId,
       agency: principal.agency,
       onBehalfOf: principal.onBehalfOf,
-      grant: principal.permissions ?? null,
+      grant: principal.permissions,
       scopes: principal.scopes,
     };
     return runWithPatScope(patScope, async () => {

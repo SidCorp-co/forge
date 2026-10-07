@@ -11,7 +11,7 @@ export interface AssistantPreferences {
 export type PatScope = "read" | "write";
 export const PAT_SCOPES: PatScope[] = ["read", "write"];
 
-type PatGrant = "legacy" | "full" | "named";
+type PatGrant = "unstated" | "full" | "named";
 
 /** What `GET /api/pat` says the create door will accept. */
 export interface PatMenu {

@@ -39,6 +39,7 @@ beforeEach(async () => {
   ] as { device_id: string }[];
   tokens.box = (
     await mintPat({
+      permissions: ['*'],
       userId: ownerId,
       name: 'box',
       deviceId: (runner as { device_id: string }).device_id,

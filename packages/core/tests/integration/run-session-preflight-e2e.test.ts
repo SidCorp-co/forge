@@ -51,8 +51,15 @@ beforeAll(async () => {
     INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
     VALUES (${projectId}, ${ids[1]}, ${ids[2]}, 'blocks')
   `);
-  const box = (await mintPat({ userId: ownerId, name: 'box', deviceId, projectIds: [projectId] }))
-    .plaintext;
+  const box = (
+    await mintPat({
+      permissions: ['*'],
+      userId: ownerId,
+      name: 'box',
+      deviceId,
+      projectIds: [projectId],
+    })
+  ).plaintext;
   const as = requester(app, { box }) as (
     who: 'box',
     method: string,

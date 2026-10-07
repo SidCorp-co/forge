@@ -27,7 +27,7 @@ export interface ReleaseRosterEntry {
   id: string;
   displayId: string;
   title: string;
-  /** When the branch landed on the base branch. Null only for legacy rows. */
+  /** When the branch landed on the base branch; null where no landing was recorded. */
   mergedAt: string | null;
   /** Whole days since the merge, so "oldest 6 days" is a read, not a sum. */
   waitingDays: number | null;

@@ -59,7 +59,7 @@ const REPOSITORY: StatusCard = {
 function serveCore() {
   fakeCore((call) => {
     if (call.path === "/projects/p1/integrations/status") return { body: { cards: [REPOSITORY] } };
-    if (call.path === "/projects/p1/integrations") return { body: { bindings: [], items: [] } };
+    if (call.path === "/projects/p1/integrations") return { body: { items: [] } };
     if (call.path === "/projects/p1/integrations/mcp-preview") return { body: { servers: [] } };
     if (call.path === "/me/product-state") return { body: { items: [] } };
     if (call.path.startsWith("/projects")) return { body: [] };

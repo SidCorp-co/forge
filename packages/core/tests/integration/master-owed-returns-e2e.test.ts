@@ -71,9 +71,12 @@ beforeAll(async () => {
   const otherDevice = await createTestDevice(ownerId);
   say = requester(app, {
     owner: await signUserToken(ownerId),
-    master: (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] })).plaintext,
+    master: (
+      await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
+    ).plaintext,
     box: (
       await mintPat({
+        permissions: ['*'],
         userId: ownerId,
         name: 'box',
         deviceId,
@@ -81,7 +84,13 @@ beforeAll(async () => {
       })
     ).plaintext,
     otherBox: (
-      await mintPat({ userId: ownerId, name: 'other', deviceId: otherDevice, projectIds: [] })
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name: 'other',
+        deviceId: otherDevice,
+        projectIds: [],
+      })
     ).plaintext,
   }) as typeof say;
 }, 120_000);

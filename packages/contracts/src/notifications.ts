@@ -198,7 +198,7 @@ export function notificationContractOf(
 	return NOTIFICATION_CONTRACT[type];
 }
 
-/** Channels a type targets; defaults to bell-only for an unknown/legacy type. */
+/** Channels a type targets; a type the contract does not name goes to the bell only. */
 export function channelsFor(type: string): NotificationChannel[] {
 	return NOTIFICATION_CONTRACT[type as NotificationType]?.channels ?? ["bell"];
 }

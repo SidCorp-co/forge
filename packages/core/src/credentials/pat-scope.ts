@@ -8,7 +8,7 @@ export type PatScope = {
   readonly agency?: 'human' | 'agent';
   /** The person the token acts for (`personalAccessTokens.onBehalfOf`). */
   readonly onBehalfOf?: string | null;
-  /** The token's grant: names, `['*']`, or null/empty for a token minted before grants. */
+  /** The token's grant: names or `['*']`; null only for a box token stating none, which then holds no explicit permission. */
   readonly grant?: readonly string[] | null;
   readonly scopes?: readonly string[];
 };

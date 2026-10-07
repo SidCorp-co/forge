@@ -54,7 +54,7 @@ function coolify(key: string, bindingId: string, name: string, environment: stri
 function serve(cards: StatusCard[]) {
   return fakeCore((call) => {
     if (call.path === "/projects/p1/integrations/status") return { body: { cards } };
-    if (call.path === "/projects/p1/integrations") return { body: { bindings: [], items: [] } };
+    if (call.path === "/projects/p1/integrations") return { body: { items: [] } };
     if (call.path === "/projects/p1/integrations/mcp-preview") return { body: { servers: [] } };
     if (call.path.startsWith("/integration-connections")) return { body: { items: [] } };
     if (call.path.startsWith("/projects")) return { body: [] };

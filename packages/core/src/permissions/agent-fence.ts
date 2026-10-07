@@ -1,7 +1,8 @@
 import { TOKEN_EXPLICIT_PERMISSIONS } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { grantNaming, regrantLiveTokens } from '../credentials/pat.js';
+import { regrantLiveTokens } from '../credentials/pat.js';
+import { PAT_PERMISSION_ALL, type StatedPatGrant } from '../credentials/pat-permissions.js';
 import { db, type Tx } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -72,11 +73,14 @@ async function isAgent(tx: Tx, userId: string): Promise<boolean> {
  * The grant of a credential core mints for its holder: every route, and, for an agent, its explicit
  * permissions by name. A person's is every route alone.
  */
-export async function agentCredentialGrant(holderUserId: string, tx: Tx = db): Promise<string[]> {
+export async function agentCredentialGrant(
+  holderUserId: string,
+  tx: Tx = db,
+): Promise<StatedPatGrant> {
   const explicit = (await isAgent(tx, holderUserId))
     ? await agentExplicitGrant(holderUserId, tx)
     : [];
-  return grantNaming(null, explicit);
+  return [PAT_PERMISSION_ALL, ...explicit];
 }
 
 /**

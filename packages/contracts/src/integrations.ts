@@ -300,14 +300,8 @@ export interface ConnectionDirectoryItem extends ConnectionSummary {
 export interface ConnectionListResponse {
   items: ConnectionDirectoryItem[];
 }
-/**
- * List envelope for project bindings (`GET /:projectId/integrations`).
- *
- * `bindings` and `items` carry the same rows; `items` is a compatibility alias for the `forge` CLI
- * and the runner, and goes once those readers name `bindings` (ISS-1191).
- */
+/** List envelope for project bindings (`GET /:projectId/integrations`), shaped as its siblings are. */
 export interface BindingListResponse {
-  bindings: BindingSummary[];
   items: BindingSummary[];
 }
 

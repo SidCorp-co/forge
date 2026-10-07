@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../credentials/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../credentials/pat.js';
 import { isPatLike } from '../credentials/pat-format.js';
+import type { StatedPatGrant } from '../credentials/pat-permissions.js';
 import { patPrincipalOf } from '../credentials/pat-principal.js';
 import { tokenChanged } from '../credentials/ports.js';
 import { logger } from '../lib/logger.js';
@@ -25,11 +26,8 @@ export type PatPrincipal = {
   scopes: readonly string[];
   projectIds: readonly string[] | null;
   boundProjectId: string | null;
-  /**
-   * The names granted, `['*']` for full access, or absent — which is every
-   * group, not no group.
-   */
-  permissions?: readonly string[] | null;
+  /** The names granted, `['*']` for full access; never empty (`statedPatGrant`). */
+  permissions: StatedPatGrant;
   grantEpoch?: number;
   /**
    * The paired box this token was issued to, or `null` for a token a person
@@ -120,7 +118,8 @@ export async function authenticatePat(
   const verified = await verifyPat(token);
   if (!verified) return null;
   onVerified?.();
-  const { row, ownerKind } = verified;
+  const { row } = verified;
+  const principal = patPrincipalOf(verified);
 
   const rule = patRuleFor(requestClass);
   const outcome = await consumeRateLimit(
@@ -167,7 +166,7 @@ export async function authenticatePat(
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  return patPrincipalOf({ row, ownerKind });
+  return principal;
 }
 
 const NOT_A_PAT_REFUSAL =

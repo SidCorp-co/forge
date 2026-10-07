@@ -60,5 +60,5 @@ export async function patToken(
   projectIds: string[],
   name = 'test',
 ): Promise<string> {
-  return (await mintPat({ userId, name, projectIds })).plaintext;
+  return (await mintPat({ permissions: ['*'], userId, name, projectIds })).plaintext;
 }

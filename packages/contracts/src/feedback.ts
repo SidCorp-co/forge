@@ -463,15 +463,6 @@ export const FEEDBACK_MESSAGE_AUDIENCES = [
 export type FeedbackMessageAudience =
 	(typeof FEEDBACK_MESSAGE_AUDIENCES)[number];
 
-export const FEEDBACK_MESSAGE_AUDIENCE_LABELS: Record<
-	FeedbackMessageAudience,
-	string
-> = {
-	reporter: "This reporter",
-	all_reporters: "Every reporter merged into it",
-	internal: "Internal note",
-};
-
 /** `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing. */
 export const feedbackMessageRequestSchema = z.strictObject({
 	audience: z.enum(FEEDBACK_MESSAGE_AUDIENCES),

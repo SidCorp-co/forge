@@ -135,7 +135,7 @@ const queries = (items: IntegrationSummary[] = BINDINGS): [QueryKey, unknown][] 
   [["projects"], [{ id: P, slug: "hop", name: "Hop", orgId: "o1", orgName: "SidCorp", orgIsPersonal: false, orgRole: "member" }]],
   [["projects", "all"], [{ id: P, slug: "hop", name: "Hop", orgId: "o1", archivedAt: null }, { id: "p2", slug: "old", name: "Old", orgId: "o1", archivedAt: ago(9000) }]],
   [["project", P], { id: P, slug: "hop", name: "Hop" }],
-  [["integrations", "list", P], { bindings: items, items }],
+  [["integrations", "list", P], { items }],
   [["integrations", "status", P], { cards }],
   [["integrations", "mcp-preview", P], { servers: SERVERS }],
   [["integrations", "rc-rooms", P, "b-rocketchat"], { rooms: [{ rid: "r1", name: "hop-dev", type: "p" }, { rid: "r2", name: "general" }] }],
