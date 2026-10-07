@@ -1,1 +1,0 @@
-**A long chat turn now posts what it did and keeps working, finishing in the same thread.** Replies hold tracker dates and statuses to the turn's own reads, answer in the asker's language, and offer issue acts as buttons.

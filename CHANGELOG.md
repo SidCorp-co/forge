@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.129] - 2026-10-07
+
+The assistant keeps working past 90 s, reads before stating facts, answers in your language
+
+### Fixed
+
+- **A long chat turn now posts what it did and keeps working, finishing in the same thread.** Replies hold tracker dates and statuses to the turn's own reads, answer in the asker's language, and offer issue acts as buttons.
+
 ## [0.4.0-dev.128] - 2026-10-07
 
 A design decision now releases the run parked waiting on it
