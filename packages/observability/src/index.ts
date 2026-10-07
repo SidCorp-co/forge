@@ -127,7 +127,7 @@ export function scrubPatInString(s: string): string {
     .replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
-/** Censors every key-named secret in `obj` in place; false where a field refused it. */
+/** Key-named secrets in `obj` censored in place: true only if each one held. */
 export function scrubBodyKeys(obj: unknown, depth = 0): boolean {
   if (depth > 8 || !obj || typeof obj !== 'object') return true;
   let whole = true;
@@ -146,7 +146,7 @@ export function scrubBodyKeys(obj: unknown, depth = 0): boolean {
   return whole;
 }
 
-/** Censors every secret-named header in place; false where a header refused it. */
+/** Each secret-named header set to the filter marker; whether all of them took. */
 export function scrubHeaders(headers: Record<string, string | string[] | undefined>): boolean {
   let whole = true;
   for (const k of Object.keys(headers)) {
@@ -192,20 +192,14 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
 }
 
 /**
- * Scrub a Sentry event: request headers, URL, body and breadcrumbs in place, so a key-named secret
- * is censored before any of the event's own code renders it; then a failed query's bound params
- * anywhere in it, the hint's exception naming them, which also renders whatever a serializer would
- * call into plain fields (a copy where anything changed); then the same scrub over that copy, for
- * a secret only the rendering showed. An event holding a secret a fixed field will not give up is
- * dropped (`null`, which `beforeSend` reads as "do not send"), never sent with it, and so is one
- * the scrub cannot read through. Generic over the event shape so this works across
- * @sentry/react, @sentry/node, and @sentry/nextjs.
+ * A Sentry event scrubbed in place, so the event's own code renders nothing secret; then its failed
+ * queries' params redacted (`redactQueryParams`, the hint's exception naming them) and the copy
+ * scrubbed again. One it cannot scrub or read is dropped: `null` is `beforeSend`'s "do not send".
  */
 export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E | null {
-  // A scrub that cannot read through the event is one that cannot vouch for it.
   try {
     if (!scrubInPlace(event)) return null;
     const out = redactQueryParams(event, hint?.originalException);
@@ -216,7 +210,7 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
   }
 }
 
-/** The event's request and breadcrumbs scrubbed in place; false where a field refused it. */
+/** Headers, URL, body and breadcrumbs scrubbed, the pass `scrubSentryEvent` runs either side. */
 function scrubInPlace(event: SentryLikeEvent): boolean {
   let whole = true;
   const keep = (done: boolean) => {

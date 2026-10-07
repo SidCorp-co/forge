@@ -3,9 +3,9 @@ import {
   errorsWithin,
   type FieldReads,
   isError,
-  readOnce,
   mayCarryBoundValues,
   REDACTED,
+  readOnce,
   redactQueryParams,
 } from '@forge/observability';
 import type { Context } from 'hono';
@@ -52,14 +52,9 @@ interface Censored {
 }
 
 /**
- * `render` run with every redact path in `root` censored in place, and each put back after, as
- * pino censors them while it writes a line: a value's own `toJSON` rendered here, before pino
- * runs, reads them censored as it would under pino. A field is censored by its descriptor, so no
- * setter of the caller's runs and its own value is untouched. What data alone reaches is censored
- * first, so no getter runs before it; a getter a path then passes through is read once, and the
- * object it answered stands in its place while `render` runs, so a hook reaches the object that
- * was censored. Where a field cannot be censored or a getter cannot be held, every object on its
- * path is `withheld`: no more of their code runs, here or in the rendering.
+ * `render` run with every redact path in `root` censored in place by descriptor (no setter runs)
+ * and put back after, as pino censors before it serializes: data-reached fields first, then past
+ * each getter, held as the object it answered. What cannot be censored is `withheld`.
  */
 function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T): T {
   const censored: Censored = { reads: new WeakMap(), withheld: new Set() };
@@ -263,10 +258,9 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
     }
     // pino censors its redact paths in the merging object and in every argument it writes as JSON.
     const how = { fields: i === 0, errorsAsThemselves: true };
-    const written =
-      isError(v)
-        ? asSerialized(v, how)
-        : withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }));
+    const written = isError(v)
+      ? asSerialized(v, how)
+      : withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }));
     found.push(...written.errors);
     return written.value;
   });

@@ -254,7 +254,7 @@ function driverFieldWithheld(key: string, v: unknown): boolean {
   return !DRIVER_FIELDS_KEPT.has(key) && !DRIVER_WALKED.has(key) && v !== null && v !== undefined;
 }
 
-/** A read of the caller's code that threw, written `[Redacted]` where it stood. */
+/** What `attempt` answers for a read that threw. */
 const UNREADABLE = Symbol('unreadable');
 const CIRCULAR = '[Circular]';
 
@@ -268,10 +268,7 @@ function attempt<T>(read: () => T, thrown?: unknown[]): T | typeof UNREADABLE {
   }
 }
 
-/**
- * Whether `value` is an `Error`, read without letting it throw: `instanceof` asks a proxy's
- * `getPrototypeOf`, and a value whose every read throws is no error to read.
- */
+/** `value instanceof Error`, false where a proxy's `getPrototypeOf` throws instead. */
 export function isError(value: unknown): value is Error {
   try {
     return value instanceof Error;
@@ -280,7 +277,6 @@ export function isError(value: unknown): value is Error {
   }
 }
 
-/** A getter's read that threw, remembered with what it threw. */
 interface Thrown {
   error: unknown;
 }
@@ -327,11 +323,7 @@ export interface Rendering {
   errorsAsThemselves?: boolean;
   /** Getters the caller already read (`readOnce`), answered from here rather than asked again. */
   reads?: FieldReads;
-  /**
-   * Objects holding a field the caller censors by name that it could not censor: none of their
-   * code runs, so a hook cannot copy that field elsewhere. A `toJSON` or boxed primitive is
-   * written `[Redacted]`, a getter the caller did not already read too; data fields stand.
-   */
+  /** Objects holding a field censored by name that could not be censored: none of their code runs. */
   withheld?: ReadonlySet<object>;
 }
 
@@ -339,11 +331,8 @@ export interface Rendering {
 export type FieldReads = WeakMap<object, Map<string, unknown>>;
 
 /**
- * `holder[key]` as JSON reads it, a getter called at most once across every call sharing `reads`:
- * an own data field as it stands, anything else (a getter, own or inherited, or an inherited
- * field) read once and remembered, one that throws `[Redacted]` and `threw`, with the `error` it
- * threw. Where `run` is false nothing is read that would run code: what has no answer yet is
- * `[Redacted]`.
+ * `holder[key]` as JSON reads it, a getter (own or inherited) called at most once across one
+ * `reads`, a throw kept with its `error`. With `run` false no code runs: no answer is `[Redacted]`.
  */
 export function readOnce(
   holder: object,
@@ -380,11 +369,8 @@ interface Walk extends Rendering {
 }
 
 /**
- * `value` as a serializer would write it at `key`, every piece of the caller's code that writing
- * calls run here and once: a `toJSON` asked with the key, a boxed primitive unboxed, a getter
- * read. What comes back calls none of it again: anything rendered comes back as plain data, and
- * an object holding no hook is the same reference. A hook that throws is written `[Redacted]`, a
- * value that holds itself `[Circular]`, and every `Error` met on the way is collected.
+ * `value` as JSON writes it at `key`, the caller's code it calls (`toJSON` with the key, unboxing,
+ * getters) run here once; what comes back calls none of it again, an object with no hook as itself.
  */
 function render(value: unknown, key: string, depth: number, walk: Walk, top = false): unknown {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
@@ -416,7 +402,6 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
       }
     }
   }
-  // A function a serializer writes as nothing, unless its toJSON getter may answer otherwise later.
   if (typeof value === 'function') return copy ? undefined : value;
   const box = unboxed(value, walk.errors);
   if (box) return box.value;
@@ -515,11 +500,7 @@ function renderFields(
   return array ? items : next;
 }
 
-/**
- * `value` as a serializer would write it, with every `Error` met on the way: the one read of the
- * caller's code a redaction makes, so what is redacted is what is written, and what is handed on
- * calls nothing again.
- */
+/** The one read of the caller's code a redaction makes, so what is redacted is what is written. */
 export function asSerialized(
   value: unknown,
   how: Rendering = {},
@@ -553,7 +534,7 @@ function redactRecord(
   return changed ? next : null;
 }
 
-/** A rendered `value` redacted, which holds no hook and no value that holds itself. */
+/** `value`, already rendered, redacted against `chain`. */
 function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
   if (typeof value === 'string') return redactText(value, chain);
   if (value === null || typeof value !== 'object') return value;
@@ -569,7 +550,7 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
   return redactRecord(value as Record<string, unknown>, own, depth) ?? value;
 }
 
-/** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */
+/** Every `Error` reachable through `value`'s enumerable fields. */
 export function errorsWithin(value: unknown): unknown[] {
   const found: unknown[] = [];
   const seen = new Set<unknown>();
