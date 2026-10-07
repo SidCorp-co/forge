@@ -1,6 +1,12 @@
 -- An `issue.updated` row records the changes a write made, not a snapshot of the fields it touched.
 -- Every existing row is rewritten from `{fields, before, after}` (whole values per field) into
--- `{fields, changes, anchor?, unchanged?}`, the shape `@forge/contracts` field-changes writes:
+-- `{fields, changes, anchor?, unchanged?}`, the shape `@forge/contracts` field-changes writes. This
+-- migration converts NOTHING: it installs the two functions, and the boot backfill
+-- (`issues/activity-backfill.ts`) calls `forge_issue_update_convert(issue)` one issue's chain per
+-- transaction, so a volume of hundreds of thousands of rows never holds the deploy's health window
+-- (ISS-124). The functions stay until a migration drops them once the `activity-field-changes`
+-- backfill marker is set on every environment.
+--
 --
 --   changes    one entry per path that moved: `set` {before, after}, `add` {after}, `remove` {before};
 --              a document is walked key by key (keys in "C" order) and an array index by index.
@@ -11,7 +17,7 @@
 --
 -- A field the writer listed with no `before` (the merge marker recorded `mergedAt` alone) becomes a
 -- `set` carrying only `after`, which is what that row knew. A row whose payload is not the snapshot
--- shape aborts the migration naming the row; nothing is skipped and nothing is deleted.
+-- shape aborts that issue's conversion naming the row; nothing is skipped and nothing is deleted.
 
 CREATE FUNCTION forge_issue_update_diff(p jsonb, a jsonb, b jsonb) RETURNS SETOF jsonb
 LANGUAGE plpgsql IMMUTABLE AS $$
@@ -53,7 +59,7 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CREATE FUNCTION forge_issue_update_convert() RETURNS integer
+CREATE FUNCTION forge_issue_update_convert(p_issue uuid) RETURNS integer
 LANGUAGE plpgsql AS $$
 DECLARE
   r record;
@@ -72,16 +78,12 @@ DECLARE
 BEGIN
   FOR r IN
     SELECT id, issue_id, payload FROM activity_log
-    WHERE action = 'issue.updated'
+    WHERE action = 'issue.updated' AND issue_id = p_issue AND NOT payload ? 'changes'
     ORDER BY issue_id, created_at, id
   LOOP
     IF jsonb_typeof(r.payload) IS DISTINCT FROM 'object' THEN
       RAISE EXCEPTION 'activity_log row % (issue %): the payload is a %, not the {fields, before, after} object an issue.updated row held; fix or remove that row and deploy again',
         r.id, r.issue_id, coalesce(jsonb_typeof(r.payload), 'SQL null');
-    END IF;
-    IF r.payload ? 'changes' THEN
-      RAISE EXCEPTION 'activity_log row % (issue %): it already carries "changes", so it is not a snapshot row; an issue.updated row before this migration holds {fields, before, after} only',
-        r.id, r.issue_id;
     END IF;
     IF jsonb_typeof(r.payload -> 'fields') IS DISTINCT FROM 'array'
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.payload -> 'fields') e WHERE jsonb_typeof(e) <> 'string') THEN
@@ -139,11 +141,6 @@ BEGIN
     UPDATE activity_log SET payload = converted WHERE id = r.id;
     n := n + 1;
   END LOOP;
-  RAISE NOTICE '0344: rewrote % issue.updated row(s) from snapshots into the changes they made', n;
   RETURN n;
 END;
-$$;--> statement-breakpoint
-
-SELECT forge_issue_update_convert();--> statement-breakpoint
-DROP FUNCTION forge_issue_update_convert();--> statement-breakpoint
-DROP FUNCTION forge_issue_update_diff(jsonb, jsonb, jsonb);
+$$;

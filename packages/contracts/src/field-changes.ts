@@ -140,3 +140,83 @@ export function isIssueUpdatedPayload(
 		Array.isArray(value.changes)
 	);
 }
+
+/** Whether a stored payload is the pre-0344 snapshot shape, `{fields, before, after}`, not yet converted. */
+export function isSnapshotPayload(value: unknown): boolean {
+	return (
+		isPlainObject(value) &&
+		!("changes" in value) &&
+		("before" in value || "after" in value)
+	);
+}
+
+/**
+ * A pre-0344 snapshot payload read as the changes it made, so a row the boot backfill has not
+ * reached yet (ISS-124) reads in the one shape. It is the TypeScript twin of migration 0344's
+ * `forge_issue_update_convert` for one row: a field listed with no `before` becomes a `set`
+ * carrying only `after`, and a field whose value did not move is listed under `unchanged`. The one
+ * difference is `anchor`, which the chain gives the stored form and a single row cannot: this
+ * carries every `before` the row held, a superset of what the chain would keep. Throws, naming
+ * what is wrong, on a payload that is not the snapshot shape.
+ */
+export function convertSnapshotPayload(
+	payload: unknown,
+): Record<string, unknown> {
+	if (!isPlainObject(payload)) {
+		throw new Error(
+			"an issue.updated payload must be the {fields, before, after} object a snapshot row held",
+		);
+	}
+	const { fields, before, after } = payload;
+	if (
+		!Array.isArray(fields) ||
+		!fields.every((f): f is string => typeof f === "string")
+	) {
+		throw new Error(
+			'an issue.updated snapshot\'s "fields" must be an array of field names',
+		);
+	}
+	if (!isPlainObject(before) || !isPlainObject(after)) {
+		throw new Error(
+			'an issue.updated snapshot\'s "before" and "after" must both be objects keyed by field',
+		);
+	}
+	const changes: FieldChange[] = [];
+	const moved: string[] = [];
+	const unchanged: string[] = [];
+	const anchor: Record<string, unknown> = {};
+	for (const field of fields) {
+		if (!(field in after)) {
+			throw new Error(
+				`field "${field}" is listed in "fields" with no value in "after"`,
+			);
+		}
+		let found: FieldChange[];
+		if (field in before) {
+			anchor[field] = before[field];
+			found = diffFieldValue(field, before[field], after[field]);
+		} else {
+			found = [{ path: [field], op: "set", after: asStored(after[field]) }];
+		}
+		if (found.length === 0) unchanged.push(field);
+		else {
+			moved.push(field);
+			changes.push(...found);
+		}
+	}
+	const {
+		fields: _f,
+		before: _b,
+		after: _a,
+		...rest
+	} = payload as Record<string, unknown>;
+	const out: Record<string, unknown> = { ...rest, fields: moved, changes };
+	if (Object.keys(anchor).length > 0) out.anchor = anchor;
+	if (unchanged.length > 0) out.unchanged = unchanged;
+	return out;
+}
+
+/** A stored `issue.updated` payload in the one shape: a snapshot row read as its changes, any other as stored. */
+export function issueUpdatedAsChanges(payload: unknown): unknown {
+	return isSnapshotPayload(payload) ? convertSnapshotPayload(payload) : payload;
+}
