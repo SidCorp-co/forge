@@ -72,7 +72,8 @@ export default function ProjectOverviewPage() {
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
 
-  // Tick once a second while some runner is limited (live reset countdown);
+  // Tick once a second while some runner is limited, so its countdown to the next try stays live
+  // (the next try, never the reset its account printed: ISS-276);
   // the active-runner card's busy state refreshes via its own 10s poll + WS,
   // so it does not need the per-second tick.
   const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);

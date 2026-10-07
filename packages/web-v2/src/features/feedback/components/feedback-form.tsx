@@ -1,16 +1,17 @@
 "use client";
 
-import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES, FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
+import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCreateFeedback, usePromoteFeedback } from "../hooks";
-import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity, FeedbackTargetType } from "../types";
+import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
+import { type PickableTarget, TARGET_HINT, TargetPicker } from "./target-picker";
 
 export interface FeedbackDraft {
   kind: FeedbackKind;
   severity: FeedbackSeverity;
-  targetType: FeedbackTargetType;
+  targetType: PickableTarget;
   target: string;
   title: string;
   body: string;
@@ -34,7 +35,7 @@ export function FeedbackForm({
   const write = agentReport ? promote : create;
   const [kind, setKind] = useState<FeedbackKind>(draft.kind);
   const [severity, setSeverity] = useState<FeedbackSeverity>(draft.severity);
-  const [targetType, setTargetType] = useState<FeedbackTargetType>(draft.targetType);
+  const [targetType, setTargetType] = useState<PickableTarget>(draft.targetType);
   const [target, setTarget] = useState(draft.target);
   const [title, setTitle] = useState(draft.title);
   const [body, setBody] = useState(draft.body);
@@ -73,15 +74,8 @@ export function FeedbackForm({
             options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v).label }))}
           />
         </Field>
-        <Field label="About" hint="REQ-3, ISS-12, a release version, a workflow flow, or a screen name">
-          <span className="flex gap-2">
-            <NativeSelect
-              value={targetType}
-              onChange={(e) => setTargetType(e.target.value as FeedbackTargetType)}
-              options={FEEDBACK_TARGET_TYPES.filter((t) => t !== "contract").map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
-            />
-            <Input value={target} onChange={(e) => setTarget(e.target.value)} />
-          </span>
+        <Field label="About" hint={TARGET_HINT}>
+          <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
         </Field>
       </div>
       <Field label="What happened" hint="On a sensitive project personal data is scrubbed when it is saved">

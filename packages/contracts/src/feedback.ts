@@ -68,13 +68,18 @@ export const FEEDBACK_UNTRIAGED_PHASES = [
 	"reopened",
 ] as const satisfies readonly FeedbackPhase[];
 
-/** What one item is about: an exclusive arc of five foreign keys, or a screen named in words; core alone files against a contract version (E3). */
+/**
+ * What one item is about: an exclusive arc of six foreign keys, or a screen named in words; core
+ * alone files against a contract version (E3). An `endpoint` is a route or tool the project serves:
+ * an element of the current version of an openapi or mcp-tools contract it provides (ISS-279).
+ */
 export const FEEDBACK_TARGET_TYPES = [
 	"requirement",
 	"issue",
 	"release",
 	"workflow",
 	"contract",
+	"endpoint",
 	"screen",
 ] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
@@ -166,6 +171,7 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 	release: "Release",
 	workflow: "Workflow",
 	contract: "Contract version",
+	endpoint: "API route or tool",
 	screen: "Screen",
 };
 
@@ -298,12 +304,19 @@ export interface FeedbackRefusal {
 const ref = z.string().trim().min(1).max(200);
 const reason = z.string().max(FEEDBACK_LIMITS.reason);
 
+/** The contract types whose elements are routes or tools a project serves, and so an `endpoint` target. */
+export const FEEDBACK_ENDPOINT_CONTRACT_TYPES = ["openapi", "mcp-tools"] as const;
+export type FeedbackEndpointContractType =
+	(typeof FEEDBACK_ENDPOINT_CONTRACT_TYPES)[number];
+
 /** The target fields a create names exactly one of (FEEDBACK_TARGET_NOT_ONE otherwise). */
 const feedbackTargetFields = {
 	requirement: ref.optional(),
 	issue: ref.optional(),
 	release: ref.optional(),
 	workflow: ref.optional(),
+	/** A route (`METHOD /path`) or tool the project serves, bare or as `<contract>:<element>`. */
+	endpoint: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
 	screen: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
 	/** With a workflow target, the one step or edge of it the item is about (REQ-17 BC-11). */
 	node: nodeRefSchema.optional(),
@@ -319,7 +332,7 @@ export const createFeedbackRequestSchema = z.strictObject({
 	...feedbackTargetFields,
 });
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
-export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
+export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 const carrierFields = {
 	/** One issue that carries the route, or every one of them as a list (ISS-265). */
@@ -379,7 +392,7 @@ export const promoteAgentReportRequestSchema = z.strictObject({
 export type PromoteAgentReportRequest = z.infer<
 	typeof promoteAgentReportRequestSchema
 >;
-export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
+export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 /**
  * `POST …/feedback/:fb/retarget`: what the item is about, corrected by a holder of feedback.approve.
@@ -393,7 +406,7 @@ export type FeedbackRetargetRequest = z.infer<
 	typeof feedbackRetargetRequestSchema
 >;
 export const FEEDBACK_RETARGET_SHAPE =
-	"{ exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), reason? }";
+	"{ exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), reason? }";
 
 /** `POST …/feedback/:fb/reopen`: the reason the reporter gives. */
 export const feedbackReasonRequestSchema = z.strictObject({ reason });
@@ -436,11 +449,26 @@ export const listFeedbackQuerySchema = z.strictObject({
 
 export interface FeedbackTargetView {
 	type: FeedbackTargetType;
-	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, or the screen as written. */
+	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, a served
+	 *  route or tool as `<contract>:<element>`, or the screen as written. */
 	key: string;
 	title: string | null;
 	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */
 	node?: NodeRef;
+}
+
+/** One route or tool a project serves, as `GET …/feedback/endpoints` lists it for the About picker. */
+export interface FeedbackEndpointView {
+	/** `<contract>:<element>`, the name a create or retarget may send as `endpoint`. */
+	key: string;
+	contract: string;
+	version: string;
+	type: FeedbackEndpointContractType;
+	element: string;
+}
+
+export interface FeedbackEndpointsResponse {
+	endpoints: FeedbackEndpointView[];
 }
 
 /** One thing carrying a route: ISS-n, REQ-n, a suggestion id or FB-n, with its own status in its own vocabulary. */

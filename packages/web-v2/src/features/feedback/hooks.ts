@@ -22,6 +22,16 @@ export function useFeedbackItem(projectId: string | undefined, key: string | und
   });
 }
 
+/** The routes and tools the project serves, read only while a picker is on "API route or tool". */
+export function useFeedbackEndpoints(projectId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["feedback-endpoints", projectId],
+    queryFn: () => feedbackApi.endpoints(projectId),
+    enabled: Boolean(projectId) && enabled,
+    staleTime: 60_000,
+  });
+}
+
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {

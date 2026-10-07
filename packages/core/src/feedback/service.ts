@@ -147,6 +147,15 @@ export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<str
   return row.id;
 }
 
+/** An endpoint target's three columns, all set or all null (`feedback_endpoint_target_chk`). */
+export const endpointColumns = (
+  endpoint: { contractSlug: string; contractVersion: string; element: string } | null,
+) => ({
+  endpointContractSlug: endpoint?.contractSlug ?? null,
+  endpointContractVersion: endpoint?.contractVersion ?? null,
+  endpointElement: endpoint?.element ?? null,
+});
+
 /** A workflow node's columns, checked against that workflow's design; a node without a workflow is refused. */
 export async function nodeColumns(
   projectId: string,
@@ -204,6 +213,7 @@ export async function preparedFeedback(
       issueId: target.issueId,
       releaseRunId: target.releaseRunId,
       workflowId: target.workflowId,
+      ...endpointColumns(target.endpoint),
       ...node.columns,
       reportedBy: actor.userId,
       reporterAgency: actor.agency,

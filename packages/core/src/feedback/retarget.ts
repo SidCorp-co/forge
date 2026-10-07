@@ -18,7 +18,7 @@ import { linkedOf } from './list-read.js';
 import { type FeedbackActor, type Row, targetRequirementOf } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import { retargetRefusal, targetCountRefusal } from './rules.js';
-import { decide, type FeedbackOutcome, nodeColumns } from './service.js';
+import { decide, endpointColumns, type FeedbackOutcome, nodeColumns } from './service.js';
 import { targetView } from './target-view.js';
 import { approvedActOn } from './triage.js';
 
@@ -27,6 +27,9 @@ const ARC_CLEARED = {
   issueId: null,
   releaseRunId: null,
   workflowId: null,
+  endpointContractSlug: null,
+  endpointContractVersion: null,
+  endpointElement: null,
   stepId: null,
   edgeFrom: null,
   edgeTo: null,
@@ -80,6 +83,7 @@ async function retargetIn(
     issueId: target.issueId,
     releaseRunId: target.releaseRunId,
     workflowId: target.workflowId,
+    ...endpointColumns(target.endpoint),
     stepId: node.columns.stepId ?? null,
     edgeFrom: node.columns.edgeFrom ?? null,
     edgeTo: node.columns.edgeTo ?? null,

@@ -47,5 +47,12 @@ export function targetView(r: Row, l: Linked): FeedbackTargetView {
     const provider = l.providers.get(r.contractProviderProjectId as string);
     return { type, key: `${provider}/${r.contractSlug}@${r.contractVersion}`, title: null };
   }
+  if (type === 'endpoint') {
+    return {
+      type,
+      key: `${r.endpointContractSlug}:${r.endpointElement}`,
+      title: `${r.endpointContractSlug} ${r.endpointContractVersion}`,
+    };
+  }
   return { type, key: r.whereSeen ?? '', title: null };
 }

@@ -80,6 +80,11 @@ export const feedback = pgTable(
     }),
     contractSlug: text('contract_slug'),
     contractVersion: text('contract_version'),
+    // the sixth is a route or tool this project serves (ISS-279): an element of a version of an
+    // openapi or mcp-tools contract it provides, named as it read when filed
+    endpointContractSlug: text('endpoint_contract_slug'),
+    endpointContractVersion: text('endpoint_contract_version'),
+    endpointElement: text('endpoint_element'),
     dueAt: timestamp('due_at', { withTimezone: true }),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
@@ -113,7 +118,7 @@ export const feedback = pgTable(
   (t) => ({
     arcChk: check(
       'feedback_arc_chk',
-      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
     ),
     nodeChk: check(
       'feedback_node_chk',
@@ -123,6 +128,19 @@ export const feedback = pgTable(
       'feedback_contract_target_chk',
       sql`num_nonnulls(${t.contractProviderProjectId}, ${t.contractSlug}, ${t.contractVersion}) IN (0, 3)`,
     ),
+    endpointTargetChk: check(
+      'feedback_endpoint_target_chk',
+      sql`num_nonnulls(${t.endpointContractSlug}, ${t.endpointContractVersion}, ${t.endpointElement}) IN (0, 3)`,
+    ),
+    endpointFk: foreignKey({
+      name: 'feedback_endpoint_contract_version_fk',
+      columns: [t.projectId, t.endpointContractSlug, t.endpointContractVersion],
+      foreignColumns: [
+        contractVersions.providerProjectId,
+        contractVersions.contractSlug,
+        contractVersions.version,
+      ],
+    }),
     dueChk: check('feedback_due_chk', sql`${t.dueAt} IS NULL OR ${t.contractVersion} IS NOT NULL`),
     contractFk: foreignKey({
       name: 'feedback_contract_version_fk',

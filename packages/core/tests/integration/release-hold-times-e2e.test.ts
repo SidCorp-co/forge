@@ -65,7 +65,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
       await sweep();
       const held = await holdOf(id);
       expect(held?.code).toBe('NO_RUNNER_ONLINE');
-      expect(held?.reason).toContain(`${says} ${FIRST}`);
+      expect(held?.reason).toContain(`${says} 12:34 UTC on 2099-01-01`);
       expect(await holdHistory(id)).toHaveLength(1);
 
       await resetTo(SAME_MINUTE);
@@ -74,10 +74,39 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
 
       await resetTo(NEXT_MINUTE);
       await sweep();
-      expect((await holdOf(id))?.reason).toContain(`${says} ${NEXT_MINUTE}`);
+      expect((await holdOf(id))?.reason).toContain(`${says} 12:35 UTC on 2099-01-01`);
       expect(await holdHistory(id)).toHaveLength(2);
     },
   );
+});
+
+// ISS-279, from ISS-276's second judge: the reset an account printed reaches the hold a release
+// writes only through `runners/ineligible.ts` reading `limit_printed_reset_at`; nothing else carries it
+describe('a printed reset reaches the release hold as the account claim', () => {
+  it('names the printed reset beside the next try where the account printed one, and only there', async () => {
+    await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
+    await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    coolify.deployed(APP.resourceUuid, 'dep-1', SERVED, '2026-09-29T11:00:00Z');
+    fx.serve(SERVED);
+    const id = await fx.judgedRow(SERVED, MERGED);
+    await rows(sql`
+      UPDATE runners SET limit_reason = 'usage_limit', rate_limited_until = '2099-01-01T12:34:00Z',
+             limit_refused_at = '2099-01-01T12:04:00Z', limit_printed_reset_at = '2099-01-01T19:30:00Z'
+       WHERE project_id = ${projectId}
+    `);
+    await sweep();
+    const reason = String((await holdOf(id))?.reason);
+    expect(reason).toContain('is held until its next try at 12:34 UTC on 2099-01-01.');
+    expect(reason).toContain(
+      'The account printed a reset at 19:30 UTC on 2099-01-01: its claim, not when work resumes.',
+    );
+
+    await rows(
+      sql`UPDATE runners SET limit_printed_reset_at = NULL WHERE project_id = ${projectId}`,
+    );
+    await sweep();
+    expect(String((await holdOf(id))?.reason)).not.toContain('printed a reset');
+  });
 });
 
 describe('any other time moving in a hold is a new reason (criterion 19)', () => {

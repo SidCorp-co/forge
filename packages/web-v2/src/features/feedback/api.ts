@@ -2,6 +2,7 @@ import { apiClient } from "@/lib/api/client";
 import type {
   CreateFeedbackRequest,
   FeedbackAction,
+  FeedbackEndpointsResponse,
   FeedbackListResponse,
   FeedbackPromoteEffect,
   FeedbackResponse,
@@ -24,6 +25,7 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
 export const feedbackApi = {
   list: (projectId: string) => apiClient<FeedbackListResponse>(base(projectId)),
   get: (projectId: string, key: string) => apiClient<FeedbackResponse>(one(projectId, key)),
+  endpoints: (projectId: string) => apiClient<FeedbackEndpointsResponse>(`${base(projectId)}/endpoints`),
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
   promote: (projectId: string, body: PromoteAgentReportRequest) =>
     apiClient<FeedbackResponse & { effect: FeedbackPromoteEffect }>(`${base(projectId)}/promote`, post(body)),
