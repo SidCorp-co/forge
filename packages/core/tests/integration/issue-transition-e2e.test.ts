@@ -206,3 +206,68 @@ describe('the database refuses what the kernel did not write', () => {
     expect(await statusOf(id)).toBe('awaiting_release');
   });
 });
+
+describe('a side effect after the commit', () => {
+  // the outbox CHECK as 0405 left it, admitting no `issue.pushed`: what failed the unblock toast
+  // after hop ISS-29 and ISS-19 committed `awaiting_release` (2026-10-06), answered as a 500
+  async function withoutIssuePushed<T>(act: () => Promise<T>): Promise<T> {
+    const [held] = await rows<{ def: string }>(sql`
+      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'pipeline_outbox_type_chk'
+    `);
+    const def = String(held?.def);
+    const narrowed = def.replace(/,?\s*'issue\.pushed'::text/, '');
+    expect(narrowed).not.toBe(def);
+    await db.execute(
+      sql.raw('ALTER TABLE pipeline_outbox DROP CONSTRAINT pipeline_outbox_type_chk'),
+    );
+    await db.execute(
+      sql.raw(`ALTER TABLE pipeline_outbox ADD CONSTRAINT pipeline_outbox_type_chk ${narrowed}`),
+    );
+    try {
+      return await act();
+    } finally {
+      await db.execute(
+        sql.raw('ALTER TABLE pipeline_outbox DROP CONSTRAINT pipeline_outbox_type_chk'),
+      );
+      await db.execute(
+        sql.raw(`ALTER TABLE pipeline_outbox ADD CONSTRAINT pipeline_outbox_type_chk ${def}`),
+      );
+    }
+  }
+
+  it('answers the committed move and names the effect that failed, never a 500', async () => {
+    const blocker = await issueAt('open');
+    const dependent = await issueAt('open');
+    await db.execute(sql`
+      INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+      VALUES (${projectId}, ${blocker}, ${dependent}, 'blocks')
+    `);
+
+    const res = await withoutIssuePushed(() =>
+      move(blocker, { toStatus: 'dropped', reason: 'not work: a duplicate' }),
+    );
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({
+      id: blocker,
+      status: 'dropped',
+      afterCommitFailures: [{ effect: 'unblock_cascade' }],
+    });
+    expect(await statusOf(blocker)).toBe('dropped');
+    expect((await audit(blocker)).map((r) => r.to_status)).toEqual(['dropped']);
+  });
+
+  it('carries no failure list when every side effect ran', async () => {
+    const blocker = await issueAt('open');
+    const dependent = await issueAt('open');
+    await db.execute(sql`
+      INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+      VALUES (${projectId}, ${blocker}, ${dependent}, 'blocks')
+    `);
+
+    const res = await move(blocker, { toStatus: 'dropped', reason: 'not work: a duplicate' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).not.toHaveProperty('afterCommitFailures');
+  });
+});

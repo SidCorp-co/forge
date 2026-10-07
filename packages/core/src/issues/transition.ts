@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { reportFailure } from '../lib/error-tracking.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -126,6 +128,40 @@ export async function publishUnblockCascade(
   }
 }
 
+/** A side effect of a committed move that did not happen: named on the answer, never a 500. */
+interface AfterCommitFailure {
+  effect: 'unblock_cascade';
+  detail: string;
+}
+
+const AFTER_COMMIT_DETAIL: Record<AfterCommitFailure['effect'], string> = {
+  unblock_cascade:
+    "the move committed, and the notice telling this project's room which dependents it unblocked could not be written; the dependents are admissible regardless, and the failure is reported to error tracking",
+};
+
+/**
+ * Run what follows a committed move. The move is the answer: a failure here is logged, reported
+ * and named on the response, and never turned into a 500 that tells the caller the move did not
+ * happen (hop ISS-29 and ISS-19 answered 500 on a committed `awaiting_release`).
+ */
+async function afterCommit(
+  effect: AfterCommitFailure['effect'],
+  subject: { issueId: string; toStatus: IssueStatus },
+  run: () => Promise<void>,
+): Promise<AfterCommitFailure | null> {
+  try {
+    await run();
+    return null;
+  } catch (err) {
+    logger.error({ err, effect, ...subject }, 'transition: a side effect after the commit failed');
+    reportFailure(err, {
+      tags: { area: 'issues', phase: `transition.${effect}` },
+      extra: subject,
+    });
+    return { effect, detail: AFTER_COMMIT_DETAIL[effect] };
+  }
+}
+
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();
 
 transitionRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -181,17 +217,19 @@ transitionRoutes.post(
       throw err;
     }
 
-    if (result.terminal) {
-      await publishUnblockCascade([
-        {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          issSeq: issue.issSeq,
-          at: result.updatedAt,
-          ...(toStatus === 'dropped' ? { dependents: result.unblockedDependents } : {}),
-        },
-      ]);
-    }
+    const unreported = result.terminal
+      ? await afterCommit('unblock_cascade', { issueId: issue.id, toStatus }, () =>
+          publishUnblockCascade([
+            {
+              issueId: issue.id,
+              projectId: issue.projectId,
+              issSeq: issue.issSeq,
+              at: result.updatedAt,
+              ...(toStatus === 'dropped' ? { dependents: result.unblockedDependents } : {}),
+            },
+          ]),
+        )
+      : null;
 
     return c.json({
       id: result.id,
@@ -199,6 +237,7 @@ transitionRoutes.post(
       step: result.step,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
+      ...(unreported ? { afterCommitFailures: [unreported] } : {}),
     });
   },
 );

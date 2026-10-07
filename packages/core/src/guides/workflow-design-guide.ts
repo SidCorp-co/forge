@@ -110,7 +110,8 @@ never read as a base.
 An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria
 are judged against a design revision — holds the issues it \`blocks\` until that revision is approved,
 whatever its own status: proposing the design moves the issue on, and only the approval releases its
-dependents.
+dependents. Only a workflow's newest revision is ever decided, so where a later write supersedes the
+delivered revision undecided, the hold follows the newest revision and releases when that one is approved.
 
 ### What sends a design back to its approver
 A write that changes the design — its template, a step added, removed, renamed or re-described, its order,

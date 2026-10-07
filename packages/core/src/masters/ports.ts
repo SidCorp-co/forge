@@ -1,3 +1,4 @@
+import type { AnswerResume } from '@forge/contracts/questions';
 import { portSlot } from '../lib/port-slot.js';
 
 // What a master is owed from the modules above execution, handed in by the process entry at boot
@@ -24,6 +25,11 @@ interface MastersPorts {
     projectId: string,
     language: string,
   ): Promise<{ issueId: string; key: string; problems: string[] }[]>;
+  /** Questions on the project's issues answered after `after`, with what each answer did to its park. */
+  answersSince(
+    projectId: string,
+    after: Date,
+  ): Promise<{ issueKey: string; questionId: string; outcome: AnswerResume | null }[]>;
   /** The language the project writes the prose it stores in Forge in (a BCP-47 tag), `en` where its document declares none. */
   contentLanguageOf(projectId: string): Promise<string>;
 }

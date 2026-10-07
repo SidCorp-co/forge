@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.118] - 2026-10-07
+
+Development space screens and New issue form read in Vietnamese
+
+### Fixed
+
+- **Issues, the overviews, Runners, Integrations and the Settings tabs read in the interface language you chose.** The New issue form, issue pages, devices, connections, organizations, agents, API tokens and MCP show Vietnamese, including core's sentences on waiting and integration health.
+
+## [0.4.0-dev.117] - 2026-10-07
+
+A committed move answers success, holds follow the live design, answers leave a record
+
+### Fixed
+
+- **A committed move answers success, not a 500.** A design hold follows the live revision, an answer leaves an issue event and reaches the pass nudge, a blocked row names its blocker, and a deferred requirement owes no revise.
+
 ## [0.4.0-dev.116] - 2026-10-07
 
 Preview and editor buttons stop filing issues; category, attachments and decisions fixed
