@@ -15,6 +15,7 @@ export {
   settleOpenQuestions,
   voidCancelledRunQuestions,
 } from './issue-coupling.js';
+export { type DetachedQuestionRow, readDetachedOpenQuestions } from './needs-you-read.js';
 export { provideQuestionPorts } from './ports.js';
 export {
   answerAs,

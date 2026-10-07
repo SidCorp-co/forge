@@ -20,6 +20,7 @@ import {
 } from "@/features/questions/hooks";
 import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
 
@@ -36,10 +37,12 @@ export interface QuestionsPaneProps {
 }
 
 function IssueContext() {
-  return <span className="fg-caption text-muted">asked by a master — no issue behind it</span>;
+  const t = useCopy();
+  return <span className="fg-caption text-muted">{t("questions.pane.byMaster")}</span>;
 }
 
 export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
+  const t = useCopy();
   const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useProjectQuestions(scope.projectId);
   const mutation = useAnswerProjectQuestion(scope.projectId);
@@ -114,7 +117,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     return (
       <div className="grid min-h-[40vh] place-items-center p-4">
         <ErrorState
-          title="Couldn't load this project's decisions"
+          title={t("questions.pane.errorTitle")}
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />
@@ -125,7 +128,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   if (onIssue) {
     return (
       <p className="fg-caption p-4 text-muted" role="status" data-testid="decision-on-issue">
-        That decision is on its issue — opening it.
+        {t("questions.pane.onIssue")}
       </p>
     );
   }
@@ -135,8 +138,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       <div className="grid min-h-[40vh] place-items-center p-4">
         <EmptyState
           titleId={EMPTY_TITLE_ID}
-          title="No master is waiting on a person"
-          message="A question a master asks with no issue behind it appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
+          title={t("questions.pane.emptyTitle")}
+          message={t("questions.pane.emptyMessage")}
         />
       </div>
     );
@@ -162,34 +165,34 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Loading…" : "Load the rest"}
+            {isFetchingNextPage ? t("questions.pane.loading") : t("questions.pane.loadRest")}
           </button>
           <span className="fg-caption text-muted">
-            {questions.length} of {data?.total ?? questions.length} open decisions
+            {t("questions.pane.count", { shown: questions.length, total: data?.total ?? questions.length })}
           </span>
         </div>
       )}
       {walkedOut && !onIssue && linked.gone && (
         <p className="fg-caption text-muted">
-          The decision that run named is no longer open.{" "}
+          {t("questions.pane.gone")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => router.refresh()}
           >
-            Refresh
+            {t("questions.pane.refresh")}
           </button>
         </p>
       )}
       {walkedOut && !onIssue && linked.unreachable && (
         <p className="fg-caption text-muted">
-          That decision could not be looked up.{" "}
+          {t("questions.pane.unreachable")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => void linked.refetch()}
           >
-            Try again
+            {t("questions.pane.retry")}
           </button>
         </p>
       )}

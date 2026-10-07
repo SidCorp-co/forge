@@ -213,7 +213,7 @@ const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: Lab
 };
 
 /** A state family with no label group of its own, read from the shared words under `common.state.<family>.*`. */
-export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>(["pipelineRun", "device", "session", "connection", "delivery", "deployment", "probe"]);
+export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>(["pipelineRun", "device", "session", "connection", "delivery", "deployment", "probe", "question"]);
 
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,
  *  so a new core value shows as words, never as a raw token. */
@@ -277,6 +277,7 @@ export const ENUM_COMMON: Partial<Record<EnumFamily, string>> = {
   environmentCause: "common.environmentCause",
   artifactKind: "common.artifactKind",
   bindingRole: "common.bindingRole",
+  blockerKind: "common.blockerKind",
 };
 
 export function enumLabel(family: EnumFamily, value: string, language?: string): string {

@@ -14,6 +14,7 @@ import {
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
 import { QuestionCard } from "./question-card";
 
@@ -44,20 +45,15 @@ export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
  * card's content rather than a footnote under a dismissal.
  */
 function NothingToAnswer() {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>No questions on this issue</PageSectionTitle>
+        <PageSectionTitle>{t("questions.panel.noneTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="space-y-2">
-        <p className="fg-body-sm text-fg">
-          Move the issue on from the header once whoever is waiting has what they need. A comment
-          does not restart the run.
-        </p>
-        <p className="fg-caption text-muted">
-          This panel lists the questions filed against this issue, and there are none. A run that
-          asked in the thread instead leaves nothing here — read the comments.
-        </p>
+        <p className="fg-body-sm text-fg">{t("questions.panel.noneMove")}</p>
+        <p className="fg-caption text-muted">{t("questions.panel.noneNote")}</p>
       </PageSectionBody>
     </PageSection>
   );
@@ -76,6 +72,7 @@ function ThreadQuestionCard({
   /** Absent for a reader who may not write: the question is shown, and no box. */
   onAnswer?: ((text: string) => Promise<unknown>) | undefined;
 }) {
+  const t = useCopy();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -96,15 +93,15 @@ function ThreadQuestionCard({
     <PageSection>
       <PageSectionHeader>
         <PageSectionTitle>
-          {answer ? "The question this issue asked" : "The question this issue is waiting on"}
+          {answer ? t("questions.thread.titleAnswered") : t("questions.thread.titleWaiting")}
         </PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="space-y-3">
-        <p className="fg-caption text-muted">The run asked this in the comments.</p>
+        <p className="fg-caption text-muted">{t("questions.thread.askedInComments")}</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
         {question.why && (
           <p className="fg-body-sm text-muted">
-            <span className="text-fg">Why it stopped:</span> {question.why}
+            <span className="text-fg">{t("questions.thread.why")}</span> {question.why}
           </p>
         )}
         {question.readings.length > 0 && (
@@ -119,19 +116,17 @@ function ThreadQuestionCard({
         )}
         {answer ? (
           <div role="status" className="space-y-1 rounded-md border border-line-subtle p-3">
-            <p className="fg-caption text-muted">Answered in the comments</p>
+            <p className="fg-caption text-muted">{t("questions.thread.answeredInComments")}</p>
             <p className="fg-body-sm whitespace-pre-wrap text-fg">{answer.text}</p>
-            <p className="fg-caption text-muted">
-              Resume the issue from its status once the answer is enough to go on.
-            </p>
+            <p className="fg-caption text-muted">{t("questions.thread.resumeAfter")}</p>
           </div>
         ) : !onAnswer ? null : sent ? (
           <p role="status" className="fg-body-sm text-fg">
-            Your answer is on the thread. Resume the issue from its status when it can go on.
+            {t("questions.thread.sent")}
           </p>
         ) : (
           <>
-            <Field label="Your answer" required>
+            <Field label={t("questions.thread.answerLabel")} required>
               <Textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} />
             </Field>
             <div className="flex justify-end">
@@ -142,7 +137,7 @@ function ThreadQuestionCard({
                 disabled={trimmed.length === 0 || sending}
                 onClick={send}
               >
-                Post answer
+                {t("questions.thread.post")}
               </Button>
             </div>
           </>
@@ -168,6 +163,7 @@ export function DecisionPanel({
   threadQuestion?: ParkThreadQuestion | null;
   onAnswerInThread?: (text: string) => Promise<unknown>;
 }) {
+  const t = useCopy();
   const { data, isLoading, isError, error, refetch } = useIssueQuestions(issueId);
   const mutation = useAnswerQuestion(issueId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
@@ -181,7 +177,7 @@ export function DecisionPanel({
         <Skeleton variant="rect" className="h-24 w-full" />
       ) : isError ? (
         <ErrorState
-          title="Couldn't load this issue's decisions"
+          title={t("questions.panel.errorTitle")}
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />

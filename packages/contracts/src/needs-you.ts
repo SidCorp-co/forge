@@ -12,6 +12,7 @@ export const NEEDS_YOU_AREAS = [
 	"contracts",
 	"designs",
 	"automation",
+	"questions",
 ] as const;
 export type NeedsYouAreaKey = (typeof NEEDS_YOU_AREAS)[number];
 
@@ -23,6 +24,7 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 	contracts: "Contracts",
 	designs: "Workflows",
 	automation: "Automation",
+	questions: "Questions",
 };
 
 /** What a needs-you row is, so a screen can open it. */
@@ -35,6 +37,7 @@ export const NEEDS_YOU_ENTITIES = [
 	"schedule",
 	"report",
 	"workflow",
+	"question",
 ] as const;
 export type NeedsYouEntity = (typeof NEEDS_YOU_ENTITIES)[number];
 
@@ -42,7 +45,7 @@ export type NeedsYouEntity = (typeof NEEDS_YOU_ENTITIES)[number];
 export interface NeedsYouItem {
 	area: NeedsYouAreaKey;
 	entity: NeedsYouEntity;
-	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow. */
+	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow, a question's id. */
 	key: string;
 	title: string;
 	waitingOn: WaitingOn;

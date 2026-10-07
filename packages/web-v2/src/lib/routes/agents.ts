@@ -12,3 +12,7 @@ export const masterHref = (slug: string) => `${agentsListHref(slug)}/master`;
 
 /** The peek key of the master row; a run's key is its uuid, so the two never meet. */
 export const MASTER_KEY = "master";
+
+/** The Questions tab with one question brought into view; the one place a question on no issue is answered. */
+export const questionHref = (slug: string, questionId: string) =>
+  `${agentsListHref(slug)}?tab=questions&q=${encodeURIComponent(questionId)}`;

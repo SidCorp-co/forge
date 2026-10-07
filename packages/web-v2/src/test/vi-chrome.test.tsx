@@ -55,6 +55,7 @@ const ENGLISH_CHROME = [
   "organizations", "members", "member", "slug", "expired", "role", "agents", "handle", "soul", "greeting", "glyph", "standing instructions",
   "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
   "required", "quick capture", "capture", "attach", "context", "description", "optional", "choose files", "summary",
+  "recommended", "choose", "needed", "round", "rounds", "earlier", "chosen", "withdrawn", "unanswered", "decision waiting", "your answer", "still waits",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

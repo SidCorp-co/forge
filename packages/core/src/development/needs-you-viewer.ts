@@ -20,6 +20,7 @@ export const needsYouViewerOf = (
   agency,
   isAdmin: holds(access, 'project.admin'),
   mayApprove: holds(access, 'releases.approve'),
+  mayWrite: holds(access, 'project.write'),
 });
 
 /**

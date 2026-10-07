@@ -1,0 +1,1 @@
+**A question tied to no issue now waits on you in Needs you and the dashboard, and the question block reads in your language.** It opens on the Agents Questions tab; the card, tabs and badges follow the interface language.
