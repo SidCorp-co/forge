@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.112] - 2026-10-07
+
+New issue forms close as soon as core saves; vendored archmap matches its manifest again
+
+### Fixed
+
+- **A filed issue, requirement or feedback closes its form when core answers.** Every write no longer waits for the waiting-on-you counts to be re-read, which held New issue spinning ~5 s past its 201; one tick sends one create.
+
 ## [0.4.0-dev.111] - 2026-10-07
 
 The workspace shell and feedback forecast rows read in Vietnamese
