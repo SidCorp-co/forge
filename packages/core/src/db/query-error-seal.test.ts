@@ -1,6 +1,7 @@
 import { REDACTED, redactQueryParams, sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { PgPreparedQuery } from 'drizzle-orm/pg-core';
+import { PostgresJsSession, PostgresJsTransaction } from 'drizzle-orm/postgres-js';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { installQueryErrorSeal } from './query-error-seal.js';
@@ -13,6 +14,19 @@ function pgRefusal(message: string, fields: Record<string, unknown>, bound: unkn
 }
 
 const DOCUMENT = '{"note":"zq9-secret-document"}';
+
+/** What `COMMIT` rejects with for a deferred unique violation: a driver error and no wrapper. */
+function commitRefusal(): Error {
+  return pgRefusal(
+    'duplicate key value violates unique constraint "notes_body_key"',
+    {
+      code: '23505',
+      detail: 'Key (body)=(zq9-secret-document) already exists.',
+      constraint_name: 'notes_body_key',
+    },
+    [],
+  );
+}
 
 function jsonRefusal(): Error {
   return pgRefusal(
@@ -96,6 +110,33 @@ describe('sealQueryError', () => {
     expect(`${cause.stack}`).not.toContain('abc');
   });
 
+  it("leaves a field the driver fixed for good to the sinks, and the database's failure stands", () => {
+    const pg = Object.assign(new Error('invalid input syntax for type uuid: "zq9"'), {
+      severity: 'ERROR',
+      code: '22P02',
+    });
+    Object.defineProperties(pg, {
+      query: { value: 'select $1::uuid', enumerable: true },
+      parameters: { value: ['zq9'], enumerable: true },
+      args: { value: ['zq9'], enumerable: true },
+    });
+    expect(sealQueryError(pg)).toBe(pg);
+    expect(pg.message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    expect((pg as unknown as Record<string, unknown>).code).toBe('22P02');
+    expect(JSON.stringify(redactQueryParams(stdSerializers.err(pg), pg))).not.toContain('zq9');
+  });
+
+  it('reads no redaction it made as a value, however often a transaction seals it', () => {
+    const err = new DrizzleQueryError(
+      'select $1::uuid',
+      ['Redact'],
+      pgRefusal('invalid input syntax for type uuid: "Redact"', { code: '22P02' }, ['Redact']),
+    );
+    sealQueryError(sealQueryError(err));
+    expect((err.cause as Error).message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    expect(err.message).toBe(`Failed query: select $1::uuid\nparams: ${REDACTED}`);
+  });
+
   it('seals a driver error a transaction rejects by itself, with no drizzle error around it', () => {
     const pg = pgRefusal(
       'duplicate key value violates unique constraint "notes_body_key"',
@@ -126,6 +167,30 @@ describe('installQueryErrorSeal', () => {
       );
     expect(err).toBeInstanceOf(DrizzleQueryError);
     expect(`${err.message} ${err.stack} ${JSON.stringify(err)}`).not.toContain('zq9');
+  });
+
+  it.each([
+    [
+      'a transaction',
+      PostgresJsSession.prototype,
+      { client: { begin: () => Promise.reject(commitRefusal()) } },
+    ],
+    [
+      'a nested transaction',
+      PostgresJsTransaction.prototype,
+      { session: { client: { savepoint: () => Promise.reject(commitRefusal()) } } },
+    ],
+  ])('seals what the driver itself rejects %s with', async (_, proto, self) => {
+    installQueryErrorSeal();
+    const door = proto as unknown as { transaction(this: unknown, run: unknown): Promise<unknown> };
+    const err = await door.transaction
+      .call(self, async () => undefined)
+      .then(
+        () => expect.unreachable('the rejection was swallowed'),
+        (e: unknown) => e as Error,
+      );
+    expect(JSON.stringify(err)).not.toContain('zq9');
+    expect((err as unknown as Record<string, unknown>).constraint_name).toBe('notes_body_key');
   });
 
   it('wraps each door once however often it is installed', () => {

@@ -134,6 +134,10 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
   for (const v of chain.values) {
     if (v.length >= BARE_VALUE_MIN) spans.push(...occurrences(text, v, 0, 0));
   }
+  return mergeSpans(spans);
+}
+
+function mergeSpans(spans: Span[]): Span[] {
   spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   const merged: Span[] = [];
   for (const span of spans) {
@@ -306,8 +310,10 @@ export function redactedMessage(err: unknown): string {
   return redactQueryParams(err instanceof Error ? err.message : String(err), err);
 }
 
+/** Leaves a field the driver fixed for good (postgres-js under `debug`) to the sinks' redaction. */
 function rewrite(target: object, key: string, value: unknown, enumerable?: boolean): void {
   const own = Object.getOwnPropertyDescriptor(target, key);
+  if (own && !own.configurable && !own.writable) return;
   Object.defineProperty(target, key, {
     value,
     writable: true,
@@ -329,13 +335,35 @@ function rewriteMessage(link: Error, message: string): void {
  * a long one anywhere. One that still holds a bound value at any length goes whole.
  */
 function sealedDriverMessage(text: string, values: string[]): string {
-  let out = quotesAValue(text) ? text.replace(QUOTED_VALUE, `$1${REDACTED}`) : text;
+  const spans: Span[] = [];
   for (const v of values) {
-    out = out.split(`"${v}"`).join(REDACTED).split(`'${v}'`).join(REDACTED);
-    if (v.length >= BARE_VALUE_MIN) out = out.split(v).join(REDACTED);
+    spans.push(...occurrences(text, `"${v}"`, 0, 0), ...occurrences(text, `'${v}'`, 0, 0));
+    if (v.length >= BARE_VALUE_MIN) spans.push(...occurrences(text, v, 0, 0));
   }
-  const stripped = out.split(REDACTED).join('');
-  return values.some((v) => stripped.includes(v)) ? REDACTED : out;
+  const held = markerAbsentFrom(text);
+  let out = '';
+  let at = 0;
+  for (const [from, to] of mergeSpans(spans)) {
+    out += `${text.slice(at, from)}${held}`;
+    at = to;
+  }
+  out += text.slice(at);
+  if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
+  const left = out.split(held).join('');
+  return values.some((v) => left.includes(v)) ? REDACTED : out.split(held).join(REDACTED);
+}
+
+function sealLink(link: Error & Record<string, unknown>, chain: ChainReading): void {
+  if (typeof link.query === 'string' && Array.isArray(link.params)) {
+    rewriteMessage(link, redactText(link.message, chain));
+    rewrite(link, 'params', link.params, false);
+  } else if (isDriverError(link)) {
+    for (const [key, v] of Object.entries(link)) {
+      if (driverFieldWithheld(key, v)) rewrite(link, key, REDACTED);
+    }
+    rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
+  } else return;
+  sealedErrors.add(link);
 }
 
 /**
@@ -353,17 +381,7 @@ export function sealQueryError<T>(err: T): T {
     if (seen.has(cur)) break;
     seen.add(cur);
     const link = cur as Error & Record<string, unknown>;
-    if (typeof link.query === 'string' && Array.isArray(link.params)) {
-      rewriteMessage(link, redactText(link.message, chain));
-      rewrite(link, 'params', link.params, false);
-      sealedErrors.add(link);
-    } else if (isDriverError(link)) {
-      for (const [key, v] of Object.entries(link)) {
-        if (driverFieldWithheld(key, v)) rewrite(link, key, REDACTED);
-      }
-      rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
-      sealedErrors.add(link);
-    }
+    if (!sealedErrors.has(link)) sealLink(link, chain);
     cur = link.cause;
   }
   return err;
