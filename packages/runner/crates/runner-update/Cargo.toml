@@ -8,6 +8,7 @@ build = "build.rs"
 [dependencies]
 runner-platform = { path = "../runner-platform" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }

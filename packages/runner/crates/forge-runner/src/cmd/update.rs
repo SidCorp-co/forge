@@ -48,16 +48,41 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    match update::apply(&manifest, None).await? {
-        Some(o) => {
+    // The build standing at the install path is kept beside it and the one
+    // installed starts on probation, as the daemon's own update does: a build
+    // installed by hand that dies at start is put back too (ISS-1378). Before
+    // it, this route kept nothing, and the build the service manager restarted
+    // into was the one it could not start.
+    let served = update::ServedBuild::new();
+    match update::apply(&manifest, Some(&served)).await? {
+        update::Applied::Installed(o) => {
             println!("✔ updated {} → {}", o.from, o.to);
+            if cfg!(unix) {
+                println!(
+                    "  {} serves on probation: if it starts {} times without staying up {}s, it is put back to {}",
+                    o.to,
+                    update::probation::LIMIT,
+                    update::probation::PERIOD.as_secs(),
+                    o.from
+                );
+            }
             if args.restart {
                 restart_this_configurations_daemon(Applied::Yes);
             } else {
                 print_restart_hint();
             }
         }
-        None => println!("✔ already up to date"),
+        update::Applied::HeldBack { rejected, exe } => {
+            println!(
+                "✖ {} is held back, not installed: {}",
+                rejected.version,
+                rejected.why(&exe)
+            );
+            if args.restart {
+                restart_this_configurations_daemon(Applied::No);
+            }
+        }
+        update::Applied::UpToDate => println!("✔ already up to date"),
     }
     Ok(())
 }
