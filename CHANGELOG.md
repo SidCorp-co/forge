@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.134] - 2026-10-07
+
+Design fingerprints ignore key order and hash their template
+
+### Changed
+
+- **A workflow design's fingerprint now ignores key order and includes its template for every template.** A migration re-hashes stored designs matching the old rule; drifted ones are left and named, and a design with no template aborts the deploy.
+
 ## [0.4.0-dev.133] - 2026-10-07
 
 Code merges after design approval keep their commit; refusals name their rule
