@@ -20,7 +20,7 @@ export function ScopeNotice({
 }) {
   const [open, setOpen] = useState(true);
   const t = useCopy();
-  const refusal = composerRefusal(room);
+  const refusal = composerRefusal(room, t);
   const scopeProjects = room.scopeProjects ?? [];
   if (scopeProjects.length === 0) return null;
 
@@ -52,7 +52,7 @@ export function ScopeNotice({
       </button>
       {open && (
         <div className="forge-fade mt-1.5 pl-[21px]">
-          <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects })}</p>
+          <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects }, t)}</p>
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
               {refusal.reason} {refusal.wayOut}

@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
@@ -201,6 +201,7 @@ function Said({
   newestAgentId?: string;
   firstDesigns?: boolean;
 }) {
+  const t = useCopy();
   // a questionnaire, its answers and a designs list are structured messages a service wrote;
   // they draw from the thread's live data, never through the model-turn renderer
   if (isStructured(message.blocks)) {
@@ -210,8 +211,8 @@ function Said({
     return (
       <div className="flex items-start gap-2 text-muted">
         <Icon name="dot" size={13} className="mt-1 flex-none" />
-        <p className="fg-body-sm italic" title={message.silenceReason} data-testid="thread-silence-row">
-          {silenceSentence(message.silenceReason)}
+        <p className="fg-body-sm italic" title={message.silenceReason} data-value={message.silenceReason} data-testid="thread-silence-row">
+          {silenceSentence(message.silenceReason, t)}
         </p>
       </div>
     );
@@ -325,6 +326,8 @@ export function ConversationThread({
   /** What follows a turn in the thread — the UI actions it took, as cards (ISS-47). */
   afterEntry?: (entryId: string) => React.ReactNode;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
   const firstDesignsId = messages.find((m) => m.blocks?.some((b) => b.type === "designs"))?.id;
   const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
@@ -354,7 +357,7 @@ export function ConversationThread({
         if (entry.kind === "pending") {
           return (
             <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-pending">
-              Nobody has answered this yet.
+              {t("conversations.thread.pending")}
             </p>
           );
         }
@@ -362,7 +365,7 @@ export function ConversationThread({
         if (entry.kind === "handed") {
           return (
             <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-handed-to-job">
-              Sent to the onboarding job: {entry.reason}.
+              {t("conversations.thread.handed", { reason: entry.reason })}
             </p>
           );
         }
@@ -379,7 +382,7 @@ export function ConversationThread({
             {afterEntry?.(entry.progress.entry.id ?? "live")}
             </div>
           );
-        const undelivered = undeliveredReplyOf(entry.detail);
+        const undelivered = undeliveredReplyOf(entry.detail, t);
         const failure = turnFailureOf(entry.detail);
         return (
           <div
@@ -387,12 +390,12 @@ export function ConversationThread({
             data-testid="thread-silence"
             className="rounded-md border border-line bg-surface px-3 py-2"
           >
-            <p className="fg-body-sm text-muted" title={failure ? failure.code : `decision: ${entry.decision}`}>
+            <p className="fg-body-sm text-muted" title={failure ? failure.code : t("conversations.silence.decisionTitle", { code: entry.decision })} data-value={failure ? failure.code : entry.decision}>
               {undelivered
-                ? `This reply was never delivered — ${undelivered.reason}`
+                ? t("conversations.thread.undelivered", { reason: undelivered.reason })
                 : failure
                   ? `${failure.reason} (${failure.code})`
-                  : silenceDetailSentence(entry.decision, entry.detail)}
+                  : silenceDetailSentence(entry.decision, entry.detail, language)}
             </p>
             {undelivered && (
               <p className="fg-body-sm mt-1 whitespace-pre-wrap" data-testid="thread-undelivered-reply">
@@ -435,6 +438,7 @@ function LiveTurn({
  * A runner-hosted turn, in whichever of its states it is in.
  */
 function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
+  const t = useCopy();
   const failed = turn.state === "failed";
   return (
     <div
@@ -443,13 +447,12 @@ function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
       className="rounded-md border border-line bg-surface px-3 py-2"
     >
       <p className="fg-body-sm text-muted">
-        {AGENT_TURN_LABEL[turn.state as Exclude<AgentTurnState, "delivered">]}
+        {t(AGENT_TURN_LABEL[turn.state as Exclude<AgentTurnState, "delivered">])}
       </p>
       {failed && turn.reason && <p className="fg-body-sm mt-1 text-fg">{turn.reason}</p>}
       {failed && (
         <p className="fg-caption mt-1 text-subtle">
-          Ask again to start a fresh session, or open a conversation in Assistant mode if the
-          question does not need the repository.
+          {t("conversations.agentTurn.askAgain")}
         </p>
       )}
     </div>

@@ -50,7 +50,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
     ...brought,
   ];
-  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
+  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length, t });
 
   const start = () => {
     if (!projectId) return;

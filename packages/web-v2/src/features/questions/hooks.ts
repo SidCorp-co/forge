@@ -10,6 +10,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
@@ -40,6 +41,7 @@ export function useIssueQuestions(issueId: string, projectId?: string) {
 export function useAnswerQuestion(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
@@ -47,14 +49,14 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
-        title: "Decision recorded",
-        description: "Your answer is on the question. Whoever asked reads it there.",
+        title: t("agents.question.recorded"),
+        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
 }
@@ -114,20 +116,21 @@ export function useLinkedQuestion(questionId: string | undefined, enabled: boole
 export function useAnswerProjectQuestion(projectId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
-        title: "Decision recorded",
-        description: "Your answer is on the question. Whoever asked reads it there.",
+        title: t("agents.question.recorded"),
+        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
 }

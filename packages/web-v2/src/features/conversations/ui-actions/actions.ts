@@ -16,10 +16,25 @@ import {
 } from "@forge/contracts/ui-actions";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
-import { applyWireframePatch, describeWireframe } from "@forge/contracts/wireframe";
+import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
 import { boardStore } from "@/features/board/board-store";
 import { assistantFilters } from "@/features/chat-dock/assistant-filters";
 import type { IssueSelectionBridge } from "@/features/chat-dock/selection-bridge";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+
+/** The board as the one line the person reads: its title and what it holds. */
+export function describeBoard(doc: WireframeDoc, t: Copy): string {
+  const counts = new Map<string, number>();
+  for (const s of doc.shapes) counts.set(s.type, (counts.get(s.type) ?? 0) + 1);
+  const what = [...counts].map(([type, n]) => `${n} ${type}`).join(", ");
+  return t("conversations.board.describe", { title: doc.title ? `"${doc.title}" ` : "", what: what || t("conversations.board.empty") });
+}
+
+/** "3 shapes" in the reader's language. */
+export const shapesText = (n: number, t: Copy): string => t(n === 1 ? "conversations.shapes.one" : "conversations.shapes.many", { n });
+
+/** A route's name as the reader says it. */
+export const routeWord = (route: string, t: Copy): string => (route in UI_ROUTES ? t(`conversations.route.${route}` as ProductCopyKey) : route);
 
 /** The URL params each filter field lives in on the Issues list. */
 const FIELD_PARAM: Record<UiIssueFilterField, string> = {
@@ -88,6 +103,8 @@ export function uiSnapshotOf(args: {
 }
 
 export interface UiActionEnv {
+  t: Copy;
+  language: string;
   slug: string;
   userId: string | null;
   /** The page as it stands: pathname + search. */
@@ -107,12 +124,13 @@ export type UiActionOutcome =
 
 const refuse = (code: string, message: string): UiActionOutcome => ({ ok: false, code, message });
 
-function chipLabel(field: UiIssueFilterField, f: UiIssueFilter): string {
-  if (field === "createdBy") return "Created by me";
-  if (field === "assignee") return "Assigned to me";
-  if (field === "priority") return `Priority: ${enumLabel("priority", f.priority ?? "")}`;
-  if (field === "status") return `Status: ${(f.status ?? []).map((s) => statusReading("issue", s).label).join(", ")}`;
-  return `Search: "${f.text}"`;
+function chipLabel(field: UiIssueFilterField, f: UiIssueFilter, env: Pick<UiActionEnv, "t" | "language">): string {
+  const { t, language } = env;
+  if (field === "createdBy") return t("conversations.ui.chipCreatedBy");
+  if (field === "assignee") return t("conversations.ui.chipAssignee");
+  if (field === "priority") return t("conversations.ui.chipPriority", { value: enumLabel("priority", f.priority ?? "", language) });
+  if (field === "status") return t("conversations.ui.chipStatus", { value: (f.status ?? []).map((s) => statusReading("issue", s, language).label).join(", ") });
+  return t("conversations.ui.chipSearch", { text: f.text ?? "" });
 }
 
 function issuesPath(slug: string): string {
@@ -134,11 +152,11 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
   switch (action.name) {
     case "ui.navigate": {
       env.go(`/projects/${env.slug}${UI_ROUTES[action.params.route]}`);
-      return { ok: true, summary: `Opened ${action.params.route}`, undo: back, chips: [] };
+      return { ok: true, summary: env.t("conversations.ui.openedRoute", { route: routeWord(action.params.route, env.t) }), undo: back, chips: [] };
     }
     case "ui.open": {
       env.go(`/projects/${env.slug}/issues/${action.params.key}`);
-      return { ok: true, summary: `Opened ${action.params.key}`, undo: back, chips: [] };
+      return { ok: true, summary: env.t("conversations.ui.openedKey", { key: action.params.key }), undo: back, chips: [] };
     }
     case "ui.issues.filter": {
       const { mode, set, clear } = action.params;
@@ -168,13 +186,13 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       }
       assistantFilters.mark(marked, mode === "replace");
       const fields = (Object.keys(set) as UiIssueFilterField[]).filter((f) => set[f] !== undefined);
-      const verb = mode === "replace" ? "Filtered issues" : "Narrowed issues";
-      const what = fields.map((f) => chipLabel(f, set)).join(", ");
+      const verb = env.t(mode === "replace" ? "conversations.ui.filtered" : "conversations.ui.narrowed");
+      const what = fields.map((f) => chipLabel(f, set, env)).join(", ");
       return {
         ok: true,
-        summary: `${verb}${what ? `: ${what}` : ""}${clear.length ? ` (cleared ${clear.join(", ")})` : ""}`,
+        summary: `${verb}${what ? `: ${what}` : ""}${clear.length ? ` (${env.t("conversations.ui.cleared", { fields: clear.map((f) => env.t(`conversations.ui.field.${f}` as ProductCopyKey)).join(", ") })})` : ""}`,
         undo: back,
-        chips: fields.map((field) => ({ field, label: chipLabel(field, set) })),
+        chips: fields.map((field) => ({ field, label: chipLabel(field, set, env) })),
       };
     }
     case "ui.board.draw": {
@@ -182,7 +200,7 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       boardStore.load(action.params.doc);
       return {
         ok: true,
-        summary: `Drew ${describeWireframe(action.params.doc)}`,
+        summary: env.t("conversations.ui.drew", { board: describeBoard(action.params.doc, env.t) }),
         undo: () => (prior.open && prior.doc ? boardStore.load(prior.doc) : boardStore.close()),
         chips: [],
       };
@@ -201,7 +219,10 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       const n = action.params.ops.length;
       return {
         ok: true,
-        summary: `Revised the board (${n} edit${n === 1 ? "" : "s"}: ${action.params.ops.map((o) => `${o.op} ${o.op === "add" ? o.shape.id : o.id}`).join(", ")})`,
+        summary: env.t(n === 1 ? "conversations.ui.revisedOne" : "conversations.ui.revisedMany", {
+          n,
+          ops: action.params.ops.map((o) => `${o.op} ${o.op === "add" ? o.shape.id : o.id}`).join(", "),
+        }),
         undo: () => boardStore.load(was),
         chips: [],
       };
@@ -225,7 +246,7 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       bridge.setSelectedIds(new Set(action.params.keys.map((k: string) => byKey.get(k) as string)));
       return {
         ok: true,
-        summary: action.params.keys.length ? `Selected ${action.params.keys.join(", ")}` : "Cleared the selection",
+        summary: action.params.keys.length ? env.t("conversations.ui.selected", { keys: action.params.keys.join(", ") }) : env.t("conversations.ui.clearedSelection"),
         undo: () => env.selection()?.setSelectedIds(prior),
         chips: [],
       };

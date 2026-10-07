@@ -36,135 +36,150 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError } from "@/lib/api/error";
-import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
+import { formatAge, formatDateTime, formatRelative, formatNumber } from "@/lib/i18n/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { productCopy, type Copy } from "@/lib/i18n/product-copy";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
 import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
 import { fmtTime, leaseLeft, runName } from "../view";
 
-export const masterName = (m: MasterStanding) => m.name ?? "Project master";
+export const masterName = (m: MasterStanding, language = "en") => m.name ?? productCopy(language)("agents.master.title");
 
-function slotsText(m: MasterStanding): string {
+function slotsText(m: MasterStanding, language: string): string {
   if (!m.slots) return "—";
-  const slots = m.slots.max === null ? `${m.slots.inUse} of ?` : `${m.slots.inUse} of ${m.slots.max}`;
-  return m.slots.runs > 0 ? `${slots} · ${m.slots.runs} declared run${m.slots.runs === 1 ? "" : "s"} beside them` : slots;
+  const t = productCopy(language);
+  const slots = m.slots.max === null ? t("agents.master.slotsUnknown", { n: m.slots.inUse }) : t("agents.master.slotsOf", { n: m.slots.inUse, max: m.slots.max });
+  const runs = m.slots.runs;
+  return runs > 0 ? t(runs === 1 ? "agents.master.slotsRunsOne" : "agents.master.slotsRunsMany", { slots, n: runs }) : slots;
 }
 
-function doing(m: MasterStanding): string {
-  if (m.state === "in_pass" && m.pass) return `working a ${enumLabel("masterVerb", m.pass.verb).toLowerCase()} pass`;
-  if (m.state === "runs_out") return `between passes, ${m.runsOut} declared run${m.runsOut === 1 ? "" : "s"} out`;
-  if (m.state === "idle") return "between passes";
-  if (m.state === "waiting_person" && m.waitingOn) return m.waitingOn.act.toLowerCase();
-  if (m.state === "silent") return `silent since ${m.lastBeatAt ? formatRelativeTime(m.lastBeatAt) : "its start"}`;
-  return "no master serves this project";
+function doing(m: MasterStanding, language: string): string {
+  const t = productCopy(language);
+  if (m.state === "in_pass" && m.pass) return t("agents.master.doingPass", { verb: enumLabel("masterVerb", m.pass.verb, language).toLowerCase() });
+  if (m.state === "runs_out") return t(m.runsOut === 1 ? "agents.master.doingRunsOne" : "agents.master.doingRunsMany", { n: m.runsOut });
+  if (m.state === "idle") return t("agents.master.doingIdle");
+  if (m.state === "waiting_person" && m.waitingOn) return standingAct(m.waitingOn.act, language).toLowerCase();
+  if (m.state === "silent") return t("agents.master.doingSilent", { when: m.lastBeatAt ? formatRelative(m.lastBeatAt, language) : t("agents.master.itsStart") });
+  return t("agents.master.doingNone");
 }
 
 // ISS-276 / FB-87: a refusal's next try is the next nudge, never the reset the account printed; the
 // pass that ran after refusals is the real recovery, and says so
-const refusalLabel = (r: NonNullable<MasterClosedPass["refused"]>) => enumLabel("masterPassRefusal", r.reason).toLowerCase();
+const refusalLabel = (r: NonNullable<MasterClosedPass["refused"]>, language: string) => enumLabel("masterPassRefusal", r.reason, language).toLowerCase();
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>): string {
-  const passes = `${r.refusedPasses} refused pass${r.refusedPasses === 1 ? "" : "es"}`;
-  return `the account answered again after ${passes} since ${formatRelativeTime(r.refusedSince)}`;
+function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>, language: string): string {
+  const t = productCopy(language);
+  const passes = t(r.refusedPasses === 1 ? "agents.master.refusedPassOne" : "agents.master.refusedPassMany", { n: r.refusedPasses });
+  return t("agents.master.recovery", { passes, since: formatRelative(r.refusedSince, language) });
 }
 
-export function lastPassText(m: Pick<MasterStanding, "lastPass">): string | null {
+/** The last pass in one sentence; `bare` leaves off the lead a fact label already carries. */
+export function lastPassText(m: Pick<MasterStanding, "lastPass">, language = "en", bare = false): string | null {
   const l = m.lastPass;
   if (!l) return null;
-  if (l.refused) return `Last pass refused ${formatRelativeTime(l.startedAt)} (${refusalLabel(l.refused)}), next try at the next nudge`;
-  const ended = l.closeReason && l.closeReason !== "turn_ended" ? ` (${enumLabel("masterPassClose", l.closeReason).toLowerCase()})` : "";
-  const recovered = l.recovers ? `, ${recoveryText(l.recovers)}` : "";
-  return `Last pass ${formatRelativeTime(l.endedAt)}${ended}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}${recovered}`;
+  const t = productCopy(language);
+  if (l.refused) return t(bare ? "agents.master.lastRefusedValue" : "agents.master.lastRefused", { when: formatRelative(l.startedAt, language), why: refusalLabel(l.refused, language) });
+  const ended = l.closeReason && l.closeReason !== "turn_ended" ? ` (${enumLabel("masterPassClose", l.closeReason, language).toLowerCase()})` : "";
+  const recovered = l.recovers ? `, ${recoveryText(l.recovers, language)}` : "";
+  return t(bare ? "agents.master.lastPassValue" : "agents.master.lastPass", { when: formatRelative(l.endedAt, language), ended, dispatched: l.dispatched.length, skipped: l.skipped.length, recovered });
 }
 
 // the box denies every permission dialog in a pane it placed and the run rephrases; how often is read here
-function dialogsText(m: MasterStanding): string {
+function dialogsText(m: MasterStanding, language: string): string {
   const d = m.dialogsAnswered;
   if (!d) return "—";
-  const count = `${d.count}${d.countIsFloor ? "+" : ""}`;
-  const when = d.lastAt ? `, last ${formatRelativeTime(d.lastAt)}` : "";
+  const count = `${formatNumber(d.count, language)}${d.countIsFloor ? "+" : ""}`;
+  const when = d.lastAt ? productCopy(language)("agents.master.dialogLast", { when: formatRelative(d.lastAt, language) }) : "";
   return `${count}${when}${d.last ? `: ${d.last}` : ""}`;
 }
 
 // core keeps an outdated master and drives it; what its replacement waits on is read here (agent-run-standing, master)
-function outdatedText(m: MasterStanding): string {
+function outdatedText(m: MasterStanding, language: string): string {
   const o = m.outdated;
   if (!o) return "—";
-  const drain = o.draining ? ", draining: takes no new run" : "";
-  return `since ${formatRelativeTime(o.since)}${drain}. Replacement waits on: ${o.heldBy.join("; ")}`;
+  const t = productCopy(language);
+  return t("agents.master.outdated", { since: formatRelative(o.since, language), drain: o.draining ? t("agents.master.draining") : "", held: o.heldBy.join("; ") });
 }
 
 export const masterRow =
-  (href: string) =>
+  (href: string, t: Copy, language: string) =>
   (m: MasterStanding): ListRowView => ({
     key: MASTER_KEY,
-    keyLabel: "Master",
+    keyLabel: t("agents.master.word"),
     href,
-    title: `${masterName(m)} · ${doing(m)}`,
-    facts: [`Slots ${slotsText(m)}`, lastPassText(m), m.pass?.issueKey ? `On ${m.pass.issueKey}` : null].filter((x): x is string => !!x),
+    title: `${masterName(m, language)} · ${doing(m, language)}`,
+    facts: [t("agents.master.slotsFact", { slots: slotsText(m, language) }), lastPassText(m, language), m.pass?.issueKey ? t("agents.master.onIssue", { key: m.pass.issueKey }) : null].filter((x): x is string => !!x),
     state: <StatusBadge family="masterState" value={m.state} />,
     waitingOn: <span className="text-12-5 text-subtle">—</span>,
-    owner: m.device?.name ?? "No box",
-    age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt), title: `Last beat ${formatStamp(m.lastBeatAt)}` } : null,
+    owner: m.device?.name ?? t("agents.master.noBox"),
+    age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt, language), title: t("agents.master.lastBeatAt", { at: formatDateTime(m.lastBeatAt, language) }) } : null,
   });
 
 export function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" || m.state === "runs_out" ? "run" : "calm";
-  const head = `${statusReading("masterState", m.state).label} ·`;
+  const head = `${statusReading("masterState", m.state, language).label} ·`;
   const body =
     m.state === "in_pass" && m.pass
-      ? `${enumLabel("masterVerb", m.pass.verb)} since ${formatRelativeTime(m.pass.startedAt)}${m.pass.issueKey ? ` on ${m.pass.issueKey}` : ""}`
+      ? t(m.pass.issueKey ? "agents.master.bannerPassOn" : "agents.master.bannerPass", { verb: enumLabel("masterVerb", m.pass.verb, language), when: formatRelative(m.pass.startedAt, language), key: m.pass.issueKey ?? "" })
       : m.state === "waiting_person" && m.waitingOn
-        ? `${m.waitingOn.who}: ${m.waitingOn.act}`
+        ? `${standingWho(m.waitingOn.who, language)}: ${standingAct(m.waitingOn.act, language)}`
         : m.state === "silent"
-        ? `the reaper fails it after ${Math.round(m.silentAfterSeconds / 60)} min of silence`
+        ? t("agents.master.bannerSilent", { min: Math.round(m.silentAfterSeconds / 60) })
         : m.state === "none"
-          ? "no live master session on any box serves this project"
-          : (lastPassText(m) ?? "no pass recorded yet");
+          ? t("agents.master.bannerNone")
+          : (lastPassText(m, language) ?? t("agents.master.bannerNoPass"));
   return <WaitBanner tone={tone} head={head} body={body} className={className} testId="master-banner" />;
 }
 
 function SlotMarks({ m }: { m: MasterStanding }) {
+  const t = useCopy();
   const max = m.slots?.max;
   const inUse = m.slots?.inUse ?? 0;
   if (max == null) return null;
   const marks = Array.from({ length: Math.max(max, inUse) }, (_, i) => ({
     key: String(i),
-    label: `Slot ${i + 1} · ${i < inUse ? (i < max ? "in use" : "over the declared max") : "free"}`,
+    label: t("agents.master.slotMark", { n: i + 1, state: i < inUse ? (i < max ? t("agents.master.slotInUse") : t("agents.master.slotOver")) : t("agents.master.slotFree") }),
     tone: i < inUse ? (i < max ? ("run" as const) : ("err" as const)) : undefined,
   }));
   return <MarkStrip marks={marks} />;
 }
 
 export function MasterFacts({ m }: { m: MasterStanding }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   return (
     <>
-      <FactsGroup title="Standing">
-        <Fact label="State">
+      <FactsGroup title={t("runs.fact.standing")}>
+        <Fact label={t("runs.fact.state")}>
           <StatusBadge family="masterState" value={m.state} />
         </Fact>
-        <Fact label="Pass">
+        <Fact label={t("runs.fact.pass")}>
           {m.pass ? (
-            <span title={formatStamp(m.pass.startedAt)}>
-              {enumLabel("masterVerb", m.pass.verb)} · {formatRelativeTime(m.pass.startedAt)}
+            <span title={time.dateTime(m.pass.startedAt)}>
+              {enumLabel("masterVerb", m.pass.verb, language)} · {formatRelative(m.pass.startedAt, language)}
             </span>
           ) : (
             "—"
           )}
         </Fact>
-        <Fact label="Last pass">
-          {m.lastPass ? <span title={formatStamp(m.lastPass.endedAt)}>{lastPassText(m)?.replace(/^Last pass /, "")}</span> : "—"}
+        <Fact label={t("agents.master.lastPassFact")}>
+          {m.lastPass ? <span title={time.dateTime(m.lastPass.endedAt)}>{lastPassText(m, language, true)}</span> : "—"}
         </Fact>
-        <Fact label="Outdated">{m.outdated ? <span title={m.outdated.why}>{outdatedText(m)}</span> : "—"}</Fact>
+        <Fact label={t("agents.master.outdatedFact")}>{m.outdated ? <span title={m.outdated.why}>{outdatedText(m, language)}</span> : "—"}</Fact>
       </FactsGroup>
-      <FactsGroup title="Slots">
-        <Fact label="In use">
-          <span>{slotsText(m)}</span>
+      <FactsGroup title={t("agents.master.slots")}>
+        <Fact label={t("agents.master.inUse")}>
+          <span>{slotsText(m, language)}</span>
           <SlotMarks m={m} />
         </Fact>
-        <Fact label="Max">
+        <Fact label={t("agents.master.max")}>
           {m.slots?.undeclared ? (
             <span className="text-danger" title={m.slots.undeclared.detail}>
               {m.slots.undeclared.code}
@@ -176,16 +191,16 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
           )}
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Box">
-        <Fact label="Device">
+      <FactsGroup title={t("runs.fact.box")}>
+        <Fact label={t("runs.report.device")}>
           <span className="font-mono text-12-5">{m.device?.name ?? "—"}</span>
         </Fact>
-        <Fact label="Last beat">{m.lastBeatAt ? <span title={formatStamp(m.lastBeatAt)}>{formatRelativeTime(m.lastBeatAt)}</span> : "—"}</Fact>
-        <Fact label="Since">{fmtTime(m.since)}</Fact>
-        <Fact label="Dialogs answered">{dialogsText(m)}</Fact>
+        <Fact label={t("agents.master.lastBeat")}>{m.lastBeatAt ? <span title={time.dateTime(m.lastBeatAt)}>{formatRelative(m.lastBeatAt, language)}</span> : "—"}</Fact>
+        <Fact label={t("runs.fact.since")}>{fmtTime(m.since, language)}</Fact>
+        <Fact label={t("agents.master.dialogs")}>{dialogsText(m, language)}</Fact>
       </FactsGroup>
-      <FactsGroup title="Properties">
-        <Fact label="Session">
+      <FactsGroup title={t("runs.fact.properties")}>
+        <Fact label={t("runs.fact.session")}>
           {m.sessionId ? (
             <span className="font-mono text-12-5" title={m.sessionId}>
               {m.sessionId.slice(0, 8)}
@@ -200,9 +215,11 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
 }
 
 export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: PeekState; onOpenFull: () => void }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
-    <PeekPanel peek={peek} listLabel="Agents / Runs" noun="Project master" onOpenFull={onOpenFull} testId="master-peek">
-      <PeekHead noun="Project master" itemKey="Master" badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m)} />
+    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} onOpenFull={onOpenFull} testId="master-peek">
+      <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
       <MasterBanner m={m} className="px-[18px]" />
       <div className="px-[18px] pb-4 pt-4">
         <MasterFacts m={m} />
@@ -234,27 +251,31 @@ const keyList = (slug: string, keys: readonly string[]) =>
   );
 
 function Passes({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
   const q = useMasterPasses(projectId);
-  if (q.isLoading) return <ProjectLoader label="loading passes…" />;
+  if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingPasses")} />;
   if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
-  if (q.data.items.length === 0) return <FactsEmpty>No pass is recorded for this project's master yet.</FactsEmpty>;
+  if (q.data.items.length === 0) return <FactsEmpty>{t("agents.master.noPasses")}</FactsEmpty>;
   return <PassesTable items={q.data.items} hasMore={q.data.hasMore} slug={slug} />;
 }
 
 /** The passes masters/passes served, newest first: what each dispatched, skipped and parked, or why it was refused. */
 export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPassView[]; hasMore: boolean; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const closed = (p: MasterPassView) => ("endedAt" in p ? p : null);
   return (
     <section>
-      <ViewHeading hint={hasMore ? `the newest ${items.length}` : `${items.length}`}>Passes</ViewHeading>
-      <Table aria-label="Passes">
+      <ViewHeading hint={hasMore ? t("agents.master.newestN", { n: time.number(items.length) }) : time.number(items.length)}>{t("agents.master.tab.passes")}</ViewHeading>
+      <Table aria-label={t("agents.master.tab.passes")}>
         <THead className="bg-sunken">
           <TR>
-            <TH>Started</TH>
-            <TH>Verb</TH>
-            <TH>Dispatched</TH>
-            <TH>Skipped, with the refusal</TH>
-            <TH>Parked</TH>
+            <TH>{t("runs.fact.started")}</TH>
+            <TH>{t("agents.master.col.verb")}</TH>
+            <TH>{t("agents.master.col.dispatched")}</TH>
+            <TH>{t("agents.master.col.skipped")}</TH>
+            <TH>{t("agents.master.col.parked")}</TH>
           </TR>
         </THead>
         <TBody>
@@ -263,24 +284,24 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
             return (
               <TR key={p.id}>
                 <TD>
-                  <span title={formatStamp(p.startedAt)}>{fmtTime(p.startedAt)}</span>
-                  {c ? null : <span className="ml-1.5 text-12 font-semibold text-link">Now</span>}
+                  <span title={time.dateTime(p.startedAt)}>{fmtTime(p.startedAt, language)}</span>
+                  {c ? null : <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.now")}</span>}
                 </TD>
                 <TD>
                   <EnumBadge family="masterVerb" value={p.verb} />
-                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted" title="A turn the runner did not nudge: a person at the pane, or a task notification">unprompted</span> : null}
+                  {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted" title={t("agents.master.unpromptedHint")}>{t("agents.master.unprompted")}</span> : null}
                   {c?.recovers ? (
                     <>
-                      <span className="ml-1.5 text-12 font-semibold text-link">recovered</span>
-                      <span className="mt-0.5 block text-12 text-muted">{capitalize(recoveryText(c.recovers))}</span>
+                      <span className="ml-1.5 text-12 font-semibold text-link">{t("agents.master.recovered")}</span>
+                      <span className="mt-0.5 block text-12 text-muted">{capitalize(recoveryText(c.recovers, language))}</span>
                     </>
                   ) : null}
                 </TD>
                 <TD>
                   {c?.refused ? (
                     <span className="grid gap-0.5 text-12-5 text-muted">
-                      <span>Refused before it ran: {refusalLabel(c.refused)}; next try at the next nudge</span>
-                      <span className="text-12 break-words">The account said: “{c.refused.detail}”</span>
+                      <span>{t("agents.master.refusedBefore", { why: refusalLabel(c.refused, language) })}</span>
+                      <span className="text-12 break-words">{t("agents.master.accountSaid", { said: c.refused.detail })}</span>
                     </span>
                   ) : c ? (
                     keyList(slug, c.dispatched)
@@ -314,23 +335,26 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
 }
 
 function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const q = useRunStanding(projectId, "live");
-  if (q.isLoading) return <ProjectLoader label="loading runs…" />;
+  if (q.isLoading) return <ProjectLoader label={t("agents.loadingRuns")} />;
   if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
   const rows = q.data.items.filter(
     (r: RunStanding) => r.holder.source === "held" && r.holder.dispatchedBy.source !== "none" && r.holder.dispatchedBy.masterSessionId === m.sessionId,
   );
-  if (rows.length === 0) return <FactsEmpty>No live run this master dispatched holds a lease.</FactsEmpty>;
+  if (rows.length === 0) return <FactsEmpty>{t("agents.master.noLeased")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading hint={`${rows.length}`}>Runs it dispatched that hold a lease</ViewHeading>
-      <Table aria-label="Runs holding a lease">
+      <ViewHeading hint={time.number(rows.length)}>{t("agents.master.leasedHeading")}</ViewHeading>
+      <Table aria-label={t("agents.master.tab.runs")}>
         <THead className="bg-sunken">
           <TR>
-            <TH>Run</TH>
-            <TH>Standing</TH>
-            <TH>Lease</TH>
-            <TH>Pass</TH>
+            <TH>{t("runs.fact.run")}</TH>
+            <TH>{t("runs.fact.standing")}</TH>
+            <TH>{t("runs.fact.lease")}</TH>
+            <TH>{t("runs.fact.pass")}</TH>
           </TR>
         </THead>
         <TBody>
@@ -340,21 +364,21 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
               <TR key={r.id}>
                 <TD>
                   <Link href={runHref(slug, r.id)} className="text-link hover:underline">
-                    {runName(r)}
+                    {runName(r, language)}
                   </Link>
                 </TD>
                 <TD>
                   <StatusBadge family="runStanding" value={r.state} />
                 </TD>
-                <TD>{leaseLeft(r) ?? "—"}</TD>
+                <TD>{leaseLeft(r, language) ?? "—"}</TD>
                 <TD>
                   {d?.source === "pass" ? (
-                    <span title={formatStamp(d.startedAt)}>
-                      {fmtTime(d.startedAt)} {enumLabel("masterVerb", d.verb).toLowerCase()}
+                    <span title={time.dateTime(d.startedAt)}>
+                      {fmtTime(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
                     </span>
                   ) : (
                     <span className="text-muted" title={d?.source === "master" ? d.detail : undefined}>
-                      Not known
+                      {t("runs.notKnown")}
                     </span>
                   )}
                 </TD>
@@ -368,14 +392,16 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
 }
 
 function Charter({ projectId }: { projectId: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const q = useMasterCharter(projectId, true);
-  if (q.isLoading) return <ProjectLoader label="loading the charter…" />;
+  if (q.isLoading) return <ProjectLoader label={t("agents.master.loadingCharter")} />;
   if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
   const c = q.data;
-  if (!c.declared) return <FactsEmpty>No charter is declared for this project's master.</FactsEmpty>;
+  if (!c.declared) return <FactsEmpty>{t("agents.master.noCharter")}</FactsEmpty>;
   return (
     <section>
-      <ViewHeading hint={c.declaredAt ? `declared ${fmtTime(c.declaredAt)}` : undefined}>Charter v{c.version}</ViewHeading>
+      <ViewHeading hint={c.declaredAt ? t("agents.master.declared", { at: fmtTime(c.declaredAt, language) }) : undefined}>{t("agents.master.charterV", { v: c.version ?? "" })}</ViewHeading>
       {c.goal ? <p className="text-13-5">{c.goal}</p> : null}
       {c.rules.length > 0 ? (
         <ul className="mt-3 border-t border-line-subtle">
@@ -391,17 +417,19 @@ function Charter({ projectId }: { projectId: string }) {
 }
 
 export function MasterPage({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const q = useMasterStanding(projectId);
   const passes = useMasterPasses(projectId);
   const [tab, setTab] = useUrlTab(MASTER_TABS);
   return (
-    <QueryBoundary query={q} loadingLabel="loading the master…">
+    <QueryBoundary query={q} loadingLabel={t("agents.master.loading")}>
       {(data) => {
         const m = data;
         const tabs = [
-          { value: "passes" as const, label: "Passes", ...(passes.data ? { count: passes.data.items.length } : {}) },
-          { value: "runs" as const, label: "Runs holding a lease" },
-          { value: "charter" as const, label: "Charter" },
+          { value: "passes" as const, label: t("agents.master.tab.passes"), ...(passes.data ? { count: passes.data.items.length } : {}) },
+          { value: "runs" as const, label: t("agents.master.tab.runs") },
+          { value: "charter" as const, label: t("agents.master.tab.charter") },
         ];
         return (
           <DetailLayout
@@ -413,10 +441,10 @@ export function MasterPage({ projectId, slug }: { projectId: string; slug: strin
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey="Master" title={masterName(m)} badge={<StatusBadge family="masterState" value={m.state} />} />
+            <DetailMobileTitle itemKey={t("agents.master.word")} title={masterName(m, language)} badge={<StatusBadge family="masterState" value={m.state} />} />
             <MasterBanner m={m} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="master-tabs" />
-            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Passes"}>
+            <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("agents.master.tab.passes")}>
               {tab === "passes" ? <Passes projectId={projectId} slug={slug} /> : null}
               {tab === "runs" ? <Leased m={m} projectId={projectId} slug={slug} /> : null}
               {tab === "charter" ? <Charter projectId={projectId} /> : null}

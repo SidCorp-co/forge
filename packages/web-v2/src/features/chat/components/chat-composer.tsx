@@ -157,7 +157,7 @@ export function ChatComposer(props: ChatComposerProps) {
           >
             {attachments && (
               // Hidden from the accessibility tree so "Attach files" is not announced twice.
-              <input {...getInputProps({ accept: acceptAttribute(attachments), "aria-hidden": true })} />
+              <input {...getInputProps({ accept: acceptAttribute(attachments), "aria-hidden": true, "aria-label": t("shell.composer.attach") })} />
             )}
             {files.length > 0 && <StagedChips files={files} busy={busy} onRemove={staged.remove} />}
 

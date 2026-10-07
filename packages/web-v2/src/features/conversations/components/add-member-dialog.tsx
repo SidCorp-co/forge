@@ -12,6 +12,8 @@
 import { type ReactNode, useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useAddHandle, useAddPerson, useConversationCandidates } from "../hooks";
 import { agentAdditionClaims, initialsOf, type MembershipClaim, personAdditionClaims } from "../membership";
 import type { ConversationCandidates, ConversationMembership, HandleCandidate, PersonCandidate } from "../types";
@@ -28,17 +30,18 @@ interface DialogProps {
 /** What differs between adding an agent and adding a person: the words, the rows, the claims. */
 interface MemberKind<T> {
   id: "agent" | "person";
-  title: string;
-  /** What the list looks for, as its loading and error lines name it. */
-  plural: string;
-  empty: string;
+  title: ProductCopyKey;
+  /** The lines the list says while it loads, when it fails and when it is empty. */
+  loading: ProductCopyKey;
+  failed: ProductCopyKey;
+  empty: ProductCopyKey;
   candidates: (data: ConversationCandidates) => T[];
   key: (c: T) => string;
   label: (c: T) => string;
   rowClass: string;
   row: (c: T) => ReactNode;
   head: (c: T) => ReactNode;
-  claims: (c: T, room: Room) => MembershipClaim[];
+  claims: (c: T, room: Room, t: Copy) => MembershipClaim[];
 }
 
 interface AddMutation<T> {
@@ -53,10 +56,10 @@ const nameOf = (p: PersonCandidate): string => p.displayName ?? p.email;
 
 const AGENT: MemberKind<HandleCandidate> = {
   id: "agent",
-  title: "Add an agent",
-  plural: "agents",
-  empty:
-    "There is no agent you can add to this room. An agent is added by somebody holding a member role on its project.",
+  title: "conversations.add.agentTitle",
+  loading: "conversations.add.agentLoading",
+  failed: "conversations.add.agentFailed",
+  empty: "conversations.add.agentEmpty",
   candidates: (data) => data.handles,
   key: (h) => `${h.userId ?? "unminted"}:${h.project.id}`,
   label: (h) => `@${h.handle}`,
@@ -75,15 +78,15 @@ const AGENT: MemberKind<HandleCandidate> = {
       <span className="fg-caption ml-auto text-muted">{h.project.name}</span>
     </div>
   ),
-  claims: (candidate, room) => agentAdditionClaims({ candidate, room }),
+  claims: (candidate, room, t) => agentAdditionClaims({ candidate, room, t }),
 };
 
 const PERSON: MemberKind<PersonCandidate> = {
   id: "person",
-  title: "Add a person",
-  plural: "people",
-  empty:
-    "There is nobody left to add. A person joins a room only if they already hold a role on every project it is about.",
+  title: "conversations.add.personTitle",
+  loading: "conversations.add.personLoading",
+  failed: "conversations.add.personFailed",
+  empty: "conversations.add.personEmpty",
   candidates: (data) => data.people,
   key: (p) => p.userId,
   label: nameOf,
@@ -102,7 +105,7 @@ const PERSON: MemberKind<PersonCandidate> = {
       <span className="fg-caption ml-auto text-muted">{p.email}</span>
     </div>
   ),
-  claims: (p, room) => personAdditionClaims({ name: nameOf(p), room }),
+  claims: (p, room, t) => personAdditionClaims({ name: nameOf(p), room, t }),
 };
 
 export function AddAgentDialog(props: DialogProps) {
@@ -126,6 +129,7 @@ function AddMemberDialog<T>({
   kind,
   mutation,
 }: DialogProps & { kind: MemberKind<T>; mutation: AddMutation<T> }) {
+  const t = useCopy();
   const [picked, setPicked] = useState<T | null>(null);
   const candidates = useConversationCandidates(conversationId, open);
 
@@ -136,13 +140,13 @@ function AddMemberDialog<T>({
   };
 
   return (
-    <SlideOver open={open} onClose={close} title={kind.title} width={460}>
+    <SlideOver open={open} onClose={close} title={t(kind.title)} width={460}>
       <div className="flex h-full min-h-0 flex-col gap-4">
         {picked ? (
           <div data-testid={`add-${kind.id}-confirmation`} className="flex flex-col gap-3">
             {kind.head(picked)}
             <ul className="flex flex-col gap-2">
-              {kind.claims(picked, room).map((claim) => (
+              {kind.claims(picked, room, t).map((claim) => (
                 <li key={claim.key} data-claim={claim.key} className="fg-body-sm text-fg">
                   {claim.text}
                 </li>
@@ -162,10 +166,10 @@ function AddMemberDialog<T>({
         {picked && (
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
             <Button variant="ghost" onClick={() => setPicked(null)} disabled={mutation.isPending}>
-              Back
+              {t("conversations.add.back")}
             </Button>
             <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.add(picked, close)}>
-              Add {kind.label(picked)}
+              {t("conversations.add.confirm", { label: kind.label(picked) })}
             </Button>
           </div>
         )}
@@ -183,10 +187,11 @@ function CandidateList<T>({
   query: ReturnType<typeof useConversationCandidates>;
   onPick: (c: T) => void;
 }) {
+  const t = useCopy();
   if (query.isLoading) {
     return (
       <p role="status" data-testid={`${kind.id}-candidates-loading`} className="fg-body-sm text-muted">
-        <Spinner size={14} /> Looking for {kind.plural} you can add…
+        <Spinner size={14} /> {t(kind.loading)}
       </p>
     );
   }
@@ -194,7 +199,7 @@ function CandidateList<T>({
     return (
       <div data-testid={`${kind.id}-candidates-error`}>
         <ErrorState
-          title={`Couldn't load the ${kind.plural}`}
+          title={t(kind.failed)}
           message={formatApiError(query.error)}
           onRetry={() => query.refetch()}
         />
@@ -205,7 +210,7 @@ function CandidateList<T>({
   if (list.length === 0) {
     return (
       <p role="status" data-testid={`${kind.id}-candidates-empty`} className="fg-body-sm text-muted">
-        {kind.empty}
+        {t(kind.empty)}
       </p>
     );
   }

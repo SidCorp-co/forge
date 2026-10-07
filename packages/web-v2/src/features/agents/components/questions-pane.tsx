@@ -20,6 +20,7 @@ import {
 } from "@/features/questions/hooks";
 import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
 
@@ -36,10 +37,13 @@ export interface QuestionsPaneProps {
 }
 
 function IssueContext() {
-  return <span className="fg-caption text-muted">asked by a master — no issue behind it</span>;
+  const t = useCopy();
+  return <span className="fg-caption text-muted">{t("agents.questions.byMaster")}</span>;
 }
 
 export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useProjectQuestions(scope.projectId);
   const mutation = useAnswerProjectQuestion(scope.projectId);
@@ -114,7 +118,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     return (
       <div className="grid min-h-[40vh] place-items-center p-4">
         <ErrorState
-          title="Couldn't load this project's decisions"
+          title={t("agents.questions.loadFailed")}
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />
@@ -125,7 +129,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   if (onIssue) {
     return (
       <p className="fg-caption p-4 text-muted" role="status" data-testid="decision-on-issue">
-        That decision is on its issue — opening it.
+        {t("agents.questions.onIssue")}
       </p>
     );
   }
@@ -135,8 +139,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       <div className="grid min-h-[40vh] place-items-center p-4">
         <EmptyState
           titleId={EMPTY_TITLE_ID}
-          title="No master is waiting on a person"
-          message="A question a master asks with no issue behind it appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
+          title={t("agents.questions.emptyTitle")}
+          message={t("agents.questions.emptyBody")}
         />
       </div>
     );
@@ -162,34 +166,34 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Loading…" : "Load the rest"}
+            {isFetchingNextPage ? t("agents.questions.loading") : t("agents.questions.loadRest")}
           </button>
           <span className="fg-caption text-muted">
-            {questions.length} of {data?.total ?? questions.length} open decisions
+            {t("agents.questions.openOf", { n: time.number(questions.length), total: time.number(data?.total ?? questions.length) })}
           </span>
         </div>
       )}
       {walkedOut && !onIssue && linked.gone && (
         <p className="fg-caption text-muted">
-          The decision that run named is no longer open.{" "}
+          {t("agents.questions.gone")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => router.refresh()}
           >
-            Refresh
+            {t("agents.questions.refresh")}
           </button>
         </p>
       )}
       {walkedOut && !onIssue && linked.unreachable && (
         <p className="fg-caption text-muted">
-          That decision could not be looked up.{" "}
+          {t("agents.questions.unreachable")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => void linked.refetch()}
           >
-            Try again
+            {t("agents.questions.tryAgain")}
           </button>
         </p>
       )}
