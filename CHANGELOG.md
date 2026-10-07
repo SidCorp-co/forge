@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.139] - 2026-10-07
+
+Failed chat turns explain themselves, rewrites keep true answers, rooms add project members
+
+### Fixed
+
+- **A failed chat turn now delivers what it found, and a true answer is never rewritten into a false one.** Failures post reads and draft in the asker's language; rewrites add no claims; Add person lists project members.
+
 ## [0.4.0-dev.138] - 2026-10-07
 
 Standing sentences become registry keys, so Vietnamese pages read Vietnamese
