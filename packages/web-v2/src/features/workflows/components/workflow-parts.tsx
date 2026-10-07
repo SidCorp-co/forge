@@ -1,7 +1,7 @@
 "use client";
 
 import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
-import { StatusBadge, statusReading, Tooltip } from "@/design";
+import { StatusBadge, statusReading, Tooltip, WaitingOn } from "@/design";
 import { TONE_META } from "@/design/status";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { IntegrationState } from "../types";
@@ -36,6 +36,14 @@ export function ProposedMarker({ r }: { r: WorkflowRecord }) {
       </span>
     </Tooltip>
   );
+}
+
+/** Whom a design waits on and for what, as core's list reading says (`design-standing.ts:designWaitingOn`);
+ *  nothing for a design nobody owes a step on. */
+export function DesignWaits({ r }: { r: WorkflowRecord }) {
+  const w = r.design.waitingOn;
+  if (w.kind === "none") return null;
+  return <WaitingOn w={w} />;
 }
 
 /** A project's data policy as the shared badge; the level's meaning and the raw level in its tooltip. */

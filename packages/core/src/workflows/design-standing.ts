@@ -121,6 +121,18 @@ export function buildGateOf(head: DesignHeadFacts): DesignBuildGate {
   };
 }
 
+/** The revision a build was linked against: the newest approval decided at or before the link,
+ *  null where none was. Decisions are rows that are never rewritten, so their times are the record. */
+export function builtAgainstOf(
+  linkedAt: Date,
+  designs: readonly { revision: number; decision: string | null; decidedAt: Date | null }[],
+): number | null {
+  const approved = designs.filter(
+    (d) => d.decision === 'approve' && d.decidedAt !== null && d.decidedAt <= linkedAt,
+  );
+  return approved.length === 0 ? null : Math.max(...approved.map((d) => d.revision));
+}
+
 export function revisionStateOf(
   revision: { revision: number; decision: DesignDecision | string | null },
   head: DesignHeadFacts,

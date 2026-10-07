@@ -1,6 +1,7 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
+import type { RequirementState } from "./requirements.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
 import type { WorkflowHealthSummary } from "./workflow-health.js";
 
@@ -67,6 +68,9 @@ export interface DesignRequirementLink {
 	key: string;
 	title: string;
 	status: string;
+	/** The state the requirement's own page shows (`requirements/standing.ts`): its stored status,
+	 *  with an agreed one read as in delivery or delivered from its issues and proof. */
+	state: RequirementState;
 	pinnedRevision: number | null;
 }
 
@@ -103,6 +107,9 @@ export interface DesignBuild {
 	displayId: string;
 	title: string;
 	status: string;
+	/** The revision approved when the issue was linked as this design's build, read off the
+	 *  decisions' own times; null where none was approved then. */
+	builtAgainst: number | null;
 }
 
 export interface DesignSummaryView extends DesignHead {

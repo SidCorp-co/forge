@@ -123,6 +123,7 @@ import {
   planDriftOf,
   plannedRevisionFor,
   requirementOfIssue,
+  requirementStatesOf,
   rowIn as requirementRowIn,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
@@ -269,6 +270,7 @@ export function provideWorkPorts(): void {
 
   provideWorkflowPorts({
     changedTracedOf,
+    requirementStatesOf,
     answerDesignQuestions,
     reaskSupersededDesignQuestions,
     repositoryOf: async (projectId) => {
