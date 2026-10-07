@@ -4,7 +4,7 @@ import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/" }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 // The bell's live delivery and a room's socket reach for a connection the walking test has none of.
 vi.mock("@/features/notifications/use-notification-delivery", () => ({ useNotificationDelivery: () => undefined }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
@@ -56,6 +56,8 @@ const ENGLISH_CHROME = [
   "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
   "required", "quick capture", "capture", "attach", "context", "description", "optional", "choose files", "summary",
   "recommended", "choose", "needed", "round", "rounds", "earlier", "chosen", "withdrawn", "unanswered", "decision waiting", "your answer", "still waits",
+  "schedule", "schedules", "fires", "fired", "sessions", "turns", "duration", "started", "stalled", "abort", "owns", "silence",
+  "participants", "what the agent sees", "add agent", "add person", "skills", "plugins", "pinned ref", "not declared", "blockers", "warnings",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

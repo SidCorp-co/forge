@@ -26,6 +26,7 @@ function actionBody(a: RequirementAction): unknown {
   if (a.kind === "drop") return { reason: a.reason };
   if (a.kind === "return") return { reason: a.reason };
   if (a.kind === "defer") return { reason: a.reason, ...(a.targetPhase ? { targetPhase: a.targetPhase } : {}) };
+  if (a.kind === "undefer") return { reason: a.reason };
   return {};
 }
 

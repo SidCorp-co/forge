@@ -80,6 +80,7 @@ export const RELEASE_ATTENTION_GROUPS = [
 	"needs_you",
 	"moving",
 	"waiting",
+	"queued",
 	"stuck",
 	"done",
 	"stopped",
@@ -103,6 +104,12 @@ export const RELEASE_ATTENTION_LABELS: StandingGroupLabels<ReleaseAttentionGroup
 		waiting: {
 			label: "Someone else’s turn",
 			hint: "The master or another approver acts next",
+			tone: "neutral",
+			collapsed: false,
+		},
+		queued: {
+			label: "Queued",
+			hint: "Waits for the release already running to finish",
 			tone: "neutral",
 			collapsed: false,
 		},

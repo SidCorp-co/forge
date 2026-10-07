@@ -19,6 +19,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import { ReleaseLine } from "@/features/forecast/components/release-line";
+import { progressText } from "@/features/forecast/progress";
 import { criteriaRestText } from "@/features/forecast/text";
 import { useEtaClock, useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementState } from "@forge/contracts/requirements";
@@ -235,7 +236,7 @@ export function RequirementFacts({
         <CoverageSummary coverage={s.coverage} />
       </FactsGroup>
 
-      <FactsGroup title={t("requirements.facts.issues")} count={f.issuesTotal ? t("requirements.facts.doneOf", { a: f.issuesDone, b: f.issuesTotal }) : undefined} testId="facts-issues">
+      <FactsGroup title={t("requirements.facts.issues")} count={f.issuesTotal && forecast ? progressText(forecast.progress, t) : undefined} testId="facts-issues">
         {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} className="pb-1.5 max-sm:hidden" /> : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>{t("requirements.facts.notBrokenDown")}</FactsEmpty>

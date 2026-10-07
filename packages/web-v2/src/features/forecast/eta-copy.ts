@@ -31,14 +31,17 @@ interface EtaCopy {
   latestInline: (when: string) => string;
   /** A paused row: whom it waits on. */
   waitsOn: (who: string) => string;
-  /** A release a person still cuts after the landing. */
+  /** A release a person still cuts after the landing, and the same where the viewer cuts it. */
   thenCuts: (who: string) => string;
+  thenYouCut: string;
   /** Tooltip heads: the durations and the as-of stay here, never in the cell. */
   within: (low: string, high: string, asOf: string) => string;
   notEnoughHistory: (n: number, floor: number) => string;
   notForecast: (status: string) => string;
   nothingLinked: string;
   landed: (when: string) => string;
+  /** The cell of a change landed and not yet in people's hands, which carries no date. */
+  awaitingRelease: string;
   shipped: (version: string | null, when: string) => string;
   sortBy: string;
 }
@@ -65,11 +68,13 @@ function copyOf(lang: EtaLang): EtaCopy {
     latestInline: (when) => t("eta.latestInline", { when }),
     waitsOn: (who) => t("eta.waitsOn", { who }),
     thenCuts: (who) => t("eta.thenCuts", { who }),
+    thenYouCut: t("eta.thenYouCut"),
     within: (low, high, asOf) => t("eta.within", { low, high, asOf }),
     notEnoughHistory: (n, floor) => t("eta.notEnoughHistory", { n, floor }),
     notForecast: (status) => t("eta.notForecast", { status }),
     nothingLinked: t("eta.nothingLinked"),
     landed: (when) => t("eta.landed", { when }),
+    awaitingRelease: t("eta.awaitingRelease"),
     shipped: (version, when) => (version ? t("eta.shipped", { version, when }) : t("eta.shippedUnversioned", { when })).replace(/ \.$/, "."),
     sortBy: t("eta.sortBy"),
   };

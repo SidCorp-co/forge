@@ -1,7 +1,8 @@
 // A park question that waits on a workflow design revision, and the decision that answers it (ISS-254).
 //
 // The question names the revision when it is asked, so nothing here reads a prompt for a revision
-// number. The approver's decision on that revision is the answer the question asked for: it is
+// number: a park naming none is linked by core only to the one revision proposed under its own
+// issue that still awaits its approver, a fact of the design rows. The approver's decision on that revision is the answer the question asked for: it is
 // written as one, in the decision's own transaction, and `question.answered` carries it to the same
 // consumers a person's answer reaches. A revision superseded before anyone decided it can no longer
 // be decided, so its questions are voided and asked again of the revision that replaced it.
@@ -96,6 +97,45 @@ export async function awaitedDesignFault(
     };
   }
   return { flow: workflow.flow };
+}
+
+/** A revision drawn under an issue that still awaits its approver: its workflow's latest, undecided, while the workflow stands proposed. */
+export interface PendingDesign extends AwaitedDesign {
+  flow: string;
+}
+
+/**
+ * The revisions proposed under this issue that still await their approver, by flow. Read under the
+ * project's workflow lock, as `awaitedDesignFault` is, so a decision racing the park is either seen
+ * here or waits for the question the park writes.
+ */
+export async function designsPendingUnder(
+  executor: Executor,
+  projectId: string,
+  issueId: string,
+): Promise<PendingDesign[]> {
+  await lockXact(executor, 'workflows', projectId);
+  const rows = (await executor.execute(sql`
+    SELECT w.id AS workflow_id, w.flow, d.revision
+      FROM project_workflows w
+      JOIN LATERAL (
+        SELECT revision, decision, design_issue_id
+          FROM project_workflow_designs
+         WHERE workflow_id = w.id
+         ORDER BY revision DESC
+         LIMIT 1
+      ) d ON true
+     WHERE w.project_id = ${projectId}
+       AND w.design_status = 'proposed'
+       AND d.decision IS NULL
+       AND d.design_issue_id = ${issueId}
+     ORDER BY w.flow, w.id
+  `)) as unknown as Array<{ workflow_id: string; flow: string; revision: number | string }>;
+  return rows.map((r) => ({
+    workflowId: String(r.workflow_id),
+    flow: String(r.flow),
+    revision: Number(r.revision),
+  }));
 }
 
 async function openQuestionsAwaiting(tx: Executor, awaited: AwaitedDesign) {
@@ -237,6 +277,11 @@ export async function voidSupersededDesignQuestions(
     returning: ['id'],
   });
   return rows.map((r) => ({ projectId: r.projectId, issueId: r.issueId }));
+}
+
+/** What a park question core linked itself says of the link, so a reader sees where it came from. */
+export function linkedDesignLine(flow: string, revision: number): string {
+  return `linked to ${flow} r${revision}, proposed under this issue: approving or returning it on its design page answers this question`;
 }
 
 /** What settles a question that waits on a revision, said where `needs` gave nothing. */

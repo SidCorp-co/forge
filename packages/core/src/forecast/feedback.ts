@@ -14,6 +14,7 @@ import { rowsOf } from '../db/raw-sql.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.js';
 import { pausedOf, stamp } from './read.js';
+import type { ForecastViewer } from './release.js';
 import { readsFor, scopeOf } from './scope.js';
 
 interface LinkRow {
@@ -45,6 +46,7 @@ const untriaged = (s: FeedbackSummary) =>
 export async function readFeedbackForecasts(
   viewer: { userId: string; agency: ActorAgency },
   projectId: string,
+  forecastViewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<FeedbackForecasts> {
   const listed = await listFeedbackAs(viewer, projectId);
@@ -74,7 +76,12 @@ export async function readFeedbackForecasts(
     issueRowsOfRequirements(projectId, reqIds),
   ]);
   const byId = new Map(carriers.map((r) => [r.id, r]));
-  const reads = await readsFor(projectId, now, [...carriers, ...[...byReq.values()].flat()]);
+  const reads = await readsFor(
+    projectId,
+    now,
+    [...carriers, ...[...byReq.values()].flat()],
+    forecastViewer,
+  );
 
   const own = new Map<string, FeedbackForecast>();
   const pending: FeedbackSummary[] = [];

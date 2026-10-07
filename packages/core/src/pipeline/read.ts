@@ -1,4 +1,4 @@
-import { and, count, desc, eq, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { runGroupHoldsIssue } from '../lib/issue-run-group.js';
@@ -128,7 +128,7 @@ export async function listProjectPipelineRuns(
     .select()
     .from(pipelineRuns)
     .where(where)
-    .orderBy(desc(pipelineRuns.startedAt))
+    .orderBy(desc(pipelineRuns.startedAt), asc(pipelineRuns.id))
     .limit(filter.limit)
     .offset(filter.offset);
 

@@ -1,5 +1,7 @@
 import { useRouter } from "next/navigation";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Badge, HealthDot, Icon, MonoTag, StatusChip, Tooltip } from "@/design";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import {
   type StuckRuns,
@@ -9,18 +11,18 @@ import {
   statusToChip,
   classifySessionOutcome,
   failureReasonLabel,
-  SESSION_KIND_LABEL,
+  SESSION_KIND_KEY,
   type AgentSessionDisplayStatus,
   type AgentSessionKind,
   type SessionRow,
 } from "../types";
 
 /** `m ss` / `s` countdown for the reap-window label. */
-function formatCountdown(ms: number): string {
+function formatCountdown(ms: number, t: Copy): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(s / 60);
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
+  if (m > 0) return t("sessions.reapIn.minutes", { m, s: String(s % 60).padStart(2, "0") });
+  return t("sessions.reapIn.seconds", { s });
 }
 
 /** Title + issue/agent identity shared by table + card layouts. The title
@@ -36,9 +38,10 @@ export function SessionIdentity({
   onOpen?: () => void;
 }) {
   const router = useRouter();
+  const t = useCopy();
   const issueId = row.metadata?.issueId;
   const kind = sessionKind(row);
-  const title = row.title ?? "Untitled session";
+  const title = row.title ?? t("sessions.untitled");
   return (
     <div className="min-w-0">
       {onOpen ? (
@@ -56,13 +59,9 @@ export function SessionIdentity({
         {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
             job, so it is NOT a wedged runner (ISS-378 AC#4). */}
         <Tooltip
-          label={
-            kind === "chat"
-              ? "Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner."
-              : "Pipeline session — driven by a pipeline job on a runner."
-          }
+          label={kind === "chat" ? t("sessions.chatHint") : t("sessions.pipelineHint")}
         >
-          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{kind}</MonoTag>
+          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{t(`sessions.kindWord.${kind}` as ProductCopyKey)}</MonoTag>
         </Tooltip>
         {issueId &&
           (slug ? (
@@ -72,14 +71,14 @@ export function SessionIdentity({
           ))}
         {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
         {row.pipelineRunId && (
-          <Tooltip label="Open pipeline run timeline">
+          <Tooltip label={t("sessions.openRunTimeline")}>
             <button
               type="button"
               onClick={() => router.push(`/ops?run=${row.pipelineRunId}`)}
               className="inline-flex items-center gap-1 focus-visible:outline-none"
             >
               <MonoTag hue="neutral">
-                <Icon name="pipeline" size={11} className="-mt-px inline" /> run
+                <Icon name="pipeline" size={11} className="-mt-px inline" /> {t("sessions.runWord")}
               </MonoTag>
             </button>
           </Tooltip>
@@ -140,19 +139,21 @@ export function StatusCell({
   now: number;
   stuck: StuckRuns;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const liveness = deriveLiveness(row, stuck, now);
   // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
   // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  const outcome = classifySessionOutcome(display, row.failureReason);
+  const outcome = classifySessionOutcome(display, row.failureReason, language);
   const chipStatus = awaitingReply
     ? "waiting"
     : outcome.bucket === "active"
       ? statusToChip(display)
       : outcome.statusKey;
-  const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
+  const reason = failureReasonLabel(row.failureReason, language) ?? row.failureReason ?? null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
@@ -173,12 +174,12 @@ export function StatusCell({
         </span>
       )}
       {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title="Time until the server auto-recovers this session">
-          auto-recovers in {formatCountdown(liveness.reapInMs)}
+        <span className="fg-caption text-subtle" title={t("sessions.autoRecoversHint")}>
+          {t("sessions.autoRecovers", { in: formatCountdown(liveness.reapInMs, t) })}
         </span>
       )}
       {liveness.state === "reaping" && (
-        <span className="fg-caption text-subtle">awaiting auto-recovery…</span>
+        <span className="fg-caption text-subtle">{t("sessions.awaitingRecovery")}</span>
       )}
     </div>
   );
@@ -193,6 +194,7 @@ const KIND_TONE = {
 } as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
 
 export function SessionKindTag({ row }: { row: SessionRow }) {
+  const t = useCopy();
   const kind = sessionKind(row);
-  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  return <Badge tone={KIND_TONE[kind]}>{t(SESSION_KIND_KEY[kind])}</Badge>;
 }

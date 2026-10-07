@@ -2,8 +2,8 @@
 
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { agentsListHref } from "@/lib/routes/agents";
-import { useCopy, useNavLabel } from "@/lib/i18n/interface-language";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStuckRuns } from "../hooks";
 import { QuestionsPane } from "./questions-pane";
@@ -14,8 +14,7 @@ type AgentsTab = (typeof AGENTS_TABS)[number];
 
 export function AgentsScreen({ access }: { access: AgentsAccess }) {
   const t = useCopy();
-  const navLabel = useNavLabel();
-  const tabs = [
+  const TABS = [
     { value: "runs", label: t("agents.tab.runs") },
     { value: "questions", label: t("agents.tab.questions") },
     { value: "sessions", label: t("agents.tab.sessions") },
@@ -29,9 +28,9 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
-      <PageTitle hint={t("agents.hint")}>{navLabel("proj-agents", "Agents / Runs")}</PageTitle>
+      <PageTitle hint={t("agents.hint")}>{t("agents.title")}</PageTitle>
       <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="agents-tabs">
-        <Tabs tabs={tabs} value={tab} onChange={(t) => setTab(t as AgentsTab)} />
+        <Tabs tabs={TABS} value={tab} onChange={(t) => setTab(t as AgentsTab)} />
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "questions" ? <QuestionsPane scope={access} focusQuestionId={focusQuestionId} /> : null}

@@ -27,7 +27,9 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatRelative } from "@/lib/i18n/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useRunStanding } from "../hooks";
 import { AGENTS_LIST, MASTER_KEY, masterHref, runHref } from "@/lib/routes/agents";
@@ -53,38 +55,44 @@ const matches = (text: string, r: RunStanding) =>
   !text || [r.id, r.title, r.issue?.key, r.device?.name, r.release?.version, ...r.issues].join(" ").toLowerCase().includes(text);
 
 function Signals({ d }: { d: RunStandingList }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const m = d.master;
   const stuck = d.counts.liveByState.stuck;
   return (
     <SignalsStrip testId="runs-signals">
-      <Signal label="Master" testId="signal-master" title="masters/standing.state and pass {verb, startedAt}">
+      <Signal label={t("agents.master.word")} testId="signal-master" title={t("agents.signal.masterTitle")}>
         <StatusBadge family="masterState" value={m.state} />
         {m.pass ? (
           <span className="text-muted">
-            {enumLabel("masterVerb", m.pass.verb)}, {formatRelativeTime(m.pass.startedAt)}
+            {enumLabel("masterVerb", m.pass.verb, language)}, {formatRelative(m.pass.startedAt, language)}
           </span>
         ) : null}
       </Signal>
-      <Signal label="Slots" testId="signal-slots" title={m.slots?.undeclared?.detail ?? "masters/standing.slots {inUse, max}: job panes, max from devices.max_job_panes; runs: declared runs the cap does not hold"}>
-        <b className="font-semibold">{m.slots ? m.slots.inUse : "—"}</b>
-        {m.slots ? <span className="text-muted">of {m.slots.max ?? "?"}</span> : null}
-        {m.slots && m.slots.runs > 0 ? <span className="text-muted">· {m.slots.runs} declared run{m.slots.runs === 1 ? "" : "s"}</span> : null}
+      <Signal label={t("agents.signal.slots")} testId="signal-slots" title={m.slots?.undeclared?.detail ?? t("agents.signal.slotsTitle")}>
+        <b className="font-semibold">{m.slots ? time.number(m.slots.inUse) : "—"}</b>
+        {m.slots ? <span className="text-muted">{t("agents.signal.of", { max: m.slots.max ?? "?" })}</span> : null}
+        {m.slots && m.slots.runs > 0 ? <span className="text-muted">· {t(m.slots.runs === 1 ? "agents.signal.declaredOne" : "agents.signal.declaredMany", { n: time.number(m.slots.runs) })}</span> : null}
       </Signal>
-      <Signal label="Leases held" testId="signal-held" title="runs/standing counts.held: live runs whose holder is held">
-        <b className="font-semibold">{d.counts.held}</b>
+      <Signal label={t("agents.signal.held")} testId="signal-held" title={t("agents.signal.heldTitle")}>
+        <b className="font-semibold">{time.number(d.counts.held)}</b>
       </Signal>
-      <Signal label="Stuck" testId="signal-stuck" title="runs/standing counts.liveByState.stuck: core's stuck rule, 3 min of silence">
-        <b className={cn("font-semibold", stuck > 0 && "text-danger")}>{stuck}</b>
+      <Signal label={t("agents.signal.stuck")} testId="signal-stuck" title={t("agents.signal.stuckTitle")}>
+        <b className={cn("font-semibold", stuck > 0 && "text-danger")}>{time.number(stuck)}</b>
       </Signal>
     </SignalsStrip>
   );
 }
 
-const MODE_OPTIONS = GROUP_MODES.map((m) => ({ value: m, label: m.charAt(0).toUpperCase() + m.slice(1) }));
-const SCOPE_LABEL: Record<RunStandingScope, string> = { live: "Live", finished: "Finished", all: "All" };
+const MODE_KEY: Record<GroupMode, ProductCopyKey> = { attention: "agents.mode.attention", lane: "agents.mode.lane", box: "agents.mode.box" };
+const SCOPE_KEY: Record<RunStandingScope, ProductCopyKey> = { live: "agents.scope.live", finished: "agents.scope.finished", all: "agents.scope.all" };
 
 export function RunsList({ access }: { access: AgentsAccess }) {
   const { projectId, slug, canWrite } = access;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const router = useRouter();
   const [scope, setScope] = useUrlChoice("scope", RUN_STANDING_SCOPES, "live");
   const [mode, setMode] = useUrlChoice<GroupMode>("group", GROUP_MODES, "attention");
@@ -108,11 +116,11 @@ export function RunsList({ access }: { access: AgentsAccess }) {
     );
     const showMaster = scope !== "finished" && on.size === 0 && !text;
     const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, rows: showMaster ? [d.master] : [] };
-    const runs = runGroups(rows, mode).map((g) =>
+    const runs = runGroups(rows, mode, language).map((g) =>
       g.id === "finished" ? { ...g, collapsed: scope === "finished" ? false : RUN_GROUP_LABELS.finished.collapsed } : g,
     );
     return [master, ...(runs as ListGroup<Item>[])];
-  }, [d, text, on, scope, mode]);
+  }, [d, text, on, scope, mode, language]);
 
   const visible = useMemo(() => visibleRows(groups, fold).map(keyOf), [groups, fold]);
   const allKeys = useMemo(() => groups.flatMap((g) => g.rows.map(keyOf)), [groups]);
@@ -127,14 +135,14 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   );
   usePeekKeys(peek, openFull);
   return (
-    <QueryBoundary query={q} loadingLabel="loading runs…" height="50vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("agents.loadingRuns")} height="50vh" retry="always">
       {(d) => {
         const counts: Record<RunStandingScope, number> = { live: d.counts.live, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
-        const runRowOf = runRow((id) => runHref(slug, id));
-        const masterRowOf = masterRow(masterHref(slug));
+        const runRowOf = runRow((id) => runHref(slug, id), t, language);
+        const masterRowOf = masterRow(masterHref(slug), t, language);
         const row = (i: Item) => (isRun(i) ? runRowOf(i) : masterRowOf(i));
         const open = peek.open ? groups.flatMap((g) => g.rows).find((i) => keyOf(i) === peek.open) : undefined;
-        const empty = text || on.size ? "No run matches these filters." : scope === "finished" ? "No run on this project has finished yet." : "No live run on this project.";
+        const empty = text || on.size ? t("agents.empty.filters") : scope === "finished" ? t("agents.empty.finished") : t("agents.empty.live");
 
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
@@ -142,35 +150,35 @@ export function RunsList({ access }: { access: AgentsAccess }) {
             <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="runs-toolbar">
-                  <span className="text-12-5 font-medium text-muted">Group</span>
-                  <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} />
+                  <span className="text-12-5 font-medium text-muted">{t("agents.group")}</span>
+                  <SegmentedControl options={GROUP_MODES.map((m) => ({ value: m, label: t(MODE_KEY[m]) }))} value={mode} onChange={setMode} />
                   <SegmentedControl
-                    options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: SCOPE_LABEL[s], count: counts[s] }))}
+                    options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: t(SCOPE_KEY[s]), count: counts[s] }))}
                     value={scope}
                     onChange={setScope}
                   />
-                  <ListSearch noun="runs" value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
+                  <ListSearch noun={t("agents.runsNoun")} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
                   <FilterChip on={on.has("you")} onToggle={() => toggle("you")} count={d.counts.needsViewer} tone="you" testId="filter-you">
-                    Waiting on you
+                    {t("agents.filter.you")}
                   </FilterChip>
                   <FilterChip on={on.has("stuck")} onToggle={() => toggle("stuck")} count={d.counts.liveByState.stuck} tone="err" testId="filter-stuck">
-                    <span className="font-mono">is:stuck</span>
+                    <span className="font-mono" translate="no">is:stuck</span>
                   </FilterChip>
                   {d.hasMore ? (
                     <span className="text-12-5 text-subtle">
-                      The newest {d.items.length} of {d.total}
+                      {t("agents.newestOf", { n: time.number(d.items.length), total: time.number(d.total) })}
                     </span>
                   ) : null}
                 </div>
                 <GroupedList
-                  ariaLabel="Agent runs"
+                  ariaLabel={t("agents.listLabel")}
                   groups={groups}
                   fold={fold}
                   row={row}
                   selected={peek.open}
                   onPeek={(k) => peek.set(k === peek.open ? null : k)}
                   empty={empty}
-                  columns={{ key: "Run", title: "Work", state: "State", waitingOn: "Waiting on", meta: "Holder · age" }}
+                  columns={{ key: t("agents.col.run"), title: t("agents.col.work"), state: t("agents.col.state"), waitingOn: t("agents.col.waitingOn"), meta: t("agents.col.meta") }}
                 />
               </div>
               {open && isRun(open) ? (

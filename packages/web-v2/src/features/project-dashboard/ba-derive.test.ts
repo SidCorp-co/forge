@@ -13,7 +13,7 @@ const range = (p50: string, late: ForecastLate | null = null): ForecastRange => 
 const paused = (late: ForecastLate | null): ForecastPaused => ({ ...stamp, kind: "paused", who: "A project writer", act: "answer", reason: "r", ref: null, since: null, late });
 
 const scope = (key: string, forecast: ForecastRange | ForecastPaused): ScopeForecast => ({
-  ...stamp, scope: "requirement", key, total: 2, landed: 0, forecast, next: null, title: `Title ${key}`,
+  ...stamp, scope: "requirement", key, progress: { total: 2, shipped: 0, awaitingRelease: 0, toDo: 2 }, forecast, next: null, title: `Title ${key}`,
   delivery: { ...stamp, landing: forecast, release: null, inHands: null, shipped: null },
 });
 const reqs = (...s: ScopeForecast[]): RequirementForecasts => ({ ...stamp, projectId: "p", requirements: s });

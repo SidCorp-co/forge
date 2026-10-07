@@ -49,11 +49,15 @@ function NothingToAnswer() {
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>{t("questions.panel.noneTitle")}</PageSectionTitle>
+        <PageSectionTitle>{t("agents.decision.none")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="space-y-2">
-        <p className="fg-body-sm text-fg">{t("questions.panel.noneMove")}</p>
-        <p className="fg-caption text-muted">{t("questions.panel.noneNote")}</p>
+        <p className="fg-body-sm text-fg">
+          {t("agents.decision.noneMove")}
+        </p>
+        <p className="fg-caption text-muted">
+          {t("agents.decision.noneNote")}
+        </p>
       </PageSectionBody>
     </PageSection>
   );
@@ -93,15 +97,15 @@ function ThreadQuestionCard({
     <PageSection>
       <PageSectionHeader>
         <PageSectionTitle>
-          {answer ? t("questions.thread.titleAnswered") : t("questions.thread.titleWaiting")}
+          {answer ? t("agents.decision.asked") : t("agents.decision.waitingOn")}
         </PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="space-y-3">
-        <p className="fg-caption text-muted">{t("questions.thread.askedInComments")}</p>
+        <p className="fg-caption text-muted">{t("agents.decision.inComments")}</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
         {question.why && (
           <p className="fg-body-sm text-muted">
-            <span className="text-fg">{t("questions.thread.why")}</span> {question.why}
+            <span className="text-fg">{t("agents.decision.whyStopped")}</span> {question.why}
           </p>
         )}
         {question.readings.length > 0 && (
@@ -116,17 +120,19 @@ function ThreadQuestionCard({
         )}
         {answer ? (
           <div role="status" className="space-y-1 rounded-md border border-line-subtle p-3">
-            <p className="fg-caption text-muted">{t("questions.thread.answeredInComments")}</p>
+            <p className="fg-caption text-muted">{t("agents.decision.answeredIn")}</p>
             <p className="fg-body-sm whitespace-pre-wrap text-fg">{answer.text}</p>
-            <p className="fg-caption text-muted">{t("questions.thread.resumeAfter")}</p>
+            <p className="fg-caption text-muted">
+              {t("agents.decision.resumeHint")}
+            </p>
           </div>
         ) : !onAnswer ? null : sent ? (
           <p role="status" className="fg-body-sm text-fg">
-            {t("questions.thread.sent")}
+            {t("agents.decision.onThread")}
           </p>
         ) : (
           <>
-            <Field label={t("questions.thread.answerLabel")} required>
+            <Field label={t("agents.question.yourAnswer")} required>
               <Textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} />
             </Field>
             <div className="flex justify-end">
@@ -137,7 +143,7 @@ function ThreadQuestionCard({
                 disabled={trimmed.length === 0 || sending}
                 onClick={send}
               >
-                {t("questions.thread.post")}
+                {t("agents.decision.post")}
               </Button>
             </div>
           </>
@@ -177,7 +183,7 @@ export function DecisionPanel({
         <Skeleton variant="rect" className="h-24 w-full" />
       ) : isError ? (
         <ErrorState
-          title={t("questions.panel.errorTitle")}
+          title={t("agents.decision.loadFailed")}
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />

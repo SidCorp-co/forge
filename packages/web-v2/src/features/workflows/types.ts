@@ -14,7 +14,7 @@ import type {
 } from "@forge/contracts/system-graph";
 import type { WaitingOn } from "@forge/contracts/standing";
 import type { WorkflowHealthSummary } from "@forge/contracts/workflow-health";
-import type { DesignBuildGate, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
+import type { DesignApprovalBlock, DesignBuildGate, DesignLeftStale, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
 
 export type { DesignBuildGate, DesignRequirementLink };
 export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
@@ -173,6 +173,10 @@ export interface WorkflowDesign {
   builds: { issueId: string; displayId: string; title: string; status: string }[];
   gate: DesignBuildGate;
   requirements: DesignRequirementLink[];
+  /** The refusal approving the proposed revision would meet on its bases now, with its facts; null when none. */
+  approvalBlocked: DesignApprovalBlock | null;
+  /** The designs approving the proposed revision leaves on a stale base. */
+  approvalLeavesStale: DesignLeftStale[];
 }
 
 /** An approval may carry its approver's note (its conditions); a return always carries its reason. */

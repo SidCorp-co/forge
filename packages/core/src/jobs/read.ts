@@ -32,7 +32,7 @@ export async function listProjectJobs(
     .select()
     .from(jobs)
     .where(where)
-    .orderBy(desc(jobs.queuedAt))
+    .orderBy(desc(jobs.queuedAt), asc(jobs.id))
     .limit(page.limit)
     .offset(page.offset);
   return { rows, total: Number(n) };

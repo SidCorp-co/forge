@@ -9,6 +9,7 @@
 import { enumLabel, STAGES } from "@/design";
 import { formatDurationMs } from "@/features/pipeline/derive";
 import type { PipelineRunSummary } from "@/features/pipeline/types";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 
 const TICK: Record<string, { glyph: string; color: string }> = {
   completed: { glyph: "✓", color: "var(--green-600)" },
@@ -23,9 +24,11 @@ function accentOf(jobType: string): string {
 }
 
 export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; currentStep?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   if (run.steps.length === 0) return null;
   return (
-    <ol className="flex list-none gap-3 overflow-x-auto" aria-label="Pipeline run">
+    <ol className="flex list-none gap-3 overflow-x-auto" aria-label={t("runs.report.pipelineRun")}>
       {run.steps.map((step) => {
         const tick = TICK[step.status] ?? { glyph: "·", color: "var(--fg-disabled)" };
         const isCurrent = step.jobType === currentStep;
@@ -40,11 +43,11 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
               <span aria-hidden="true" style={{ color: tick.color }}>
                 {tick.glyph}
               </span>
-              <span className="fg-body-sm truncate" title={`step: ${step.jobType}`}>
-                {enumLabel("jobType", step.jobType)}
+              <span className="fg-body-sm truncate" title={t("runs.report.stepTitle", { step: step.jobType })} data-value={step.jobType}>
+                {enumLabel("jobType", step.jobType, language)}
               </span>
               <span className="fg-caption ml-auto">
-                {step.durationMs != null ? formatDurationMs(step.durationMs) : "—"}
+                {step.durationMs != null ? formatDurationMs(step.durationMs, language) : "—"}
               </span>
             </div>
             <div

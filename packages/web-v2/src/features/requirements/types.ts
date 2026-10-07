@@ -27,8 +27,8 @@ export interface CreateRequirementBody {
   criteria: { body: string; form?: 'statement' | 'scenario' }[];
 }
 
-/** One sign-off move on a requirement: the revision it acts on, the reason a return, defer or drop
- *  owes, and the reason a signer may give an accept, agree or re-pin (ISS-84). */
+/** One sign-off move on a requirement: the revision it acts on, the reason a return, defer, undefer
+ *  or drop owes, and the reason a signer may give an accept, agree or re-pin (ISS-84). */
 export type RequirementAction =
   | { kind: 'propose'; revision: number }
   | { kind: 'accept'; revision: number; reason?: string }
@@ -36,6 +36,6 @@ export type RequirementAction =
   | { kind: 'agree'; revision: number; reason?: string }
   | { kind: 'repin'; revision: number; reason?: string }
   | { kind: 'defer'; reason: string; targetPhase?: string }
-  | { kind: 'undefer' }
+  | { kind: 'undefer'; reason: string }
   | { kind: 'accept-delivery'; revision: number; reason?: string }
   | { kind: 'drop'; reason: string };

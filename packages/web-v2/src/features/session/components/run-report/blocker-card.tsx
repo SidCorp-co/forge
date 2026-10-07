@@ -6,11 +6,14 @@ import {
   Icon,
   SectionTitle,
 } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { RunBlocker } from "../../run-report";
 
 const MAX_LINES = 8;
 
 export function BlockerCard({ blocker, onOpenIssue }: { blocker: RunBlocker; onOpenIssue?: () => void }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const lines = blocker.output.split("\n").filter((l) => l.trim().length > 0);
   const shown = lines.slice(0, MAX_LINES);
   return (
@@ -27,19 +30,19 @@ export function BlockerCard({ blocker, onOpenIssue }: { blocker: RunBlocker; onO
           </SectionTitle>
           {blocker.errorCount > 1 && (
             <p className="fg-caption mt-0.5">
-              {blocker.errorCount} calls failed in this run — this is the last one.
+              {t("runs.report.callsFailed", { n: time.number(blocker.errorCount) })}
             </p>
           )}
           {shown.length > 0 && (
             <pre className="fg-mono mt-2.5 overflow-x-auto rounded-md bg-surface px-3 py-2 text-11-5 leading-snug-1-5">
               {shown.join("\n")}
-              {lines.length > shown.length ? `\n… ${lines.length - shown.length} more lines` : ""}
+              {lines.length > shown.length ? `\n${t("runs.report.moreLines", { n: time.number(lines.length - shown.length) })}` : ""}
             </pre>
           )}
         </div>
         {onOpenIssue && (
           <Button variant="secondary" size="sm" icon="list" className="flex-none" onClick={onOpenIssue}>
-            Open issue
+            {t("runs.report.openIssue")}
           </Button>
         )}
       </div>

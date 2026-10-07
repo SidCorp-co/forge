@@ -5,11 +5,7 @@ import { ErrorState, ProjectLoader } from "@/design";
 import { useProjectRef } from "@/features/projects/project-ref";
 import type { ProjectListItem } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
-
-const PROJECT_NOT_FOUND = {
-  title: "Project not found",
-  message: "This project doesn't exist or you don't have access to it.",
-};
+import { useCopy } from "@/lib/i18n/interface-language";
 
 type GateProps<P> = {
   label: string;
@@ -19,7 +15,9 @@ type GateProps<P> = {
 
 type ProjectsRead = ReturnType<typeof useProjectRef>["projectsQ"];
 
-function Waiting({ label, notFound = PROJECT_NOT_FOUND, projectsQ }: { label: string; notFound?: { title: string; message: string }; projectsQ: ProjectsRead }) {
+function Waiting({ label, notFound, projectsQ }: { label: string; notFound?: { title: string; message: string }; projectsQ: ProjectsRead }) {
+  const t = useCopy();
+  const missing = notFound ?? { title: t("dash.notFound"), message: t("dash.notFoundMessage") };
   const { isLoading, isError, error, refetch } = projectsQ;
   return (
     <div className="grid min-h-[60vh] place-items-center">
@@ -28,7 +26,7 @@ function Waiting({ label, notFound = PROJECT_NOT_FOUND, projectsQ }: { label: st
       ) : isError ? (
         <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
       ) : (
-        <ErrorState title={notFound.title} message={notFound.message} />
+        <ErrorState title={missing.title} message={missing.message} />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 /**
- * Deferring a requirement out of the current release, and undeferring it (ISS-85): a person's act
- * with a reason, one insert-only requirement_deferrals row each, and the head's status `deferred`
+ * Deferring a requirement out of the current release, and undeferring it (ISS-85): each a person's
+ * act with a reason, one insert-only requirement_deferrals row each, and the head's status `deferred`
  * until the undefer puts back the status the defer left. A deferred requirement waits on nobody.
  */
 
@@ -17,8 +17,8 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { latestDeferOf } from './deferral-read.js';
+import { deferRefusals, undeferRefusals } from './deferral-rules.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
-import { deferRefusals, undeferRefusal } from './rules.js';
 import {
   answer,
   inTx,
@@ -91,7 +91,7 @@ export async function undeferRequirement(input: {
   projectId: string;
   ref: string;
   actor: RequirementActor;
-  reason?: string | null | undefined;
+  reason: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
@@ -100,8 +100,11 @@ export async function undeferRequirement(input: {
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
-    const refusal = undeferRefusal(current.status as RequirementStatus);
-    if (refusal) return [refusal];
+    const refused = undeferRefusals({
+      status: current.status as RequirementStatus,
+      reason: input.reason,
+    });
+    if (refused.length) return refused;
     const defer = await latestDeferOf(tx, row.id);
     if (!defer || defer.fromStatus === 'deferred') {
       throw new Error(`requirements: ${row.id} is deferred with no defer row to undo`);
@@ -110,7 +113,7 @@ export async function undeferRequirement(input: {
       requirementId: row.id,
       act: 'undefer',
       fromStatus: 'deferred',
-      reason: input.reason?.trim() || null,
+      reason: input.reason.trim(),
       decidedBy: actor.userId,
     });
     const undeferred = await transition(tx, REQUIREMENT_MACHINE, {
@@ -118,7 +121,7 @@ export async function undeferRequirement(input: {
       expect: 'deferred',
       set: { updatedAt: new Date() },
       where: eq(requirements.id, row.id),
-      reason: input.reason?.trim() || null,
+      reason: input.reason.trim(),
       actor: requirementKernelActor(actor),
       source: 'requirement-deferral',
       returning: ['id'],

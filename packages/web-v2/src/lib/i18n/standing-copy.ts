@@ -22,10 +22,12 @@ const dueWhen = (g: Record<string, string>, language: string): string =>
 const WHO: Rule[] = [
   { re: new RegExp("^You$"), key: "standing.who.you" },
   { re: new RegExp("^Master$"), key: "standing.who.master" },
+  { re: new RegExp("^Independent judge$"), key: "standing.who.independentJudge" },
   { re: new RegExp("^BA or owner$"), key: "standing.who.baOrOwner" },
   { re: new RegExp("^Issues$"), key: "standing.who.issues" },
   { re: new RegExp("^A project admin$"), key: "standing.who.projectAdmin" },
   { re: new RegExp("^A project writer$"), key: "standing.who.projectWriter" },
+  { re: new RegExp("^The schedule owner$"), key: "standing.who.scheduleOwner" },
   { re: new RegExp("^A release approver$"), key: "standing.who.releaseApprover" },
   { re: new RegExp("^The project's master$"), key: "standing.who.projectMaster" },
   { re: new RegExp("^Release run$"), key: "standing.who.releaseRun" },
@@ -44,6 +46,9 @@ const WHO: Rule[] = [
 ];
 
 const ACT: Rule[] = [
+  { re: new RegExp("^triage a report$"), key: "standing.act.triageReport" },
+  { re: new RegExp("^fix a failing schedule$"), key: "standing.act.fixSchedule" },
+  { re: new RegExp("^take over a schedule whose owner is gone$"), key: "standing.act.takeOverSchedule" },
   { re: new RegExp("^triage (?<n>\\d+) feedback items$"), key: "standing.act.triageMany", vars: (g) => ({ n: g.n ?? "" }) },
   { re: new RegExp("^triage it again$"), key: "standing.act.triageAgain" },
   { re: new RegExp("^triage it$"), key: "standing.act.triageIt" },
@@ -69,7 +74,9 @@ const ACT: Rule[] = [
     key: "standing.act.check",
     vars: (g, l) => ({ codes: g.codes ?? "", when: dueWhen(g, l) }),
   },
-  { re: new RegExp("^prove (?<codes>.+)$"), key: "standing.act.prove", vars: (g) => ({ codes: g.codes ?? "" }) },
+  { re: new RegExp("^judge (?<codes>BC-\\d+(?:, BC-\\d+)*) on (?<keys>.+)$"), key: "standing.act.judgeOn", vars: (g) => ({ codes: g.codes ?? "", keys: g.keys ?? "" }) },
+  { re: new RegExp("^fix (?<codes>BC-\\d+(?:, BC-\\d+)*), failing on (?<keys>.+)$"), key: "standing.act.fixFailing", vars: (g) => ({ codes: g.codes ?? "", keys: g.keys ?? "" }) },
+  { re: new RegExp("^trace (?<codes>BC-\\d+(?:, BC-\\d+)*) to an issue criterion$"), key: "standing.act.trace", vars: (g) => ({ codes: g.codes ?? "" }) },
   { re: new RegExp("^re-plan (?<keys>.+)$"), key: "standing.act.replan", vars: (g) => ({ keys: g.keys ?? "" }) },
   {
     re: new RegExp("^break down, (?<overdue>overdue since|due) (?<date>\\d{4}-\\d{2}-\\d{2})$"),
@@ -81,7 +88,7 @@ const ACT: Rule[] = [
   { re: new RegExp("^promote 1 draft issue$"), key: "standing.act.promoteDraft" },
   { re: new RegExp("^promote (?<n>\\d+) draft issues$"), key: "standing.act.promoteDrafts", vars: (g) => ({ n: g.n ?? "" }) },
   { re: new RegExp("^Running (?<a>\\d+) of (?<b>\\d+)$"), key: "standing.act.running", vars: (g) => ({ a: g.a ?? "", b: g.b ?? "" }) },
-  { re: new RegExp("^Done (?<a>\\d+) of (?<b>\\d+)$"), key: "standing.act.done", vars: (g) => ({ a: g.a ?? "", b: g.b ?? "" }) },
+  { re: new RegExp("^Shipped (?<a>\\d+) of (?<b>\\d+)$"), key: "standing.act.shippedOf", vars: (g) => ({ a: g.a ?? "", b: g.b ?? "" }) },
   { re: new RegExp("^Confirm the answer$"), key: "standing.act.confirmAnswer" },
   { re: new RegExp("^verify the fix shipped in (?<v>.+)$"), key: "standing.act.verifyFixIn", vars: (g) => ({ v: g.v ?? "" }) },
   { re: new RegExp("^verify the fix$"), key: "standing.act.verifyFix" },
@@ -116,6 +123,7 @@ const ACT: Rule[] = [
   { re: new RegExp("^pair a runner$"), key: "standing.act.pairRunner" },
   { re: new RegExp("^bring a runner online$"), key: "standing.act.runnerOnline" },
   { re: new RegExp("^a release is running$"), key: "standing.act.releaseRunning" },
+  { re: new RegExp("^queued behind (?<v>\\S+)$"), key: "standing.act.queuedBehind", vars: (g) => ({ v: g.v ?? "" }) },
   { re: new RegExp("^judge the criteria still owed$"), key: "standing.act.judgeCriteria" },
   { re: new RegExp("^give production a way to be read$"), key: "standing.act.productionReadable" },
   { re: new RegExp("^a check could not run$"), key: "standing.act.checkCouldNotRun" },

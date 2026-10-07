@@ -1,3 +1,4 @@
+import type { QueryKey } from "@tanstack/react-query";
 import type { DevelopmentOverview } from "@forge/contracts/development-overview";
 import type { PulseResponse } from "@forge/contracts/pulse";
 import { fireEvent } from "@testing-library/react";
@@ -172,6 +173,27 @@ const click = (selector: string, nth = 0) => () => {
   fireEvent.click(el);
 };
 
+const AWAITING_OPTS = { status: ["awaiting_release"], sort: "createdAt:asc", pageSize: 50 };
+const awaitingIssue = (n: number) => ({ id: `i${n}`, displayId: `ISS-${n}`, title: `Muc ${n}`, status: "awaiting_release" });
+const AWAITING_SEED: [QueryKey, unknown][] = [
+  [["issues", "search", P, AWAITING_OPTS], { items: [1, 2, 3, 4, 5, 6].map(awaitingIssue), totalCount: 72 }],
+  [["issues", "search", "p-empty", AWAITING_OPTS], { items: [], totalCount: 0 }],
+  [
+    ["issues", "standing", "forecast", "release-draft", P],
+    {
+      label: "forecast",
+      asOf: AT,
+      scope: "release",
+      key: "draft",
+      title: null,
+      progress: { total: 6, shipped: 0, awaitingRelease: 6, toDo: 0 },
+      forecast: null,
+      delivery: null,
+      next: { label: "forecast", asOf: AT, kind: "paused", who: "You", act: "cut 0.3.0", reason: "r", ref: null, since: AT, late: { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } },
+    },
+  ],
+];
+
 export const OVERVIEW_SCREENS = [
   {
     name: "Development overview",
@@ -195,13 +217,13 @@ export const OVERVIEW_SCREENS = [
   {
     name: "Development activity",
     render: () => (
-      <Seeded data={[]}>
+      <Seeded data={AWAITING_SEED}>
         <KpiBand liveRuns={2} busyRunners={1} onlineRunners={2} openIssues={9} spendTodayUsd={4.2} inFlightUsd={1.1} />
         <KpiBand liveRuns={0} busyRunners={0} onlineRunners={0} openIssues={0} spendTodayUsd={0} inFlightUsd={0} />
         <LiveRunsCard runs={[run(1), run(2, { issueRef: null, kind: "system" })]} slug="hop" idle={[run(3), run(4)]} />
         <LiveRunsCard runs={[]} slug="hop" idle={[run(3)]} />
-        <AwaitingReleaseCard runs={[1, 2, 3, 4, 5, 6].map((n) => run(n, { issueStatus: "awaiting_release", issueRef: n === 6 ? null : `ISS-${n}` }))} slug="hop" projectId={P} />
-        <AwaitingReleaseCard runs={[]} slug="hop" projectId={P} />
+        <AwaitingReleaseCard slug="hop" projectId={P} />
+        <AwaitingReleaseCard slug="hop" projectId="p-empty" />
         <StatusDonut data={{ total: 6, segments: (["active", "attention", "queued", "blocked"] as const).map((key) => ({ key, label: key, color: "red", count: 1, pct: 25 })) }} />
         <StatusDonut data={{ total: 0, segments: [] }} />
         <SpendCard data={{ total: 3, segments: (["test", "code", "plan", "other"] as const).map((key) => ({ key, label: key, color: "red", cost: 0.75, pct: 25 })) }} inFlightUsd={0.5} />

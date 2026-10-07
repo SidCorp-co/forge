@@ -20,7 +20,7 @@ import {
 } from "@/features/questions/hooks";
 import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
 
@@ -38,11 +38,12 @@ export interface QuestionsPaneProps {
 
 function IssueContext() {
   const t = useCopy();
-  return <span className="fg-caption text-muted">{t("questions.pane.byMaster")}</span>;
+  return <span className="fg-caption text-muted">{t("agents.questions.byMaster")}</span>;
 }
 
 export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   const t = useCopy();
+  const time = useTimeFormat();
   const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useProjectQuestions(scope.projectId);
   const mutation = useAnswerProjectQuestion(scope.projectId);
@@ -117,7 +118,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     return (
       <div className="grid min-h-[40vh] place-items-center p-4">
         <ErrorState
-          title={t("questions.pane.errorTitle")}
+          title={t("agents.questions.loadFailed")}
           message={formatApiError(error)}
           onRetry={() => refetch()}
         />
@@ -128,7 +129,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   if (onIssue) {
     return (
       <p className="fg-caption p-4 text-muted" role="status" data-testid="decision-on-issue">
-        {t("questions.pane.onIssue")}
+        {t("agents.questions.onIssue")}
       </p>
     );
   }
@@ -138,8 +139,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       <div className="grid min-h-[40vh] place-items-center p-4">
         <EmptyState
           titleId={EMPTY_TITLE_ID}
-          title={t("questions.pane.emptyTitle")}
-          message={t("questions.pane.emptyMessage")}
+          title={t("agents.questions.emptyTitle")}
+          message={t("agents.questions.emptyBody")}
         />
       </div>
     );
@@ -165,34 +166,34 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? t("questions.pane.loading") : t("questions.pane.loadRest")}
+            {isFetchingNextPage ? t("agents.questions.loading") : t("agents.questions.loadRest")}
           </button>
           <span className="fg-caption text-muted">
-            {t("questions.pane.count", { shown: questions.length, total: data?.total ?? questions.length })}
+            {t("agents.questions.openOf", { n: time.number(questions.length), total: time.number(data?.total ?? questions.length) })}
           </span>
         </div>
       )}
       {walkedOut && !onIssue && linked.gone && (
         <p className="fg-caption text-muted">
-          {t("questions.pane.gone")}{" "}
+          {t("agents.questions.gone")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => router.refresh()}
           >
-            {t("questions.pane.refresh")}
+            {t("agents.questions.refresh")}
           </button>
         </p>
       )}
       {walkedOut && !onIssue && linked.unreachable && (
         <p className="fg-caption text-muted">
-          {t("questions.pane.unreachable")}{" "}
+          {t("agents.questions.unreachable")}{" "}
           <button
             type="button"
             className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             onClick={() => void linked.refetch()}
           >
-            {t("questions.pane.retry")}
+            {t("agents.questions.tryAgain")}
           </button>
         </p>
       )}

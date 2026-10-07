@@ -9,7 +9,7 @@
 // every name here, the way it already re-exports `canonical-entry.ts`, so no
 // caller moved.
 
-import { and, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
 import {
@@ -113,7 +113,7 @@ export async function listConversationsInProject(
       ),
     )
     .where(archiveSide(opts.archived))
-    .orderBy(desc(conversations.updatedAt));
+    .orderBy(desc(conversations.updatedAt), asc(conversations.id));
   if (opts.limit === undefined) return bounded;
   return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }

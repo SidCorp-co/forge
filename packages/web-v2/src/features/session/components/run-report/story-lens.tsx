@@ -18,6 +18,7 @@
 
 import { useState } from "react";
 import { Icon, type IconName } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ActivityGroup, ActivityKind, Narration } from "../../run-report";
 
 const GLYPH: Record<ActivityKind, { icon: IconName; color: string }> = {
@@ -35,6 +36,8 @@ const TONE_COLOR = {
 } as const;
 
 function GroupRow({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: boolean }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const [open, setOpen] = useState(defaultOpen);
   const glyph = GLYPH[group.kind];
   const hidden = group.total - group.children.length;
@@ -64,7 +67,7 @@ function GroupRow({ group, defaultOpen }: { group: ActivityGroup; defaultOpen: b
               </span>
             </li>
           ))}
-          {hidden > 0 && <li className="fg-caption">+ {hidden} more</li>}
+          {hidden > 0 && <li className="fg-caption">{t("runs.story.more", { n: time.number(hidden) })}</li>}
         </ul>
       )}
     </li>
@@ -82,11 +85,13 @@ export function StoryLens({
   narration: Narration;
   onOpenTranscript?: () => void;
 }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   return (
     <div>
       {narration.closing && (
         <div className="border-line-subtle border-b px-3 py-2.5">
-          <p className="fg-caption mb-1">What the agent concluded</p>
+          <p className="fg-caption mb-1">{t("runs.story.concluded")}</p>
           <p className="fg-body-sm whitespace-pre-wrap">{narration.closing}</p>
           {narration.count > 1 && onOpenTranscript && (
             <button
@@ -94,7 +99,7 @@ export function StoryLens({
               onClick={onOpenTranscript}
               className="fg-caption mt-1.5 underline underline-offset-2"
             >
-              {narration.count} notes written during the run →
+              {t("runs.story.notes", { n: time.number(narration.count) })}
             </button>
           )}
         </div>
@@ -106,8 +111,7 @@ export function StoryLens({
       </ul>
       {thinkingPauses > 0 && (
         <p className="fg-caption border-line-subtle border-t px-3 py-2">
-          ◇ <b>{thinkingPauses}</b> thinking pauses — the CLI emits the block but not its text, so
-          this is density, not something to expand
+          ◇ <b>{time.number(thinkingPauses)}</b> {t("runs.story.pauses")}
         </p>
       )}
     </div>

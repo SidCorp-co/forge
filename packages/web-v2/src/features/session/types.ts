@@ -1,3 +1,4 @@
+import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import { decodeToolOutput } from "./result-summary";
 
 /** A single tool invocation as serialized by the runner. */
@@ -175,29 +176,31 @@ function formatMcpLabel(name: string, input: Record<string, unknown>): string {
   }
 }
 
-export function getToolLabel(tc: ToolCallData): string {
+export function getToolLabel(tc: ToolCallData, t: Copy = productCopy()): string {
   const input = tc.input ?? {};
   const filePath = (input.file_path as string) ?? "";
   switch (tc.name) {
     case "Edit":
     case "MultiEdit":
-      return `Updated ${filePath}`;
+      return t("sessions.tool.updated", { file: filePath });
     case "Write":
-      return `Created ${filePath}`;
+      return t("sessions.tool.created", { file: filePath });
     case "Read":
-      return `Read ${filePath}`;
+      return t("sessions.tool.read", { file: filePath });
     case "Bash":
-      return `Ran ${((input.command as string) ?? "").slice(0, 80)}`;
+      return t("sessions.tool.ran", { command: ((input.command as string) ?? "").slice(0, 80) });
     case "Grep":
-      return `Searched ${(input.pattern as string) ?? ""}${input.path ? ` in ${input.path}` : ""}`;
+      return input.path
+        ? t("sessions.tool.searchedIn", { pattern: (input.pattern as string) ?? "", path: String(input.path) })
+        : t("sessions.tool.searched", { pattern: (input.pattern as string) ?? "" });
     case "Glob":
-      return `Found ${(input.pattern as string) ?? ""}`;
+      return t("sessions.tool.found", { pattern: (input.pattern as string) ?? "" });
     case "TodoWrite":
-      return "Updated task list";
+      return t("sessions.tool.taskList");
     case "Task":
-      return `Agent: ${(input.description as string) ?? (input.subagent_type as string) ?? "subtask"}`;
+      return t("sessions.tool.agent", { what: (input.description as string) ?? (input.subagent_type as string) ?? t("sessions.tool.subtask") });
     case "Skill":
-      return `Skill: ${(input.skill as string) ?? "unknown"}`;
+      return t("sessions.tool.skill", { what: (input.skill as string) ?? t("sessions.tool.unknown") });
     default:
       return tc.name.startsWith("mcp__") ? formatMcpLabel(tc.name, input) : tc.name;
   }
