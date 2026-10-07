@@ -2864,6 +2864,13 @@
       "when": 1821139200000,
       "tag": "0442_each_person_picks_the_interface_language",
       "breakpoints": true
+    },
+    {
+      "idx": 447,
+      "version": "7",
+      "when": 1821571200000,
+      "tag": "0447_a_release_approval_decided_tells_the_run",
+      "breakpoints": true
     }
   ]
 }

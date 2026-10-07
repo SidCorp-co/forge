@@ -7,6 +7,7 @@ export const RELEASE_BATCH_SKILL = 'release-flow';
 export const releaseBatchPath = (projectId: string, runId: string): string =>
   `projects/${projectId}/release-batches/${runId}`;
 
+import { RELEASE_VERIFICATIONS, type RecordedReleaseVerification } from '@forge/contracts/releases';
 import { promotedBranch, type ReleasePath } from '../project-config/index.js';
 import type { VerifyConfig } from './verify.js';
 
@@ -53,28 +54,32 @@ export interface ReleaseChannel {
   releaseRunnerLabel: string | null;
   /** How the kernel proves the deploy landed. `null` → nothing is proven. */
   verify: VerifyConfig | null;
+  /** True where the project's work lives on a storefront this binding's provider publishes, and the
+   *  provider reports what it publishes: with no probe, the release is proved by that report. */
+  providerRecord: boolean;
   verifySource: VerifySource;
   /** How this project gets back, or `null` when it declares no way. */
   rollback: ReleaseRollback | null;
 }
 
-/** How a release is proved: by one live channel's probes, or — where no live channel declares
- *  any — by the commit production's own deployment record names (`serving-reading.ts`). A release
- *  neither can prove is refused `RELEASE_NOT_VERIFIED`; nothing closes unverified. */
-export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 'deployment' };
+/** How a release is proved: by one live channel's probes; where a storefront's work is published by
+ *  a provider that reports what it publishes, by that report against each issue's landed draft
+ *  (`provider-verify.ts`); else by the commit production's own deployment record names
+ *  (`serving-reading.ts`). A release none can prove is refused `RELEASE_NOT_VERIFIED`; nothing
+ *  closes unverified. */
+export type CloseVerification =
+  | { kind: 'probed'; cfg: VerifyConfig }
+  | { kind: 'provider'; channel: ReleaseChannel }
+  | { kind: 'deployment' };
 
 /** What a release stamps on its run, its finish and its answers: the kind, by itself. */
 export type ReleaseVerification = CloseVerification['kind'];
 
 /** What a run may carry on its record: a close before the deployment check could be `unverified`,
  *  and its record keeps saying so. Nothing writes it now. */
-export type RecordedVerification = ReleaseVerification | 'unverified';
+export type RecordedVerification = RecordedReleaseVerification;
 
-export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = [
-  'probed',
-  'deployment',
-  'unverified',
-];
+export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = RELEASE_VERIFICATIONS;
 
 export interface ReleasePlan {
   /** The production environment's deploy binding, or empty where Forge reaches no production. */

@@ -46,6 +46,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.verifySettled",
 	"feedback.reporterTold",
 	"release.shipped",
+	"release.approvalDecided",
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
@@ -470,6 +471,16 @@ export interface OutboxEventPayloads {
 		runId: string;
 		version: string;
 		issueIds: string[];
+	};
+	/** An admin approved or returned a release run's approval request; the run that asked is told. */
+	"release.approvalDecided": {
+		projectId: string;
+		runId: string;
+		approvalId: string;
+		decision: "approved" | "returned";
+		reason: string | null;
+		decidedBy: string;
+		decidedAt: string;
 	};
 	/** A linked issue's move left the requirement reading delivered at `revision`; its BA owes the check. */
 	"requirement.delivered": {

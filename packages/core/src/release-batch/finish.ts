@@ -32,7 +32,14 @@ import {
 import { refuseLostReleaseClaim } from './claim-conflicts.js';
 import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { abortBlockedHold, abortBlockedIssues, writeReleaseHolds } from './hold.js';
-import { FENCE_LOST, notVerifiedRefusal, reasonOf, refuseRelease } from './refuse.js';
+import { rosterOfRun, verifyByProviderRecord } from './provider-verify.js';
+import {
+  FENCE_LOST,
+  notVerifiedRefusal,
+  providerNotVerifiedRefusal,
+  reasonOf,
+  refuseRelease,
+} from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -124,9 +131,10 @@ async function stampRunVerification(runId: string, kind: ReleaseVerification): P
 }
 
 /**
- * The deploy is checked against the commit before any issue closes: by the probes where production
- * declares a source probe, else by the commit its deployment record names. Neither showing it is
- * `RELEASE_NOT_VERIFIED`, and nothing closes.
+ * The deploy is checked before any issue closes: against the commit by the probes where production
+ * declares a source probe; against each claimed issue's landed draft by what the provider publishes
+ * where the work lives on a storefront; else against the commit its deployment record names. None
+ * showing it is `RELEASE_NOT_VERIFIED`, and nothing closes.
  */
 export async function verifyBeforeClose(
   runId: string,
@@ -150,6 +158,13 @@ export async function verifyBeforeClose(
           'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
         );
       }
+    } else if (verification.kind === 'provider') {
+      const outcome = await verifyByProviderRecord({
+        projectId: run.projectId,
+        issueIds: await rosterOfRun(runId),
+        channel: verification.channel,
+      });
+      if (!outcome.ok) throw providerNotVerifiedRefusal(outcome.reason, outcome.mismatches);
     } else {
       const outcome = await verifyByDeploymentRecord(run.projectId, options.commit ?? null);
       if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);

@@ -1,3 +1,4 @@
+export { registerReleaseApprovalWake } from './approval-wake.js';
 export { approvalRequired } from './approvals.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {

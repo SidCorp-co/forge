@@ -19,6 +19,7 @@ import type {
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
+import type { RecordedVerification } from './channel.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { ReleaseFacts } from './release-facts.js';
 import {
@@ -44,6 +45,8 @@ export interface Part {
   attempts: ReleaseAttemptRow[];
   approvals: ApprovalView[];
   gates: ReleaseGateView[];
+  /** How the run recorded its close is proved; `null` on the draft and on a run that recorded none. */
+  verification: RecordedVerification | null;
 }
 
 export interface Shared {
@@ -268,6 +271,7 @@ export function detailOf(
   production: ReleaseDetail['production'],
   landings: ReadonlyMap<string, IssueLandingReading>,
   feedbackAnswered: ReleaseFeedbackView[],
+  verifiedBy: ReleaseDetail['verifiedBy'],
 ): ReleaseDetail {
   const summary = summaryOf(p, s);
   const issues = issueViews(p, s, summary.waitingOn, landings);
@@ -298,6 +302,7 @@ export function detailOf(
     approvalRequired: s.required,
     attempts: p.attempts.map(attemptView),
     production,
+    verifiedBy,
     head:
       latest?.evidence.commit ?? [...p.attempts].reverse().find((a) => a.commit)?.commit ?? null,
   };

@@ -402,6 +402,24 @@ export type StorefrontDraftReading =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unreadable'; readonly detail: string };
 
+/**
+ * What the provider publishes of one workflow now: the graph a live route runs, in the same identity
+ * a draft is read in, and when that graph FIRST went live — the earliest publish of any version
+ * carrying it, so a revert to an old graph reads as old.
+ */
+export type StorefrontPublishedReading =
+  | {
+      readonly kind: 'published';
+      readonly workflowCode: string;
+      readonly version: number;
+      readonly publishedAt: string;
+      readonly graphVersion: string;
+      readonly firstLiveAt: string;
+    }
+  | { readonly kind: 'unpublished'; readonly workflowCode: string }
+  | { readonly kind: 'missing'; readonly detail: string }
+  | { readonly kind: 'unreadable'; readonly detail: string };
+
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */
 export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
@@ -500,6 +518,11 @@ export interface IntegrationDeclaration<
   readonly storefrontDrafts?: (
     args: StorefrontTargetArgs & { workflowIds: readonly string[] },
   ) => Promise<Map<string, StorefrontDraftReading>>;
+  /** What the provider publishes now of each workflow named, read once for all of them: a release
+   *  on a storefront is proved by it (`release-batch/provider-verify.ts`). */
+  readonly storefrontPublished?: (
+    args: StorefrontTargetArgs & { workflowIds: readonly string[] },
+  ) => Promise<Map<string, StorefrontPublishedReading>>;
   /** Present where a binding of this provider is the host a project's repository lives on. */
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */

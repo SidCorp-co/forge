@@ -63,6 +63,7 @@ export const OUTBOX_CONSUMERS = {
 	"feedback.verifySettled": ["notify-feedback"],
 	"feedback.reporterTold": ["notify-feedback"],
 	"release.shipped": ["notify-feedback"],
+	"release.approvalDecided": ["release-approval-wake"],
 	"credential.tokenChanged": ["ws-broadcast"],
 	"runner.changed": ["ws-broadcast"],
 	"job.changed": ["ws-broadcast"],

@@ -7,12 +7,16 @@ import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
 import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
+import { getIntegration } from '../integrations/index.js';
+import { isRefusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
+import { closeVerification, type RecordedVerification, resolveReleaseChannels } from './channel.js';
 import { readLandingReadings } from './landing-surfaces.js';
+import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts } from './release-facts.js';
@@ -54,6 +58,7 @@ async function draftPart(projectId: string): Promise<Part | null> {
     attempts: [],
     approvals: [],
     gates: gateViews(report.blockers, report.warnings),
+    verification: null,
   };
 }
 
@@ -73,7 +78,37 @@ function runPart(
     attempts,
     approvals,
     gates: [],
+    verification: recordedVerificationOf(run.metadata),
   };
+}
+
+/** The verification a run stamped on its row, or `null` where it stamped none it could name. */
+function recordedVerificationOf(metadata: unknown): RecordedVerification | null {
+  const value = (metadata as { verification?: unknown } | null)?.verification;
+  return (RECORDED_VERIFICATIONS as readonly unknown[]).includes(value)
+    ? (value as RecordedVerification)
+    : null;
+}
+
+/**
+ * How this release is proved, and through which provider: as its run recorded it, else as the
+ * project declares it now. `null` where neither names one: no production binding, or a probe
+ * declaration a release would refuse.
+ */
+async function verifiedByOf(projectId: string, part: Part): Promise<ReleaseDetail['verifiedBy']> {
+  const channels = await resolveReleaseChannels(projectId);
+  const channel = channels[0];
+  const provider = channel
+    ? (getIntegration(channel.provider)?.presentation?.label ?? channel.provider)
+    : null;
+  if (part.verification) return { kind: part.verification, provider };
+  if (!channel) return null;
+  try {
+    return { kind: closeVerification(channels).kind, provider };
+  } catch (err) {
+    if (isRefusal(err, 'RELEASE_PROBES_UNREADABLE')) return null;
+    throw err;
+  }
 }
 
 async function productionOf(projectId: string, current: string | null): Promise<ReleaseProduction> {
@@ -198,6 +233,7 @@ export async function readRelease(
     }),
   );
   const prod = read.ok ? read.path.production : null;
+  const verifiedBy = await verifiedByOf(projectId, part);
   const feedbackAnswered = await feedbackAnsweredBy(
     projectId,
     part.issueIds,
@@ -210,5 +246,6 @@ export async function readRelease(
     prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
     landings,
     feedbackAnswered,
+    verifiedBy,
   );
 }
