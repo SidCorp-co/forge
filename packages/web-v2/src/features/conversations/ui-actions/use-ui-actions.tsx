@@ -1,9 +1,12 @@
 "use client";
 
-import { describeUiSnapshot, type UiSnapshot } from "@forge/contracts/ui-actions";
+import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/design";
+import { enumLabel, statusReading } from "@/design/vocabulary";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { CanonicalBlock } from "@/features/session/types";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
@@ -12,14 +15,17 @@ import {
   type UiActionOutcome,
   type UiCallReading,
   applyUiAction,
+  describeBoard,
   hrefWithout,
   readUiCall,
+  routeWord,
+  shapesText,
   uiSnapshotOf,
 } from "./actions";
 import { issueSelectionBridge, useSelectedIssueKeys } from "@/features/chat-dock/selection-bridge";
 import { useBoard } from "@/features/board/board-store";
 
-interface UiCallRecord {
+export interface UiCallRecord {
   callId: string;
   entryId: string;
   reading: UiCallReading;
@@ -39,33 +45,50 @@ function uiCallsOf(entryId: string, blocks: readonly CanonicalBlock[] | null | u
   return out;
 }
 
+// The filter words the assistant is told: the identifiers in English, the reader's words otherwise.
+function filterParts(f: NonNullable<UiSnapshot["filter"]>, t: Copy, language: string): string[] {
+  const word = (label: string, raw: string) => (language === "en" ? raw : label.toLowerCase());
+  return [
+    f.createdBy && t("conversations.sees.createdByMe"),
+    f.assignee && t("conversations.sees.assignedToMe"),
+    f.priority && t("conversations.sees.priority", { value: word(enumLabel("priority", f.priority, language), f.priority) }),
+    f.status && t("conversations.sees.status", { value: f.status.map((s) => word(statusReading("issue", s, language).label, s)).join("/") }),
+    f.text && `"${f.text}"`,
+  ].filter((p): p is string => Boolean(p));
+}
+
+/** The one line under the composer: what page the assistant is looking at, in the reader's words. */
+export function seesLabel(s: UiSnapshot, t: Copy, language: string): string {
+  const parts: string[] = [s.route === "issue" && s.issueKey ? s.issueKey : s.route === "other" ? s.path : routeWord(s.route, t)];
+  if (s.filter) parts.push(...filterParts(s.filter, t, language));
+  if (s.selection && s.selection.length > 0) parts.push(t("conversations.sees.selected", { n: s.selection.length }));
+  if (s.board) parts.push(t("conversations.sees.boardOf", { shapes: shapesText(s.board.shapes.length, t) }));
+  return parts.join(" · ");
+}
+
 /** The hover detail of the composer's "Sees" line: every field the assistant is told, one per line. */
-export function seesDetail(s: UiSnapshot, at: { project: string | null; scope: "project" | "ecosystem" }): string {
+export function seesDetail(s: UiSnapshot, at: { project: string | null; scope: "project" | "ecosystem" }, t: Copy, language: string): string {
+  const none = t("conversations.sees.none");
   const lines = [
-    "What the assistant is told about the page beside the chat:",
-    `Scope: ${at.scope}`,
-    `Project: ${at.project ?? "none"}`,
-    `Route: ${s.route} (${s.path})`,
+    t("conversations.sees.title"),
+    t("conversations.sees.scope", { scope: t(`conversations.scope.${at.scope}`) }),
+    t("conversations.sees.project", { project: at.project ?? none }),
+    t("conversations.sees.route", { route: routeWord(s.route, t), path: s.path }),
   ];
-  if (s.issueKey) lines.push(`Issue: ${s.issueKey}`);
-  const f = s.filter;
-  if (f) {
-    const parts = [
-      f.createdBy && "created by me",
-      f.assignee && "assigned to me",
-      f.priority && `priority ${f.priority}`,
-      f.status && `status ${f.status.join("/")}`,
-      f.text && `"${f.text}"`,
-    ].filter(Boolean);
-    lines.push(`Filters: ${parts.length ? parts.join(", ") : "none"}`);
+  if (s.issueKey) lines.push(t("conversations.sees.issue", { key: s.issueKey }));
+  if (s.filter) {
+    const parts = filterParts(s.filter, t, language);
+    lines.push(t("conversations.sees.filters", { parts: parts.length ? parts.join(", ") : none }));
   }
-  lines.push(`Selection: ${s.selection?.length ? s.selection.join(", ") : "none"}`);
-  if (s.board) lines.push(`Board: ${s.board.shapes.length} shape${s.board.shapes.length === 1 ? "" : "s"}`);
+  lines.push(t("conversations.sees.selection", { keys: s.selection?.length ? s.selection.join(", ") : none }));
+  if (s.board) lines.push(t("conversations.sees.board", { shapes: shapesText(s.board.shapes.length, t) }));
   return lines.join("\n");
 }
 
 /** The page beside the chat as the typed snapshot each message carries, and its one-line reading. */
 export function useUiSnapshot(slug: string | undefined) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const pathname = usePathname() ?? "";
   const search = useLocationSearch();
   const { user } = useAuth();
@@ -79,8 +102,8 @@ export function useUiSnapshot(slug: string | undefined) {
       selection: selection ? selection.split(",") : [],
       board,
     });
-    return { snapshot, sees: slug ? describeUiSnapshot(snapshot) : null };
-  }, [pathname, search, user?.id, selection, slug, board]);
+    return { snapshot, sees: slug ? seesLabel(snapshot, t, language) : null };
+  }, [pathname, search, user?.id, selection, slug, board, t, language]);
 }
 
 /**
@@ -94,6 +117,8 @@ export function useUiActions(args: {
   progress: ConversationProgressEntry | null | undefined;
 }) {
   const router = useRouter();
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const { user } = useAuth();
   const [records, setRecords] = useState<Record<string, UiCallRecord>>({});
   const history = useRef<Set<string> | null>(null);
@@ -104,13 +129,15 @@ export function useUiActions(args: {
   const go = useCallback((href: string) => router.push(href), [router]);
   const env = useMemo(
     () => ({
+      t,
+      language,
       slug: args.slug,
       userId: user?.id ?? null,
       href: () => `${window.location.pathname}${window.location.search}`,
       go,
       selection: issueSelectionBridge,
     }),
-    [args.slug, user?.id, go],
+    [args.slug, user?.id, go, t, language],
   );
 
   useEffect(() => {
@@ -175,7 +202,7 @@ export function useUiActions(args: {
   return { cardsFor };
 }
 
-function UiActionCard({
+export function UiActionCard({
   record,
   onUndo,
   onClear,
@@ -184,6 +211,7 @@ function UiActionCard({
   onUndo: () => void;
   onClear: (field: string) => void;
 }) {
+  const t = useCopy();
   const { reading, outcome } = record;
   const refused = reading.kind === "refused" || (outcome && !outcome.ok);
   if (refused) {
@@ -198,13 +226,13 @@ function UiActionCard({
       >
         <Icon name="alert" size={14} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
         <p className="fg-body-sm text-fg">
-          <span className="font-mono font-semibold">{name}</span> refused — {message}
+          <span className="font-mono font-semibold">{name}</span> {t("conversations.ui.refused", { message })}
         </p>
       </div>
     );
   }
   const action = reading.kind === "action" ? reading.action : null;
-  const summary = outcome?.ok ? outcome.summary : `${action?.name ?? ""} (applied before this page opened)`;
+  const summary = outcome?.ok ? outcome.summary : t("conversations.ui.appliedBefore", { name: action?.name ?? "" });
   const chips = outcome?.ok ? outcome.chips.filter((c) => !record.cleared?.includes(c.field)) : [];
   return (
     <div data-testid="ui-action-card" className="rounded-md border border-line bg-surface px-3 py-2">
@@ -218,7 +246,7 @@ function UiActionCard({
             onClick={onUndo}
             className="fg-caption rounded-sm px-1.5 py-0.5 font-semibold text-link hover:underline disabled:text-subtle disabled:no-underline"
           >
-            {record.undone ? "Undone" : "Undo"}
+            {record.undone ? t("conversations.ui.undone") : t("conversations.ui.undo")}
           </button>
         )}
       </div>
@@ -232,7 +260,7 @@ function UiActionCard({
               style={{ borderColor: "var(--orange-500, #f97316)", color: "var(--orange-700, #c2410c)", background: "var(--orange-50, #fff7ed)" }}
             >
               {c.label}
-              <button type="button" aria-label={`Clear ${c.label}`} onClick={() => onClear(c.field)} className="leading-none">
+              <button type="button" aria-label={t("conversations.ui.clear", { label: c.label })} onClick={() => onClear(c.field)} className="leading-none">
                 <Icon name="x" size={11} />
               </button>
             </span>

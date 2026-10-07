@@ -13,6 +13,7 @@
 import { useMemo } from "react";
 import { Banner, enumLabel, ErrorState, HealthDot, Icon, MonoTag } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useProject } from "@/features/projects/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
@@ -43,6 +44,9 @@ interface FleetStripProps {
 }
 
 export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStripProps) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const projectQ = useProject(projectId);
   const queueQ = useQueueStats(projectId);
 
@@ -76,21 +80,20 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
     <div className="flex flex-col gap-3">
       {dispatchStalled && (
         <Banner tone="danger">
-          <span className="font-semibold">Dispatch stalled — no runner online.</span>{" "}
-          {queuedCount} session{queuedCount === 1 ? "" : "s"} queued with no runner to pick it up.
-          Bring a runner online or check device pairing.
+          <span className="font-semibold">{t("sessions.fleet.stalledTitle")}</span>{" "}
+          {queuedCount === 1 ? t("sessions.fleet.stalledBodyOne") : t("sessions.fleet.stalledBody", { count: time.number(queuedCount) })}
         </Banner>
       )}
 
       {projectQ.isError ? (
         <ErrorState
-          title="Couldn't load the runner pool"
+          title={t("sessions.fleet.poolFailed")}
           message={formatApiError(projectQ.error)}
           onRetry={() => projectQ.refetch()}
         />
       ) : !projectQ.isSuccess ? null : devicePool.length === 0 ? (
         <div className="py-3 fg-body-sm text-muted">
-          No runners paired to this project yet.
+          {t("sessions.fleet.empty")}
         </div>
       ) : (
         <div className="flex divide-x divide-line-subtle overflow-x-auto pb-1">
@@ -120,7 +123,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                 </div>
 
                 <div className="mt-1.5 flex items-center gap-1.5">
-                  <span className="fg-caption text-subtle">{enumLabel("platform", d.platform)}</span>
+                  <span className="fg-caption text-subtle">{enumLabel("platform", d.platform, language)}</span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-2">
@@ -128,16 +131,16 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                     className="fg-caption font-semibold"
                     style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
                   >
-                    {busy ? "Busy · 1/1" : "Free · 0/1"}
+                    {busy ? t("sessions.fleet.busy") : t("sessions.fleet.free")}
                   </span>
-                  <span className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
-                    {queued > 0 ? `${queued} queued` : "no queue"}
+                  <span className="fg-caption text-subtle" title={t("sessions.fleet.queuedBehind", { n: time.number(queued) })}>
+                    {queued > 0 ? t("sessions.fleet.queued", { n: time.number(queued) }) : t("sessions.fleet.noQueue")}
                   </span>
                 </div>
 
                 {busy && (step || issueRef || stale) && (
                   <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
-                    {step && <span className="fg-caption text-muted">{enumLabel("jobType", step)}</span>}
+                    {step && <span className="fg-caption text-muted">{enumLabel("jobType", step, language)}</span>}
                     {issueRef && (
                       <>
                         {step && <span className="fg-caption text-subtle">·</span>}
@@ -146,7 +149,7 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
                     )}
                     {stale && (
                       <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
-                        stalled
+                        {t("sessions.fleet.stalled")}
                       </span>
                     )}
                   </div>

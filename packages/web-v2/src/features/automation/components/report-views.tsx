@@ -35,33 +35,46 @@ import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";
-import { formatAge, formatStamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { baseOf, copyOr } from "@/lib/i18n/product-copy";
+import { standingWho } from "@/lib/i18n/standing-copy";
 import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { ReportStanding } from "../types";
-import { shortId } from "../view";
+import { type RowCtx, shortId } from "../view";
 
-const aboutOf = (r: ReportStanding) => `${enumLabel("agentReportTarget", r.target)}${r.targetRef ? ` ${r.targetRef}` : ""}`;
+/** A step as the reader says it where the vocabulary names it, as the agent wrote it elsewhere. */
+const stageWord = (stage: string, language: string) => (baseOf(language) === "en" ? stage : copyOr(language, `label.workStep.${stage}`, stage));
+
+const aboutOf = (r: ReportStanding, language: string) => `${enumLabel("agentReportTarget", r.target, language)}${r.targetRef ? ` ${r.targetRef}` : ""}`;
 
 export const reportRow =
-  (hrefOf: (id: string) => string) =>
+  (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
   (r: ReportStanding): ListRowView => ({
     key: r.id,
     keyLabel: shortId(r.id),
     href: hrefOf(r.id),
     title: r.summary,
-    facts: [enumLabel("agentReportKind", r.kind), aboutOf(r), `Severity ${r.severity}`, r.fire ? `From ${r.fire.scheduleName}` : "From a run"],
+    facts: [
+      enumLabel("agentReportKind", r.kind, language),
+      aboutOf(r, language),
+      t("schedules.report.severity", { severity: statusReading("severity", r.severity, language).label.toLowerCase() }),
+      r.fire ? t("schedules.report.from", { name: r.fire.scheduleName }) : t("schedules.report.fromRun"),
+    ],
     state: <StatusBadge family="reportTriage" value={r.triage} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: r.fire?.scheduleName ?? "—",
-    age: { text: formatAge(r.createdAt), title: `Filed ${formatStamp(r.createdAt)}` },
+    age: { text: time.age(r.createdAt), title: t("schedules.report.filedAt", { at: time.dateTime(r.createdAt) }) },
     dim: r.attentionGroup === "closed",
   });
 
 /** A schedule's reports as hairline rows, each opening the report's page. */
 export function ReportLines({ reports, slug }: { reports: readonly ReportStanding[]; slug: string }) {
-  if (reports.length === 0) return <FactsEmpty>Its fires filed no reports.</FactsEmpty>;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  if (reports.length === 0) return <FactsEmpty>{t("schedules.report.noReports")}</FactsEmpty>;
   return (
     <ul className="border-t border-line-subtle" data-testid="report-lines">
       {reports.map((r) => (
@@ -69,9 +82,9 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
           <Link href={reportHref(slug, r.id)} className="flex flex-wrap items-center gap-2 py-2 text-13 hover:bg-hover">
             <StatusBadge family="reportTriage" value={r.triage} />
             <span className="min-w-0 flex-1 truncate">{r.summary}</span>
-            <span className="text-subtle">{enumLabel("agentReportKind", r.kind)}</span>
-            <span className="font-mono text-11 text-subtle" title={formatStamp(r.createdAt)}>
-              {formatAge(r.createdAt)}
+            <span className="text-subtle">{enumLabel("agentReportKind", r.kind, language)}</span>
+            <span className="font-mono text-11 text-subtle" title={time.dateTime(r.createdAt)}>
+              {time.age(r.createdAt)}
             </span>
           </Link>
         </li>
@@ -81,13 +94,15 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
 }
 
 function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   if (r.triage !== "new") return null;
   const w = r.waitingOn;
   return (
     <WaitBanner
       tone={w.kind === "you" ? "you" : "blocked"}
-      head={w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`}
-      body="triage: file an issue, dismiss with a reason, or mark a duplicate"
+      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) })}
+      body={t("schedules.report.bannerBody")}
       rule={r.waitingOn.rule}
       className={className}
       testId="report-banner"
@@ -96,6 +111,7 @@ function ReportBanner({ r, className }: { r: ReportStanding; className?: string 
 }
 
 function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
+  const t = useCopy();
   if (r.feedback) {
     return (
       <Link href={feedbackHref(slug, r.feedback.key)} className="font-mono text-12-5 text-link hover:underline">
@@ -114,7 +130,7 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
   if (r.duplicateOf) {
     return (
       <Link href={reportHref(slug, r.duplicateOf)} className="font-mono text-12-5 text-link hover:underline">
-        Repeats {shortId(r.duplicateOf)}
+        {t("schedules.report.repeats", { id: shortId(r.duplicateOf) })}
       </Link>
     );
   }
@@ -122,44 +138,47 @@ function Outcome({ r, slug }: { r: ReportStanding; slug: string }) {
 }
 
 export function ReportFacts({ r, slug }: { r: ReportStanding; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   return (
     <>
-      <FactsGroup title="Triage">
-        <Fact label="State">
+      <FactsGroup title={t("schedules.report.triage")}>
+        <Fact label={t("schedules.report.state")}>
           <StatusBadge family="reportTriage" value={r.triage} />
         </Fact>
-        <Fact label="By">{r.triagedBy?.name ?? "—"}</Fact>
+        <Fact label={t("schedules.report.by")}>{r.triagedBy?.name ?? "—"}</Fact>
         {r.triagedAt ? (
-          <Fact label="When">
-            <span title={formatStamp(r.triagedAt)}>{formatAge(r.triagedAt)} ago</span>
+          <Fact label={t("schedules.report.when")}>
+            <span title={time.dateTime(r.triagedAt)}>{t("schedules.ago", { age: time.age(r.triagedAt) })}</span>
           </Fact>
         ) : null}
-        <Fact label="Went to">
+        <Fact label={t("schedules.report.wentTo")}>
           <Outcome r={r} slug={slug} />
         </Fact>
-        {r.triageReason ? <Fact label="Reason">{r.triageReason}</Fact> : null}
+        {r.triageReason ? <Fact label={t("schedules.report.reason")}>{r.triageReason}</Fact> : null}
       </FactsGroup>
-      <FactsGroup title="Report">
-        <Fact label="Kind">
+      <FactsGroup title={t("schedules.report.report")}>
+        <Fact label={t("schedules.report.kind")}>
           <EnumBadge family="agentReportKind" value={r.kind} />
         </Fact>
-        <Fact label="Severity">{statusReading("severity", r.severity).label}</Fact>
-        <Fact label="Target">{aboutOf(r)}</Fact>
+        <Fact label={t("schedules.report.severityLabel")}>{statusReading("severity", r.severity, language).label}</Fact>
+        <Fact label={t("schedules.report.target")}>{aboutOf(r, language)}</Fact>
       </FactsGroup>
-      <FactsGroup title="Source">
-        <Fact label="From">
+      <FactsGroup title={t("schedules.report.source")}>
+        <Fact label={t("schedules.report.fromLabel")}>
           {r.fire ? (
             <>
               <Link href={fireHref(slug, r.fire.id)} className="font-mono text-12-5 text-link hover:underline">
                 #{shortId(r.fire.id)}
               </Link>
-              <span className="text-muted">of</span>
+              <span className="text-muted">{t("schedules.report.of")}</span>
               <Link href={scheduleHref(slug, r.fire.scheduleId)} className="text-link hover:underline">
                 {r.fire.scheduleName}
               </Link>
             </>
           ) : (
-            <span className="text-muted">{r.stage ? `The ${r.stage} step of a run` : "A run"}</span>
+            <span className="text-muted">{r.stage ? t("schedules.report.stepOfRun", { stage: stageWord(r.stage, language) }) : t("schedules.report.aRun")}</span>
           )}
         </Fact>
       </FactsGroup>
@@ -178,6 +197,7 @@ function Refusal({ error }: { error: unknown }) {
 
 /** The one primary act: file a new report as an issue, or reopen a triaged one. */
 export function ReportPrimary({ r, projectId, canWrite }: { r: ReportStanding; projectId: string; canWrite: boolean }) {
+  const t = useCopy();
   const triage = useTriageAgentReport(projectId);
   if (!canWrite) return null;
   return r.triage === "new" ? (
@@ -189,11 +209,11 @@ export function ReportPrimary({ r, projectId, canWrite }: { r: ReportStanding; p
       onClick={() => triage.mutate({ id: r.id, act: { act: "file", createIssue: {} } })}
       data-testid="report-file"
     >
-      File an issue
+      {t("schedules.report.fileIssue")}
     </Button>
   ) : (
     <Button type="button" size="sm" disabled={triage.isPending} onClick={() => triage.mutate({ id: r.id, act: { act: "reopen" } })} data-testid="report-reopen">
-      Reopen
+      {t("schedules.report.reopen")}
     </Button>
   );
 }
@@ -202,6 +222,8 @@ type Form = "dismiss" | "duplicate" | "promote" | null;
 
 /** Every triage act a writer may take, each posting to the triage door. */
 function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const triage = useTriageAgentReport(projectId);
   const standing = useAutomationStanding(projectId).data;
   const [form, setForm] = useState<Form>(null);
@@ -213,30 +235,32 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
   const act = (a: Parameters<typeof triage.mutate>[0]["act"]) => triage.mutate({ id: r.id, act: a }, { onSuccess: () => setForm(null) });
   return (
     <section id="report-act" data-testid="report-triage">
-      <ViewHeading>What is this report?</ViewHeading>
+      <ViewHeading>{t("schedules.report.whatIs")}</ViewHeading>
       {r.triage === "new" ? (
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" disabled={triage.isPending} onClick={() => act({ act: "file", createIssue: {} })}>
-            File an issue
+            {t("schedules.report.fileIssue")}
           </Button>
           <Button type="button" size="sm" onClick={() => setForm("dismiss")} data-testid="report-dismiss-open">
-            Dismiss
+            {t("schedules.report.dismiss")}
           </Button>
           <Button type="button" size="sm" onClick={() => setForm("duplicate")} data-testid="report-duplicate-open">
-            Mark a duplicate
+            {t("schedules.report.markDuplicate")}
           </Button>
           <Button type="button" size="sm" onClick={() => setForm("promote")}>
-            Promote to feedback
+            {t("schedules.report.promote")}
           </Button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-13 text-muted">
-            {statusReading("reportTriage", r.triage).label}
-            {r.triagedBy?.name ? ` by ${r.triagedBy.name}` : ""}.
+            {r.triagedBy?.name
+              ? t("schedules.report.triagedBy", { state: statusReading("reportTriage", r.triage, language).label, name: r.triagedBy.name })
+              : statusReading("reportTriage", r.triage, language).label}
+            .
           </span>
           <Button type="button" size="sm" disabled={triage.isPending} onClick={() => act({ act: "reopen" })}>
-            Reopen
+            {t("schedules.report.reopen")}
           </Button>
         </div>
       )}
@@ -249,17 +273,17 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
           }}
         >
           <Input
-            aria-label="Why this is not work"
+            aria-label={t("schedules.report.whyNotWork")}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Already fixed in ISS-12, or the agent misread the step"
+            placeholder={t("schedules.report.dismissPlaceholder")}
             className="min-w-[280px] flex-1"
           />
           <Button type="submit" size="sm" disabled={triage.isPending} data-testid="report-dismiss">
-            Dismiss
+            {t("schedules.report.dismiss")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setForm(null)}>
-            Cancel
+            {t("schedules.form.cancel")}
           </Button>
         </form>
       ) : null}
@@ -273,32 +297,32 @@ function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: st
         >
           <span className="min-w-[280px] flex-1">
             <NativeSelect
-              aria-label="The report this repeats"
+              aria-label={t("schedules.report.repeatsWhich")}
               value={dupOf}
               onChange={(e) => setDupOf(e.target.value)}
               options={[
-                { value: "", label: "Pick the report this repeats" },
+                { value: "", label: t("schedules.report.pickRepeats") },
                 ...others.map((o) => ({ value: o.id, label: `${shortId(o.id)} · ${o.summary.slice(0, 80)}` })),
               ]}
             />
           </span>
           <Button type="submit" size="sm" disabled={triage.isPending || !dupOf} data-testid="report-duplicate">
-            Mark a duplicate
+            {t("schedules.report.markDuplicate")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setForm(null)}>
-            Cancel
+            {t("schedules.form.cancel")}
           </Button>
         </form>
       ) : null}
       {form === "promote" ? (
         <div className="mt-3">
-          <FeedbackForm projectId={projectId} agentReport={r.id} draft={feedbackDraftOf(r)} onDone={() => setForm(null)} />
+          <FeedbackForm projectId={projectId} agentReport={r.id} draft={feedbackDraftOf(r, language)} onDone={() => setForm(null)} />
         </div>
       ) : null}
       <Refusal error={triage.error} />
       {r.feedback ? (
         <p className="mt-2 text-12-5 text-muted">
-          Became{" "}
+          {t("schedules.report.became")}{" "}
           <Link href={feedbackHref(slug, r.feedback.key)} className="text-link hover:underline">
             {r.feedback.key}
           </Link>
@@ -323,10 +347,11 @@ export function ReportPeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel="Automation" noun="Agent report" onOpenFull={onOpenFull} testId="report-peek">
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.agentReport")} onOpenFull={onOpenFull} testId="report-peek">
       <PeekHead
-        noun="Agent report"
+        noun={t("schedules.noun.agentReport")}
         itemKey={shortId(r.id)}
         badge={<StatusBadge family="reportTriage" value={r.triage} />}
         title={r.summary}
@@ -354,18 +379,20 @@ function Prose({ title, children }: { title: string; children: string | null }) 
 }
 
 function Source({ r, slug }: { r: ReportStanding; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
     <dl className="grid max-w-[640px] grid-cols-[140px_minmax(0,1fr)] gap-y-2 text-13" data-testid="report-source">
-      <dt className="text-muted">Signal</dt>
+      <dt className="text-muted">{t("schedules.report.signal")}</dt>
       <dd className="font-mono text-12-5">{r.signalKey}</dd>
       {r.fire ? (
         <>
-          <dt className="text-muted">Fire</dt>
+          <dt className="text-muted">{t("schedules.report.fire")}</dt>
           <dd>
             <Link href={fireHref(slug, r.fire.id)} className="font-mono text-link hover:underline">
               #{shortId(r.fire.id)}
             </Link>{" "}
-            of{" "}
+            {t("schedules.report.of")}{" "}
             <Link href={scheduleHref(slug, r.fire.scheduleId)} className="text-link hover:underline">
               {r.fire.scheduleName}
             </Link>
@@ -374,7 +401,7 @@ function Source({ r, slug }: { r: ReportStanding; slug: string }) {
       ) : null}
       {r.sessionId ? (
         <>
-          <dt className="text-muted">Session</dt>
+          <dt className="text-muted">{t("schedules.report.session")}</dt>
           <dd>
             <Link href={sessionHref(slug, r.sessionId)} className="font-mono text-link hover:underline">
               {shortId(r.sessionId)}
@@ -384,13 +411,13 @@ function Source({ r, slug }: { r: ReportStanding; slug: string }) {
       ) : null}
       {r.stage ? (
         <>
-          <dt className="text-muted">Step</dt>
-          <dd>{r.stage}</dd>
+          <dt className="text-muted">{t("schedules.report.step")}</dt>
+          <dd>{stageWord(r.stage, language)}</dd>
         </>
       ) : null}
       {r.issueId ? (
         <>
-          <dt className="text-muted">Issue run</dt>
+          <dt className="text-muted">{t("schedules.report.issueRun")}</dt>
           <dd>
             <Link href={issueHref(slug, r.issueId)} className="font-mono text-link hover:underline">
               {shortId(r.issueId)}
@@ -403,13 +430,16 @@ function Source({ r, slug }: { r: ReportStanding; slug: string }) {
 }
 
 function History({ r }: { r: ReportStanding }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const rows = [
-    { at: r.createdAt, text: `Filed by the agent as ${enumLabel("agentReportKind", r.kind).toLowerCase()}` },
+    { at: r.createdAt, text: t("schedules.report.filedByAgent", { kind: enumLabel("agentReportKind", r.kind, language).toLowerCase() }) },
     ...(r.triagedAt
       ? [
           {
             at: r.triagedAt,
-            text: `${statusReading("reportTriage", r.triage).label}${r.triagedBy?.name ? ` by ${r.triagedBy.name}` : ""}${r.triageReason ? `: ${r.triageReason}` : ""}`,
+            text: `${r.triagedBy?.name ? t("schedules.report.triagedBy", { state: statusReading("reportTriage", r.triage, language).label, name: r.triagedBy.name }) : statusReading("reportTriage", r.triage, language).label}${r.triageReason ? `: ${r.triageReason}` : ""}`,
           },
         ]
       : []),
@@ -419,8 +449,8 @@ function History({ r }: { r: ReportStanding }) {
       {rows.reverse().map((h) => (
         <li key={h.at} className="flex flex-wrap gap-2 border-b border-line-subtle py-2.5 text-13">
           <span>{h.text}</span>
-          <span className="ml-auto text-subtle" title={formatStamp(h.at)}>
-            {formatAge(h.at)} ago
+          <span className="ml-auto text-subtle" title={time.dateTime(h.at)}>
+            {t("schedules.ago", { age: time.age(h.at) })}
           </span>
         </li>
       ))}
@@ -429,16 +459,17 @@ function History({ r }: { r: ReportStanding }) {
 }
 
 export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId: string; slug: string; reportId: string; canWrite: boolean }) {
+  const t = useCopy();
   const q = useReportDetail(projectId, reportId);
   const [tab, setTab] = useUrlTab(REPORT_TABS);
   return (
-    <QueryBoundary query={q} loadingLabel="loading the report…">
+    <QueryBoundary query={q} loadingLabel={t("schedules.report.loading")}>
       {(data) => {
         const r = data.report;
         const tabs = [
-          { value: "report" as const, label: "Report" },
-          { value: "source" as const, label: "Source" },
-          { value: "history" as const, label: "History" },
+          { value: "report" as const, label: t("schedules.report.tabReport") },
+          { value: "source" as const, label: t("schedules.report.tabSource") },
+          { value: "history" as const, label: t("schedules.report.tabHistory") },
         ];
         return (
           <DetailLayout
@@ -453,12 +484,12 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
             <DetailMobileTitle itemKey={shortId(r.id)} title={r.summary} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
             <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
-            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Report"}>
+            <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.report.tabReport")}>
               {tab === "report" ? (
                 <div className="grid gap-8" data-testid="view-report">
-                  <Prose title="Summary">{r.summary}</Prose>
-                  <Prose title="Detail">{r.detail}</Prose>
-                  <Prose title="Suggestion">{r.suggestion}</Prose>
+                  <Prose title={t("schedules.report.summary")}>{r.summary}</Prose>
+                  <Prose title={t("schedules.report.detail")}>{r.detail}</Prose>
+                  <Prose title={t("schedules.report.suggestion")}>{r.suggestion}</Prose>
                   {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
                 </div>
               ) : null}

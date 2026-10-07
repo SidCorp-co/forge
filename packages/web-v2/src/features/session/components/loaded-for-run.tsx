@@ -1,6 +1,7 @@
 "use client";
 
 import { PageSectionTitle, MonoTag } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { SessionMetadata } from "@/features/sessions/types";
 
 interface LoadedLink {
@@ -20,12 +21,6 @@ interface ContractContextRecord {
   links: LoadedLink[];
 }
 
-const DIFF_LABEL: Record<LoadedLink["diffNote"], string> = {
-  measured: "",
-  "already-on-latest": "already on latest, no diff",
-  "no-version-recorded": "no version recorded, no diff",
-};
-
 /** The `contractContext` core stamped on the session: which link contracts the run was given, and why. */
 export function contractContextOf(metadata: SessionMetadata | null): ContractContextRecord | null {
   const raw = metadata?.contractContext as ContractContextRecord | undefined;
@@ -33,12 +28,13 @@ export function contractContextOf(metadata: SessionMetadata | null): ContractCon
 }
 
 export function LoadedForRun({ metadata }: { metadata: SessionMetadata | null }) {
+  const t = useCopy();
   const record = contractContextOf(metadata);
   if (!record) return null;
   return (
     <section>
       <PageSectionTitle className="fg-caption sticky top-0 z-10 mb-2 bg-app py-1 uppercase tracking-wide">
-        {`Loaded for this run · ${record.links.length}`}
+        {t("sessions.loaded.title", { n: record.links.length })}
       </PageSectionTitle>
       <ul className="flex flex-col gap-2">
         {record.links.map((l) => (
@@ -55,8 +51,14 @@ export function LoadedForRun({ metadata }: { metadata: SessionMetadata | null })
               {l.paths.join(", ")}
             </span>
             <span className="fg-caption">
-              {l.guideNotes} guide note{l.guideNotes === 1 ? "" : "s"} ·{" "}
-              {l.diffNote === "measured" ? `${l.changes} change${l.changes === 1 ? "" : "s"}` : DIFF_LABEL[l.diffNote]}
+              {l.guideNotes === 1 ? t("sessions.loaded.notesOne") : t("sessions.loaded.notesMany", { n: l.guideNotes })} ·{" "}
+              {l.diffNote === "measured"
+                ? l.changes === 1
+                  ? t("sessions.loaded.changeOne")
+                  : t("sessions.loaded.changeMany", { n: l.changes })
+                : l.diffNote === "already-on-latest"
+                  ? t("sessions.loaded.alreadyLatest")
+                  : t("sessions.loaded.noVersion")}
             </span>
           </li>
         ))}

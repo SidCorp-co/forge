@@ -2,14 +2,16 @@
 
 import { Icon, Spinner } from "@/design";
 import type { AgentSessionDisplayStatus } from "@/features/sessions/types";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ConversationItem, RenderBlock } from "../types";
 
 export type TurnStage = "working" | "responding" | "failed";
 
-const LABEL: Record<TurnStage, string> = {
-  working: "Working…",
-  responding: "Responding…",
-  failed: "Failed",
+const LABEL: Record<TurnStage, ProductCopyKey> = {
+  working: "sessions.stage.working",
+  responding: "sessions.stage.responding",
+  failed: "sessions.stage.failed",
 };
 
 /**
@@ -63,6 +65,7 @@ export function sessionTurnStage({
  * One line, one position, for the whole turn.
  */
 export function TurnStage({ stage, elapsed }: { stage: TurnStage; elapsed?: string }) {
+  const t = useCopy();
   return (
     <div
       data-testid="turn-stage"
@@ -78,7 +81,7 @@ export function TurnStage({ stage, elapsed }: { stage: TurnStage; elapsed?: stri
           <Spinner size={12} />
         )}
       </span>
-      <span>{LABEL[stage]}</span>
+      <span>{t(LABEL[stage])}</span>
       {elapsed && <span className="font-mono">· {elapsed}</span>}
     </div>
   );

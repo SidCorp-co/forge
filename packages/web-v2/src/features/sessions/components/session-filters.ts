@@ -3,22 +3,23 @@ import {
   isRealFailure,
   sessionKind,
   AGENT_SESSION_KINDS,
-  SESSION_KIND_LABEL,
+  SESSION_KIND_KEY,
   type AgentSessionDisplayStatus,
   type AgentSessionKind,
   type SessionFilter,
   type SessionRow,
 } from "../types";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
 // ISS-664 — "waiting" leads the tab order: it's the one the owner scans for
 // first ("who needs me"), distinct from `attention` (genuine job failures).
 export const FILTERS: SessionFilter[] = ["all", "waiting", "running", "queued", "attention"];
-export const FILTER_LABEL: Record<SessionFilter, string> = {
-  all: "All",
-  waiting: "Waiting for me",
-  running: "Running",
-  queued: "Queued",
-  attention: "Attention",
+export const FILTER_KEY: Record<SessionFilter, ProductCopyKey> = {
+  all: "sessions.filter.all",
+  waiting: "sessions.filter.waiting",
+  running: "sessions.filter.running",
+  queued: "sessions.filter.queued",
+  attention: "sessions.filter.attention",
 };
 
 // ISS-465 — kind dimension on top of the status filter. Defaults to "all" so
@@ -26,9 +27,9 @@ export const FILTER_LABEL: Record<SessionFilter, string> = {
 // is its own tab.
 export type KindFilter = "all" | AgentSessionKind;
 export const KIND_FILTERS: KindFilter[] = ["all", ...AGENT_SESSION_KINDS];
-export const KIND_LABEL: Record<KindFilter, string> = {
-  all: "All kinds",
-  ...SESSION_KIND_LABEL,
+export const KIND_KEY: Record<KindFilter, ProductCopyKey> = {
+  all: "sessions.kind.all",
+  ...SESSION_KIND_KEY,
 };
 
 export function matchesKind(kind: KindFilter, row: SessionRow): boolean {

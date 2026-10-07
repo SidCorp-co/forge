@@ -2,6 +2,7 @@
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
+import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { formatDateTime } from "@/lib/i18n/format";
 
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
@@ -200,37 +201,40 @@ export type ThreadEntry =
 /**
  * Every decision that is a SILENCE, with the sentence a person reads for it.
  */
-export const SILENCE_REASON: Record<SilenceDecision, string> = {
-  "nothing-to-say": "The agent read this and had nothing to add.",
-  "guard-backoff": "The agent is pacing itself here — it has had nothing to add for several turns.",
-  "guard-agent-loop": "Left unanswered: the last few messages were agents repeating each other.",
-  "guard-dormant": "Left unanswered: no person has spoken here for a long time.",
-  "authority-refused": "The agent cannot act as whoever spoke here, so it did not answer.",
-  unreachable: "The agent could not be reached, so this was never answered.",
-  undetermined: "A reply was sent and never confirmed — the agent will not send it again.",
-  stopped: "You stopped this answer, so the agent never finished it.",
+export const SILENCE_REASON: Record<SilenceDecision, ProductCopyKey> = {
+  "nothing-to-say": "conversations.silence.nothing-to-say",
+  "guard-backoff": "conversations.silence.guard-backoff",
+  "guard-agent-loop": "conversations.silence.guard-agent-loop",
+  "guard-dormant": "conversations.silence.guard-dormant",
+  "authority-refused": "conversations.silence.authority-refused",
+  unreachable: "conversations.silence.unreachable",
+  undetermined: "conversations.silence.undetermined",
+  stopped: "conversations.silence.stopped",
 };
 
 /**
  * The sentence for a silence whose window named why the agent stayed out of a group room (core
  * `window-decision.ts:hearGroup`), or the decision's own sentence when it named nothing more.
  */
-export function silenceDetailSentence(decision: SilenceDecision, detail: unknown): string {
+export function silenceDetailSentence(decision: SilenceDecision, detail: unknown, language = "en"): string {
+  const t = productCopy(language);
   const d = (detail ?? {}) as { reason?: unknown; by?: unknown; since?: unknown };
-  const by = typeof d.by === "string" && d.by ? ` by ${d.by}` : "";
+  const by = typeof d.by === "string" && d.by ? t("conversations.silence.by", { who: d.by }) : "";
   const when =
-    typeof d.since === "string" && !Number.isNaN(Date.parse(d.since)) ? ` since ${formatDateTime(d.since, "en")}` : "";
+    typeof d.since === "string" && !Number.isNaN(Date.parse(d.since))
+      ? t("conversations.silence.since", { when: formatDateTime(d.since, language) })
+      : "";
   switch (d.reason) {
     case "asked-to-stop":
-      return `Asked to stop${by}. The agent stays quiet in this room until someone mentions it.`;
+      return t("conversations.silence.askedToStop", { by });
     case "quiet-until-mentioned":
-      return `Quiet${when}, as asked${by}. The agent answers here again once someone mentions it.`;
+      return t("conversations.silence.quietUntilMentioned", { when, by });
     case "addressed-to-person":
-      return "This was addressed to someone else, so the agent stayed quiet.";
+      return t("conversations.silence.addressedToPerson");
     case "not-mentioned":
-      return "Nobody asked the agent here, so it stayed quiet.";
+      return t("conversations.silence.notMentioned");
     default:
-      return SILENCE_REASON[decision];
+      return t(SILENCE_REASON[decision]);
   }
 }
 
@@ -240,7 +244,7 @@ export function silenceDetailSentence(decision: SilenceDecision, detail: unknown
  * generic sentence. A reason with no `code` was written before reasons were coded and may hold a
  * driver error with other readers' ids, so it is never shown.
  */
-export function undeliveredReplyOf(detail: unknown): { reason: string; reply: string } | null {
+export function undeliveredReplyOf(detail: unknown, t: Copy = productCopy()): { reason: string; reply: string } | null {
   if (!detail || typeof detail !== "object") return null;
   const { code, reason, undeliveredReply } = detail as {
     code?: unknown;
@@ -249,16 +253,16 @@ export function undeliveredReplyOf(detail: unknown): { reason: string; reply: st
   };
   if (typeof undeliveredReply !== "string") return null;
   const coded = typeof code === "string" && typeof reason === "string";
-  return { reason: coded ? reason : "no reason was recorded", reply: undeliveredReply };
+  return { reason: coded ? reason : t("conversations.thread.noReason"), reply: undeliveredReply };
 }
 
 /**
  * What a person reads beside a runner-hosted turn, in each of its four states.
  */
-export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, string> = {
-  dispatched: "Asked a paired box to take this — waiting for one to pick it up.",
-  running: "A session is working on this on a paired box. The reply arrives here when it finishes.",
-  failed: "This Agent turn did not produce an answer.",
+export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, ProductCopyKey> = {
+  dispatched: "conversations.agentTurn.dispatched",
+  running: "conversations.agentTurn.running",
+  failed: "conversations.agentTurn.failed",
 };
 
 /** The reason a window was handed to the onboarding job (core `toOnboardingJob`), or null for any other hand-off. */
@@ -282,17 +286,17 @@ export function turnFailureOf(detail: unknown): { code: string; reason: string }
   return isAssistantTurnFailureCode(d?.code) && typeof d?.reason === "string" ? { code: d.code, reason: d.reason } : null;
 }
 
-const SILENCE_ROW_REASON: Record<string, string> = {
-  "nothing-to-say": "The agent read this and had nothing to add.",
-  "not-mentioned": "Nobody asked the agent here, so it stayed quiet.",
-  "tool-not-called": "The agent chose not to post in this room.",
-  "empty-reply": "The agent finished without writing an answer.",
-  "screen-refused": "The agent's answer failed its checks, so it was not sent.",
+const SILENCE_ROW_REASON: Record<string, ProductCopyKey> = {
+  "nothing-to-say": "conversations.silenceRow.nothing-to-say",
+  "not-mentioned": "conversations.silenceRow.not-mentioned",
+  "tool-not-called": "conversations.silenceRow.tool-not-called",
+  "empty-reply": "conversations.silenceRow.empty-reply",
+  "screen-refused": "conversations.silenceRow.screen-refused",
 };
 
 /** The sentence for a silence a turn recorded: one it chose, or a generic line for a reason no reader is shown. */
-export function silenceSentence(reason: string): string {
-  return SILENCE_ROW_REASON[reason] ?? "The agent did not answer here.";
+export function silenceSentence(reason: string, t: Copy = productCopy()): string {
+  return t(SILENCE_ROW_REASON[reason] ?? "conversations.silenceRow.generic");
 }
 
 /**

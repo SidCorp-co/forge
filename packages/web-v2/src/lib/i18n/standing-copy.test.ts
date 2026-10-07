@@ -7,8 +7,9 @@ import { blockerText, feedbackNote, gateSentence, gateTitle, historyText, histor
 
 // One sentence core really writes for each pattern: in en it is returned as core wrote it, in vi it
 // is a Vietnamese sentence with the names, keys, versions and numbers carried over untouched.
-const WHO = ["You", "Master", "BA or owner", "Issues", "A project admin", "A project writer", "A release approver", "The project's master", "Release run", "Release gate", "No approver", "Its author", "The revision proposal", "The linked issue", "The linked work", "The new requirement", "The current revision", "Nobody", "A holder of feedback.approve", "Its root FB-3", "Run", "Queued run", "Next run", "Release", "No holder", "A design approver", "The contract provider"];
+const WHO = ["You", "Master", "BA or owner", "Issues", "A project admin", "A project writer", "The schedule owner", "A release approver", "The project's master", "Release run", "Release gate", "No approver", "Its author", "The revision proposal", "The linked issue", "The linked work", "The new requirement", "The current revision", "Nobody", "A holder of feedback.approve", "Its root FB-3", "Run", "Queued run", "Next run", "Release", "No holder", "A design approver", "The contract provider"];
 const ACT = [
+  "triage a report", "fix a failing schedule", "take over a schedule whose owner is gone",
   "triage 3 feedback items", "triage it again", "triage it", "triage FB-12", "accept r3", "accept the revision of REQ-4", "accept revision 2 of REQ-4", "propose the revision of REQ-4", "propose revision 2 of REQ-4",
   "revise returned r2, then propose or drop it", "revise returned r2", "propose or drop r2", "propose r2", "finish draft", "agree it", "agree r2", "propose design Staff shell", "approve design Staff shell",
   "Update to the approved design: Staff shell (revision 3)", "Update to the current version of orders-api (1.4.0)", "check BC-1, BC-2 against the traceability matrix, overdue since 2026-10-05",

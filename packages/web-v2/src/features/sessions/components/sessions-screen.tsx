@@ -16,6 +16,7 @@ import {
 import { useIssue } from "@/features/issues/detail-hooks";
 import { useProject } from "@/features/projects/hooks";
 import { formatRefusal } from "@/lib/api/error";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { SESSIONS_PAGE_SIZE } from "../api";
@@ -31,9 +32,9 @@ import {
 import { deriveSessionDisplayStatus, type SessionFilter, type StuckRuns } from "../types";
 import {
   FILTERS,
-  FILTER_LABEL,
+  FILTER_KEY,
   KIND_FILTERS,
-  KIND_LABEL,
+  KIND_KEY,
   type KindFilter,
   filterCounts,
   kindCounts,
@@ -60,6 +61,8 @@ export function SessionsScreen({
   issueFilter: SessionsIssueFilter | null;
   stuck: StuckRuns;
 }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   // Counts and tabs are computed over one page of the newest sessions; the pager and its caption
   // say which page, so a tab never claims to cover sessions it was not given.
   const [page, setPage] = useState(1);
@@ -115,13 +118,13 @@ export function SessionsScreen({
 
   const filterOptions: SegmentOption<SessionFilter>[] = FILTERS.map((f) => ({
     value: f,
-    label: `${FILTER_LABEL[f]} ${counts[f]}`,
+    label: `${t(FILTER_KEY[f])} ${time.number(counts[f])}`,
   }));
 
   const kindTotals = kindCounts(kindRows);
   const kindOptions: SegmentOption<KindFilter>[] = KIND_FILTERS.map((k) => ({
     value: k,
-    label: `${KIND_LABEL[k]} ${kindTotals[k]}`,
+    label: `${t(KIND_KEY[k])} ${time.number(kindTotals[k])}`,
   }));
 
   const actions = { cancel, retry, rerun, abort };
@@ -133,11 +136,11 @@ export function SessionsScreen({
       {issueFilter && (
         <div className="mb-4 flex flex-wrap items-baseline gap-3 border-b border-line-subtle pb-2" data-testid="sessions-issue-filter">
           <span className="text-13 font-medium text-fg">
-            Sessions of {issueQ.data?.displayId ?? "this issue"}
+            {t("sessions.issueFilter", { issue: issueQ.data?.displayId ?? t("sessions.thisIssue") })}
             {issueQ.data?.title ? <span className="text-muted"> · {issueQ.data.title}</span> : null}
           </span>
           <Link href={issueFilter.clearHref} className="fg-caption text-accent-text hover:opacity-80">
-            Show all sessions
+            {t("sessions.showAll")}
           </Link>
         </div>
       )}
@@ -153,8 +156,11 @@ export function SessionsScreen({
         {total > 0 && (
           <div className="ml-auto flex items-center gap-2 whitespace-nowrap">
             <span className="fg-caption text-subtle">
-              Counts cover sessions {(page - 1) * SESSIONS_PAGE_SIZE + 1}–
-              {Math.min(page * SESSIONS_PAGE_SIZE, total)} of {total}, newest first
+              {t("sessions.countsCover", {
+                from: time.number((page - 1) * SESSIONS_PAGE_SIZE + 1),
+                to: time.number(Math.min(page * SESSIONS_PAGE_SIZE, total)),
+                total: time.number(total),
+              })}
             </span>
             {pageCount > 1 && <Pagination page={page} pageCount={pageCount} onChange={setPage} />}
           </div>
@@ -172,7 +178,7 @@ export function SessionsScreen({
 
       {issueQ.isError && (
         <ErrorState
-          title="Couldn't read the issue these sessions are filtered to"
+          title={t("sessions.issueReadFailed")}
           message={formatRefusal(issueQ.error)}
           onRetry={() => issueQ.refetch()}
         />
@@ -180,7 +186,7 @@ export function SessionsScreen({
 
       {sessionsQ.isError && (
         <ErrorState
-          title="Couldn't load sessions"
+          title={t("sessions.loadFailed")}
           message={formatRefusal(sessionsQ.error)}
           onRetry={() => sessionsQ.refetch()}
         />
@@ -188,11 +194,9 @@ export function SessionsScreen({
 
       {!sessionsQ.isLoading && !sessionsQ.isError && !issueQ.isError && rows.length === 0 && (
         <EmptyState
-          title={issueFilter ? "No sessions for this issue" : "No sessions yet"}
+          title={issueFilter ? t("sessions.emptyIssueTitle") : t("sessions.emptyTitle")}
           message={
-            issueFilter
-              ? "No agent session has worked this issue yet."
-              : "Agent sessions for this project will appear here as the pipeline runs."
+            issueFilter ? t("sessions.emptyIssueBody") : t("sessions.emptyBody")
           }
         />
       )}
@@ -202,11 +206,9 @@ export function SessionsScreen({
         // filtered-empty ("nothing matches"): being empty here is a good
         // outcome (caught up), not a dead end.
         <EmptyState
-          title={filter === "waiting" ? "You're all caught up" : "Nothing here"}
+          title={filter === "waiting" ? t("sessions.caughtUpTitle") : t("sessions.noneHereTitle")}
           message={
-            filter === "waiting"
-              ? "No conversations are waiting on your reply right now."
-              : "No sessions match this filter."
+            filter === "waiting" ? t("sessions.caughtUpBody") : t("sessions.noMatch")
           }
           mascot={false}
         />

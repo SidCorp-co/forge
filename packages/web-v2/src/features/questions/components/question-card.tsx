@@ -7,9 +7,11 @@
 // them BECAUSE it is shared: whoever mounts it supplies only a way to send and a
 // pending flag, so neither caller can reconstruct a round or re-derive a lock.
 
-import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
 import { useState } from "react";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
+import { statusReading } from "@/design/vocabulary";
 import {
   Badge,
   Button,
@@ -39,28 +41,29 @@ import {
   type VisibleOption,
 } from "../types";
 
-const AUTHORITY_MEANS: Record<OptionAuthority, string> = {
-  writer: "Any project member can choose this",
-  admin: "Only a project admin can choose this",
+const AUTHORITY_MEANS: Record<OptionAuthority, ProductCopyKey> = {
+  writer: "agents.question.authority.writer",
+  admin: "agents.question.authority.admin",
 };
-const BINDS_MEANS: Record<OptionBinding, string> = {
-  this_call: "Applies to this one call only",
-  session: "Applies for the rest of this session",
-  project: "Applies to this project from now on",
+const BINDS_MEANS: Record<OptionBinding, ProductCopyKey> = {
+  this_call: "agents.question.binds.this_call",
+  session: "agents.question.binds.session",
+  project: "agents.question.binds.project",
 };
-const EXECUTOR_MEANS: Record<OptionExecutor, string> = {
-  agent: "The agent carries this out",
-  core: "Forge carries this out",
-  human: "You carry this out",
+const EXECUTOR_MEANS: Record<OptionExecutor, ProductCopyKey> = {
+  agent: "agents.question.executor.agent",
+  core: "agents.question.executor.core",
+  human: "agents.question.executor.human",
 };
 
 function OptionMeaning({ option, id }: { option: VisibleOption; id: string }) {
+  const t = useCopy();
   return (
     <ul id={id} className="fg-caption mt-1 space-y-0.5 text-muted">
-      <li>{AUTHORITY_MEANS[option.authority]}</li>
-      <li>{BINDS_MEANS[option.bindsTo]}</li>
-      <li>{EXECUTOR_MEANS[option.executedBy]}</li>
-      {option.fingerprint && <li>Names the call: {option.fingerprint}</li>}
+      <li>{t(AUTHORITY_MEANS[option.authority])}</li>
+      <li>{t(BINDS_MEANS[option.bindsTo])}</li>
+      <li>{t(EXECUTOR_MEANS[option.executedBy])}</li>
+      {option.fingerprint && <li>{t("agents.question.names", { call: option.fingerprint })}</li>}
     </ul>
   );
 }
@@ -81,11 +84,12 @@ function OptionRow({
   onChoose: (optionId: string) => void;
 }) {
   const describedBy = `decision-option-${option.id}`;
+  const t = useCopy();
   return (
     <div className="border-t border-line-subtle py-2.5">
       <div className="flex flex-wrap items-start gap-2">
         <span className="fg-body-sm min-w-0 flex-1 text-fg">{option.label}</span>
-        {recommended && <Badge tone="accent">Recommended</Badge>}
+        {recommended && <Badge tone="accent">{t("agents.question.recommended")}</Badge>}
         {answerable && (
           <Button
             variant={recommended ? "primary" : "secondary"}
@@ -93,17 +97,17 @@ function OptionRow({
             disabled={option.locked}
             loading={pending}
             data-first-option={first ? "true" : undefined}
-            aria-label={`Choose ${option.label}`}
+            aria-label={t("agents.question.chooseLabel", { label: option.label })}
             aria-describedby={describedBy}
             onClick={() => onChoose(option.id)}
           >
-            Choose
+            {t("agents.question.choose")}
           </Button>
         )}
       </div>
       {answerable && option.locked && (
         <p className="fg-caption mt-1 text-danger">
-          Needs the &quot;{option.authority}&quot; authority
+          {t("agents.question.needsAuthority", { authority: option.authority })}
         </p>
       )}
       <OptionMeaning option={option} id={describedBy} />
@@ -112,9 +116,10 @@ function OptionRow({
 }
 
 function RoundHistory({ step }: { step: QuestionStep }) {
+  const t = useCopy();
   return (
     <div className="border-l-2 border-line-subtle py-1 pl-3">
-      <p className="fg-caption text-subtle">Round {step.round}</p>
+      <p className="fg-caption text-subtle">{t("agents.question.round", { n: step.round })}</p>
       <p className="fg-body-sm mt-0.5 text-fg">{step.prompt}</p>
       {isChoiceStep(step) ? (
         <>
@@ -122,21 +127,21 @@ function RoundHistory({ step }: { step: QuestionStep }) {
             {step.options.map((o) => (
               <li key={o.id}>
                 {o.label}
-                {o.id === step.chosenOptionId ? " — chosen" : ""}
+                {o.id === step.chosenOptionId ? t("agents.question.chosen") : ""}
               </li>
             ))}
           </ul>
           {step.chosenOptionId && (
             <p className="fg-caption mt-1 text-muted">
-              Answered:{" "}
-              {step.options.find((o) => o.id === step.chosenOptionId)?.label ??
-                "an option no longer on this round"}
+              {t("agents.question.answeredWith", {
+                answer: step.options.find((o) => o.id === step.chosenOptionId)?.label ?? t("agents.question.optionGone"),
+              })}
             </p>
           )}
         </>
       ) : (
         <>
-          <p className="fg-caption mt-1 text-muted">Needed: {step.needed}</p>
+          <p className="fg-caption mt-1 text-muted">{t("agents.question.needed", { what: step.needed })}</p>
           {step.answerText && (
             <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{step.answerText}</p>
           )}
@@ -157,13 +162,14 @@ function FreeTextAnswer({
   pending: boolean;
   onAnswer: (text: string) => void;
 }) {
+  const t = useCopy();
   const [text, setText] = useState("");
   const [fault, setFault] = useState<string | null>(null);
 
   if (locked) {
     return (
       <p className="fg-caption text-danger">
-        Answering this needs access to the project this issue belongs to.
+        {t("agents.question.lockedText")}
       </p>
     );
   }
@@ -174,24 +180,24 @@ function FreeTextAnswer({
       onSubmit={(e) => {
         e.preventDefault();
         if (!text.trim()) {
-          setFault("Write what the run asked for before sending it.");
+          setFault(t("agents.question.writeFirst"));
           return;
         }
         setFault(null);
         onAnswer(text.trim());
       }}
     >
-      <Field label="Your answer" hint={needed ? `Needed: ${needed}` : undefined} error={fault ?? undefined}>
+      <Field label={t("agents.question.yourAnswer")} hint={needed ? t("agents.question.needed", { what: needed }) : undefined} error={fault ?? undefined}>
         <Textarea
           value={text}
           rows={4}
           data-first-option="true"
-          placeholder="Tell the run what it needs to know"
+          placeholder={t("agents.question.tellRun")}
           onChange={(e) => setText(e.target.value)}
         />
       </Field>
       <Button type="submit" variant="primary" size="sm" loading={pending}>
-        Send answer
+        {t("agents.question.send")}
       </Button>
     </form>
   );
@@ -201,65 +207,63 @@ function isAnswerable(question: AgentQuestion): boolean {
   return question.status === "open" && question.blockerKind === "human";
 }
 
-function answeredWith(last: QuestionStep | undefined): string {
-  if (!last) return "no round on the record";
-  if (!isChoiceStep(last)) return last.answerText ?? "in words, no longer on the record";
+function answeredWith(last: QuestionStep | undefined, t: Copy): string {
+  if (!last) return t("agents.question.noRound");
+  if (!isChoiceStep(last)) return last.answerText ?? t("agents.question.inWords");
   return (
     last.options.find((o) => o.id === last.chosenOptionId)?.label ??
     last.chosenOptionId ??
-    "an option no longer on this round"
+    t("agents.question.optionGone")
   );
 }
 
-export function outcomeOf(question: AgentQuestion): string | null {
+export function outcomeOf(question: AgentQuestion, language = "en"): string | null {
+  const t = productCopy(language);
   const last = currentRoundOf(question);
   if (question.status === "answered") {
-    return `Answered — ${answeredWith(last)}`;
+    return t("agents.question.outcome.answered", { what: answeredWith(last, t) });
   }
   if (question.status === "void") {
-    return `Withdrawn — ${question.voidReason ?? "no reason recorded"}`;
+    return t("agents.question.outcome.void", { why: question.voidReason ?? t("agents.question.noReason") });
   }
   if (question.status === "expired") {
-    return `Expired unanswered — ${question.endedReason ?? "the park deadline passed"}`;
+    return t("agents.question.outcome.expired", { why: question.endedReason ?? t("agents.question.deadlinePassed") });
   }
   if (question.status === "needs_info") {
-    return "Out of rounds — the thread is the record now";
+    return t("agents.question.outcome.needsInfo");
   }
   return null;
 }
 
 /** What the answer said the issue still waits on, as the answered card shows it. */
-function holdLine(hold: AnswerHold | undefined): string | null {
+function holdLine(hold: AnswerHold | undefined, t: Copy): string | null {
   if (!hold) return null;
   return hold.blockedBy
-    ? `Still waits on ${hold.blockedBy.key}: ${hold.reason}`
-    : `Still waits: ${hold.reason}`;
+    ? t("agents.question.stillWaitsOn", { key: hold.blockedBy.key, reason: hold.reason })
+    : t("agents.question.stillWaits", { reason: hold.reason });
 }
 
-const statusWord = (status: string) =>
-  ISSUE_STATUS_LABELS[status as keyof typeof ISSUE_STATUS_LABELS] ?? status;
-
 /** What the answer did to the issue it stopped, in a reader's words; null until core recorded it. */
-function resumeLine(resume: AnswerResume | undefined): string | null {
+function resumeLine(resume: AnswerResume | undefined, t: Copy, language: string): string | null {
   switch (resume?.kind) {
     case undefined:
       return null;
     case "resumed":
-      return `The issue went back to ${statusWord(resume.to)}.`;
+      return t("agents.question.resume.resumed", { to: statusReading("issue", resume.to, language).label });
     case "sent_to_run":
-      return "The answer went to the run that asked; it moves the issue on.";
+      return t("agents.question.resume.sent_to_run");
     case "box_reads":
-      return "A box is reading this answer back; its run moves the issue on.";
+      return t("agents.question.resume.box_reads");
     case "other_question":
-      return "The issue still waits on another open question.";
+      return t("agents.question.resume.other_question");
     case "held":
-      return "The issue stays parked, as this answer said.";
+      return t("agents.question.resume.held");
     case "no_left_status":
-      return "Nothing recorded where the issue picks up again — move it on from its status.";
+      return t("agents.question.resume.no_left_status");
     case "staged":
-      return "This project does not move an issue on an answer — resume it from its status.";
+      return t("agents.question.resume.staged");
     case "refused":
-      return `The issue did not move on: ${resume.code} — ${resume.detail}`;
+      return t("agents.question.resume.refused", { code: resume.code, detail: resume.detail });
   }
 }
 
@@ -287,29 +291,30 @@ function StillWaitsFields({
   fault: string | null;
   onChange: (next: WaitDraft) => void;
 }) {
+  const t = useCopy();
   return (
     <div className="space-y-2" data-testid="still-waits">
       <Checkbox
         checked={draft.on}
         onChange={(on) => onChange({ ...draft, on })}
-        label="The issue still waits after this answer"
+        label={t("agents.question.stillWaitsBox")}
       />
       {draft.on && (
         <div className="space-y-2 pl-7">
-          <Field label="What it still waits on" required error={fault ?? undefined}>
+          <Field label={t("agents.question.waitsOn")} required error={fault ?? undefined}>
             <Textarea
               rows={2}
               value={draft.reason}
-              placeholder="e.g. both design revisions approved"
+              placeholder={t("agents.question.waitsOnExample")}
               onChange={(e) => onChange({ ...draft, reason: e.target.value })}
             />
           </Field>
-          <Field label="Blocked by issue" hint="Optional. Its blocks edge releases this issue once it settles.">
+          <Field label={t("agents.question.blockedBy")} hint={t("agents.question.blockedByHint")}>
             <IssuePicker
               projectId={projectId}
               value={draft.blockedBy}
               onChange={(blockedBy) => onChange({ ...draft, blockedBy })}
-              ariaLabel="Blocked by issue"
+              ariaLabel={t("agents.question.blockedBy")}
               single
             />
           </Field>
@@ -341,21 +346,23 @@ export function QuestionCard({
   context,
   highlighted,
 }: QuestionCardProps) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const current = currentRoundOf(question);
   const answerable = isAnswerable(question);
-  const outcome = outcomeOf(question);
+  const outcome = outcomeOf(question, language);
   const earlier = earlierRoundsOf(question);
   const hidden = earlier.length === 0 ? roundCountOf(question) - 1 : 0;
   const firstEnabledId = answerable ? (question.options.find((o) => !o.locked)?.id ?? null) : null;
   const [wait, setWait] = useState<WaitDraft>(NO_WAIT);
   const [waitFault, setWaitFault] = useState<string | null>(null);
   const holds = answerable && question.issueId !== null;
-  const hold = holdLine(current?.hold);
-  const resume = resumeLine(current?.resume);
+  const hold = holdLine(current?.hold, t);
+  const resume = resumeLine(current?.resume, t, language);
 
   const send = (round: number, given: GivenAnswer) => {
     if (holds && wait.on && !wait.reason.trim()) {
-      setWaitFault("Say what the issue still waits on, or untick the box.");
+      setWaitFault(t("agents.question.sayWaits"));
       return;
     }
     setWaitFault(null);
@@ -381,7 +388,7 @@ export function QuestionCard({
           tabIndex={-1}
           className="focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          {answerable ? "Decision waiting" : "Decision"}
+          {answerable ? t("agents.question.waiting") : t("agents.question.decision")}
         </PageSectionTitle>
         <EnumBadge family="blockerKind" value={question.blockerKind} />
         <StatusBadge family="question" value={question.status} />
@@ -397,18 +404,18 @@ export function QuestionCard({
         )}
         {hidden > 0 && (
           <p className="fg-caption text-subtle">
-            {hidden === 1 ? "1 earlier round" : `${hidden} earlier rounds`}
+            {hidden === 1 ? t("agents.question.earlierOne") : t("agents.question.earlierMany", { n: hidden })}
             {question.issueId
               ? hidden === 1
-                ? " — open the issue to read it"
-                : " — open the issue to read them"
-              : ", not shown in this queue"}
+                ? t("agents.question.openToReadOne")
+                : t("agents.question.openToReadMany")
+              : t("agents.question.notShown")}
           </p>
         )}
 
         {current && (
           <div className="space-y-2">
-            <p className="fg-caption text-subtle">Round {current.round}</p>
+            <p className="fg-caption text-subtle">{t("agents.question.round", { n: current.round })}</p>
             {current.prompt && <p className="fg-body text-fg">{current.prompt}</p>}
             {holds && <StillWaitsFields projectId={question.projectId} draft={wait} fault={waitFault} onChange={setWait} />}
             {question.answerShape === "choice" ? (
@@ -432,7 +439,7 @@ export function QuestionCard({
                 onAnswer={(text) => send(current.round, { text })}
               />
             ) : (
-              question.needed && <p className="fg-caption text-muted">Needed: {question.needed}</p>
+              question.needed && <p className="fg-caption text-muted">{t("agents.question.needed", { what: question.needed })}</p>
             )}
           </div>
         )}

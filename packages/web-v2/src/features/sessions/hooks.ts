@@ -1,6 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
@@ -35,10 +37,11 @@ export function useSessionCost(sessionId: string | undefined) {
 /** Shared mutation factory: invalidate the list on success, toast on error. */
 function useSessionMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
-  opts: { successMessage?: (data: TData) => string; alsoInvalidateQueueStats?: boolean } = {},
+  opts: { successMessage?: (data: TData, t: Copy) => string; alsoInvalidateQueueStats?: boolean } = {},
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: fn,
     onSuccess: (data) => {
@@ -48,45 +51,45 @@ function useSessionMutation<TArgs, TData>(
         qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }
       if (opts.successMessage) {
-        toast({ title: opts.successMessage(data), tone: "success" });
+        toast({ title: opts.successMessage(data, t), tone: "success" });
       }
     },
     onError: (err) => {
-      toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+      toast({ title: t("sessions.toast.failed"), description: formatApiError(err), tone: "error" });
     },
   });
 }
 
 export function useCancelSession() {
   return useSessionMutation((id: string) => sessionsApi.cancel(id), {
-    successMessage: () => "Session cancelled",
+    successMessage: (_d, t) => t("sessions.toast.cancelled"),
   });
 }
 
 export function useRetrySession() {
   return useSessionMutation((id: string) => sessionsApi.retry(id), {
-    successMessage: () => "Retry queued",
+    successMessage: (_d, t) => t("sessions.toast.retryQueued"),
   });
 }
 
 export function useRerunSession() {
   return useSessionMutation((id: string) => sessionsApi.rerun(id), {
-    successMessage: () => "Rerun started",
+    successMessage: (_d, t) => t("sessions.toast.rerunStarted"),
   });
 }
 
 export function useAbortSession() {
   return useSessionMutation((sessionId: string) => sessionsApi.abort(sessionId), {
-    successMessage: () => "Session aborted",
+    successMessage: (_d, t) => t("sessions.toast.aborted"),
   });
 }
 
 export function useSweepZombies() {
   return useSessionMutation((projectId: string) => sessionsApi.sweepZombies(projectId), {
     alsoInvalidateQueueStats: true,
-    successMessage: (d) =>
-      `Swept ${d.queueTimedOut + d.heartbeatTimedOut} zombie${
-        d.queueTimedOut + d.heartbeatTimedOut === 1 ? "" : "s"
-      }`,
+    successMessage: (d, t) => {
+      const n = d.queueTimedOut + d.heartbeatTimedOut;
+      return t(n === 1 ? "sessions.toast.sweptOne" : "sessions.toast.sweptMany", { n });
+    },
   });
 }

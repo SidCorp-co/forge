@@ -4,6 +4,7 @@
 // inline unified diff (collapsible); reads/searches/runs render a compact
 // labeled row. Kit-only: imports from @/design, semantic tokens, no hex.
 import { Icon, type IconName } from "@/design";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useDisclosure } from "../disclosure";
 import { formatResultBody, summarizeResult } from "../result-summary";
 import { buildFileDiff, splitHunk, type FileDiff } from "../derive";
@@ -55,6 +56,7 @@ export function InlineDiff({ diff }: { diff: FileDiff }) {
 
 function EditCard({ diff, blockKey }: { diff: FileDiff; blockKey?: string }) {
   const [open, toggle] = useDisclosure(blockKey);
+  const t = useCopy();
   return (
     <div className="rounded-md border border-line bg-surface">
       <button
@@ -71,7 +73,7 @@ function EditCard({ diff, blockKey }: { diff: FileDiff; blockKey?: string }) {
         />
         <Icon name={diff.isNew ? "plus" : "branch"} size={14} className="flex-none text-subtle" />
         <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{diff.path}</span>
-        {diff.isNew && <span className="flex-none font-mono" style={{ fontSize: "var(--text-10)", color: "var(--green-600)" }}>NEW</span>}
+        {diff.isNew && <span className="flex-none font-mono" style={{ fontSize: "var(--text-10)", color: "var(--green-600)" }}>{t("sessions.tool.new")}</span>}
         {diff.added > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--green-600)" }}>+{diff.added}</span>}
         {diff.removed > 0 && <span className="flex-none font-mono" style={{ fontSize: "var(--text-11)", color: "var(--red-600)" }}>-{diff.removed}</span>}
       </button>
@@ -82,8 +84,10 @@ function EditCard({ diff, blockKey }: { diff: FileDiff; blockKey?: string }) {
 
 function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean; blockKey?: string }) {
   const [open, toggle] = useDisclosure(blockKey);
+  const t = useCopy();
+  const time = useTimeFormat();
   const kind = toolKind(tool.name);
-  const summary = summarizeResult(tool.result, tool.isError, live);
+  const summary = summarizeResult(tool.result, tool.isError, live, t);
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2">
       <div className="flex items-center gap-2">
@@ -93,10 +97,10 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
           className="flex-none"
           style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
         />
-        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{getToolLabel(tool)}</span>
+        <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{getToolLabel(tool, t)}</span>
         {typeof tool.durationMs === "number" && (
           <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
-            {tool.durationMs >= 1000 ? `${(tool.durationMs / 1000).toFixed(1)}s` : `${tool.durationMs}ms`}
+            {tool.durationMs >= 1000 ? `${time.number(Number((tool.durationMs / 1000).toFixed(1)))}s` : `${tool.durationMs}ms`}
           </span>
         )}
       </div>

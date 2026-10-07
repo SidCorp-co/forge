@@ -12,6 +12,7 @@
 // provider history window and not by when an agent joined. So the sentence says
 // the agent is shown what has already been said, and it says the bound.
 
+import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import type {
   ConversationMembership,
   ConversationParticipant,
@@ -41,19 +42,18 @@ export type ClaimKey =
   | "room-private"
   | "room-shared";
 
-const list = (projects: readonly ConversationProject[] | undefined): string => {
+const join = (names: readonly string[], t: Copy): string =>
+  names.length === 1
+    ? (names[0] as string)
+    : t("conversations.listAnd", { head: names.slice(0, -1).join(", "), last: names[names.length - 1] as string });
+
+const list = (projects: readonly ConversationProject[] | undefined, t: Copy): string => {
   const names = (projects ?? []).map((p) => p.name);
-  if (names.length === 0) return "no project";
-  if (names.length === 1) return names[0] as string;
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return names.length === 0 ? t("conversations.noProject") : join(names, t);
 };
 
 /** The same joining, for names rather than projects. */
-const list2 = (names: readonly string[]): string => {
-  if (names.length === 0) return "Nobody";
-  if (names.length === 1) return names[0] as string;
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-};
+const list2 = (names: readonly string[], t: Copy): string => (names.length === 0 ? t("conversations.nobody") : join(names, t));
 
 /** Two letters for an avatar, from whatever name there is. */
 export function initialsOf(name: string): string {
@@ -65,8 +65,9 @@ export function initialsOf(name: string): string {
 /** Where a room's projects come from, said as the derivation it is. */
 export function scopeDerivation(
   room: Partial<Pick<ConversationMembership, "scopeProjects">>,
+  t: Copy = productCopy(),
 ): string {
-  return `Read from the agents in this room — ${list(room.scopeProjects)}. Nobody chooses it.`;
+  return t("conversations.scopeDerivation", { projects: list(room.scopeProjects, t) });
 }
 
 /** The live agents in a room. */
@@ -85,8 +86,10 @@ export function peopleOf(room: Partial<Pick<ConversationMembership, "participant
 export function agentAdditionClaims(args: {
   candidate: HandleCandidate;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects" | "participants">>;
+  t?: Copy;
 }): MembershipClaim[] {
   const { candidate, room } = args;
+  const t = args.t ?? productCopy();
   const at = `@${candidate.handle}`;
   const scoped = room.scopeProjects ?? [];
   const isNewProject = !scoped.some((p) => p.id === candidate.project.id);
@@ -96,26 +99,26 @@ export function agentAdditionClaims(args: {
   const claims: MembershipClaim[] = [
     {
       key: "reads-what-was-said",
-      text: `${at} will be shown what has already been said in this room, not only what is said after it joins. It reads the recent part of the room, not the whole of it.`,
+      text: t("conversations.claim.reads", { at }),
     },
     {
       key: "removal-unreads-nothing",
-      text: `Taking ${at} out later stops it reading and answering from that moment. It does not unread what it has already read.`,
+      text: t("conversations.claim.removal", { at }),
     },
     {
       key: "replies-stay",
-      text: `Anything ${at} says here stays in the room, and everyone here will have seen it.`,
+      text: t("conversations.claim.replies", { at }),
     },
     {
       key: "scope-after",
-      text: `${at} brings ${candidate.project.name}. This room will then be about ${list(after)}.`,
+      text: t("conversations.claim.scopeAfter", { at, project: candidate.project.name, projects: list(after, t) }),
     },
   ];
 
   if (isNewProject && after.length > 1) {
     claims.push({
       key: "second-project",
-      text: `${candidate.project.name} is a second project for this room. While a room is about more than one project, no message can be sent to it from Forge — a message is answered under exactly one project. Take an agent out to send here again.`,
+      text: t("conversations.claim.secondProject", { project: candidate.project.name }),
     });
   }
 
@@ -124,14 +127,14 @@ export function agentAdditionClaims(args: {
     const one = losing.length === 1;
     claims.push({
       key: "readers-lose",
-      text: `${list2(losing)} ${one ? "is" : "are"} in this room today and ${one ? "holds" : "hold"} no role on ${candidate.project.name}. A room is read only by somebody who holds one on every project in it, so they will no longer be able to open this one. Nothing they have already read is taken back.`,
+      text: t(one ? "conversations.claim.loseOne" : "conversations.claim.loseMany", { names: list2(losing, t), project: candidate.project.name }),
     });
   }
 
   if (becomesShared) {
     claims.push({
       key: "readers-widen",
-      text: `This is a one-to-one room, read only by the people in it. With a second agent it becomes a shared room, and anybody holding a role on ${list(after)} will be able to read it.`,
+      text: t("conversations.claim.widen", { projects: list(after, t) }),
     });
   }
 
@@ -144,29 +147,31 @@ export function agentAdditionClaims(args: {
 export function roomOpeningClaims(args: {
   projects: readonly ConversationProject[];
   agentCount: number;
+  t?: Copy;
 }): MembershipClaim[] {
   const { projects, agentCount } = args;
+  const t = args.t ?? productCopy();
   const claims: MembershipClaim[] = [
     {
       key: "room-scope",
-      text: `This room will be about ${list(projects)}. That is read from the agents in it, and nobody chooses it.`,
+      text: t("conversations.opening.scope", { projects: list(projects, t) }),
     },
   ];
   if (projects.length > 1) {
     claims.push({
       key: "second-project",
-      text: `A room about more than one project takes no messages from Forge — a message is answered under exactly one project. Take an agent out afterwards, and the room can be spoken in.`,
+      text: t("conversations.opening.second"),
     });
   }
   claims.push(
     agentCount > 1
       ? {
           key: "room-shared",
-          text: `With more than one agent this is a shared room: anybody holding a role on ${list(projects)} will be able to read it, not only the people listed here.`,
+          text: t("conversations.opening.shared", { projects: list(projects, t) }),
         }
       : {
           key: "room-private",
-          text: "With one agent this is a one-to-one room, read only by the people in it.",
+          text: t("conversations.opening.private"),
         },
   );
   return claims;
@@ -178,20 +183,22 @@ export function roomOpeningClaims(args: {
 export function personAdditionClaims(args: {
   name: string;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
+  t?: Copy;
 }): MembershipClaim[] {
   const { name, room } = args;
+  const t = args.t ?? productCopy();
   if (room.shape === "direct") {
     return [
       {
         key: "person-can-read",
-        text: `${name} will be able to read this room, including everything said in it before now.`,
+        text: t("conversations.person.canRead", { name }),
       },
     ];
   }
   return [
     {
       key: "person-already-could",
-      text: `Anybody holding a role on ${list(room.scopeProjects)} can already open this room. Adding ${name} lists them here; it changes nobody's access.`,
+      text: t("conversations.person.alreadyCould", { projects: list(room.scopeProjects, t), name }),
     },
   ];
 }
@@ -200,15 +207,16 @@ export function personAdditionClaims(args: {
 export function removalClaim(
   participant: ConversationParticipant,
   room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>,
+  t: Copy = productCopy(),
 ): string {
   if (participant.kind !== "handle") {
-    return `${participant.displayName ?? "This person"} will no longer be listed in this room.`;
+    return t("conversations.removal.person", { name: participant.displayName ?? t("conversations.thisPerson") });
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
     .map((p) => p.projectId);
   const after = (room.scopeProjects ?? []).filter((p) => rest.includes(p.id));
-  return `This room will then be about ${list(after)}. What @${participant.label ?? "this agent"} has already read and already said stays as it is.`;
+  return t("conversations.removal.agent", { projects: list(after, t), label: participant.label ?? t("conversations.thisAgent") });
 }
 
 /**
@@ -216,10 +224,11 @@ export function removalClaim(
  */
 export function composerRefusal(
   room: Partial<Pick<ConversationMembership, "scopeProjects">>,
+  t: Copy = productCopy(),
 ): { reason: string; wayOut: string } | null {
   if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
   return {
-    reason: `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`,
-    wayOut: "Take one of its agents out, and the room can be spoken in again.",
+    reason: t("conversations.composer.reason", { projects: list(room.scopeProjects, t) }),
+    wayOut: t("conversations.composer.wayOut"),
   };
 }
