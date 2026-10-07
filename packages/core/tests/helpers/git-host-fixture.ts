@@ -15,6 +15,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { sql } from 'drizzle-orm';
+import type { HostAnswer } from '../../src/git/host-answers.fixture.js';
 import type { TestDb } from './db.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
@@ -50,8 +51,8 @@ export interface GitHost {
   merge(into: string, from: string, message: string): string;
   /** Make the served repository match the working one, every branch. */
   publish(): void;
-  /** Whether the host refuses every key, as a host that was never given the public key does. */
-  refusing(on: boolean): void;
+  /** Answer every read with `answer`'s stderr and exit status, as that host refuses; null serves. */
+  answering(answer: HostAnswer | null): void;
   close(): void;
 }
 
@@ -60,7 +61,8 @@ export function startGitHost(): GitHost {
   const work = join(root, 'work');
   const served = join(root, 'hosts', 'gitlab.com', 'sid', 'desk.git');
   const bin = join(root, 'bin');
-  const refuse = join(root, 'refuse');
+  const said = join(root, 'said');
+  const exit = join(root, 'exit');
   const git = (cwd: string, ...args: string[]) =>
     execFileSync('git', args, { cwd, env: { ...process.env, ...author } })
       .toString()
@@ -78,7 +80,7 @@ export function startGitHost(): GitHost {
       '#!/bin/sh',
       'alias=""',
       'for a in "$@"; do case "$a" in HostKeyAlias=*) alias=$(printf %s "$a" | cut -d= -f2);; esac; done',
-      `if [ -e "${refuse}" ]; then echo "git@$alias: Permission denied (publickey)." >&2; exit 255; fi`,
+      `if [ -e "${said}" ]; then cat "${said}" >&2; exit "$(cat "${exit}")"; fi`,
       'for last in "$@"; do :; done',
       `cd "${join(root, 'hosts')}/$alias" || exit 128`,
       'exec sh -c "$last"',
@@ -114,9 +116,10 @@ export function startGitHost(): GitHost {
     publish() {
       git(work, 'push', '--quiet', '--force', '--all', served);
     },
-    refusing(on) {
-      if (on) writeFileSync(refuse, '');
-      else rmSync(refuse, { force: true });
+    answering(answer) {
+      if (!answer) return rmSync(said, { force: true });
+      writeFileSync(exit, String(answer.exit));
+      writeFileSync(said, answer.stderr);
     },
     close() {
       process.env.PATH = path;
