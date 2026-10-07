@@ -1,5 +1,4 @@
-import { saidDisagreements } from '@forge/contracts/said';
-import { sayEn } from '@forge/contracts/said';
+import { saidDisagreements, sayEn } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { finalOf as finalOf_ } from './standing-final.js';
 import type { RunFacts } from './standing-types.js';
@@ -10,7 +9,6 @@ const checked = <T>(v: T): T => {
   return v;
 };
 const finalOf = ((...a: Parameters<typeof finalOf_>) => checked(finalOf_(...a))) as typeof finalOf_;
-
 
 // epod ISS-1 2026-10-06: the builder landed the change (merge mark 01:30:22Z) and its CLI's moves to an
 // outcome were refused, so the session closed with ISS-1 at in_progress. The run stays handed_back by the

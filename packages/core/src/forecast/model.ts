@@ -7,7 +7,6 @@
  */
 
 import {
-  type ForecastWaitSays,
   FORECAST_HISTORY_FLOOR,
   FORECAST_LABEL,
   FORECAST_PEAK_DAYS,
@@ -18,6 +17,7 @@ import {
   type ForecastLate,
   type ForecastPaused,
   type ForecastRange,
+  type ForecastWaitSays,
 } from '@forge/contracts/forecast';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type Said, say, sayEn } from '@forge/contracts/said';
@@ -51,11 +51,7 @@ export interface Wait {
 }
 
 /** A wait from what it says: its English rendered from `says`, never written beside it. */
-export function waitOn(
-  says: ForecastWaitSays,
-  ref: string | null,
-  since?: string | null,
-): Wait {
+export function waitOn(says: ForecastWaitSays, ref: string | null, since?: string | null): Wait {
   return {
     who: sayEn(says.who),
     act: sayEn(says.act),

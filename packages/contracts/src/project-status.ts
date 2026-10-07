@@ -9,6 +9,7 @@ import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
 import type { ReleaseContentGroup, ReleaseState, ReleaseVerified } from "./releases.js";
 import type { RequirementState } from "./requirements.js";
+import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
 export const PROJECT_STATUS_DAYS_DEFAULT = 7;
@@ -117,7 +118,7 @@ export interface StatusNextRelease extends Stamped {
 	/** The draft's forecast; null for a release already cut, which the forecast does not model. */
 	forecast: ScopeForecast | null;
 	/** Whose act moves it next: the cut release's own turn, or whoever cuts the draft. */
-	turn: { who: string; act: string } | null;
+	turn: { who: string; act: string; says: { who: Said; act: Said } } | null;
 	/** The draft collecting behind a release already cut. */
 	behind: { version: string; issueCount: number } | null;
 }

@@ -3,13 +3,13 @@
  * and when the last of them is in people's hands (`delivery.ts`).
  */
 
-import { say } from '@forge/contracts/said';
 import type {
   ComingNextForecast,
   Forecast,
   RequirementForecasts,
   ScopeForecast,
 } from '@forge/contracts/forecast';
+import { say } from '@forge/contracts/said';
 import { draftReleaseIssueIds } from '../release-batch/index.js';
 import { deliveryOf, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 import {

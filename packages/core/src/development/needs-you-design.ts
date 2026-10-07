@@ -4,10 +4,10 @@
  * the health markers waiting on a person.
  */
 
-import { say } from '@forge/contracts/said';
-import { waitingOn } from '@forge/contracts/standing';
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
+import { say } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
+import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 
 interface DesignRow {

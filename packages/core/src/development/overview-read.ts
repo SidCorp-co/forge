@@ -10,8 +10,8 @@ import {
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { slotsNoteOf, slotsNoteSaid } from '@forge/contracts/master-standing';
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import { modulePaths } from '@forge/contracts/modules';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
@@ -35,7 +35,11 @@ const terminalSessions = sql.join(
   sql`, `,
 );
 
-const unavailable = (reason: Said) => ({ available: false as const, reason: sayEn(reason), says: { reason } });
+const unavailable = (reason: Said) => ({
+  available: false as const,
+  reason: sayEn(reason),
+  says: { reason },
+});
 const CI_UNAVAILABLE = say('overview.signal.ciNote');
 const POST_MERGE_UNAVAILABLE = say('overview.signal.postMergeNote');
 

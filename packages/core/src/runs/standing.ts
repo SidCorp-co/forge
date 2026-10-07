@@ -76,21 +76,20 @@ function titleOf(f: RunFacts, lane: RunLane): Said {
       : say('runs.title.releaseBatch');
   }
   const lock = f.deployLocks[0];
-  if (lock) return say('runs.title.deploy', { subject: lock.subject, environment: lock.environment });
+  if (lock)
+    return say('runs.title.deploy', { subject: lock.subject, environment: lock.environment });
   if (f.session?.name) return verbatim(f.session.name);
   if (f.job) return say('runs.holder.job', { type: f.job.type });
   return say('runs.title.run');
 }
 
 function attemptOf(f: RunFacts): RunAttempt {
-  if (!f.attempt)
-    return none(say('runs.attempt.noIssue'));
+  if (!f.attempt) return none(say('runs.attempt.noIssue'));
   return { source: 'runs', n: f.attempt.n, retryOf: f.attempt.retryOf, of: f.attempt.of };
 }
 
 function masterOf(f: RunFacts): RunMasterRef {
-  if (!f.master)
-    return none(say('runs.master.none'));
+  if (!f.master) return none(say('runs.master.none'));
   return {
     source: 'session',
     sessionId: f.master.sessionId,

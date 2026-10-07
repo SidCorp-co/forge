@@ -8,13 +8,13 @@
  * edge's failure).
  */
 
-import { say, sayEn } from '@forge/contracts/said';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   REQUIREMENT_NEAR_DUPLICATE_SIMILARITY,
   type RequirementDedupCheck,
   requirementKey,
 } from '@forge/contracts/requirements';
+import { say, sayEn } from '@forge/contracts/said';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';

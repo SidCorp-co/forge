@@ -12,7 +12,6 @@ const checked = <T>(v: T): T => {
 const liveOf = ((...a: Parameters<typeof liveOf_>) => checked(liveOf_(...a))) as typeof liveOf_;
 const stuckOf = ((...a: Parameters<typeof stuckOf_>) => checked(stuckOf_(...a))) as typeof stuckOf_;
 
-
 const now = new Date('2026-10-05T12:00:00Z');
 const minutes = (n: number) => new Date(now.getTime() + n * 60_000);
 

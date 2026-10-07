@@ -1,5 +1,5 @@
-import { logger } from '../../lib/logger.js';
 import { say } from '@forge/contracts/said';
+import { logger } from '../../lib/logger.js';
 import {
   declareIntegration,
   findConnectionById,

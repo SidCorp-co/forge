@@ -3,24 +3,24 @@
 // needs_you and wait_triage; ISS-114): pure, so every rule is a unit test, and no screen derives one
 
 import type { AgentReportView } from '@forge/contracts/agent-reports';
-import {
-  type AutomationAct,
-  type AutomationPerson,
-  type AutomationWaitingKind,
-  type FireGroup,
-  type FireProduced,
-  type FireProposal,
-  type FireStanding,
-  type ReportFireRef,
-  type ReportGroup,
-  type ReportStanding,
-  type ScheduleGroup,
-  type ScheduleLastFire,
-  type ScheduleStanding,
-  type ScheduleState,
+import type {
+  AutomationAct,
+  AutomationPerson,
+  AutomationWaitingKind,
+  FireGroup,
+  FireProduced,
+  FireProposal,
+  FireStanding,
+  ReportFireRef,
+  ReportGroup,
+  ReportStanding,
+  ScheduleGroup,
+  ScheduleLastFire,
+  ScheduleStanding,
+  ScheduleState,
 } from '@forge/contracts/automation-standing';
-import { scheduleWritePermission } from '@forge/contracts/schedules';
 import { type Said, say, sayEn } from '@forge/contracts/said';
+import { scheduleWritePermission } from '@forge/contracts/schedules';
 import {
   holdersWho,
   nobodyHoldsAct,
@@ -168,20 +168,10 @@ function scheduleWaitOf(
   viewer: AutomationViewer,
 ): AutomationWaitingOn {
   if (state === 'failing' && s.owner) {
-    return personWait(
-      s.owner,
-      viewer,
-      'fix_schedule',
-      say('automation.rule.failing'),
-    );
+    return personWait(s.owner, viewer, 'fix_schedule', say('automation.rule.failing'));
   }
   if (state === 'owner_gone') {
-    return groupWait(
-      'admins',
-      viewer,
-      'reassign_owner',
-      say('automation.rule.ownerGone'),
-    );
+    return groupWait('admins', viewer, 'reassign_owner', say('automation.rule.ownerGone'));
   }
   if (state === 'off') return NOBODY(say('automation.rule.off'));
   return NOBODY(
@@ -253,19 +243,9 @@ function triageWaitOf(
   viewer: AutomationViewer,
 ): AutomationWaitingOn {
   if (fire?.owner) {
-    return personWait(
-      fire.owner,
-      viewer,
-      'triage_report',
-      say('automation.rule.toOwner'),
-    );
+    return personWait(fire.owner, viewer, 'triage_report', say('automation.rule.toOwner'));
   }
-  return groupWait(
-    'writers',
-    viewer,
-    'triage_report',
-    say('automation.rule.toWriters'),
-  );
+  return groupWait('writers', viewer, 'triage_report', say('automation.rule.toWriters'));
 }
 
 const harnessTriage = (): AutomationWaitingOn =>

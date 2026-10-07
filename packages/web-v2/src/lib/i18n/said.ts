@@ -68,12 +68,16 @@ export function saysKey(s: Said | null | undefined, key: Said["key"]): boolean {
 }
 
 /** A wait in `language`: its `who`, `act`, `rule` and `effect` read from what core said, and `says` dropped, so what is left is words to draw. A view with no `says` is already in the reader's words. */
-export function saidView<W extends { who: string; act: string; rule?: string | null | undefined; effect?: string | undefined; says?: WaitingSays }>(
+export function saidView<W extends { who: string; act: string; rule?: string | null | undefined; effect?: string | undefined; says?: SaidWait }>(
   w: W,
   language: string,
 ): Omit<W, "says"> {
   const { says, ...rest } = w;
   if (!says) return rest;
+  const rule = says.rule ? { rule: said(says.rule, language) } : {};
   const effect = says.effect ? { effect: said(says.effect, language) } : {};
-  return { ...rest, who: said(says.who, language), act: said(says.act, language), rule: said(says.rule, language), ...effect };
+  return { ...rest, who: said(says.who, language), act: said(says.act, language), ...rule, ...effect };
 }
+
+/** What a wait said: who and what always, why and to what effect where it says so. */
+export type SaidWait = Pick<WaitingSays, "who" | "act"> & Partial<Pick<WaitingSays, "rule" | "effect">>;

@@ -1,6 +1,5 @@
-import { saidDisagreements } from '@forge/contracts/said';
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { say, verbatim } from '@forge/contracts/said';
 import {
   type CycleSample,
   concurrencyOf,
@@ -18,9 +17,10 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const runForecast = ((...a: Parameters<typeof runForecast_>) => checked(runForecast_(...a))) as typeof runForecast_;
-const scopeForecast = ((...a: Parameters<typeof scopeForecast_>) => checked(scopeForecast_(...a))) as typeof scopeForecast_;
-
+const runForecast = ((...a: Parameters<typeof runForecast_>) =>
+  checked(runForecast_(...a))) as typeof runForecast_;
+const scopeForecast = ((...a: Parameters<typeof scopeForecast_>) =>
+  checked(scopeForecast_(...a))) as typeof scopeForecast_;
 
 const NOW = new Date('2026-10-07T12:00:00Z');
 const MINUTE = 60_000;

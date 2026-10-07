@@ -143,7 +143,10 @@ function blocksBlocker(refs: readonly IssueEdgeRef[]): IssueBlocker {
     return blocker(
       {
         tone: 'info',
-        reason: say(one ? 'issues.blocker.designOne' : 'issues.blocker.designMany', { keys, holds }),
+        reason: say(one ? 'issues.blocker.designOne' : 'issues.blocker.designMany', {
+          keys,
+          holds,
+        }),
         whoMustAct: say(one ? 'issues.blocker.whoDesignOne' : 'issues.blocker.whoDesignMany', {
           keys,
         }),

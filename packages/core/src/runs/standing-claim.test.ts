@@ -8,8 +8,8 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const runStandingOf = ((...a: Parameters<typeof runStandingOf_>) => checked(runStandingOf_(...a))) as typeof runStandingOf_;
-
+const runStandingOf = ((...a: Parameters<typeof runStandingOf_>) =>
+  checked(runStandingOf_(...a))) as typeof runStandingOf_;
 
 // epod 2026-10-06: the master claimed ISS-1 from its own checkout, a builder run declared over ISS-1
 // in .claude/worktrees/ISS-1 and committed there, and runs/standing served the run stuck because the

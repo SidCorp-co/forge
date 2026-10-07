@@ -1,7 +1,6 @@
-import { saidDisagreements } from '@forge/contracts/said';
-import { rewriteThresholdOf } from '@forge/contracts/workflow-health';
-import { say, verbatim } from '@forge/contracts/said';
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
 import { waitingOn as waitOn } from '@forge/contracts/standing';
+import { rewriteThresholdOf } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designDiff } from './design-diff.js';
 import { deriveHealth as deriveHealth_, type HealthFacts } from './health-rules.js';
@@ -13,8 +12,8 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const deriveHealth = ((...a: Parameters<typeof deriveHealth_>) => checked(deriveHealth_(...a))) as typeof deriveHealth_;
-
+const deriveHealth = ((...a: Parameters<typeof deriveHealth_>) =>
+  checked(deriveHealth_(...a))) as typeof deriveHealth_;
 
 const T0 = new Date('2026-10-01T00:00:00Z');
 const T1 = new Date('2026-10-02T00:00:00Z');

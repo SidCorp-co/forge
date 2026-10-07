@@ -11,7 +11,6 @@
  * artifacts existed reads unclassified with why: docs/modules/issues/merge-mark.md.
  */
 
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import { posix } from 'node:path';
 import {
   designArtifact,
@@ -28,6 +27,7 @@ import type {
   ReleaseChanges,
   ReleaseSurfaceChanges,
 } from '@forge/contracts/releases';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import {
   type HostFileChange,
   resolveSourceHost,

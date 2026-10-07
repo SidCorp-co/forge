@@ -1,4 +1,3 @@
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import { resolveFailureCause } from '@forge/contracts/failure-causes';
 import type {
   RunActor,
@@ -6,6 +5,7 @@ import type {
   RunNone,
   RunReturned,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import {
   type AgentSessionStatus,
   CANCELLED_AGENT_SESSION_STATUSES,

@@ -32,7 +32,12 @@ const NO_ACT = say('standing.act.none');
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
   const act = say('designs.act.approveOrReturn', { r: revision });
   if (input.canDecide) {
-    return wait('you', say('standing.who.you'), act, say('designs.rule.youDecide', { r: revision }));
+    return wait(
+      'you',
+      say('standing.who.you'),
+      act,
+      say('designs.rule.youDecide', { r: revision }),
+    );
   }
   return wait(
     'person',
@@ -102,7 +107,11 @@ export function designListReadingOf(
 // The gate is `build-gate.ts:designUnapprovedSql` read for one design: an issue that builds it
 // is dispatched only while its status is approved, so a newer proposal holds builds again
 export function buildGateOf(head: DesignHeadFacts): DesignBuildGate {
-  const gate = (open: boolean, rule: Said): DesignBuildGate => ({ open, rule: sayEn(rule), says: { rule } });
+  const gate = (open: boolean, rule: Said): DesignBuildGate => ({
+    open,
+    rule: sayEn(rule),
+    says: { rule },
+  });
   if (head.status === 'approved') {
     return gate(true, say('designs.gate.open', { r: String(head.approvedRevision ?? '?') }));
   }

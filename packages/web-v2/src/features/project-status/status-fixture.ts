@@ -1,6 +1,11 @@
+import { RULE, say, sentence, waitingOn } from "@/test/said";
+import type { Said } from "@forge/contracts/said";
 import type { ProjectStatus } from "@forge/contracts/project-status";
 
 // A project status as core answers it, at a fixed moment, for the report and dashboard tests.
+
+/** A next release's turn as core sends it: who and the act in English beside what it said. */
+export const turn = (who: Said, act: Said) => ({ who: sentence(who), act: sentence(act), says: { who, act } });
 
 export const AT = "2026-10-07T10:00:00.000Z";
 const RELEASED = "2026-10-06T09:30:00.000Z";
@@ -51,7 +56,7 @@ export const STATUS: ProjectStatus = {
         key: "ISS-20",
         title: "Referral screens",
         status: "in_progress",
-        waitingOn: { kind: "agent", who: "Master", act: "build", rule: "a run is on it", ref: null, dueAt: null },
+        waitingOn: waitingOn("agent", { who: say("standing.who.master"), act: say("issues.standing.act.working"), rule: RULE }),
       },
     ],
     runningCount: 1,
@@ -65,7 +70,7 @@ export const STATUS: ProjectStatus = {
         entity: "release",
         key: "0.3.0",
         title: "Release 0.3.0",
-        waitingOn: { kind: "you", who: "You", act: "approve the release", rule: "an approval is asked", ref: null, dueAt: null },
+        waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.3.0" }), rule: RULE }),
         touchedAt: AT,
       },
     ],
@@ -84,12 +89,12 @@ export const STATUS: ProjectStatus = {
         state: "in_delivery",
         criteria: { proven: 3, total: 8 },
         progress: { total: 4, shipped: 1, awaitingRelease: 1, toDo: 2 },
-        waitingOn: { kind: "issue", who: "Issues", act: "Running 1 of 4", rule: "agreed and its issues are being worked", ref: null, dueAt: null },
+        waitingOn: waitingOn("issue", { who: say("standing.who.issues"), act: say("standing.act.running", { a: 1, b: 4 }), rule: say("requirements.rule.moving") }),
         delivery: null,
       },
     ],
   },
-  nextRelease: { asOf: AT, version: "0.3.0", state: "draft", progress: { total: 3, shipped: 0, awaitingRelease: 3, toDo: 0 }, requirements: ["REQ-4"], forecast: null, turn: { who: "Minh", act: "cut 0.3.0" }, behind: null },
+  nextRelease: { asOf: AT, version: "0.3.0", state: "draft", progress: { total: 3, shipped: 0, awaitingRelease: 3, toDo: 0 }, requirements: ["REQ-4"], forecast: null, turn: turn(say("standing.who.named", { name: "Minh" }), say("standing.act.cut", { v: "0.3.0", more: null })), behind: null },
   late: {
     asOf: AT,
     items: [{ kind: "requirement", key: "REQ-4", title: "Referrals", late: { reason: "p85_passed", since: "2026-10-07T08:00:00.000Z", byMinutes: 120 } }],

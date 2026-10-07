@@ -1,6 +1,6 @@
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
-import type { Said } from '@forge/contracts/said';
 import type { ProjectPermission } from '@forge/contracts/permissions';
+import type { Said } from '@forge/contracts/said';
 import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
 import type { BindingRole } from '../db/schema.js';

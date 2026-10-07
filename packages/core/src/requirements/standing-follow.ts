@@ -28,7 +28,9 @@ export function updateToApprovedEffect(
   return say('standing.effect.follow', {
     names: [
       ...designs.map((p) => say('standing.effect.designAt', { title: p.title, r: p.approved })),
-      ...contracts.map((p) => say('standing.effect.contractAt', { contract: p.contract, v: p.current })),
+      ...contracts.map((p) =>
+        say('standing.effect.contractAt', { contract: p.contract, v: p.current }),
+      ),
     ],
   });
 }

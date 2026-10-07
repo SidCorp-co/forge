@@ -251,7 +251,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
             {s.nextRelease.state && s.nextRelease.state !== "draft" ? <span className="text-muted">{label("releaseState", s.nextRelease.state)}</span> : null}
             <IssueProgressText progress={s.nextRelease.progress} className="text-muted" />
             {s.nextRelease.forecast?.delivery ? eta(s.nextRelease.forecast.delivery, clock) : null}
-            {s.nextRelease.turn ? <WaitingOn w={{ kind: "person", who: s.nextRelease.turn.who, act: s.nextRelease.turn.act }} /> : null}
+            {s.nextRelease.turn ? <WaitingOn w={{ kind: "person", who: s.nextRelease.turn.who, act: s.nextRelease.turn.act, says: s.nextRelease.turn.says }} /> : null}
             {s.nextRelease.behind ? (
               <span className="text-muted" data-testid="status-next-behind">
                 {t("status.behind", { version: s.nextRelease.behind.version, n: s.nextRelease.behind.issueCount })}

@@ -5,12 +5,12 @@
  * own stored vector with its project's, so reading it sends nothing to a provider.
  */
 
-import { say, sayEn } from '@forge/contracts/said';
 import {
   type FeedbackDedup,
   feedbackKey,
   type SimilarFeedbackResponse,
 } from '@forge/contracts/feedback';
+import { say, sayEn } from '@forge/contracts/said';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';

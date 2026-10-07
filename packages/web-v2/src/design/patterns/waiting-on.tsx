@@ -4,10 +4,10 @@
 // and what they owe; the rule that put it there rides the tooltip. The banner is the same fact as
 // one tinted line at the top of a detail page.
 
-import { WAITING_KIND_MARKS, type WaitingKind, type WaitingSays } from "@forge/contracts/standing";
+import { WAITING_KIND_MARKS, type WaitingKind } from "@forge/contracts/standing";
 import type { ReactNode } from "react";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { saidView } from "@/lib/i18n/said";
+import { type SaidWait, saidView } from "@/lib/i18n/said";
 import { cn } from "@/lib/utils/cn";
 import { AGENT_TINT } from "../status";
 import { LEGEND, type LegendTone } from "../vocabulary";
@@ -22,7 +22,7 @@ export interface WaitingOnView {
   /** What doing the act changes, in one sentence. */
   effect?: string;
   /** What core said (`@forge/contracts/said`): when present, the words are read from it in the reader's language. */
-  says?: WaitingSays;
+  says?: SaidWait;
 }
 
 export interface WaitingOnProps {

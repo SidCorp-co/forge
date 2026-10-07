@@ -114,7 +114,6 @@ const entry = ({ who, text, ...e }: EntryInput): RequirementHistoryEntry => ({
   says: { who, text },
 });
 
-
 function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
   const out = [
     entry({
@@ -227,7 +226,8 @@ function moveText(m: MoveRow): Said {
       ? say('requirements.history.text.deliveryAcceptedWhy', { rest: m.reason })
       : say('requirements.history.text.deliveryAccepted');
   }
-  if (m.toStatus === 'dropped') return say('requirements.history.text.dropped', { rest: m.reason ?? '' });
+  if (m.toStatus === 'dropped')
+    return say('requirements.history.text.dropped', { rest: m.reason ?? '' });
   throw new Error(
     `history-read: read a requirement move to ${m.toStatus}; only ${MOVES_READ.join(' and ')} are read`,
   );

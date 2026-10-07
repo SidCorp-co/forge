@@ -1,5 +1,5 @@
-import { saidDisagreements } from '@forge/contracts/said';
 import type { AgentReportView } from '@forge/contracts/agent-reports';
+import { saidDisagreements } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { type ReportFacts, reportStandingOf as reportStandingOf_ } from './standing.js';
@@ -9,8 +9,8 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const reportStandingOf = ((...a: Parameters<typeof reportStandingOf_>) => checked(reportStandingOf_(...a))) as typeof reportStandingOf_;
-
+const reportStandingOf = ((...a: Parameters<typeof reportStandingOf_>) =>
+  checked(reportStandingOf_(...a))) as typeof reportStandingOf_;
 
 const view = (over: Partial<AgentReportView> = {}): AgentReportView => ({
   id: 'r1',

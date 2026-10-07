@@ -1,3 +1,4 @@
+import { say, sayEn } from '@forge/contracts/said';
 import {
   type DesignDiffView,
   emptyHealthCounts,
@@ -12,7 +13,6 @@ import {
   type WorkflowHealth,
   type WorkflowReconciliation,
 } from '@forge/contracts/workflow-health';
-import { say, sayEn } from '@forge/contracts/said';
 import { type DesignDiff, designDiff, edgeKey } from './design-diff.js';
 import {
   approvedDocumentOf,
@@ -340,10 +340,7 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
             : say('workflows.rule.rewriteDue', { rule: String(rule) }),
         );
       } else if (m.kind === 'upcoming') {
-        m.waitingOn = masterOwes(
-          say('workflows.act.buildToPlan'),
-          say('workflows.rule.upcoming'),
-        );
+        m.waitingOn = masterOwes(say('workflows.act.buildToPlan'), say('workflows.rule.upcoming'));
       } else {
         m.waitingOn = masterOwes(
           say('workflows.act.decideInRound'),

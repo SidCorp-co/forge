@@ -204,12 +204,7 @@ function waitingOf(
     case 'triaged':
       if (route === null) {
         return {
-          wait: wait(
-            'person',
-            TRIAGER,
-            say('feedback.act.route'),
-            say('feedback.rule.noRoute'),
-          ),
+          wait: wait('person', TRIAGER, say('feedback.act.route'), say('feedback.rule.noRoute')),
           yours: viewer.canTriage,
         };
       }
@@ -348,7 +343,9 @@ function plannedWait(
     case 'duplicate':
       return wait(
         'issue',
-        carrier ? say('standing.who.itsRoot', { root: carrier }) : say('standing.who.itsRootUnnamed'),
+        carrier
+          ? say('standing.who.itsRoot', { root: carrier })
+          : say('standing.who.itsRootUnnamed'),
         say('standing.act.beResolved'),
         say('feedback.rule.duplicate'),
         { ref: carrier },

@@ -6,7 +6,6 @@
  * (VISION: state-never-lies). Every rule here is a unit test in `delivery.test.ts`.
  */
 
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import {
   type DeliveryForecast,
   FORECAST_HISTORY_FLOOR,
@@ -20,6 +19,7 @@ import {
   type ReleaseLeg,
   type ReleaseMode,
 } from '@forge/contracts/forecast';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { percentile, seeded } from './model.js';
 

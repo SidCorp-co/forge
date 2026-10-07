@@ -11,10 +11,7 @@ import type {
 } from './pipeline-health-types.js';
 import type { RunnerAvailability } from './ports.js';
 
-type GateKey =
-  | Exclude<PipelineWaitingReason, 'job_held'>
-  | 'job_held_clears'
-  | 'job_held_stays';
+type GateKey = Exclude<PipelineWaitingReason, 'job_held'> | 'job_held_clears' | 'job_held_stays';
 
 const SHORT: Record<GateKey, string> = {
   issue_busy: 'Another job active',

@@ -10,6 +10,7 @@ import {
   type PulseActionRecord,
   type PulseActionRow,
 } from '@forge/contracts/needs-you';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import type {
   PulseIssueIdentity,
   PulseLiveness,
@@ -17,7 +18,6 @@ import type {
   PulseProjectIdentity,
   PulseWork,
 } from './pulse-types.js';
-import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 
 /** A record's detail: its English beside what it said. */
 const detailOf = (detail: Said) => ({ detail: sayEn(detail), says: { detail } });

@@ -4,12 +4,12 @@ import { holdReleasesItself } from '../jobs/index.js';
 import { describePause } from '../pipeline/index.js';
 import {
   type Derived,
+  gateWait,
   iso,
   isReleaseRun,
   NO_WAIT,
   RUN_NEED_PERMISSION,
   type RunFacts,
-  gateWait,
   type RunPersonNeed,
   runWait,
   type StandingContext,
@@ -19,13 +19,7 @@ import {
 type Need = RunPersonNeed;
 
 /** Whose a person's act on a run is: the viewer where they hold it, else its holders by name, else nobody and where it is granted. */
-function personWait(
-  ctx: StandingContext,
-  need: Need,
-  act: Said,
-  rule: Said,
-  ref: string | null,
-) {
+function personWait(ctx: StandingContext, need: Need, act: Said, rule: Said, ref: string | null) {
   const v = ctx.viewer;
   const isViewer = !!(need === 'approve'
     ? v?.mayApprove
@@ -74,7 +68,12 @@ function person(
   };
 }
 
-function gate(w: { gate: string; resumesAt: Date | null; since: Date | null; rule: Said }): Derived {
+function gate(w: {
+  gate: string;
+  resumesAt: Date | null;
+  since: Date | null;
+  rule: Said;
+}): Derived {
   return {
     state: 'waiting_gate',
     since: w.since,
@@ -217,7 +216,9 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
     return person(ctx, {
       need: 'write',
       act: say(
-        f.issue.status === 'needs_info' ? 'issues.standing.act.answer' : 'issues.standing.act.resume',
+        f.issue.status === 'needs_info'
+          ? 'issues.standing.act.answer'
+          : 'issues.standing.act.resume',
       ),
       ref: say('runs.ref.issueAt', { key, status: f.issue.status }),
       issueKey: key,
@@ -345,8 +346,7 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
       job.sessionStartedAt ?? job.ackedAt ?? job.dispatchedAt,
       say('runs.live.dispatchedRunning'),
     );
-  if (job?.status === 'dispatched')
-    return claimed(job.dispatchedAt, say('runs.live.notAcked'));
+  if (job?.status === 'dispatched') return claimed(job.dispatchedAt, say('runs.live.notAcked'));
   if (job?.status === 'queued' && job.heldBy) {
     return claimed(job.heldAt, say('runs.live.heldByMaster'));
   }
@@ -376,10 +376,7 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
   }
   if (s && !TERMINAL_SESSION.includes(s.status)) {
     if (s.runtimeState === 'starting' || f.ledger?.incarnation === 'starting') {
-      return claimed(
-        s.startedAt ?? s.createdAt,
-        say('runs.live.starting'),
-      );
+      return claimed(s.startedAt ?? s.createdAt, say('runs.live.starting'));
     }
     return running(s.startedAt ?? s.createdAt, say('runs.live.sessionIs', { status: s.status }));
   }

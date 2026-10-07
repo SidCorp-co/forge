@@ -1,5 +1,4 @@
 import type { IssueLeaseVerdict } from '@forge/contracts/issue-standing';
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import type {
   RunDevice,
   RunDispatchedBy,
@@ -7,6 +6,7 @@ import type {
   RunHolder,
   RunState,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { isPipelineSessionKind } from '../agent-sessions/index.js';
 import { classifyLease } from '../issues/index.js';
 import {
@@ -163,8 +163,7 @@ function queueClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cl
     );
   }
   const since = job.sessionDispatchedAt ?? job.sessionCreatedAt;
-  if (!since)
-    return { expiry: null, detail: say('runs.holder.noQueueTime') };
+  if (!since) return { expiry: null, detail: say('runs.holder.noQueueTime') };
   return clock(
     after(since, ctx.jobQueueMs),
     ctx.now,

@@ -1,8 +1,9 @@
 // The words a BA reads on Dashboard, Requirements, Releases and Feedback: every act a waiting-on
 // cell can show says what the person does in their own terms, never a kernel term (a design slug
 // with a revision number, a re-pin, a roster).
-import { say } from '@forge/contracts/said';
+
 import { RELEASE_BLOCKER_CODES } from '@forge/contracts/releases';
+import { say } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf, type StandingViewer } from '../feedback/standing.js';
 import { gateViews } from '../release-batch/release-gates.js';
@@ -182,7 +183,8 @@ describe('the release gate speaks in plain words', () => {
             kind: 'person',
             who: 'A project admin',
             act: 'split this release into smaller releases',
-            effect: 'Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.',
+            effect:
+              'Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.',
             says: {
               who: say('standing.who.named', { name: 'A project admin' }),
               act: say('standing.act.splitRelease'),

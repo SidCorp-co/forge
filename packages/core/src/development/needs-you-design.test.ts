@@ -1,7 +1,6 @@
-import { saidDisagreements } from '@forge/contracts/said';
-import type { WorkflowHealth } from '@forge/contracts/workflow-health';
-import { say, verbatim } from '@forge/contracts/said';
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
+import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designRowOf as designRowOf_ } from './needs-you-design.js';
 
@@ -10,8 +9,8 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const designRowOf = ((...a: Parameters<typeof designRowOf_>) => checked(designRowOf_(...a))) as typeof designRowOf_;
-
+const designRowOf = ((...a: Parameters<typeof designRowOf_>) =>
+  checked(designRowOf_(...a))) as typeof designRowOf_;
 
 const wait = (kind: 'you' | 'person') =>
   waitingOn(kind, {

@@ -3,7 +3,6 @@
 // reversible signal at `RUN_STUCK_AFTER_MS`; failing a silent run stays the reapers' at their own clocks
 // each rule names the one row it stands on; a rule that cannot name its row does not fire
 
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import type {
   RunDisagreement,
   RunHolder,
@@ -11,6 +10,7 @@ import type {
   RunStuckEvidence,
   RunStuckRule,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { classifyLease } from '../issues/index.js';
 import { lockAheadOf } from './standing-live.js';
 import {

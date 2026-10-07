@@ -7,8 +7,8 @@ const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const feedbackStandingOf = ((...a: Parameters<typeof feedbackStandingOf_>) => checked(feedbackStandingOf_(...a))) as typeof feedbackStandingOf_;
-
+const feedbackStandingOf = ((...a: Parameters<typeof feedbackStandingOf_>) =>
+  checked(feedbackStandingOf_(...a))) as typeof feedbackStandingOf_;
 
 const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
   isReporter: false,

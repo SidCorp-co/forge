@@ -1,7 +1,7 @@
 import type { OnboardingView } from '@forge/contracts/onboarding';
+import { QUESTIONNAIRE_DUE_DAYS } from '@forge/contracts/onboarding';
 import { say, verbatim } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
-import { QUESTIONNAIRE_DUE_DAYS } from '@forge/contracts/onboarding';
 import { describe, expect, it } from 'vitest';
 import { liveOf } from '../runs/standing-live.js';
 import type { RunFacts, StandingContext } from '../runs/standing-types.js';

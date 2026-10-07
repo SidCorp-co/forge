@@ -243,7 +243,7 @@ function nextReleaseOf(
       progress: progressOfRelease(cut),
       requirements: cut.requirements,
       forecast: null,
-      turn: w.act ? { who: w.who, act: w.act } : null,
+      turn: w.act ? { who: w.who, act: w.act, says: { who: w.says.who, act: w.says.act } } : null,
       behind:
         summary && summary.issueCount > 0
           ? { version: summary.version, issueCount: summary.issueCount }
@@ -252,9 +252,13 @@ function nextReleaseOf(
   }
   const leg = draft.delivery?.release;
   const turn = draft.next
-    ? { who: draft.next.who, act: draft.next.act }
+    ? {
+        who: draft.next.who,
+        act: draft.next.act,
+        says: { who: draft.next.says.who, act: draft.next.says.act },
+      }
     : leg?.kind === 'person'
-      ? { who: leg.who, act: leg.act }
+      ? { who: leg.who, act: leg.act, says: { who: leg.says.who, act: leg.says.act } }
       : null;
   return {
     asOf,

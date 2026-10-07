@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { sayEn } from '@forge/contracts/said';
+import { describe, expect, it } from 'vitest';
 import { carriersPhrase, feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
 
 const routedTo = (...statuses: string[]): PhaseFacts => ({
