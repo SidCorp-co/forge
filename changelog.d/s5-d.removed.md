@@ -1,1 +1,0 @@
-**A runner older than 0.13.0 is now refused a claim by name, and core's second residency clock for job-linked parks is gone.** Dev's fleet reads no device below 0.13.0, so the claim floor rises from 0.11.0.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.101] - 2026-10-07
+
+Runner claim floor rises to 0.13.0 and the job-linked park clock is removed
+
+### Removed
+
+- **A runner older than 0.13.0 is now refused a claim by name, and core's second residency clock for job-linked parks is gone.** Dev's fleet reads no device below 0.13.0, so the claim floor rises from 0.11.0.
+
 ## [0.4.0-dev.100] - 2026-10-07
 
 Feedback reporters are told when their fix ships, and releases list answered feedback
