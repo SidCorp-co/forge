@@ -513,16 +513,15 @@ describe('the core logger, given a value whose text only a serializer renders', 
     rebound.warn('rebound');
     log.warn(
       {
-        nested: {
-          deeper: {
-            token: 'ordinary-token',
-            toJSON() {
-              return this.token;
-            },
+        dated: {
+          password: 'ordinary-password',
+          when: new Date(0),
+          toJSON() {
+            return { said: this.password, when: this.when.toISOString() };
           },
         },
       },
-      'deep',
+      'dated',
     );
     const request = () => ({
       headers: { authorization: 'ordinary-secret' },
@@ -561,11 +560,44 @@ describe('the core logger, given a value whose text only a serializer renders', 
     rebound.warn('rebound request');
     expect(lines).toHaveLength(11);
     expect(got).toBe(2);
+    expect(JSON.parse(lines[3] ?? '').dated).toEqual({
+      said: '[Redacted]',
+      when: '1970-01-01T00:00:00.000Z',
+    });
     for (const line of lines) {
       expect(line).not.toContain('ordinary-secret');
       expect(line).not.toContain('ordinary-password');
       expect(line).not.toContain('ordinary-token');
     }
+  });
+
+  it('censors a redact path reached through a getter before a toJSON reads it, and puts it back', () => {
+    const { lines, log } = capture();
+    const headers = { authorization: 'ordinary-secret' };
+    const req = () => ({
+      get headers() {
+        return headers;
+      },
+      toJSON() {
+        return this.headers.authorization;
+      },
+    });
+    log.warn({ req: req() }, 'read');
+    log.child({ req: req() }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ req: req() });
+    rebound.warn('rebound');
+    expect(lines).toHaveLength(3);
+    for (const line of lines) expect(line).not.toContain('ordinary-secret');
+    expect(headers.authorization).toBe('ordinary-secret');
+  });
+
+  it('asks a field toJSON with the empty key, as pino stringifies each field alone', () => {
+    const { lines, log } = capture();
+    const reading = () => ({ toJSON: (key: string) => (key === '' ? 'kept' : undefined) });
+    log.warn({ reading: reading() }, 'read');
+    log.child({ reading: reading() }).warn('bound');
+    expect(lines.map((line) => JSON.parse(line).reading)).toEqual(['kept', 'kept']);
   });
 
   it('never asks the merging object or bindings for a toJSON, which pino does not', () => {

@@ -286,11 +286,6 @@ export interface Rendering {
   fields?: boolean;
   /** An `Error` is handed back as it is, for a serializer of errors to read. */
   errorsAsThemselves?: boolean;
-  /**
-   * Field names the sink censors by path, as pino's `redact` does: a `toJSON` is asked with them
-   * already censored, since the text it renders carries no name for the sink to censor it by.
-   */
-  censor?: ReadonlySet<string>;
 }
 
 interface Walk extends Rendering {
@@ -315,16 +310,11 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   let copy = false;
   if (!(top && walk.fields) && !asError) {
     copy = toJSONByGetter(value);
-    // Its toJSON, and a getter yielding it, run on a receiver the sink's censored names are out of.
-    const names = walk.censor;
-    const asked = names !== undefined && attempt(() => 'toJSON' in value) === true;
-    const self = asked ? attempt(() => censored(value, names as ReadonlySet<string>)) : value;
-    if (self === UNREADABLE) return REDACTED;
-    const toJSON = attempt(() => (self as { toJSON?: unknown }).toJSON);
+    const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
       collectHeld(value, walk, depth);
-      const out = attempt(() => toJSON.call(self, key) as unknown);
+      const out = attempt(() => toJSON.call(value, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
@@ -336,68 +326,10 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (asError) return value;
   walk.open.add(value);
   // A set of fields is read as pino reads it: none of its functions, toJSON among them, is written.
-  const out = renderFields(value, depth, walk, copy || (top && walk.fields === true));
+  const fields = top && walk.fields === true;
+  const out = renderFields(value, depth, walk, copy || fields, fields);
   walk.open.delete(value);
   return out;
-}
-
-/** Whether a field named in `names` stands anywhere in `value`'s own fields, at any depth. */
-function holdsName(
-  value: object,
-  names: ReadonlySet<string>,
-  seen: Set<object>,
-  depth = 0,
-): boolean {
-  // Past the bound nothing was read, so nothing is vouched for: the copy cuts it there.
-  if (depth > MAX_DEPTH) return true;
-  if (seen.has(value)) return false;
-  seen.add(value);
-  const fields = attempt(() => Object.getOwnPropertyDescriptors(value));
-  if (fields === UNREADABLE) return true;
-  return Object.entries(fields).some(
-    ([key, own]) =>
-      names.has(key) ||
-      ('value' in own &&
-        typeof own.value === 'object' &&
-        own.value !== null &&
-        holdsName(own.value, names, seen, depth + 1)),
-  );
-}
-
-/**
- * `value` for a `toJSON` to be asked with: where a field named in `names` stands anywhere in its
- * own fields, a copy of it and of every part on the way to such a field (each once, so a part it
- * holds twice or that holds itself is the same copy) with each such field censored; otherwise
- * `value` itself. An object that cannot be copied stands as an empty one, so the caller's code
- * finds no field to read there.
- */
-function censored(value: object, names: ReadonlySet<string>): object {
-  if (!holdsName(value, names, new Set())) return value;
-  const copies = new Map<object, object>();
-  const copyOf = (from: object, depth: number): object => {
-    const known = copies.get(from);
-    if (known) return known;
-    if (depth > MAX_DEPTH) return {};
-    // A part holding no such field stays itself, a Date or a Map with the slots a copy would lose.
-    if (depth > 0 && !holdsName(from, names, new Set())) return from;
-    const fields = attempt(() => Object.getOwnPropertyDescriptors(from));
-    const out = attempt(
-      (): object => (Array.isArray(from) ? [] : Object.create(Object.getPrototypeOf(from))),
-    );
-    if (fields === UNREADABLE || out === UNREADABLE) return {};
-    copies.set(from, out);
-    for (const [key, own] of Object.entries(fields)) {
-      let field: PropertyDescriptor = own;
-      if (names.has(key)) {
-        field = { value: REDACTED, enumerable: own.enumerable, writable: true, configurable: true };
-      } else if ('value' in own && typeof own.value === 'object' && own.value !== null) {
-        field = { ...own, value: copyOf(own.value, depth + 1), writable: true, configurable: true };
-      }
-      attempt(() => Object.defineProperty(out, key, field));
-    }
-    return out;
-  };
-  return copyOf(value, 0);
 }
 
 /** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */
@@ -455,8 +387,18 @@ function readField(value: object, key: string): { value: unknown; called: boolea
   return { value: read === UNREADABLE ? REDACTED : read, called: true };
 }
 
-/** `value`'s own enumerable fields rendered, as JSON reads them: a copy where any changed. */
-function renderFields(value: object, depth: number, walk: Walk, copy: boolean): unknown {
+/**
+ * `value`'s own enumerable fields rendered, as JSON reads them: a copy where any changed. Where
+ * `value` is a set of fields its owner serializes one by one (pino's merging object), each is
+ * rendered as a value of its own, its toJSON asked with the empty key.
+ */
+function renderFields(
+  value: object,
+  depth: number,
+  walk: Walk,
+  copy: boolean,
+  separately = false,
+): unknown {
   const array = Array.isArray(value);
   const length = array ? attempt(() => value.length) : 0;
   const keys = array
@@ -469,7 +411,7 @@ function renderFields(value: object, depth: number, walk: Walk, copy: boolean): 
   for (const key of keys) {
     const field = readField(value, key);
     if (field.called) changed = true;
-    const out = render(field.value, key, depth + 1, walk);
+    const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;
     if (array) items.push(out);
     else if (typeof out !== 'function') next[key] = out;

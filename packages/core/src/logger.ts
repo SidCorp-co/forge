@@ -39,10 +39,46 @@ const redactPaths = [
   'headers.cookie',
 ];
 
-/** The names those paths end in: a value's own toJSON is asked with them censored, as pino would. */
-const censor: ReadonlySet<string> = new Set(
-  redactPaths.map((path) => path.split('.').at(-1) ?? path),
-);
+const censoredPaths = redactPaths.map((path) => path.split('.'));
+
+/**
+ * `render` run with every redact path in `root` censored in place, and each put back after, as
+ * pino censors them while it writes a line: a value's own `toJSON` rendered here, before pino
+ * runs, reads them censored as it would under pino.
+ */
+function withPathsCensored<T>(root: unknown, render: () => T): T {
+  const undo: (() => void)[] = [];
+  const visit = (at: unknown, path: string[]): void => {
+    const [head, ...tail] = path;
+    if (typeof at !== 'object' || at === null || head === undefined) return;
+    const record = at as Record<string, unknown>;
+    for (const key of head === '*' ? Object.keys(record) : [head]) {
+      try {
+        if (!(key in record)) continue;
+        if (tail.length > 0) {
+          visit(record[key], tail);
+          continue;
+        }
+        const own = Object.getOwnPropertyDescriptor(record, key);
+        record[key] = '[Redacted]';
+        undo.push(() => {
+          if (own) Object.defineProperty(record, key, own);
+          else delete record[key];
+        });
+      } catch {}
+    }
+  };
+  try {
+    for (const path of censoredPaths) visit(root, path);
+    return render();
+  } finally {
+    for (const put of undo.reverse()) {
+      try {
+        put();
+      } catch {}
+    }
+  }
+}
 
 /**
  * A finished line with a failed query's params, and any value the database's own text quotes,
@@ -150,7 +186,11 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
         );
       return String(v);
     }
-    const written = asSerialized(v, { fields: i === 0, errorsAsThemselves: true, censor });
+    const how = { fields: i === 0, errorsAsThemselves: true };
+    const written =
+      i === 0 && !(v instanceof Error)
+        ? withPathsCensored(v, () => asSerialized(v, how))
+        : asSerialized(v, how);
     found.push(...written.errors);
     return written.value;
   });
@@ -196,7 +236,8 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
 
 /** A child's bindings, or `setBindings`', rendered once, with every error met on the way. */
 function writtenBindings(given: Bindings): { bindings: Bindings; errors: Error[] } {
-  const written = asSerialized(given, { fields: true, errorsAsThemselves: true, censor });
+  const how = { fields: true, errorsAsThemselves: true };
+  const written = withPathsCensored(given, () => asSerialized(given, how));
   const bindings = written.value as Bindings;
   return {
     bindings,
