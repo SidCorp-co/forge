@@ -299,7 +299,7 @@ export async function writeMePreferences(userId: string, patch: MePreferencePatc
   });
 }
 
-export type ProductStateOutcome =
+type ProductStateOutcome =
   | { ok: true; state: ProductStateView }
   | { ok: false; refusals: Refusal[] };
 

@@ -59,12 +59,12 @@ export interface WorkItem {
   wait: Wait | null;
 }
 
-export interface Concurrency {
+interface Concurrency {
   value: number;
   basis: string;
 }
 
-export interface ForecastInput {
+interface ForecastInput {
   now: Date;
   items: readonly WorkItem[];
   history: History;

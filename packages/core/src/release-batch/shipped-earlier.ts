@@ -76,7 +76,7 @@ interface Unresolved extends ShippedEarlierUnsettled {
   issueId: string;
 }
 
-export interface ShippedEarlierResult {
+interface ShippedEarlierResult {
   closed: ClosedEarlier[];
   unresolved: Unresolved[];
 }

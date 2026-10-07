@@ -12,7 +12,7 @@ export const LANDING_SURFACES = [
 ] as const;
 export type LandingSurface = (typeof LANDING_SURFACES)[number];
 
-export const ARTIFACT_CHANGES = ["added", "changed", "removed"] as const;
+const ARTIFACT_CHANGES = ["added", "changed", "removed"] as const;
 export type ArtifactChange = (typeof ARTIFACT_CHANGES)[number];
 
 export const LANDING_SURFACE_LABELS: Readonly<Record<LandingSurface, string>> =
@@ -46,9 +46,9 @@ export interface LandingArtifact {
 const oneOf = (values: readonly string[]) =>
 	values.map((v) => `\`${v}\``).join(", ");
 
-export const LANDING_ARTIFACTS_MAX = 200;
+const LANDING_ARTIFACTS_MAX = 200;
 
-export const landingArtifactSchema = z.strictObject({
+const landingArtifactSchema = z.strictObject({
 	surface: z.enum(LANDING_SURFACES, {
 		error: (issue) =>
 			`surface ${JSON.stringify(issue.input)} is not a landing surface: it is one of ${oneOf(LANDING_SURFACES)}`,
@@ -78,7 +78,7 @@ export const landingArtifactsSchema = z
 		`artifacts names at most ${LANDING_ARTIFACTS_MAX}`,
 	);
 
-export const CHANGED_PATHS_MAX = 2000;
+const CHANGED_PATHS_MAX = 2000;
 
 /** One file a commit changed and what became of it; a rename is its old path removed and new added. */
 export interface FileChange {

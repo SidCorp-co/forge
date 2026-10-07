@@ -48,7 +48,7 @@ const DAY_MS = 86_400_000;
 const BLANK_NOTE = /^[\s\-–—.]*$/u;
 
 /** Whether a landing deploys nothing: every artifact it names ships nothing, or it is a design approval. */
-export function designOnly(artifacts: LandingArtifact[] | null, landing: string | null): boolean {
+function designOnly(artifacts: LandingArtifact[] | null, landing: string | null): boolean {
   if (artifacts && artifacts.length > 0) {
     return artifacts.every((a) => SHIPS_NOTHING.includes(a.surface));
   }
@@ -212,7 +212,7 @@ async function seenAtOf(userId: string): Promise<Date | null> {
 }
 
 /** Where the feed starts: `since` when asked, else the window, reaching back to the mark when it is older; never before the bound. */
-export function feedStart(since: Date | undefined, seenAt: Date | null, now: Date): Date {
+function feedStart(since: Date | undefined, seenAt: Date | null, now: Date): Date {
   const bound = new Date(now.getTime() - WHATS_NEW_MAX_WINDOW_DAYS * DAY_MS);
   const window = new Date(now.getTime() - WHATS_NEW_WINDOW_DAYS * DAY_MS);
   const start = since ?? (seenAt && seenAt < window ? seenAt : window);

@@ -12,7 +12,7 @@ export const PRODUCT_TOURS = [
 ] as const satisfies ReadonlyArray<{ id: string; revision: number; issues: readonly string[] }>;
 
 export type TourId = (typeof PRODUCT_TOURS)[number]["id"];
-export const TOUR_IDS = PRODUCT_TOURS.map((t) => t.id) as [TourId, ...TourId[]];
+const TOUR_IDS = PRODUCT_TOURS.map((t) => t.id) as [TourId, ...TourId[]];
 
 export const TOUR_STEPS_MAX = 4;
 

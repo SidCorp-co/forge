@@ -152,7 +152,7 @@ export function resolveWeek(text: string, now: Date): string | null {
 }
 
 export const WHATS_NEW_DIGEST_WORDS_MAX = 120;
-export const WHATS_NEW_DIGEST_TITLE_MAX = 120;
+const WHATS_NEW_DIGEST_TITLE_MAX = 120;
 
 export const putWhatsNewDigestRequestSchema = z.strictObject({
 	title: z.string().trim().min(1).max(WHATS_NEW_DIGEST_TITLE_MAX),

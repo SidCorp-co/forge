@@ -4,7 +4,7 @@ export function byCodeUnits(a: string, b: string): number {
 }
 
 /** The value with every object's keys sorted and `undefined` fields dropped, the way `jsonb` would hold it. */
-export function stableValue(value: unknown): unknown {
+function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
   if (value === null || typeof value !== 'object') return value;
   const entries = Object.entries(value as Record<string, unknown>)

@@ -64,20 +64,20 @@ export interface ForecastPaused extends ForecastStamp {
 	ref: string | null;
 }
 
-export interface ForecastNoHistory extends ForecastStamp {
+interface ForecastNoHistory extends ForecastStamp {
 	kind: "not_enough_history";
 	n: number;
 	floor: number;
 }
 
-export interface ForecastLanded extends ForecastStamp {
+interface ForecastLanded extends ForecastStamp {
 	kind: "landed";
 	/** Null where the issue sits past the landing with no merge time recorded. */
 	landedAt: string | null;
 }
 
 /** Dropped, or otherwise ended without landing: nothing is forecast. */
-export interface ForecastEnded extends ForecastStamp {
+interface ForecastEnded extends ForecastStamp {
 	kind: "ended";
 	status: string;
 }
@@ -88,7 +88,6 @@ export type Forecast =
 	| ForecastNoHistory
 	| ForecastLanded
 	| ForecastEnded;
-export type ForecastKind = Forecast["kind"];
 
 export interface IssueForecast {
 	issueId: string;
@@ -104,8 +103,8 @@ export interface ProjectForecast extends ForecastStamp {
 	issues: IssueForecast[];
 }
 
-export const FORECAST_SCOPES = ["requirement", "release"] as const;
-export type ForecastScope = (typeof FORECAST_SCOPES)[number];
+const FORECAST_SCOPES = ["requirement", "release"] as const;
+type ForecastScope = (typeof FORECAST_SCOPES)[number];
 
 /** A requirement's issues, or a draft release's: forecast when all of them have landed. */
 export interface ScopeForecast extends ForecastStamp {
@@ -129,7 +128,7 @@ export interface ScopeForecast extends ForecastStamp {
  * releases.approve approves (`approval`), one an admin cuts (`manual`), or none at all (`none`: no
  * production environment, so a person releases it by hand).
  */
-export const RELEASE_MODES = [
+const RELEASE_MODES = [
 	"automatic",
 	"approval",
 	"manual",
@@ -138,7 +137,7 @@ export const RELEASE_MODES = [
 export type ReleaseMode = (typeof RELEASE_MODES)[number];
 
 /** The project's own landed→released durations the release lag was sampled from. */
-export interface ReleaseLagBasis {
+interface ReleaseLagBasis {
 	n: number;
 	floor: number;
 	windowDays: number;

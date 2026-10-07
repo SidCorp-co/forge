@@ -2,11 +2,11 @@
 // access: the answer for a repository Forge holds no host binding for (ADR 0009: the box reads,
 // core decides). Asked over the box's socket and answered on the device route; never stored here.
 
-import { randomUUID } from 'node:crypto';
 import { parseRepository } from '@forge/contracts/git-repository';
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { boxAsks } from './box-ask.js';
 import { runnersPorts } from './ports.js';
 
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -82,10 +82,9 @@ interface Asked {
   repository: string;
   ref: string;
   settle(read: BoxRead): void;
-  timer: ReturnType<typeof setTimeout>;
 }
 
-const asked = new Map<string, Asked>();
+const asks = boxAsks<Asked>();
 
 const SCHEME = /^(?:[a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d*)?\/(.+)$/i;
 
@@ -212,37 +211,28 @@ function ask(
   deps: CheckoutHeadDeps,
   settle: (read: BoxRead) => void,
 ): void {
-  const requestId = randomUUID();
-  const timer = setTimeout(() => {
-    asked.delete(requestId);
-    settle({
-      ok: false,
-      reason: 'unanswered',
-      why: `the box holding ${box.repoPath} was asked for ${ref} and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read heads: \`forge-runner update\`)`,
-    });
-  }, deps.timeoutMs);
-  asked.set(requestId, {
-    deviceId: box.deviceId,
-    projectId,
-    repoPath: box.repoPath,
-    repository,
-    ref,
-    settle,
-    timer,
-  });
-  const took = deps.send(box.deviceId, {
-    event: 'checkout.head.read',
-    data: { requestId, projectId, branch, runnerId: box.runnerId, repoPath: box.repoPath },
-  });
-  if (took === 0) {
-    clearTimeout(timer);
-    asked.delete(requestId);
-    settle({
-      ok: false,
-      reason: 'no_runner_online',
-      why: `the box holding ${box.repoPath} disconnected before it could be asked for ${ref}`,
-    });
-  }
+  asks.ask(
+    { deviceId: box.deviceId, projectId, repoPath: box.repoPath, repository, ref, settle },
+    {
+      deviceId: box.deviceId,
+      projectId,
+      event: 'checkout.head.read',
+      data: { projectId, branch, runnerId: box.runnerId, repoPath: box.repoPath },
+      timeoutMs: deps.timeoutMs,
+      send: deps.send,
+      settle,
+      unanswered: (): BoxRead => ({
+        ok: false,
+        reason: 'unanswered',
+        why: `the box holding ${box.repoPath} was asked for ${ref} and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read heads: \`forge-runner update\`)`,
+      }),
+      disconnected: (): BoxRead => ({
+        ok: false,
+        reason: 'no_runner_online',
+        why: `the box holding ${box.repoPath} disconnected before it could be asked for ${ref}`,
+      }),
+    },
+  );
 }
 
 /** Settle the read `requestId` asked of `deviceId`. An answer nobody asked that box for is refused. */
@@ -251,12 +241,8 @@ export function answerCheckoutHead(
   requestId: string,
   answer: CheckoutHeadAnswer,
 ): AnswerOutcome {
-  const entry = asked.get(requestId);
-  if (!entry || entry.deviceId !== deviceId || entry.projectId !== answer.projectId) {
-    return { ok: false, code: 'CHECKOUT_HEAD_NOT_ASKED' };
-  }
-  asked.delete(requestId);
-  clearTimeout(entry.timer);
+  const entry = asks.take(requestId, deviceId, answer.projectId);
+  if (!entry) return { ok: false, code: 'CHECKOUT_HEAD_NOT_ASKED' };
   const refused = (why: string) =>
     entry.settle({
       ok: false,

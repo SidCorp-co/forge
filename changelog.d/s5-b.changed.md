@@ -1,0 +1,1 @@
+**Checkout reads share one ask-a-box exchange, and unused exports are gone.** The head and ancestry reads send their frame, wait and match the answer through one helper with behaviour unchanged; about fifty exports nothing outside their file referenced lose `export`, and the dead `ForecastKind` and `TourOutcome` types are deleted.

@@ -85,7 +85,7 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
   }
 }
 
-export function spanOf(now: Date, minutes: Float64Array): ForecastSpan {
+function spanOf(now: Date, minutes: Float64Array): ForecastSpan {
   const sorted = Float64Array.from(minutes).sort();
   const p50 = Math.round(percentile(sorted, 0.5));
   const p85 = Math.round(percentile(sorted, 0.85));
@@ -111,7 +111,7 @@ function lagDraw(lags: readonly number[], random: () => number) {
   };
 }
 
-export interface DeliveryInput {
+interface DeliveryInput {
   asOf: string;
   now: Date;
   landing: Forecast;

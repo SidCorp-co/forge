@@ -263,9 +263,9 @@ export type IssueLandingReading =
  * source host's record of the observed commit; `box` — a box read the commit's paths from its own
  * checkout and sent them with the mark, which is the box's reading, not a merge Forge observed.
  */
-export type LandingReadingSource = "mark" | "host" | "box";
+type LandingReadingSource = "mark" | "host" | "box";
 
-export interface ReleaseChangeArtifact {
+interface ReleaseChangeArtifact {
 	ref: string;
 	change: ArtifactChange;
 	/** The issue keys whose landings name it. */
@@ -282,12 +282,12 @@ export interface ReleaseSurfaceChanges {
 	artifacts: ReleaseChangeArtifact[];
 }
 
-export const RELEASE_CHANGE_RISKS = [
+const RELEASE_CHANGE_RISKS = [
 	"data_removed",
 	"data_changed",
 	"api_removed",
 ] as const;
-export type ReleaseChangeRisk = (typeof RELEASE_CHANGE_RISKS)[number];
+type ReleaseChangeRisk = (typeof RELEASE_CHANGE_RISKS)[number];
 
 export interface ReleaseChangeRiskView {
 	risk: ReleaseChangeRisk;
@@ -349,8 +349,8 @@ export interface ReleaseNoteSection {
 /** Who owes the act that clears a gate: the project's master where the remedy is an act on the
  *  issues it names, a project admin where it is the project's own configuration or boxes, and the
  *  release gate itself where nothing but time or a retry clears it. */
-export const RELEASE_GATE_OWNERS = ["agent", "person", "system"] as const;
-export type ReleaseGateOwnerKind = (typeof RELEASE_GATE_OWNERS)[number];
+const RELEASE_GATE_OWNERS = ["agent", "person", "system"] as const;
+type ReleaseGateOwnerKind = (typeof RELEASE_GATE_OWNERS)[number];
 
 export interface ReleaseGateOwner {
 	kind: ReleaseGateOwnerKind;

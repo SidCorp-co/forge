@@ -7,7 +7,7 @@ import { resolveWeek, WEEK_SHAPE, type WhatsNewRefusalCode } from '@forge/contra
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 
-export const refuseWhatsNew = refuser<WhatsNewRefusalCode>('WHATS_NEW_REFUSED');
+const refuseWhatsNew = refuser<WhatsNewRefusalCode>('WHATS_NEW_REFUSED');
 
 const UNSET =
   "no project is Forge's own on this instance: FORGE_PLATFORM_PROJECT_ID is unset, so What's new has no releases to read. An operator sets it to the uuid of the project Forge itself is built in.";

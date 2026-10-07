@@ -17,7 +17,7 @@ const surfaceGlobSchema = z
   );
 
 /** `design` is what a design revision lands as; no changed path is one. */
-export const MAPPED_SURFACES = LANDING_SURFACES.filter(
+const MAPPED_SURFACES = LANDING_SURFACES.filter(
   (s): s is Exclude<LandingSurface, 'design'> => s !== 'design',
 );
 

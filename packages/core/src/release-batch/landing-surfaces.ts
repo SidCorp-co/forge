@@ -36,7 +36,7 @@ import {
 import { type ProjectDocument, readProjectDocument } from '../project-config/index.js';
 import { changedFilesOf } from './carriage.js';
 
-export type SurfaceMap = NonNullable<ProjectDocument['surfaces']>;
+type SurfaceMap = NonNullable<ProjectDocument['surfaces']>;
 
 /** The map a project's git landings are classified by: its document's own, or none. */
 export function surfaceMapOf(document: ProjectDocument | null): SurfaceMap | null {
@@ -62,7 +62,7 @@ export function classifyChanges(
   return { artifacts, unmapped: [...new Set(unmapped)].sort() };
 }
 
-export interface LandingFacts {
+interface LandingFacts {
   id: string;
   marked: boolean;
   landing: string | null;
@@ -121,7 +121,7 @@ const unclassified = (
 ): IssueLandingReading => ({ kind: 'unclassified', why, paths, source });
 
 /** A commit's changed files, whoever read them, sorted by the project's map. */
-export function classifiedReading(
+function classifiedReading(
   changes: readonly HostFileChange[],
   map: SurfaceMap | null,
   source: PathSource,

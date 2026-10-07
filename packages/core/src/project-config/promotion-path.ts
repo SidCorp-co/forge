@@ -49,7 +49,7 @@ export function defaultBranchOf(document: ProjectDocument | null | undefined): s
 }
 
 /** Where work lands and where production deploys from, and the promotions between them. */
-export interface ReleaseLanding {
+interface ReleaseLanding {
   /** `source.git.defaultBranch`, where work lands; null on a project with no git source. */
   defaultBranch: string | null;
   production: NamedEnvironment | null;
