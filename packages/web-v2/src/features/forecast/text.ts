@@ -25,10 +25,10 @@ const within = (span: ForecastSpan, asOf: string, now: number) => {
   return `Within ${spanText(low)} – ${spanText(high)} · as of ${clock(asOf)}.`;
 };
 
-export const pausedText = (p: ForecastPaused) => `Paused — waiting on ${p.who}${p.act ? ` to ${p.act}` : ""}`;
+const pausedText = (p: ForecastPaused) => `Paused — waiting on ${p.who}${p.act ? ` to ${p.act}` : ""}`;
 
 /** Whether a tooltip opens on the durations and the as-of; the ETA column writes its own, in the content language. */
-export interface TextOpts {
+interface TextOpts {
   within?: boolean;
 }
 

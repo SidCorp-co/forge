@@ -11,7 +11,7 @@ export { doneDayText, whenText } from "./clock";
 // durations, the as-of and the basis stay in the tooltip (VISION: state-never-lies keeps the label).
 
 /** A person who still cuts the release once the work has landed. */
-export interface EtaTail {
+interface EtaTail {
   who: string;
   act: string;
 }
@@ -23,7 +23,7 @@ export type Eta =
   | { kind: "none"; detail: string };
 
 /** "project writer" from "A project writer", the box from "Whoever can reach box-1": who, short. */
-export function shortWho(who: string): string {
+function shortWho(who: string): string {
   const w = who.replace(/^Whoever can reach /, "").replace(/^(A|An|The) /, "");
   return w.length > 24 ? `${w.slice(0, 23)}…` : w;
 }

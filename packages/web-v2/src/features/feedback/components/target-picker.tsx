@@ -8,7 +8,7 @@ import type { FeedbackTargetType } from "../types";
 
 /** Every target a person may name; a contract version is core's alone (E3). */
 export type PickableTarget = Exclude<FeedbackTargetType, "contract">;
-export const PICKABLE_TARGETS = FEEDBACK_TARGET_TYPES.filter((t): t is PickableTarget => t !== "contract");
+const PICKABLE_TARGETS = FEEDBACK_TARGET_TYPES.filter((t): t is PickableTarget => t !== "contract");
 
 export const TARGET_HINT = "REQ-3, ISS-12, a release version, a workflow flow, a route or tool the project serves, or a screen name";
 

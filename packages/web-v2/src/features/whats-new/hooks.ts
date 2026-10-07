@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { whatsNewApi } from "./api";
 import type { WhatsNewFeed } from "./types";
 
-export const WHATS_NEW_KEY = ["me", "whats-new"] as const;
+const WHATS_NEW_KEY = ["me", "whats-new"] as const;
 
 /** The reader's own time zone, which the feed groups days in. */
-export function readerTimeZone(): string {
+function readerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 

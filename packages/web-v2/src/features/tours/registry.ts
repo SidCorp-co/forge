@@ -4,7 +4,7 @@ import { releaseHref } from "@/lib/routes/releases";
 
 /** The project roles, weakest first: a tour is offered to its audience's role and every stronger one. */
 const ROLES = ["viewer", "member", "admin", "owner"] as const;
-export type TourAudience = (typeof ROLES)[number];
+type TourAudience = (typeof ROLES)[number];
 
 export interface TourStep {
   /** The stable `data-tour` attribute the step points at, never a CSS class. */
@@ -14,7 +14,7 @@ export interface TourStep {
 }
 
 /** Where a tour runs: the pages it matches, and the address of one for a project. */
-export interface TourRoute {
+interface TourRoute {
   pattern: RegExp;
   /** The `?tab=` the page must hold, where the route is one tab of a screen. */
   tab?: string;

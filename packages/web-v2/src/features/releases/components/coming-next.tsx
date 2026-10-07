@@ -18,7 +18,7 @@ const GRID = "grid grid-cols-[104px_minmax(0,1fr)_96px_128px] items-center gap-x
 const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
 
 /** "Waiting on you: cut 0.1.0" — the draft's own turn, as the release read model gives it to this viewer. */
-export function draftTurnText(draft: ReleaseSummary): string | null {
+function draftTurnText(draft: ReleaseSummary): string | null {
   const w = draft.waitingOn;
   if (w.kind === "none" || !w.act) return null;
   return `Waiting on ${w.kind === "you" ? "you" : w.who}: ${w.act}`;

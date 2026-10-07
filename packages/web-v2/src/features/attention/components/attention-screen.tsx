@@ -11,22 +11,20 @@ import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   EmptyState,
-  ErrorState,
   Icon,
   type IconName,
   MonoTag,
   PageContainer,
-  ProjectLoader,
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { TYPE_LABEL } from "@/features/ecosystem/types";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
 import { useAttention } from "../hooks";
-import type { AttentionItem, AttentionKind } from "../types";
+import type { AttentionItem, AttentionKind, AttentionView } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 /** Per-kind presentation. ISS-509: color resolves through the semantic tone
@@ -173,8 +171,16 @@ function Group({
 }
 
 export function AttentionScreen() {
+  const q = useAttention();
+  return (
+    <QueryBoundary query={{ ...q, data: q.view }} loadingLabel="loading attention…" height="60vh" retry="always">
+      {(view) => <Inbox view={view} />}
+    </QueryBoundary>
+  );
+}
+
+function Inbox({ view }: { view: AttentionView }) {
   const router = useRouter();
-  const { view, isLoading, isError, error, refetch } = useAttention();
   // ISS-477 — scope the inbox to the active org's projects. Items carrying a
   // `projectSlug` outside the active org are dropped; items without one (e.g.
   // offline runners) are kept so device-level alerts never silently vanish.
@@ -194,22 +200,6 @@ export function AttentionScreen() {
     scoped.failedJobs.length +
     scoped.channelGates.length +
     scoped.offlineRunners.length;
-
-  if (isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading attention…" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
-      </div>
-    );
-  }
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">

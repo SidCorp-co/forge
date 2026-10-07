@@ -3,7 +3,7 @@ import { driver } from "driver.js";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { TourDefinition, TourStep } from "./registry";
 
-export interface TourHooks {
+interface TourHooks {
   onEvent: (kind: TourEventKind, step?: number) => void;
   onOutcome: (outcome: "completed" | "dismissed", step?: number) => void;
 }
