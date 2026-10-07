@@ -329,10 +329,13 @@ written:
   unless the transaction-local flag `forge.kernel_txn` holds the current transaction. The kernel
   sets it for its own status write only and puts it back after
   (`packages/core/src/db/kernel-marker.ts:asKernelStatusWrite`). A migration that adds a machine
-  calls `forge_guard_status_column` for its column. One database-side writer remains:
+  calls `forge_guard_status_column` for its column. Two database-side writers remain:
   `enforce_no_active_child_under_terminal_run` (migration 0113) rewrites a job or session made
   active under a finished run to `cancelled`/`cancelled_stale` inside the move that made it active,
-  and records its own `kernel_transitions` row with no version.
+  and records its own `kernel_transitions` row with no version; and
+  `forge_session_delete_settles_its_fire` (migration 0381) fails a `running` schedule fire whose
+  session row is deleted, since a delete is no move of any machine. It records no
+  `kernel_transitions` row, and its deleter runs under `withKernelMarker` (migration 0393).
 - **Guards are pure and run under the lock.** The kernel locks the rows (`FOR UPDATE`), then runs
   the guards the edge names, then writes. A guard reads only through the move's transaction; a fact
   from anywhere else (the project document, the actor's permissions, a provider such as a
