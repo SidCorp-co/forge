@@ -75,7 +75,7 @@ function facts(over: Doc = {}): Doc {
     serversReadable: true,
     work: { poolWaits: false, jobPanes: 0 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
-    outdated: null,
+    placement: null,
     holding: { kind: 'nothing' },
     turn: { kind: 'ended' },
     idle: {
@@ -189,7 +189,11 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     const outdated = facts({
       pane: 'alive',
       capability: 'current',
-      outdated: 'placed under 1.0.0, this box runs 1.1.0',
+      placement: {
+        placed: { skill: 'aaaaaaaaaaaa' },
+        unreadable: null,
+        now: { skill: 'ffffffffffff' },
+      },
       holding: {
         kind: 'these',
         runs: [{ name: 'r7 (FB-89)', subagent: { kind: 'resumed', silentMs: 0 } }],
@@ -202,7 +206,10 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     });
     const standing = () => say('owner', 'GET', `/api/projects/${projectId}/masters/standing`);
     const first = ok(await standing()).outdated;
-    expect(first).toMatchObject({ why: 'placed under 1.0.0, this box runs 1.1.0', draining: true });
+    expect(first).toMatchObject({
+      why: 'what it runs on changed since it was placed: skill (placed aaaaaaaaaaaa, now ffffffffffff)',
+      draining: true,
+    });
     expect(first.heldBy.join(' ')).toContain('r7 (FB-89)');
 
     const later = facts({
@@ -217,7 +224,7 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     expect(second.since, 'since moved while the pane stayed outdated').toBe(first.since);
     expect(second.heldBy.join(' ')).toContain('r8');
 
-    ok(await verdict({ projectId, runnerId, facts: facts({ ...outdated, outdated: null }) }));
+    ok(await verdict({ projectId, runnerId, facts: facts({ ...outdated, placement: null }) }));
     expect(ok(await standing()).outdated).toBeNull();
   });
 

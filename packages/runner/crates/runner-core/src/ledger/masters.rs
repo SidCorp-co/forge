@@ -116,35 +116,30 @@ impl Ledger {
         Ok(keys)
     }
 
-    /// Record that this box placed `pane_name` for `project_id` under `build`
-    /// with `plugins` installed and `inputs` handed to it, which is the pane's
-    /// whole claim to being current (ISS-1379). Written at placement, before
-    /// the pane's own `SessionStart` hook writes the rest of its row, so it
-    /// creates the row where there is none yet; a placement clears any
-    /// outdated verdict.
+    /// Record that this box placed `pane_name` for `project_id` with `inputs`
+    /// handed to it, which is the pane's whole claim to being current
+    /// (ISS-1379). Written at placement, before the pane's own `SessionStart`
+    /// hook writes the rest of its row, so it creates the row where there is
+    /// none yet.
     pub fn note_master_placed(
         &self,
         project_id: &str,
         pane_name: &str,
         boot_id: &str,
-        placed: (&str, Option<&str>, &str),
+        inputs: &str,
     ) -> Result<()> {
-        let (build, plugins, inputs) = placed;
         self.conn
             .execute(
                 "INSERT INTO masters (project_id, pane_name, boot_id, cold_started_at, last_seen_at,
-                                      placed_build, placed_plugins, placed_inputs, placed_at)
-                 VALUES (?1, ?2, ?3, ?7, ?7, ?4, ?5, ?6, ?7)
+                                      placed_inputs, placed_at)
+                 VALUES (?1, ?2, ?3, ?5, ?5, ?4, ?5)
                  ON CONFLICT(project_id) DO UPDATE SET
                    pane_name      = excluded.pane_name,
                    boot_id        = excluded.boot_id,
                    last_seen_at   = excluded.last_seen_at,
-                   placed_build   = excluded.placed_build,
-                   placed_plugins = excluded.placed_plugins,
                    placed_inputs  = excluded.placed_inputs,
-                   placed_at      = excluded.placed_at,
-                   outdated       = NULL",
-                params![project_id, pane_name, boot_id, build, plugins, inputs, now()],
+                   placed_at      = excluded.placed_at",
+                params![project_id, pane_name, boot_id, inputs, now()],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -172,24 +167,12 @@ impl Ledger {
         Ok(changed == 1)
     }
 
-    /// Record the daemon's verdict on whether a project's resident pane is
-    /// outdated: why it is, or `None` for current.
-    pub fn note_master_outdated(&self, project_id: &str, why: Option<&str>) -> Result<()> {
-        self.conn
-            .execute(
-                "UPDATE masters SET outdated = ?2 WHERE project_id = ?1",
-                params![project_id, why],
-            )
-            .map_err(sql_err)?;
-        Ok(())
-    }
-
     /// What this box knows about one project's master pane.
     pub fn master_for_project(&self, project_id: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
                 "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
-                        placed_build, placed_plugins, placed_at, outdated, unattributed, placed_inputs
+                        placed_at, unattributed, placed_inputs
                  FROM masters WHERE project_id = ?1",
                 params![project_id],
                 map_master,
@@ -204,7 +187,7 @@ impl Ledger {
         self.conn
             .query_row(
                 "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
-                        placed_build, placed_plugins, placed_at, outdated, unattributed, placed_inputs
+                        placed_at, unattributed, placed_inputs
                  FROM masters WHERE pane_name = ?1",
                 params![pane_name],
                 map_master,

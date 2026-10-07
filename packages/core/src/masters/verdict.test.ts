@@ -16,7 +16,7 @@ function facts(over: Partial<MasterJudged> = {}): MasterJudged {
     serversReadable: true,
     work: { admissible: 1, owed: 0, poolWaits: false, jobPanes: 0 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
-    outdated: null,
+    placement: null,
     holding: { kind: 'nothing' },
     turn: { kind: 'ended' },
     idle: {
@@ -182,10 +182,16 @@ describe('retire: an idle master', () => {
 });
 
 describe('outdated: replace once nothing it holds is working', () => {
-  const outdated = 'placed under 1.0.0, this box runs 1.1.0';
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
 
   it('replaces, resuming its conversation, and names the runs its successor inherits', () => {
-    const v = masterVerdict(alive({ outdated, holding: holds([], ['r1 (ISS-1)']) }), online);
+    const v = masterVerdict(alive({ ...outdated, holding: holds([], ['r1 (ISS-1)']) }), online);
     expect(v).toMatchObject({ act: 'replace', reason: 'outdated', resume: 'conv-1', nudge: true });
     expect(v.because).toContain('r1 (ISS-1)');
   });
@@ -193,7 +199,7 @@ describe('outdated: replace once nothing it holds is working', () => {
   it('keeps it, naming every reason its replacement waits on', () => {
     const v = masterVerdict(
       alive({
-        outdated,
+        ...outdated,
         work: noWork,
         idle: { ...quietHour, noWorkForSeconds: 0 },
         holding: holds(['r2 (ISS-2)'], ['r1']),
@@ -216,9 +222,9 @@ describe('outdated: replace once nothing it holds is working', () => {
 
   it('keeps it where what it holds or its turn cannot be read', () => {
     expect(
-      masterVerdict(alive({ outdated, holding: { kind: 'unknown', why: 'mid-carry' } }), online),
+      masterVerdict(alive({ ...outdated, holding: { kind: 'unknown', why: 'mid-carry' } }), online),
     ).toMatchObject({ act: 'keep', drain: true });
-    expect(masterVerdict(alive({ outdated, turn: { kind: 'unknown' } }), online)).toMatchObject({
+    expect(masterVerdict(alive({ ...outdated, turn: { kind: 'unknown' } }), online)).toMatchObject({
       act: 'keep',
       drain: true,
     });
@@ -229,9 +235,15 @@ describe('outdated: replace once nothing it holds is working', () => {
 // back, so every sweep found it holding a run; "left running, not nudged" for two hours while FB-86..91
 // sat untriaged. Being outdated decides replacement only: a kept pane is driven like a current one.
 describe('outdated: kept and driven while it holds runs, draining toward its replacement', () => {
-  const outdated = 'placed under 1.0.0, this box runs 1.1.0';
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
   const busy = {
-    outdated,
+    ...outdated,
     work: { ...noWork, owed: 6 },
     holding: holds(['r7 (ISS-7)']),
   };
@@ -239,7 +251,7 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
   it('owed feedback reaches an outdated master that holds a working run: kept and nudged', () => {
     const v = masterVerdict(alive(busy), online);
     expect(v).toMatchObject({ act: 'keep', nudge: true, drain: true });
-    expect(v.because).toContain(outdated);
+    expect(v.because).toContain('skill (placed aaaaaaaaaaaa, now ffffffffffff)');
     expect(v.because).toContain('r7 (ISS-7)');
   });
 
@@ -292,13 +304,22 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
 });
 
 describe('holding: whether a held run is over is read by core from its subagent evidence', () => {
-  const outdated = 'placed under 1.0.0, this box runs 1.1.0';
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
   const held = (subagent: {
     kind: 'turn_ended' | 'awaiting_reply' | 'no_turn_end';
     silentMs: number;
   }) =>
     masterVerdict(
-      alive({ outdated, holding: { kind: 'these', runs: [{ name: 'r1 (ISS-1)', subagent }] } }),
+      alive({
+        ...outdated,
+        holding: { kind: 'these', runs: [{ name: 'r1 (ISS-1)', subagent }] },
+      }),
       online,
     );
 
@@ -344,7 +365,7 @@ describe('deaf: a pane the box cannot hear', () => {
     const v = masterVerdict(
       alive({
         capability: 'stale',
-        outdated: 'old build',
+        placement: { placed: null, unreadable: null, now: {} },
         turn: { kind: 'in_turn', what: 'busy' },
       }),
       online,
@@ -352,7 +373,10 @@ describe('deaf: a pane the box cannot hear', () => {
     expect(v).toMatchObject({ act: 'replace', reason: 'deaf' });
     expect(
       masterVerdict(
-        alive({ outdated: 'old build', turn: { kind: 'in_turn', what: 'busy' } }),
+        alive({
+          placement: { placed: null, unreadable: null, now: {} },
+          turn: { kind: 'in_turn', what: 'busy' },
+        }),
         online,
       ),
     ).toMatchObject({ act: 'keep', drain: true });

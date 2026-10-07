@@ -128,9 +128,12 @@ saw and judges none of it:
   requirements, the feedback and the returned designs itself, and answers them beside the verdict
   with the nudge line, the first pass's brief and the digest the box echoes as its last nudge
   (`packages/core/src/masters/owed.ts:readMasterWork`).
-- **Whether a master sits behind its account limit**, and **whether a run it holds is over**: the box
-  reports the newest refusal in the pane's conversation with what its hooks say, and each held run's
-  subagent evidence with no bound (`packages/core/src/masters/verdict.ts:limitHeld`,
+- **Whether a master sits behind its account limit**, **whether the account's limit is held at core**,
+  **whether a pane is outdated** and **whether a run it holds is over**: the box reports the newest
+  refusal in the pane's conversation with what its hooks say, the newest decisive record it read, the
+  inputs a pane was placed with and would be handed now, and each held run's subagent evidence with
+  no bound (`packages/core/src/masters/verdict.ts:limitHeld`, `outdatedWhy`,
+  `packages/core/src/devices/master-limit.ts:masterLimitAction`,
   `packages/core/src/devices/run-verdict.ts:subagentOver`).
 
 ## Consequences
@@ -140,18 +143,33 @@ saw and judges none of it:
   shape core no longer sends. That covers the blocked-run park, the setup agent, the ledger's question,
   claim-hold and revival writers, the `runner:register` switch, and the Claude Code runner's
   issue-job arms (its only job spec is chat).
-- **Decisions still made on the box.** A pool job pane's idle verdicts (`runner-core`'s `job_exit`,
-  `job_unheard` and `turn_evidence`) and the retry of a refused run declaration are made on the
-  box today. Until core takes the first, the runner suppresses core's own job timeouts by acking a
-  pool job as soon as its pane opens and posting progress every tick. Two more read only what the
-  box itself holds: withdrawing a pane stood down while it was being placed obeys the owner's act in
-  the box ledger (`packages/runner/crates/runner-daemon/src/master/obey.rs:withdrawn_if_stood_down`), and whether an account record is fresh
-  enough to report the account's limit to core is judged against `packages/runner/crates/runner-daemon/src/master_limit.rs:FRESH_WITHIN`,
-  which still derives from a hand copy of core's `MASTER_NUDGE_REFRESH_SECONDS` until
-  `/api/devices/me/limit` takes the raw record.
-- **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
-  is an on-disk migration on every box, so it waits for the same condition as any other promotion
-  carry-over.
+- **Decisions still made on the box.** Each reads a fact only the box holds, in a hook that must
+  answer before the next tool call, or is made while core cannot be asked.
+  - A pool job pane's idle verdicts (`runner-core`'s `job_exit`, `job_unheard` and `turn_evidence`)
+    and the retry of a refused run declaration. Until core takes the first, the runner suppresses
+    core's own job timeouts by acking a pool job as soon as its pane opens and posting progress
+    every tick.
+  - Withdrawing a pane stood down while it was being placed obeys the owner's act in the box ledger
+    (`packages/runner/crates/runner-daemon/src/master/obey.rs:withdrawn_if_stood_down`). It ends when
+    core is asked at placement for the stand-down it holds instead of the ledger's copy.
+  - Whether a run may stop (`packages/runner/crates/runner-core/src/stop_gate.rs:decide`, ISS-297):
+    core's activity on the issue answers the held-unwritten condition, but the dirty tree is read
+    from git and the live process from `/proc`, in the `SubagentStop` hook. It moves to core when
+    the box reports the tree and process facts on the run's heartbeat and the hook asks core.
+  - Whether a dispatch is allowed (`packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`):
+    it needs the declarations this box holds and the roles its plugin copy ships, in a `PreToolUse`
+    hook. It moves when core holds the shipped-role set per box.
+  - That every permission dialog on a placed pane is denied with the fixed
+    `packages/runner/crates/runner-core/src/dialog_answer.rs:REPHRASE` text, by the pane's
+    `PermissionRequest` hook and by `packages/runner/crates/runner-daemon/src/standing_dialogs.rs`
+    for one already standing (ISS-272, ISS-280). A hook cannot wait on a round trip, so it moves
+    when core serves the text the box carries.
+
+  The account limit is no longer here: the box sends the newest decisive record it read to
+  `POST /api/devices/me/limit/record` and core decides freshness, report and clear
+  (`packages/core/src/devices/master-limit.ts:masterLimitAction`). Neither is whether a pane is
+  outdated: the box sends the inputs it placed the pane with and would hand one now, and core
+  reads them (`packages/core/src/masters/verdict.ts:outdatedWhy`).
 - **The cost.** The crate split holds the dependency rule; the 23 `Mutex` sites left after ISS-216
   are per-component memos (a registry, a latch, a sink), kept because an actor per memo would add
   a message type and a handle each, and grow the code the simplify phase exists to shrink.

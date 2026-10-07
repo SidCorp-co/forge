@@ -120,7 +120,7 @@ fn facts_for(
     let activity = sw.shared.activity;
     let judged = if seen.pane_alive {
         ledger.and_then(|led| {
-            outdated_facts(led, masters, activity, seen, resolved, &runner.project_id)
+            placement_facts(led, masters, activity, seen, resolved, &runner.project_id)
         })
     } else {
         None

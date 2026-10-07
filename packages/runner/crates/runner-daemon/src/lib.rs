@@ -22,7 +22,6 @@ pub mod master;
 pub mod master_build;
 pub mod master_exit;
 pub mod master_handed;
-pub mod master_inbox;
 pub mod master_limit;
 pub mod master_pass;
 pub mod pool_jobs;
@@ -35,6 +34,7 @@ pub mod session_ledger;
 pub mod session_tokens;
 pub mod skill_pull;
 pub mod standing_dialogs;
+pub mod wake_source;
 
 use runner_agent::chat;
 use runner_core::agent_activity;

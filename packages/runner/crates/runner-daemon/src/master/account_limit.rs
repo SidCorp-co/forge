@@ -44,70 +44,31 @@ fn cli_borrow_pair(path: &std::path::Path) -> (String, String) {
     )
 }
 
-pub(crate) const REPORT_TIMEOUT: Duration = Duration::from_secs(10);
-
-pub(crate) async fn bounded<F>(call: F) -> runner_platform::error::Result<()>
-where
-    F: std::future::Future<Output = runner_platform::error::Result<()>>,
-{
-    match tokio::time::timeout(REPORT_TIMEOUT, call).await {
-        Ok(result) => result,
-        Err(_) => Err(runner_platform::error::Error::Other(format!(
-            "core did not answer within {}s",
-            REPORT_TIMEOUT.as_secs()
-        ))),
-    }
-}
-
 pub(crate) async fn report_account_limit(
     client: &CoreClient,
-    served: &[runners::MeRunner],
     said: &[master_limit::Decisive],
-    memo: &mut Option<String>,
     now_unix: i64,
 ) {
-    let core_limited = served.iter().any(|r| r.limit_reason.is_some());
-    match master_limit::decide(said, core_limited, memo.as_deref(), now_unix) {
-        master_limit::Action::Nothing => {}
-        master_limit::Action::Unreadable(slug) => tracing::warn!(
-            "[master] this box's Claude account refused a turn with `{slug}`, which this binary has not been taught to read — nothing was reported, so core will go on calling this box healthy until it is taught that name"
-        ),
-        master_limit::Action::Report(r, uuid) => {
-            let sent = bounded(master_api::report_limit(
-                client,
-                r.reason.wire(),
-                r.resets_in_seconds,
-                &r.detail,
-            ))
-            .await;
-            match sent {
-                Ok(()) => {
-                    tracing::warn!(
-                        "[master] this box's Claude account is capped ({}{}) — reported to core: {}",
-                        r.reason.wire(),
-                        match r.resets_in_seconds {
-                            Some(secs) => format!(", {secs}s to go"),
-                            None => String::new(),
-                        },
-                        r.detail
-                    );
-                    *memo = Some(uuid);
-                }
-                Err(e) => tracing::warn!(
-                    "[master] could not tell core this box's account is capped: {e} — sending it again next sweep"
-                ),
-            }
-        }
-        master_limit::Action::Clear => match bounded(master_api::clear_limit(client)).await {
-            Ok(()) => {
-                tracing::info!(
-                    "[master] this box's Claude account answered a turn — the limit core was holding is lifted"
+    let Some(record) = master_limit::newest_wire(said, now_unix) else {
+        return;
+    };
+    match master_api::send_limit_record(client, &record).await {
+        Ok(answer) => match (answer.outcome.as_str(), &record) {
+            ("reported", master_api::LimitRecord::Refused { reason, detail, .. }) => {
+                tracing::warn!(
+                    "[master] this box's Claude account is capped ({reason}) — core holds it: {detail}"
                 );
-                *memo = None;
             }
-            Err(e) => tracing::warn!(
-                "[master] could not lift this box's account limit at core: {e} — trying again next sweep"
+            ("cleared", _) => tracing::info!(
+                "[master] this box's Claude account answered a turn — the limit core was holding is lifted"
             ),
+            ("unreadable", master_api::LimitRecord::Unreadable { slug }) => tracing::warn!(
+                "[master] this box's Claude account refused a turn with `{slug}`, which this binary has not been taught to read — nothing was reported, so core will go on calling this box healthy until it is taught that name"
+            ),
+            _ => {}
         },
+        Err(e) => tracing::warn!(
+            "[master] could not give core this box's account record: {e} — core decides nothing about the account until it can be reached, and this is sent again next sweep"
+        ),
     }
 }

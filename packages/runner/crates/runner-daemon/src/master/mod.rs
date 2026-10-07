@@ -60,10 +60,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::dispatch::resolve_repo;
-use crate::master_build::{self, Judged};
+use crate::master_build;
 use crate::master_exit::{self, Holding};
 use crate::master_handed;
-use crate::master_inbox::WakeSource;
 use crate::master_limit;
 use crate::master_pass;
 use crate::pool_jobs::{self, JobPanes, Records};
@@ -72,6 +71,7 @@ use crate::recovery;
 use crate::recovery_ports::{self, CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::run_record;
 use crate::session_tokens;
+use crate::wake_source::WakeSource;
 use runner_core::agent_activity;
 use runner_core::checkpoint;
 use runner_core::job_exit;
@@ -90,10 +90,6 @@ use tokio::sync::mpsc;
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
-
-/// How often core asks a limited master again (`@forge/contracts/master-verdict`
-/// `MASTER_NUDGE_REFRESH_SECONDS`), which bounds how fresh a limit record must be.
-pub(crate) const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 

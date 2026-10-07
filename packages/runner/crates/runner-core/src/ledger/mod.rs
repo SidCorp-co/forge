@@ -324,24 +324,12 @@ pub struct MasterRow {
     pub boot_id: String,
     pub cold_started_at: i64,
     pub last_seen_at: i64,
-    /// The runner build that placed the pane, as `update::VERSION_LINE` reads.
-    /// `None` on a pane placed before a build recorded it, or one this box
-    /// adopted and never placed (ISS-1379).
-    pub placed_build: Option<String>,
-    /// The Claude Code plugins installed when the pane was placed, as
-    /// `master_build::plugin_set` writes them. `None` where they could not be
-    /// read then, which leaves the build alone to judge the pane.
-    pub placed_plugins: Option<String>,
     pub placed_at: Option<i64>,
     /// What the pane was placed with that a rebuild can change, as
     /// `master_build::Inputs` writes it: each input by name, with its digest.
-    /// `None` on a pane placed by a build that recorded none, which is then
-    /// judged by `placed_build` alone.
+    /// `None` on a pane placed by a build that recorded none, which core reads
+    /// as outdated by name.
     pub placed_inputs: Option<String>,
-    /// The daemon's last verdict that this pane is outdated, in its own words,
-    /// and `None` while it is current or has not been judged. Written for
-    /// `forge-runner top`, which cannot know what build the daemon runs.
-    pub outdated: Option<String>,
     /// Open runs of this project the last carry onto `session_id` left under
     /// another session without being able to say whether they are this pane's,
     /// in the daemon's words; `None` where it attributed every one. While it
@@ -511,8 +499,7 @@ const CLEAR_REFUSAL: &str = "release_refused_at = NULL, release_refusal = NULL,
 
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
-        released_as, claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
-        ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
+        released_as, ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
         host_ended_by, host_pid, host_start, close_refused_at, close_refusal
@@ -575,12 +562,9 @@ fn map_master(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterRow> {
         boot_id: row.get(4)?,
         cold_started_at: row.get(5)?,
         last_seen_at: row.get(6)?,
-        placed_build: row.get(7)?,
-        placed_plugins: row.get(8)?,
-        placed_at: row.get(9)?,
-        outdated: row.get(10)?,
-        unattributed: row.get(11)?,
-        placed_inputs: row.get(12)?,
+        placed_at: row.get(7)?,
+        unattributed: row.get(8)?,
+        placed_inputs: row.get(9)?,
     })
 }
 
@@ -616,23 +600,23 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         session_terminal_at: row.get(12)?,
         worktree_gone_at: row.get(13)?,
         released_as: row.get(14)?,
-        ended_by: row.get(20)?,
-        ended_reason: row.get(21)?,
-        agent_id: row.get(22)?,
-        resume_choice: row.get(23)?,
-        resume_choice_why: row.get(24)?,
-        release_refused_at: row.get(26)?,
-        release_refusal: row.get(27)?,
-        release_terminal_at: row.get(28)?,
-        turn_ended_at_ms: row.get(30)?,
-        agent_transcript: row.get(31)?,
-        created_at: row.get(33)?,
-        host_ended_at_ms: row.get(34)?,
-        host_ended_by: row.get(35)?,
-        host_pid: row.get::<_, Option<i64>>(36)?.map(|p| p as u32),
-        host_start: row.get(37)?,
-        close_refused_at: row.get(38)?,
-        close_refusal: row.get(39)?,
+        ended_by: row.get(15)?,
+        ended_reason: row.get(16)?,
+        agent_id: row.get(17)?,
+        resume_choice: row.get(18)?,
+        resume_choice_why: row.get(19)?,
+        release_refused_at: row.get(21)?,
+        release_refusal: row.get(22)?,
+        release_terminal_at: row.get(23)?,
+        turn_ended_at_ms: row.get(25)?,
+        agent_transcript: row.get(26)?,
+        created_at: row.get(28)?,
+        host_ended_at_ms: row.get(29)?,
+        host_ended_by: row.get(30)?,
+        host_pid: row.get::<_, Option<i64>>(31)?.map(|p| p as u32),
+        host_start: row.get(32)?,
+        close_refused_at: row.get(33)?,
+        close_refusal: row.get(34)?,
     })
 }
 

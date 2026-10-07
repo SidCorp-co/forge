@@ -26,10 +26,10 @@ pub struct Facts {
     pub servers_readable: Option<bool>,
     pub work: Work,
     pub conversation: Conversation,
-    pub outdated: Option<String>,
-    /// What an outdated pane was placed with and what this box would hand one
-    /// now, each input by name; `None` where the pane is not judged outdated.
-    pub inputs: Option<Inputs>,
+    /// What the pane was placed with and what this box would hand one now;
+    /// whether that makes it outdated is core's. `None` where no pane is up or
+    /// the ledger could not be read.
+    pub placement: Option<Placement>,
     pub holding: Holding,
     pub turn: Turn,
     pub idle: Idle,
@@ -37,12 +37,13 @@ pub struct Facts {
     pub nudge: NudgeFacts,
 }
 
-/// The inputs behind an outdated reading: `placed` is `None` for a pane placed
-/// by a build that recorded none, which core judges by the box's `outdated`
-/// text alone.
+/// Each input by name with its digest, as placed and as this box would hand
+/// them now. `placed` is `None` where the ledger holds no record of the
+/// placement, and `unreadable` carries a record this build cannot read.
 #[derive(Debug, Clone, Serialize)]
-pub struct Inputs {
+pub struct Placement {
     pub placed: Option<std::collections::BTreeMap<String, String>>,
+    pub unreadable: Option<String>,
     pub now: std::collections::BTreeMap<String, String>,
 }
 

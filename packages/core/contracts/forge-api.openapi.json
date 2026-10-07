@@ -5291,6 +5291,132 @@
         ]
       }
     },
+    "/api/devices/me/limit/record": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "record": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "agoSeconds": {
+                            "maximum": 315360000,
+                            "minimum": -315360000,
+                            "type": "integer"
+                          },
+                          "detail": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "refused",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "enum": [
+                              "usage_limit",
+                              "rate_limit",
+                              "auth"
+                            ],
+                            "type": "string"
+                          },
+                          "resetsInSeconds": {
+                            "anyOf": [
+                              {
+                                "maximum": 604800,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "agoSeconds",
+                          "reason",
+                          "resetsInSeconds",
+                          "detail"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "agoSeconds": {
+                            "maximum": 315360000,
+                            "minimum": -315360000,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "const": "worked",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "agoSeconds"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "unreadable",
+                            "type": "string"
+                          },
+                          "slug": {
+                            "maxLength": 1000,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "slug"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "record"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/devices/me/master-session": {
       "post": {
         "requestBody": {
@@ -5982,60 +6108,6 @@
                         ],
                         "type": "object"
                       },
-                      "inputs": {
-                        "anyOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "now": {
-                                "additionalProperties": {
-                                  "maxLength": 128,
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "propertyNames": {
-                                  "pattern": "^[a-z][a-z_]{0,31}$",
-                                  "type": "string"
-                                },
-                                "type": "object",
-                                "x-forge-refinements": [
-                                  "at most 32 inputs"
-                                ]
-                              },
-                              "placed": {
-                                "anyOf": [
-                                  {
-                                    "additionalProperties": {
-                                      "maxLength": 128,
-                                      "minLength": 1,
-                                      "type": "string"
-                                    },
-                                    "propertyNames": {
-                                      "pattern": "^[a-z][a-z_]{0,31}$",
-                                      "type": "string"
-                                    },
-                                    "type": "object",
-                                    "x-forge-refinements": [
-                                      "at most 32 inputs"
-                                    ]
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "placed",
-                              "now"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
                       "limit": {
                         "additionalProperties": false,
                         "properties": {
@@ -6145,24 +6217,79 @@
                         ],
                         "type": "object"
                       },
-                      "outdated": {
-                        "anyOf": [
-                          {
-                            "maxLength": 1000,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
                       "pane": {
                         "enum": [
                           "absent",
                           "alive"
                         ],
                         "type": "string"
+                      },
+                      "placement": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "now": {
+                                "additionalProperties": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "propertyNames": {
+                                  "pattern": "^[a-z][a-z_]{0,31}$",
+                                  "type": "string"
+                                },
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "at most 32 inputs"
+                                ]
+                              },
+                              "placed": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": {
+                                      "maxLength": 128,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "propertyNames": {
+                                      "pattern": "^[a-z][a-z_]{0,31}$",
+                                      "type": "string"
+                                    },
+                                    "type": "object",
+                                    "x-forge-refinements": [
+                                      "at most 32 inputs"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "unreadable": {
+                                "anyOf": [
+                                  {
+                                    "maxLength": 1000,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "placed",
+                              "unreadable",
+                              "now"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "restarting": {
                         "anyOf": [
@@ -6270,7 +6397,7 @@
                       "serversReadable",
                       "work",
                       "conversation",
-                      "outdated",
+                      "placement",
                       "holding",
                       "turn",
                       "idle",

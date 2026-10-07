@@ -1,11 +1,9 @@
 //! What a resident master's account said, read where Claude Code wrote it.
 //!
-//! Core has held the receiving half of this since it was written for exactly
-//! this case: `recordMasterLimit` / `clearMasterLimit` behind `POST` and
-//! `DELETE /me/limit`. Nothing called it. A master is on neither the job lane
-//! nor the chat lane, so when its account hit a cap the fact reached nothing:
-//! the runner row went on reading `limitReason: null` and the box went on
-//! spending a full agent pass per nudge against an account that had refused.
+//! A master is on neither the job lane nor the chat lane, so when its account
+//! hits a cap the fact reaches nothing unless this box carries it: the box
+//! sends the newest decisive record it read, and core decides whether it is
+//! fresh, new and a lifting (`devices/master-limit.ts:masterLimitAction`).
 //!
 //! The evidence is NOT the pane. Claude Code appends one JSON object per turn
 //! to the conversation `daemon::master::conversation_transcript` already
@@ -17,17 +15,9 @@
 //! up inside `message.content[].text` whenever anyone quotes it — this issue
 //! does — and a parsed top-level read cannot be reached by that text.
 
-use std::time::Duration;
-
 use serde_json::Value;
 
-use crate::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
 pub(crate) use runner_platform::clock::{days_from_civil, now_secs as now_unix};
-
-pub(crate) const FRESH_WITHIN: Duration =
-    Duration::from_secs(2 * (LIMITED_POLL_INTERVAL.as_secs() + NUDGE_REFRESH.as_secs()));
-
-pub(crate) const CLEAR_WITHIN: Duration = NUDGE_REFRESH;
 
 pub(crate) const TAIL_BYTES: u64 = 512 * 1024;
 
@@ -53,7 +43,7 @@ impl Reason {
     }
 }
 
-/// One refusal, in the shape core's route takes.
+/// One refusal, in the shape core's routes take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Refusal {
     pub reason: Reason,
@@ -98,18 +88,6 @@ pub(crate) struct Decisive {
     /// refusal is sent once however many sweeps read it.
     pub uuid: String,
     pub verdict: Verdict,
-}
-
-/// What the box does about everything it read this sweep.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Action {
-    /// Send this refusal, and remember this record id once core has taken it.
-    Report(Refusal, String),
-    /// Lift the limit core is holding for this device.
-    Clear,
-    /// Say this in the log and send nothing.
-    Unreadable(String),
-    Nothing,
 }
 
 pub(crate) fn classify(record: &Value, now_unix: i64) -> Option<Verdict> {
@@ -197,12 +175,6 @@ fn clamp_detail(detail: &str, reason: Reason) -> String {
     }
 }
 
-/// Whether a record is recent enough to speak for the account now — the one
-/// test the report to core applies to what `newest_record` read.
-pub(crate) fn is_fresh(d: &Decisive, now_unix: i64) -> bool {
-    now_unix.saturating_sub(d.at).unsigned_abs() <= FRESH_WITHIN.as_secs()
-}
-
 /// The newest record that says anything, however old.
 ///
 /// Age decides whether a record may speak for the ACCOUNT, which other panes
@@ -260,37 +232,27 @@ pub(crate) fn read_tail(path: &std::path::Path) -> Option<String> {
     }
 }
 
-pub(crate) fn decide(
+/// The newest of `seen`, as the record core judges: what it said and how long
+/// ago, by this box's clock. `None` where nothing was read.
+pub(crate) fn newest_wire(
     seen: &[Decisive],
-    core_limited: bool,
-    already_sent: Option<&str>,
     now_unix: i64,
-) -> Action {
-    let Some(newest) = seen
+) -> Option<runner_transport::master::LimitRecord> {
+    use runner_transport::master::LimitRecord;
+    let newest = seen
         .iter()
-        .max_by_key(|d| (d.at, d.millis, d.uuid.as_str()))
-    else {
-        return Action::Nothing;
-    };
-    match &newest.verdict {
-        Verdict::Unreadable(slug) => Action::Unreadable(slug.clone()),
-        Verdict::Refused(r) => {
-            if already_sent == Some(newest.uuid.as_str()) {
-                Action::Nothing
-            } else {
-                Action::Report(r.clone(), newest.uuid.clone())
-            }
-        }
-        Verdict::Worked => {
-            let age = now_unix.saturating_sub(newest.at);
-            let fresh = (0..=CLEAR_WITHIN.as_secs() as i64).contains(&age);
-            if core_limited && fresh {
-                Action::Clear
-            } else {
-                Action::Nothing
-            }
-        }
-    }
+        .max_by_key(|d| (d.at, d.millis, d.uuid.as_str()))?;
+    let ago_seconds = now_unix.saturating_sub(newest.at);
+    Some(match &newest.verdict {
+        Verdict::Refused(r) => LimitRecord::Refused {
+            ago_seconds,
+            reason: r.reason.wire(),
+            resets_in_seconds: r.resets_in_seconds,
+            detail: r.detail.clone(),
+        },
+        Verdict::Worked => LimitRecord::Worked { ago_seconds },
+        Verdict::Unreadable(slug) => LimitRecord::Unreadable { slug: slug.clone() },
+    })
 }
 
 fn unix_seconds(ts: &str) -> Option<i64> {
@@ -352,5 +314,48 @@ fn days_in_month(y: i64, m: i64) -> i64 {
         2 if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) => 29,
         2 => 28,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_transport::master::LimitRecord;
+
+    fn record(ts: &str, uuid: &str, body: &str, now: i64) -> Decisive {
+        let line = format!(r#"{{"timestamp":"{ts}","uuid":"{uuid}",{body}}}"#);
+        newest_record(&line, now).expect("a decisive record reads")
+    }
+
+    const REFUSED: &str = r#""type":"assistant","isApiErrorMessage":true,"apiErrorStatus":429,"error":"rate_limit","message":{"model":"<synthetic>","content":[]}"#;
+    const WORKED: &str = r#""type":"assistant","message":{"model":"claude-x","content":[]}"#;
+
+    /// Freshness is core's: a refusal hours old is still sent, with its age.
+    #[test]
+    fn the_newest_record_is_sent_whatever_its_age_and_core_judges_it() {
+        let now = unix_seconds("2026-10-07T12:00:00Z").unwrap();
+        let old = record("2026-10-07T08:00:00.000Z", "a", REFUSED, now);
+        let sent = newest_wire(&[old], now).expect("sent");
+        assert_eq!(
+            sent,
+            LimitRecord::Refused {
+                ago_seconds: 4 * 3600,
+                reason: "rate_limit",
+                resets_in_seconds: None,
+                detail: "rate_limit".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_turn_after_the_refusal_is_what_is_sent() {
+        let now = unix_seconds("2026-10-07T12:00:00Z").unwrap();
+        let refused = record("2026-10-07T11:50:00.000Z", "a", REFUSED, now);
+        let worked = record("2026-10-07T11:58:00.000Z", "b", WORKED, now);
+        assert_eq!(
+            newest_wire(&[refused, worked], now),
+            Some(LimitRecord::Worked { ago_seconds: 120 })
+        );
+        assert_eq!(newest_wire(&[], now), None);
     }
 }

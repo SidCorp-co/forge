@@ -251,14 +251,42 @@ pub async fn report_limit(
     Ok(())
 }
 
-pub async fn clear_limit(client: &CoreClient) -> Result<()> {
-    status::send_within(
-        client.delete("/api/devices/me/limit"),
-        "me/limit",
-        CALL_DEADLINE,
-    )
-    .await?;
-    Ok(())
+/// The newest decisive record this box read in its masters' conversations, as
+/// it wrote it. Whether it is fresh, new to core, or a lifting is core's
+/// (`devices/master-limit.ts:masterLimitAction`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LimitRecord {
+    #[serde(rename_all = "camelCase")]
+    Refused {
+        /// Seconds since the record was written, by this box's clock.
+        ago_seconds: i64,
+        /// `usage_limit`, `rate_limit` or `auth`.
+        reason: &'static str,
+        resets_in_seconds: Option<u64>,
+        detail: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Worked {
+        ago_seconds: i64,
+    },
+    Unreadable {
+        slug: String,
+    },
+}
+
+/// What core did with a [`LimitRecord`]: one of `reported`, `held`, `stale`,
+/// `cleared`, `nothing` or `unreadable`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitOutcome {
+    pub outcome: String,
+}
+
+pub async fn send_limit_record(client: &CoreClient, record: &LimitRecord) -> Result<LimitOutcome> {
+    let req = client
+        .post("/api/devices/me/limit/record")
+        .json(&serde_json::json!({ "record": record }));
+    status::fetch_within(req, "me/limit/record", CALL_DEADLINE).await
 }
 
 #[cfg(test)]
@@ -298,6 +326,33 @@ mod tests {
                 "dispatched": ["ISS-1"],
                 "record": { "worked": false, "refusal": { "reason": "usage_limit", "detail": "limit" } }
             })
+        );
+    }
+}
+
+#[cfg(test)]
+mod limit_record_tests {
+    use super::*;
+
+    #[test]
+    fn a_record_is_sent_in_the_shape_core_validates() {
+        let refused = LimitRecord::Refused {
+            ago_seconds: 30,
+            reason: "usage_limit",
+            resets_in_seconds: Some(3600),
+            detail: "capped".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&refused).unwrap(),
+            r#"{"kind":"refused","agoSeconds":30,"reason":"usage_limit","resetsInSeconds":3600,"detail":"capped"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&LimitRecord::Worked { ago_seconds: 4 }).unwrap(),
+            r#"{"kind":"worked","agoSeconds":4}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&LimitRecord::Unreadable { slug: "x".into() }).unwrap(),
+            r#"{"kind":"unreadable","slug":"x"}"#
         );
     }
 }

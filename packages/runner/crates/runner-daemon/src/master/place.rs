@@ -21,8 +21,8 @@ pub(crate) struct Carryover<'a> {
     /// running process, and its subagents with it.
     pub(crate) started: &'a std::sync::atomic::AtomicBool,
     /// Filled when this call started a pane: what it was handed, for the
-    /// ledger to judge it against later (`master_build::judge`).
-    pub(crate) placed_with: &'a Mutex<Option<master_build::Standing>>,
+    /// ledger to report against what a later sweep would hand one.
+    pub(crate) placed_with: &'a Mutex<Option<master_build::Inputs>>,
     /// The box's process table: where each inherited subagent runs, and what
     /// runs a conversation outside this box's panes.
     pub(crate) hosts: &'a dyn subagent_host::Hosts,
@@ -35,7 +35,7 @@ pub(crate) struct Carryover<'a> {
 impl Carryover<'_> {
     /// Say whether this call started a pane, and, where it did, what it was
     /// handed.
-    fn note_started(&self, started: bool, with: master_build::Standing) {
+    fn note_started(&self, started: bool, with: master_build::Inputs) {
         self.started
             .store(started, std::sync::atomic::Ordering::Relaxed);
         if started {
@@ -116,7 +116,7 @@ pub(crate) struct Prepared {
     env: Vec<(String, String)>,
     mcp_config: Option<std::path::PathBuf>,
     /// What the pane is handed, read before its capability token is added.
-    standing: master_build::Standing,
+    standing: master_build::Inputs,
 }
 
 /// Open the pane core placed, resuming `carry.conversation` or cold. The
@@ -255,7 +255,7 @@ fn prepare_pane(
     runner_workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
     let mut env = terminal::pane_env(project_id, &resolved.slug);
     env.extend(cli_borrow_env(&resolved.slug));
-    let standing = master_build::Standing::this_box(&master_build::Handed {
+    let standing = master_build::Inputs::of(&master_build::Handed {
         slug: &resolved.slug,
         repo: &resolved.repo_path,
         env: &env,
