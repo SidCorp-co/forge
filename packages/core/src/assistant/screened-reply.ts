@@ -91,6 +91,8 @@ export interface ScreenedTurnArgs {
   language: ReplyLanguage;
   /** The first attempt, already run. */
   first: ExternalChatTurnResult;
+  /** The tools the turn was offered, by the names it calls them: a status claim is held to a read only where one was offered. */
+  offeredTools?: readonly string[];
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
   retry: (instruction: string) => Promise<ExternalChatTurnResult>;
   setPhase: (phase: string) => void;
@@ -134,6 +136,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
         projectId: args.projectId,
         segments: [text],
         toolCalls: result.toolCalls,
+        ...(args.offeredTools ? { offeredTools: args.offeredTools } : {}),
         progress: result.progress,
         ...(args.toolResults ? { toolResults: args.toolResults() } : {}),
       });

@@ -1,1 +1,0 @@
-**Every wait names the people who can act.** Feedback, forecasts, runs, automation and releases name the writers, admins or approvers by name, or say nobody holds it and where to grant it. A blocked draft now waits on its blocker.

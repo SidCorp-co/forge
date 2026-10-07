@@ -50,6 +50,20 @@ export function mergeMarkKindOf(row: MergeMarkColumns): MergeMarkKind {
   return (row.mergedLanding ?? '').trim() === '' ? 'asserted' : 'landed';
 }
 
+/** The stamp a design approval alone wrote on a git row (`recordDesignLanding`): no commit, no
+ *  landing, no box-read paths, and every artifact a `design` one. A code mark is never shadowed by it. */
+export function designOnlyStamp(
+  row: MergeMarkColumns & {
+    mergedArtifacts: readonly LandingArtifact[] | null;
+    mergedPaths: ReadPaths | null;
+  },
+): string[] | null {
+  if (mergeMarkKindOf(row) !== 'asserted' || row.mergedPaths) return null;
+  const artifacts = row.mergedArtifacts ?? [];
+  if (artifacts.length === 0 || artifacts.some((a) => a.surface !== 'design')) return null;
+  return artifacts.map((a) => a.ref);
+}
+
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
  *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {

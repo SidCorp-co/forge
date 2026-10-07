@@ -807,7 +807,7 @@
     "outbox": {
       "kind": "kernel",
       "context": "platform",
-      "owns": ["pipelineOutbox"],
+      "owns": ["outboxEventTypes", "pipelineOutbox"],
       "serves": [
         "issue-delivery#core",
         "issue-delivery#ev-transition",
@@ -864,6 +864,11 @@
         "projectTestingProfiles"
       ],
       "serves": ["issue-delivery#policy", "REQ-13", "personal-data-flow#ds-vault"]
+    },
+    "project-status": {
+      "kind": "read-model",
+      "context": "operations",
+      "serves": ["REQ-11", "REQ-19"]
     },
     "projects": {
       "kind": "domain",
@@ -1232,6 +1237,9 @@
     },
     "project-settings": {
       "serves": ["issue-delivery#policy", "REQ-13"]
+    },
+    "project-status": {
+      "serves": ["REQ-11"]
     },
     "projects": {
       "serves": ["project-onboarding#created"]

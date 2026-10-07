@@ -64,13 +64,17 @@ const WORD_AHEAD_RE = new RegExp(`^${EMPHASIS}[ \\t]*${EMPHASIS}\\p{L}`, 'u');
 /** `1.061`, `1,061` and `1061` are the same figure; a separator only ever groups thousands here. */
 const figure = (digits: string): number => Number(digits.replace(/[.,]/g, ''));
 
+/** `/11`, ` of 11`: the denominator of a fraction, whose noun is what the fraction counts. */
+const DENOMINATOR_AHEAD_RE = new RegExp(`^${EMPHASIS}\\s*(?:\\/|of\\s)\\s*\\d+`, 'i');
+
 /**
  * Whether the figure ending at `end` counts issues: it is followed by an issue noun, or by no word
  * at all. A figure followed by any other word counts that word (`366 products`), and is not a claim
- * about the project's progress.
+ * about the project's progress; a fraction counts the noun after its denominator (`9/11 criteria`).
  */
 function countsIssues(scanText: string, end: number): boolean {
-  const after = scanText.slice(end, end + 40);
+  const ahead = scanText.slice(end, end + 60);
+  const after = ahead.replace(DENOMINATOR_AHEAD_RE, '').slice(0, 40);
   if (ISSUE_NOUN_AHEAD_RE.test(after)) return true;
   return !WORD_AHEAD_RE.test(after);
 }
@@ -149,10 +153,24 @@ function expectedPercents(f: ProgressFacts): number[] {
   );
 }
 
-function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
+/** A JSON number a read returned under a key: `"awaitingRelease":26`, `"releaseCount": 64`. */
+const JSON_COUNT_RE = /"[A-Za-z_][A-Za-z0-9_]*"\s*:\s*(\d{1,7})(?![\d.])/g;
+
+/** Every count this turn's reads returned as a JSON value, so a figure one of them carries is a read figure. */
+export function countsRead(texts: readonly string[]): ReadonlySet<number> {
+  const out = new Set<number>();
+  for (const t of texts) for (const m of t.matchAll(JSON_COUNT_RE)) out.add(Number(m[1]));
+  return out;
+}
+
+function judge(
+  reply: string,
+  facts: ProgressFacts | null,
+  read: ReadonlySet<number> = new Set(),
+): RuleBreak[] {
   const scanText = stripNonFigureTokens(reply);
   if (facts === null) {
-    const numbers = progressContextNumbers(reply, scanText);
+    const numbers = progressContextNumbers(reply, scanText).filter(({ n }) => !read.has(n));
     const percents = progressContextPercents(scanText);
     if (numbers.length === 0 && percents.length === 0) return [];
     return [
@@ -181,7 +199,7 @@ function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
     facts.total,
   ]);
   for (const { n, keyword, claim } of progressContextNumbers(reply, scanText)) {
-    if (!allowed.has(n)) {
+    if (!allowed.has(n) && !read.has(n)) {
       add(
         `the claim "${claim}" states ${n} issues ${keyword}, and no figure in this turn's progress snapshot is ${n} (${authoritativeSummary(facts)}) — restate it from these figures, or leave the figure out`,
         claim,
@@ -205,5 +223,5 @@ export const PROGRESS_FIGURES_MATCH: MessageRule = {
   shape: 'state only the figures from this turn’s snapshot, or none at all',
   example: 'Most of the work is done and a few items are still open.',
   needs: ['progress'],
-  check: (text, f) => judge(text, f.progress),
+  check: (text, f) => judge(text, f.progress, f.readCounts),
 };

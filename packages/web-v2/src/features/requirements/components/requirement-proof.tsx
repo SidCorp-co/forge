@@ -148,7 +148,9 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                 <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
-                {issues.length === 0 ? (
+                {issues.length === 0 && c.uncoveredReason ? (
+                  <span className="text-subtle" data-testid="criterion-uncovered">{t("requirements.criteria.leftUncovered", { reason: c.uncoveredReason })}</span>
+                ) : issues.length === 0 ? (
                   <span className="text-subtle">{t(d.standing.facts.issuesTotal === 0 ? "requirements.criteria.notBrokenDown" : "requirements.criteria.noTrace")}</span>
                 ) : (
                   issues.map(({ i, stale }) => (

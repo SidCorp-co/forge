@@ -1,1 +1,0 @@
-**Three second paths are gone.** `PUT /api/projects/:id/content-language` (Settings writes the project document), the integrations list's duplicate `bindings` key (it answers `items`), and a job session's park frame, now refused `JOB_SESSION_PARK_RETIRED`.

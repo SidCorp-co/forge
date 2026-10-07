@@ -54,7 +54,9 @@ export function OverviewTab({
         {issue.plan ? (
           <Markdown>{issue.plan}</Markdown>
         ) : (
-          <p className="text-13 text-subtle">{t("issues.plan.empty")}</p>
+          <p className="text-13 text-subtle" data-testid="issue-plan-empty">
+            {t(issue.status === "closed" || issue.status === "dropped" ? "issues.plan.emptyEnded" : "issues.plan.empty")}
+          </p>
         )}
       </section>
     </div>

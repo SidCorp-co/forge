@@ -48,6 +48,7 @@ const summary = (over: Record<string, unknown>) => ({
   issueCount: 2,
   requirements: [],
   criteria: { total: 2, proven: 1, failing: 0, open: 1 },
+  verified: { level: "some_criteria", proven: 1, total: 2, check: null },
   contents,
   owner: null,
   ownerAct: null,
@@ -95,6 +96,7 @@ const detail = {
     shipsNothing: false,
   },
   notes: {
+    designs: [],
     sections: [{ section: "Muc moi", entries: [{ key: "ISS-1", title: "Muc", userFacing: "Noi dung", technical: "ky thuat" }] }],
     withoutNotes: [{ key: "ISS-2", title: "Muc" }, { key: "ISS-3", title: "Muc" }],
     language: "vi",
@@ -237,9 +239,9 @@ const design = {
     { revision: 2, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: null, decidedBy: null, decidedByName: null, decidedAt: null, reason: null, state: "proposed", changes: { steps: { added: ["Buoc d"], removed: [], changed: ["Buoc a"] }, edges: { added: 1, removed: 0, changed: 2 } } },
     { revision: 1, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: "approve", decidedBy: "u2", decidedByName: "Minh", decidedAt: AT, reason: "ghi chu", state: "current", changes: null },
   ],
-  builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress" }],
+  builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress", builtAgainst: 1 }],
   gate: { open: false, rule: "giu", says: { rule: verbatim("giu") } },
-  requirements: [{ key: "REQ-1", title: "Muc", status: "agreed", pinnedRevision: 1 }],
+  requirements: [{ key: "REQ-1", title: "Muc", status: "agreed", state: "in_delivery", pinnedRevision: 1 }],
 };
 const designSeed = (): [QueryKey, unknown][] => [
   ...workflowSeed(),

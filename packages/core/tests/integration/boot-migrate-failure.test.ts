@@ -161,6 +161,24 @@ describe('migrateAtBoot', () => {
     expect(reports).toEqual([]);
   });
 
+  it('a registry event type outbox_event_types lacks exits 1 naming it, after the migrations applied', async () => {
+    const fk = 'pipeline_outbox_type_outbox_event_types_type_fk';
+    await sql.unsafe(`ALTER TABLE pipeline_outbox DROP CONSTRAINT ${fk}`);
+    await sql`DELETE FROM outbox_event_types WHERE type = 'conversation.pushed'`;
+    try {
+      expect(await migrateAtBoot(url(), { migrationsFolder: MIGRATIONS_FOLDER })).toBe(1);
+      expect(reports[0]?.message).toMatch(
+        /failed while checking-event-types: OUTBOX_TYPE_UNSEEDED: outbox_event_types holds no row for conversation\.pushed,/,
+      );
+      expect(reports[0]?.context).toMatchObject({ tags: { stage: 'checking-event-types' } });
+    } finally {
+      await sql`INSERT INTO outbox_event_types (type) VALUES ('conversation.pushed') ON CONFLICT DO NOTHING`;
+      await sql.unsafe(
+        `ALTER TABLE pipeline_outbox ADD CONSTRAINT ${fk} FOREIGN KEY (type) REFERENCES outbox_event_types(type)`,
+      );
+    }
+  });
+
   it('an unset DATABASE_URL exits 1 and reports the environment stage', async () => {
     expect(await migrateAtBoot(undefined)).toBe(1);
     expect(reports[0]?.context).toMatchObject({

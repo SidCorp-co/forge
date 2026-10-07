@@ -145,8 +145,9 @@ throws "Cannot access X before initialization" (ISS-168).
   **index.ts**. It exports the module's services, read functions and types, and nothing else. It
   constructs nothing at import: no router, no tool, no timer, no registration.
 - **The heavy face.** A module's routers are exported from its **routes.ts** and its MCP tools from
-  its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**; only the two
-  tool registries import a **tool.ts**: `packages/core/src/mcp/registry.ts` and the assistant's
+  its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**; only the tool
+  registries import a **tool.ts**: `packages/core/src/mcp/registry.ts` (served on /mcp), the chat
+  assistant's read tools (`packages/core/src/mcp/chat-read-tools.ts:CHAT_READ_MODEL_TOOLS`) and its
   chat toolset (`packages/core/src/assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST`).
 - **A module whose face is empty says so.** A module that offers other modules nothing has an
   **index.ts** of `export {};`; another module's import of its internals is then a finding.
@@ -329,10 +330,13 @@ written:
   unless the transaction-local flag `forge.kernel_txn` holds the current transaction. The kernel
   sets it for its own status write only and puts it back after
   (`packages/core/src/db/kernel-marker.ts:asKernelStatusWrite`). A migration that adds a machine
-  calls `forge_guard_status_column` for its column. One database-side writer remains:
+  calls `forge_guard_status_column` for its column. Two database-side writers remain:
   `enforce_no_active_child_under_terminal_run` (migration 0113) rewrites a job or session made
   active under a finished run to `cancelled`/`cancelled_stale` inside the move that made it active,
-  and records its own `kernel_transitions` row with no version.
+  and records its own `kernel_transitions` row with no version; and
+  `forge_session_delete_settles_its_fire` (migration 0381) fails a `running` schedule fire whose
+  session row is deleted, since a delete is no move of any machine. It records no
+  `kernel_transitions` row, and its deleter runs under `withKernelMarker` (migration 0393).
 - **Guards are pure and run under the lock.** The kernel locks the rows (`FOR UPDATE`), then runs
   the guards the edge names, then writes. A guard reads only through the move's transaction; a fact
   from anywhere else (the project document, the actor's permissions, a provider such as a
@@ -379,8 +383,11 @@ written:
   one durable outbox (`packages/core/src/db/schema-outbox.ts:pipelineOutbox`) by
   `packages/core/src/outbox/emit.ts:emitEvent`, its types in
   `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus. A type
-  added there owes the migration that rebuilds `pipeline_outbox_type_chk`: the table refuses it
-  until then, and `packages/core/src/db/schema-checks.test.ts` fails while the two disagree.
+  added there owes a one-row migration inserting it into `outbox_event_types`
+  (`packages/core/src/db/schema-outbox.ts:outboxEventTypes`), which `pipeline_outbox.type`
+  references: the table refuses it until then, `packages/core/src/db/schema-checks.test.ts` fails
+  while the two disagree, and the boot's migrate step exits 1 naming it
+  (`packages/core/src/db/migrate.ts:outboxTypesUnseeded`).
 - **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
   and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
   `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The workers refuse to start

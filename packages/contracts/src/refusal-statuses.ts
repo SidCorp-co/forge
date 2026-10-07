@@ -6,7 +6,10 @@ import { CONVERSATION_REFUSAL_STATUSES } from "./conversations.js";
 import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
-import { ISSUE_TAKE_REFUSAL_STATUSES } from "./issues.js";
+import {
+	ISSUE_TAKE_REFUSAL_STATUSES,
+	ISSUE_UPDATE_REFUSAL_STATUSES,
+} from "./issues.js";
 import { MOCKUP_REFUSAL_STATUSES } from "./mockups.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
 import { PRODUCT_STATE_REFUSAL_STATUSES } from "./product-state.js";
@@ -36,6 +39,7 @@ const DECLARED: ReadonlyArray<
 	ECOSYSTEM_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,
+	ISSUE_UPDATE_REFUSAL_STATUSES,
 	MOCKUP_REFUSAL_STATUSES,
 	PIPELINE_REFUSAL_STATUSES,
 	PRODUCT_STATE_REFUSAL_STATUSES,

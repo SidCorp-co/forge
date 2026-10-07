@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 const reported: unknown[] = [];
 const recorded: unknown[] = [];
 const OUTBOX_REFUSAL =
-  'Failed query: insert into "pipeline_outbox" ("type", "payload") values ($1, $2)\nparams: conversation.pushed,{"userIds":["u-reader-1","u-reader-2"],"content":"REQ-1 reads as agreed at revision 1."} — violates check constraint "pipeline_outbox_type_chk"';
+  'Failed query: insert into "pipeline_outbox" ("type", "payload") values ($1, $2)\nparams: conversation.pushed,{"userIds":["u-reader-1","u-reader-2"],"content":"REQ-1 reads as agreed at revision 1."} — violates foreign key constraint "pipeline_outbox_type_outbox_event_types_type_fk"';
 
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, authored: 'code' }),
@@ -58,7 +58,7 @@ describe('a reply whose delivery fails is kept and reported, not dropped', () =>
     expect(readerFacing).not.toContain('params:');
     expect(readerFacing).not.toContain('u-reader-1');
     expect(reported).toHaveLength(1);
-    expect(String(reported[0])).toContain('pipeline_outbox_type_chk');
+    expect(String(reported[0])).toContain('pipeline_outbox_type_outbox_event_types_type_fk');
     expect(recorded).toEqual([]);
   });
 });

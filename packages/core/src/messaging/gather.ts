@@ -19,7 +19,10 @@ interface GatherInput {
   readonly audience: Audience;
   readonly intent: Intent;
   readonly segments: readonly string[];
-  readonly toolCalls?: readonly { name: string; arguments: string }[];
+  readonly toolCalls?: readonly { name: string; arguments: string; isError?: boolean }[];
+  readonly offeredTools?: readonly string[];
+  /** The counts the writer's own reads returned (`facts.ts:MessageFacts`). */
+  readonly readCounts?: ReadonlySet<number>;
   /** The snapshot the writer's own turn was shown. */
   readonly progress?: ProgressFacts | null;
   /**
@@ -94,6 +97,8 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
   const base: MessageFacts = {
     ...NO_FACTS,
     toolCalls: input.toolCalls ?? [],
+    offeredTools: input.offeredTools ?? [],
+    readCounts: input.readCounts ?? new Set(),
   };
   if (needs.size === 0) return base;
   if (needs.size === 1 && needs.has('issue-rows')) return base;

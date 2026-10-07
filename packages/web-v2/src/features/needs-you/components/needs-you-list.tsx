@@ -11,14 +11,14 @@ import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-la
 import type { Copy } from "@/lib/i18n/product-copy";
 import { saidOrNull } from "@/lib/i18n/said";
 import { formatAge } from "@/lib/utils/format";
-import { needsYouHref, needsYouPeekHref } from "../routes";
+import { needsYouHref, needsYouKeyLabel, needsYouPeekHref } from "../routes";
 import { NEEDS_YOU_AREAS, type NeedsYouItem } from "../types";
 
 const rowView =
   (slug: string, label: ReturnType<typeof useLabel>, t: Copy, lang: string) =>
   (n: NeedsYouItem): ListRowView => ({
     key: `${n.entity}:${n.key}`,
-    keyLabel: n.entity === "schedule" || n.entity === "report" || n.entity === "question" ? label("needsYouArea", n.area) : n.key,
+    keyLabel: needsYouKeyLabel(n, (a) => label("needsYouArea", a)),
     href: needsYouHref(slug, n),
     title: n.title,
     facts: [label("needsYouArea", n.area)],

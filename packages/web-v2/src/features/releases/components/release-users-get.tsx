@@ -1,8 +1,10 @@
 "use client";
 
-// What a release gives the people who use the product, ahead of how it is built: each issue's
-// user-facing release note under the CHANGELOG section it belongs to, named by its title. The
-// engineers' view (surfaces, artifacts, unclassified landings) sits below it, collapsed.
+// What a release gives the people who use the product, ahead of how it is built: what was verified
+// in words, then each issue's user-facing release note under the CHANGELOG section it belongs to —
+// the user's sentence first, the issue's title and key behind it (JU-11) — then the designs it
+// records apart, since a design approval changes nothing people use. The engineers' view
+// (surfaces, artifacts, unclassified landings) sits below it, collapsed.
 
 import { contentLanguageName } from "@forge/contracts/content-language";
 import Link from "next/link";
@@ -11,6 +13,7 @@ import { ViewHeading } from "@/design";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import type { ReleaseDetail } from "../types";
+import { verifiedSentence } from "../verified";
 import { DisclosureToggle } from "./release-bits";
 
 // A reader aid on the draft, not a gate: the release gate's own reasons are listed under "What stands
@@ -61,6 +64,9 @@ export function WhatUsersGet({ r, slug }: { r: ReleaseDetail; slug: string }) {
   return (
     <section aria-label={t("releases.usersGet")} data-testid="release-users-get" data-tour="rel-users" className="grid gap-5">
       <NotesAttention r={r} slug={slug} />
+      <p className="text-13-5 font-semibold" data-testid="release-verified" data-level={r.verified.level}>
+        {verifiedSentence(r.verified, t)}
+      </p>
       <ViewHeading hint={t("releases.usersGetHint")}>{t("releases.usersGet")}</ViewHeading>
       {noted === 0 ? (
         <p className="text-13 text-muted" data-testid="release-users-get-empty">
@@ -73,19 +79,38 @@ export function WhatUsersGet({ r, slug }: { r: ReleaseDetail; slug: string }) {
             <ul className="border-t border-line-subtle">
               {s.entries.map((e) => (
                 <li key={e.key} className="grid gap-0.5 border-b border-line-subtle py-2.5" data-testid="release-users-entry">
-                  <span className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="min-w-0 flex-1 text-13-5 font-semibold">{e.title}</span>
+                  <span className="text-13-5 font-semibold" data-testid="release-users-sentence">
+                    {e.userFacing}
+                  </span>
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted">
+                    <span className="min-w-0 flex-1">{e.title}</span>
                     <Link href={issueHref(slug, e.key)} className="font-mono text-11-5 text-subtle hover:text-link hover:underline">
                       {e.key}
                     </Link>
                   </span>
-                  <span className="text-13 text-muted">{e.userFacing}</span>
                 </li>
               ))}
             </ul>
           </div>
         ))
       )}
+      {r.notes.designs.length > 0 ? (
+        <div data-testid="release-designs-approved">
+          <h3 className="mb-1 text-12 font-semibold uppercase tracking-wide text-subtle" title={t("releases.designsApprovedHint")}>
+            {t("releases.designsApproved")}
+          </h3>
+          <ul className="border-t border-line-subtle">
+            {r.notes.designs.map((e) => (
+              <li key={e.key} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-2 text-13 text-muted">
+                <span className="min-w-0 flex-1">{e.title}</span>
+                <Link href={issueHref(slug, e.key)} className="font-mono text-11-5 text-subtle hover:text-link hover:underline">
+                  {e.key}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {withoutNotes.length > 0 ? (
         <div data-testid="release-users-without">
           <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-users-without-toggle">

@@ -17,7 +17,7 @@ import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { doorOfRequest } from './ports.js';
 import {
   answerAs,
@@ -96,7 +96,7 @@ const listQuery = z.object({
   cursor: pageSchema.shape.cursor,
 });
 
-const answerBody = z.object({
+const answerFields = z.object({
   optionId: z.string({ error: 'optionId must be a string' }).optional(),
   text: z.string({ error: 'text must be a string' }).optional(),
   round: z
@@ -125,6 +125,26 @@ const answerBody = z.object({
     .strict()
     .optional(),
 });
+
+const ANSWER_SHAPE =
+  "{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer)";
+
+const filled = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
+const isBody = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+// the one-answer rule reads the body even where a field of it failed, so one 400 names every fault
+const answerBody = answerFields
+  .strict()
+  .refine((b) => filled(b.optionId) || filled(b.text), {
+    path: ['optionId'],
+    message: 'the answer is required: send optionId or text',
+    when: (p) => isBody(p.value),
+  })
+  .refine((b) => !(filled(b.optionId) && filled(b.text)), {
+    path: ['text'],
+    message: 'send optionId or text, never both',
+    when: (p) => isBody(p.value),
+  });
 
 const notFound = (what: 'question' | 'issue' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
@@ -261,13 +281,10 @@ questionRoutes.post(
     }
     await next();
   },
-  zValidator('json', answerBody),
+  strictBody(answerBody, ANSWER_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
-    const hasOption = typeof body.optionId === 'string' && body.optionId.length > 0;
-    const hasText = typeof body.text === 'string' && body.text.trim().length > 0;
-    if (hasOption && hasText) throw badRequest('send optionId or text, never both');
-    if (!hasOption && !hasText) throw badRequest('optionId or text is required');
+    const hasOption = filled(body.optionId);
     return c.json(
       await answerAs({
         questionId: questionId(c),

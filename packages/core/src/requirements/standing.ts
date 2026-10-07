@@ -77,6 +77,8 @@ interface StandingInput {
   issueCriteria: readonly StandingIssueCriterion[];
   /** Kinds of the suggestions still `proposed` on this requirement. */
   openSuggestionKinds: readonly string[];
+  /** Per BC code, why the newest accepted breakdown naming it left it uncovered. */
+  uncovered?: ReadonlyMap<string, string>;
   /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
   stalePins: readonly { flow: string; title: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
@@ -92,7 +94,10 @@ interface StandingInput {
 }
 
 /** What the delivery phase and coverage read, and nothing else. */
-type ProofInput = Pick<StandingInput, 'status' | 'criteria' | 'issues' | 'issueCriteria'>;
+type ProofInput = Pick<
+  StandingInput,
+  'status' | 'criteria' | 'issues' | 'issueCriteria' | 'uncovered'
+>;
 
 /** The input with its delivery phase read (`deliveryOf`). */
 type Phased = StandingInput & { phase: DeliveryPhase | null };
@@ -109,7 +114,8 @@ function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): Requir
 // revision count as proof; a link to an earlier wording of the same code is stale evidence. Over
 // the live links: any latest verdict `fail` → failing; every one `pass` or `short` → passing;
 // otherwise (none yet, or `skipped`) → not judged. No live link but an earlier one → stale; no link
-// at all → gap. A dropped issue proves nothing and is left out.
+// at all → gap, carrying the reason an accepted breakdown gave for leaving it uncovered. A dropped
+// issue proves nothing and is left out.
 function coverageOf(input: ProofInput, shownRevision: number | null): RequirementCoverage[] {
   if (shownRevision === null) return [];
   const live = liveAt(input.criteria, shownRevision);
@@ -136,7 +142,9 @@ function coverageOf(input: ProofInput, shownRevision: number | null): Requiremen
         } satisfies CoverageIssue,
       ];
     });
-    return { code: bc.code, body: bc.body, verdict: verdictOf(links), issues: links };
+    const verdict = verdictOf(links);
+    const why = verdict === 'gap' ? (input.uncovered?.get(bc.code) ?? null) : null;
+    return { code: bc.code, body: bc.body, verdict, issues: links, uncoveredReason: why };
   });
 }
 

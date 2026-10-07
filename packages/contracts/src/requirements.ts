@@ -347,6 +347,9 @@ export interface RequirementCoverage {
 	body: string;
 	verdict: BcVerdict;
 	issues: CoverageIssue[];
+	/** On a gap, why the newest accepted breakdown naming this criterion left it without an issue
+	 *  (its `uncovered[]` reason); null where no accepted breakdown says. */
+	uncoveredReason: string | null;
 }
 
 /** Where an agreed or accepted requirement is in delivery, read from its live issues and its BC

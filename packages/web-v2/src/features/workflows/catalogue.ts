@@ -1,6 +1,5 @@
 import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
 import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import { projectDescriptionOf } from "@/features/project-settings/project-document";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -21,10 +20,10 @@ const PURPOSES: readonly { id: Purpose; templates: readonly string[] }[] = [
   { id: "other", templates: [] },
 ];
 
-/** The template a listed design names, or the one a design stored before templates is read in. */
+/** The template a listed design names. */
 export function templateIdOf(r: WorkflowRecord): string {
   const d = r.document;
-  if (d.version === 2) return (d.template ?? LEGACY_V2_TEMPLATE).id;
+  if (d.version === 2) return d.template.id;
   return d.kind === "state" ? "state-machine" : "operational-flow";
 }
 

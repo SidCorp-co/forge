@@ -33,6 +33,10 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
   }
 }
 
+/** What a row is called in a list: its key, or for a schedule, a harness report or a question (keyed by an id no reader knows) the area it sits in. */
+export const needsYouKeyLabel = (n: Pick<NeedsYouItem, "entity" | "key" | "area">, areaLabel: (area: string) => string): string =>
+  n.entity === "schedule" || n.entity === "report" || n.entity === "question" ? areaLabel(n.area) : n.key;
+
 /** An issue opens in the list's peek; everything else opens its page. */
 export const needsYouPeekHref = (slug: string, n: Parameters<typeof needsYouHref>[1]): string =>
   n.entity === "issue" ? `${issuesHref(slug)}?peek=${encodeURIComponent(n.key)}` : needsYouHref(slug, n);

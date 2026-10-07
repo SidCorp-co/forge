@@ -39,11 +39,12 @@ const RELEASE = {
   key: "0.1.0",
   version: "0.1.0",
   state: "draft",
+  verified: { level: "none", proven: 0, total: 0, check: null },
   issues: [],
   gates: [],
   requirementsCompleted: [],
   feedbackAnswered: [],
-  notes: { sections: [{ section: "Added", entries: [{ key: "ISS-1", title: "A board keeps its cards", userFacing: "Saved boards keep every card.", technical: null }] }], withoutNotes: [], language: "en", attention: [] },
+  notes: { designs: [], sections: [{ section: "Added", entries: [{ key: "ISS-1", title: "A board keeps its cards", userFacing: "Saved boards keep every card.", technical: null }] }], withoutNotes: [], language: "en", attention: [] },
   changes: CHANGES,
 } as unknown as ReleaseDetail;
 

@@ -28,7 +28,12 @@ import {
   recordApprovedDesign,
 } from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
-import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
+import {
+  buildGateOf,
+  builtAgainstOf,
+  designWaitingOn,
+  revisionStateOf,
+} from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
 import { answerDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
@@ -142,6 +147,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       displayId: formatIssueRef(prefix, b.issSeq),
       title: b.title,
       status: b.status,
+      builtAgainst: builtAgainstOf(b.linkedAt, designs),
     })),
     gate: buildGateOf(head),
     requirements,

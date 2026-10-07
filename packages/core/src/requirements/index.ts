@@ -5,6 +5,7 @@ export {
   type StaleContractPin,
   staleOnContract,
 } from './contract-links.js';
+export { deferralOf } from './deferral-read.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
@@ -21,5 +22,5 @@ export {
   type RevisionWrite,
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';
-export { deliveredAmong, standingsOf } from './standing-read.js';
+export { deliveredAmong, requirementStatesOf, standingsOf } from './standing-read.js';
 export { lockRequirements } from './write-tx.js';

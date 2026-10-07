@@ -276,7 +276,7 @@ export async function breakdownEffect(
         category,
         complexity: item.complexity,
         createdById: actor.userId,
-        createdByDeviceId: null,
+        createdByDeviceId: actor.deviceId ?? null,
         createdVia: channel,
         requirementId: req.id,
         plannedRevision: head,

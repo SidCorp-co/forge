@@ -252,6 +252,16 @@ export async function loadIssueRelationsForIssues(
   }
   return out;
 }
+/** One issue's relations: `loadIssueRelationsForIssues` over a set of one. */
+export async function loadIssueRelations(
+  issueId: string,
+  projectId: string,
+): Promise<IssueRelations> {
+  return (
+    (await loadIssueRelationsForIssues([issueId], projectId)).get(issueId) ?? emptyIssueRelations()
+  );
+}
+
 /** One dependency edge by id, or null. */
 export async function dependencyEdgeById(edgeId: string) {
   const [edge] = await db
