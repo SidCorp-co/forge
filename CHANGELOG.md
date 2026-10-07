@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.96] - 2026-10-07
+
+Dashboard shows workflow approvals under Workflows with a link to the revision
+
+### Fixed
+
+- **A workflow revision waiting on you now appears on the Dashboard as a Workflows row** opening the revisions tab. The header and the Workflows menu badge count the rows drawn; a row of an unknown area is refused by name.
+
 ## [0.4.0-dev.95] - 2026-10-07
 
 Requirements and feedback follow to their release; reporters told when fixes ship
