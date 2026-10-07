@@ -38,11 +38,16 @@ export const issueDetailApi = {
       body: JSON.stringify(parentId ? { body, parentId } : { body }),
     }),
 
-  /** A ruling recorded as a decision: core writes the body from the fields, so every reader of the thread reads it. */
+  /**
+   * A ruling recorded as a decision: core writes the body from the fields, so every reader of the
+   * thread reads it. Sent `keepalive`, so a page closed while core is still answering does not take
+   * the request with it.
+   */
   recordDecision: (id: string, decision: { decision: string; reason: string }) =>
     apiClient<CommentNode>(`/issues/${id}/comments`, {
       method: "POST",
       body: JSON.stringify({ intent: "decision", decision }),
+      keepalive: true,
     }),
 
   uploadCommentAttachment: (commentId: string, file: File) => {

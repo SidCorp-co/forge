@@ -1,7 +1,8 @@
 // A field the reader cannot change says why beside it: an agent's live run holds it, or the reader
 // holds no write on the project. A greyed control with no reason is the defect this guards.
 
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { AGENT_HOLDS_EDIT } from "../edit-lock";
@@ -32,7 +33,7 @@ function issue(over: Partial<IssueDetail>): IssueDetail {
   } as IssueDetail;
 }
 
-function rail(detail: IssueDetail, readOnly = false) {
+function rail(detail: IssueDetail, readOnly = false, onPatch: (body: object) => void = () => {}) {
   fakeCore(() => ({ body: {} }));
   renderWithQuery(
     <PropertiesRail
@@ -42,7 +43,7 @@ function rail(detail: IssueDetail, readOnly = false) {
       deps={undefined}
       pending={false}
       readOnly={readOnly}
-      onPatch={() => {}}
+      onPatch={onPatch}
       onTransition={() => {}}
       moves={[]}
     />,
@@ -84,6 +85,44 @@ describe("the issue's editable fields name the refusal that disables them", () =
       <IssueQuickActions issueId="i-52" status="in_progress" moves={[]} agentStatus="running" priority="medium" />,
     );
     const control = screen.getByRole("combobox", { name: "Priority" });
+    expect(control).toBeDisabled();
+    expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
+  });
+});
+
+// HOP (dev, 2026-10-07): an issue filed with no category, or the wrong one, could only be put right
+// through the API. The rail sets and changes it beside Priority and Complexity, through the same PATCH.
+describe("the issue's category on the rail", () => {
+  it("is set on an issue that has none, and sent as the PATCH's category", async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    rail(issue({ category: null }), false, onPatch);
+    const control = screen.getByRole("combobox", { name: "Category" });
+    expect(control).toHaveTextContent("Not set");
+    await user.click(control);
+    await user.click(await screen.findByRole("option", { name: "Bug" }));
+    expect(onPatch).toHaveBeenCalledWith({ category: "bug" });
+  });
+
+  it("is cleared to null when Not set is chosen", async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    rail(issue({ category: "feature" }), false, onPatch);
+    const control = screen.getByRole("combobox", { name: "Category" });
+    expect(control).toHaveTextContent("Feature");
+    await user.click(control);
+    await user.click(await screen.findByRole("option", { name: "Not set" }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledWith({ category: null }));
+  });
+
+  it("keeps a category outside the usual words as the chosen option", () => {
+    rail(issue({ category: "hop-theme" }));
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveTextContent("Hop theme");
+  });
+
+  it("is held under the same refusal as Priority", () => {
+    rail(issue({ status: "in_progress", agentStatus: "running", category: "bug" }));
+    const control = screen.getByRole("combobox", { name: "Category" });
     expect(control).toBeDisabled();
     expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
   });

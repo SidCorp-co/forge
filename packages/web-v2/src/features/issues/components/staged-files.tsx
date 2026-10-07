@@ -1,14 +1,14 @@
 "use client";
 
 // Files staged on a comment or a new issue before they are sent: picked, dropped or pasted,
-// checked against the attachment allow-list (size/mime/count caps) so the server never rejects
-// what was accepted here.
+// checked against the attachment allow-list (size/mime caps, and an issue's create count) so the
+// server never rejects what was accepted here.
 
+import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { Banner, Icon, IconButton } from "@/design";
 import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-export const MAX_FILES = 10;
 const DOC_MIMES = [
   "image/png",
   "image/jpeg",
@@ -91,23 +91,26 @@ export function useStagedFiles({
         accepted.push(f);
       }
     }
-    setFiles((prev) => {
-      const room = MAX_FILES - prev.length;
-      if (accepted.length > room) errs.push(`Max ${MAX_FILES} attachments per ${unit}. Extras skipped.`);
-      const staged = accepted.slice(0, Math.max(0, room));
-      if (!uniqueNames) return [...prev, ...staged];
-      const used = new Set(prev.map((f) => nameKey(f.name)));
-      return [
-        ...prev,
-        ...staged.map((f) => {
-          const unique = uniqueStagedName(f.name, used);
-          used.add(nameKey(unique));
-          if (unique === f.name) return f;
-          errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
-          return new File([f], unique, { type: f.type });
-        }),
-      ];
-    });
+    const chosen = files.length + accepted.length;
+    if (unit === "issue" && chosen > ISSUE_CREATE_ATTACHMENTS_MAX) {
+      errs.push(
+        `An issue takes at most ${ISSUE_CREATE_ATTACHMENTS_MAX} files; ${chosen} chosen. Remove some, or attach the rest to a comment once it is filed.`,
+      );
+      setWarnings(errs);
+      return;
+    }
+    let staged = accepted;
+    if (uniqueNames) {
+      const used = new Set(files.map((f) => nameKey(f.name)));
+      staged = accepted.map((f) => {
+        const unique = uniqueStagedName(f.name, used);
+        used.add(nameKey(unique));
+        if (unique === f.name) return f;
+        errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
+        return new File([f], unique, { type: f.type });
+      });
+    }
+    setFiles([...files, ...staged]);
     setWarnings(errs);
   };
 

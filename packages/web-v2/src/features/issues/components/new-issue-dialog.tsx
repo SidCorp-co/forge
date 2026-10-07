@@ -1,6 +1,7 @@
 "use client";
 
 
+import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banner, Button, Field, Icon, Input, Select, SlideOver, Tabs, Textarea } from "@/design";
@@ -10,7 +11,7 @@ import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { CreatedIssue, IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
-import { MAX_FILES, StagedFileList, useStagedFiles } from "./staged-files";
+import { StagedFileList, useStagedFiles } from "./staged-files";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 
 async function fileToBase64(file: File): Promise<string> {
@@ -260,7 +261,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
                 <Icon name="plus" size={18} className="text-subtle" />
                 <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
                 <p className="fg-caption">
-                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, Word, Excel, and any
+                  Max 10 MB each · up to {ISSUE_CREATE_ATTACHMENTS_MAX} · images, video, PDF, Word, Excel, and any
                   plain-text file whatever its extension — .log and .sql included.
                 </p>
                 <Button
