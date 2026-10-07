@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.132] - 2026-10-07
+
+Coolify bindings without a target are refused by name, not borrowed
+
+### Removed
+
+- **A Coolify binding with no deploy targets is now refused by name in the delivery status** instead of answering one integration-level row. Production read 0 of 17 bindings, dev 0 of 2, and the write schema never admits one.
+
 ## [0.4.0-dev.131] - 2026-10-07
 
 Tokens must state their grant; waits name people; retired paths removed
