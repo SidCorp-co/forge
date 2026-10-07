@@ -26,6 +26,7 @@ import {
 } from '../usage-records/rollup.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
+import type { TransitionRewrite } from './close-substitution.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -78,6 +79,8 @@ type BatchResult = {
     id: string;
     displayId: string;
     skipReason?: BatchSkipReason;
+    /** Where a rule stored another status than the one asked for (ISS-1365). */
+    rewritten?: TransitionRewrite;
   }>;
   skipped: Array<{ id: string; reason: BatchSkipReason }>;
   failed: Array<{ id: string; error: string }>;
@@ -160,6 +163,7 @@ issueExtrasRoutes.patch(
 
       let touched = false;
       let skipReason: BatchSkipReason | null = null;
+      let rewritten: TransitionRewrite | null = null;
 
       try {
         if (data.status !== undefined) {
@@ -177,8 +181,9 @@ issueExtrasRoutes.patch(
               actor,
             );
             touched = true;
-            row.status = toStatus;
+            row.status = transitioned.status;
             row.reopenCount = transitioned.reopenCount;
+            rewritten = transitioned.rewritten;
             if (transitioned.terminal) {
               terminalTransitions.push({
                 issueId: row.id,
@@ -238,7 +243,7 @@ issueExtrasRoutes.patch(
       }
 
       if (touched) {
-        const entry: { id: string; displayId: string; skipReason?: BatchSkipReason } = {
+        const entry: BatchResult['updated'][number] = {
           id: row.id,
           displayId: formatIssueRef(prefixMap.get(row.projectId) ?? null, row.issSeq),
         };
@@ -247,6 +252,7 @@ issueExtrasRoutes.patch(
         // (priority/category) succeeded. Surface it on the updated
         // entry so the caller can show a partial-success diagnostic.
         if (skipReason) entry.skipReason = skipReason;
+        if (rewritten) entry.rewritten = rewritten;
         result.updated.push(entry);
       } else if (skipReason) {
         result.skipped.push({ id: row.id, reason: skipReason });

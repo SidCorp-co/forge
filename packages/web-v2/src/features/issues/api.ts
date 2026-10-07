@@ -54,6 +54,22 @@ export const modulesApi = {
   },
 };
 
+/** What `POST /api/issues/:id/transition` answers. */
+export interface TransitionAnswer {
+  id: string;
+  status: IssueStatus;
+  reopenCount: number;
+  transitionedAt: string;
+  rewritten: {
+    requested: IssueStatus;
+    stored: IssueStatus;
+    rule: "autonomous_driver" | "release_gate";
+    waitingKind: { sent: WaitingCause | null; stored: WaitingCause | null };
+    detail: string;
+  } | null;
+  warnings?: string[];
+}
+
 export const issuesApi = {
   create: (projectId: string, body: CreateIssueInput) =>
     apiClient<CreatedIssue>(`/projects/${projectId}/issues`, {
@@ -101,13 +117,14 @@ export const issuesApi = {
     }),
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
-   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
+   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). `status` is what was stored, which
+   *  `rewritten` names where a rule stored something other than `toStatus`. */
   transition: (
     id: string,
     toStatus: IssueStatus,
     opts?: { reason?: string; waitingKind?: WaitingCause; voidQuestions?: string },
   ) =>
-    apiClient<IssueDetail>(`/issues/${id}/transition`, {
+    apiClient<TransitionAnswer>(`/issues/${id}/transition`, {
       method: "POST",
       body: JSON.stringify({
         toStatus,

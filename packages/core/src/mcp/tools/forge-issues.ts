@@ -10,12 +10,12 @@ import {
   waitingKinds,
 } from '../../db/schema.js';
 import { actorAgency } from '../../issues/actor-agency.js';
-import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { issueArchiveFilterSchema } from '../../issues/archive.js';
 import { listIssueAttachments } from '../../issues/attachment-service.js';
 import { loadIssueAttributes } from '../../issues/attributes/read.js';
 import { setIssueAttributes } from '../../issues/attributes/service.js';
 import { AttributeRefusal } from '../../issues/attributes/write.js';
+import type { TransitionRewrite } from '../../issues/close-substitution.js';
 import { createIssue } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
@@ -59,6 +59,7 @@ import {
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
+import { transitionByData } from './forge-issues-transition.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
@@ -749,13 +750,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         );
 
         let unasked: string | null = null;
+        let rewritten: TransitionRewrite | null | undefined;
         if (input.data.status && input.data.status !== issue.status) {
-          await transitionIssueStatus(issue, input.data.status, principalActor(principal), {
-            transitionReason: input.data.reason ?? input.data.note,
-            waitingKind: input.data.waitingKind,
-            needs: input.data.needs,
-            voidQuestions: input.data.voidQuestions,
-          });
+          ({ rewritten } = await transitionByData(issue, input.data.status, principal, input.data));
           unasked = parkQuestionNotMinted({
             issue,
             toStatus: input.data.status,
@@ -771,6 +768,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         };
         const allWarnings = unasked ? [...bodyWarnings, unasked] : bodyWarnings;
         if (allWarnings.length > 0) updateResult.warnings = allWarnings;
+        if (rewritten !== undefined) updateResult.rewritten = rewritten;
         if (r.length > 0) updateResult.relations = r;
         return updateResult;
       }
@@ -782,14 +780,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal), {
-          transitionReason: input.data?.reason ?? input.data?.note,
-          waitingKind: input.data?.waitingKind,
-          needs: input.data?.needs,
-          voidQuestions: input.data?.voidQuestions,
-        });
+        const { rewritten } = await transitionByData(issue, target, principal, input.data);
         const fresh = await loadIssue(issue.id);
-        const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
+        const transitionOutput: Record<string, unknown> = {
+          ...(await serializeWithAttachments(fresh)),
+          rewritten,
+        };
         const unheard = parkQuestionNotMinted({
           issue,
           toStatus: target,

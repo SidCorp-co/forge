@@ -290,6 +290,7 @@ transitionRoutes.post(
       status: result.status,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
+      rewritten: result.rewritten,
       ...(unasked ? { warnings: [unasked] } : {}),
     });
   },

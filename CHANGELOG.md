@@ -3144,6 +3144,9 @@
 
 ### Fixed
 
+- **A status change kept at another status says so.** When an agent's park becomes needs-info,
+  or its close is held for release, the answer names the status asked for, the one kept, and why.
+
 - **Typing an issue's key into the issues search finds that issue.** `ISS-1280`, `iss-1280` and
   `1280` show that one issue rather than the issues mentioning it, and a key this project does not
   hold is said so by name.
