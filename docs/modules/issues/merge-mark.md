@@ -121,7 +121,10 @@ top of `createReleaseBatch`, and it places the issue in a shipped release (a run
 `finished`, with `finish.commit` the commit the probes verified live) by one of two evidences:
 
 - an `observed` mark names a commit: the release is the earliest whose commit holds it.
-- an `asserted` mark names none (the commit a caller sent reaches the audit trail only), so the
+- an `asserted` mark whose audit comment recorded a claimed commit (`mark_merged … commit=<sha>`, the
+  only place the tracker keeps it, read in exactly that shape) is placed like an observed one by that
+  commit, once the host confirms it; a claim in no shipped release is not placed by it.
+- an `asserted` mark with no claim the host confirms is placed by declaring commits: the
   repository is asked which commits declare the issue, by `commitOwners`, in each of the last twelve
   releases' own ranges. The release is the one whose range holds the last declaring commit, and only
   where the range from the newest release to the branch head holds none: work still unreleased is not

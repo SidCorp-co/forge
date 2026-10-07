@@ -403,3 +403,60 @@ describe('an asserted mark names no commit, so the commits declaring the issue a
     expect((await rosterClosedOf(third)).sort()).toEqual([...held].sort());
   });
 });
+
+describe('an asserted mark that claimed a commit', () => {
+  /** The audit comment a mark writes (`merge-marker.ts` `writeMarkTrail`), as the kernel words it. */
+  async function claim(id: string, commit: string, tail = ''): Promise<void> {
+    await fx.postComment(
+      id,
+      `mark_merged target=dev commit=${commit}${tail}\nthis mark is a claim: commit ${commit} is recorded here as this call's claim`,
+    );
+  }
+
+  it('is closed against the earliest release holding the claimed commit, with no declaring subject', async () => {
+    const first = await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    await shipped('0.4.0-dev.2', C2, '2026-10-06T11:00:00Z');
+    const id = await asserted();
+    await abortHold(id);
+    await claim(id, A);
+
+    const result = await close([id]);
+
+    expect(result.closed.map((c) => c.version)).toEqual(['0.4.0-dev.1']);
+    expect((await runOf(id))?.status).toBe('closed');
+    expect(await fx.holdOf(id)).toBeNull();
+    expect(await rosterClosedOf(first)).toEqual([id]);
+  });
+
+  it('stays held where the claimed commit is in no shipped release', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await abortHold(id);
+    await claim(id, N);
+
+    expect(await close([id])).toEqual({ closed: [], unresolved: [] });
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+    expect((await fx.holdOf(id))?.code).toBe('RELEASE_ABORT_BLOCKED');
+  });
+
+  it('is refused by name where the host cannot resolve the claimed commit', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await asserted();
+    await claim(id, A);
+
+    const result = await close([id], host(HISTORY, { fail: 'no such commit' }));
+
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_UNREAD']);
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+  });
+
+  it('does not read a comment that is not the kernel audit shape, or a mark that did not stamp', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const prose = await asserted();
+    await fx.postComment(prose, `I think commit=${A} shipped`);
+    const unstamped = await asserted();
+    await claim(unstamped, A, '\nNOT stamped by this call: merged_at was already set');
+
+    expect(await close([prose, unstamped])).toEqual({ closed: [], unresolved: [] });
+  });
+});

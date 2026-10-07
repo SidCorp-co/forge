@@ -203,6 +203,33 @@ async function readerFor(
   }
 }
 
+/**
+ * The commit each `asserted` mark's own audit comment recorded as the caller's claim. The tracker
+ * keeps no structured field for it (`merge-marker.ts` `writeMarkTrail` writes it into the audit
+ * comment's first line as `commit=<40 hex>`), so the latest such comment that stamped is read, in
+ * exactly that shape and no other. It is the caller's word, and is used only as a lead the host
+ * then has to confirm.
+ */
+async function claimedCommits(issueIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (issueIds.length === 0) return out;
+  const found = await db.execute<{ issue_id: string; sha: string }>(sql`
+    SELECT DISTINCT ON (c.issue_id) c.issue_id,
+           substring(split_part(c.body, E'\\n', 1) from '^mark_merged(?: target=\\S+)? commit=([0-9a-f]{40})(?: |$)') AS sha
+      FROM comments c
+     WHERE c.issue_id IN (${sql.join(
+       issueIds.map((id) => sql`${id}`),
+       sql`, `,
+     )})
+       AND c.body LIKE 'mark_merged%'
+       AND c.body NOT LIKE '%NOT stamped by this call%'
+       AND split_part(c.body, E'\\n', 1) ~ '^mark_merged( target=\\S+)? commit=[0-9a-f]{40}( |$)'
+     ORDER BY c.issue_id, c.created_at DESC
+  `);
+  for (const r of found) out.set(r.issue_id, r.sha.toLowerCase());
+  return out;
+}
+
 /** The comment the issue carries, naming what the record shows. */
 function noticeFor(found: ClosedEarlier): string {
   return (
@@ -243,23 +270,28 @@ export async function closeShippedEarlier(
 
   const unresolved: Unresolved[] = [];
   const placement = new Map<string, { release: ShippedRelease; evidence: string }>();
+  const claimedBy = await claimedCommits(waiting.filter((w) => w.sha === null).map((w) => w.id));
   for (const row of waiting) {
-    if (row.sha === null) continue;
+    const lead = row.sha ?? claimedBy.get(row.id) ?? null;
+    if (lead === null) continue;
     try {
-      const release = await earliestHolding(host, row.sha, releases);
+      const release = await earliestHolding(host, lead, releases);
       if (release) {
         placement.set(row.id, {
           release,
-          evidence: `its landing commit \`${row.sha}\` is an ancestor of the release's`,
+          evidence:
+            row.sha === null
+              ? `the commit its mark claimed, \`${lead}\`, is an ancestor of the release's`
+              : `its landing commit \`${lead}\` is an ancestor of the release's`,
         });
       }
     } catch (err) {
-      const detail = `commit ${row.sha} could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
+      const detail = `commit ${lead} could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn({ projectId, issueId: row.id }, `release-shipped-earlier: ${detail}`);
       unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
     }
   }
-  const keyed = waiting.filter((w) => w.sha === null);
+  const keyed = waiting.filter((w) => w.sha === null && !placement.has(w.id));
   try {
     for (const [id, release] of await placeByKey(host, projectId, releases, keyed)) {
       placement.set(id, {
