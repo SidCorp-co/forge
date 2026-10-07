@@ -90,7 +90,15 @@ export async function startOutboxWorker(): Promise<void> {
       queueOf(consumer),
       { batchSize: 1, includeMetadata: true, pollingIntervalSeconds: POLL_SECONDS },
       async ([job]: JobWithMetadata<DeliveryJob>[]) => {
-        if (job) await runDelivery(consumer, job);
+        if (!job) return;
+        // an issue's deliveries are strict FIFO, so this one settling is what makes its successor
+        // fetchable; pg-boss never bursts at batch size 1, so without this wake the successor waits
+        // out the backstop poll — 10 s per event queued behind one issue
+        try {
+          await runDelivery(consumer, job);
+        } finally {
+          wakeConsumers([consumer]);
+        }
       },
     );
     workers.set(consumer, id);
