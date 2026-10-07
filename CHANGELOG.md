@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.108] - 2026-10-07
+
+Releases and Workflows screens, and built-in workflow templates, read in Vietnamese
+
+### Added
+
+- **Releases and Workflows read in the interface language you chose.** Release and workflow pages, the diagram tools and the built-in diagram templates show Vietnamese menus, labels, hints and dates; notes, titles, comments and a project's own templates stay as written.
+
 ## [0.4.0-dev.107] - 2026-10-07
 
 A core boot that cannot migrate reports why; migration lock waits are bounded
