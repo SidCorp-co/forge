@@ -1,7 +1,12 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { gunzipSync } from 'node:zlib';
-import { scrubSentryEvent } from '@forge/observability';
+import {
+  scrubBodyKeys,
+  scrubHeaders,
+  scrubSentryEvent,
+  scrubStringValues,
+} from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -161,6 +166,13 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
   it('sends an event whose fixed fields hold nothing to scrub', () => {
     const event = { request: Object.freeze({ url: '/x', data: Object.freeze({ note: 'kept' }) }) };
     expect(JSON.stringify(scrubSentryEvent(event))).toContain('kept');
+  });
+
+  it('reports a fixed field that refuses its scrub rather than throwing', () => {
+    expect(scrubBodyKeys(Object.freeze({ password: 'ordinary-password' }))).toBe(false);
+    expect(scrubHeaders(Object.freeze({ authorization: 'Bearer ordinary-token' }))).toBe(false);
+    expect(scrubStringValues(Object.freeze({ note: 'forge_pat_prd_0123abcd' }))).toBe(false);
+    expect(scrubBodyKeys({ password: 'ordinary-password' })).toBe(true);
   });
 
   it('drops an event the scrub cannot read through, throwing nothing itself', () => {
