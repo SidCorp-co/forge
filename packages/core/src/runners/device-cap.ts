@@ -1,7 +1,11 @@
 import { sql } from 'drizzle-orm';
 
-/** First runner release whose claim carries the master's `--agent` name. */
-export const AGENT_NAMING_MIN_RUNNER = '0.11.0';
+/**
+ * First runner release a claim is served to: 0.13.0 dropped the job pool (ddabc1f2b), so no box at or
+ * above it parks a job-linked session in its process. A box below it is held `below-floor` by name
+ * (`runners/ineligible.ts`), never served.
+ */
+export const CLAIM_MIN_RUNNER = '0.13.0';
 
 /** Whether a reported runner version is at or above `min` (`a.b.c`). */
 export function atLeastVersion(version: string | null | undefined, min: string): boolean {
@@ -17,7 +21,7 @@ export function atLeastVersion(version: string | null | undefined, min: string):
 
 export function claimCapableSql(alias: string) {
   const version = sql.raw(`${alias}.agent_version`);
-  const floor = sql.raw(`ARRAY[${AGENT_NAMING_MIN_RUNNER.split('.').join(',')}]`);
+  const floor = sql.raw(`ARRAY[${CLAIM_MIN_RUNNER.split('.').join(',')}]`);
   return sql`${version} ~ '^[0-9]+\.[0-9]+\.[0-9]+$'
     AND string_to_array(${version}, '.')::int[] >= ${floor}`;
 }

@@ -10,11 +10,7 @@ import {
 } from '@forge/contracts/releases';
 import type { Weighing } from '../issues/index.js';
 import { agrees, counted } from '../lib/plural.js';
-import {
-  AGENT_NAMING_MIN_RUNNER,
-  type RunnerHold,
-  type RunnerHoldReason,
-} from '../runners/index.js';
+import { CLAIM_MIN_RUNNER, type RunnerHold, type RunnerHoldReason } from '../runners/index.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
@@ -199,7 +195,7 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
   provisioning: (h) =>
     `has not finished provisioning its workspace (\`${h.detail ?? 'in progress'}\`). Watch it under ${RUNNERS_TAB}; a provision that is stuck is re-run from there.`,
   'below-floor': (h) =>
-    `runs agent version ${h.detail ?? 'unreported'}, below the ${AGENT_NAMING_MIN_RUNNER} a claim needs. Upgrade \`forge-runner\` on that box.`,
+    `runs agent version ${h.detail ?? 'unreported'}, below the ${CLAIM_MIN_RUNNER} a claim needs. Upgrade \`forge-runner\` on that box.`,
 };
 
 /** Readings whose own words already say when the box last reported. */

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
-import { AGENT_NAMING_MIN_RUNNER } from '../../src/runners/device-cap.js';
+import { CLAIM_MIN_RUNNER } from '../../src/runners/device-cap.js';
 
 export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
   return (await db.execute(query)) as unknown as T[];
@@ -100,7 +100,7 @@ export async function createTestDevice(
   await db.execute(sql`
     INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
     VALUES (${id}, ${ownerId}, ${opts.name ?? `device-${id.slice(0, 8)}`}, 'linux', ${opts.status ?? 'online'},
-            ${opts.agentVersion ?? AGENT_NAMING_MIN_RUNNER})
+            ${opts.agentVersion ?? CLAIM_MIN_RUNNER})
   `);
   return id;
 }

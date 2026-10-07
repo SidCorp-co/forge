@@ -26,7 +26,7 @@ import {
   reportLoopMonitorCoverage,
 } from './loop-monitor-axis.js';
 import { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
-import { closeIdleResidents, reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
+import { closeIdleResidents, reapUnansweredParks } from './park-deadline.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
@@ -54,8 +54,6 @@ export interface LoopMonitorResult {
   sessions: ZombieSessionReapResult;
   /** Jobs failed because their linked session is terminal (`session_lost`). */
   sessionLostJobs: JobAxisReapResult;
-  /** Job-linked parks an older runner left, failed past the residency and its grace. */
-  expiredParks: number;
   /** Resident chat sessions past their residency whose box was told to close them. */
   idleResidents: number;
   /** Processless parks closed at the deadline their asker set (ISS-964 c34). */
@@ -367,7 +365,6 @@ export async function runLoopMonitor(
   const ackMisses = await reapAckMisses(now, scope);
   const sessions = await reapZombieSessions(now, scope);
   const parkClocks = {
-    expiredParks: await reapExpiredParks(now, scope),
     idleResidents: await closeIdleResidents(now, scope),
     unansweredParks: await reapUnansweredParks(now, scope),
   };
