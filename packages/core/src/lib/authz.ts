@@ -2,6 +2,7 @@ import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db, type Tx } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import {
   type OrgMemberRole,
   organizationMembers,
@@ -100,6 +101,15 @@ export async function effectiveProjectRole(
 ): Promise<ProjectAccess | null> {
   const fence = fencedProjectIds();
   if (fence && !fence.includes(projectId)) return null;
+  return memoizedRead(`projectAccess:${userId ?? ''}:${projectId}`, () =>
+    readProjectRole(userId, projectId),
+  );
+}
+
+async function readProjectRole(
+  userId: string | null | undefined,
+  projectId: string,
+): Promise<ProjectAccess | null> {
   const orgId = await projectOrgOf(projectId);
   if (orgId === null) return null;
   if (!userId) return { projectId, orgId, role: null, orgRole: null, grants: [] };

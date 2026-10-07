@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
+import { timeQueries } from './query-timing.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
@@ -69,6 +70,7 @@ function buildDb() {
 
   const built = drizzle(queryClient, { schema });
   refuseBareDates(queryClient);
+  timeQueries(queryClient);
   return built;
 }
 
