@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.141] - 2026-10-07
+
+Requirements carry open questions and decisions; Decisions log and Roadmap pages
+
+### Added
+
+- **A requirement says what is still unclear**: revisions carry open questions and assumptions; a blocking open question refuses the agree; business answers become requirement decisions; a project Decisions log and a Roadmap page; issues link to requirements from either page.
+
 ## [0.4.0-dev.140] - 2026-10-07
 
 A landing can say another issue carries a workflow it touched
