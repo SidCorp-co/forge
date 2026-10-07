@@ -22,6 +22,7 @@ function range(commits: RangeCommit[], cut = commits.at(-1)?.sha ?? sha('0')): R
 const issue = (id: string, landing: string, status = 'needs_info'): LandedIssue => ({
   issueId: id,
   displayId: formatIssueRef(null, Number(id)),
+  title: `issue ${id}`,
   status,
   landing,
 });
@@ -89,6 +90,30 @@ describe('judgeCarried (ISS-1386)', () => {
     expect(reverted.kind === 'read' && reverted.refused).toEqual([]);
     expect(undone.kind === 'read' && undone.refused.map((r) => r.issueId)).toEqual(['2']);
     expect(none.kind === 'read' && none.refused[0]?.why).toMatch(/no commit up to the cut reverts/);
+  });
+
+  it('names both commits of an undone revert, and does not say to revert the landing first (r2)', () => {
+    const revert = commit('d', 'c', `Revert "land b"\n\nThis reverts commit ${sha('b')}.`);
+    const undo = commit('e', 'd', `Revert "Revert"\n\nThis reverts commit ${sha('d')}.`);
+    const undone = judgeCarried(
+      read(range([A, B, C, revert, undo]), [issue('2', sha('b'))]),
+      [],
+      [{ issueId: '2', decision: 'revert' }],
+    );
+
+    const why = undone.kind === 'read' ? (undone.refused[0]?.why ?? '') : '';
+    expect(why).toContain(sha('d').slice(0, 12));
+    expect(why).toContain(sha('e').slice(0, 12));
+    expect(why).not.toMatch(/revert it on .* first/);
+  });
+
+  it('carries each landed issue’s title onto what it names (r2)', () => {
+    const check = judgeCarried(
+      read(range([A]), [{ ...issue('1', sha('a')), title: 'Signup accepts a plan' }]),
+      [],
+      [],
+    );
+    expect(check.kind === 'read' && check.undecided[0]?.title).toBe('Signup accepts a plan');
   });
 
   it('takes a cut-below whose moved cut leaves the issue out, and names it as cut below', () => {

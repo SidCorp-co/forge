@@ -32,6 +32,7 @@ let server: TestServer;
 let repo: GitHubDouble;
 let projectId: string;
 let ownerId: string;
+let ownerEmail: string;
 let jwt: string;
 
 const fx = releaseBatchFixture(
@@ -63,6 +64,7 @@ beforeEach(async () => {
   repo.reset();
   const owner = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
   ownerId = owner.id;
+  ownerEmail = owner.email;
   projectId = (await createTestProject(harness.db, owner.id)).id;
   const { signUserToken } = await import('../../src/auth/jwt.js');
   jwt = await signUserToken(owner.id);
@@ -146,6 +148,9 @@ describe('a release batch names every issue its range carries', () => {
       [unnamedId, 'awaiting_release'],
     ]);
     expect(JSON.stringify(res.body)).toContain(`\`${parkedId}\` at \`needs_info\``);
+    const titled = (res.body.details?.carried ?? []) as Array<{ issueId: string; title?: string }>;
+    const titles = await harness.db.execute(sql`SELECT title FROM issues WHERE id = ${parked}`);
+    expect(titled.find((i) => i.issueId === parked)?.title).toBe(String(titles[0]?.title));
     expect((await fx.stored(roster)).status).toBe('awaiting_release');
     expect((await fx.stored(roster)).claim).toBeNull();
     expect(await openRuns()).toBe(0);
@@ -182,6 +187,8 @@ describe('a release batch names every issue its range carries', () => {
     expect(body).toContain(runId);
     expect(body).toContain(String(res.body.version));
     expect(body).toContain(why);
+    expect(body).toContain(ownerEmail);
+    expect(body).not.toContain('Whoever pressed');
     const prompt = await promptOf(runId);
     expect(prompt).toContain(`Promote exactly \`${sha('b')}\``);
     expect(prompt).toContain('`ship-unverified`');
@@ -282,6 +289,7 @@ describe('a release batch names every issue its range carries', () => {
     expect(res.body.code).toBe('RELEASE_CHECK_UNEVALUATED');
     expect(res.body.details).toMatchObject({ check: 'carried' });
     expect(String(res.body.details?.detail)).toContain('production...');
+    expect(String(res.body.message)).toContain(String(res.body.details?.detail));
   });
 });
 

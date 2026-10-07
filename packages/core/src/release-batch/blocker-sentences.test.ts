@@ -284,6 +284,13 @@ describe('the codes this change did not touch', () => {
       'The `channels` check could not be run',
     );
   });
+
+  it('says why the check could not be run where the reading names it (ISS-1386 r2)', () => {
+    const detail = 'GitHub compare production...8888 returned HTTP 404';
+    expect(
+      releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED', { check: 'carried', detail }),
+    ).toContain(`The \`carried\` check could not be run: ${detail}.`);
+  });
 });
 
 // ISS-1322's judge read this one in the release dialog as "an agent `closed` here is already
@@ -330,5 +337,26 @@ describe('what RELEASE_RUNTIME_UNROUTED tells a project nothing can read', () =>
   it('names each held issue by its display id and what it owes, not a count', () => {
     expect(sentence).toContain('`ISS-51` owes criterion 1, 2; `ISS-52` owes criterion 3.');
     expect(sentence).not.toContain('Held:');
+  });
+});
+
+// ISS-1386 r2: the judge read the unread warning naming the Integrations page twice under two names.
+describe('RELEASE_CARRIED_UNREAD — where to give Forge the repository', () => {
+  it('names each place once', async () => {
+    const { GitHubClientError } = await import('../integrations/github/client.js');
+    const { resolveLiveSource } = await import('../projects/live-source.js');
+    const { carriedUnreadWarningSentence } = await import('./blocker-sentences.js');
+    const source = await resolveLiveSource('p1', {
+      githubClient: async () => {
+        throw new GitHubClientError('no_binding', 'this project has no active GitHub binding');
+      },
+      deployKey: async () => ({ repoUrl: 'git@github.com:acme/app.git', privateKeyEnc: null }),
+    });
+    const why = source.kind === 'refused' ? source.reason : '';
+
+    const sentence = carriedUnreadWarningSentence(why);
+
+    expect(sentence.match(/Integrations/g) ?? []).toHaveLength(1);
+    expect(sentence.match(/Git access/g) ?? []).toHaveLength(1);
   });
 });
