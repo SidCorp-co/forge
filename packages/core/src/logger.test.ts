@@ -158,6 +158,14 @@ describe('the core logger', () => {
     expect(line.msg).toBe('http.unhandled');
   });
 
+  it('leaves a line that carries no failed query exactly as pino wrote it', () => {
+    const { lines, log } = capture();
+    log.info({ params: { id: 7 } }, 'route params');
+    expect(JSON.parse(lines[0] ?? '').params).toEqual({ id: 7 });
+  });
+});
+
+describe('the core logger, given what is not an Error', () => {
   it.each([
     ['its message', (log: Logger, err: Error) => log.warn({ err: err.message, id: 'm1' }, 'g')],
     ['the message with no msg', (log: Logger, err: Error) => log.warn({ err: err.message })],
@@ -209,11 +217,5 @@ describe('the core logger', () => {
       expect(line).not.toContain(HASH);
       expect(line).not.toContain('zq9');
     }
-  });
-
-  it('leaves a line that carries no failed query exactly as pino wrote it', () => {
-    const { lines, log } = capture();
-    log.info({ params: { id: 7 } }, 'route params');
-    expect(JSON.parse(lines[0] ?? '').params).toEqual({ id: 7 });
   });
 });
