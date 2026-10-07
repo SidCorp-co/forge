@@ -1,4 +1,4 @@
-import { redactQueryParams } from './query-params.js';
+import { type FieldReads, readOnce, redactQueryParams } from './query-params.js';
 
 export {
   asSerialized,
@@ -86,28 +86,32 @@ function put(target: object, key: string | number, value: unknown): boolean {
   return Object.getOwnPropertyDescriptor(target, key)?.value === value;
 }
 
+/**
+ * `holder[key]` read once across `reads`, so what is scrubbed is what a later rendering answering
+ * from the same reads writes; `null` where the read threw.
+ */
+function readField(holder: object, key: string, reads?: FieldReads): { value: unknown } | null {
+  const read = readOnce(holder, key, reads);
+  return read.threw ? null : read;
+}
+
 /** Scrubs every string in `obj` in place; false where a field refused the scrubbed text. */
-export function scrubStringValues(obj: unknown, depth = 0): boolean {
+export function scrubStringValues(obj: unknown, depth = 0, reads?: FieldReads): boolean {
   if (depth > 8 || !obj) return true;
   if (typeof obj !== 'object') return true;
   let whole = true;
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      const v = obj[i];
-      if (typeof v === 'string') {
-        const out = scrubPatInString(v);
-        if (out !== v && !put(obj, i, out)) whole = false;
-      } else if (!scrubStringValues(v, depth + 1)) whole = false;
+  const keys = Array.isArray(obj) ? obj.map((_, i) => String(i)) : Object.keys(obj);
+  for (const k of keys) {
+    const field = readField(obj, k, reads);
+    if (!field) {
+      whole = false;
+      continue;
     }
-    return whole;
-  }
-  const rec = obj as Record<string, unknown>;
-  for (const k of Object.keys(rec)) {
-    const v = rec[k];
+    const v = field.value;
     if (typeof v === 'string') {
       const out = scrubPatInString(v);
-      if (out !== v && !put(rec, k, out)) whole = false;
-    } else if (!scrubStringValues(v, depth + 1)) whole = false;
+      if (out !== v && !put(obj, k, out)) whole = false;
+    } else if (!scrubStringValues(v, depth + 1, reads)) whole = false;
   }
   return whole;
 }
@@ -128,20 +132,18 @@ export function scrubPatInString(s: string): string {
 }
 
 /** Key-named secrets in `obj` censored in place: true only if each one held. */
-export function scrubBodyKeys(obj: unknown, depth = 0): boolean {
+export function scrubBodyKeys(obj: unknown, depth = 0, reads?: FieldReads): boolean {
   if (depth > 8 || !obj || typeof obj !== 'object') return true;
   let whole = true;
-  if (Array.isArray(obj)) {
-    for (const item of obj) if (!scrubBodyKeys(item, depth + 1)) whole = false;
-    return whole;
-  }
-  const rec = obj as Record<string, unknown>;
-  for (const key of Object.keys(rec)) {
-    if (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase())) {
-      if (!put(rec, key, FILTERED)) whole = false;
+  const array = Array.isArray(obj);
+  const keys = array ? obj.map((_, i) => String(i)) : Object.keys(obj);
+  for (const key of keys) {
+    if (!array && (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase()))) {
+      if (!put(obj, key, FILTERED)) whole = false;
       continue;
     }
-    if (!scrubBodyKeys(rec[key], depth + 1)) whole = false;
+    const field = readField(obj, key, reads);
+    if (!field || !scrubBodyKeys(field.value, depth + 1, reads)) whole = false;
   }
   return whole;
 }
@@ -200,10 +202,11 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E | null {
+  const reads: FieldReads = new WeakMap();
   try {
-    if (!scrubInPlace(event)) return null;
-    const out = redactQueryParams(event, hint?.originalException);
-    if (out !== event && !scrubInPlace(out)) return null;
+    if (!scrubInPlace(event, reads)) return null;
+    const out = redactQueryParams(event, hint?.originalException, reads);
+    if (out !== event && !scrubInPlace(out, new WeakMap())) return null;
     return out;
   } catch {
     return null;
@@ -211,20 +214,28 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
 }
 
 /** Headers, URL, body and breadcrumbs scrubbed, the pass `scrubSentryEvent` runs either side. */
-function scrubInPlace(event: SentryLikeEvent): boolean {
+function scrubInPlace(event: SentryLikeEvent, reads: FieldReads): boolean {
   let whole = true;
   const keep = (done: boolean) => {
     if (!done) whole = false;
   };
-  const req = event.request;
-  if (req?.headers) keep(scrubHeaders(req.headers));
-  if (typeof req?.url === 'string') {
-    const url = scrubPatInString(scrubUrl(req.url));
-    if (url !== req.url) keep(put(req, 'url', url));
+  const at = (holder: object, key: string): unknown => {
+    const field = readField(holder, key, reads);
+    if (!field) whole = false;
+    return field?.value;
+  };
+  const req = at(event, 'request') as SentryLikeEvent['request'];
+  const headers = req && (at(req, 'headers') as Record<string, string | string[] | undefined>);
+  if (headers) keep(scrubHeaders(headers));
+  const reqUrl = req && at(req, 'url');
+  if (req && typeof reqUrl === 'string') {
+    const url = scrubPatInString(scrubUrl(reqUrl));
+    if (url !== reqUrl) keep(put(req, 'url', url));
   }
-  if (req && req.data !== undefined && req.data !== null) {
-    if (typeof req.data === 'string') {
-      const rawData = req.data;
+  const reqData = req && at(req, 'data');
+  if (req && reqData !== undefined && reqData !== null) {
+    if (typeof reqData === 'string') {
+      const rawData = reqData;
       let data: string;
       try {
         const parsed = JSON.parse(rawData);
@@ -237,24 +248,29 @@ function scrubInPlace(event: SentryLikeEvent): boolean {
       }
       if (data !== rawData) keep(put(req, 'data', data));
     } else {
-      keep(scrubBodyKeys(req.data));
-      keep(scrubStringValues(req.data));
+      keep(scrubBodyKeys(reqData, 0, reads));
+      keep(scrubStringValues(reqData, 0, reads));
     }
   }
-  if (Array.isArray(event.breadcrumbs)) {
-    for (const b of event.breadcrumbs) {
-      if (typeof b?.message === 'string') {
-        const message = scrubPatInString(b.message);
-        if (message !== b.message) keep(put(b, 'message', message));
+  const crumbs = at(event, 'breadcrumbs');
+  if (Array.isArray(crumbs)) {
+    for (const [i] of crumbs.entries()) {
+      const b = at(crumbs, String(i)) as { message?: unknown; data?: unknown } | undefined;
+      if (!b || typeof b !== 'object') continue;
+      const text = at(b, 'message');
+      if (typeof text === 'string') {
+        const message = scrubPatInString(text);
+        if (message !== text) keep(put(b, 'message', message));
       }
-      if (b?.data && typeof b.data === 'object') {
-        const d = b.data as Record<string, unknown>;
-        if (typeof d.url === 'string') {
-          const url = scrubPatInString(scrubUrl(d.url));
-          if (url !== d.url) keep(put(d, 'url', url));
+      const d = at(b, 'data');
+      if (d && typeof d === 'object') {
+        const dUrl = at(d, 'url');
+        if (typeof dUrl === 'string') {
+          const url = scrubPatInString(scrubUrl(dUrl));
+          if (url !== dUrl) keep(put(d, 'url', url));
         }
-        keep(scrubBodyKeys(d));
-        keep(scrubStringValues(d));
+        keep(scrubBodyKeys(d, 0, reads));
+        keep(scrubStringValues(d, 0, reads));
       }
     }
   }

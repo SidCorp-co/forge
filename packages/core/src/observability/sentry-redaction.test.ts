@@ -176,6 +176,30 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect(scrubBodyKeys({ password: 'ordinary-password' })).toBe(true);
   });
 
+  it('scrubs the answer a getter gives once, and sends that answer, not a fresh one', () => {
+    let made = 0;
+    const fresh = () => {
+      made++;
+      return {
+        password: 'ordinary-password',
+        toJSON() {
+          return this.password;
+        },
+      };
+    };
+    const events = [
+      { request: Object.defineProperty({}, 'data', { get: fresh, enumerable: true }) },
+      { request: { data: Object.defineProperty({}, 'body', { get: fresh, enumerable: true }) } },
+      { breadcrumbs: [Object.defineProperty({}, 'data', { get: fresh, enumerable: true })] },
+    ];
+    for (const event of events) {
+      const sent = JSON.stringify(scrubSentryEvent(event as never));
+      expect(sent).not.toContain('ordinary-password');
+      expect(sent).toContain('[Filtered]');
+    }
+    expect(made).toBe(3);
+  });
+
   it('drops an event the scrub cannot read through, throwing nothing itself', () => {
     const broken = Object.defineProperty({ note: 'kept' }, 'reason', {
       get: () => {

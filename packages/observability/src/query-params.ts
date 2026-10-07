@@ -609,10 +609,10 @@ export function errorsWithin(value: unknown): unknown[] {
  * statement and the driver's reason survive and name the values to find anywhere in it; without
  * any, a failed query's text is redacted to its end. The database's own texts that quote a value
  * lose it whether or not an error names it. An `Error` inside `value` that carries one comes back
- * as the plain object it serializes as.
+ * as the plain object it serializes as. `reads` answers a getter the caller already read.
  */
-export function redactQueryParams<T>(value: T, err?: unknown): T {
-  const written = asSerialized(value);
+export function redactQueryParams<T>(value: T, err?: unknown, reads?: FieldReads): T {
+  const written = asSerialized(value, reads ? { reads } : {});
   try {
     const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
     errs.push(...written.errors);
