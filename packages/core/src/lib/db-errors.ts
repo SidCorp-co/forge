@@ -54,6 +54,17 @@ export function pgDriverError(err: unknown): { code: string; message: string } |
   return found;
 }
 
+/** Every value bound to a failed statement on the chain, as text, empty ones left out. */
+export function pgBoundValues(err: unknown): string[] {
+  const values: string[] = [];
+  for (const link of causeChain(err)) {
+    const bound = Array.isArray(link.params) ? link.params : link.parameters;
+    if (!Array.isArray(bound)) continue;
+    for (const v of bound) if (v !== null && v !== undefined && `${v}` !== '') values.push(`${v}`);
+  }
+  return values;
+}
+
 /** What an SQLSTATE's class means, in words a person reads; the class is its first two characters. */
 const SQLSTATE_CLASS: Record<string, string> = {
   '08': 'the connection to the database failed',

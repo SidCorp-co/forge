@@ -2,6 +2,7 @@ import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import {
   isUniqueViolation,
+  pgBoundValues,
   pgConstraintName,
   pgDriverError,
   pgErrorClassDescription,
@@ -134,5 +135,17 @@ describe('pgErrorClassDescription', () => {
     expect(pgErrorClassDescription('22P02')).toBe('a value it was given was invalid');
     expect(pgErrorClassDescription('P0001')).toBe('a database function or trigger raised an error');
     expect(pgErrorClassDescription('XX000')).toBe('the database refused the statement');
+  });
+});
+
+describe('pgBoundValues', () => {
+  it('reads every non-empty value a failed statement was bound with', () => {
+    const wrapped = new DrizzleQueryError(
+      'update x set a = $1, b = $2, c = $3',
+      ['abc', '', 7],
+      new Error('x'),
+    );
+    expect(pgBoundValues(wrapped)).toEqual(['abc', '7']);
+    expect(pgBoundValues(new Error('plain'))).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { pgDriverError, pgErrorClassDescription } from '../lib/db-errors.js';
+import { pgBoundValues, pgDriverError, pgErrorClassDescription } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
@@ -96,9 +96,11 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
 function failureMessage(err: unknown): string {
   const driver = pgDriverError(err);
   if (driver) {
+    // The database's quoting texts lose their value first; then any bound value of two or more
+    // characters still in the text, however short, sends it to the SQLSTATE's description.
     const unquoted = redactQueryParams(driver.message);
-    const safe = redactQueryParams(unquoted, err) === unquoted;
-    const reason = safe ? unquoted : pgErrorClassDescription(driver.code);
+    const leaks = pgBoundValues(err).some((v) => v.length >= 2 && unquoted.includes(v));
+    const reason = leaks ? pgErrorClassDescription(driver.code) : unquoted;
     return `the database refused the write (${driver.code}): ${reason}`;
   }
   const message = err instanceof Error ? err.message : String(err);
