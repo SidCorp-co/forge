@@ -366,7 +366,7 @@ interface Walk extends Rendering {
   errors: Error[];
   /** The objects the walk is inside, so one that holds itself is told from one met twice. */
   open: Set<object>;
-  /** What each object handed back as itself held when it was read, should a later hook change it. */
+  /** A copy of each object `renderFields` left unchanged, taken as it read it. */
   snapshots: Map<object, object>;
   /** The copies this walk made, which it may settle in place. */
   made: WeakSet<object>;
