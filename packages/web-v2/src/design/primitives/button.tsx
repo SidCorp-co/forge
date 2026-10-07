@@ -39,7 +39,7 @@ export function Button({
   icon,
   loading = false,
   disabled,
-  type = "submit",
+  type = "button",
   children,
   ...props
 }: ButtonProps) {

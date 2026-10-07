@@ -26,6 +26,7 @@ export type LabelAttach = string | { labelId: string; isPrimary?: boolean };
 export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
+  category?: string | null;
   description?: string;
 }
 

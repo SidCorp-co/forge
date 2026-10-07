@@ -75,6 +75,16 @@ describe("the New issue form", () => {
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
+  it("files nothing when Preview or a formatting tool of the description is pressed (HOP ISS-126)", async () => {
+    const calls = core();
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bold (Ctrl+B)" }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("cannot be dismissed while the create is in flight, so a reopened form cannot send a second", async () => {
     core({ hold: true });
     const onClose = mount();

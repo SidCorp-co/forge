@@ -4,6 +4,7 @@
  * the database.
  */
 
+import { ISSUE_CREATE_ATTACHMENTS_MAX } from '@forge/contracts/attachments';
 import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
 import { z } from 'zod';
@@ -109,7 +110,7 @@ export const issueCreateSchema = z
     reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(labelAttachItemSchema).max(100).optional(),
-    attachments: z.array(attachmentInputSchema).max(10).optional(),
+    attachments: z.array(attachmentInputSchema).max(ISSUE_CREATE_ATTACHMENTS_MAX).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
     status: z.enum(ISSUE_INITIAL_STATUSES).optional(),

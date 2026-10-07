@@ -9,7 +9,7 @@ import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, SegmentedCont
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   COMMENT_KIND_META,
   deriveCommentKind,
@@ -98,6 +98,19 @@ function AddCommentBox({
   );
 }
 
+/** While `pending`, leaving the page asks first: the browser's own prompt, so the write is not abandoned unread. */
+function useHoldPageWhile(pending: boolean) {
+  useEffect(() => {
+    if (!pending) return;
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [pending]);
+}
+
 /**
  * A ruling the owner records on the issue unprompted: what was decided and why, kept as a decision
  * (comment intent decision) so it reads apart from the thread's chatter and every agent reads it.
@@ -106,6 +119,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   const [decision, setDecision] = useState("");
   const [reason, setReason] = useState("");
   const record = useRecordDecision(issueId);
+  useHoldPageWhile(record.isPending);
   const ready = decision.trim().length > 0 && reason.trim().length > 0;
   const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
   const submit = () => {

@@ -19,7 +19,7 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   ref?: Ref<HTMLButtonElement>;
 }
 
-export function IconButton({ icon, variant = "ghost", size = "md", type = "submit", ...props }: IconButtonProps) {
+export function IconButton({ icon, variant = "ghost", size = "md", type = "button", ...props }: IconButtonProps) {
   const s = SIZES[size];
   return (
     <ShadcnButton type={type} variant={VARIANT[variant]} size={s.size} {...props}>
