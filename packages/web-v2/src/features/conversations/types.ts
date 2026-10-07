@@ -321,10 +321,11 @@ export function threadEntries(
 }
 
 /** A conversation's name, or the first thing said in it. */
-export function conversationTitle(row: ConversationRow, firstSaid?: string | null): string {
+/** A room's name: its title, else its first words, else `untitled` (the caller's words for a room with neither). */
+export function conversationTitle(row: ConversationRow, firstSaid?: string | null, untitled = "New conversation"): string {
   const named = row.title?.trim();
   if (named) return named;
   const said = firstSaid?.trim();
   if (said) return said.length > 60 ? `${said.slice(0, 60)}…` : said;
-  return "New conversation";
+  return untitled;
 }

@@ -18,6 +18,22 @@ describe("the enum labels of the contracts", () => {
     });
   }
 
+  it("never gives two values of one group that read differently in English the same Vietnamese word", () => {
+    for (const [group, labels] of Object.entries(LABEL_GROUPS)) {
+      const seen = new Map<string, string>();
+      for (const value of Object.keys(labels)) {
+        const key = labelKey(group as keyof typeof LABEL_GROUPS, value);
+        // a built-in template's words are keyed `<template>.<element>` and read only beside that template's own
+        const word = `${group.startsWith("template") && group !== "templateTitle" ? value.split(".")[0] : ""}|${vi[key]}`;
+        const before = seen.get(word);
+        if (before !== undefined && before !== en[key]) {
+          expect.fail(`label.${group}: "${before}" and "${en[key]}" both read "${vi[key]}" in vi`);
+        }
+        seen.set(word, en[key] as string);
+      }
+    }
+  });
+
   it("reads vi where the language has the word, and the contract's English for a value no file names", () => {
     expect(labelCopy("vi")("requirementState", "in_delivery")).toBe(vi["label.requirementState.in_delivery"]);
     expect(labelCopy("en")("requirementState", "in_delivery")).toBe("In delivery");

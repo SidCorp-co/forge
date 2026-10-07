@@ -6,7 +6,7 @@ import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
-import { localizeWaiting, standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { gateSentence, gateTitle, localizeWaiting, standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
 import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
@@ -71,6 +71,7 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
   const [open, setOpen] = useState(false);
   const more = gate.issues.length > NAMED_IN_SENTENCE;
   const owner = gate.owner;
+  const title = gateTitle(gate.title, language);
   return (
     <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code}>
       <span
@@ -79,7 +80,7 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
         style={{ background: gate.kind === "blocker" ? LEGEND.err.dot : LEGEND.you.dot }}
       />
       <span className="min-w-0 flex-1">
-        <b className="font-semibold">{gate.title}.</b> {gate.sentence}
+        <b className="font-semibold">{title}.</b> {gateSentence(gate.sentence, language)}
         {owner.kind === "system" ? null : (
           <span className="mt-0.5 block text-12-5 text-muted" data-testid="gate-owner">
             {t("releases.gateOwes", { who: standingWho(owner.who, language), act: standingAct(owner.act, language) })}
@@ -97,7 +98,7 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
         ) : null}
       </span>
       <Tooltip label={`${gate.code} · ${gate.detail}`} multiline>
-        <span className="mt-0.5 text-subtle" role="img" aria-label={t("releases.gateDetails", { title: gate.title })}>
+        <span className="mt-0.5 text-subtle" role="img" aria-label={t("releases.gateDetails", { title })}>
           <Icon name="info" size={14} />
         </span>
       </Tooltip>

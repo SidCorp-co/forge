@@ -37,7 +37,9 @@ import {
   useRailProjectData,
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
-import { WorkspaceInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, WorkspaceInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { ProjectListItem } from "@/features/projects/types";
+import type { ChatDockApi } from "@/features/chat-dock/dock";
 import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
@@ -112,7 +114,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const locationSearch = useLocationSearch();
   const { user, isLoading, logout } = useAuth();
   useUnblockCascadeToasts();
-  const { toast } = useToast();
   const sidebar = useSidebarContext();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
@@ -180,36 +181,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [router, railSlug],
   );
 
-  const newChat = useCallback(() => {
-    if (!dock.projectId) {
-      toast({ title: "New chat", description: "Open a project to chat in it.", tone: "info" });
-      return;
-    }
-    dock.show({ kind: "draft", projectId: dock.projectId });
-  }, [dock, toast]);
-
   function onBottomSelect(key: string) {
     if (key === "home") router.push("/");
     else if (key === "chat") dock.toggle();
     else if (key === "attention") router.push("/attention");
     else if (key === "more") setMoreOpen(true);
   }
-
-  const commands: Command[] = useMemo(
-    () =>
-      buildWorkspaceCommands({
-        router,
-        slug,
-        activeProjectName: selectedProject?.name,
-        scopedProjects,
-        pinnedIds,
-        pinnedViews: pinnedViews.views,
-        recents,
-        toast,
-        onNewChat: newChat,
-      }),
-    [router, slug, selectedProject, scopedProjects, recents, pinnedViews.views, pinnedIds, toast, newChat],
-  );
 
   const openPalette = () => setPaletteOpen(true);
   const toggleBell = (anchor: typeof sidebarBellRef) => {
@@ -299,7 +276,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onSelect={onBottomSelect}
       />
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <WorkspacePalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        dock={dock}
+        slug={slug}
+        activeProjectName={selectedProject?.name}
+        scopedProjects={scopedProjects}
+        pinnedIds={pinnedIds}
+        pinnedViews={pinnedViews.views}
+        recents={recents}
+      />
     </div>
     </TopBarSlotProvider>
     </ChatDockProvider>
@@ -307,4 +294,48 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     </WorkspaceInterfaceLanguage>
     </CurrentProjectProvider>
   );
+}
+
+/** The ⌘K palette, built inside the interface language so its entries and its toasts read in it. */
+function WorkspacePalette({
+  open,
+  onClose,
+  dock,
+  slug,
+  activeProjectName,
+  scopedProjects,
+  pinnedIds,
+  pinnedViews,
+  recents,
+}: {
+  open: boolean;
+  onClose: () => void;
+  dock: ChatDockApi;
+  slug: string | null;
+  activeProjectName: string | undefined;
+  scopedProjects: ProjectListItem[];
+  pinnedIds: Set<string>;
+  pinnedViews: ReturnType<typeof usePinnedViews>["views"];
+  recents: ReturnType<typeof useRecents>["items"];
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const language = useInterfaceLanguage();
+  const t = useCopy();
+  const newChat = useCallback(() => {
+    if (!dock.projectId) {
+      toast({ title: t("shell.cmd.newChat"), description: t("shell.cmd.newChatNoProject"), tone: "info" });
+      return;
+    }
+    dock.show({ kind: "draft", projectId: dock.projectId });
+  }, [dock, toast, t]);
+  const commands: Command[] = useMemo(
+    () =>
+      buildWorkspaceCommands(
+        { router, slug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast, onNewChat: newChat },
+        language,
+      ),
+    [router, slug, activeProjectName, scopedProjects, recents, pinnedViews, pinnedIds, toast, newChat, language],
+  );
+  return <CommandPalette open={open} onClose={onClose} commands={commands} />;
 }

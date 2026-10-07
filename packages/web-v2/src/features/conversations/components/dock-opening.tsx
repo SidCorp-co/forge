@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { ErrorState, StatusBadge } from "@/design";
 import { type ChatTarget, openingTarget, waitingRoom } from "@/features/chat-dock/dock-target";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectConversations } from "../hooks";
 import { conversationTitle } from "../types";
 
@@ -22,6 +23,7 @@ export function DockOpening({
   onResolved: (target: ChatTarget) => void;
 }) {
   const q = useProjectConversations(projectId);
+  const t = useCopy();
   const rows = q.data;
   useEffect(() => {
     if (rows) onResolved(openingTarget(rows, { projectId, pageKey }));
@@ -29,13 +31,13 @@ export function DockOpening({
   if (q.isError) {
     return (
       <ErrorState
-        title="Conversations could not be read"
+        title={t("shell.dock.listUnread")}
         message={formatApiError(q.error)}
         onRetry={() => void q.refetch()}
       />
     );
   }
-  return <p className="fg-body-sm p-4 text-muted">Opening your latest conversation…</p>;
+  return <p className="fg-body-sm p-4 text-muted">{t("shell.dock.opening")}</p>;
 }
 
 /** A strip naming the conversation waiting on the person, when it is not the one open. */
@@ -49,21 +51,22 @@ export function WaitingOffer({
   onOpen: (target: ChatTarget) => void;
 }) {
   const q = useProjectConversations(projectId);
+  const t = useCopy();
   const room = q.data ? waitingRoom(q.data, { projectId, openId }) : null;
   if (!room) return null;
-  const title = conversationTitle(room);
+  const title = conversationTitle(room, null, t("shell.dock.newConversation"));
   return (
     <button
       type="button"
       data-testid="waiting-offer"
-      aria-label={`Open ${title}, waiting on you`}
+      aria-label={t("shell.dock.openWaiting", { title })}
       onClick={() => onOpen({ kind: "room", projectId, conversationId: room.id })}
       className="flex w-full flex-none items-center gap-2 border-b border-line bg-sunken px-3 py-1.5 text-left hover:bg-hover"
     >
       <StatusBadge family="thread" value="waiting_on_you" />
       <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{title}</span>
       <span aria-hidden className="fg-caption flex-none font-semibold text-link">
-        Open
+        {t("shell.dock.open")}
       </span>
     </button>
   );

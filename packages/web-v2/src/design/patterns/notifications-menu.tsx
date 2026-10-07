@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/design/primitives/button";
 import { EnumBadge, ToneBadge } from "@/design/primitives/enum-badge";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface NotificationAction {
   id: string;
@@ -74,6 +75,7 @@ export interface NotificationsMenuProps {
 }
 
 function MoreRow({ more }: { more: NonNullable<NotificationsMenuProps["more"]> }) {
+  const t = useCopy();
   return (
     <li className="px-3 py-2 text-center">
       <button
@@ -82,7 +84,7 @@ function MoreRow({ more }: { more: NonNullable<NotificationsMenuProps["more"]> }
         disabled={more.loading}
         className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
       >
-        {more.loading ? "Loading…" : more.label}
+        {more.loading ? t("shell.bell.loading") : more.label}
       </button>
     </li>
   );
@@ -103,6 +105,7 @@ function GroupMembers({
   onToggle: ((id: string) => void) | undefined;
   onSelectMember: ((memberId: string) => void) | undefined;
 }) {
+  const t = useCopy();
   return (
     <div className="mt-1">
       <button
@@ -112,12 +115,12 @@ function GroupMembers({
         aria-expanded={expanded}
         className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
       >
-        {`${item.group.open} of ${item.group.total} still open`}
-        {expanded ? " · hide" : " · show"}
+        {t("shell.bell.stillOpen", { open: item.group.open, total: item.group.total })}
+        {expanded ? t("shell.bell.hide") : t("shell.bell.show")}
       </button>
       {expanded && (
         <ul className="mt-1 border-l border-line-subtle pl-2.5">
-          {loading && <li className="fg-caption py-1">Loading…</li>}
+          {loading && <li className="fg-caption py-1">{t("shell.bell.loading")}</li>}
           {!loading &&
             (members ?? []).map((m) => (
               <li key={m.id}>
@@ -155,6 +158,7 @@ export function NotificationsMenu({
   onOpenAll,
 }: NotificationsMenuProps) {
   const [details, setDetails] = useState<ReadonlySet<string>>(new Set());
+  const t = useCopy();
   const toggleDetails = (id: string) =>
     setDetails((prev) => {
       const next = new Set(prev);
@@ -166,35 +170,35 @@ export function NotificationsMenu({
   return (
     <div className="forge-drop w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-line-strong bg-surface">
       <div className="flex items-center justify-between border-b border-line-subtle px-3 py-2.5">
-        <span className="fg-label">Notifications</span>
+        <span className="fg-label">{t("shell.bell.label")}</span>
         <button
           type="button"
           onClick={onMarkAllRead}
           disabled={!onMarkAllRead || !hasItems}
           className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
         >
-          Mark all read
+          {t("shell.bell.markAll")}
         </button>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8 text-muted">
           <span className="size-3.5 animate-spin rounded-pill border-2 border-line border-t-transparent" />
-          <span className="fg-caption">Loading…</span>
+          <span className="fg-caption">{t("shell.bell.loading")}</span>
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-          <p className="fg-body-sm text-fg">Couldn't load notifications.</p>
+          <p className="fg-body-sm text-fg">{t("shell.bell.unread")}</p>
           {onRetry && (
             <button type="button" onClick={onRetry} className="fg-caption text-link hover:underline">
-              Retry
+              {t("common.retry")}
             </button>
           )}
         </div>
       ) : !hasItems ? (
         <div className="px-4 py-8 text-center">
-          <p className="fg-body-sm text-fg">You're all caught up</p>
-          <p className="fg-caption mt-0.5">Nothing here is still open.</p>
+          <p className="fg-body-sm text-fg">{t("shell.bell.caughtUp")}</p>
+          <p className="fg-caption mt-0.5">{t("shell.bell.nothingOpen")}</p>
         </div>
       ) : (
         <ul className="max-h-[420px] overflow-y-auto">
@@ -235,7 +239,7 @@ export function NotificationsMenu({
                     )}
                     <EnumBadge family="notificationType" value={n.type} />
                     {n.resolved && (
-                      <ToneBadge tone="done" label="Resolved" glyph="✓" title="resolved: what this told of has cleared" />
+                      <ToneBadge tone="done" label={t("shell.bell.resolved")} glyph="✓" value="resolved" title={`resolved · ${t("shell.bell.resolvedHint")}`} />
                     )}
                     {n.sub && (
                       <button
@@ -244,7 +248,7 @@ export function NotificationsMenu({
                         onClick={() => toggleDetails(n.id)}
                         className="fg-caption text-link hover:underline"
                       >
-                        {open ? "Hide details" : "Details"}
+                        {open ? t("shell.bell.hideDetails") : t("shell.bell.details")}
                       </button>
                     )}
                   </div>
@@ -291,7 +295,7 @@ export function NotificationsMenu({
       {onOpenAll && (
         <div className="border-t border-line-subtle px-3 py-2 text-center">
           <button type="button" onClick={onOpenAll} className="fg-caption text-link hover:underline">
-            All notifications
+            {t("shell.bell.all")}
           </button>
         </div>
       )}

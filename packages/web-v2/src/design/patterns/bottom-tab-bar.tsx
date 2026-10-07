@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { useCopy, useNavLabel } from "@/lib/i18n/interface-language";
 
 export interface BottomTabItem {
   key: string;
@@ -26,21 +27,24 @@ export interface BottomTabBarProps {
  * is icon-tint + accent label + a top indicator bar — not color alone.
  */
 export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) {
+  const t = useCopy();
+  const navLabel = useNavLabel();
   return (
     <nav
-      aria-label="Primary"
+      aria-label={t("shell.tabs.label")}
       className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {items.map((it) => {
         const active = it.key === activeKey;
         const count = it.badge && it.badge > 0 ? it.badge : 0;
+        const label = navLabel(it.key, it.label);
         return (
           <button
             key={it.key}
             type="button"
             onClick={() => onSelect(it.key)}
             aria-current={active ? "page" : undefined}
-            aria-label={count > 0 ? `${it.label}, ${count} need attention` : it.label}
+            aria-label={count > 0 ? t("shell.tabs.needAttention", { label, n: count }) : label}
             className={cn(
               "relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
               active ? "text-accent-text" : "text-muted hover:text-fg",
@@ -59,7 +63,7 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
                 </span>
               )}
             </span>
-            {it.label}
+            {label}
             {active && <span className="absolute inset-x-5 top-0 h-0.5 rounded-pill bg-accent" />}
           </button>
         );

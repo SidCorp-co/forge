@@ -2,6 +2,7 @@
 // workspace layout memoizes the result; every entry is wired to existing
 // handlers/routes only (no fabricated endpoints).
 import type { Command, ToastView } from "@/design";
+import { copyOr, productCopy } from "@/lib/i18n/product-copy";
 import type { ProjectListItem } from "@/features/projects/types";
 import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "./nav-model";
 import type { PinnedView } from "@/lib/navigation/pinned-views";
@@ -22,8 +23,11 @@ interface WorkspaceCommandDeps {
   toast: (t: ToastView & { duration?: number }) => void;
 }
 
-export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
+/** The palette's entries, worded in `language`; the search keywords stay English beside the shown label. */
+export function buildWorkspaceCommands(deps: WorkspaceCommandDeps, language = "en"): Command[] {
   const { router, slug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast, onNewChat } = deps;
+  const t = productCopy(language);
+  const nav = (it: { key: string; label: string }) => copyOr(language, `nav.${it.key}`, it.label);
   const go = (label: string, icon: Command["icon"], group: Command["group"], href: string, keywords?: string): Command => ({
     label,
     icon,
@@ -43,20 +47,20 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
       .filter((p) => pinnedIds.has(p.id))
       .map((p) => go(p.name, "pin", "pinned", `/projects/${p.slug}`, "project")),
     ...pinnedViews.map((v) => go(v.label, v.icon, "pinned", v.href, "view")),
-    ...WORKSPACE_ITEMS.map((it) => go(it.label, it.icon, "navigate", it.href)),
+    ...WORKSPACE_ITEMS.map((it) => go(nav(it), it.icon, "navigate", it.href, it.label)),
     // The secondary destinations dropped from the rail, so deep nav stays reachable.
-    ...SECONDARY_DESTINATIONS.map((it) => go(it.label, it.icon, "navigate", it.href, "go to")),
-    go("Docs", "book", "navigate", "/docs", "help documentation guides go to"),
-    go("All projects", "folder", "navigate", "/projects", "projects list console go to"),
-    ...scopedProjects.map((p) => go(`Switch to ${p.name}`, "folder", "navigate", `/projects/${p.slug}`, "project switch")),
+    ...SECONDARY_DESTINATIONS.map((it) => go(nav(it), it.icon, "navigate", it.href, `${it.label} go to`)),
+    go(t("shell.docs"), "book", "navigate", "/docs", "docs help documentation guides go to"),
+    go(t("shell.cmd.allProjects"), "folder", "navigate", "/projects", "all projects list console go to"),
+    ...scopedProjects.map((p) => go(t("shell.cmd.switchTo", { name: p.name }), "folder", "navigate", `/projects/${p.slug}`, "project switch")),
     ...(slug
       ? [
-          ...PROJECT_ITEMS.map((it) => go(`${project} · ${it.label}`, it.icon, "navigate", `/projects/${slug}${it.sub}`)),
+          ...PROJECT_ITEMS.map((it) => go(`${project} · ${nav(it)}`, it.icon, "navigate", `/projects/${slug}${it.sub}`, it.label)),
           // The rail names only Automation (ISS-65); its Schedules tab is reachable by name.
-          go(`${project} · Schedules`, "clock", "navigate", `/projects/${slug}/automation?tab=schedules`),
+          go(`${project} · ${t("shell.cmd.schedules")}`, "clock", "navigate", `/projects/${slug}/automation?tab=schedules`, "schedules"),
           // Project settings (ISS-316), a nested route kept off the rail.
           go(
-            `${project} · Settings`,
+            `${project} · ${t("nav.settings")}`,
             "settings",
             "navigate",
             `/projects/${slug}/settings`,
@@ -64,19 +68,19 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
           ),
         ]
       : []),
-    { label: "New chat", icon: "chat", group: "actions", keywords: "ask agent assistant conversation", onRun: onNewChat },
+    { label: t("shell.cmd.newChat"), icon: "chat", group: "actions", keywords: "new chat ask agent assistant conversation", onRun: onNewChat },
     {
-      label: "Create issue",
+      label: t("shell.cmd.createIssue"),
       icon: "plus",
       group: "actions",
-      keywords: "new issue",
+      keywords: "create new issue",
       onRun: () =>
         slug
           ? router.push(`/projects/${slug}/issues?new=1`)
-          : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" }),
+          : toast({ title: t("shell.cmd.newIssue"), description: t("shell.cmd.newIssueNoProject"), tone: "info" }),
     },
-    go("Dispatch pipeline", "pipeline", "actions", pipelineHref, "run dispatch"),
-    go("Pair device", "server", "actions", "/runners", "runner device"),
-    go("Cancel a run", "stop", "actions", pipelineHref, "cancel run abort"),
+    go(t("shell.cmd.dispatch"), "pipeline", "actions", pipelineHref, "dispatch pipeline run"),
+    go(t("shell.cmd.pair"), "server", "actions", "/runners", "pair runner device"),
+    go(t("shell.cmd.cancelRun"), "stop", "actions", pipelineHref, "cancel run abort"),
   ];
 }

@@ -1,4 +1,9 @@
 import { ARTIFACT_CHANGE_LABELS, LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
+import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
+import { MOCKUP_KIND_LABELS, MOCKUP_STATUS_HINTS, MOCKUP_STATUS_LABELS } from "@forge/contracts/mockups";
+import { NOTIFICATION_TYPE_LABELS } from "@forge/contracts/notifications";
+import { ONBOARDING_STATUS_LABELS, THREAD_STATUS_HINTS } from "@forge/contracts/onboarding";
+import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
 import {
   DESIGN_REVISION_STATE_HINTS,
   DESIGN_REVISION_STATE_LABELS,
@@ -62,6 +67,7 @@ const bandsOf = (t: (typeof BUILTIN_WORKFLOW_TEMPLATES)[number]) => (t.lanes.fro
 
 const sentencesOf = (m: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.replace(/^[a-z_-]+: /, "")]));
+const readingsOf = (m: Record<string, Reading>): Record<string, string> => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v[0]]));
 
 export const LABEL_GROUPS = {
   requirementState: REQUIREMENT_STATE_LABELS,
@@ -93,6 +99,21 @@ export const LABEL_GROUPS = {
   workStep: WORK_STEP_LABELS,
   issueCategory: ISSUE_CATEGORY_LABELS,
   suggestionStatus: SUGGESTION_STATUS_LABELS,
+  releaseApproval: readingsOf(STATE_READINGS.release),
+  reconciliation: readingsOf(STATE_READINGS.reconciliation),
+  buildGate: readingsOf(STATE_READINGS.buildGate),
+  integration: readingsOf(STATE_READINGS.integration),
+  dataPolicy: labelsOf(SENSITIVE_DATA_BADGES),
+  hintDataPolicy: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, v.tip])),
+  threadStatus: ONBOARDING_STATUS_LABELS,
+  hintThreadStatus: sentencesOf(THREAD_STATUS_HINTS),
+  mockupStatus: MOCKUP_STATUS_LABELS,
+  hintMockupStatus: sentencesOf(MOCKUP_STATUS_HINTS),
+  mockupKind: MOCKUP_KIND_LABELS,
+  notificationType: NOTIFICATION_TYPE_LABELS,
+  agentReportKind: ENUM_LABELS.agentReportKind,
+  agentReportTarget: ENUM_LABELS.agentReportTarget,
+  role: ENUM_LABELS.role,
   templateTitle: Object.fromEntries(BUILTIN_WORKFLOW_TEMPLATES.map((t) => [t.id, t.title])),
   templateNode: builtin((t) => t.nodeTypes, (n) => n.label),
   templateNodeHint: builtin((t) => t.nodeTypes, (n) => n.tooltip),

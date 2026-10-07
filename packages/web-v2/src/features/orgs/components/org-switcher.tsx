@@ -12,34 +12,36 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/design/icons/icon";
 import { Menu, type MenuItem } from "@/design/patterns/menu";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useActiveOrg } from "../active-org";
 import type { OrgListItem } from "../types";
 
 /** Personal orgs surface as "Personal" everywhere (matches Settings → Orgs and
- *  the legacy projects-toolbar label). */
-function orgLabel(o: OrgListItem): string {
-  return o.isPersonal ? "Personal" : o.name;
+ *  the legacy projects-toolbar label), in the interface language. */
+function orgLabel(o: OrgListItem, personal: string): string {
+  return o.isPersonal ? personal : o.name;
 }
 
 export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "brand" }) {
   const router = useRouter();
   const { orgs, activeOrg, setActiveOrg, isSingle } = useActiveOrg();
+  const t = useCopy();
 
   // Nothing to show until orgs resolve (avoids a flash of an empty control).
   if (!activeOrg) return null;
 
-  const label = orgLabel(activeOrg);
+  const label = orgLabel(activeOrg, t("shell.org.personal"));
 
   const items: MenuItem[] = [
     ...orgs.map((o) => ({
-      label: orgLabel(o),
+      label: orgLabel(o, t("shell.org.personal")),
       icon: o.id === activeOrg.id ? ("check" as const) : undefined,
       onSelect: () => setActiveOrg(o.id),
     })),
     // Org home (ISS-470) — the active org's projects + members, one click away.
-    { label: "Organization home", icon: "grid", onSelect: () => router.push("/org") },
-    { label: "Manage organizations", icon: "settings", onSelect: () => router.push("/settings?tab=orgs") },
+    { label: t("shell.org.home"), icon: "grid", onSelect: () => router.push("/org") },
+    { label: t("shell.org.manage"), icon: "settings", onSelect: () => router.push("/settings?tab=orgs") },
   ];
 
   if (variant === "brand") {
@@ -55,7 +57,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
             type="button"
             data-testid="brand-org-switcher"
             aria-haspopup="menu"
-            aria-label={`Organization: ${label}`}
+            aria-label={t("shell.org.named", { name: label })}
             className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
           >
             <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
@@ -98,7 +100,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
         <Link
           href="/org"
           className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
-          aria-label={`Organization: ${label}`}
+          aria-label={t("shell.org.named", { name: label })}
         >
           {glyph}
           {labelEl}
@@ -115,7 +117,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
           <button
             type="button"
             aria-haspopup="menu"
-            aria-label={`Switch organization — current ${label}`}
+            aria-label={t("shell.org.switch", { name: label })}
             className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
           >
             {glyph}
@@ -134,7 +136,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
         <Icon name="users" size={15} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className="text-10 font-semibold uppercase tracking-[0.06em] text-subtle">Organization</span>
+        <span className="text-10 font-semibold uppercase tracking-[0.06em] text-subtle">{t("shell.org.kicker")}</span>
         <span className="fg-label truncate">{label}</span>
       </span>
       {!isSingle && <Icon name="chevronUpDown" size={15} className="flex-none text-subtle" />}
@@ -148,7 +150,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
       <Link
         href="/org"
         className={cn(rowClass, "transition-colors hover:bg-hover")}
-        aria-label={`Organization: ${label}`}
+        aria-label={t("shell.org.named", { name: label })}
       >
         {rowInner}
       </Link>
@@ -165,7 +167,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
         <button
           type="button"
           aria-haspopup="menu"
-          aria-label={`Switch organization — current ${label}`}
+          aria-label={t("shell.org.switch", { name: label })}
           className={cn(rowClass, "transition-colors hover:bg-hover")}
         >
           {rowInner}

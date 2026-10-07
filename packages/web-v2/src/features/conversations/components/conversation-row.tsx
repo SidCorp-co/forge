@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ListedConversation } from "../hooks";
 import { conversationTitle } from "../types";
 
@@ -43,10 +43,12 @@ export function ConversationRow({
   open?: boolean;
   onOpen: () => void;
 } & ConversationRowActions) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const glyph = projectGlyph(project?.slug ?? row.projectId);
   const initials = projectInitials(project?.name ?? "?");
 
-  const title = conversationTitle(row);
+  const title = conversationTitle(row, null, t("shell.dock.newConversation"));
   const archived = row.archivedAt !== null;
   const [editing, setEditing] = useState(false);
   const mark = <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />;
@@ -74,8 +76,8 @@ export function ConversationRow({
         type="button"
         onClick={onOpen}
         aria-current={open ? "true" : undefined}
-        aria-label={`Open ${title} in ${project?.name ?? "an unknown project"}`}
-        title={`${row.ecosystemId ? "Ecosystem" : "Project"} scope · ${project?.name ?? "Unknown project"}`}
+        aria-label={t("shell.row.open", { title, project: project?.name ?? t("shell.row.unknownProjectLower") })}
+        title={t("shell.row.scope", { scope: row.ecosystemId ? t("nav.ecosystem") : t("common.nav.project"), project: project?.name ?? t("shell.row.unknownProject") })}
         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
       >
         {mark}
@@ -87,17 +89,17 @@ export function ConversationRow({
           actions in a 207px row left the title none. */}
       <div className="hidden flex-none items-center gap-0.5 group-focus-within:flex group-hover:flex">
         {onPin && (
-          <IconButton icon="pin" size="sm" aria-pressed={row.pinned === true} aria-label={`${row.pinned ? "Unpin" : "Pin"} ${title}`} onClick={() => onPin(!row.pinned)} />
+          <IconButton icon="pin" size="sm" aria-pressed={row.pinned === true} aria-label={t(row.pinned ? "shell.row.unpin" : "shell.row.pin", { title })} onClick={() => onPin(!row.pinned)} />
         )}
-        {onRename && <IconButton icon="rename" size="sm" aria-label={`Rename ${title}`} onClick={() => setEditing(true)} />}
+        {onRename && <IconButton icon="rename" size="sm" aria-label={t("shell.row.rename", { title })} onClick={() => setEditing(true)} />}
         {onArchive && (
-          <IconButton icon="archive" size="sm" aria-label={`${archived ? "Unarchive" : "Archive"} ${title}`} onClick={() => onArchive(!archived)} />
+          <IconButton icon="archive" size="sm" aria-label={t(archived ? "shell.row.unarchive" : "shell.row.archive", { title })} onClick={() => onArchive(!archived)} />
         )}
-        {onDelete && <IconButton icon="trash" size="sm" aria-label={`Delete ${title}`} onClick={onDelete} />}
+        {onDelete && <IconButton icon="trash" size="sm" aria-label={t("shell.row.delete", { title })} onClick={onDelete} />}
       </div>
 
       <span className="fg-caption flex-none whitespace-nowrap font-mono text-subtle group-focus-within:hidden group-hover:hidden">
-        {formatRelativeTime(row.updatedAt)}
+        {time.relative(row.updatedAt)}
       </span>
     </div>
   );
@@ -106,6 +108,7 @@ export function ConversationRow({
 /** The row as a name field; `onDone` gets the new title, or null when nothing changed. */
 function RenameRow({ mark, title, onDone }: { mark: React.ReactNode; title: string; onDone: (next: string | null) => void }) {
   const [draft, setDraft] = useState(title);
+  const t = useCopy();
   const commit = () => {
     const next = draft.trim();
     onDone(next.length > 0 && next !== title ? next : null);
@@ -116,7 +119,7 @@ function RenameRow({ mark, title, onDone }: { mark: React.ReactNode; title: stri
       <Input
         autoFocus
         value={draft}
-        aria-label="Conversation name"
+        aria-label={t("shell.row.name")}
         onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {

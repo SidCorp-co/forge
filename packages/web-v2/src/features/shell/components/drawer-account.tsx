@@ -1,20 +1,22 @@
 "use client";
 
 import { Icon } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 const ROW =
   "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold text-muted transition-colors hover:bg-hover hover:text-fg";
 
 export function DrawerAccount({ onAccount, onSignOut }: { onAccount: () => void; onSignOut: () => void }) {
+  const t = useCopy();
   return (
     <>
       <button type="button" className={ROW} onClick={onAccount}>
         <Icon name="settings" size={17} />
-        Account &amp; Settings
+        {t("common.nav.account")}
       </button>
       <button type="button" className={ROW} onClick={onSignOut}>
         <Icon name="logOut" size={17} />
-        Sign out
+        {t("common.nav.signOut")}
       </button>
     </>
   );

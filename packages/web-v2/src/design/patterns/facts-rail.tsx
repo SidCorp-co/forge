@@ -40,7 +40,9 @@ export function FactsGroup({ title, count, children, testId }: { title: string; 
 export function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
   return (
     <div className="grid grid-cols-[88px_minmax(0,1fr)] items-baseline gap-2 py-[5px] text-13" data-testid={testId}>
-      <span className="text-12-5 font-medium text-muted">{label}</span>
+      <span className="text-12-5 font-medium text-muted" data-fact-label>
+        {label}
+      </span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</span>
     </div>
   );
@@ -121,7 +123,11 @@ export interface StepView {
   tone?: LegendTone;
 }
 
-/** A lifecycle as one segmented bar with its step names under it; the current step is toned. */
+// a step's name wraps onto a second line rather than being cut: in a fifth of the rail a long
+// Vietnamese step name does not fit one line, and a cut one reads as a different word
+const WRAP = "block leading-tight [overflow-wrap:anywhere]";
+
+/** A lifecycle as one segmented bar with its step names under it, each read whole; the current step is toned. */
 export function StepBar({ steps, caption }: { steps: readonly StepView[]; caption?: ReactNode }) {
   const t = useCopy();
   return (
@@ -134,8 +140,8 @@ export function StepBar({ steps, caption }: { steps: readonly StepView[]; captio
               className="block h-1.5 rounded-pill"
               style={{ background: s.state === "now" ? LEGEND[s.tone ?? "run"].dot : s.state === "done" ? "var(--ink-600)" : "var(--paper-300)" }}
             />
-            <span className={cn("mt-1 block truncate text-11-5", s.state === "now" ? "font-semibold text-fg" : "text-subtle")}>{s.label}</span>
-            {s.meta ? <span className="block truncate font-mono text-11 text-subtle">{s.meta}</span> : null}
+            <span className={cn(WRAP, "mt-1 text-11-5", s.state === "now" ? "font-semibold text-fg" : "text-subtle")}>{s.label}</span>
+            {s.meta ? <span className={cn(WRAP, "font-mono text-11 text-subtle")}>{s.meta}</span> : null}
           </li>
         ))}
       </ol>

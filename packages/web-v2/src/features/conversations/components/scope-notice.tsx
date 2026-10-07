@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { composerRefusal, scopeDerivation } from "../membership";
 import type { ConversationMembership } from "../types";
 
@@ -18,6 +19,7 @@ export function ScopeNotice({
   room: Partial<Pick<ConversationMembership, "scopeProjects">>;
 }) {
   const [open, setOpen] = useState(true);
+  const t = useCopy();
   const refusal = composerRefusal(room);
   const scopeProjects = room.scopeProjects ?? [];
   if (scopeProjects.length === 0) return null;
@@ -44,8 +46,8 @@ export function ScopeNotice({
         />
         <span className="fg-caption truncate text-muted">
           {spans
-            ? `About ${scopeProjects.length} projects: ${scopeProjects.map((p) => p.name).join(", ")}`
-            : `About ${scopeProjects[0]?.name}`}
+            ? t("shell.scope.many", { n: scopeProjects.length, names: scopeProjects.map((p) => p.name).join(", ") })
+            : t("shell.scope.one", { name: scopeProjects[0]?.name ?? "" })}
         </span>
       </button>
       {open && (

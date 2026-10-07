@@ -6,6 +6,7 @@
 
 import type { ReactNode } from "react";
 import { useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import { copyOr } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import {
   enumLabel,
@@ -101,7 +102,8 @@ function Bars({ n }: { n: number }) {
   );
 }
 
-/** A family with no field named reads as words in the tooltip: `failureCause` → "failure cause". */
+/** A family with no field named reads as words in the tooltip: `failureCause` → "failure cause"; the
+ *  locale file's `common.field.<family>` words it in the interface language. */
 const fieldWords = (family: string) => family.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 
 const FIELD: Partial<Record<EnumFamily, string>> = {
@@ -132,10 +134,11 @@ export interface EnumBadgeProps {
 export function EnumBadge({ family, value, label }: EnumBadgeProps) {
   const language = useInterfaceLanguage();
   const text = label ?? enumLabel(family, value, language);
+  const field = copyOr(language, `common.field.${family}`, FIELD[family] ?? fieldWords(family));
   return (
     <span
       className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-[4px] bg-sunken px-1.5 py-[2px] text-11-5 font-medium text-muted"
-      title={`${FIELD[family] ?? fieldWords(family)}: ${value}`}
+      title={`${field}: ${value}`}
       data-value={value}
       data-testid="enum-badge"
     >

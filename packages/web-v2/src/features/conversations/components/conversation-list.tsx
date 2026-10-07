@@ -16,6 +16,8 @@ import {
 import { useProjects } from "@/features/projects/hooks";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { dockSections } from "../grouping";
 import {
@@ -43,7 +45,7 @@ const EVERY_PROJECT: ConversationFilter = { kind: "all" };
 
 export function filterConversations(
   rows: ListedConversation[],
-  opts: { filter: ConversationFilter; search: string },
+  opts: { filter: ConversationFilter; search: string; untitled?: string },
 ): ListedConversation[] {
   const term = opts.search.trim().toLowerCase();
   const { filter } = opts;
@@ -51,18 +53,18 @@ export function filterConversations(
     (r) =>
       (filter.kind === "all" ||
         (filter.kind === "project" ? r.projectId === filter.id : r.ecosystemId === filter.id)) &&
-      (!term || conversationTitle(r).toLowerCase().includes(term)),
+      (!term || conversationTitle(r, null, opts.untitled).toLowerCase().includes(term)),
   );
 }
 
-function ecosystemsReading(q: ReturnType<typeof useProjectEcosystems>, hasProject: boolean) {
-  if (!hasProject) return { ecosystems: [], note: "Open a project to reach its ecosystems" };
-  if (q.isError) return { ecosystems: [], note: `Ecosystems could not be read: ${formatApiError(q.error)}` };
-  if (!q.data) return { ecosystems: [], note: "Reading ecosystems…" };
+function ecosystemsReading(q: ReturnType<typeof useProjectEcosystems>, hasProject: boolean, t: Copy) {
+  if (!hasProject) return { ecosystems: [], note: t("shell.list.ecoOpenProject") };
+  if (q.isError) return { ecosystems: [], note: t("shell.list.ecoUnread", { why: formatApiError(q.error) }) };
+  if (!q.data) return { ecosystems: [], note: t("shell.list.ecoReading") };
   const ecosystems = q.data.memberships.flatMap((m) =>
     m.document.state === "active" && m.ecosystem ? [{ id: m.ecosystem.id, name: m.ecosystem.name }] : [],
   );
-  return { ecosystems, note: ecosystems.length ? null : "This project is an active member of no ecosystem" };
+  return { ecosystems, note: ecosystems.length ? null : t("shell.list.ecoNone") };
 }
 
 function filterMenu(o: {
@@ -72,11 +74,12 @@ function filterMenu(o: {
   archived: boolean;
   onPick: (f: ConversationFilter) => void;
   onArchived: () => void;
+  t: Copy;
 }): MenuItem[] {
-  const { filter } = o;
-  const from = "Show conversations from";
+  const { filter, t } = o;
+  const from = t("shell.list.showFrom");
   return [
-    { group: from, label: "Every project", checked: filter.kind === "all", onSelect: () => o.onPick(EVERY_PROJECT) },
+    { group: from, label: t("shell.list.everyProject"), checked: filter.kind === "all", onSelect: () => o.onPick(EVERY_PROJECT) },
     ...o.projects.map((p) => ({
       group: from,
       label: p.name,
@@ -84,22 +87,23 @@ function filterMenu(o: {
       onSelect: () => o.onPick({ kind: "project", id: p.id, name: p.name }),
     })),
     ...o.ecosystems.map((e) => ({
-      group: "Ecosystem",
+      group: t("nav.ecosystem"),
       label: e.name,
       checked: filter.kind === "ecosystem" && filter.id === e.id,
       onSelect: () => o.onPick({ kind: "ecosystem", id: e.id, name: e.name }),
     })),
-    { group: "Other", label: "Archived", icon: "archive", checked: o.archived, onSelect: o.onArchived },
+    { group: t("shell.list.other"), label: t("shell.list.archived"), icon: "archive", checked: o.archived, onSelect: o.onArchived },
   ];
 }
 
 function FilterTrigger({ filtered, label }: { filtered: boolean; label: string }) {
+  const t = useCopy();
   return (
     <span className="relative inline-flex">
       <IconButton
         icon="filter"
         variant="secondary"
-        aria-label={filtered ? `Filter conversations, showing ${label}` : "Filter conversations"}
+        aria-label={filtered ? t("shell.list.filterShowing", { label }) : t("shell.list.filter")}
         aria-pressed={filtered}
         className={cn(filtered && "border-accent bg-accent-tint text-accent-text")}
       />
@@ -125,7 +129,9 @@ export function ConversationList({
   const projects = useMemo(() => allProjects ?? [], [allProjects]);
   const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
   const current = projects.find((p) => p.id === projectId);
-  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(useProjectEcosystems(current?.id ?? ""), current !== undefined);
+  const t = useCopy();
+  const untitled = t("shell.dock.newConversation");
+  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(useProjectEcosystems(current?.id ?? ""), current !== undefined, t);
 
   const [archived, setArchived] = useState(false);
   const list = useConversationsAcrossProjects(projectIds, archived);
@@ -142,7 +148,7 @@ export function ConversationList({
   const pin = usePinConversation();
 
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
-  const rows = filterConversations(list.rows, { filter, search });
+  const rows = filterConversations(list.rows, { filter, search, untitled });
   const filtered = picked !== null || archived;
   const leave = (id: string) => {
     if (id === conversationId) onSelect(current ? { kind: "draft", projectId: current.id } : { kind: "people" });
@@ -162,21 +168,21 @@ export function ConversationList({
 
   const scopeItems: MenuItem[] = [
     ...projects.map((p) => ({
-      group: "Project",
+      group: t("common.nav.project"),
       label: p.name,
       checked: ecosystemScope === null && p.id === projectId,
       onSelect: () => startProject(p.id),
     })),
-    ...(ecosystemsNote ? [{ group: "Ecosystem", label: ecosystemsNote, disabled: true }] : []),
+    ...(ecosystemsNote ? [{ group: t("nav.ecosystem"), label: ecosystemsNote, disabled: true }] : []),
     ...ecosystems.map((e) => ({
-      group: "Ecosystem",
+      group: t("nav.ecosystem"),
       label: e.name,
       checked: ecosystemScope?.ecosystemId === e.id,
       onSelect: () => current && startEcosystem({ projectId: current.id, ecosystemId: e.id, name: e.name }),
     })),
     {
-      group: "With other people",
-      label: "Start a room with other people…",
+      group: t("shell.list.withPeople"),
+      label: t("shell.list.startWithPeople"),
       icon: "users",
       onSelect: () => {
         setEcosystemScope(null);
@@ -185,8 +191,8 @@ export function ConversationList({
     },
   ];
 
-  const filterItems = filterMenu({ projects, ecosystems, filter, archived, onPick: setPicked, onArchived: () => setArchived((v) => !v) });
-  const filterLabel = [filter.kind === "all" ? "every project" : filter.name, archived ? "archived" : null]
+  const filterItems = filterMenu({ projects, ecosystems, filter, archived, onPick: setPicked, onArchived: () => setArchived((v) => !v), t });
+  const filterLabel = [filter.kind === "all" ? t("shell.list.everyProjectLower") : filter.name, archived ? t("shell.list.archivedLower") : null]
     .filter(Boolean)
     .join(" · ");
 
@@ -201,7 +207,7 @@ export function ConversationList({
             className="min-w-0 flex-1 rounded-r-none"
             onClick={startInScope}
           >
-            <span className="truncate">{scopeName ? `New chat · ${scopeName}` : "New chat"}</span>
+            <span className="truncate">{scopeName ? t("shell.list.newChatIn", { name: scopeName }) : t("shell.cmd.newChat")}</span>
           </Button>
           <Menu
             align="right"
@@ -209,7 +215,7 @@ export function ConversationList({
               <Button
                 variant="secondary"
                 size="sm"
-                aria-label="Choose where the new chat starts"
+                aria-label={t("shell.list.chooseScope")}
                 className="h-full rounded-l-none border-l-0 px-2"
               >
                 <Icon name="chevronDown" size={15} />
@@ -222,9 +228,9 @@ export function ConversationList({
 
         <div className="flex items-center gap-1.5">
           <Input
-            aria-label="Search conversations"
+            aria-label={t("shell.list.search")}
             icon="search"
-            placeholder="Search chats"
+            placeholder={t("shell.list.searchPlaceholder")}
             className="min-w-0 flex-1"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -237,7 +243,7 @@ export function ConversationList({
         </div>
         {filtered && (
           <div className="flex items-center gap-1.5" data-testid="active-filter">
-            <span className="fg-caption min-w-0 flex-1 truncate text-muted">Showing {filterLabel}</span>
+            <span className="fg-caption min-w-0 flex-1 truncate text-muted">{t("shell.list.showing", { label: filterLabel })}</span>
             <button
               type="button"
               className="fg-caption flex-none font-semibold text-link hover:underline"
@@ -246,7 +252,7 @@ export function ConversationList({
                 setArchived(false);
               }}
             >
-              {current ? `Back to ${current.name}` : "Show all"}
+              {current ? t("common.backTo", { label: current.name }) : t("shell.list.showAll")}
             </button>
           </div>
         )}
@@ -255,7 +261,7 @@ export function ConversationList({
       <div className="min-h-0 flex-1 overflow-y-auto bg-app">
         {list.error != null && (
           <ErrorState
-            title="Conversations could not be read"
+            title={t("shell.dock.listUnread")}
             message={formatApiError(list.error)}
             onRetry={list.refetch}
           />
@@ -263,14 +269,15 @@ export function ConversationList({
         {list.isLoading && SKELETON_ROWS.map((k) => <SessionRowSkeleton key={k} />)}
         {!list.isLoading && list.error == null && rows.length === 0 && (
           <EmptyState
-            title={archived ? "Nothing archived" : list.rows.length ? "Nothing matches" : "No conversations yet"}
-            message={archived ? "Archived chats wait here." : "Start a chat and it shows up here."}
+            title={archived ? t("shell.list.noneArchived") : list.rows.length ? t("shell.list.noMatch") : t("shell.list.none")}
+            message={archived ? t("shell.list.archivedHint") : t("shell.list.noneHint")}
           />
         )}
         {dockSections(rows, {
           projectId: current?.id ?? null,
           pageKey,
-          projectName: (id) => byId.get(id)?.name ?? "A project you cannot open",
+          projectName: (id) => byId.get(id)?.name ?? t("shell.list.closedProject"),
+          words: { project: t("common.nav.project"), page: t("shell.dock.thisPage") },
         }).map((section) => (
           <section key={section.key} aria-label={section.label}>
             <h3 className="bg-sunken px-3 py-1 text-11-5 font-bold text-muted">{section.label}</h3>
@@ -298,13 +305,13 @@ export function ConversationList({
 
       <ConfirmDialog
         open={confirming !== null}
-        title="Delete this conversation?"
+        title={t("shell.list.deleteTitle")}
         message={
           confirming
-            ? `“${conversationTitle(confirming)}” and everything said in it will be gone. Archive it instead to keep it out of the way.`
+            ? t("shell.list.deleteMessage", { title: conversationTitle(confirming, null, untitled) })
             : ""
         }
-        confirmLabel="Delete"
+        confirmLabel={t("shell.list.delete")}
         tone="danger"
         loading={remove.isPending}
         onConfirm={() => {

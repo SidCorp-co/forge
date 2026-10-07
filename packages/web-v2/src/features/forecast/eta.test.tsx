@@ -192,7 +192,7 @@ describe("the ETA column's language and order", () => {
       />,
     );
     const header = screen.getByTestId("list-sort-eta");
-    expect(header.textContent).toBe("Dự kiến"); // i18n-allow: asserts the vi ETA copy
+    expect(header.textContent).toBe("Dự kiến xong"); // i18n-allow: asserts the vi ETA copy
     expect(header.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(header);
     expect(onSort).toHaveBeenCalledTimes(1);
