@@ -11,27 +11,27 @@ import { version, selfCopy } from '../install.mjs';
 import { pendingText, importSpecs, readIfPresent } from './pending.mjs';
 import { specTable, resolvePending, aliasPatterns, wouldName } from './resolve.mjs';
 
-// the pre-write surface exists at all: CI says the right thing too late. By the time a
+// cm:why the pre-write surface exists at all: CI says the right thing too late. By the time a
 //   boundary violation reaches a pipeline the code is written, reviewed and often merged; before
 //   the bytes land the cost of the fix is zero. NORTH-STAR §5's first clause is this file.
-// protocol -> claude-plugin/scripts/hook-pre-edit.mjs — that script only plumbs stdin to
+// cm:edge protocol -> claude-plugin/scripts/hook-pre-edit.mjs — that script only plumbs stdin to
 //   decide() and stdout/stderr + exit code back out. All judgement is here, so it is testable.
 
-// EXIT CODES INVERT HERE, deliberately. In CLI form 2 means "the gate could not run"; in
+// cm:guard EXIT CODES INVERT HERE, deliberately. In CLI form 2 means "the gate could not run"; in
 //   PreToolUse form 2 means DENY (the client's protocol, not ours). So every cannot-run state maps
 //   to exit 0 plus a loud warning, and exit 2 is reserved for a real, evidenced violation. Do not
 //   "fix" a cannot-run into an exit 2: that turns an archmap outage into a blanket write block.
 const ALLOW = 0;
 const DENY = 2;
 
-// the rollout guard, and why it is one constant. PLAYBOOK §A.4: do not install a boundary
+// cm:why the rollout guard, and why it is one constant. PLAYBOOK §A.4: do not install a boundary
 //   gate on a repo that has not decided its boundaries yet — the findings are noise, the hook gets
 //   switched off, and the next repo never gets it. Two LOCKED directional contracts is the issue's
 //   paraphrase of that bar; a human moves it in one edit rather than reverse-engineering a policy.
 export const MIN_DIRECTIONAL_CONTRACTS = 2;
 const DIRECTIONAL = new Set(['layers', 'forbidden', 'independence']);
 
-// the internal budget sits UNDER the hooks.json timeout on purpose. If the client kills us
+// cm:guard the internal budget sits UNDER the hooks.json timeout on purpose. If the client kills us
 //   we decide nothing and the agent learns nothing; if we time out ourselves we still get to print
 //   the warning that says the graph was not built. Measured end to end (stdin in, deny out): 1.4s
 //   at 753 files, 2.0s at 2253 — so 12s is roughly 6x the largest repo measured, and it is a
@@ -40,7 +40,7 @@ export const DEFAULT_BUDGET_MS = 12_000;
 
 const SOURCE_EXT = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
 
-// extensions of a language archmap DOES gate in CI but this surface cannot judge yet: the
+// cm:guard extensions of a language archmap DOES gate in CI but this surface cannot judge yet: the
 //   pending-edit resolver is TypeScript-shaped, so a Go write would be measured with the wrong
 //   ruler. Silence here would be the worst answer — `src/providers/go.mjs` is a first-class provider
 //   and a reader is entitled to assume a gate that ships for Go also guards Go. So: say so, once.
@@ -48,7 +48,7 @@ const UNJUDGED_EXT = new Set(['.go']);
 
 const NOTICE_TTL_MS = 4 * 60 * 60 * 1000;
 
-// the label asks whether THIS copy is an installed one, not whether some repo's vendor
+// cm:guard the label asks whether THIS copy is an installed one, not whether some repo's vendor
 //   path points at it: the plugin script imports `<root>/.forge/archmap/src/hook/pre-edit.mjs` by
 //   construction, so an installed copy here is that copy. Deciding it from the repo is what ISS-8
 //   review round 4 closed in the CLI.
@@ -66,7 +66,7 @@ function stamp() {
 function noticeDue(root, kind, env) {
   if (env.ARCHMAP_HOOK_NOTICE === 'always') return true;
   try {
-    // the stamp path is derived from a repo path anyone can guess, and it lives in a
+    // cm:guard the stamp path is derived from a repo path anyone can guess, and it lives in a
     //   world-writable directory on a shared host or CI runner. So: a per-user directory created
     //   0700, an lstat that refuses to follow anything that is not a regular file, and an exclusive
     //   create. Without those, a pre-planted symlink turns this stamp into a truncation of whatever
@@ -79,7 +79,7 @@ function noticeDue(root, kind, env) {
     let st = null;
     try { st = lstatSync(path); } catch { /* not there yet */ }
     if (st) {
-      // anything that is not a regular file at this path was not written by us. Print the
+      // cm:guard anything that is not a regular file at this path was not written by us. Print the
       //   notice and write nothing — suppressing it is exactly what the planter wanted.
       if (!st.isFile()) return true;
       if (Date.now() - st.mtimeMs < NOTICE_TTL_MS) return false;
@@ -88,7 +88,7 @@ function noticeDue(root, kind, env) {
     closeSync(openSync(path, 'wx', 0o600));
     return true;
   } catch {
-    // an unwritable tmpdir must not silence the notice. Repeating is noise; skipping is
+    // cm:guard an unwritable tmpdir must not silence the notice. Repeating is noise; skipping is
     //   a gate that never says it is inert, which reads exactly like a gate that found nothing.
     return true;
   }
@@ -108,7 +108,7 @@ function notice(lines) {
 
 const deny = (message) => ({ decision: 'deny', exitCode: DENY, message });
 
-// protocol -> claude-plugin/scripts/hook-pre-edit.mjs — this module returns a VERDICT
+// cm:edge protocol -> claude-plugin/scripts/hook-pre-edit.mjs — this module returns a VERDICT
 //   ({decision, exitCode, message}) and never bytes on a stream. That script formats it, and it
 //   accepts nothing else from here, so a tampered or stale copy of this file cannot reach the
 //   client with a `permissionDecision: "allow"` and auto-approve a write nobody was asked about.
@@ -157,7 +157,7 @@ function splice(results, { root, relFile, keepSpecs, resolved, unresolved, patte
     ...unresolved.map((spec) => ({ from: relFile, spec, why: 'could not resolve' })),
   ];
 
-  // the OTHER files' dangling imports are re-resolved against this write. "Write the
+  // cm:why the OTHER files' dangling imports are re-resolved against this write. "Write the
   //   importer, then write the module it imports" is the ordinary way an agent builds a feature,
   //   and until the second write lands the first one's specifier resolves to nothing. Judging only
   //   the edges leaving the pending file means the write that COMPLETES the violation — the second
@@ -198,11 +198,11 @@ export function decide(input, env = process.env) {
   const abs = isAbsolute(target) ? target : resolve(target);
 
   const root = findRoot(dirname(abs));
-  // SILENT, not a notice. This plugin is installed per device and most repos have no
+  // cm:guard SILENT, not a notice. This plugin is installed per device and most repos have no
   //   .arch.json; a line here would print on every write in every unrelated repo, forever.
   if (!root) return allow();
 
-  // the manifest that decides this write must belong to the session's own project. findRoot
+  // cm:guard the manifest that decides this write must belong to the session's own project. findRoot
   //   walks to `/`, so without this a `.arch.json` planted in any writable ancestor — /tmp is the
   //   easy one — gets to answer for a scratch write, and its contracts run as the developer. A root
   //   ABOVE the project dir is legitimate (monorepo); one off to the side never is.
@@ -237,7 +237,7 @@ export function decide(input, env = process.env) {
     ]);
   }
 
-  // this sits AFTER the rollout guard rather than with the other extension tests: a repo that
+  // cm:why this sits AFTER the rollout guard rather than with the other extension tests: a repo that
   //   has not declared its boundaries gets no archmap chatter at all, and "we cannot judge this
   //   language" is chatter in a repo where we would not have judged anything anyway.
   if (UNJUDGED_EXT.has(ext)) {
@@ -260,7 +260,7 @@ export function decide(input, env = process.env) {
 
   const pendingSpecs = importSpecs(pending.text);
   const before = importSpecs(onDisk);
-  // an unterminated string or template means the scanner never saw the rest of the file, so
+  // cm:guard an unterminated string or template means the scanner never saw the rest of the file, so
   //   "no new specifiers" would be an artefact of where it stopped rather than a fact about the
   //   code. That is a cannot-run, and cannot-run is loud.
   if (!pendingSpecs.ok || !before.ok) {
@@ -269,11 +269,11 @@ export function decide(input, env = process.env) {
   }
   const newSpecs = [...pendingSpecs.specs].filter((s) => !before.specs.has(s));
 
-  // creating a file is never a cheap exit, even with no imports of its own. A file that did
+  // cm:why creating a file is never a cheap exit, even with no imports of its own. A file that did
   //   not exist is one that other files' imports could not resolve to; the moment it lands, every
   //   dangling specifier naming it becomes a real edge. See the splice.
   const creating = !existsSync(abs);
-  // a write that adds no NEW specifier cannot introduce a new boundary finding: findings are
+  // cm:why a write that adds no NEW specifier cannot introduce a new boundary finding: findings are
   //   derived from edges, and edges only come from specifiers. Removals are handled by the splice
   //   below, and a removal can only ever shrink the finding set. This is also the exit that keeps
   //   the common case (editing a function body) free of a 2-3s cruise.
@@ -281,7 +281,7 @@ export function decide(input, env = process.env) {
 
   const budget = Number(env.ARCHMAP_HOOK_BUDGET_MS) || DEFAULT_BUDGET_MS;
   const { results, failures, notes } = collectGraph(manifest, ['.'], { timeoutMs: budget });
-  // ANY provider failure is a cannot-run. Judging a write on a partial graph is the
+  // cm:guard ANY provider failure is a cannot-run. Judging a write on a partial graph is the
   //   ISS-1 fail-open in a surface with no CI log for anyone to read afterwards.
   if (failures.length > 0) return warn([`a provider could not run: ${failures.join('; ')}.`, ...notes]);
   if (results.length === 0) return warn(['no provider produced a graph.', ...notes]);
@@ -292,7 +292,7 @@ export function decide(input, env = process.env) {
   }
 
   const preGraph = normalize(manifest, results);
-  // the CLI dies with exit 2 on this ("scope matched no files"), and for the same reason:
+  // cm:guard the CLI dies with exit 2 on this ("scope matched no files"), and for the same reason:
   //   a graph with nothing in it is not a clean repo, it is a scope that matched nothing — an
   //   exclude that swallowed src/**, a module glob that never hit. Every contract over it passes
   //   trivially, so without this check the hook returns a silent allow on every write forever.
@@ -323,7 +323,7 @@ export function decide(input, env = process.env) {
       { failures, notes },
     );
   } catch (e) {
-    // a contract with no evaluator means NOTHING was checked. Allowing loudly is the only
+    // cm:guard a contract with no evaluator means NOTHING was checked. Allowing loudly is the only
     //   honest answer; denying would block on a rule we never evaluated.
     if (e instanceof ContractError) return warn([`a contract could not be evaluated: ${e.message}.`]);
     throw e;
@@ -351,7 +351,7 @@ export function decide(input, env = process.env) {
     lines.push('  Those edges are missing from the graph this write was judged against, so a locked');
     lines.push('  contract they would break has NOT been checked. Allowed, but unverified.');
   }
-  // the stamp is consumed BEFORE the || is evaluated, not inside it. Short-circuited, the
+  // cm:guard the stamp is consumed BEFORE the || is evaluated, not inside it. Short-circuited, the
   //   holed-graph line printed alongside any other line never consumed its TTL slot — so it came
   //   back on the very next write instead of once every four hours, and the de-duplication that
   //   keeps this hook off someone's disable list applied only to the quietest case.
@@ -372,7 +372,7 @@ function denyMessage({ relFile, resolved, unresolved, introduced, post }) {
   ];
   for (const { spec, to } of resolved) out.push(`  new import  ${spec}  ->  ${to}`);
   if (resolved.length === 0) {
-    // this line exists: with no new import of its own, the write is denied because CREATING
+    // cm:why this line exists: with no new import of its own, the write is denied because CREATING
     //   the file resolves an import another file already had. Without saying so the message reads
     //   as a verdict on bytes that plainly contain no dependency at all.
     out.push('  no new import of its own — creating this file completes an import made elsewhere');
@@ -395,7 +395,7 @@ function denyMessage({ relFile, resolved, unresolved, introduced, post }) {
     out.push('');
     out.push(`Note: ${unresolved.join(', ')} could not be resolved, so this verdict does not cover ${unresolved.length === 1 ? 'it' : 'them'}.`);
   }
-  // the holed-graph warning rides on the DENY too, never deduped. A reader who has just
+  // cm:guard the holed-graph warning rides on the DENY too, never deduped. A reader who has just
   //   been blocked is the one person guaranteed to be reading, and "we also cannot see 40% of this
   //   repo" changes how much the verdict is worth in both directions.
   if (post.unresolvableStats.above) {
@@ -414,7 +414,7 @@ export function runHook(stdinText, env = process.env) {
   try {
     input = JSON.parse(stdinText);
   } catch {
-    // a payload we cannot parse is a cannot-run, so it allows — but LOUDLY, because the
+    // cm:guard a payload we cannot parse is a cannot-run, so it allows — but LOUDLY, because the
     //   silent version of this is a hook that has been dead for months and looks installed.
     return warn(['the hook payload on stdin was not valid JSON.']);
   }
