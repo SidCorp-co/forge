@@ -27,7 +27,7 @@ export interface MigrationDb {
   /** A client on a database standing at the migration before the one under test. */
   sql: postgres.Sql;
   /** Apply the migration under test, as the deploy would. */
-  migrate(): Promise<void>;
+  migrate(onNotice?: (message: string) => void): Promise<void>;
   drop(): Promise<void>;
 }
 
@@ -55,7 +55,7 @@ export async function groundBefore(tag: string): Promise<MigrationGround> {
       const client = postgres(urlOf(name), { max: 2, onnotice: () => {} });
       return {
         sql: client,
-        migrate: () => migrateThrough(urlOf(name), tag),
+        migrate: (onNotice) => migrateThrough(urlOf(name), tag, onNotice),
         async drop() {
           await client.end({ timeout: 5 });
           await asAdmin(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);

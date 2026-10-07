@@ -42,8 +42,12 @@ function folderThrough(tag: string): string {
   return dir;
 }
 
-async function migrateFrom(url: string, migrationsFolder: string): Promise<void> {
-  const client = postgres(url, { max: 1, onnotice: () => {} });
+async function migrateFrom(
+  url: string,
+  migrationsFolder: string,
+  onNotice: (message: string) => void = () => {},
+): Promise<void> {
+  const client = postgres(url, { max: 1, onnotice: (n) => onNotice(n.message ?? '') });
   try {
     await migrate(drizzle(client), { migrationsFolder });
   } finally {
@@ -57,10 +61,14 @@ export function migrateDatabase(url: string): Promise<void> {
 }
 
 /** Run the shipped migrations through `tag` against `url`, with drizzle's own migrator, as boot does. */
-export async function migrateThrough(url: string, tag: string): Promise<void> {
+export async function migrateThrough(
+  url: string,
+  tag: string,
+  onNotice?: (message: string) => void,
+): Promise<void> {
   const dir = folderThrough(tag);
   try {
-    await migrateFrom(url, dir);
+    await migrateFrom(url, dir, onNotice);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

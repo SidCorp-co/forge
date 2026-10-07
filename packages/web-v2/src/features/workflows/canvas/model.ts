@@ -1,5 +1,4 @@
 import {
-  LEGACY_V2_TEMPLATE,
   lineKindOf,
   type TemplateEdgeKind,
   type TemplateNodeType,
@@ -62,13 +61,13 @@ const genericType = (id: string, t: Copy): TemplateNodeType => ({
   required: [],
 });
 
-/** The template a stored design is read in: the one it names, or operational-flow@1 for one written before templates. */
+/** The template a stored design is read in: the one it names. */
 export function templateFor(
   doc: Pick<WorkflowBody, "version" | "template">,
   templates: readonly WorkflowTemplate[],
 ): WorkflowTemplate | null {
   if (doc.version !== 2) return null;
-  const ref = doc.template ?? LEGACY_V2_TEMPLATE;
+  const ref = doc.template;
   return templates.find((t) => t.id === ref.id && t.version === ref.version) ?? null;
 }
 

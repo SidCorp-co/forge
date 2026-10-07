@@ -2899,6 +2899,13 @@
       "when": 1821916800000,
       "tag": "0451_an_outbox_event_type_is_a_row_not_a_check_literal",
       "breakpoints": true
+    },
+    {
+      "idx": 452,
+      "version": "7",
+      "when": 1822003200000,
+      "tag": "0452_an_operational_flow_design_is_fingerprinted_with_its_template",
+      "breakpoints": true
     }
   ]
 }

@@ -188,7 +188,7 @@ export async function migrateAtBoot(
     journal = readJournal(migrationsFolder);
     sql = postgres(databaseUrl, {
       max: 1,
-      onnotice: () => {},
+      onnotice: (notice) => console.log(`[migrate] notice: ${notice.message}`),
       connection: { lock_timeout: lockTimeoutMs },
     });
 

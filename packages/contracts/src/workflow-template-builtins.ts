@@ -13,7 +13,7 @@ import {
   serviceBlueprintCrossFunctional,
 } from './workflow-template-blueprint.js';
 import { operationalFlow } from './workflow-template-operational.js';
-import type { TemplateRef, WorkflowTemplate } from './workflow-template-schema.js';
+import type { WorkflowTemplate } from './workflow-template-schema.js';
 import {
   dataFlow,
   decisionModel,
@@ -34,9 +34,3 @@ export const BUILTIN_WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
   dataFlow,
   systemContext,
 ];
-
-/** The template a version 2 design written before templates is read in. */
-export const LEGACY_V2_TEMPLATE: TemplateRef = {
-  id: 'operational-flow',
-  version: 1,
-};

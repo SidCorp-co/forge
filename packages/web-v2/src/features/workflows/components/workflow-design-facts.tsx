@@ -353,7 +353,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           <span title={t("workflows.facts.approverHint", { perm: d.approver })}>{t("workflows.facts.approverAnyone")}</span>
         </Fact>
         <Fact label={t("workflows.facts.template")}>
-          <span title={template ? `${template.id}@${template.version}` : t("workflows.facts.noTemplate")}>{template?.title ?? t("workflows.facts.none")}</span>
+          <span title={template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>
         </Fact>
         <Fact label={unit === "states" ? t("workflows.tab.states") : t("workflows.tab.steps")}>
           <span>
