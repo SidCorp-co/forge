@@ -201,9 +201,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
 /// One `trust` row per bound checkout, and whether any fails the run.
 ///
-/// Only a `.claude.json` that cannot be read fails it: the daemon's own
-/// pre-trust write refuses that file the same way, so a master placed there
-/// meets the dialog. An untrusted folder, or no file yet, is a warning, since
+/// Only a `.claude.json` the daemon's own pre-trust write refuses fails it:
+/// one that cannot be read or parsed, or a shape the write cannot stamp, so a
+/// master placed there meets the dialog. An untrusted folder, or no file yet, is a warning, since
 /// the daemon writes the key (creating the file) before every placement and a
 /// fresh bind has not had one. Nothing here writes.
 fn trust_rows<'a>(
@@ -1548,5 +1548,38 @@ mod tests {
             failed && rows[0].contains("no `.claude.json` could be resolved"),
             "{rows:?}"
         );
+    }
+
+    /// ISS-1382's judge, carried into ISS-1344 r4: a `.claude.json` the
+    /// daemon's pre-trust write refuses on every placement is a failing row
+    /// that says so, not a warning that the write will land.
+    #[test]
+    fn a_shape_the_daemons_trust_write_refuses_is_a_cross_that_says_so() {
+        let scratch = forge_runner_core::test_scratch::Scratch::new("doctor-trust-shape");
+        let json = scratch.join(".claude.json");
+        let checkout = std::path::Path::new("/srv/untrusted");
+        for (shape, body) in [
+            ("`projects` is not an object", r#"{"projects":[]}"#),
+            (
+                "a project entry is not an object",
+                r#"{"projects":{"/srv/untrusted":"yes"}}"#,
+            ),
+        ] {
+            std::fs::write(&json, body).unwrap();
+            let (rows, failed) = trust_rows([("b", checkout)].into_iter(), Some(json.as_path()));
+            assert!(
+                failed,
+                "{shape}: the daemon cannot write trust here: {rows:?}"
+            );
+            for said in [
+                "✖ trust        b:",
+                shape,
+                "the daemon's own write before placement fails the same way",
+            ] {
+                assert!(rows[0].contains(said), "`{said}` missing: {}", rows[0]);
+            }
+            assert!(!rows[0].contains("unless"), "{}", rows[0]);
+            assert_eq!(std::fs::read(&json).unwrap(), body.as_bytes(), "read only");
+        }
     }
 }

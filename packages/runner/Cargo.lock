@@ -428,6 +428,7 @@ dependencies = [
  "hostname",
  "keyring",
  "nix",
+ "proc-macro2",
  "reqwest",
  "rusqlite",
  "serde",

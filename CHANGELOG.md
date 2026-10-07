@@ -3232,7 +3232,16 @@
   for want of a base branch (ISS-1370).
 
 - **One stray project id no longer hides every project's pool health.** A non-UUID id in a box's
-  record had its whole pool report refused; that entry is now dropped alone (ISS-1344).
+  record had its whole pool report refused; that entry is now dropped alone (ISS-1344). The box's
+  log names such an id once, not every 30 seconds.
+
+- **A master's exit is recorded on a box without a user systemd manager** (macOS, containers). The
+  box used to lose the exit of a master that was the session server's only pane and start another
+  in its place; it now keeps the server up and reads the master as gone (ISS-1344).
+
+- **`forge-runner doctor` fails a `.claude.json` the box cannot write folder trust into.** A file
+  whose `projects` or checkout entry is not an object was a warning that the box's own write would
+  fix it; that write refuses the file, and doctor now says so (ISS-1344).
 
 - **Work landed on the base branch can be marked merged by its commit.** Where the commit is the
   only trace, Forge checks it in the repository: it must exist, name the issue and sit on the base

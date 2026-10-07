@@ -374,10 +374,49 @@ async fn ensure_server() -> bool {
             tracing::warn!(
                 "[terminal] the session server could not be given its own unit ({detail}) — panes will be killed with this service, as they were before"
             );
+            hold_the_keepalive_here().await;
             false
         }
     }
 }
+
+/// Starts the session server here with the keepalive session, where no unit
+/// holds it. Without it the server's only sessions are panes, tmux's
+/// `exit-empty` takes the server with the last of them, and a master that
+/// exited reads as a tmux nobody could ask rather than as gone, so its exit is
+/// never recorded and the next sweep places another on its name (ISS-1344 r4,
+/// from ISS-1382's judge). `tail -f /dev/null`, because BSD `sleep` takes no
+/// `infinity`.
+async fn hold_the_keepalive_here() {
+    let started = tmux(&[
+        "new-session",
+        "-d",
+        "-s",
+        KEEPALIVE,
+        "tail",
+        "-f",
+        "/dev/null",
+    ])
+    .await;
+    let refused = match &started {
+        Ok(o) if o.status.success() => None,
+        Ok(o) => Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => Some(e.to_string()),
+    };
+    match refused {
+        None if server_answers_within(KEEPALIVE_READY_WITHIN).await => tracing::info!(
+            "[terminal] the session server holds {KEEPALIVE} here, so it outlives its last pane and a master's exit is read as one"
+        ),
+        None => tracing::warn!(
+            "[terminal] {KEEPALIVE} was started here and the socket never answered within {KEEPALIVE_READY_WITHIN:?} — a master that is the server's last pane is not read as gone when it exits"
+        ),
+        Some(why) => tracing::warn!(
+            "[terminal] could not start {KEEPALIVE} here ({why}) — a master that is the server's last pane is not read as gone when it exits"
+        ),
+    }
+}
+
+const KEEPALIVE_READY_WITHIN: Duration = Duration::from_secs(5);
 
 enum Placement {
     Accepted,
@@ -406,6 +445,10 @@ impl Drop for OverlapWatch {
 
 async fn ask_systemd_for_the_server(id: &SessionIdentity) -> Placement {
     let _overlap = OverlapWatch::enter();
+    #[cfg(test)]
+    if testing::no_unit() {
+        return Placement::Unavailable("a test said this box has no user manager".into());
+    }
     let sock = id.socket.to_string_lossy().into_owned();
     let out = Command::new("systemd-run")
         .args([
@@ -847,6 +890,36 @@ pub(crate) mod testing {
     use crate::auth::cred_store::ScopedVar;
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
+
+    thread_local! {
+        static NO_UNIT: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// systemd answers that it has no user manager to give the session server
+    /// a unit, as on macOS or in a container, on this thread until dropped.
+    /// A thread's, not the process's environment: a current-thread
+    /// `#[tokio::test]` asks systemd from the thread that took it.
+    #[cfg(unix)]
+    pub(crate) struct NoUnit;
+
+    #[cfg(unix)]
+    impl NoUnit {
+        pub(crate) fn here() -> Self {
+            NO_UNIT.with(|n| n.set(true));
+            Self
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for NoUnit {
+        fn drop(&mut self) {
+            NO_UNIT.with(|n| n.set(false));
+        }
+    }
+
+    pub(super) fn no_unit() -> bool {
+        NO_UNIT.with(Cell::get)
+    }
 
     /// A tmux a test put in place of the real one: the program spawned, and
     /// the variables that program reads, set on its own command rather than
@@ -2192,6 +2265,49 @@ done
         assert_eq!(
             after, None,
             "with the transcript gone the next spawn must be cold, not a --resume this box cannot reach"
+        );
+    }
+
+    /// ISS-1382's judge, carried into ISS-1344 r4 (criteria 26 and 27). With no
+    /// unit for the session server — macOS, a container, no user manager — the
+    /// daemon still holds the keepalive session, so the server outlives a
+    /// master that was its only pane and the sweep reads that master as gone
+    /// rather than as a tmux nobody could ask.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn with_no_unit_for_the_server_a_master_that_exits_reads_as_gone() {
+        use crate::daemon::recovery::MasterPresence;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("nounit");
+        if !available() {
+            testing::cannot_run("tmux is not installed here");
+            return;
+        }
+        if !iso.took() {
+            testing::cannot_run("this box does not resolve its tmux socket from the config dir");
+            return;
+        }
+        let _no_unit = testing::NoUnit::here();
+        let cwd = crate::test_scratch::Scratch::new("nounit-cwd");
+        let name = session_name(MASTER_PREFIX, &format!("nounit-{}", std::process::id()));
+        let argv = ["sh", "-c", "sleep 1"].map(String::from);
+        ensure(&name, cwd.path(), &argv, &[], None)
+            .await
+            .expect("the master is placed");
+        let held = names_with_prefix("").await.contains(&KEEPALIVE.to_string());
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while pane_pid(&name).await.is_some() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the master never exited"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let read = crate::daemon::recovery_ports::pane_presence(&name).await;
+        assert!(
+            held && read == MasterPresence::Gone,
+            "the keepalive is held: {held}; a master that exited reads {read:?}, not Gone"
         );
     }
 

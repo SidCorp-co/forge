@@ -2842,12 +2842,15 @@ pub(crate) enum PaneState {
     StaleCapability,
 }
 
+/// Where Claude Code keeps the transcript of `conversation_id` under this
+/// user's home, resolved through the route a test build refuses outside a
+/// test's own scratch.
 pub(crate) fn conversation_transcript(
     cwd: &std::path::Path,
     conversation_id: &str,
 ) -> Option<std::path::PathBuf> {
     Some(transcript_under(
-        &dirs_next::home_dir()?,
+        &crate::config::home_dir().ok()?,
         cwd,
         conversation_id,
     ))
@@ -6657,8 +6660,24 @@ mod give_back_tests {
         );
     }
 
+    /// A scratch home for the resume tests, so a transcript they write or
+    /// look for is never under the invoking user's own.
+    fn scratch_home() -> (
+        std::sync::MutexGuard<'static, ()>,
+        crate::test_scratch::Scratch,
+        crate::auth::cred_store::ScopedVar,
+    ) {
+        let env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("resume-home");
+        let var = crate::auth::cred_store::ScopedVar::set("HOME", home.path());
+        (env, home, var)
+    }
+
     #[test]
     fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
+        let (_env, _home, _var) = scratch_home();
         let repo = crate::test_scratch::Scratch::new("resume-none");
         assert_eq!(
             resume_for("slug", &repo, Some("conv-that-was-never-here")),
@@ -6669,16 +6688,29 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_whose_transcript_is_here_is_resumed() {
+        let (_env, home, _var) = scratch_home();
         let repo = crate::test_scratch::Scratch::new("resume");
         let id = format!("conv-{}", std::process::id());
         let path = conversation_transcript(&repo, &id).expect("a home directory");
+        assert!(path.starts_with(home.path()), "{}", path.display());
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
         std::fs::write(&path, "{}\n").expect("write");
 
         let got = resume_for("slug", &repo, Some(&id));
 
-        let _ = std::fs::remove_file(&path);
         assert_eq!(got.as_deref(), Some(id.as_str()));
+    }
+
+    /// ISS-1344: a test build resolves no transcript under a home that is not
+    /// a test's own scratch, so no test can write one under the user's.
+    #[test]
+    fn a_test_build_resolves_no_transcript_under_a_home_that_is_not_a_scratch() {
+        let (_env, _home, var) = scratch_home();
+        var.move_to("/iss-1344-nobody");
+        assert_eq!(
+            conversation_transcript(std::path::Path::new("/srv/repo"), "conv-1"),
+            None
+        );
     }
 
     #[test]
@@ -6691,7 +6723,8 @@ mod give_back_tests {
 
     #[test]
     fn the_transcript_path_is_the_one_claude_code_actually_uses() {
-        let home = dirs_next::home_dir().expect("a home directory");
+        let (_env, home, _var) = scratch_home();
+        let home = home.path();
         let got = conversation_transcript(
             std::path::Path::new("/home/forge/projects/apiflow/.worktrees/ISS-16"),
             "conv-1",
