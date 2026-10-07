@@ -5,6 +5,7 @@ import type {
   ConversationVenue,
   ReplyLanguage,
   ScreenedMessage,
+  TurnFailureCause,
   TurnFailureCode,
 } from '../conversations/index.js';
 import type { TurnAuthority, TurnCredential } from '../credentials/turn-credential.js';
@@ -48,8 +49,18 @@ export interface TurnHookContext {
 
 export type TurnReply =
   | { send: false; reason: string; ended?: 'declined' | 'superseded' | 'not-dispatched' }
-  /** The turn ended without an answer it chose: a failure, never a silence. */
-  | { send: false; reason: string; ended: 'failed'; code: TurnFailureCode }
+  /**
+   * The turn ended without an answer it chose: a failure, never a silence. `report` is what the
+   * person is shown instead: why, in their language, and what the turn did and found.
+   */
+  | {
+      send: false;
+      reason: string;
+      ended: 'failed';
+      code: TurnFailureCode;
+      cause: TurnFailureCause;
+      report: ScreenedMessage;
+    }
   /**
    * `awaitsReply`: the attempt whose text this is called `await_reply`, and the text is the model's
    * own (screened, not code-authored). The row is written with it; nothing reads it from the text.
@@ -182,7 +193,14 @@ export type TurnOutcome =
   | { kind: 'diverted'; reason: string }
   | { kind: 'declined'; reason: string }
   | { kind: 'not-dispatched'; reason: string }
-  | { kind: 'failed'; code: TurnFailureCode; reason: string }
+  /** `report`: the message the person is owed for it, posted as the window's one terminal status. */
+  | {
+      kind: 'failed';
+      code: TurnFailureCode;
+      reason: string;
+      cause: TurnFailureCause;
+      report: ScreenedMessage;
+    }
   /**
    * The composed reply rides along, so a failed delivery does not lose what was written. `reason`
    * is read by every reader of the conversation, so it is a fixed sentence keyed by `code`; the

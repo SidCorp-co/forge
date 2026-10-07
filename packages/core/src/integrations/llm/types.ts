@@ -47,7 +47,9 @@ export type ChatStreamEvent =
   | { type: 'reasoning'; text: string; redacted?: true }
   | { type: 'usage'; usage: ChatStreamUsage }
   | { type: 'done' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** The turn loop asks the provider again for a round that ended in an error: what it streamed is void. */
+  | { type: 'round_retry'; message: string };
 
 export interface ChatStreamRequest {
   model: string;

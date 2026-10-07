@@ -103,6 +103,20 @@ export function confidentLanguageOf(text: string | null | undefined): ReplyLangu
   return en / words.length >= 0.15 ? 'en' : null;
 }
 
+/**
+ * The language the person asked in, where it can be told: a confident reading, or a short message
+ * that spells a word only Vietnamese spells, such as "run ISS-365" typed in Vietnamese. A short message without one is not
+ * told, because "ok" and "cho ISS-5" read the same in either language.
+ */
+export function askerLanguageOf(text: string | null | undefined): ReplyLanguage | null {
+  const confident = confidentLanguageOf(text);
+  if (confident) return confident;
+  const words = (text ?? '').match(WORD) ?? [];
+  return words.length > 0 && words.length < 3 && words.some((w) => VIETNAMESE_LETTER.test(w))
+    ? 'vi'
+    : null;
+}
+
 /** A project's content language as one of the languages these lines are written in. */
 export function replyLanguageOfTag(tag: string): ReplyLanguage {
   return tag === 'vi' || tag.startsWith('vi-') ? 'vi' : 'en';
@@ -159,6 +173,70 @@ const FAILED: Record<TurnFailureCode, Line> = {
   },
 };
 
+/** Why a turn ended without its answer, as the person is told it: the provider, a crash, or the clock. */
+export type TurnFailureCause = 'provider' | 'crash' | 'timeout';
+
+const FAILURE_HEAD: Record<TurnFailureCause, Line> = {
+  provider: {
+    en: (name) => `${name} could not finish this: its model stopped answering partway.`,
+    vi: (name) => `${name} chưa trả lời xong: mô hình ngừng trả lời giữa chừng.`, // i18n-allow: user-facing channel reply
+  },
+  crash: {
+    en: (name) => `${name} could not finish this: it hit an internal error.`,
+    vi: (name) => `${name} chưa trả lời xong: gặp lỗi nội bộ.`, // i18n-allow: user-facing channel reply
+  },
+  timeout: {
+    en: (name) => `${name} could not finish this in the time a turn has.`,
+    vi: (name) => `${name} chưa trả lời xong trong thời gian cho phép của một lượt.`, // i18n-allow: user-facing channel reply
+  },
+};
+
+const FINDINGS_WORDS: Record<
+  ReplyLanguage,
+  { so: string; nothing: string; again: string; draft: string; unchecked: string }
+> = {
+  en: {
+    so: 'What it did and found before it stopped:',
+    nothing: 'It had not done or read anything yet.',
+    again: 'Ask again in a few minutes for the rest.',
+    draft: 'What it had written so far, unfinished, checked against what it read:',
+    unchecked:
+      'It had started an answer, but that draft did not pass the reply check, so it is not shown.',
+  },
+  vi: {
+    so: 'Những gì đã làm và tìm được trước khi dừng:', // i18n-allow: user-facing channel reply
+    nothing: 'Chưa làm hay đọc được gì.', // i18n-allow: user-facing channel reply
+    again: 'Bạn hỏi lại sau ít phút để nhận phần còn lại nhé.', // i18n-allow: user-facing channel reply
+    draft: 'Phần đã viết được, chưa xong, đã đối chiếu với những gì đã đọc:', // i18n-allow: user-facing channel reply
+    unchecked:
+      'Đã bắt đầu viết câu trả lời, nhưng bản nháp chưa qua bước kiểm tra nên không hiển thị.', // i18n-allow: user-facing channel reply
+  },
+};
+
+export const findingsWords = (lang: ReplyLanguage) => FINDINGS_WORDS[lang];
+
+/**
+ * The message a turn that ended without its answer posts: why, with its code, in the asker's
+ * language, then what it did and found (`findings`, already in that language), or that it had
+ * nothing yet.
+ */
+export function failedTurnReport(args: {
+  name: string;
+  language: ReplyLanguage;
+  code: TurnFailureCode;
+  cause: TurnFailureCause;
+  findings: string | null;
+}): string {
+  const words = FINDINGS_WORDS[args.language];
+  const head = `${FAILURE_HEAD[args.cause][args.language](args.name)} (${args.code})`;
+  const body = args.findings ? `${words.so}\n\n${args.findings}` : words.nothing;
+  return `${head}\n\n${body}\n\n${words.again}`;
+}
+
+/** The cause a failure code stands for where nothing finer was recorded. */
+export const causeOfCode = (code: TurnFailureCode): TurnFailureCause =>
+  code === 'ASSISTANT_TURN_TIMED_OUT' ? 'timeout' : 'provider';
+
 /**
  * What a turn that ran past its first ceiling posts while it keeps working: what it did, what it
  * read, and that the rest follows in this same thread. `seconds` is how long the person has waited.
@@ -190,32 +268,10 @@ const PARTIAL: Record<
 
 export const partialReplyWords = (lang: ReplyLanguage) => PARTIAL[lang];
 
-/** What the thread is told when the work that kept going after a partial reply did not finish. */
-const CONTINUATION_ENDED: Record<TurnFailureCode, Line> = {
-  ASSISTANT_TURN_TIMED_OUT: {
-    en: (name) =>
-      `${name} stopped before it finished the rest of this; what it did is listed above. Ask again for what is still missing, one thing at a time.`,
-    vi: (name) =>
-      `${name} đã dừng trước khi làm xong phần còn lại; những gì đã làm có ở tin nhắn trên. Bạn hỏi lại phần còn thiếu, từng việc một nhé.`, // i18n-allow: user-facing channel reply
-  },
-  ASSISTANT_TURN_FAILED: {
-    en: (name) =>
-      `${name} could not reach its model while finishing the rest of this; what it did is listed above. Please ask again in a few minutes.`,
-    vi: (name) =>
-      `${name} không gọi được mô hình khi làm nốt phần còn lại; những gì đã làm có ở tin nhắn trên. Bạn hỏi lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
-  },
-};
-
 const NOTHING_MORE: Line = {
   en: (name) => `${name} finished; there is nothing to add to what is above.`,
   vi: (name) => `${name} đã làm xong; không có gì thêm ngoài phần ở trên.`, // i18n-allow: user-facing channel reply
 };
-
-export const continuationEndedReply = (
-  name: string,
-  lang: ReplyLanguage,
-  failure: TurnFailureCode,
-): string => CONTINUATION_ENDED[failure][lang](name);
 
 export const nothingMoreReply = (name: string, lang: ReplyLanguage): string =>
   NOTHING_MORE[lang](name);

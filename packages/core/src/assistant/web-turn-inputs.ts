@@ -4,6 +4,7 @@
 import { eq } from 'drizzle-orm';
 import { agentRefusalText } from '../agent-sessions/index.js';
 import {
+  askerLanguageOf,
   type ConversationImage,
   type ConversationVenue,
   type ConversationWindowRow,
@@ -11,7 +12,6 @@ import {
   getConversation,
   type ReplyLanguage,
   readMessages,
-  replyLanguageOf,
   replyLanguageOfTag,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
@@ -148,10 +148,14 @@ const ATTACHMENT_UNREADABLE = {
 
 const ATTACHMENT_NAMELESS = { en: 'the file you attached', vi: 'tệp bạn đính kèm' } as const; // i18n-allow: user-facing channel reply
 
-/** The language an Agent-mode line answers in: the question's, else the project's content language. */
-async function agentLineLanguage(args: WebTurnArgs): Promise<ReplyLanguage> {
+/**
+ * The language a code-written line answers in: the question's where it can be told, else the
+ * project's content language. A short question with no Vietnamese letter ("ok", "chay ISS-5") is
+ * not taken for English.
+ */
+async function askerLineLanguage(args: WebTurnArgs): Promise<ReplyLanguage> {
   return (
-    replyLanguageOf(args.window.question) ??
+    askerLanguageOf(args.window.question) ??
     replyLanguageOfTag((await readContentLanguage(args.project.id)).contentLanguage)
   );
 }
@@ -164,7 +168,7 @@ async function divertToAgent(
 ): Promise<TurnReply | null> {
   if (args.window.mode !== 'agent' || authority.origin === 'onboarding_handoff') return null;
   setPhase('agent-turn');
-  const language = await agentLineLanguage(args);
+  const language = await askerLineLanguage(args);
   const replies = WEB_AGENT_REPLIES[language];
   if (!(await args.window.reserve()))
     return { send: false, reason: 'superseded-before-agent-turn', ended: 'superseded' };
@@ -248,7 +252,11 @@ async function prepareWebTurn(
     tools: mergeToolsets(
       buildProjectToolset(ctx),
       buildUiActionToolset(),
-      buildOfferActToolset({ projectId: args.project.id, userId: authority.userId }),
+      buildOfferActToolset({
+        projectId: args.project.id,
+        userId: authority.userId,
+        language: await askerLineLanguage(args),
+      }),
     ),
   };
 }

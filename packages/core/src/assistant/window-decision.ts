@@ -433,7 +433,13 @@ async function takeTurn(
   } finally {
     await ack?.settle();
   }
-  return withTerminalStatus(routedOutcome(outcome), { window, deliveryKey, claim, track });
+  return withTerminalStatus(routedOutcome(outcome), {
+    window,
+    deliveryKey,
+    claim,
+    track,
+    ...(outcome.kind === 'failed' ? { report: outcome.report } : {}),
+  });
 }
 
 /** The decision a turn's outcome closes the window under. */
@@ -450,7 +456,10 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
     case 'declined':
       return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
     case 'failed':
-      return { decision: 'unreachable', detail: { code: outcome.code, reason: outcome.reason } };
+      return {
+        decision: 'unreachable',
+        detail: { code: outcome.code, reason: outcome.reason, cause: outcome.cause },
+      };
     case 'stopped':
       return { decision: 'stopped', detail: { reason: outcome.reason } };
     case 'diverted':

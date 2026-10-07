@@ -63,6 +63,7 @@ export class TranscriptAccumulator {
     if (event.type === 'chunk') this.#chunk(event.text);
     else if (event.type === 'tool_call') this.#toolCall(event);
     else if (event.type === 'tool_result') this.#toolResult(event);
+    else if (event.type === 'round_retry') this.#dropRound();
   }
 
   /** The entry as it stands, or null while the turn has produced nothing. */
@@ -114,6 +115,23 @@ export class TranscriptAccumulator {
     this.#openText = -1;
   }
 
+  /** A round asked again: the prose and thinking it streamed after the last tool are taken back. */
+  #dropRound(): void {
+    const blocks = this.#entry?.blocks;
+    if (!blocks) return;
+    while (blocks.length > 0 && (blocks.at(-1) as ContentBlock).type !== 'tool') blocks.pop();
+    this.#openText = -1;
+    this.#openThinking = -1;
+    this.#settleContent();
+  }
+
+  #settleContent(): void {
+    (this.#entry as AgentMessage).content = this.#blocks()
+      .filter((b): b is ContentBlock & { text: string } => b.type === 'text' && !!b.text)
+      .map((b) => b.text)
+      .join('');
+  }
+
   #chunk(text: string): void {
     if (text.length === 0) return;
     const blocks = this.#blocks();
@@ -123,10 +141,7 @@ export class TranscriptAccumulator {
       blocks.push({ type: 'text', text });
       this.#openText = blocks.length - 1;
     }
-    (this.#entry as AgentMessage).content = blocks
-      .filter((b): b is ContentBlock & { text: string } => b.type === 'text' && !!b.text)
-      .map((b) => b.text)
-      .join('');
+    this.#settleContent();
   }
 
   #toolCall(ev: { id: string; name: string; arguments: unknown }): void {
