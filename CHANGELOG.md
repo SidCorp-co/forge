@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.102] - 2026-10-07
+
+Feedback triage: accept, decline with reason, message reporters, auto-verify fixes
+
+### Added
+
+- **Feedback is triaged in four verbs and fixes verify themselves.** Accept, Decline, Duplicate and Snooze tell reporters once; messages preview their text, internal notes never reach a reporter; anyone may confirm a fix, else Forge verifies it after 7 days.
+
 ## [0.4.0-dev.101] - 2026-10-07
 
 Runner claim floor rises to 0.13.0 and the job-linked park clock is removed
