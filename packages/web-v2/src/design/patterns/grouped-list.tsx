@@ -1,7 +1,7 @@
 "use client";
 
 // Every entity list draws this one grid: Key · Title (with one secondary facts line) · State ·
-// Waiting on · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and
+// Waiting on · [ETA] · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and
 // fold. A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
 // Shift, middle) goes to the page as the browser would. Folded groups live in session storage, so
 // back from a full page finds them as they were.
@@ -50,11 +50,25 @@ export interface ListRowView {
   age: { text: string; title: string } | null;
   /** Done rows read quieter. */
   dim?: boolean;
+  /** The ETA cell, drawn where the list declares an ETA column. */
+  eta?: ReactNode;
 }
 
 /** One grid template for the header and every row, so the columns line up without a table. */
 const COLS =
   "grid grid-cols-[104px_minmax(0,1fr)_168px_220px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_180px]";
+/** The same grid with the ETA column between Waiting on and Owner·age. */
+const COLS_ETA =
+  "grid grid-cols-[104px_minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_164px_112px]";
+
+/** Rows in each group ordered by `value`, lowest first and every row without one last, in their own order. */
+export function sortGroupsBy<R>(groups: readonly ListGroup<R>[], value: (r: R) => number | null): ListGroup<R>[] {
+  return groups.map((g) => {
+    const keyed = g.rows.map((r, i) => ({ r, i, v: value(r) }));
+    keyed.sort((a, b) => (a.v === null ? (b.v === null ? a.i - b.i : 1) : b.v === null ? -1 : a.v - b.v || a.i - b.i));
+    return { ...g, rows: keyed.map((k) => k.r) };
+  });
+}
 
 export type GroupFold = {
   isOpen: (id: string, collapsedByDefault?: boolean) => boolean;
@@ -124,7 +138,7 @@ function GroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: boolean;
 
 const modified = (e: MouseEvent) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 
-function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPeek: (key: string) => void }) {
+function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; onPeek: (key: string) => void; eta: boolean }) {
   return (
     <a
       href={v.href}
@@ -137,7 +151,7 @@ function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPee
       data-testid="list-row"
       data-key={v.key}
       className={cn(
-        COLS,
+        eta ? COLS_ETA : COLS,
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-subtle py-[7px] text-left text-fg no-underline hover:bg-hover",
         "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
         selected && "bg-[var(--cobalt-50)] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-[var(--cobalt-50)]",
@@ -161,6 +175,7 @@ function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPee
       </span>
       <span className="flex min-w-0 max-md:order-2 max-md:col-span-2 max-md:justify-end">{v.state}</span>
       <span className="flex min-w-0 max-md:order-4 max-md:col-span-2">{v.waitingOn}</span>
+      {eta ? <span className="flex min-w-0 justify-end max-md:order-6 max-md:col-span-3 max-md:justify-start">{v.eta}</span> : null}
       <span className="flex min-w-0 items-center justify-end gap-2 whitespace-nowrap max-lg:hidden max-md:order-5 max-md:flex">
         <span className="inline-flex min-w-0 items-center text-12 text-muted">{v.owner}</span>
         {v.age ? (
@@ -192,21 +207,36 @@ export interface GroupedListProps<R> {
   empty?: ReactNode;
   /** The header's words where a list's columns are not the entity default: Key · Title · State · Waiting on · Owner · age. */
   columns?: Partial<ListColumnLabels>;
+  /** An ETA column: its header, and whether the rows are sorted by it, which its header toggles. */
+  eta?: { label: string; sortLabel: string; sorted: boolean; onSort: () => void };
 }
 
-export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns }: GroupedListProps<R>) {
+export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta }: GroupedListProps<R>) {
   const shown = groups.filter((g) => g.rows.length > 0);
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
       <div
-        aria-hidden
-        className={cn(COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
+        className={cn(eta ? COLS_ETA : COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
+        data-testid="list-header"
       >
-        <span>{columns?.key ?? "Key"}</span>
-        <span>{columns?.title ?? "Title"}</span>
-        <span>{columns?.state ?? "State"}</span>
-        <span>{columns?.waitingOn ?? "Waiting on"}</span>
-        <span className="text-right max-lg:hidden">{columns?.meta ?? "Owner · age"}</span>
+        <span aria-hidden>{columns?.key ?? "Key"}</span>
+        <span aria-hidden>{columns?.title ?? "Title"}</span>
+        <span aria-hidden>{columns?.state ?? "State"}</span>
+        <span aria-hidden>{columns?.waitingOn ?? "Waiting on"}</span>
+        {eta ? (
+          <button
+            type="button"
+            onClick={eta.onSort}
+            aria-pressed={eta.sorted}
+            title={eta.sortLabel}
+            data-testid="list-sort-eta"
+            className={cn("inline-flex items-center justify-end gap-1 justify-self-end text-right hover:text-fg", eta.sorted && "text-fg")}
+          >
+            {eta.label}
+            <Icon name={eta.sorted ? "arrowUp" : "chevronUpDown"} size={11} />
+          </button>
+        ) : null}
+        <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? "Owner · age"}</span>
       </div>
       {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? "Nothing to show."}</p> : null}
       {shown.map((g) => {
@@ -217,7 +247,7 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
             {open
               ? g.rows.map((r) => {
                   const v = row(r);
-                  return <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} />;
+                  return <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} />;
                 })
               : null}
           </div>

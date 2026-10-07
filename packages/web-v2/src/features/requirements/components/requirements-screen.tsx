@@ -14,7 +14,7 @@ import {
 } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, sortGroupsBy, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatAge, formatStamp } from "@/lib/utils/format";
@@ -22,9 +22,10 @@ import { cn } from "@/lib/utils/cn";
 import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
-import type { ScopeForecast } from "@forge/contracts/forecast";
-import { useRequirementForecasts } from "@/features/forecast/hooks";
-import { deliveryText } from "@/features/forecast/text";
+import { EtaCell } from "@/features/forecast/components/eta-cell";
+import { type Eta, type EtaClock, etaOfScope, etaSortValue } from "@/features/forecast/eta";
+import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { useEtaClock, useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
@@ -98,23 +99,23 @@ function groupsOf(rows: RequirementSummary[], mode: GroupMode): ListGroup<Requir
 }
 
 /** The secondary line: revision, coverage, issues — label-first counts. */
-function factsLine(r: RequirementSummary, scope: ScopeForecast | undefined): string[] {
+function factsLine(r: RequirementSummary): string[] {
   const f = r.standing.facts;
   const parts = [revisionText(r.currentRevision, r.standing)];
   if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? `Criteria ${f.criteria}` : "No criteria");
   else parts.push(`Passing ${f.passing}/${f.criteria}`);
   parts.push(f.issuesTotal === 0 ? "Not broken down" : `Issues done ${f.issuesDone}/${f.issuesTotal}`);
-  if (scope?.delivery && scope.total > 0) parts.push(deliveryText(scope.delivery).line);
   return parts;
 }
 
 const rowOf =
-  (slug: string, forecastOf: (key: string) => ScopeForecast | undefined = () => undefined) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock) =>
   (r: RequirementSummary): ListRowView => ({
     key: r.key,
     href: requirementHref(slug, r.key),
     title: r.title,
-    facts: factsLine(r, forecastOf(r.key)),
+    facts: factsLine(r),
+    eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
     state: <StatusBadge family="requirement" value={r.standing.state} />,
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
@@ -198,13 +199,19 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
     const t = text.trim().toLowerCase();
     return t ? all.filter((r) => `${r.key} ${r.title}`.toLowerCase().includes(t)) : all;
   }, [all, text]);
-  const groups = useMemo(() => groupsOf(rows, mode), [rows, mode]);
+  const forecastQ = useRequirementForecasts(projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
+  const clock = useEtaClock(projectId);
+  const [etaSorted, toggleEtaSort] = useEtaSort();
+  const etaOf = useCallback((k: string) => etaOfScope(forecasts.get(k), clock), [forecasts, clock]);
+  const groups = useMemo(() => {
+    const plain = groupsOf(rows, mode);
+    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
+  }, [rows, mode, etaSorted, etaOf]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const forecastQ = useRequirementForecasts(projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
-  const row = useMemo(() => rowOf(slug, (k) => forecasts.get(k)), [slug, forecasts]);
+  const row = useMemo(() => rowOf(slug, etaOf, clock), [slug, etaOf, clock]);
 
   const openFull = useCallback(
     (key: string) => {
@@ -256,6 +263,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
                   groups={groups}
                   fold={fold}
                   row={row}
+                  eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                   selected={peek.open}
                   onPeek={(k) => peek.set(k === peek.open ? null : k)}
                   empty="Nothing matches this search."

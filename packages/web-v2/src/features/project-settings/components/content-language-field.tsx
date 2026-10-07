@@ -11,7 +11,8 @@ import {
 	contentLanguageName,
 	contentLanguageProblem,
 } from "@forge/contracts/content-language";
-import { useContentLanguage, useWriteContentLanguage } from "../content-language-hooks";
+import { useContentLanguage } from "@/lib/api/content-language";
+import { useWriteContentLanguage } from "../content-language-hooks";
 
 const OTHER = "other";
 

@@ -21,6 +21,7 @@ import {
   type ListRowView,
   PageTitle,
   rememberListOrigin,
+  sortGroupsBy,
   StatusBadge,
   standingGroups,
   statusReading,
@@ -37,9 +38,10 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
-import type { FeedbackForecast } from "@forge/contracts/forecast";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
-import { feedbackForecastText } from "@/features/forecast/text";
+import { EtaCell } from "@/features/forecast/components/eta-cell";
+import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features/forecast/eta";
+import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { useEtaClock, useEtaSort, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackSummary } from "../types";
@@ -109,15 +111,14 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSumm
 }
 
 const rowOf =
-  (slug: string, forecastOf: (key: string) => FeedbackForecast | undefined = () => undefined) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock) =>
   (r: FeedbackSummary): ListRowView => {
-    const forecast = forecastOf(r.key);
-    const line = forecast ? feedbackForecastText(forecast)?.line : undefined;
     return {
     key: r.key,
     href: feedbackHref(slug, r.key),
     title: r.title,
-    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`, ...(line ? [line] : [])],
+    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
+    eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
     state: <StatusBadge family="feedbackPhase" value={r.phase} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: <ActorChip name={r.reporter.name ?? "Unknown reporter"} kind={r.reporter.agency} size={20} />,
@@ -140,13 +141,19 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
     const t = text.trim().toLowerCase();
     return t ? all.filter((r) => `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(t)) : all;
   }, [all, text]);
-  const groups = useMemo(() => groupsOf(rows, grouping), [rows, grouping]);
+  const forecastQ = useFeedbackForecasts(projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
+  const clock = useEtaClock(projectId);
+  const [etaSorted, toggleEtaSort] = useEtaSort();
+  const etaOf = useCallback((k: string) => etaOfFeedback(forecasts.get(k), clock), [forecasts, clock]);
+  const groups = useMemo(() => {
+    const plain = groupsOf(rows, grouping);
+    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
+  }, [rows, grouping, etaSorted, etaOf]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const forecastQ = useFeedbackForecasts(projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
-  const row = useMemo(() => rowOf(slug, (k) => forecasts.get(k)), [slug, forecasts]);
+  const row = useMemo(() => rowOf(slug, etaOf, clock), [slug, etaOf, clock]);
 
   const openFull = useCallback(
     (key: string) => {
@@ -199,6 +206,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                     groups={groups}
                     fold={fold}
                     row={row}
+                    eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                     selected={peek.open}
                     onPeek={(k) => peek.set(k === peek.open ? null : k)}
                     empty="Nothing matches this search."

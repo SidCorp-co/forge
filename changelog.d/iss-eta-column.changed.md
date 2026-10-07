@@ -1,0 +1,1 @@
+**Lists show an ETA column with clock times.** Issues, requirements, feedback and Coming next read the forecast as "14:10", "Mai 18:50" in the project's language, sortable; concurrency is capped by runs live at once, not issue status.

@@ -26,6 +26,7 @@ import {
   type ListGroup,
   rememberListOrigin,
   SegmentedControl,
+  sortGroupsBy,
   useGroupFold,
   usePeek,
   usePeekKeys,
@@ -37,9 +38,11 @@ import { cn } from "@/lib/utils/cn";
 import { useIssueStanding } from "../hooks";
 import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
 import { priorityLabel, statusesFromParam, statusLabel } from "../derive";
-import { issueBadge, issueRowView } from "./issue-standing-bits";
+import { issueBadge, issueEta, issueRowView } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
-import { useProjectForecast } from "@/features/forecast/hooks";
+import { useEtaClock, useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
+import { etaSortValue } from "@/features/forecast/eta";
+import { ETA_COPY } from "@/features/forecast/eta-copy";
 
 type BoardMode = "attention" | "module" | "waves";
 
@@ -351,7 +354,15 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   const key = `${n.q}|${[...n.quick].join()}|${n.statuses.join()}|${n.priority}|${n.createdBy}|${n.assignee}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for every narrowing field
   const rows = useMemo(() => narrow(q.data?.issues ?? [], n), [q.data, key]);
-  const groups = useMemo(() => (mode === "module" ? moduleGroups(rows) : attentionGroups(rows)), [rows, mode]);
+  const forecastQ = useProjectForecast(project.projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast])), [forecastQ.data]);
+  const clock = useEtaClock(project.projectId);
+  const [etaSorted, toggleEtaSort] = useEtaSort();
+  const etaOf = useCallback((k: string) => issueEta(forecasts.get(k), clock), [forecasts, clock]);
+  const groups = useMemo(() => {
+    const plain = mode === "module" ? moduleGroups(rows) : attentionGroups(rows);
+    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
+  }, [rows, mode, etaSorted, etaOf]);
   const fold = useGroupFold(`web-v2:issues-fold:${mode}`);
   const visible = useMemo(
     () => (mode === "waves" ? rows.filter((r) => r.standing.wave !== null).map((r) => r.key) : visibleRows(groups, fold).map((r) => r.key)),
@@ -359,9 +370,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   );
   const allKeys = useMemo(() => (q.data?.issues ?? []).map((r) => r.key), [q.data]);
   const peek = usePeek(visible, allKeys);
-  const forecastQ = useProjectForecast(project.projectId);
-  const forecasts = useMemo(() => new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast])), [forecastQ.data]);
-  const row = useMemo(() => issueRowView(project.slug, (k) => forecasts.get(k)), [project.slug, forecasts]);
+  const row = useMemo(() => issueRowView(project.slug, { of: etaOf, clock }), [project.slug, etaOf, clock]);
   const openFull = useCallback(
     (k: string) => {
       rememberListOrigin(ISSUES_LIST);
@@ -400,6 +409,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
                   groups={groups}
                   fold={fold}
                   row={row}
+                  eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                   selected={peek.open}
                   onPeek={(k) => peek.set(k === peek.open ? null : k)}
                   empty="Nothing matches these filters."
@@ -408,7 +418,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
             }
           </QueryBoundary>
         </div>
-        {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
+        {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
       </div>
     </div>
   );

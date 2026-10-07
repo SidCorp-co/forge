@@ -1,9 +1,11 @@
 /**
  * The rows a forecast reads, each where it already lives: the landed history off `issues.merged_at`
- * on issues a landed status holds and the first `in_progress` move in `activity_log`, and whether anything can take the project's
+ * on issues a landed status holds and the first `in_progress` move in `activity_log`, the most runs
+ * live at once off the run sessions boxes declared, and whether anything can take the project's
  * work off the runners' dispatch liveness and its master's standing.
  */
 
+import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import {
   FORECAST_LABEL,
   FORECAST_PEAK_DAYS,
@@ -31,7 +33,7 @@ interface SampleRow {
 export async function readHistory(projectId: string, now: Date): Promise<History> {
   const [rows, peak] = await Promise.all([
     landedRows(projectId, now),
-    readPeakInProgress(projectId, now),
+    readPeakLiveRuns(projectId, now),
   ]);
   const samples: CycleSample[] = rows.map((r) => ({
     minutes: Number(r.minutes),
@@ -77,28 +79,27 @@ interface SpellRow {
 }
 
 /**
- * The most of the project's issues that stood at `in_progress` at once over the last
- * FORECAST_PEAK_DAYS days: each spell runs from a move into `in_progress` to the issue's next move,
- * or to now where it is still there. Null where no spell touched the window.
+ * The most of the project's declared runs that were live at once over the last FORECAST_PEAK_DAYS
+ * days: each runs from its run session's start to its run's finish, or to now where it is still
+ * open. A run session is what a box declares when its master hands a subagent work, so this is the
+ * work actually done at once, never issues parked at `in_progress` while nothing works them (HOP:
+ * seven issues in progress at once, never more than four runs). A declaration core refused never
+ * started and is not counted. Null where no run was live in the window.
  */
-export async function readPeakInProgress(projectId: string, now: Date): Promise<number | null> {
+export async function readPeakLiveRuns(projectId: string, now: Date): Promise<number | null> {
+  const at = now.toISOString();
   const from = new Date(now.getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
   const spells = rowsOf<SpellRow>(
     await db.execute(sql`
-      SELECT greatest(m.at, ${from}::timestamptz) AS started_at,
-             least(coalesce(m.next_at, ${now.toISOString()}::timestamptz), ${now.toISOString()}::timestamptz) AS ended_at
-        FROM (
-          SELECT al.created_at AS at, al.payload ->> 'to' AS to_status, i.status,
-                 lead(al.created_at) OVER (PARTITION BY al.issue_id ORDER BY al.created_at, al.id) AS next_at
-            FROM activity_log al
-            JOIN issues i ON i.id = al.issue_id
-           WHERE i.project_id = ${projectId}
-             AND al.action = 'issue.statusChanged'
-             AND al.created_at <= ${now.toISOString()}::timestamptz
-        ) m
-       WHERE m.to_status = 'in_progress'
-         AND (m.next_at IS NOT NULL OR m.status = 'in_progress')
-         AND coalesce(m.next_at, ${now.toISOString()}::timestamptz) > ${from}::timestamptz`),
+      SELECT greatest(s.started_at, ${from}::timestamptz) AS started_at,
+             least(coalesce(r.finished_at, ${at}::timestamptz), ${at}::timestamptz) AS ended_at
+        FROM agent_sessions s
+        JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+       WHERE s.project_id = ${projectId}
+         AND s.kind = ${RUN_SESSION_KIND}
+         AND s.started_at IS NOT NULL
+         AND s.started_at <= ${at}::timestamptz
+         AND coalesce(r.finished_at, ${at}::timestamptz) > ${from}::timestamptz`),
   );
   if (spells.length === 0) return null;
   return peakOf(

@@ -20,7 +20,7 @@ import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
-/** "3 of 5 criteria proven · rest forecast live in 1 d – 3 d": the proof so far, then when the rest is in people's hands. */
+/** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
 function CriteriaRest({ passing, criteria, scope }: { passing: number; criteria: number; scope: ScopeForecast }) {
   const read = criteriaRestText(passing, criteria, scope);
   if (!read) return null;

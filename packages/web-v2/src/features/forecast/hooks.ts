@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useNow, useUrlChoice } from "@/design";
+import { useContentLanguage } from "@/lib/api/content-language";
 import { forecastApi } from "./api";
+import type { EtaClock } from "./eta";
+import { etaLangOf } from "./eta-copy";
 
 // keyed under ['issues','standing'] so the event router, which invalidates that prefix on every issue
 // event, recomputes the forecast on each transition with no timer of its own
@@ -69,4 +74,19 @@ export function useComingNext(projectId: string | undefined) {
     enabled: Boolean(projectId),
     staleTime: 10_000,
   });
+}
+
+/** The ETA column's language and clock: the project's content language, the viewer's timezone, now. */
+export function useEtaClock(projectId: string | undefined): EtaClock {
+  const lang = etaLangOf(useContentLanguage(projectId).data?.contentLanguage);
+  const now = useNow(60_000);
+  return useMemo(() => ({ lang, now }), [lang, now]);
+}
+
+const ETA_SORTS = ["default", "eta"] as const;
+
+/** Whether a list is sorted by its ETA column, kept in the URL as `sort=eta`, and the header's toggle. */
+export function useEtaSort(): [boolean, () => void] {
+  const [sort, setSort] = useUrlChoice("sort", ETA_SORTS, "default");
+  return [sort === "eta", () => setSort(sort === "eta" ? "default" : "eta")];
 }

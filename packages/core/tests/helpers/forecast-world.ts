@@ -111,6 +111,21 @@ export async function landHistory(w: World, n: number): Promise<Landed[]> {
   return out;
 }
 
+/** A run a box declared: its run session started at `start`, its run finished at `end` (null: still open). */
+export async function declaredRun(w: World, start: Date, end: Date | null): Promise<void> {
+  const runId = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, metadata)
+    VALUES (${runId}, ${w.projectId}, 'system', ${end ? 'completed' : 'running'}, ${start.toISOString()},
+            ${end?.toISOString() ?? null}, '{}'::jsonb)
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at)
+    VALUES (${w.projectId}, ${w.deviceId}, ${runId}, 'run_session', ${end ? 'completed' : 'running'},
+            ${start.toISOString()}, ${start.toISOString()})
+  `);
+}
+
 /** A release run that shipped `issueIds` at `at`, under the next patch number. */
 export async function shipRelease(
   w: World,
