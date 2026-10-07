@@ -1,1 +1,1 @@
-**A workflow design's fingerprint now ignores key order and includes its template for every template.** A migration re-hashes stored designs whose fingerprint matches the old rule; drifted ones are left and named, and a design with no template aborts the deploy.
+**A workflow design's fingerprint now ignores key order and includes its template for every template.** A migration re-hashes stored designs matching the old rule; drifted ones are left and named, and a design with no template aborts the deploy.
