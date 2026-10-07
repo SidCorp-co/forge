@@ -69,6 +69,9 @@ interface WebTurnArgs {
 export function webConversationTurn(args: WebTurnArgs): WindowTurnInputs {
   return {
     door: 'web-chat-reply',
+    // the conversation list reads "Waiting on you" from the reply row, so every Assistant-mode
+    // turn here is offered `await_reply` (ISS-277); an Agent-mode turn is diverted before it runs
+    recordsAsks: true,
     externalStop: args.externalStop,
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id, mode: args.window.mode },

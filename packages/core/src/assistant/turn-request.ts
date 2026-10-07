@@ -50,7 +50,11 @@ export type TurnReply =
   | { send: false; reason: string; ended?: 'declined' | 'superseded' | 'not-dispatched' }
   /** The turn ended without an answer it chose: a failure, never a silence. */
   | { send: false; reason: string; ended: 'failed'; code: TurnFailureCode }
-  | { send: true; message: ScreenedMessage; screenReplaced: boolean };
+  /**
+   * `awaitsReply`: the attempt whose text this is called `await_reply`, and the text is the model's
+   * own (screened, not code-authored). The row is written with it; nothing reads it from the text.
+   */
+  | { send: true; message: ScreenedMessage; screenReplaced: boolean; awaitsReply?: boolean };
 
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
@@ -105,6 +109,11 @@ export interface ConversationTurnRequest {
   replyEntry?:
     | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
     | undefined;
+  /**
+   * This venue reads whether a reply waits on the person: every attempt is offered `await_reply`,
+   * and a reply whose attempt called it is recorded as awaiting an answer (ISS-277).
+   */
+  recordsAsks?: boolean | undefined;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
   /** The language the code-authored fallbacks answer in: the asker's. */

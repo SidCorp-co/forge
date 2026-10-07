@@ -166,6 +166,8 @@ interface AppendMessageArgs {
   blocks?: readonly ContentBlock[] | null | undefined;
   deliveryProof?: unknown;
   silenceReason?: string | null;
+  /** The agent's turn called `await_reply` and this is the text it wrote (ISS-277); false otherwise. */
+  awaitsReply?: boolean | undefined;
   db?: typeof defaultDb;
 }
 
@@ -242,6 +244,7 @@ export async function appendMessagesIn(
           blocks: (m.blocks && m.blocks.length > 0 ? [...m.blocks] : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
+          awaitsReply: m.awaitsReply === true,
         })),
       )
       .returning();

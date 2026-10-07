@@ -11,6 +11,7 @@ import { conversationAdapters } from './schema-vocabulary.js';
 
 import { relations, sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   integer,
@@ -206,10 +207,19 @@ export const conversationMessages = pgTable(
      * where it named one (ISS-1087).
      */
     replyToExternalId: text('reply_to_external_id'),
+    /**
+     * The turn that wrote this agent reply called `await_reply`, and the reply delivered is the
+     * text it wrote: the one fact "Waiting on you" reads (ISS-277). Never inferred from the text.
+     */
+    awaitsReply: boolean('awaits_reply').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
+    awaitsReplyAgent: check(
+      'conversation_messages_awaits_reply_agent',
+      sql`NOT ${t.awaitsReply} OR (${t.role} = 'assistant' AND ${t.silenceReason} IS NULL)`,
+    ),
     externalIdx: index('conversation_messages_external_idx')
       .on(t.externalId)
       .where(sql`external_id IS NOT NULL`),

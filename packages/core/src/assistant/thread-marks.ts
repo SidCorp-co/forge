@@ -32,15 +32,15 @@ export interface ThreadFacts {
   batchOpen: boolean;
   /** A message in this room waits for its reply: a window not yet settled, or a runner turn still out. */
   replyPending: boolean;
-  /** The room's newest said message is the agent's, closing on a question (`closesOnQuestion`) put to the viewer. */
+  /** The room's newest said message is an agent reply recorded as awaiting an answer, put to the viewer. */
   agentAsked: boolean;
 }
 
 // an onboarding thread wears its onboarding's own status; any other room waits on the viewer
-// while a batch they may answer is open, is in progress while a reply is still being made, waits on the viewer
-// when the agent's last word asked them something, and is done otherwise, for a reader the
-// agent's question was not put to as well — the prototype's conversation status, so every row of
-// the list carries one (REQ-11 BC-8, ISS-277)
+// while a batch they may answer is open, is in progress while a reply is still being made, waits on
+// the viewer when the agent's last reply was recorded as awaiting their answer, and is done
+// otherwise, for a reader the agent's question was not put to as well — the prototype's
+// conversation status, so every row of the list carries one (REQ-11 BC-8, ISS-277)
 export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
   if (f.onboarding) return f.onboarding;
   if (f.batchOpen) return 'waiting_on_you';
@@ -49,65 +49,14 @@ export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
   return 'done';
 }
 
-const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s/;
-const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
-const QUOTE_LINE = /^\s{0,3}>/;
-const CODE_LINE = /^(?: {4}|\t)/;
-// a span the agent quotes or writes as code says nothing about what the agent asks: each becomes
-// one opaque word before the end is read (straight single quotes stay, being apostrophes too)
-const CODE_SPAN = /`+[^`\n]*`+/g;
-const QUOTED_SPAN =
-  /"[^"\n]*"|\u201C[^\u201D\n]*\u201D|\u2018[^\u2019\n]*\u2019|\u00AB[^\u00BB\n]*\u00BB|\u300C[^\u300D\n]*\u300D|\u300E[^\u300F\n]*\u300F/g;
-// the question marks a sentence may end on: ASCII, full-width, small, Arabic, Greek (U+037E),
-// Ethiopic, the interrobang and the doubled forms; then only closing emphasis or a bracket, so a
-// question a quote closes (`"Can we ship?"`, `'…?'`) is the quote's, not the agent's
-const ENDS_ASKING = /[?\uFF1F\uFE56\u061F\u037E\u1367\u203D\u2047\u2048\u2049][*_)]*$/;
-// Greek writes its question mark as the ASCII semicolon too, so `;` asks only after Greek script
-const ENDS_ASKING_IN_GREEK = /[\u0370-\u03FF\u1F00-\u1FFF][^.!?;\n]*;[*_)]*$/;
-
-function endsAsking(line: string): boolean {
-  const prose = line.replace(CODE_SPAN, 'code').replace(QUOTED_SPAN, 'quote').trimEnd();
-  return ENDS_ASKING.test(prose) || ENDS_ASKING_IN_GREEK.test(prose);
-}
-
-const isBlank = (line: string): boolean => line.trim() === '';
-
-/** Whether a line is prose the agent wrote in its own voice: not a quote, a fence or a list item. */
-function isProse(line: string): boolean {
-  return !QUOTE_LINE.test(line) && !FENCE_LINE.test(line) && !LIST_LINE.test(line);
-}
-
-/**
- * Whether an agent's message ends its turn asking the reader something: its last sentence is a
- * question, or the sentence a closing list of options hangs from is. Only the end counts, in the
- * agent's own prose: a question it went on to answer, one it quotes, and a `?` in code (a ternary,
- * a SQL placeholder) or in a link are none. What it declines — a request phrased as a statement,
- * a question followed by a code block, table, quote or sign-off — is a miss, read as not asking.
- */
-export function closesOnQuestion(text: string): boolean {
-  const lines = text.trimEnd().split('\n');
-  // a message that ends inside or on a code block ends on code, not on a question
-  if (lines.filter((l) => FENCE_LINE.test(l)).length % 2 === 1) return false;
-  const fromEnd = [...lines].reverse();
-  const last = fromEnd[0];
-  if (last === undefined || isBlank(last)) return false;
-  // the closing paragraph indented as a whole is a code block
-  const closingLength = fromEnd.findIndex(isBlank);
-  const closing = closingLength === -1 ? fromEnd : fromEnd.slice(0, closingLength);
-  if (closing.every((l) => CODE_LINE.test(l))) return false;
-  // the last line is the agent's own unless it quotes; a list item that asks is the end asking
-  if (!QUOTE_LINE.test(last) && endsAsking(last)) return true;
-  if (!LIST_LINE.test(last)) return false;
-  // a closing list of options: the question is the prose line it hangs from
-  const lead = fromEnd.find((l) => !LIST_LINE.test(l) && !isBlank(l));
-  return lead !== undefined && isProse(lead) && !CODE_LINE.test(lead) && endsAsking(lead);
-}
-
 /**
  * The rooms among these in which the viewer owes the agent an answer: the room's newest said
- * message (no system line, no silence) is the agent's, asking, and it was put to the viewer. A
- * question is put to the person whose message the agent answered, the newest a person (not another
- * agent) said; where no person has spoken yet, to every person in the room.
+ * message (no system line, no silence) is an agent reply recorded as awaiting an answer
+ * (`awaits_reply`, written when its turn called `await_reply`), and it was put to the viewer. The
+ * reply's text is never read: no rule over prose can tell a question that waits from one the agent
+ * answered, echoed or listed reasons under (ISS-277). A question is put to the person whose message
+ * the agent answered, the newest a person (not another agent) said; where no person has spoken
+ * yet, to every person in the room.
  */
 async function roomsWhereAgentAsked(
   conversationIds: readonly string[],
@@ -119,7 +68,7 @@ async function roomsWhereAgentAsked(
     .selectDistinctOn([conversationMessages.conversationId], {
       conversationId: conversationMessages.conversationId,
       role: conversationMessages.role,
-      content: conversationMessages.content,
+      awaitsReply: conversationMessages.awaitsReply,
     })
     .from(conversationMessages)
     .where(
@@ -131,7 +80,7 @@ async function roomsWhereAgentAsked(
     )
     .orderBy(conversationMessages.conversationId, desc(conversationMessages.seq));
   const asking = newest
-    .filter((m) => m.role === 'assistant' && closesOnQuestion(m.content))
+    .filter((m) => m.role === 'assistant' && m.awaitsReply)
     .map((m) => m.conversationId);
   if (asking.length === 0) return asked;
   const [answered, members] = await Promise.all([

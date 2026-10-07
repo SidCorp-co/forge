@@ -38,7 +38,8 @@ export const ONBOARDING_STATUS_LABELS: Record<OnboardingStatus, string> = {
 /** The same three values read as any conversation's status (`assistant/thread-marks.ts:threadMarks`). */
 export const THREAD_STATUS_HINTS: Record<OnboardingStatus, string> = {
 	in_progress: "in_progress: the agent is working on the last message",
-	waiting_on_you: "waiting_on_you: a question or a batch waits on you",
+	waiting_on_you:
+		"waiting_on_you: the agent's last reply was recorded as awaiting your answer, or a batch waits on you",
 	done: "done: nothing in this thread waits on you or on the agent",
 };
 
