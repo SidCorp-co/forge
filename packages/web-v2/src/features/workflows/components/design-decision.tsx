@@ -79,7 +79,7 @@ export function DecisionNoteControl({ revision, decide }: { revision: number | n
       <Textarea aria-label={t(m.label)} placeholder={t(m.placeholder)} value={text} onChange={(e) => setDrafts((d) => ({ ...d, [mode]: e.target.value }))} rows={2} />
       <span className="flex gap-1.5">
         <Button size="sm" variant="secondary" onClick={() => setMode(null)}>
-          {t("workflows.cancel")}
+          {t("common.cancel")}
         </Button>
         <Button
           size="sm"

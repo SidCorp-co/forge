@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.104] - 2026-10-07
+
+Integrations and issue fields explain themselves; interface-language migration repaired so core starts
+
+### Fixed
+
+- **Choosing an interface language no longer stops core from starting.** The language migration cleared stored values before allowing them to be empty, so any database with saved preferences refused it and dev.103 never came up.
+- **Integrations and issue fields say what they mean.** GitHub connects from one row, a second Coolify binding reads its app name, a held Priority names why, and feedback picks issues by key or title.
+
 ## [0.4.0-dev.103] - 2026-10-07
 
 Choose the interface language: Vietnamese chrome for the dashboard, navigation and status labels

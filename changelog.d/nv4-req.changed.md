@@ -1,0 +1,1 @@
+**The Requirements screens read in Vietnamese when that is the interface language.** The list, peek, full page with its tabs and rail, the acts and the create form; dates read 24-hour, day first. What people wrote stays as written.

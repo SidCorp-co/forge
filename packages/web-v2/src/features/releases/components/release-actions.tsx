@@ -48,7 +48,7 @@ function ReturnWithReason({ projectId, runId, approvalId }: { projectId: string;
           <RefusalText error={decide.error} />
           <span className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              {t("releases.cancel")}
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" size="sm" disabled={!reason.trim()} loading={decide.isPending}>
               {t("releases.returnWithReason")}

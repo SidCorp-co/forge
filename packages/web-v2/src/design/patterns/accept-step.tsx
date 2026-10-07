@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { Button } from "../primitives/button";
 import { Input } from "../primitives/input";
 
@@ -21,6 +22,7 @@ export interface AcceptStepProps {
  * route keeps it (ISS-84); where it is given it is sent and kept on the act.
  */
 export function AcceptStep({ confirmLabel, consequence, loading = false, onConfirm, onCancel }: AcceptStepProps) {
+  const t = useCopy();
   const [reason, setReason] = useState("");
   return (
     <form
@@ -34,8 +36,8 @@ export function AcceptStep({ confirmLabel, consequence, loading = false, onConfi
       {consequence ? <p className="text-12 text-muted">{consequence}</p> : null}
       <span className="flex flex-wrap items-center gap-2">
         <Input
-          aria-label="Why it is accepted, and on whose authority"
-          placeholder="Why, and on whose authority (optional)"
+          aria-label={t("common.acceptWhyLabel")}
+          placeholder={t("common.acceptWhy")}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           className="min-w-[16rem] flex-1"
@@ -45,7 +47,7 @@ export function AcceptStep({ confirmLabel, consequence, loading = false, onConfi
           {confirmLabel}
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={onCancel}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </span>
     </form>

@@ -17,11 +17,12 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
-  "release train", "coming next", "approve", "return", "criteria", "proven", "maintenance", "what users get", "technical", "notes", "checks",
-  "issues in this release", "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason",
-  "designs", "diagram", "steps", "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all",
-  "walk through", "zoom", "fit", "minimap", "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users",
-  "external systems", "where it stands", "properties", "template", "drawn by", "the code", "trace", "if",
+  "release train", "coming next", "approve", "return", "criteria", "proven", "maintenance", "what users get", "technical", "notes", "checks", "issues in this release",
+  "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason", "designs", "diagram", "steps",
+  "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all", "walk through", "zoom", "fit", "minimap",
+  "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users", "external systems", "where it stands", "properties", "template",
+  "drawn by", "the code", "trace", "if", "who owns what", "newest first", "proposal", "coverage", "summary", "scope", "accept", "reject", "defer", "drop",
+  "created", "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry", "step", "ago",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -44,7 +45,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      if (new RegExp(`[^\\p{L}]${w.trim()}[^\\p{L}]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`) or a dotted permission (`workflow-designs.approve`) is an identifier the tooltip names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_.-]${w.trim()}[^\\p{L}_]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

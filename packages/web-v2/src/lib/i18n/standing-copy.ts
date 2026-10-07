@@ -140,6 +140,57 @@ const EFFECT: Rule[] = [
   },
 ];
 
+// A requirement's history (core `requirements/history-read.ts`): who a record came from when no
+// person is named, and the act each record leads with; the reason, summary or note after the colon
+// is what a person wrote and is carried over untouched.
+const HISTORY_WHO: Rule[] = [
+  { re: new RegExp("^Someone$"), key: "requirements.history.who.someone" },
+  { re: new RegExp("^A signer$"), key: "requirements.history.who.signer" },
+  { re: new RegExp("^An agent$"), key: "requirements.history.who.agent" },
+  { re: new RegExp("^BA assistant$"), key: "requirements.history.who.assistant" },
+];
+
+const SUGGESTED: Record<string, ProductCopyKey> = {
+  "a requirement draft": "requirements.history.what.requirement_draft",
+  "a revision": "requirements.history.what.revision_diff",
+  "a readiness check": "requirements.history.what.readiness",
+  "a breakdown": "requirements.history.what.breakdown",
+  "a triage": "requirements.history.what.triage",
+  "a duplicate": "requirements.history.what.duplicate",
+  "a change": "requirements.history.what.change",
+};
+const WHAT = `(?<what>${Object.keys(SUGGESTED).join("|")})`;
+const REST = "(?<rest>[\\s\\S]+)";
+const r = (g: Record<string, string>) => ({ r: g.r ?? "" });
+const rRest = (g: Record<string, string>) => ({ r: g.r ?? "", rest: g.rest ?? "" });
+const rest = (g: Record<string, string>) => ({ rest: g.rest ?? "" });
+const what = (g: Record<string, string>, l: string) => ({ what: productCopy(l)(SUGGESTED[g.what ?? ""] ?? "requirements.history.what.change"), rest: g.rest ?? "" });
+
+const HISTORY_TEXT: Rule[] = [
+  { re: new RegExp(`^Wrote r(?<r>\\d+) \\(an accepted suggestion\\): ${REST}$`), key: "requirements.history.text.wroteSuggested", vars: rRest },
+  { re: new RegExp(`^Wrote r(?<r>\\d+): ${REST}$`), key: "requirements.history.text.wrote", vars: rRest },
+  { re: new RegExp("^Proposed r(?<r>\\d+)$"), key: "requirements.history.text.proposed", vars: r },
+  { re: new RegExp("^Accepted the delivery$"), key: "requirements.history.text.deliveryAccepted" },
+  { re: new RegExp(`^Accepted the delivery: ${REST}$`), key: "requirements.history.text.deliveryAcceptedWhy", vars: rest },
+  { re: new RegExp("^Accepted r(?<r>\\d+)$"), key: "requirements.history.text.accepted", vars: r },
+  { re: new RegExp(`^Accepted r(?<r>\\d+): ${REST}$`), key: "requirements.history.text.acceptedWhy", vars: rRest },
+  { re: new RegExp(`^Returned r(?<r>\\d+): ${REST}$`), key: "requirements.history.text.returned", vars: rRest },
+  { re: new RegExp(`^Deferred out of the current release \\(for (?<phase>[^)]+)\\): ${REST}$`), key: "requirements.history.text.deferredFor", vars: (g) => ({ phase: g.phase ?? "", rest: g.rest ?? "" }) },
+  { re: new RegExp(`^Deferred out of the current release: ${REST}$`), key: "requirements.history.text.deferred", vars: rest },
+  { re: new RegExp("^Undeferred$"), key: "requirements.history.text.undeferred" },
+  { re: new RegExp(`^Undeferred: ${REST}$`), key: "requirements.history.text.undeferredWhy", vars: rest },
+  { re: new RegExp("^Agreed r(?<r>\\d+)$"), key: "requirements.history.text.agreed", vars: r },
+  { re: new RegExp(`^Agreed r(?<r>\\d+): ${REST}$`), key: "requirements.history.text.agreedWhy", vars: rRest },
+  { re: new RegExp("^Re-pinned r(?<r>\\d+) onto the approved designs$"), key: "requirements.history.text.repinned", vars: r },
+  { re: new RegExp(`^Re-pinned r(?<r>\\d+) onto the approved designs: ${REST}$`), key: "requirements.history.text.repinnedWhy", vars: rRest },
+  { re: new RegExp(`^Dropped: ${REST}$`), key: "requirements.history.text.dropped", vars: rest },
+  { re: new RegExp(`^Suggested ${WHAT}$`), key: "requirements.history.text.suggested", vars: what },
+  { re: new RegExp(`^Accepted ${WHAT}$`), key: "requirements.history.text.acceptedSuggestion", vars: what },
+  { re: new RegExp(`^Accepted ${WHAT}: ${REST}$`), key: "requirements.history.text.acceptedSuggestionWhy", vars: what },
+  { re: new RegExp(`^Rejected ${WHAT}$`), key: "requirements.history.text.rejectedSuggestion", vars: what },
+  { re: new RegExp(`^Rejected ${WHAT}: ${REST}$`), key: "requirements.history.text.rejectedSuggestionWhy", vars: what },
+];
+
 function apply(rules: Rule[], text: string, language: string): string | null {
   for (const rule of rules) {
     const m = rule.re.exec(text);
@@ -163,6 +214,9 @@ function localize(rules: Rule[], text: string, language: string): string {
 export const standingWho = (who: string, language: string) => localize(WHO, who, language);
 export const standingAct = (act: string, language: string) => localize(ACT, act, language);
 export const standingEffect = (effect: string, language: string) => localize(EFFECT, effect, language);
+/** A requirement history record's actor and its text, read the same way; the person's words after the act stay as written. */
+export const historyWho = (who: string, language: string) => (baseOf(language) === "en" ? who : (apply(HISTORY_WHO, who, language) ?? standingWho(who, language)));
+export const historyText = (text: string, language: string) => (baseOf(language) === "en" || text === "" ? text : (apply(HISTORY_TEXT, text, language) ?? text));
 
 /** A waiting-on with its `who`, `act` and `effect` in `language`; its `rule` and `kind` as core sent them. */
 export function localizeWaiting<W extends { who: string; act: string; effect?: string | undefined }>(w: W, language: string): W {
@@ -172,9 +226,9 @@ export function localizeWaiting<W extends { who: string; act: string; effect?: s
 }
 
 /** The sentence `text` reads as in `language` by a pattern, or null where none names it; English runs through its pattern too, which the round-trip test holds to core's sentence. */
-export function standingRead(kind: "who" | "act" | "effect", text: string, language: string): string | null {
+export function standingRead(kind: keyof typeof STANDING_RULES, text: string, language: string): string | null {
   return apply(STANDING_RULES[kind] as Rule[], text, language);
 }
 
 /** Every pattern of `who`, `act` and `effect` the module reads, for the test that holds a sentence to each. */
-export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT } as const;
+export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT, historyWho: HISTORY_WHO, history: HISTORY_TEXT } as const;

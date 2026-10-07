@@ -6,12 +6,14 @@
 // fact and both surfaces read the same.
 
 import Link from "next/link";
-import { ActorChip, enumLabel, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
+import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
-import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { standingEffect } from "@/lib/i18n/standing-copy";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { ScopeForecast } from "@forge/contracts/forecast";
@@ -21,7 +23,7 @@ import { useEtaClock, useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementState } from "@forge/contracts/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { PromoteDraftRow } from "./promote-drafts";
-import { CoverageSummary, Stepper } from "./standing-bits";
+import { agreedTitle, CoverageSummary, Stepper } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
 export function CriteriaRest({ passing, criteria, scope, slug, className = "pb-1.5" }: { passing: number; criteria: number; scope: ScopeForecast; slug: string; className?: string }) {
@@ -34,12 +36,11 @@ export function CriteriaRest({ passing, criteria, scope, slug, className = "pb-1
   );
 }
 
-const VIA_LABEL: Record<RequirementFeedbackItem["via"]["type"], string> = {
-  requirement: "",
-  issue: "On",
-  workflow: "On design",
-  release: "On release",
-  route: "Carried by",
+/** "On ISS-4", "On design checkout": where a feedback item reached the requirement from; one about it, or carried by its route, says nothing. */
+const VIA_KEY: Partial<Record<RequirementFeedbackItem["via"]["type"], ProductCopyKey>> = {
+  issue: "requirements.facts.via.issue",
+  workflow: "requirements.facts.via.workflow",
+  release: "requirements.facts.via.release",
 };
 
 /** Where a carrier's key links: an issue, a requirement or a root item; a revision suggestion has no page. */
@@ -50,16 +51,19 @@ function carrierHrefOf(route: FeedbackRoute, slug: string, key: string): string 
 }
 
 function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
   const r = f.route;
   const carriers = r ? r.carriers.flatMap((c) => (c.key && carrierHrefOf(r.route, slug, c.key) ? [{ key: c.key, href: carrierHrefOf(r.route, slug, c.key) as string }] : [])) : [];
-  const via = f.via.type === "requirement" || f.via.type === "route" ? null : `${VIA_LABEL[f.via.type]} ${f.via.key}`;
+  const viaKey = VIA_KEY[f.via.type];
+  const via = viaKey ? t(viaKey, { key: f.via.key }) : null;
   return (
     <FeedbackRailItem slug={slug} itemKey={f.key} title={f.title} phase={f.phase}>
       {via || r ? (
         <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-12 text-muted" data-testid="rail-feedback-route">
           {via ? <span>{via}</span> : null}
           {via && r ? <span aria-hidden>·</span> : null}
-          {r ? <span>{enumLabel("feedbackRoute", r.route)}</span> : null}
+          {r ? <span>{label("feedbackRoute", r.route)}</span> : null}
           {carriers.map((c) => (
             <Link key={c.key} href={c.href} className="font-mono text-link hover:underline">
               {c.key}
@@ -72,12 +76,13 @@ function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) 
 }
 
 function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
+  const t = useCopy();
   const open = items.filter((f) => f.open);
   const closed = items.filter((f) => !f.open);
   return (
-    <FactsGroup title="Feedback" count={items.length ? `Open ${open.length} of ${items.length}` : undefined} testId="facts-feedback">
+    <FactsGroup title={t("requirements.facts.feedback")} count={items.length ? t("requirements.facts.openOf", { a: open.length, b: items.length }) : undefined} testId="facts-feedback">
       {items.length === 0 ? (
-        <FactsEmpty>No feedback about it.</FactsEmpty>
+        <FactsEmpty>{t("requirements.facts.noFeedback")}</FactsEmpty>
       ) : (
         <>
           {open.length ? (
@@ -87,11 +92,11 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
               ))}
             </ul>
           ) : (
-            <FactsEmpty>No open feedback.</FactsEmpty>
+            <FactsEmpty>{t("requirements.facts.noOpenFeedback")}</FactsEmpty>
           )}
           {closed.length ? (
             <details className="mt-2" data-testid="rail-feedback-closed">
-              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">Closed {closed.length}</summary>
+              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{t("requirements.facts.closedN", { n: closed.length })}</summary>
               <ul className="mt-1.5 grid gap-1.5">
                 {closed.map((f) => (
                   <FeedbackRow key={f.id} f={f} slug={slug} />
@@ -135,6 +140,10 @@ export function RequirementFacts({
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
 }) {
+  const t = useCopy();
+  const label = useLabel();
+  const lang = useInterfaceLanguage();
+  const time = useTimeFormat();
   const forecast = useRequirementForecast(projectId, d.key).data;
   const s = d.standing;
   const f = s.facts;
@@ -143,29 +152,33 @@ export function RequirementFacts({
   const open = f.proposedRevision ?? f.draftRevision;
   return (
     <div data-testid="requirement-facts">
-      <FactsGroup title="Status">
-        <Fact label="State">
+      <FactsGroup title={t("requirements.facts.status")}>
+        <Fact label={t("requirements.facts.state")}>
           <StatusBadge family="requirement" value={s.state} />
         </Fact>
         {s.attentionGroup !== "done" ? (
-          <Fact label="Waiting on">
+          <Fact label={t("requirements.facts.waitingOn")}>
             <WaitingOn w={s.waitingOn} />
           </Fact>
         ) : null}
-        {s.attentionGroup !== "done" && s.waitingOn.effect ? <p className="pb-1 pl-[96px] text-12 text-muted max-sm:pl-0" data-testid="facts-effect">{s.waitingOn.effect}</p> : null}
-        <Fact label="Owner">
-          {s.owner ? <ActorChip name={s.owner.name ?? "Unknown"} kind={s.owner.kind} /> : <span className="text-subtle">No owner</span>}
+        {s.attentionGroup !== "done" && s.waitingOn.effect ? (
+          <p className="pb-1 pl-[96px] text-12 text-muted max-sm:pl-0" data-testid="facts-effect">
+            {standingEffect(s.waitingOn.effect, lang)}
+          </p>
+        ) : null}
+        <Fact label={t("requirements.facts.owner")}>
+          {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
-        <Fact label="Current">
-          <span>{d.currentRevision !== null ? `r${d.currentRevision}` : "None accepted yet"}</span>
+        <Fact label={t("requirements.facts.current")}>
+          <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>
         </Fact>
         {d.request ? (
-          <Fact label="Requested by">
-            <span title={`A contract request for ${d.request.contract}; only this project agrees it`}>{d.request.project}</span>
+          <Fact label={t("requirements.facts.requestedBy")}>
+            <span title={t("requirements.facts.requestTitle", { contract: d.request.contract })}>{d.request.project}</span>
           </Fact>
         ) : null}
         {open !== null ? (
-          <Fact label={f.proposedRevision !== null ? "Proposed" : "In draft"}>
+          <Fact label={t(f.proposedRevision !== null ? "requirements.facts.proposed" : "requirements.facts.inDraft")}>
             {onOpenRevisions ? (
               <button type="button" onClick={onOpenRevisions} className="text-link hover:underline" data-testid="facts-open-revision">
                 r{open}
@@ -180,14 +193,14 @@ export function RequirementFacts({
         </div>
       </FactsGroup>
 
-      <FactsGroup title="Coverage" count={s.coverage.length ? `Passing ${f.passing} of ${f.criteria}` : undefined} testId="facts-coverage">
+      <FactsGroup title={t("requirements.facts.coverage")} count={s.coverage.length ? t("requirements.facts.passingOf", { a: f.passing, b: f.criteria }) : undefined} testId="facts-coverage">
         <CoverageSummary coverage={s.coverage} />
       </FactsGroup>
 
-      <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
+      <FactsGroup title={t("requirements.facts.issues")} count={f.issuesTotal ? t("requirements.facts.doneOf", { a: f.issuesDone, b: f.issuesTotal }) : undefined} testId="facts-issues">
         {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} className="pb-1.5 max-sm:hidden" /> : null}
         {d.issues.length === 0 ? (
-          <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
+          <FactsEmpty>{t("requirements.facts.notBrokenDown")}</FactsEmpty>
         ) : (
           <ul className="grid gap-1">
             {d.issues.map((i) => (
@@ -195,11 +208,11 @@ export function RequirementFacts({
                 <Link href={issueHref(slug, i.displayId)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
                   {i.displayId}
                 </Link>
-                <span className="min-w-0 flex-1 truncate" title={i.changedSincePlan ? `${i.title} · planned on r${i.plannedRevision}; the requirement moved since` : i.title}>
+                <span className="min-w-0 flex-1 truncate" title={i.changedSincePlan ? t("requirements.facts.plannedOn", { title: i.title, r: i.plannedRevision ?? "—" }) : i.title}>
                   {i.title}
                 </span>
                 {i.changedSincePlan ? (
-                  <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
+                  <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
                 <PromoteDraftRow projectId={projectId} d={d} issue={i} />
@@ -211,9 +224,9 @@ export function RequirementFacts({
 
       <FeedbackFacts items={d.feedback} slug={slug} />
 
-      <FactsGroup title="Design" testId="facts-design">
+      <FactsGroup title={t("requirements.facts.design")} testId="facts-design">
         {d.workflows.length === 0 ? (
-          <FactsEmpty>No design linked.</FactsEmpty>
+          <FactsEmpty>{t("requirements.facts.noDesign")}</FactsEmpty>
         ) : (
           <ul className="grid gap-1">
             {d.workflows.map((w) => (
@@ -222,7 +235,7 @@ export function RequirementFacts({
                   {w.title}
                 </Link>
                 {w.designStatus ? (
-                  <Tooltip label={w.approvedRevision !== null ? `Newest approved revision: ${w.approvedRevision}` : "No approved revision yet"}>
+                  <Tooltip label={w.approvedRevision !== null ? t("requirements.facts.newestApproved", { r: w.approvedRevision }) : t("requirements.facts.noApproved")}>
                     <span className="inline-flex">
                       <StatusBadge family="design" value={w.designStatus} />
                     </span>
@@ -235,7 +248,7 @@ export function RequirementFacts({
       </FactsGroup>
 
       {d.bindings.length > 0 ? (
-        <FactsGroup title="Screen bindings" count={`${d.bindings.length}`} testId="facts-bindings">
+        <FactsGroup title={t("requirements.facts.bindings")} count={`${d.bindings.length}`} testId="facts-bindings">
           <ul className="grid gap-1">
             {d.bindings.map((b) => (
               <li
@@ -244,20 +257,20 @@ export function RequirementFacts({
                 data-testid="rail-binding"
               >
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate" title={`${b.flow} r${b.designRevision}, step ${b.step}: ${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}`}>
+                  <span className="min-w-0 flex-1 truncate" title={t("requirements.facts.bindingTitle", { flow: b.flow, r: b.designRevision, step: b.step, contract: `${b.contract}${b.pinnedVersion ? `@${b.pinnedVersion}` : ""}` })}>
                     {b.step} <span className="font-mono text-12 text-subtle">{b.element}</span>
                   </span>
                   {b.brokenBy ? (
-                    <span className="flex-none text-12 text-danger" title={`${b.contract} ${b.brokenBy} removed or broke this element; re-agree to re-baseline`}>
-                      Broken by {b.brokenBy}
+                    <span className="flex-none text-12 text-danger" title={t("requirements.facts.brokeTitle", { contract: b.contract, v: b.brokenBy })}>
+                      {t("requirements.facts.brokenBy", { v: b.brokenBy })}
                     </span>
                   ) : null}
                 </span>
                 {b.buildingIssues.length > 0 ? (
                   <span className="flex flex-wrap items-center gap-1 text-12 text-subtle" data-testid="rail-binding-builds">
-                    Built by
+                    {t("requirements.facts.builtBy")}
                     {b.buildingIssues.map((i) => (
-                      <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${i.status})`} className="font-mono text-link hover:underline">
+                      <Link key={i.issueId} href={issueHref(slug, i.displayId)} title={`${i.title} (${label("issueStatus", i.status)})`} className="font-mono text-link hover:underline">
                         {i.displayId}
                       </Link>
                     ))}
@@ -270,10 +283,10 @@ export function RequirementFacts({
       ) : null}
 
       {needs.length > 0 ? (
-        <FactsGroup title="Needs from other projects">
+        <FactsGroup title={t("requirements.facts.needs")}>
           <ul className="grid gap-1">
             {needs.map((p) => (
-              <li key={`${p.contractSlug}@${p.contractVersion}`} className="font-mono text-12" title="Pinned when it was agreed">
+              <li key={`${p.contractSlug}@${p.contractVersion}`} className="font-mono text-12" title={t("requirements.facts.pinned")}>
                 {p.contractSlug} ≥ {p.contractVersion}
               </li>
             ))}
@@ -282,17 +295,17 @@ export function RequirementFacts({
       ) : null}
 
       <div className="border-t border-line-subtle pt-3 text-12 text-subtle" data-testid="facts-dates">
-        <span title={stamp(d.createdAt)}>Created {formatRelativeTime(d.createdAt)}</span>
+        <span title={time.dateTime(d.createdAt)}>{t("requirements.facts.created", { when: time.relative(d.createdAt) })}</span>
         {baseline ? (
           <>
             {" · "}
-            <span title={`Agreed ${stamp(baseline.agreedAt)}${baseline.agreedByName ? ` by ${baseline.agreedByName}` : ""}`}>
-              Agreed r{baseline.revision} {formatRelativeTime(baseline.agreedAt)}
+            <span title={agreedTitle(t, time.dateTime(baseline.agreedAt), baseline.agreedByName)}>
+              {t("requirements.facts.agreedR", { r: baseline.revision, when: time.relative(baseline.agreedAt) })}
             </span>
           </>
         ) : null}
         {" · "}
-        <span title={stamp(s.touchedAt)}>Updated {formatRelativeTime(s.touchedAt)}</span>
+        <span title={time.dateTime(s.touchedAt)}>{t("requirements.facts.updated", { when: time.relative(s.touchedAt) })}</span>
       </div>
     </div>
   );

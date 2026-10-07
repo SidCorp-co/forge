@@ -51,9 +51,11 @@ const genericKind = (t: Copy): TemplateEdgeKind => ({
   colour: "neutral",
 });
 
-const genericType = (id: string): TemplateNodeType => ({
+/** The step type a design names that its template does not hold; the canvas's own default `STEP` reads in the interface language. */
+const DEFAULT_TYPE = "STEP";
+const genericType = (id: string, t: Copy): TemplateNodeType => ({
   id,
-  label: id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
+  label: id === DEFAULT_TYPE ? t("workflows.unit.step") : id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
   tooltip: id,
   icon: "circle",
   colour: "slate",
@@ -81,8 +83,8 @@ export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null
   const steps = new Map(doc.steps.map((s) => [s.id, s]));
   const types = new Map((template?.nodeTypes ?? []).map((t) => [t.id, t]));
   const typeOf = (id: string) => {
-    const type = steps.get(id)?.node?.type ?? template?.defaultNodeType ?? "STEP";
-    return types.get(type) ?? genericType(type);
+    const type = steps.get(id)?.node?.type ?? template?.defaultNodeType ?? DEFAULT_TYPE;
+    return types.get(type) ?? genericType(type, t);
   };
   const kinds = new Map((template?.edgeKinds ?? []).map((k) => [k.id, k]));
   const kindOf = (named: string | undefined, from: string, to: string) => {

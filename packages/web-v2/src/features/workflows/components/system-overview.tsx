@@ -61,7 +61,7 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
           {t("workflows.save")}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-          {t("workflows.cancel")}
+          {t("common.cancel")}
         </Button>
       </span>
       {refusal ? (

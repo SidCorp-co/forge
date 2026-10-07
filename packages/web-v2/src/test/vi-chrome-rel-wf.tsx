@@ -1,5 +1,5 @@
-import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
-import { type ReactElement, type ReactNode, useState } from "react";
+import type { QueryKey } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { ComingNext } from "@/features/releases/components/coming-next";
 import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
 import { ChecksPane } from "@/features/releases/components/release-checks";
@@ -17,6 +17,7 @@ import { WorkflowDesignPage } from "@/features/workflows/components/workflow-des
 import { WorkflowDesignScreen } from "@/features/workflows/components/workflow-design-screen";
 import { WorkflowsScreen } from "@/features/workflows/components/workflows-screen";
 import { productCopy } from "@/lib/i18n/product-copy";
+import { Seeded } from "./vi-chrome-requirements";
 
 // The Releases and Workflows screens the vi walking test renders, each filled from a query cache
 // seeded with data that carries no English word of its own: core's act texts are ones standing-copy
@@ -27,16 +28,6 @@ const AT = "2026-10-07T10:00:00Z";
 const nobody = { kind: "none", who: "Nobody", act: "", rule: "r", ref: null, dueAt: null };
 const you = (act: string) => ({ kind: "you", who: "You", act, rule: "r", ref: null, dueAt: null });
 const lan = { id: "u1", name: "Lan", kind: "human" };
-
-/** A query cache holding `seed`, so a screen reads it at once and fetches nothing it was given. */
-function Seeded({ seed, children }: { seed: [QueryKey, unknown][]; children: ReactNode }) {
-  const [client] = useState(() => {
-    const c = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
-    for (const [key, data] of seed) c.setQueryData(key, data);
-    return c;
-  });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-}
 
 const contents = [{ requirement: { key: "REQ-1", title: "Muc" }, issues: [{ key: "ISS-1", title: "Muc", proof: "proven" }] }, { requirement: null, issues: [{ key: "ISS-2", title: "Muc", proof: "open" }] }];
 
@@ -139,7 +130,7 @@ const releaseSeed = (): [QueryKey, unknown][] => [
 const peek = { open: "0.1.0", position: { at: 1, of: 2 }, set: () => {}, move: () => {} };
 
 export const releasesScreen = (): ReactElement => (
-  <Seeded seed={releaseSeed()}>
+  <Seeded data={releaseSeed()}>
     <ReleasesScreen projectId={P} slug="hop" />
     <ComingNext next={coming as never} draft={summary({ waitingOn: { ...you("cut 0.1.0"), kind: "person", who: "A release approver" } }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
     <ReleasePeek projectId={P} version="0.1.0" peek={peek} onOpenFull={() => {}} />
@@ -147,7 +138,7 @@ export const releasesScreen = (): ReactElement => (
 );
 
 export const releaseDetailScreen = (): ReactElement => (
-  <Seeded seed={releaseSeed()}>
+  <Seeded data={releaseSeed()}>
     <ReleaseItemScreen projectId={P} slug="hop" version="0.1.0" />
     <IssuesPane r={detail as never} slug="hop" />
     <CriteriaPane r={detail as never} />
@@ -187,7 +178,7 @@ const workflowSeed = (): [QueryKey, unknown][] => [
 ];
 
 export const workflowsScreen = (): ReactElement => (
-  <Seeded seed={workflowSeed()}>
+  <Seeded data={workflowSeed()}>
     <WorkflowsScreen projectId={P} slug="hop" projectName="Hop" canEdit />
   </Seeded>
 );
@@ -196,7 +187,7 @@ const contextRecord = record("he-thong", "approved", null, { version: 2, templat
 const graph = { facts: { people: [{ name: "Khach", count: 2, unconfirmed: 1 }], externals: 3, namedBoundaries: 2, boundaries: [{ name: "Ngan hang", count: 2 }] }, focal: null, nodes: [] };
 
 export const systemOverviewScreen = (): ReactElement => (
-  <Seeded seed={[[["system-graph", P, "w-he-thong", 2, 0], graph]]}>
+  <Seeded data={[[["system-graph", P, "w-he-thong", 2, 0], graph]]}>
     <SystemOverviewRegion records={[contextRecord, ...records] as never} templates={[]} projectId={P} slug="hop" projectName="Hop" />
     <SystemOverviewRegion records={[contextRecord] as never} templates={[]} projectId={P} slug="hop" projectName="Hop" variant="compact" />
   </Seeded>
@@ -247,7 +238,7 @@ const designSeed = (): [QueryKey, unknown][] => [
 const designRecord = records[0];
 
 export const workflowDesignScreen = (): ReactElement => (
-  <Seeded seed={designSeed()}>
+  <Seeded data={designSeed()}>
     <WorkflowDesignScreen projectId={P} slug="hop" flow="dat-hang" />
     {(["steps", "revisions"] as const).map((tab) => (
       <WorkflowDesignPage key={tab} projectId={P} slug="hop" d={design as never} record={designRecord as never} template={null} tab={tab} onTab={() => {}} />

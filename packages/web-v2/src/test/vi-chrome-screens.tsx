@@ -6,6 +6,11 @@ import { LandsThisWeek, LateItems } from "@/features/project-dashboard/component
 import type { PlanRow } from "@/features/project-dashboard/ba-derive";
 import { NavRail } from "@/design/patterns/nav-rail";
 import { PROJECT_ITEMS, WORKSPACE_ITEMS } from "@/features/shell";
+import { CreateRequirementForm, RequirementsScreen } from "@/features/requirements/components/requirements-screen";
+import { RequirementPeek } from "@/features/requirements/components/requirement-peek";
+import { RequirementScreen } from "@/features/requirements/components/requirement-screen";
+import { RequirementPage } from "@/features/requirements/components/requirement-detail";
+import { REQ_PROJECT, reqQueries, Seeded } from "./vi-chrome-requirements";
 import { releaseDetailScreen, releasesScreen, systemOverviewScreen, workflowCanvasScreen, workflowDesignScreen, workflowsScreen } from "./vi-chrome-rel-wf";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
@@ -45,6 +50,25 @@ export const CHROME_SCREENS: ChromeScreen[] = [
     name: "Navigation rail",
     render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS as never} activeKey="proj-overview" />,
   },
+  { name: "Requirements list", render: () => <Seeded data={reqQueries()}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
+  { name: "New requirement form", render: () => <Seeded data={[]}><CreateRequirementForm projectId={REQ_PROJECT} onDone={() => {}} /></Seeded> },
+  {
+    name: "Requirement peek",
+    render: () => (
+      <Seeded data={reqQueries()}>
+        <RequirementPeek projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 2 }, set: () => {}, move: () => {} }} onOpenFull={() => {}} />
+      </Seeded>
+    ),
+  },
+  { name: "Requirement detail · Overview", render: () => <Seeded data={reqQueries()}><RequirementScreen projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" /></Seeded> },
+  ...(["criteria", "revisions", "activity"] as const).map((tab) => ({
+    name: `Requirement detail · ${tab}`,
+    render: () => (
+      <Seeded data={reqQueries()}>
+        <RequirementPage projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />
+      </Seeded>
+    ),
+  })),
   { name: "Releases", render: releasesScreen },
   { name: "Release detail", render: releaseDetailScreen },
   { name: "Workflows", render: workflowsScreen },
