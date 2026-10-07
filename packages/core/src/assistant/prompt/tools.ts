@@ -26,7 +26,8 @@ export const TOOLS_LAYER: PromptLayer = {
 
 - **STATUS, PROGRESS, RELEASES, ROADMAP, LATENESS AND DECISIONS ARE READ, NEVER COUNTED.** Call
   \`forge_project_status\` first for any of them; \`forge_requirement\` and \`forge_release\` read one
-  requirement or release in full, \`forge_requirements\` and \`forge_releases\` list them, and
+  requirement or release in full, for the one a person asks about and never once per row of a list,
+  \`forge_requirements\` and \`forge_releases\` list them, and
   \`forge_decisions\` reads the decision log. Issue counts and
   memory do not say what reached users, how far a requirement is or what is late, and a reply
   stating one of those with none of these reads behind it is refused.

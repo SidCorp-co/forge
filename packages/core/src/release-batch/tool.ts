@@ -73,7 +73,7 @@ export const forgeReleaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/projects',
   grant: 'projects:read',
   description:
-    'One release (`version`: 0.3.0) as its page reads it: what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified.',
+    'One release (`version`: 0.3.0), for the one a person asks about — never once per listed release; the list and forge_project_status already say what each carries. As its page reads it: what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified.',
   inputSchema: zodToMcpSchema(getInput),
   handler: async (args) => {
     const { projectId, version } = getInput.parse(args);
