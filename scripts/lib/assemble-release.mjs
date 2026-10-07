@@ -7,9 +7,25 @@ import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { FRAGMENT_DIR, fragmentFiles, readFragment, SECTIONS } from './changelog-fragments.mjs';
+import {
+  DIGEST,
+  FRAGMENT_DIR,
+  fragmentFiles,
+  readFragment,
+  SECTIONS,
+} from './changelog-fragments.mjs';
 
 const RELEASED = /^## \[/m;
+
+/**
+ * One fragment as the bullet the What's new reader parses: a digest leads with the week it
+ * summarises, an entry that offers a tour closes with it, both as HTML comments that render as
+ * nothing and that `packages/core/src/whats-new/changelog.ts` reads.
+ */
+function bullet(f) {
+  if (f.section === DIGEST) return `- <!-- digest: ${f.week} --> ${f.entry}`;
+  return f.tour ? `- ${f.entry} <!-- tour: ${f.tour} -->` : `- ${f.entry}`;
+}
 
 /**
  * The record with a `## [version] - date` section built from `fragments` (`{ file, text }` each).
@@ -31,13 +47,15 @@ export function assembleRelease(record, fragments, version, date, headline) {
       bad.map((f) => `${FRAGMENT_DIR}/${f.file} ${f.problems.join('; ')}`).join('\n'),
     );
   }
-  const blocks = SECTIONS.map((section) => {
-    const entries = read
-      .filter((f) => f.section === section)
-      .sort((a, b) => a.file.localeCompare(b.file))
-      .map((f) => `- ${f.entry}`);
-    return entries.length > 0 ? `### ${section}\n\n${entries.join('\n')}\n\n` : '';
-  }).join('');
+  const blocks = [DIGEST, ...SECTIONS]
+    .map((section) => {
+      const entries = read
+        .filter((f) => f.section === section)
+        .sort((a, b) => a.file.localeCompare(b.file))
+        .map((f) => bullet(f));
+      return entries.length > 0 ? `### ${section}\n\n${entries.join('\n')}\n\n` : '';
+    })
+    .join('');
   const section = `## [${version}] - ${date}\n\n${headline}\n\n${blocks}`;
   const at = record.search(RELEASED);
   if (at === -1) return `${record.replace(/\n*$/, '\n\n')}${section.replace(/\n+$/, '\n')}`;

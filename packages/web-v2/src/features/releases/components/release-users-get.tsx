@@ -16,7 +16,7 @@ export function WhatUsersGet({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const [open, setOpen] = useState(false);
   const noted = sections.reduce((n, s) => n + s.entries.length, 0);
   return (
-    <section aria-label="What users get" data-testid="release-users-get" className="grid gap-5">
+    <section aria-label="What users get" data-testid="release-users-get" data-tour="rel-users" className="grid gap-5">
       <ViewHeading hint="Each change as the people who use the product will read it">What users get</ViewHeading>
       {noted === 0 ? (
         <p className="text-13 text-muted" data-testid="release-users-get-empty">

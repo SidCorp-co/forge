@@ -19,10 +19,9 @@ export function localDate(at: Date, timeZone: string): string {
 
 const RANK: Record<WhatsNewKind, number> = { new: 0, improved: 1, fixed: 2 };
 
-/** New screens first, then new, improved, fixed; newest first within one rank. */
+/** New first, then improved, fixed; newest first within one rank. */
 export function byPresentation(a: WhatsNewEntry, b: WhatsNewEntry): number {
-  const rank = (e: WhatsNewEntry) => (e.kind === "new" && e.ui ? -1 : RANK[e.kind]);
-  return rank(a) - rank(b) || b.releasedAt.localeCompare(a.releasedAt);
+  return RANK[a.kind] - RANK[b.kind] || b.releasedAt.localeCompare(a.releasedAt);
 }
 
 /**

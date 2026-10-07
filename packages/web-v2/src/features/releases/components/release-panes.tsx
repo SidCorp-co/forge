@@ -70,14 +70,13 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
 function TechnicalDetail({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <section aria-label="Technical detail" data-testid="release-technical">
+    <section aria-label="Technical detail" data-testid="release-technical" data-tour="rel-technical">
       <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
         Technical detail
       </DisclosureToggle>
       <span className="ml-2 text-12-5 text-muted">{changesSentence(r.changes)}</span>
       {open ? (
         <div className="mt-3">
-          <TourHint tourId="release-what-changes" />
           <WhatChanges changes={r.changes} slug={slug} />
         </div>
       ) : null}
@@ -88,7 +87,10 @@ function TechnicalDetail({ r, slug }: { r: ReleaseDetail; slug: string }) {
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
-      <WhatUsersGet r={r} slug={slug} />
+      <div>
+        <TourHint tourId="release-what-changes" />
+        <WhatUsersGet r={r} slug={slug} />
+      </div>
       <TechnicalDetail r={r} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">

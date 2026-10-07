@@ -46,7 +46,6 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 export * from './schema-uploads.js';
 export * from './schema-usage-records.js';
 export * from './schema-vocabulary.js';
-export * from './schema-whats-new.js';
 export {
   type AgentSessionFailureReason,
   type AgentSessionKind,

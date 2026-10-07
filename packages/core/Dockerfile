@@ -29,6 +29,9 @@ RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts b
 # which is the same race again. The install above keeps its `...` — that is
 # where the workspace deps have to be present, and @forge/observability shipping
 # as raw .ts under node_modules is what the third dot prevents there.
+# What's new reads the CHANGELOG.md of the build it runs in: core's build parses it and refuses
+# a section it cannot read by file, version and line, and the runtime stage ships it beside dist/.
+COPY CHANGELOG.md ./CHANGELOG.md
 RUN pnpm --filter @forge/core build
 # The contract differ (ISS-20): the oasdiff release core is pinned to, its sha256
 # checked against the pin in src/ecosystem/contract/oasdiff.ts. A land on a
@@ -58,6 +61,7 @@ ENV NODE_ENV=production
 RUN apk add --no-cache openssh-keygen openssh-client git
 
 COPY --from=build /prod/core ./
+COPY --from=build /repo/CHANGELOG.md ./CHANGELOG.md
 COPY --from=build /oasdiff/oasdiff /usr/local/bin/oasdiff
 # NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
 # deliberately NOT shipped here or served to users. End-user product docs live

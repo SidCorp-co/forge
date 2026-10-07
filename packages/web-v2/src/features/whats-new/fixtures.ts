@@ -9,9 +9,8 @@ export function entry(key: string, kind: WhatsNewEntry["kind"], releasedAt: stri
     key,
     section: kind === "new" ? "Added" : kind === "improved" ? "Changed" : "Fixed",
     kind,
-    text: `${key} text`,
-    surfaces: [],
-    ui: false,
+    title: `${key} title.`,
+    body: `${key} body`,
     version: "0.4.0-dev.87",
     releasedAt,
     week: isoWeekOf(new Date(releasedAt)),
@@ -28,14 +27,12 @@ export function feedOf(entries: WhatsNewEntry[], extra: Partial<WhatsNewFeed> = 
     byDate.set(date, [...(byDate.get(date) ?? []), e]);
   }
   return {
-    projectId: "p",
-    projectSlug: "forge",
-    contentLanguage: "en",
+    version: "0.4.0-dev.87",
     seenAt: "2026-10-03T08:00:00Z",
     since: "2026-09-07T10:00:00Z",
     timeZone: "UTC",
     unread: entries.filter((e) => e.unread).length,
-    counts: { new: 0, screens: 0, improved: 0, fixed: 0 },
+    counts: { new: 0, improved: 0, fixed: 0 },
     away: null,
     days: [...byDate.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([date, list]) => ({ date, entries: list })),
     digests: [],

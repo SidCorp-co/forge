@@ -26,7 +26,6 @@ const at = "2026-10-07T09:00:00Z";
 function serve(items: unknown[]): Call[] {
   return fakeCore((call) => {
     if (call.method === "GET" && call.path === "/me/product-state") return { body: { items } };
-    if (call.path.startsWith("/me/whats-new")) return { status: 503, body: { code: "WHATS_NEW_PLATFORM_UNSET" } };
     if (call.method === "PUT") return { body: { key: call.path.split("/").pop(), value: call.body, updatedAt: at } };
     return undefined;
   });
@@ -40,14 +39,14 @@ describe("Help → Tours", () => {
     await within(integrations).findByText(/revision 2 · Updated/);
     expect(within(integrations).getByTestId("tour-updated-dot")).toBeInTheDocument();
     const release = screen.getByTestId("tour-row-release-what-changes");
-    expect(release).toHaveTextContent("3 steps · revision 1 · Not seen");
+    expect(release).toHaveTextContent("2 steps · revision 2 · Not seen");
     expect(within(release).queryByTestId("tour-updated-dot")).toBeNull();
   });
 
   it("reads Seen for a tour finished at its revision", async () => {
-    serve([{ key: "tour:release-what-changes", value: { revision: 1, outcome: "completed", at }, updatedAt: at }]);
+    serve([{ key: "tour:release-what-changes", value: { revision: 2, outcome: "completed", at }, updatedAt: at }]);
     renderWithQuery(<ToursPanel open onClose={() => {}} />);
-    expect(await screen.findByText(/revision 1 · Seen/)).toBeInTheDocument();
+    expect(await screen.findByText(/revision 2 · Seen/)).toBeInTheDocument();
   });
 });
 

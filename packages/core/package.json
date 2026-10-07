@@ -1,6 +1,6 @@
 {
   "name": "@forge/core",
-  "version": "0.4.0-dev.92",
+  "version": "0.4.0-dev.93",
   "private": true,
   "license": "Apache-2.0",
   "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",
@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
-    "build": "tsc -p tsconfig.build.json --noCheck",
+    "build": "tsc -p tsconfig.build.json --noCheck && node dist/whats-new/check-changelog.js",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

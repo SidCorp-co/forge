@@ -12,12 +12,11 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/projects/forge/releases/0.4.0-dev.87",
 }));
 
-function Page({ risk = true }: { risk?: boolean }) {
+function Page({ technical = true }: { technical?: boolean }) {
   return (
     <main>
-      <section data-tour="rel-changes">What changes</section>
-      {risk && <ul data-tour="rel-risk">Risks</ul>}
-      <div data-tour="rel-design">Design</div>
+      <section data-tour="rel-users">What users get</section>
+      {technical && <div data-tour="rel-technical">Technical</div>}
       <TourLauncher />
     </main>
   );
@@ -35,7 +34,6 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/projects/forge/releases/0.4.0-dev.87?tab=overview&tour=release-what-changes");
   calls = fakeCore((call) => {
     if (call.path === "/me/product-state") return { body: { items: [] } };
-    if (call.path.startsWith("/me/whats-new")) return { status: 503, body: { code: "WHATS_NEW_PLATFORM_UNSET" } };
     if (call.method === "POST" && call.path === "/me/tour-events") return { status: 201, body: { act: "recorded", id: "e" } };
     if (call.method === "PUT" && call.path.startsWith("/me/product-state/tour:")) return { body: { key: "tour:release-what-changes", value: call.body, updatedAt: "" } };
     return undefined;
@@ -58,33 +56,28 @@ const events = () => calls.filter((c) => c.path === "/me/tour-events").map((c) =
 describe("a ?tour= deep link", () => {
   it("opens the tour on its page, takes the parameter off the address, and stores it completed at its revision", async () => {
     renderWithQuery(<Page />);
-    expect(await screen.findByText("What this release changes")).toBeInTheDocument();
+    expect(await screen.findByText("What users get", { selector: ".driver-popover-title" })).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/projects/forge/releases/0.4.0-dev.87?tab=overview", { scroll: false });
     press(".driver-popover-next-btn");
-    await screen.findByText("Changes to watch");
-    press(".driver-popover-next-btn");
-    await screen.findByText("Design ships nothing");
+    await screen.findByText("Technical detail", { selector: ".driver-popover-title" });
     press(".driver-popover-next-btn");
     await waitFor(() => expect(events().map((e) => e.kind)).toEqual(["started", "completed"]));
     const put = calls.find((c) => c.method === "PUT");
     expect(put?.path).toBe("/me/product-state/tour:release-what-changes");
-    expect(put?.body).toMatchObject({ value: { revision: 1, outcome: "completed" } });
+    expect(put?.body).toMatchObject({ value: { revision: 2, outcome: "completed" } });
   });
 
   it("skips a step whose anchor is missing, records it, and stores a dismissal at the step it was closed on", async () => {
-    renderWithQuery(<Page risk={false} />);
-    expect(await screen.findByText("What this release changes")).toBeInTheDocument();
-    press(".driver-popover-next-btn");
-    expect(await screen.findByText("Design ships nothing")).toBeInTheDocument();
-    expect(screen.queryByText("Changes to watch")).toBeNull();
+    renderWithQuery(<Page technical={false} />);
+    expect(await screen.findByText("What users get", { selector: ".driver-popover-title" })).toBeInTheDocument();
     press(".driver-popover-close-btn");
     await waitFor(() =>
       expect(events()).toEqual([
-        { tourId: "release-what-changes", revision: 1, kind: "step_skipped", step: 2 },
-        { tourId: "release-what-changes", revision: 1, kind: "started" },
-        { tourId: "release-what-changes", revision: 1, kind: "dismissed", step: 3 },
+        { tourId: "release-what-changes", revision: 2, kind: "step_skipped", step: 2 },
+        { tourId: "release-what-changes", revision: 2, kind: "started" },
+        { tourId: "release-what-changes", revision: 2, kind: "dismissed", step: 1 },
       ]),
     );
-    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 1, outcome: "dismissed", step: 3 } });
+    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 2, outcome: "dismissed", step: 1 } });
   });
 });

@@ -1,9 +1,10 @@
 import strings from "./product-copy.json";
 
 /**
- * The product chrome of What's new and the tours, in the platform project's content language with
- * English underneath: one locale file (`product-copy.json`), each language a flat map of keys. A key
- * a language lacks reads in English; a language the file lacks reads wholly in English.
+ * The product chrome of What's new and the tours: one locale file (`product-copy.json`), each
+ * language a flat map of keys, English underneath. It reads in English unless a caller names a
+ * language; a key a language lacks reads in English, and a language the file lacks reads wholly in
+ * English. The changelog What's new shows is written in English, so no caller names one yet.
  */
 export type ProductCopyKey = keyof (typeof strings)["en"];
 
@@ -17,7 +18,7 @@ export function baseOf(tag: string | null | undefined): string {
 export type Copy = (key: ProductCopyKey, vars?: Record<string, string | number>) => string;
 
 /** A reader of the chrome in `language`, filling `{name}` slots from `vars`. */
-export function productCopy(language: string | null | undefined): Copy {
+export function productCopy(language?: string | null): Copy {
   const own = LANGUAGES[baseOf(language)] ?? {};
   const en = strings.en;
   return (key, vars) => {
@@ -27,6 +28,6 @@ export function productCopy(language: string | null | undefined): Copy {
 }
 
 /** The locale dates and day names are written in for `language`. */
-export function copyLocale(language: string | null | undefined): string {
+export function copyLocale(language?: string | null): string {
   return baseOf(language) === "vi" ? "vi-VN" : "en-GB";
 }

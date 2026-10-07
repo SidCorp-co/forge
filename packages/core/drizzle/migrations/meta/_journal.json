@@ -2838,6 +2838,13 @@
       "breakpoints": true
     },
     {
+      "idx": 439,
+      "version": "7",
+      "when": 1820880000000,
+      "tag": "0439_whats_new_reads_the_changelog",
+      "breakpoints": true
+    },
+    {
       "idx": 440,
       "version": "7",
       "when": 1820966400000,

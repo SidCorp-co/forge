@@ -1,9 +1,11 @@
 // A release leads with what users get; the engineers' detail stays behind a toggle, each reason said once.
 
 import { fireEvent, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import type { ReleaseDetail } from "../types";
+import { presentSteps } from "@/features/tours/run-tour";
+import { tourById } from "@/features/tours/registry";
 import { OverviewPane } from "./release-panes";
 
 const unclassified = Array.from({ length: 40 }, (_, i) => ({
@@ -47,5 +49,26 @@ describe("a release leads with what users get", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toContain("40 issues");
     expect(rows[0]?.textContent).toContain("names no artifact");
+  });
+});
+
+describe("the release tour on the overview with Technical detail closed", () => {
+  const original = Element.prototype.getClientRects;
+  afterEach(() => {
+    Element.prototype.getClientRects = original;
+  });
+
+  it("finds every step's anchor, so Show me never skips a step in silence", () => {
+    // jsdom lays nothing out; an element a closed section does not render has no box either way
+    Element.prototype.getClientRects = function (this: Element) {
+      return [this.getBoundingClientRect()] as unknown as DOMRectList;
+    };
+    renderWithQuery(<OverviewPane r={release} slug="hop" all={[]} />);
+    const tour = tourById("release-what-changes");
+    if (!tour) throw new Error("the release tour is not in the registry");
+    expect(screen.queryByTestId("release-changes")).toBeNull();
+    const { present, missing } = presentSteps(tour);
+    expect(missing).toEqual([]);
+    expect(present).toHaveLength(tour.steps.length);
   });
 });
