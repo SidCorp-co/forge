@@ -1,6 +1,7 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { ComingNext } from "@/features/releases/components/coming-next";
+import { ReleaseActions } from "@/features/releases/components/release-actions";
 import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
 import { ChecksPane } from "@/features/releases/components/release-checks";
 import { WhatChanges } from "@/features/releases/components/release-changes";
@@ -47,7 +48,8 @@ const summary = (over: Record<string, unknown>) => ({
   contents,
   owner: null,
   ownerAct: null,
-  can: { cut: true, decide: false },
+  can: { cut: true, decide: false, split: false },
+  split: null,
   openedAt: null,
   releasedAt: null,
   at: AT,
@@ -143,6 +145,7 @@ export const releasesScreen = (): ReactElement => (
 export const releaseDetailScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleaseItemScreen projectId={P} slug="hop" version="0.1.0" />
+    <ReleaseActions projectId={P} r={{ ...detail, can: { cut: false, decide: false, split: true }, split: { issueIds: ["i1"], rest: 13 } } as never} />
     <IssuesPane r={detail as never} slug="hop" />
     <CriteriaPane r={detail as never} />
     <ChecksPane r={detail as never} />

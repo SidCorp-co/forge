@@ -20,7 +20,7 @@ import { MergeMarkerControl } from "@/features/issues/components/merge-marker-co
 import { NewIssueDialog } from "@/features/issues/components/new-issue-dialog";
 import { ModulePicker } from "@/features/issues/components/module-picker";
 import { PropertiesRail } from "@/features/issues/components/properties-rail";
-import { StagedFileList } from "@/features/issues/components/staged-files";
+import { StagedFileList } from "@/features/attachments/components/staged-files";
 import { TransitionReasonDialog } from "@/features/issues/components/transition-reason-dialog";
 import type { CommentNode, IssueDetail, IssueRow } from "@/features/issues/types";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
@@ -179,6 +179,7 @@ const ISSUE: IssueDetail = {
   landingShape: "git",
   liveReach: { state: "none_waiting", baseBranch: "main", baseSha: "abcdef12345", deploysFrom: "prod", liveSha: "1234567abcd", measuredAt: AT, unowned: [{ sha: "9999999aaaa", subject: "sua" }] },
   releaseNotes: { userFacing: "", section: "Skip" },
+  shippedIn: { version: "0.0.9", at: AT },
   sessionContext: null,
   pipelineHealth: {
     stage: "needs_info",
@@ -186,6 +187,10 @@ const ISSUE: IssueDetail = {
     waitingOn: { reason: "retry_cooldown", since: AT, details: {}, reading: { short: "Retry cooldown", detail: "The step failed and is waiting out a cooldown before its next attempt.", who: "No action — the retry fires itself. If the attempts keep failing, read the step's error rather than waiting.", needsAction: false } },
   },
 } as unknown as IssueDetail;
+
+const RUNS = [
+  { id: "s7", status: "completed", metadata: null, createdAt: AT, updatedAt: AT, title: "Lan chay", deviceName: "box-1", pipelineRunId: "r7", heartbeat: "unknown", continuity: "unknown", freshReason: null },
+] as never;
 
 const DETAIL: IssueStandingDetail = {
   ...srow(1, { attentionGroup: "needs_you", tone: "you", waitingOn: { kind: "you", who: "You", act: "answer a question", rule: "r", ref: null, dueAt: null } }, "needs_info"),
@@ -313,7 +318,8 @@ export const ISSUE_SCREENS = [
           <OverviewTab issue={ISSUE} attachmentsQ={{ data: [], isLoading: false, isError: false } as never} canWrite />
           <CriteriaTab issueId="i1" hasCriteriaRows checklist={[]} />
           <CriteriaTab issueId="i2" hasCriteriaRows={false} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} />
-          <RunsTab sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
+          <RunsTab slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
+          <RunsTab slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />
           <ActivityFeed items={ACTIVITY as never} />
         </>,

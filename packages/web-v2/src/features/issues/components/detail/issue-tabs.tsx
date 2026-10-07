@@ -1,15 +1,19 @@
+import Link from "next/link";
 import {
   Checkbox,
   EmptyPanelLine,
   ErrorState,
+  enumLabel,
   Markdown,
   SegmentedControl,
   Skeleton,
+  StatusBadge,
   ViewHeading,
 } from "@/design";
 import type { IssueStepOutcome } from "@forge/contracts/issue-standing";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { agentsListHref, runHref } from "@/lib/routes/agents";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueAgentSession, IssueDetail } from "../../types";
@@ -90,13 +94,52 @@ export function CriteriaTab({
   );
 }
 
+/**
+ * The Runs tab counts the issue's runs: a delegated run records no step, so counting steps read 0
+ * beside a rail that said the run completed (FB-102). Steps count where no run is on record.
+ */
+export function runsTabCount(sessions: readonly IssueAgentSession[], stepOutcomes: readonly IssueStepOutcome[]): number {
+  return sessions.length > 0 ? sessions.length : stepOutcomes.length;
+}
+
+/** Each run on the issue, newest first, linked to where it is read. */
+function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession[] }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const rows = [...sessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <section aria-label={t("issues.tab.runs")}>
+      <ViewHeading>{t("issues.tab.runs")}</ViewHeading>
+      <ul className="divide-y divide-line-subtle border-y border-line-subtle">
+        {rows.map((s) => (
+          <li key={s.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-13" data-testid="issue-run">
+            <Link
+              href={s.pipelineRunId ? runHref(slug, s.pipelineRunId) : `${agentsListHref(slug)}/${encodeURIComponent(s.id)}`}
+              className="min-w-0 flex-1 truncate text-link hover:underline"
+            >
+              {s.title ?? (s.metadata?.jobType ? enumLabel("jobType", String(s.metadata.jobType)) : s.id.slice(0, 8))}
+            </Link>
+            <StatusBadge family="session" value={s.status} />
+            {s.deviceName ? <span className="text-12 text-muted">{s.deviceName}</span> : null}
+            <span className="text-12 text-subtle" title={time.dateTime(s.startedAt ?? s.createdAt)}>
+              {time.relative(s.startedAt ?? s.createdAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function RunsTab({
+  slug,
   sessions,
   standingQ,
   stepOutcomes,
   expandedStep,
   onToggleStep,
 }: {
+  slug: string;
   sessions: IssueAgentSession[];
   standingQ: ReturnType<typeof useIssueStandingOf>;
   stepOutcomes: IssueStepOutcome[];
@@ -108,12 +151,13 @@ export function RunsTab({
     <div className="grid gap-6" data-testid="view-runs">
       {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
       <SessionGroupTimeline sessions={sessions} />
+      {sessions.length > 0 ? <RunList slug={slug} sessions={sessions} /> : null}
       {standingQ.isLoading ? (
         <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.loading")} />
       ) : standingQ.isError ? (
         <EmptyPanelLine title={t("issues.steps.title")} status={t("common.couldNotLoad")} detail={formatApiError(standingQ.error)} />
       ) : stepOutcomes.length === 0 ? (
-        <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.none")} detail={t("issues.steps.noneHint")} />
+        sessions.length > 0 ? null : <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.none")} detail={t("issues.steps.noneHint")} />
       ) : (
         <section aria-label={t("issues.steps.title")}>
           <ViewHeading>{t("issues.steps.title")}</ViewHeading>

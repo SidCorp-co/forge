@@ -103,6 +103,8 @@ export interface IssueStandingInput {
   releaseNoted: boolean;
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canWrite: boolean } | null;
+  /** The names of the people holding project.write, whom a person's turn names (FB-104). */
+  writers: readonly string[];
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
   withheld: IssueWithheld | null;
   now: Date;
@@ -121,14 +123,38 @@ const wait = (
 const minutesSince = (from: Date | null, now: Date) =>
   from ? Math.max(0, Math.round((now.getTime() - from.getTime()) / 60_000)) : null;
 
+type People = Pick<IssueStandingInput, 'viewer' | 'writers'>;
+
+/** A few writers by name and the count of the rest: "Ana", "Ana, Bo", "Ana, Bo, Chi +2". */
+function writersNamed(writers: readonly string[]): string {
+  const shown = writers.slice(0, 3).join(', ');
+  return writers.length > 3 ? `${shown} +${writers.length - 3}` : shown;
+}
+
+/** Whose a person's act is: the viewer where they can write, else the project's writers by name,
+ *  else nobody — said with where write is granted, never "A project writer" naming no one (FB-104). */
 function forPerson(
-  viewer: IssueStandingInput['viewer'],
+  people: People,
   act: string,
   rule: string,
 ): { group: IssueAttentionGroup; waitingOn: IssueWaitingOn } {
-  return viewer?.canWrite
-    ? { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) }
-    : { group: 'needs_you', waitingOn: wait('person', 'A project writer', act, rule) };
+  if (people.viewer?.canWrite)
+    return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
+  if (people.writers.length === 0) {
+    return {
+      group: 'stuck',
+      waitingOn: wait(
+        'none',
+        'Nobody',
+        `${act}: no person on this project can write until a project admin grants write under Settings → Members`,
+        `${rule}; no person holds project.write on this project`,
+      ),
+    };
+  }
+  return {
+    group: 'needs_you',
+    waitingOn: wait('person', writersNamed(people.writers), act, rule),
+  };
 }
 
 const held = (lease: IssueLeaseView | null) =>
@@ -156,7 +182,7 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
   const why = park.reason?.trim() || 'the run named no reason';
   if (input.owesAnswer) {
     const r = forPerson(
-      input.viewer,
+      input,
       'answer a question',
       `a run parked it on_hold and asked a question only a person can answer: ${why}`,
     );
@@ -189,11 +215,11 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
 /** A park whose question was answered and that did not move: what it still waits on, never an answer owed. */
 function answeredParkTurn(
   answered: Pick<ParkAnsweredView, 'hold' | 'resume'>,
-  viewer: IssueStandingInput['viewer'],
+  people: People,
 ): Turn {
   const w = answeredWait(answered);
   const rule = `${w.reason} ${w.who}`;
-  if (w.on === 'person') return forPerson(viewer, w.act, rule);
+  if (w.on === 'person') return forPerson(people, w.act, rule);
   if (w.on === 'issue' && w.ref) {
     return { group: 'stuck', waitingOn: wait('issue', w.ref, w.act, rule, w.ref) };
   }
@@ -203,7 +229,7 @@ function answeredParkTurn(
 
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
 function personTurn(input: IssueStandingInput): Turn | null {
-  const { status, viewer } = input;
+  const { status } = input;
   if (status === 'closed' || status === 'dropped') {
     return {
       group: 'done',
@@ -218,28 +244,24 @@ function personTurn(input: IssueStandingInput): Turn | null {
   if (status === 'on_hold') {
     const parked = agentParkTurn(input);
     if (parked) return parked;
-    const r = forPerson(viewer, 'resume it', 'a person paused it; a person resumes it');
+    const r = forPerson(input, 'resume it', 'a person paused it; a person resumes it');
     return { group: 'paused', waitingOn: r.waitingOn };
   }
   if (status === 'needs_info' && !input.owesAnswer && input.answered) {
-    return answeredParkTurn(input.answered, viewer);
+    return answeredParkTurn(input.answered, input);
   }
   if (status === 'needs_info') {
     return forPerson(
-      viewer,
+      input,
       NEEDS_INFO_ACT[input.waitingKind ?? ''] ?? 'answer a question',
       'parked at needs_info: a person owes the answer; it wakes the master',
     );
   }
   if (input.owesAnswer) {
-    return forPerson(
-      viewer,
-      'answer a question',
-      'a run asked a question only a person can answer',
-    );
+    return forPerson(input, 'answer a question', 'a run asked a question only a person can answer');
   }
   if (status === 'draft') {
-    return forPerson(viewer, 'take on or drop', 'a draft is not work until a person accepts it');
+    return forPerson(input, 'take on or drop', 'a draft is not work until a person accepts it');
   }
   return null;
 }

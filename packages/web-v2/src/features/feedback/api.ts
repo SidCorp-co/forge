@@ -26,6 +26,30 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
   return [`${one(projectId, key)}/${a.kind}`, post({ reason: a.reason })];
 }
 
+/** A file as core's feedback attachment route takes it: its name, its type and its bytes as base64. */
+export function attachmentBody(file: File): Promise<{ name: string; mime: string; contentBase64: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error(`${file.name} could not be read`));
+    reader.onload = () => {
+      const url = String(reader.result);
+      resolve({ name: file.name, mime: file.type || "application/octet-stream", contentBase64: url.slice(url.indexOf(",") + 1) });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** One file core would not keep, after the files before it were: the item stands, and so do those. */
+export class AttachFailed extends Error {
+  constructor(
+    readonly key: string,
+    readonly file: string,
+    readonly refusal: unknown,
+  ) {
+    super(`${file} was not attached to ${key}`);
+  }
+}
+
 /** One thing About can name: `key` is what core is sent, `title` what the person reads and searches. */
 export interface TargetChoice {
   key: string;
@@ -57,6 +81,18 @@ export const feedbackApi = {
     apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),
   sendMessage: (projectId: string, key: string, body: { audience: FeedbackMessageAudience; text: string }) =>
     apiClient<FeedbackResponse>(`${one(projectId, key)}/messages`, post(body)),
+  /** Each file in turn, so a refusal names the one core would not keep; the item reads as the last kept left it. */
+  attach: async (projectId: string, key: string, files: readonly File[]): Promise<FeedbackResponse | null> => {
+    let last: FeedbackResponse | null = null;
+    for (const file of files) {
+      try {
+        last = await apiClient<FeedbackResponse>(`${one(projectId, key)}/attachments`, post(await attachmentBody(file)));
+      } catch (err) {
+        throw new AttachFailed(key, file.name, err);
+      }
+    }
+    return last;
+  },
   act: (projectId: string, key: string, a: FeedbackAction) => {
     const [path, init] = actionRequest(projectId, key, a);
     return apiClient<FeedbackResponse>(path, init);

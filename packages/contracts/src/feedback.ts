@@ -620,6 +620,8 @@ export interface FeedbackAttachmentView {
 	/** On a sensitive project: may hold personal data, so it is never sent to a provider. */
 	flagged: boolean;
 	createdAt: string;
+	/** Where its bytes are read: the item's own attachment route, under the item's key. */
+	url: string;
 }
 
 /** Whose turn a row is: `you` is the viewer, `issue` a carrier (an issue, a requirement, a root
@@ -724,6 +726,8 @@ export interface FeedbackView extends FeedbackSummary {
 		message: boolean;
 		/** Write an internal note, which no reporter is ever sent. */
 		note: boolean;
+		/** Add an attachment: a project writer, while the reporter's data stands. */
+		attach: boolean;
 	};
 	sensitive: boolean;
 }

@@ -24,6 +24,8 @@ const ACT = [
   "not started", "declare the policy", "declare its policy state", "approve the design", "approve a contract version", "in progress with no live run", "re-run after reopen",
   "build next", "dispatch a run", "revise design Staff shell · revision 3 returned", "judge it again", "Approve release on Releases", "next release", "wait on ISS-4",
   "read the answer", "read the answer back", "answer the other question", "move it on", "move it on: TRANSITION_REFUSED",
+  "approve: no person on this project can write until a project admin grants write under Settings → Members",
+  "take on or drop: no person on this project can write until a project admin grants write under Settings → Members",
 ];
 const EFFECT = [
   "Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.",

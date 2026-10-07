@@ -61,15 +61,23 @@ function uniqueStagedName(name: string, used: Set<string>): string {
   }
 }
 
-/** An issue holds one file per name, so `uniqueNames` renames a clash; a comment does not. */
+/**
+ * An issue holds one file per name, so `uniqueNames` renames a clash; a comment does not. A feedback
+ * item keeps smaller files and a fixed number in all, so it names its own `maxBytes` and the room
+ * it has left as `maxFiles` — the limits core's feedback attachment route enforces.
+ */
 export function useStagedFiles({
   unit,
   video,
   uniqueNames,
+  maxBytes = MAX_BYTES,
+  maxFiles,
 }: {
-  unit: "comment" | "issue";
+  unit: "comment" | "issue" | "feedback";
   video: boolean;
   uniqueNames: boolean;
+  maxBytes?: number;
+  maxFiles?: number;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const t = useCopy();
@@ -85,8 +93,8 @@ export function useStagedFiles({
     for (const f of Array.from(picked)) {
       if (f.size <= 0) {
         errs.push(t("issues.files.empty", { name: f.name || t("issues.files.unnamed") }));
-      } else if (f.size > MAX_BYTES) {
-        errs.push(t("issues.files.tooLarge", { name: f.name || t("issues.files.unnamed") }));
+      } else if (f.size > maxBytes) {
+        errs.push(t("issues.files.tooLarge", { mb: +(maxBytes / 1024 / 1024).toFixed(1), name: f.name || t("issues.files.unnamed") }));
       } else if (!(allowed.has(f.type) || f.type === "" || f.type.startsWith("text/"))) {
         errs.push(t("issues.files.typeNotAllowed", { name: f.name || f.type }));
       } else {
@@ -96,6 +104,11 @@ export function useStagedFiles({
     const chosen = files.length + accepted.length;
     if (unit === "issue" && chosen > ISSUE_CREATE_ATTACHMENTS_MAX) {
       errs.push(t("issues.files.tooManyIssue", { max: ISSUE_CREATE_ATTACHMENTS_MAX, chosen }));
+      setWarnings(errs);
+      return;
+    }
+    if (maxFiles !== undefined && chosen > maxFiles) {
+      errs.push(t("issues.files.tooManyItem", { room: Math.max(maxFiles, 0), chosen }));
       setWarnings(errs);
       return;
     }

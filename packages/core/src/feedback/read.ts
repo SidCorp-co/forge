@@ -122,6 +122,7 @@ function canOf(i: {
     snooze: approver && untriaged,
     message: approver,
     note: i.canSeeNotes,
+    attach: holds(facts, 'project.write') && row.redactedAt === null,
   };
 }
 
@@ -289,6 +290,7 @@ export async function detailAs(
         size: a.size,
         flagged: a.flagged,
         createdAt: a.createdAt.toISOString(),
+        url: `/api/projects/${projectId}/feedback/${feedbackKey(row.fbSeq)}/attachments/${a.id}`,
       })),
       reporters: reporters.map((r) => ({
         id: r.id,

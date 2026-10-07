@@ -18,9 +18,9 @@ import {
 } from "../derive";
 import { useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
-import { AttachmentList } from "./attachment-list";
+import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { BodyEditor } from "./body-editor";
-import { StagedFileList, useStagedFiles } from "./staged-files";
+import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
 
 function AddCommentBox({
   issueId,

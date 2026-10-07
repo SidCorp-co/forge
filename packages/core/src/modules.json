@@ -1116,6 +1116,9 @@
     "agents": {
       "serves": ["REQ-15", "agent-run-standing"]
     },
+    "attachments": {
+      "serves": ["via:issues", "via:feedback"]
+    },
     "attention": {
       "serves": ["REQ-11"]
     },

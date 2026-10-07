@@ -12,6 +12,7 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
+import { readFinishRecord } from './finish-record.js';
 import { readLandingReadings } from './landing-surfaces.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
@@ -54,7 +55,14 @@ async function draftPart(projectId: string): Promise<Part | null> {
     attempts: [],
     approvals: [],
     gates: gateViews(report.blockers, report.warnings),
+    commit: null,
   };
+}
+
+/** The commit a finished release's probes verified; an attempt still in flight claims one only. */
+function finishedCommit(metadata: unknown): string | null {
+  const finish = readFinishRecord(metadata);
+  return finish?.state === 'finished' ? finish.commit : null;
 }
 
 function runPart(
@@ -73,6 +81,7 @@ function runPart(
     attempts,
     approvals,
     gates: [],
+    commit: finishedCommit(run.metadata),
   };
 }
 

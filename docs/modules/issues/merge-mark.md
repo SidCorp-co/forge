@@ -111,7 +111,11 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
 
   A mark with neither has no paths to read.
 - **A design approval** writes the revision's `design` artifact on either shape (below). On git, an
-  observed commit on the same issue is still read, and its artifacts are named beside the revision.
+  observed commit on the same issue is still read, and its artifacts are named beside the revision;
+  with no observed commit and no box-read paths the revision is named and the rest reads unread, so
+  the issue is listed under `unclassified` and the release never reads as shipping nothing. The
+  approval stamps first, so a run's later claim of a commit reaches no column (FB-105: ISS-350 in
+  0.4.0-dev.113 changed code and read as a design revision alone).
 
 The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
 `changes`: per surface its artifacts and the issues touching each, `design` marked as shipping
