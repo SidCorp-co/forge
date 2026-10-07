@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.82] - 2026-10-07
+
+Dev workflow designs follow what dev.78–dev.81 shipped
+
+### Changed
+
+- **The dev workflow designs describe what dev.78–dev.81 shipped.** agent-run-standing r19, issue-delivery r17, core-components r19 and core-kernel r11 say core judges placement and the limit record, a declare is preflighted, and a release closes shipped-earlier issues (ISS-310).
+
 ## [0.4.0-dev.81] - 2026-10-07
 
 Shipped-earlier issues close against their release; held issues stop re-opening sessions
