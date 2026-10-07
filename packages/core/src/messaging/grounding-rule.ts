@@ -74,7 +74,7 @@ const FAMILIES: readonly ClaimFamily[] = [
     name: 'what was decided',
     patterns: [
       /\bdecisions? (?:were|was|made|taken)\b|\b(?:was|were) decided\b|\bdecided (?:to|that|on)\b/i,
-      /(?:các|những)\s+quyết\s+định|đã\s+chốt|đã\s+quyết\s+định|quyết\s+định\s+ngày/i, // i18n-allow: the Vietnamese phrasing of a decision claim this rule reads
+      /(?:các|những)\s+quyết\s+định\s+(?:đã|quan\s+trọng|gần\s+đây|nổi\s+bật|đáng\s+chú\s+ý|chính|được)|đã\s+chốt|đã\s+quyết\s+định|quyết\s+định\s+ngày/i, // i18n-allow: the Vietnamese phrasing of a decision claim this rule reads
     ],
     groundedBy: [decisions, requirement],
   },

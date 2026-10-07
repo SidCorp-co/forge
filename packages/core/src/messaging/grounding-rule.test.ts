@@ -119,6 +119,9 @@ describe('a status claim with no read behind it', () => {
       'I filed it as a draft; tell me if the title needs a change.',
       'The change you asked about is done.',
       'Forge is a development-work orchestration platform.',
+      // h7 on 2026-10-07, refused as a decision claim: it names decisions still owed, not one taken
+      'Tiếp theo cần hoàn tất các quyết định và truy vết tiêu chí còn thiếu.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
+      'Referral Management đang chờ quyết định nghiệp vụ.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
     ]) {
       expect(
         STATUS_CLAIMS_GROUNDED.check(reply, facts({ toolCalls: [], offeredTools: OFFERED })),
