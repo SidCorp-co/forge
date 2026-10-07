@@ -26,6 +26,8 @@ interface ProjectConfigPorts {
     projectId: string,
     names: { slug: string; name: string },
   ): Promise<boolean>;
+  /** Why no project route could address a project by this slug, or null when one can. */
+  unaddressableSlug(slug: string): string | null;
   /** The job a job credential names, read from the credential's session. */
   jobOfCredential(
     caller: Pick<PatPrincipal, 'deviceId' | 'boundProjectId'>,

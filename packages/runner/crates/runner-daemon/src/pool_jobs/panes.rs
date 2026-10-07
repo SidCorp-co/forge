@@ -248,6 +248,24 @@ impl JobPanes {
         out
     }
 
+    /// The job and pane a `session.send` names: the job core sent it for, or the job whose
+    /// agent session this box's hooks watch under that id. `None` where this box holds neither,
+    /// which says nothing about whether the session ended.
+    pub fn held_for_send(
+        &self,
+        job_id: Option<&str>,
+        session_id: &str,
+    ) -> Option<(String, String)> {
+        let map = self.inner.lock().ok()?;
+        job_id
+            .and_then(|j| map.get(j))
+            .or_else(|| {
+                map.values()
+                    .find(|h| h.watch.session_id() == Some(session_id))
+            })
+            .map(|h| (h.job_id.clone(), h.pane.clone()))
+    }
+
     pub fn count(&self) -> usize {
         self.inner.lock().map(|m| m.len()).unwrap_or(0)
     }

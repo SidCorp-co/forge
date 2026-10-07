@@ -6,5 +6,6 @@ export type {
   WhatsNewEntry,
   WhatsNewFeed,
   WhatsNewKind,
+  WhatsNewSummary,
 } from "@forge/contracts/whats-new";
 export type { ProductStateView } from "@forge/contracts/product-state";

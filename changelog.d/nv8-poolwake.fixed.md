@@ -1,0 +1,1 @@
+**A release decision or answer sent to a running pool job now reaches its pane.** The box told core the job had ended; it now types into the pane, confirms the submit, and says `gone` only for a vanished pane.

@@ -14,6 +14,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
+import { isUuid } from "@/lib/api/ref-bridge";
 
 const issueQuestionsKey = (issueId: string) => ["questions", issueId];
 export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
@@ -26,10 +27,11 @@ export const gateQuestionKey = (projectId: string, documentId: string) => [
 
 const FOLLOW_UP_POLL_MS = 30_000;
 
-export function useIssueQuestions(issueId: string) {
+/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
+export function useIssueQuestions(issueId: string, projectId?: string) {
   return useQuery({
-    queryKey: issueQuestionsKey(issueId),
-    queryFn: () => questionsApi.listForIssue(issueId),
+    queryKey: issueId && !isUuid(issueId) ? ["questions", { issue: issueId, project: projectId ?? null }] : issueQuestionsKey(issueId),
+    queryFn: () => questionsApi.listForIssue(issueId, projectId),
     enabled: Boolean(issueId),
     refetchInterval: (query) =>
       (query.state.data?.questions.length ?? 0) > 0 ? FOLLOW_UP_POLL_MS : false,

@@ -215,6 +215,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const time = useTimeFormat();
   const modes = useMemo(() => modesIn(t), [t]);
   const q = useRequirements(projectId);
+  useProjectWaitingSuggestions(projectId);
   const router = useRouter();
   const [params, setParams] = useUrlParams();
   const [mode, setMode] = useViewMode(modes);

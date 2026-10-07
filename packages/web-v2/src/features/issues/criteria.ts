@@ -4,6 +4,7 @@
 import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
+import { issueKeySegment } from "./derive";
 
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
@@ -31,10 +32,14 @@ export interface CriterionRow {
   latest: CriterionVerdict | null;
 }
 
-export function useCriteria(issueId: string | undefined) {
+/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
+export function useCriteria(issueId: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", issueId, "criteria"],
-    queryFn: () => apiClient<{ criteria: CriterionRow[] }>(`/issues/${issueId}/criteria`),
+    queryKey: ["issue", issueKeySegment(issueId, projectId), "criteria"],
+    queryFn: () =>
+      apiClient<{ criteria: CriterionRow[] }>(
+        `/issues/${issueId}/criteria${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
+      ),
     enabled: !!issueId,
   });
 }
