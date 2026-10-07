@@ -1,7 +1,7 @@
 /** ISS-1368 — what `runtime-weighing.ts` reads a verdict to be weighed with, and its path rules. */
 
 import { runtimePathPrefix } from '../pipeline/pipeline-config-schema.js';
-import type { Carriage, ChangedPaths } from './carriage.js';
+import type { Carriage, ChangedPaths } from '../projects/repository-reader.js';
 import type { ServingReading } from './serving-reading.js';
 
 export interface RuntimeReading {

@@ -69,7 +69,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
   });
 
   it.each([
-    ['no_binding', 'no active GitHub binding'],
+    ['no_binding', 'names no repository URL, so there are no branches to read'],
     ['read', 'HTTP 502'],
     ['mint', 'minting an installation token: HTTP 404'],
   ] as const)(

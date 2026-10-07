@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GitHubReadError, type GitHubRepoClient } from '../integrations/github/client.js';
+import { githubRepositoryReader } from '../integrations/github/repository-reader.js';
 import { carriageOf, changedPathsOf, forgetCarriage } from './carriage.js';
 
 const J = '655cc09cebfc9eb07840dfed6bccd04aaf7f1728';
@@ -42,7 +43,7 @@ describe('carriageOf', () => {
     for (const status of ['ahead', 'identical']) {
       forgetCarriage();
       const c = client({ [cmp(J, S)]: { status, files: files('a.ts') } });
-      expect(await carriageOf(c, J, S)).toEqual({ kind: 'descends' });
+      expect(await carriageOf(githubRepositoryReader(c), J, S)).toEqual({ kind: 'descends' });
       expect(c.asked).toHaveLength(1);
     }
   });
@@ -55,7 +56,7 @@ describe('carriageOf', () => {
         files: [{ filename: 'c.ts', previous_filename: 'old.ts' }],
       },
     });
-    expect(await carriageOf(c, J, S)).toEqual({
+    expect(await carriageOf(githubRepositoryReader(c), J, S)).toEqual({
       kind: 'differs',
       paths: ['b.ts', 'c.ts', 'old.ts'],
     });
@@ -66,7 +67,10 @@ describe('carriageOf', () => {
       [cmp(J, S)]: { status: 'behind', files: [] },
       [cmp(S, J)]: { status: 'ahead', files: [] },
     });
-    expect(await carriageOf(c, J, S)).toEqual({ kind: 'differs', paths: [] });
+    expect(await carriageOf(githubRepositoryReader(c), J, S)).toEqual({
+      kind: 'differs',
+      paths: [],
+    });
   });
 
   it.each([
@@ -113,15 +117,19 @@ describe('carriageOf', () => {
       '300 or more files differ',
     ],
   ])('is unread, with its reason, for %s', async (_shape, answers, why) => {
-    const read = await carriageOf(client(answers as Record<string, Answer>), J, S);
+    const read = await carriageOf(
+      githubRepositoryReader(client(answers as Record<string, Answer>)),
+      J,
+      S,
+    );
     expect(read.kind).toBe('unread');
     expect(read.kind === 'unread' && read.why).toContain(why);
   });
 
   it('asks the repository once for a pair while the cache holds it', async () => {
     const c = client({ [cmp(J, S)]: { status: 'ahead', files: [] } });
-    await carriageOf(c, J, S);
-    await carriageOf(c, J.toUpperCase(), S);
+    await carriageOf(githubRepositoryReader(c), J, S);
+    await carriageOf(githubRepositoryReader(c), J.toUpperCase(), S);
     expect(c.asked).toHaveLength(1);
   });
 
@@ -129,10 +137,13 @@ describe('carriageOf', () => {
     const c = client({ [cmp(J, S)]: { status: 'ahead', files: [] } });
     let charged = 0;
     const spend = () => (charged++ === 0 ? null : 'spent');
-    expect(await carriageOf(c, J, S, spend)).toEqual({ kind: 'descends' });
-    expect(await carriageOf(c, J, S, spend)).toEqual({ kind: 'descends' });
+    expect(await carriageOf(githubRepositoryReader(c), J, S, spend)).toEqual({ kind: 'descends' });
+    expect(await carriageOf(githubRepositoryReader(c), J, S, spend)).toEqual({ kind: 'descends' });
     expect(charged).toBe(1);
-    expect(await carriageOf(c, J, P, spend)).toEqual({ kind: 'unread', why: 'spent' });
+    expect(await carriageOf(githubRepositoryReader(c), J, P, spend)).toEqual({
+      kind: 'unread',
+      why: 'spent',
+    });
     expect(c.asked).toHaveLength(1);
   });
 
@@ -144,9 +155,9 @@ describe('carriageOf', () => {
         return { status: 'ahead', files: [] };
       },
     });
-    expect((await carriageOf(c, J, S)).kind).toBe('unread');
+    expect((await carriageOf(githubRepositoryReader(c), J, S)).kind).toBe('unread');
     fail = false;
-    expect(await carriageOf(c, J, S)).toEqual({ kind: 'descends' });
+    expect(await carriageOf(githubRepositoryReader(c), J, S)).toEqual({ kind: 'descends' });
     expect(c.asked).toHaveLength(2);
   });
 });
@@ -160,17 +171,20 @@ describe('changedPathsOf', () => {
         files: files('packages/runner/a.rs', 'packages/runner/a.rs'),
       },
     });
-    expect(await changedPathsOf(c, J)).toEqual({ kind: 'read', paths: ['packages/runner/a.rs'] });
-    await changedPathsOf(c, J);
+    expect(await changedPathsOf(githubRepositoryReader(c), J)).toEqual({
+      kind: 'read',
+      paths: ['packages/runner/a.rs'],
+    });
+    await changedPathsOf(githubRepositoryReader(c), J);
     expect(c.asked).toHaveLength(2);
   });
 
   it('is unread, and not kept, where the landing cannot be read', async () => {
     const c = client({});
-    const read = await changedPathsOf(c, J);
+    const read = await changedPathsOf(githubRepositoryReader(c), J);
     expect(read.kind).toBe('unread');
     expect(read.kind === 'unread' && read.why).toContain(`could not read what ${J} changed`);
-    await changedPathsOf(c, J);
+    await changedPathsOf(githubRepositoryReader(c), J);
     expect(c.asked).toHaveLength(2);
   });
 
@@ -179,7 +193,7 @@ describe('changedPathsOf', () => {
       [`/repos/o/r/commits/${J}`]: { sha: J, parents: [{ sha: P }] },
       [cmp(P, J)]: { status: 'ahead', files: [{ filename: '' }] },
     });
-    expect((await changedPathsOf(c, J)).kind).toBe('unread');
+    expect((await changedPathsOf(githubRepositoryReader(c), J)).kind).toBe('unread');
   });
 
   it('is unread where the landing compare answers files and no status', async () => {
@@ -187,14 +201,14 @@ describe('changedPathsOf', () => {
       [`/repos/o/r/commits/${J}`]: { sha: J, parents: [{ sha: P }] },
       [cmp(P, J)]: { files: files('packages/runner/a.rs') },
     });
-    const read = await changedPathsOf(c, J);
+    const read = await changedPathsOf(githubRepositoryReader(c), J);
     expect(read.kind).toBe('unread');
     expect(read.kind === 'unread' && read.why).toContain('answered no compare status');
   });
 
   it('is unread for a root commit, which has no parent to diff against', async () => {
     const c = client({ [`/repos/o/r/commits/${J}`]: { sha: J, parents: [] } });
-    expect(await changedPathsOf(c, J)).toEqual({
+    expect(await changedPathsOf(githubRepositoryReader(c), J)).toEqual({
       kind: 'unread',
       why: `${J} has no parent to diff it against`,
     });

@@ -12,11 +12,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issues, projects, runners } from '../db/schema.js';
-import {
-  GitHubClientError,
-  type GitHubRepoClient,
-  githubRepoClient,
-} from '../integrations/github/client.js';
 import { latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
 import { issueIdentities } from '../issues/verdict-standing.js';
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
@@ -24,7 +19,14 @@ import {
   type ReleaseRuntimesConfig,
   releaseRuntimesSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './carriage.js';
+import { type RepositoryAccessDeps, withRepository } from '../projects/repository-access.js';
+import type {
+  Carriage,
+  ChangedPaths,
+  RepositoryAccess,
+  RepositoryReader,
+} from '../projects/repository-reader.js';
+import { carriageOf, changedPathsOf } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
 import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weighing.js';
 
@@ -33,7 +35,7 @@ import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weig
 export const WEIGHING_READ_LIMIT = 60;
 
 export interface WeighingDeps {
-  client?: (projectId: string) => Promise<GitHubRepoClient>;
+  repository?: Partial<RepositoryAccessDeps>;
   now?: () => Date;
 }
 
@@ -125,15 +127,10 @@ async function judgedCommits(rows: readonly WaitingRow[]): Promise<string[]> {
   return [...judged];
 }
 
-type Reader = { client: GitHubRepoClient } | { why: string };
+type Reader = { reader: RepositoryReader } | { why: string };
 
-async function readerFor(projectId: string, deps: WeighingDeps): Promise<Reader> {
-  try {
-    return { client: await (deps.client ?? githubRepoClient)(projectId) };
-  } catch (err) {
-    if (err instanceof GitHubClientError) return { why: err.message };
-    throw err;
-  }
+function readerOf(access: RepositoryAccess): Reader {
+  return access.kind === 'reader' ? { reader: access.reader } : { why: access.why };
 }
 
 const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads of a kind, and each pass starts its reads one place further along`;
@@ -163,7 +160,7 @@ async function readChanged(
     } else if ('why' in reader) {
       out.set(row.id, { kind: 'unread', why: reader.why });
     } else {
-      out.set(row.id, await changedPathsOf(reader.client, landing, spend));
+      out.set(row.id, await changedPathsOf(reader.reader, landing, spend));
     }
   }
   return out;
@@ -181,7 +178,7 @@ async function readCarriage(
     const key = carriageKey(j, s);
     if (out.has(key)) continue;
     if ('why' in reader) out.set(key, { kind: 'unread', why: reader.why });
-    else out.set(key, await carriageOf(reader.client, j, s, spend));
+    else out.set(key, await carriageOf(reader.reader, j, s, spend));
   }
   return out;
 }
@@ -214,9 +211,15 @@ export async function readWeighingNow(
   if (runtimes.length === 0 && !unequal) {
     return { read: true, runtimes, changed: new Map(), carriage: new Map() };
   }
-  const reader = await readerFor(projectId, deps);
   passes += 1;
-  const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
-  const carriage = await readCarriage(judged, served, reader, budget());
-  return { read: true, runtimes, changed, carriage };
+  return withRepository(
+    projectId,
+    async (access) => {
+      const reader = readerOf(access);
+      const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
+      const carriage = await readCarriage(judged, served, reader, budget());
+      return { read: true, runtimes, changed, carriage };
+    },
+    deps.repository,
+  );
 }

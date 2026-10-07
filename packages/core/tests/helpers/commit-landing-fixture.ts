@@ -161,6 +161,10 @@ export function useCommitLandingWorld() {
   });
 
   return {
+    current(): { db: TestDatabase['db']; projectId: string } {
+      return { db: harness.db, projectId };
+    },
+
     async setBaseBranch(branch: string | null): Promise<void> {
       await harness.db.execute(
         sql`UPDATE projects SET base_branch = ${branch} WHERE id = ${projectId}`,

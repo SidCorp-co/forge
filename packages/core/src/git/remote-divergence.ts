@@ -1,137 +1,28 @@
-import { execFile, spawn } from 'node:child_process';
-import { readdir, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
 import type { LiveDivergence, WaitingCommit } from '../integrations/github/live-divergence.js';
-import type { PinnedSshHost } from './ssh-host-guard.js';
+import {
+  boundedFetch,
+  type FetchLimits,
+  firstLine,
+  type GitFailure,
+  GitRefusal,
+  namingTheHost,
+  REMOTE_FETCH_LIMITS,
+  readingEnv,
+} from './bounded-fetch.js';
 import { withDeployKey } from './ssh-keys.js';
 
 const execFileAsync = promisify(execFile);
 
-/** Where in Forge a project's deploy key is attached, for a sentence telling an operator to fix it. */
-export const GIT_ACCESS = "the project's Settings → Runners → Git access";
-
 /** Waiting commits listed per reading. A longer wait than this is reported as cut short. */
 export const REMOTE_MAX_COMMITS = 1000;
-
-/**
- * What one fetch may spend before it is stopped and the reading refused. The byte budget is what
- * bounds a host that ignores `--filter=tree:0` and sends every file: the filter is a request, not a
- * guarantee, and the commit-list bound says nothing about what the fetch transferred to get there.
- * It is enforced by the kernel (`ulimit -f`) on every file the fetch writes, at a fifth of the
- * budget: the fetch keeps what it receives as one pack, and the only other files that grow with it
- * are the pack's index (at most 36 bytes per object, an object taking at least 10 in the pack, so
- * under four packs' worth) and its reverse index (4 bytes per object), so the files together stay
- * within the budget with no write landing between two checks.
- */
-export interface FetchLimits {
-  timeoutMs: number;
-  maxBytes: number;
-}
-
-export const REMOTE_FETCH_LIMITS: FetchLimits = { timeoutMs: 60_000, maxBytes: 256 * 1024 * 1024 };
-
-/** The pack, its index and its reverse index share the budget; each file may take this fraction. */
-const PER_FILE_SHARE = 5;
 
 export interface BranchRefs {
   baseRef: string;
   liveRef: string;
-}
-
-class GitRefusal extends Error {}
-
-interface GitFailure {
-  stderr?: string | Buffer;
-  code?: number | string | null;
-}
-
-function firstLine(s: string): string {
-  const line = s
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return (line ?? '').slice(0, 300);
-}
-
-/** What a failed fetch means to an operator, in the words of the thing that failed. */
-function fetchRefusal(err: GitFailure): string {
-  const stderr = (err.stderr ?? '').toString();
-  const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
-  if (missing?.[1]) return `the repository has no branch ${missing[1]}, so it cannot be compared`;
-  if (/permission denied|access denied|not authori[sz]ed/i.test(stderr)) {
-    return `the git host refused the deploy key attached to this project (${firstLine(stderr)}) — give its public key read access to the repository; the key is the one attached under ${GIT_ACCESS}`;
-  }
-  return `the git host answered the fetch with: ${firstLine(stderr) || `git exited ${String(err.code ?? 'abnormally')}`}`;
-}
-
-async function largestFile(dir: string): Promise<number> {
-  const entries = await readdir(dir, { withFileTypes: true, recursive: true }).catch(() => []);
-  let largest = 0;
-  for (const e of entries) {
-    if (!e.isFile()) continue;
-    largest = Math.max(
-      largest,
-      (await stat(join(e.parentPath, e.name)).catch(() => null))?.size ?? 0,
-    );
-  }
-  return largest;
-}
-
-/**
- * Run the fetch in a process group of its own under a file-size limit, so the ssh it starts is
- * stopped with it and no file it writes passes the byte budget, and kill the group the moment it
- * outlives the time budget.
- */
-function boundedFetch(
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  repo: string,
-  refs: BranchRefs,
-  limits: FetchLimits,
-): Promise<void> {
-  const what = `fetching ${refs.baseRef} and ${refs.liveRef} from the git host`;
-  const overBudget = `${what} passed ${Math.round(limits.maxBytes / 1024)} KiB, the most one reading may fetch — the host may not honour the commits-only filter`;
-  const blocks = Math.max(1, Math.floor(limits.maxBytes / PER_FILE_SHARE / 512));
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      'sh',
-      ['-c', 'ulimit -f "$1" && shift && exec git "$@"', 'sh', String(blocks), ...args],
-      { env, detached: true, stdio: ['ignore', 'ignore', 'pipe'] },
-    );
-    let stderr = '';
-    let stopped: string | null = null;
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (stderr.length < 64_000) stderr += chunk.toString();
-    });
-    const stop = (why: string) => {
-      if (stopped) return;
-      stopped = why;
-      try {
-        if (child.pid) process.kill(-child.pid, 'SIGKILL');
-      } catch {
-        child.kill('SIGKILL');
-      }
-    };
-    const timer = setTimeout(
-      () => stop(`${what} took longer than ${limits.timeoutMs / 1000}s`),
-      limits.timeoutMs,
-    );
-    const done = () => clearTimeout(timer);
-    child.on('error', (err) => {
-      done();
-      reject(new GitRefusal(`git could not be started: ${err.message}`));
-    });
-    child.on('close', (code) => {
-      done();
-      if (stopped) return reject(new GitRefusal(stopped));
-      if (code === 0) return resolve();
-      void largestFile(repo).then((n) =>
-        reject(new GitRefusal(n >= blocks * 512 ? overBudget : fetchRefusal({ stderr, code }))),
-      );
-    });
-  });
 }
 
 /**
@@ -146,13 +37,7 @@ export async function fetchDivergence(
   dir: string,
   limits: FetchLimits = REMOTE_FETCH_LIMITS,
 ): Promise<LiveDivergence> {
-  const gitEnv: NodeJS.ProcessEnv = {
-    ...env,
-    GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: '/dev/null',
-    GIT_NO_LAZY_FETCH: '1',
-    GIT_TERMINAL_PROMPT: '0',
-  };
+  const gitEnv = readingEnv(env);
   const repo = join(dir, 'live-reading.git');
   const git = async (args: string[]): Promise<string> => {
     const { stdout } = await execFileAsync('git', args, {
@@ -184,8 +69,11 @@ export async function fetchDivergence(
         `+refs/heads/${refs.liveRef}:refs/forge/live`,
       ],
       gitEnv,
-      repo,
-      refs,
+      {
+        what: `fetching ${refs.baseRef} and ${refs.liveRef} from the git host`,
+        repo,
+        filter: 'commits-only',
+      },
       limits,
     );
     const [baseSha = '', liveSha = ''] = (
@@ -225,14 +113,6 @@ export async function fetchDivergence(
       reason: `reading the fetched branches failed: ${firstLine((e.stderr ?? '').toString()) || (err instanceof Error ? err.message : String(err))}`,
     };
   }
-}
-
-/**
- * ssh writes `user@<HostName>`, and the connection is pinned to an address, so git's own words name
- * that address; an operator knows the repository by the host its URL names.
- */
-function namingTheHost(reason: string, pin: PinnedSshHost): string {
-  return pin.address === pin.host ? reason : reason.replaceAll(pin.address, pin.host);
 }
 
 /** The same reading over SSH, as the project's deploy key and nothing else. */

@@ -3143,6 +3143,7 @@
 
 ### Fixed
 
+- **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A release checks every issue it names, however its id is capitalised.** An issue named by an
   upper-case id skipped every check, so a release could take one it could not close (ISS-1384).
 

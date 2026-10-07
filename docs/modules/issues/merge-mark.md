@@ -46,7 +46,10 @@ Where an agent marks an issue on the `git` shape that holds no other work eviden
 (`findMissingWorkEvidence`) and the call carries `data.commit`, the commit is the only trace
 the work left: it landed on the base branch itself, where no branch of its own exists
 (ISS-1318). `readCommitLanding` (`packages/core/src/issues/commit-landing.ts`) reads it from the
-project's repository through its GitHub binding. It counts only where the repository resolves
+project's repository — through its GitHub binding, or, on a project with no binding (one hosted on
+GitLab, say), with git as the deploy key attached under Settings → Runners → Git access (ISS-1398;
+the route is `packages/core/src/projects/repository-access.ts:withRepository`'s, and
+`docs/modules/release/release-batch.md` says how each reads). It counts only where the repository resolves
 it, its subject declares this issue by `declaredIssueSeqs` — the rule `commitOwners` places
 commits with, so a base-branch commit that is another issue's landing is refused — and the base
 branch or the release chain's live branch contains it. Then `merged_at` and
@@ -54,13 +57,17 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. That refusal names two routes: mark again once the repository can be read
-(or, where the project names no base branch, once it does), or have a person mark it merged naming
+evidence unchecked. That refusal names two routes: mark again once the repository can be read —
+through the GitHub binding where the project reads through one, else with the deploy key over the SSH
+clone URL under Git access, and never telling a project with no binding to bind GitHub, except
+beside the key for a github.com remote — (or, where the project names no base branch, once it does), or have a person mark it merged naming
 no commit and move it through `developed` and `testing`, which hold an agent to this evidence and not
 a person; a person's mark naming a commit is checked against the same repository (below). GitHub
 answers an abbreviated sha that no commit starts with and one that
-several commits start with alike, so such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
-unresolved, asking for the full sha, and never reported as absent.
+several commits start with alike, and git resolves a prefix only against the commits its branches
+hold, so on either route such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
+unresolved, asking for the full sha, and never reported as absent. A full sha no branch holds is
+fetched by itself on the git route, and the host serving no such commit is the absent answer.
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
 `merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the

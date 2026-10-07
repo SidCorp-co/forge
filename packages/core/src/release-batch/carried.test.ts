@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import type { RangeCommit } from '../projects/repository-reader.js';
 import { type CarriedReading, judgeCarried, type LandedIssue } from './carried.js';
-import type { RangeCommit, ReadRange } from './cut-range.js';
+import type { ReadRange } from './cut-range.js';
 
 const sha = (c: string) => c.repeat(40);
 const commit = (c: string, parent: string, message = `land ${c}`): RangeCommit => ({

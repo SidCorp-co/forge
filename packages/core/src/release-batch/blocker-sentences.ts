@@ -402,11 +402,12 @@ function carriedSentence(
   return null;
 }
 
-/** The warning a promote chain with no repository bound to read its range gets instead. */
+/** The warning a promote chain with no route to read its repository gets instead; `why` says which
+ *  route to declare, in the words of the host its URL names. */
 export function carriedUnreadWarningSentence(why: string): string {
   return withCosts(
     'RELEASE_CARRIED_UNREAD',
-    `This project promotes a branch onto production and binds no GitHub repository, so Forge could not read which landings this release carries beyond the issues it names (${why}). Bind the repository under ${INTEGRATIONS_TAB}, and every release from then on names each issue its range carries.`,
+    `This project promotes a branch onto production and Forge has no route to read its repository, so it could not read which landings this release carries beyond the issues it names: ${why}. Once it can, every release names each issue its range carries.`,
   );
 }
 

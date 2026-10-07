@@ -94,13 +94,22 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     },
   );
 
+  // With no binding the project falls to its deploy key, and this one names no repository (ISS-1398).
   it.each([
-    ['no_binding', 'no active GitHub binding'],
-    ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    [
+      'no_binding',
+      'names no repository URL, so there are no branches to read',
+      " with the deploy key attached under the project's Settings → Runners → Git access, over the SSH clone URL set there",
+    ],
+    ['read', 'HTTP 502', ', through a GitHub binding whose installation can read it'],
+    [
+      'mint',
+      'minting an installation token: HTTP 404',
+      ', through a GitHub binding whose installation can read it',
+    ],
   ] as const)(
     'refuses COMMIT_UNVERIFIED when the repository cannot be read (%s) (criteria 7, 8)',
-    async (down, says) => {
+    async (down, says, route) => {
       repo.down = down;
       const issue = await seed();
       const refused = await refusal(() => mark(issue, OWN));
@@ -108,7 +117,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       expect(refused.message).toContain(says);
       expect(refused.message).toContain('not taken as evidence unchecked');
       expect(refused.message).toContain(
-        "Two routes clear it: mark again once the tracker can read the project's repository, through a GitHub binding whose installation can read it; or have a person mark it merged naming no commit and move it through `developed` and `testing`",
+        `Two routes clear it: mark again once the tracker can read the project's repository${route}; or have a person mark it merged naming no commit and move it through \`developed\` and \`testing\``,
       );
       expect(refused.message).toContain("a branch recorded under the base branch's name");
       expect(refused.message).not.toContain('record the branch the work was done on');

@@ -12,12 +12,8 @@ vi.mock('node:dns', async (importOriginal) => ({
   promises: { lookup: (...a: unknown[]) => lookup(...a) },
 }));
 
-import {
-  fetchDivergence,
-  REMOTE_FETCH_LIMITS,
-  REMOTE_MAX_COMMITS,
-  readRemoteDivergence,
-} from './remote-divergence.js';
+import { REMOTE_FETCH_LIMITS } from './bounded-fetch.js';
+import { fetchDivergence, REMOTE_MAX_COMMITS, readRemoteDivergence } from './remote-divergence.js';
 
 const root = mkdtempSync(join(tmpdir(), 'forge-remote-divergence-'));
 const env = { ...process.env, GIT_ALLOW_PROTOCOL: 'file' };

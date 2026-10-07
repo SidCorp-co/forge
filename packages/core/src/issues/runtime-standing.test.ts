@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Carriage, ChangedPaths } from '../release-batch/carriage.js';
+import type { Carriage, ChangedPaths } from '../projects/repository-reader.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import {
   carriageKey,

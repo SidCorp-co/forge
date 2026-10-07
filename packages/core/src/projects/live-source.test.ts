@@ -57,7 +57,12 @@ describe('resolveLiveSource', () => {
         deployKey,
       }),
     );
-    expect(s).toEqual({ kind: 'refused', reason: 'the GitHub App is not installed on SidCorp-co' });
+    expect(s).toEqual({
+      kind: 'refused',
+      reason: 'the GitHub App is not installed on SidCorp-co',
+      unbound: false,
+      route: 'binding',
+    });
     expect(deployKey).not.toHaveBeenCalled();
   });
 
@@ -75,9 +80,10 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key under the project's Settings → Runners → Git access",
+      `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key that can read ${GITLAB} under the project's Settings → Runners → Git access`,
     );
     expect(reason).not.toMatch(/GitHub repository|Integrations/);
+    expect(s).toMatchObject({ unbound: true, route: 'deploy_key' });
   });
 
   it('offers a GitHub-hosted project with neither the binding as well as the key', async () => {
@@ -157,7 +163,12 @@ describe('readProjectDivergence', () => {
 
   it('answers a refused source as a refusal carrying its reason', async () => {
     const d = await readProjectDivergence('p', refs, {
-      source: async () => ({ kind: 'refused', reason: 'no key' }),
+      source: async () => ({
+        kind: 'refused',
+        reason: 'no key',
+        unbound: true,
+        route: 'deploy_key',
+      }),
       github: vi.fn(),
       deployKey: vi.fn(),
     });
