@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.119] - 2026-10-07
+
+The Needs-you count stops crowding the pool, so dev pages load faster
+
+### Changed
+
+- **Pages wait less on the server.** The rail's Needs-you count sends half its statements and no longer crowds the page's own reads, and every API response carries a Server-Timing header naming its database time and statement count.
+
 ## [0.4.0-dev.118] - 2026-10-07
 
 Development space screens and New issue form read in Vietnamese
