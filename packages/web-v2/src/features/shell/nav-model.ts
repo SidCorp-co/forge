@@ -47,6 +47,7 @@ const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-roadmap", label: "Roadmap", icon: "clock", sub: "/roadmap" },
   { key: "proj-decisions", label: "Decisions", icon: "check", sub: "/decisions" },
   { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+  { key: "proj-memory", label: "Memory", icon: "archive", sub: "/memory" },
   {
     key: DEVELOPMENT_GROUP_KEY,
     label: "Development",

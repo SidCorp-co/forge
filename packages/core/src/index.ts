@@ -48,6 +48,7 @@ import {
   issueDisplayIds,
   issueHead,
   issueIdOfKey,
+  issueStandingsBySeq,
   loadIssueRelationsForIssues,
   refuseUnresolvedIssueKey,
   releasedIssueOf,
@@ -124,6 +125,7 @@ import {
   embedRequirementHead,
   provideInterfaceContracts,
   provideRequirementDependents,
+  requirementStatusesBySeq,
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
@@ -176,6 +178,12 @@ provideMemoryIssueReads({
   statusChangesSince,
   jobType: jobTypeOf,
   archivedIssueIds: archivedIssueIdsSql,
+  issuePrefixes: async (projectId) => ({
+    active: await activeIssuePrefix(projectId),
+    held: await heldIssuePrefixes(projectId),
+  }),
+  issueStandings: issueStandingsBySeq,
+  requirementStatuses: requirementStatusesBySeq,
 });
 provideProjectsPorts({
   claimIssuePrefix,

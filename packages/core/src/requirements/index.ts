@@ -1,5 +1,6 @@
 export { dropAsDuplicateIn } from './acceptance.js';
 export { latestBaselineIn } from './baselines.js';
+export { requirementStatusesBySeq } from './cited-requirements.js';
 export {
   contractAboutRefusal,
   provideInterfaceContracts,

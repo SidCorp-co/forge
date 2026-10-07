@@ -6,6 +6,7 @@ import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
 import { screenMessage } from './screen.js';
+import { memoryDatesRead } from './status-claims-rule.js';
 
 interface ReplyScreenInput {
   readonly projectId: string;
@@ -43,7 +44,12 @@ export async function screenReplyAtDoor(
     segments: input.segments,
     toolCalls: input.toolCalls,
     ...(input.offeredTools ? { offeredTools: input.offeredTools } : {}),
-    ...(input.toolResults ? { readCounts: countsRead(input.toolResults) } : {}),
+    ...(input.toolResults
+      ? {
+          readCounts: countsRead(input.toolResults),
+          memoryDates: memoryDatesRead(input.toolResults),
+        }
+      : {}),
     progress: input.progress,
     ...(input.executor ? { executor: input.executor } : {}),
   });
