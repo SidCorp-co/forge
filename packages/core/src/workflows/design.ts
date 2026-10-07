@@ -20,25 +20,37 @@ export interface DesignRefusal {
   detail: string;
 }
 
-/** The issue the revision a write supersedes was drawn under, where it is no longer work. */
+/**
+ * The issue the latest revision to name one was drawn under, where it is no longer work: `revision`
+ * is that revision and `superseded` the newest, which the write supersedes and which may name none.
+ */
 export interface LapsedDesignIssue {
   issueId: string;
   key: string;
   status: string;
+  revision: number;
+  superseded: number;
 }
 
 /**
- * A write that proposes a revision and names no issue, where the one it supersedes was drawn under
- * an issue now closed or dropped: storing none would leave a return nothing to reopen (FB-54).
+ * A write that proposes a revision and names no issue, where the latest revision to name one was
+ * drawn under an issue now closed or dropped: storing none would leave a return nothing to reopen
+ * (FB-54). The detail names the revision that carries the issue, which is not the superseded one
+ * where later revisions were stored with none (patient-data-flow r8).
  */
 export function designIssueLapsedRefusal(
-  workflowId: string,
+  flow: string,
   lapsed: LapsedDesignIssue,
 ): DesignRefusal & { code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED' } {
+  const drawn = `was drawn under ${lapsed.key}, which is ${lapsed.status}`;
+  const history =
+    lapsed.revision === lapsed.superseded
+      ? `revision ${lapsed.revision}, the one it supersedes, ${drawn}`
+      : `revision ${lapsed.superseded}, the one it supersedes, names no issue, and revision ${lapsed.revision}, the latest that named one, ${drawn}`;
   return {
     code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED',
     path: '/issue',
-    detail: `this write proposes a new revision of workflow ${workflowId}'s design and names no issue, and the revision it supersedes was drawn under ${lapsed.key}, which is ${lapsed.status}, so the new one would be drawn under no issue and a return would reopen nothing. Name the issue drawing this revision with \`issue\` (beside \`baseRevision\` on a PUT); nothing was written.`,
+    detail: `this write proposes a new revision of workflow ${flow}'s design and names no issue; ${history}, so the new one would be drawn under no issue and a return would reopen nothing. Name the issue drawing this revision with \`issue\` (beside \`baseRevision\` on a PUT); nothing was written.`,
   };
 }
 

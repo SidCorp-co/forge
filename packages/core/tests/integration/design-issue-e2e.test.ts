@@ -159,7 +159,11 @@ describe('a write proposing a revision names the issue drawing it (ISS-261)', ()
       expect(codesOf(res)).toEqual(['WORKFLOW_DESIGN_ISSUE_REQUIRED']);
       const [refusal] = res.json.error.refusals;
       expect(refusal.path).toBe('/issue');
-      expect(refusal.detail).toContain(`${lapsed.key}, which is ${status}`);
+      expect(refusal.detail).toContain(
+        `revision 1, the one it supersedes, was drawn under ${lapsed.key}, which is ${status}`,
+      );
+      expect(refusal.detail).toContain(`workflow lapsed-${status}-flow's design`);
+      expect(refusal.detail).not.toContain(id);
 
       const after = await designOf(gitProject, id);
       expect(after.revision).toBe(before.revision);
@@ -220,7 +224,11 @@ describe('a write proposing a revision names the issue drawing it (ISS-261)', ()
     expect(codesOf(res)).toEqual(['WORKFLOW_DESIGN_ISSUE_REQUIRED']);
     const [refusal] = res.json.error.refusals;
     expect(refusal.path).toBe('/issue');
-    expect(refusal.detail).toContain(`${closed.key}, which is closed`);
+    expect(refusal.detail).toContain(
+      `revision 2, the one it supersedes, names no issue, and revision 1, the latest that named one, was drawn under ${closed.key}, which is closed`,
+    );
+    expect(refusal.detail).not.toContain('the one it supersedes, was drawn under');
+    expect(refusal.detail).toContain("workflow null-after-closed-flow's design");
     const after = await designOf(gitProject, id);
     expect(after.revision).toBe(before.revision);
     expect(after.revisions).toHaveLength(2);
@@ -387,6 +395,7 @@ describe('an approval leaves the mark of a design issue that already shipped (IS
     const notice = posted.map((c) => c.body).find((b) => b.includes('was approved'));
     expect(notice).toContain('after this issue was closed');
     expect(notice).not.toContain('takes its next move');
+    expect(notice).toContain('To change this design again, name the issue drawing the change');
   });
 });
 
