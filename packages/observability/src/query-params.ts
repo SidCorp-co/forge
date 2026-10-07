@@ -355,6 +355,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
   if (depth > MAX_DEPTH) return REDACTED;
   if (value instanceof Error) walk.errors.push(value);
+  if (walk.open.has(value)) return CIRCULAR;
   const asError = value instanceof Error && walk.errorsAsThemselves;
   // A toJSON read through a getter may answer otherwise when the serializer reads it again.
   let copy = false;
@@ -369,15 +370,20 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     if (typeof toJSON.value === 'function') {
       const call = toJSON.value;
       collectHeld(value, walk, depth);
-      const out = attempt(() => call.call(value, key) as unknown);
-      return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
+      // Open while its hook and what that renders are read: a way back to it is a cycle.
+      walk.open.add(value);
+      try {
+        const out = attempt(() => call.call(value, key) as unknown);
+        return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk, value);
+      } finally {
+        walk.open.delete(value);
+      }
     }
   }
   // A function a serializer writes as nothing, unless its toJSON getter may answer otherwise later.
   if (typeof value === 'function') return copy ? undefined : value;
   const box = unboxed(value);
   if (box) return box.value;
-  if (walk.open.has(value)) return CIRCULAR;
   if (asError) return value;
   walk.open.add(value);
   // A set of fields is read as pino reads it: none of its functions, toJSON among them, is written.
@@ -418,13 +424,17 @@ function collectHeld(value: object, walk: Walk, depth: number, seen = new Set<ob
   }
 }
 
-/** What a `toJSON` rendered, which a serializer asks nothing more here: no function stays in it. */
-function renderResult(rendered: unknown, depth: number, walk: Walk): unknown {
+/**
+ * What a `toJSON` of `source` rendered, which a serializer asks nothing more here: no function
+ * stays in it. `source` itself handed back is written by its fields, as JSON writes it.
+ */
+function renderResult(rendered: unknown, depth: number, walk: Walk, source: object): unknown {
   if (typeof rendered === 'function') return undefined;
   if (rendered === null || typeof rendered !== 'object') return rendered;
   if (rendered instanceof Error) walk.errors.push(rendered);
   const box = unboxed(rendered);
   if (box) return box.value;
+  if (rendered === source) return renderFields(rendered, depth, walk, true);
   if (walk.open.has(rendered)) return CIRCULAR;
   walk.open.add(rendered);
   const out = renderFields(rendered, depth, walk, true);
@@ -528,7 +538,9 @@ export function errorsWithin(value: unknown): unknown[] {
     if (typeof v !== 'object' || v === null || seen.has(v) || depth > MAX_DEPTH) return;
     seen.add(v);
     if (v instanceof Error) found.push(v);
-    for (const child of Object.values(v)) walk(child, depth + 1);
+    const children = attempt(() => Object.values(v));
+    if (children === UNREADABLE) return;
+    for (const child of children) walk(child, depth + 1);
   };
   walk(value, 0);
   return found;

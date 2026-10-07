@@ -777,6 +777,64 @@ describe('the core logger, given a value whose text only a serializer renders', 
     expect(JSON.parse(lines[0] ?? '').auth).toEqual({ said: '[Redacted]' });
   });
 
+  it("censors a JSON format argument's redact paths before its toJSON reads them, as pino does", () => {
+    const { lines, log } = capture();
+    const hooked = () => ({
+      password: 'ordinary-password',
+      toJSON() {
+        return { said: this.password };
+      },
+    });
+    const auth = () => ({
+      headers: { authorization: 'ordinary-secret' },
+      toJSON() {
+        return { said: this.headers.authorization };
+      },
+    });
+    const kept = hooked();
+    log.warn('j %j', kept);
+    log.warn('j %j', { reading: hooked() });
+    log.warn('o %o', auth());
+    log.child({ requestId: 'r1' }).warn({ n: 1 }, 'O %O', auth());
+    expect(lines.map((line) => JSON.parse(line).msg)).toEqual([
+      'j {"said":"[Redacted]"}',
+      'j {"reading":{"said":"[Redacted]"}}',
+      'o {"said":"[Redacted]"}',
+      'O {"said":"[Redacted]"}',
+    ]);
+    expect(kept.password).toBe('ordinary-password');
+  });
+
+  it('writes a text whose coercion throws as redacted, throwing nothing itself', () => {
+    const { lines, log } = capture();
+    const throwing = () => ({
+      get reason(): string {
+        throw new Error(failedInsert().message);
+      },
+      toString(): string {
+        throw new Error(failedInsert().message);
+      },
+    });
+    const primitive = {
+      [Symbol.toPrimitive]: () => {
+        throw new Error(failedInsert().message);
+      },
+    };
+    expect(() => log.warn('read %s', throwing())).not.toThrow();
+    expect(() => log.warn('read %s', primitive)).not.toThrow();
+    const prefixed = log.child({}, { msgPrefix: 'read: ' });
+    expect(() => prefixed.warn({ requestId: 'r1' }, throwing() as never)).not.toThrow();
+    expect(lines.map((line) => JSON.parse(line).msg)).toEqual([
+      'read [Redacted]',
+      'read [Redacted]',
+      'read: [Redacted]',
+    ]);
+    for (const line of lines) {
+      expect(line).not.toContain(HASH);
+      expect(line).not.toContain(EMAIL);
+    }
+  });
+
   it('asks a field toJSON with the empty key, as pino stringifies each field alone', () => {
     const { lines, log } = capture();
     const reading = () => ({ toJSON: (key: string) => (key === '' ? 'kept' : undefined) });

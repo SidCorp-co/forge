@@ -4,6 +4,7 @@ import {
   type FieldReads,
   readOnce,
   mayCarryBoundValues,
+  REDACTED,
   redactQueryParams,
 } from '@forge/observability';
 import type { Context } from 'hono';
@@ -236,17 +237,23 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
     if ((joined || stringify) && rendersItself(v)) {
       // The error a text is rendered from still names the values to find in that text.
       found.push(...(errorsWithin(v) as Error[]));
-      if (joined)
-        return ((msgPrefix as string) + (v as unknown as string)).slice(
-          (msgPrefix as string).length,
-        );
-      return String(v);
+      // A text pino coerces is no field it censors; one whose coercion throws is written redacted.
+      try {
+        if (joined)
+          return ((msgPrefix as string) + (v as unknown as string)).slice(
+            (msgPrefix as string).length,
+          );
+        return String(v);
+      } catch {
+        return REDACTED;
+      }
     }
+    // pino censors its redact paths in the merging object and in every argument it writes as JSON.
     const how = { fields: i === 0, errorsAsThemselves: true };
     const written =
-      i === 0 && !(v instanceof Error)
-        ? withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }))
-        : asSerialized(v, how);
+      v instanceof Error
+        ? asSerialized(v, how)
+        : withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }));
     found.push(...written.errors);
     return written.value;
   });

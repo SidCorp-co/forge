@@ -413,6 +413,37 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     }
   });
 
+  it('writes a toJSON handing back its own object by its fields, and a way back to it as a cycle', () => {
+    let asked = 0;
+    const self = {
+      note: 'kept',
+      toJSON() {
+        asked++;
+        return this;
+      },
+    };
+    const back: Record<string, unknown> = {
+      note: 'kept',
+      toJSON() {
+        asked++;
+        return { back: this, note: this.note };
+      },
+    };
+    const loop: Record<string, unknown> = {
+      toJSON() {
+        asked++;
+        return this;
+      },
+    };
+    loop.again = loop;
+    expect(JSON.stringify(redactQueryParams({ self }))).toBe('{"self":{"note":"kept"}}');
+    expect(JSON.stringify(redactQueryParams({ back }))).toBe(
+      '{"back":{"back":"[Circular]","note":"kept"}}',
+    );
+    expect(JSON.stringify(redactQueryParams({ loop }))).toBe('{"loop":{"again":"[Circular]"}}');
+    expect(asked).toBe(3);
+  });
+
   it('reads an enumerable toJSON getter once, for the hook and for the fields alike', () => {
     let reads = 0;
     const reading = Object.defineProperty({ note: 'kept' }, 'toJSON', {
