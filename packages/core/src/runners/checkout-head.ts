@@ -35,7 +35,7 @@ export interface CheckoutHead {
   deviceId: string;
 }
 
-interface BoundCheckout {
+export interface BoundCheckout {
   deviceId: string;
   runnerId: string;
   repoPath: string;
@@ -93,7 +93,7 @@ const SCHEME = /^(?:[a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d*)?\/(.+)$/
 const USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@'"`()]+@/gi;
 
 /** `text` with every URL's userinfo removed: a box older than this core sends its origin as git stores it, token included. */
-function withoutUserinfo(text: string): string {
+export function withoutUserinfo(text: string): string {
   return text.replace(USERINFO, '$1');
 }
 
@@ -114,13 +114,13 @@ function identityOf(remote: string): { local: boolean; id: string } {
 }
 
 /** One repository, however the two spell it: a local path by its path, a hosted or SSH one by host and path. */
-function sameRepository(origin: string, declared: string): boolean {
+export function sameRepository(origin: string, declared: string): boolean {
   const a = identityOf(origin);
   const b = identityOf(declared);
   return a.local === b.local && a.id === b.id;
 }
 
-async function boundCheckouts(projectId: string): Promise<BoundCheckout[]> {
+export async function boundCheckouts(projectId: string): Promise<BoundCheckout[]> {
   const rows = await db
     .select({ deviceId: runners.deviceId, runnerId: runners.id, repoPath: runners.repoPath })
     .from(runners)

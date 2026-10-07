@@ -585,7 +585,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
             }
         }
-        "skill.sync" | "checkout.head.read" | "provision.request" => {
+        "skill.sync" | "checkout.head.read" | "checkout.ancestry.read" | "provision.request" => {
             on_workspace_frame(frame, client, cfg);
         }
         "master.wake" => match master::Wake::of_frame(&frame.data) {
@@ -629,6 +629,10 @@ fn on_workspace_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>)
         "checkout.head.read" => {
             let client = client.clone();
             tokio::spawn(async move { crate::head_read::handle(&client, frame.data).await });
+        }
+        "checkout.ancestry.read" => {
+            let client = client.clone();
+            tokio::spawn(async move { crate::ancestry_read::handle(&client, frame.data).await });
         }
         "provision.request" => {
             // Wake → run the pending-provision sweep (server returns

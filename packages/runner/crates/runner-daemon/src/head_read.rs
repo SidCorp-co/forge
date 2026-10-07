@@ -105,7 +105,7 @@ async fn answer(
 
 /// The checkout core named, as long as this box binds it to the project. With none named (a core
 /// that predates naming it), only a project bound once here is unambiguous; anything else is said.
-fn bound_checkout(
+pub(crate) fn bound_checkout(
     bindings: &HashMap<String, Binding>,
     project_id: &str,
     repo_path: Option<&str>,
@@ -238,7 +238,7 @@ fn parse_ls_remote(stdout: &str, wanted: &str) -> Option<String> {
 }
 
 /// `YYYY-MM-DDTHH:MM:SSZ` for `secs` since the epoch.
-fn rfc3339_utc(secs: i64) -> String {
+pub(crate) fn rfc3339_utc(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     // civil_from_days (Howard Hinnant), the inverse of `clock::days_from_civil`.

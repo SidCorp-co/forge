@@ -29,10 +29,12 @@ const SETTLES: Readonly<
 > = {
   SHIPPED_EARLIER_HOST_UNAVAILABLE: {
     reason:
-      "Once this project's repository can be read through a source host binding, the next sweep " +
-      'asks which release holds its commit and, where one does, closes it against that release ' +
-      'with nobody acting.',
-    waitingFor: "a source host binding this project's repository can be read through",
+      "Once this project's repository can be read through a source host binding (or, where it has " +
+      'none at all, a connected box holding a checkout of it bound to this project answers), the ' +
+      'next sweep asks which release holds its commit and, where one does, closes it against that ' +
+      'release with nobody acting.',
+    waitingFor:
+      "a source host binding this project's repository can be read through, or (with none bound) a connected box holding a bound checkout of it",
   },
   SHIPPED_EARLIER_UNREAD: {
     reason:

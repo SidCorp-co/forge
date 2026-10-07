@@ -9,7 +9,12 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
-import { answerCheckoutHead, patchDeviceRunnerCheckout } from '../runners/index.js';
+import {
+  ANCESTRY_PAIRS_MAX,
+  answerCheckoutAncestry,
+  answerCheckoutHead,
+  patchDeviceRunnerCheckout,
+} from '../runners/index.js';
 import { heartbeatBinaries, withDeviceBinaries } from './binary-report.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatDisk, withDeviceDisk } from './disk-report.js';
@@ -376,6 +381,60 @@ deviceAuthRoutes.post(
     throw refuseDevice(
       outcome.code,
       `the head read ${requestId} was answered with what names no head: ${outcome.detail}`,
+    );
+  },
+);
+
+// Device → server: whether commits are ancestors, read in a box's bound checkout, answering
+// `checkout.ancestry.read`. Settled only for the box it was asked of; checked in `runners/checkout-ancestry.ts`.
+const checkoutAncestryAnswerSchema = z
+  .object({
+    projectId: z.uuid(),
+    origin: z.string().max(1000).optional(),
+    readAt: z.string().max(40).optional(),
+    via: z.string().max(40).optional(),
+    fetched: z.boolean().optional(),
+    answers: z
+      .array(
+        z
+          .object({
+            commit: z.string().max(80),
+            release: z.string().max(80),
+            ancestor: z.boolean().optional(),
+            error: z.string().trim().min(1).max(2000).optional(),
+          })
+          .strict(),
+      )
+      .max(ANCESTRY_PAIRS_MAX)
+      .optional(),
+    error: z.string().trim().min(1).max(2000).optional(),
+  })
+  .strict();
+
+deviceAuthRoutes.post(
+  '/me/checkout-ancestry/:requestId',
+  requireDevice(),
+  zValidator('param', z.object({ requestId: z.uuid() })),
+  zValidator('json', checkoutAncestryAnswerSchema),
+  async (c) => {
+    const { requestId } = c.req.valid('param');
+    const outcome = answerCheckoutAncestry(c.get('device').id, requestId, c.req.valid('json'));
+    if (outcome.ok) return c.json({ settled: true });
+    if (outcome.code === 'CHECKOUT_ANCESTRY_NOT_ASKED') {
+      throw refuseDevice(
+        outcome.code,
+        `no ancestry read ${requestId} is waiting on this box: it was never asked, it was asked of another box or project, or the wait ended`,
+      );
+    }
+    if (outcome.code === 'CHECKOUT_ANCESTRY_OTHER_REPOSITORY') {
+      throw refuseDevice(
+        outcome.code,
+        `the ancestry read ${requestId} was refused: ${outcome.detail}`,
+      );
+    }
+    throw refuseDevice(
+      outcome.code,
+      `the ancestry read ${requestId} was answered with what is no ancestry reading: ${outcome.detail}`,
     );
   },
 );

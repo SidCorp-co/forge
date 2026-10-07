@@ -174,6 +174,20 @@ top of `createReleaseBatch`, and it places the issue in a shipped release (a run
   where the range from the newest release to the branch head holds none: work still unreleased is not
   shipped. A `landed` mark is outside git and is never placed this way.
 
+Where the project has no source host binding at all (or declares a local repository no host serves),
+the commit the first two evidences name is asked instead of the box holding the project's bound
+checkout: core sends `checkout.ancestry.read` to the first connected box whose runner binds a checkout
+of the project (oldest binding first; a box bound to no runner of the project is never asked), the
+box answers `git merge-base --is-ancestor` per pair, fetching origin only where a commit is missing,
+and posts it to `/api/devices/me/checkout-ancestry/:requestId`
+(`packages/core/src/runners/checkout-ancestry.ts:answerCheckoutAncestry` checks it against the
+pairs asked and the declared repository). The placement rule is the same, and the notice names the
+box-read evidence: the box, its checkout, origin, read time and both shas. The declaring-commits
+evidence stays host-only, since it reads ranges of commit messages no box serves. A binding that exists
+and cannot serve is not stood in for by a box. No box answering (none bound, none connected, or one
+that let a read lapse, which is not asked again for ten minutes) is `SHIPPED_EARLIER_HOST_UNAVAILABLE`
+naming both reasons; a box that answered it could not read a commit is `SHIPPED_EARLIER_UNREAD`.
+
 The issue is closed through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto
 that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a
 notice naming the version, and its hold is cleared. It adds no changelog fragment: its notes belong to

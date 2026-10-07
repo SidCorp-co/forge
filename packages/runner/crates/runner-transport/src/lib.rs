@@ -8,6 +8,7 @@
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
 //! - `checkout_head`  — POST `/me/checkout-heads/:id`: a project's default-branch head, read here
+//! - `checkout_ancestry` — POST `/me/checkout-ancestry/:id`: whether commits are ancestors, read here
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 //! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
 //! - `master_verdict` — POST `/me/master-session/verdict`: core's verdict on a project's master,
@@ -15,6 +16,7 @@
 //! - `run_verdict` — POST `/me/run-sessions/verdict`: core's verdict on a run the ledger holds open
 pub mod agent_sessions;
 pub mod api;
+pub mod checkout_ancestry;
 pub mod checkout_head;
 pub mod events;
 pub mod git_credential;
