@@ -22,13 +22,15 @@ const { autoflowStorefrontPublished } = await import('./published.js');
 const GRAPH_A = { nodes: [{ id: 'n1', type: 'trigger' }], edges: [] };
 const GRAPH_B = { edges: [], nodes: [{ type: 'trigger', id: 'n2' }] };
 
-const read = (workflowIds: string[]) =>
-  autoflowStorefrontPublished({
-    connectionId: 'conn-1',
-    config: { shop: 'hop' },
-    readSecrets: () => ({}),
-    workflowIds,
-  });
+const read = async (workflowIds: string[]) =>
+  (
+    await autoflowStorefrontPublished({
+      connectionId: 'conn-1',
+      config: { shop: 'hop' },
+      readSecrets: () => ({}),
+      ask: { workflowIds, routeIds: [], pageIds: [], theme: false, settingKeys: [] },
+    })
+  ).workflows;
 
 beforeEach(() => {
   site.queries = [];

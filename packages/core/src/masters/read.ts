@@ -15,6 +15,7 @@ import type {
   MasterVerb,
   MasterWaitingOn,
 } from '@forge/contracts/master-standing';
+import { say, sayEn } from '@forge/contracts/said';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -291,13 +292,24 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
 function waitingOnDialog(master: MasterRow, deviceName: string | null): MasterWaitingOn | null {
   const dialog = master.pane_dialog;
   if (!dialog) return null;
-  const pane = master.title ?? 'the master pane';
+  const says = {
+    who: deviceName
+      ? say('forecast.who.whoeverReaches', { device: deviceName })
+      : say('masters.who.whoeverReachesPane'),
+    act: say('masters.act.answerDialog', {
+      pane: master.title
+        ? say('standing.who.named', { name: master.title })
+        : say('masters.act.theMasterPane'),
+      text: dialog.text,
+    }),
+  };
   return {
     kind: 'person',
-    who: deviceName ? `Whoever can reach ${deviceName}` : 'Whoever can reach the master pane',
-    act: `Answer the dialog ${pane} is stopped on: "${dialog.text}"`,
+    who: sayEn(says.who),
+    act: sayEn(says.act),
     rule: 'MASTER_PANE_DIALOG',
     since: dialog.seenAt,
+    says,
   };
 }
 

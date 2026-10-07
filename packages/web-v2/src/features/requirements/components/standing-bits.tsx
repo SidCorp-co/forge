@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 import { type BannerTone, type CoverageSegment, CoverageBar, LEGEND, StepBar, WaitBanner } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { localizeWaiting } from "@/lib/i18n/standing-copy";
+import { saidView } from "@/lib/i18n/said";
 
 /** Stale is hatched rather than a tone, so it never reads as a verdict of its own colour. */
 const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
@@ -74,7 +74,7 @@ const BANNER_TONE: Record<RequirementWaitingKind, BannerTone> = {
 /** The full page's and the peek's one-line banner: whom it waits on and for what. */
 export function RequirementBanner({ standing, children, className }: { standing: RequirementStanding; children?: ReactNode; className?: string }) {
   const t = useCopy();
-  const w = localizeWaiting(standing.waitingOn, useInterfaceLanguage());
+  const w = saidView(standing.waitingOn, useInterfaceLanguage());
   const stuck = standing.attentionGroup === "stuck" && w.kind === "none";
   const done = standing.attentionGroup === "done";
   return (

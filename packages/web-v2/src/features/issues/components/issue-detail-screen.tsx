@@ -38,12 +38,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isLiveRun,
   issueQueryKey,
-  issueRekey,
   parseChecklist,
   runStatusChip,
   workStepOf,
 } from "../derive";
-import { useCriteria } from "../criteria";
 import { deriveQueuedStep } from "../waiting";
 import {
   useActivity,
@@ -53,18 +51,13 @@ import {
   type useIssue,
 } from "../detail-hooks";
 import {
-  useIssueCost,
-  useIssueDeps,
   type useIssueStandingOf,
   usePatchIssue,
   useProjectMembers,
-  useProjectModules,
-  useReleaseRoster,
 } from "../hooks";
 import { ISSUES_LIST, issuesHref } from "@/lib/routes/issues";
 import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
-import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";

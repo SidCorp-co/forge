@@ -1,9 +1,10 @@
 "use client";
 
+import type { Said } from "@forge/contracts/said";
 import type { ReactNode } from "react";
 import { HoverCard, LEGEND, Tooltip } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import type { DevelopmentOverview } from "../types";
 
 function Signal({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
@@ -15,23 +16,12 @@ function Signal({ label, children, testId }: { label: string; children: ReactNod
   );
 }
 
-// core's own sentences for a signal it cannot read (`development/overview-read.ts`, contracts `master-standing.ts:NO_MASTER_SLOTS`)
-const SIGNAL_NOTE: Record<string, ProductCopyKey> = {
-  "Core stores check runs for pull requests only, never for a branch head, so it holds no reading of dev itself.": "overview.signal.ciNote",
-  "A push to a gated branch carries its post-merge jobs on GitHub; core receives no event for them and stores none.": "overview.signal.postMergeNote",
-  "No live master serves this project, so no box has declared slots for it.": "overview.signal.noSlotsNote",
-};
-
-/** A signal's note in the interface language; one core words otherwise reads as core wrote it. */
-export const signalNote = (note: string, t: Copy): string => {
-  const key = SIGNAL_NOTE[note];
-  return key ? t(key) : note;
-};
-
-export function Unavailable({ reason }: { reason: string }) {
+/** A signal core cannot read, its reason read from what core said (`development/overview-read.ts`). */
+export function Unavailable({ reason }: { reason: Said }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
-    <Tooltip label={signalNote(reason, t)} multiline>
+    <Tooltip label={said(reason, language)} multiline>
       <span className="cursor-help text-muted underline decoration-dotted underline-offset-2" data-testid="signal-unavailable">
         {t("overview.signal.unavailable")}
       </span>
@@ -86,12 +76,13 @@ function Contracts({ s }: { s: DevelopmentOverview["signals"]["contracts"] }) {
 function Master({ s }: { s: DevelopmentOverview["signals"]["master"] }) {
   const max = s.slots?.max ?? null;
   const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-3">
       <span>
         {t("overview.signal.slotsInUse")} <b className="font-semibold">{s.slots ? s.slots.inUse : "?"}</b>
         {max === null ? (
-          <Tooltip label={signalNote(s.slotsNote ?? "", t)} multiline>
+          <Tooltip label={said(s.says.slotsNote, language)} multiline>
             <span className="ml-1 cursor-help text-muted underline decoration-dotted underline-offset-2" data-testid="capacity-unavailable">
               {t("overview.signal.of", { max: "?" })}
             </span>
@@ -113,10 +104,10 @@ export function SignalsStrip({ data }: { data: DevelopmentOverview }) {
     <div className="border-b border-line-subtle bg-surface" data-testid="signals-strip">
       <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 px-5 py-2.5 max-md:px-3" aria-label={t("overview.signal.signals")}>
         <Signal label={t("overview.signal.ci")} testId="signal-ci">
-          <Unavailable reason={data.signals.ci.reason} />
+          <Unavailable reason={data.signals.ci.says.reason} />
         </Signal>
         <Signal label={t("overview.signal.postMerge")} testId="signal-post-merge">
-          <Unavailable reason={data.signals.postMerge.reason} />
+          <Unavailable reason={data.signals.postMerge.says.reason} />
         </Signal>
         <Signal label={t("overview.signal.contracts")} testId="signal-contracts">
           <Contracts s={data.signals.contracts} />

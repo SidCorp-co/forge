@@ -1,6 +1,7 @@
 // Releases opens on what comes next: each requirement with work still to land and, in its ETA column,
 // when it is in people's hands as a clock, then the draft and the act it waits on — named once, never dated.
 
+import { forecastWait, RULE, say, waitingOn } from "@/test/said";
 import type { ComingNextForecast, DeliveryForecast, Forecast, ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -25,7 +26,7 @@ const range: Forecast = {
   basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 2, concurrency: 2, concurrencyBasis: "b" },
   late: null,
 };
-const manual = { kind: "person" as const, mode: "manual" as const, who: "Ada", act: "cut 0.1.0", reason: "an admin cuts each release", version: "0.1.0", holders: [] };
+const manual = { kind: "person" as const, mode: "manual" as const, ...forecastWait(say("standing.who.named", { name: "Ada" }), say("standing.act.cut", { v: "0.1.0", more: null }), say("forecast.reason.manual")), version: "0.1.0", holders: [] };
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
 const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-90) };
 
@@ -37,7 +38,7 @@ const draftScope: ScopeForecast = {
   title: null,
   progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
   forecast: landed,
-  next: { ...stamp, kind: "paused", who: "Ada", act: "cut 0.1.0", reason: "r", ref: null, since: null, late: null },
+  next: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.named", { name: "Ada" }), say("standing.act.cut", { v: "0.1.0", more: null }), RULE), ref: null, since: null, late: null },
   delivery: delivery(landed),
 };
 const next: ComingNextForecast = { ...stamp, projectId: "p", requirements: [req], draft: draftScope };
@@ -46,7 +47,7 @@ const draft = {
   version: "0.1.0",
   state: "draft",
   issueCount: 2,
-  waitingOn: { kind: "you", who: "You", act: "cut 0.1.0", rule: "an admin cuts the version", ref: null, dueAt: null },
+  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.cut", { v: "0.1.0", more: null }), rule: RULE }),
 } as unknown as ReleaseSummary;
 
 describe("Coming next on Releases", () => {

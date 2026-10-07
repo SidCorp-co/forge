@@ -85,6 +85,11 @@ interface ApplyStatusTransitionOptions {
    * the park mints, which moves the issue on as an answer does (ISS-254).
    */
   awaitsDesign?: { workflowId: string; revision: number } | undefined;
+  /**
+   * The issue whose merge mark this park waits on — its own or another of its project. The stamp
+   * writing the mark answers the question the park mints, which moves the issue on as an answer does.
+   */
+  awaitsMerge?: { issueId: string } | undefined;
   /** Why the open questions died with the work; a terminal move with one open is refused without it. */
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */

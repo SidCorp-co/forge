@@ -15,7 +15,6 @@ import {
   type UiActionOutcome,
   type UiCallReading,
   applyUiAction,
-  describeBoard,
   hrefWithout,
   readUiCall,
   routeWord,

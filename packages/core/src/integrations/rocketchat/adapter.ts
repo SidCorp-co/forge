@@ -8,6 +8,7 @@
  * credential against `GET /api/v1/me`, powering the test-connection UI.
  */
 
+import { say } from '@forge/contracts/said';
 import {
   type AdapterContext,
   declareIntegration,
@@ -114,7 +115,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
   presentation: {
     label: 'Rocket.Chat',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail: 'never test-connected',
+    neverCheckedDetail: say('integrations.detail.neverTested'),
     cardMeta: (config) => {
       const cfg = config as { serverUrl?: string; rids?: string[] };
       return { serverUrl: cfg.serverUrl ?? null, rids: cfg.rids ?? null };

@@ -5,6 +5,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
+import { forecastWait, say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
 import { FeedbackFacts } from "./feedback-facts";
@@ -20,7 +21,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     phase: "planned",
     status: "triaged",
     attentionGroup: "moving",
-    waitingOn: { kind: "issue", who: "ISS-4 and ISS-7", act: "ship", rule: "planned: its issues carry it", ref: "ISS-4", dueAt: null },
+    waitingOn: waitingOn("issue", { who: say("standing.keysAnd", { keys: "ISS-4", last: "ISS-7" }), act: say("standing.act.ship"), rule: say("feedback.rule.issuesCarry") }, { ref: "ISS-4" }),
     target: { type: "screen", key: "The board", title: null },
     route: null,
     reporter: { id: "u1", name: "Ana", agency: "human" },
@@ -81,13 +82,13 @@ describe("the item's line as its reporter means done", () => {
       delivery: {
         ...stamp,
         landing: { ...stamp, kind: "landed" as const, landedAt: stamp.asOf },
-        release: { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.4.0", reason: "an admin cuts each release", version: "0.4.0", holders: [] },
+        release: { kind: "person" as const, mode: "manual" as const, ...forecastWait(say("standing.who.holderOf", { perm: "project.admin" }), say("standing.act.cut", { v: "0.4.0", more: null }), say("forecast.reason.manual")), version: "0.4.0", holders: [] },
         inHands: null,
         shipped: null,
       },
     };
     renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={forecast} />);
-    expect(screen.getByTestId("feedback-forecast-line").textContent).toBe("Fixed · waits on A project admin to cut 0.4.0");
+    expect(screen.getByTestId("feedback-forecast-line").textContent).toBe("Fixed · waits on A holder of project.admin to cut 0.4.0");
   });
 
   it("draws no forecast fact where the item carries no work that ships", () => {

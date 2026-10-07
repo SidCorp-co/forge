@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { saidDisagreements } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -186,6 +187,10 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(d.attentionGroup, "no stale relay on anyone's Needs you").not.toBe('needs_you');
     expect((d.waitingOn as Body).act).toBe('verify the fix shipped in 0.0.9');
     expect((d.can as Body).tellShipped, 'anyone who wants to may still tell them').toBe(true);
+    expect((d.shipNotice as Body).says).toEqual({
+      reason: { key: 'feedback.notice.before', vars: { date: cutoff.toISOString().slice(0, 10) } },
+    });
+    expect(saidDisagreements(d), 'what it says and its English agree').toEqual([]);
   });
 
   it("keeps an item shipped after the cutoff and never told on the triager's Needs you", async () => {
@@ -198,6 +203,11 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(d.reporterNotTold).toBe('owed');
     expect(d.attentionGroup).toBe('needs_you');
     expect(String((d.waitingOn as Body).act)).toMatch(/^tell .+ that it shipped in 0\.0\.10$/);
+    expect(((d.waitingOn as Body).says as Body).act).toMatchObject({
+      key: 'standing.act.tellShippedIn',
+      vars: { v: '0.0.10' },
+    });
+    expect(saidDisagreements(d)).toEqual([]);
   });
 
   it('counts the two apart on the feedback list and on the release page', async () => {
@@ -411,6 +421,10 @@ describe('a reporter no bell reaches is relayed to by a person, on their Needs y
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const d = res.body.feedback as Body;
     expect(d.shipNotice).toMatchObject({ state: 'told', how: 'relayed', release: '0.4.2' });
+    expect(((d.shipNotice as Body).says as Body).told).toMatchObject({
+      key: 'feedback.told.relayed',
+    });
+    expect(saidDisagreements(d)).toEqual([]);
     expect(((d.shipNotice as Body).by as string | null) ?? '').not.toBe('');
     expect(d.attentionGroup).not.toBe('needs_you');
     expect((d.waitingOn as Body).act).toBe('verify the fix shipped in 0.4.2');

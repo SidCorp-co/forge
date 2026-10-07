@@ -7,7 +7,8 @@ import {
 import type {
   IntegrationDeclaration,
   StorefrontDraftReading,
-  StorefrontPublishedReading,
+  StorefrontServed,
+  StorefrontServedAsk,
   StorefrontTargetArgs,
 } from './types.js';
 
@@ -35,8 +36,7 @@ async function readPerWorkflow<R>(
   if (workflowIds.length === 0) return new Map();
   const pair = await findBindingWithConnectionById(binding);
   if (!pair) {
-    const whose = what === 'draft' ? 'the storefront source' : 'production';
-    return every(`${whose} names binding \`${binding}\`, which core does not hold`);
+    return every(`the storefront source names binding \`${binding}\`, which core does not hold`);
   }
   const decl = getIntegration(provider);
   const read = decl ? hook(decl) : undefined;
@@ -76,11 +76,85 @@ export async function readStorefrontDrafts(args: {
   return readPerWorkflow(args, 'draft', (d) => d.storefrontDrafts);
 }
 
-/** What a storefront binding's provider publishes now of each workflow named, or why it cannot be read. */
+const unique = (ids: readonly string[]) => [...new Set(ids)];
+
+/** Every asked key answered `unreadable` with one reason: the read that would answer them did not happen. */
+export function servedUnreadable(ask: StorefrontServedAsk, detail: string): StorefrontServed {
+  const every = <R>(ids: readonly string[]) =>
+    new Map<string, R>(unique(ids).map((id) => [id, { kind: 'unreadable', detail } as R]));
+  return {
+    workflows: every(ask.workflowIds),
+    routes: every(ask.routeIds),
+    pages: every(ask.pageIds),
+    theme: ask.theme ? { kind: 'unreadable', detail } : null,
+    settings: every(ask.settingKeys),
+  };
+}
+
+/** The reader's answer with every asked key present: one it left out reads as not answered. */
+function answeredWhole(
+  provider: string,
+  ask: StorefrontServedAsk,
+  got: StorefrontServed,
+): StorefrontServed {
+  const fill = <R>(ids: readonly string[], held: ReadonlyMap<string, R>, what: string) =>
+    new Map<string, R>(
+      unique(ids).map((id) => [
+        id,
+        held.get(id) ??
+          ({
+            kind: 'unreadable',
+            detail: `the ${provider} published reader answered no reading of ${what} \`${id}\``,
+          } as R),
+      ]),
+    );
+  return {
+    workflows: fill(ask.workflowIds, got.workflows, 'workflow'),
+    routes: fill(ask.routeIds, got.routes, 'route'),
+    pages: fill(ask.pageIds, got.pages, 'page'),
+    theme: ask.theme
+      ? (got.theme ?? {
+          kind: 'unreadable',
+          detail: `the ${provider} published reader answered no reading of the served theme`,
+        })
+      : null,
+    settings: fill(ask.settingKeys, got.settings, 'setting'),
+  };
+}
+
+/**
+ * What a storefront binding's provider serves now of every workflow, route, page, theme and setting
+ * asked, or why each cannot be read: one binding lookup, one provider read per kind.
+ */
 export async function readStorefrontPublished(args: {
   provider: string;
   binding: string;
-  workflowIds: readonly string[];
-}): Promise<Map<string, StorefrontPublishedReading>> {
-  return readPerWorkflow(args, 'published', (d) => d.storefrontPublished);
+  ask: StorefrontServedAsk;
+}): Promise<StorefrontServed> {
+  const { provider, binding, ask } = args;
+  const pair = await findBindingWithConnectionById(binding);
+  if (!pair) {
+    return servedUnreadable(
+      ask,
+      `production names binding \`${binding}\`, which core does not hold`,
+    );
+  }
+  const read = getIntegration(provider)?.storefrontPublished;
+  if (!read) {
+    return servedUnreadable(
+      ask,
+      `core has no published reader for provider \`${provider}\`, so what ${provider} serves cannot be read back`,
+    );
+  }
+  try {
+    const got = await read({
+      connectionId: pair.connection.id,
+      config: effectiveConfig<Record<string, unknown>>(pair),
+      readSecrets: () => decryptConnectionSecrets(pair.connection),
+      ask,
+    });
+    return answeredWhole(provider, ask, got);
+  } catch (err) {
+    return servedUnreadable(ask, `the ${provider} read failed: ${(err as Error).message}`);
+  }
 }

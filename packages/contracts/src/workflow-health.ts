@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { REASON_TEXT_MAX } from "./reason-text.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
 export const WORKFLOW_STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
@@ -424,6 +425,8 @@ export interface WorkflowReconciliation {
 	criteria: { total: number; proven: number };
 	/** Why the state is what it is, in a sentence. */
 	rule: string;
+	/** `rule` as said (`said.ts`). */
+	says: { rule: Said };
 }
 
 /** A revision proposed and not yet decided: what Needs you reads to put the approval on the design itself. */

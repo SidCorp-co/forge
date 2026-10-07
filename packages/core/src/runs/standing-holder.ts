@@ -6,6 +6,7 @@ import type {
   RunHolder,
   RunState,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { isPipelineSessionKind } from '../agent-sessions/index.js';
 import { classifyLease } from '../issues/index.js';
 import {
@@ -17,11 +18,19 @@ import {
   type StandingContext,
 } from './standing-types.js';
 
+const named = (name: string) => say('standing.who.named', { name });
+
 function verdictAt(at: Date, now: Date, lapsed: IssueLeaseVerdict): IssueLeaseVerdict {
   return at.getTime() > now.getTime() ? 'live' : lapsed;
 }
 
-function claimExpiry(f: RunFacts, now: Date): { expiry: RunExpiry | null; detail: string | null } {
+const expiry = (e: Omit<RunExpiry, 'rule' | 'says'>, rule: Said): RunExpiry => ({
+  ...e,
+  rule: sayEn(rule),
+  says: { rule },
+});
+
+function claimExpiry(f: RunFacts, now: Date): Clock {
   const lease = f.workState?.lease;
   if (lease === null || lease === undefined) return { expiry: null, detail: null };
   const read = classifyLease({ lease, now, fanout: 1 });
@@ -30,37 +39,44 @@ function claimExpiry(f: RunFacts, now: Date): { expiry: RunExpiry | null; detail
   if (foreign !== null) {
     return {
       expiry: null,
-      detail: `the claim on ${f.issue?.key} by ${read.holder ?? 'no holder'} was taken in ${foreign}, not in this run's worktree ${f.ledger?.worktreePath}, so it times nothing for this run`,
+      detail: say('runs.holder.foreignClaim', {
+        key: String(f.issue?.key),
+        holder: read.holder ?? 'no holder',
+        tree: foreign,
+        worktree: String(f.ledger?.worktreePath),
+      }),
     };
   }
   if (!read.expiresAt) {
     return {
       expiry: null,
-      detail: `the claim on ${f.issue?.key} is ${read.verdict}: ${read.detail}`,
+      detail: say('runs.holder.claimIs', {
+        key: String(f.issue?.key),
+        verdict: read.verdict,
+        detail: read.detail,
+      }),
     };
   }
   if (read.expiresAt.getTime() < f.run.startedAt.getTime()) return { expiry: null, detail: null };
   return {
-    expiry: {
-      source: 'claim',
-      at: read.expiresAt.toISOString(),
-      verdict: read.verdict,
-      rule: `issue_work_state.lease by ${read.holder ?? 'no holder'}: renewedAt + minutes${read.stopped ? ', stopped' : ''}`,
-    },
+    expiry: expiry(
+      { source: 'claim', at: read.expiresAt.toISOString(), verdict: read.verdict },
+      say(read.stopped ? 'runs.holder.claimRuleStopped' : 'runs.holder.claimRule', {
+        holder: read.holder ?? 'no holder',
+      }),
+    ),
     detail: null,
   };
 }
 
-type Clock = { expiry: RunExpiry | null; detail: string | null };
+type Clock = { expiry: RunExpiry | null; detail: Said | null };
 
-function clock(at: Date, now: Date, rule: string): Clock {
+function clock(at: Date, now: Date, rule: Said): Clock {
   return {
-    expiry: {
-      source: 'silence_reap',
-      at: at.toISOString(),
-      verdict: verdictAt(at, now, 'abandoned'),
+    expiry: expiry(
+      { source: 'silence_reap', at: at.toISOString(), verdict: verdictAt(at, now, 'abandoned') },
       rule,
-    },
+    ),
     detail: null,
   };
 }
@@ -70,21 +86,23 @@ function ackClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cloc
   if (!job.dispatchedAt)
     return {
       expiry: null,
-      detail:
-        'the job is dispatched but carries no dispatched_at, so the ack reaper has no clock to start',
+      detail: say('runs.holder.noDispatchedAt'),
     };
   if (job.hasEvents) {
     return {
       expiry: null,
-      detail:
-        'the job is dispatched with job events but no ack: the ack reaper skips a job that has reported, and the heartbeat reaper needs a running session',
+      detail: say('runs.holder.reportedNoAck'),
     };
   }
   const at = after(job.dispatchedAt, ctx.jobAckMs + ctx.killGraceMs);
   return clock(
     at,
     ctx.now,
-    `the loop monitor fails a dispatch no runner acked within ${ctx.jobAckMs / 60_000} min, after a ${ctx.killGraceMs / 1000} s kill grace (dispatch_unclaimed); dispatched ${job.dispatchedAt.toISOString()}`,
+    say('runs.holder.ackClock', {
+      mins: ctx.jobAckMs / 60_000,
+      grace: ctx.killGraceMs / 1000,
+      at: job.dispatchedAt.toISOString(),
+    }),
   );
 }
 
@@ -93,34 +111,35 @@ function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext)
   if (job.sessionStatus !== 'running') {
     return {
       expiry: null,
-      detail: `the job's session is ${job.sessionStatus ?? 'not linked'}, and the heartbeat reaper only fails a running session`,
+      detail: say('runs.holder.sessionNotRunning', { status: job.sessionStatus ?? 'not linked' }),
     };
   }
   if (job.sessionRuntimeState === 'awaiting_input') {
     return {
       expiry: null,
-      detail:
-        "the job's session is awaiting input, which the heartbeat reaper exempts, so no silence clock runs",
+      detail: say('runs.holder.awaitingInput'),
     };
   }
   if (!job.sessionHeartbeatReaped) {
     return {
       expiry: null,
-      detail:
-        "the job's session is not of a kind the heartbeat reaper sweeps, so no silence clock runs",
+      detail: say('runs.holder.notReaped'),
     };
   }
   const beat = job.sessionHeartbeatBeat;
   if (!beat)
     return {
       expiry: null,
-      detail: "the job's session carries no beat, start or update time, so no silence clock runs",
+      detail: say('runs.holder.noBeat'),
     };
   const at = after(beat, ctx.jobHeartbeatMs);
   return clock(
     at,
     ctx.now,
-    `the loop monitor fails a running session silent for ${ctx.jobHeartbeatMs / 60_000} min (heartbeat_timeout); last beat ${beat.toISOString()}`,
+    say('runs.holder.heartbeatClock', {
+      mins: ctx.jobHeartbeatMs / 60_000,
+      at: beat.toISOString(),
+    }),
   );
 }
 
@@ -130,24 +149,25 @@ function queueClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cl
   if (!kind || !isPipelineSessionKind(kind)) {
     return {
       expiry: null,
-      detail:
-        "the job's session is queued but not a pipeline session, so the queue hop does not sweep it",
+      detail: say('runs.holder.notPipeline'),
     };
   }
   if (job.sessionBeat) {
     return clock(
       after(job.sessionBeat, ctx.jobHeartbeatMs),
       ctx.now,
-      `the loop monitor fails a queued session that beat once and reported no turn for ${ctx.jobHeartbeatMs / 60_000} min (turn_never_reported); last beat ${job.sessionBeat.toISOString()}`,
+      say('runs.holder.turnClock', {
+        mins: ctx.jobHeartbeatMs / 60_000,
+        at: job.sessionBeat.toISOString(),
+      }),
     );
   }
   const since = job.sessionDispatchedAt ?? job.sessionCreatedAt;
-  if (!since)
-    return { expiry: null, detail: "the job's queued session carries no dispatch or create time" };
+  if (!since) return { expiry: null, detail: say('runs.holder.noQueueTime') };
   return clock(
     after(since, ctx.jobQueueMs),
     ctx.now,
-    `the loop monitor fails a queued session no worker claimed within ${ctx.jobQueueMs / 60_000} min (queue_timeout); queued ${since.toISOString()}`,
+    say('runs.holder.queueClock', { mins: ctx.jobQueueMs / 60_000, at: since.toISOString() }),
   );
 }
 
@@ -159,7 +179,11 @@ function resultClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): C
   return clock(
     after(job.lastProgressAt, ctx.resultQuietMs + ctx.killGraceMs),
     ctx.now,
-    `the loop monitor fails a job with no event or phase for ${ctx.resultQuietMs / 60_000} min, after a ${ctx.killGraceMs / 1000} s kill grace (stale); last progress ${job.lastProgressAt.toISOString()}`,
+    say('runs.holder.resultClock', {
+      mins: ctx.resultQuietMs / 60_000,
+      grace: ctx.killGraceMs / 1000,
+      at: job.lastProgressAt.toISOString(),
+    }),
   );
 }
 
@@ -177,7 +201,10 @@ function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
     return clock(
       after(beat, ctx.silenceReapMs),
       ctx.now,
-      `the run-session reaper fails a session silent for ${ctx.silenceReapMs / 60_000} min (run_session_box_silent); last beat ${beat.toISOString()}`,
+      say('runs.holder.boxSilentClock', {
+        mins: ctx.silenceReapMs / 60_000,
+        at: beat.toISOString(),
+      }),
     );
   }
   const job = f.job;
@@ -194,7 +221,10 @@ function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
     return clock(
       after(f.master.lastBeatAt, ctx.silenceReapMs),
       ctx.now,
-      `the master reaper clears the holds of a master silent for ${ctx.silenceReapMs / 60_000} min; last beat ${f.master.lastBeatAt.toISOString()}`,
+      say('runs.holder.masterClock', {
+        mins: ctx.silenceReapMs / 60_000,
+        at: f.master.lastBeatAt.toISOString(),
+      }),
     );
   }
   return { expiry: null, detail: null };
@@ -202,9 +232,7 @@ function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
 
 function dispatchedByOf(f: RunFacts): RunDispatchedBy {
   if (!f.master) {
-    return none(
-      'no master owns this run: it opened as a root, with no live master on its box and no master hold',
-    );
+    return none(say('runs.holder.noMasterRoot'));
   }
   if (f.pass) {
     return {
@@ -219,21 +247,21 @@ function dispatchedByOf(f: RunFacts): RunDispatchedBy {
     source: 'master',
     masterSessionId: f.master.sessionId,
     passId: null,
-    detail:
-      'no stored pass of this master spans the moment the run opened, so the pass that took it is not known',
+    detail: sayEn(say('runs.holder.passUnknown')),
+    says: { detail: say('runs.holder.passUnknown') },
   };
 }
 
 export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): RunHolder {
   if (['done', 'failed', 'cancelled', 'handed_back'].includes(state)) {
-    return none('a finished run holds nothing: its lease went with its end');
+    return none(say('runs.holder.finished'));
   }
   const s = f.session;
   const job = f.job;
   const held = f.deployLocks.filter((l) => l.held);
   let identity: {
     kind: 'run' | 'master';
-    name: string;
+    name: Said;
     sessionId: string | null;
     device: RunDevice | null;
     acquiredAt: Date | null;
@@ -242,7 +270,7 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
     const first = f.fleetKeys.map((k) => k.acquiredAt).sort((a, b) => a.getTime() - b.getTime())[0];
     identity = {
       kind: 'run',
-      name: s.name ?? 'Run session',
+      name: s.name ? named(s.name) : say('runs.holder.runSession'),
       sessionId: s.id,
       device: s.device,
       acquiredAt: first ?? s.startedAt,
@@ -250,7 +278,7 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
   } else if (job && job.status === 'dispatched') {
     identity = {
       kind: 'run',
-      name: `${job.type} job`,
+      name: say('runs.holder.job', { type: job.type }),
       sessionId: job.agentSessionId,
       device: job.device,
       acquiredAt: job.dispatchedAt,
@@ -258,7 +286,7 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
   } else if (job?.status === 'queued' && job.heldBy) {
     identity = {
       kind: 'master',
-      name: f.master?.name ?? 'Master',
+      name: f.master?.name ? named(f.master.name) : say('standing.who.master'),
       sessionId: job.heldBy,
       device: null,
       acquiredAt: job.heldAt,
@@ -266,51 +294,52 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
   } else if (held[0]) {
     identity = {
       kind: 'run',
-      name: held[0].subject,
+      name: named(held[0].subject),
       sessionId: null,
       device: null,
       acquiredAt: held[0].acquiredAt,
     };
   }
   if (!identity) {
-    if (state === 'queued')
-      return none('no holder yet: the run is queued and no box or master has taken it');
-    if (state === 'waiting_person')
-      return none('parked: the run holds no box while a person owes the next act');
-    if (state === 'waiting_gate')
-      return none('no holder: the run waits on a gate with no box taken');
-    return none('no live session, job or deploy lock holds this run');
+    if (state === 'queued') return none(say('runs.holder.queued'));
+    if (state === 'waiting_person') return none(say('runs.holder.parked'));
+    if (state === 'waiting_gate') return none(say('runs.holder.gate'));
+    return none(say('runs.holder.nothing'));
   }
   const expiries: RunExpiry[] = [];
   for (const lock of held) {
-    expiries.push({
-      source: 'deploy_lock',
-      at: lock.expiresAt.toISOString(),
-      verdict: verdictAt(lock.expiresAt, ctx.now, 'expired'),
-      rule: `deploy_locks.expires_at on ${lock.environment}: the next deploy reclaims the environment after it`,
-    });
+    expiries.push(
+      expiry(
+        {
+          source: 'deploy_lock',
+          at: lock.expiresAt.toISOString(),
+          verdict: verdictAt(lock.expiresAt, ctx.now, 'expired'),
+        },
+        say('runs.holder.lockRule', { environment: lock.environment }),
+      ),
+    );
   }
   const claim = claimExpiry(f, ctx.now);
   if (claim.expiry) expiries.push(claim.expiry);
   const silence = silenceExpiry(f, ctx);
   if (silence.expiry) expiries.push(silence.expiry);
   const first = expiries[0] ?? null;
+  const expiryDetail = first
+    ? null
+    : (claim.detail ?? silence.detail ?? say('runs.holder.noClock'));
   return {
     source: 'held',
     kind: identity.kind,
-    name: identity.name,
+    name: sayEn(identity.name),
     sessionId: identity.sessionId,
     device: identity.device,
     acquiredAt: iso(identity.acquiredAt),
     expiresAt: first?.at ?? null,
     expirySource: first?.source ?? null,
     verdict: first?.verdict ?? null,
-    expiryDetail: first
-      ? null
-      : (claim.detail ??
-        silence.detail ??
-        'no claim, deploy lock or beat is readable for this holder, so no clock ends its hold'),
+    expiryDetail: expiryDetail ? sayEn(expiryDetail) : null,
     expiries,
     dispatchedBy: dispatchedByOf(f),
+    says: { name: identity.name, expiryDetail },
   };
 }

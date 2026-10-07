@@ -6,6 +6,8 @@
 
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
+import { say, sayEn } from '@forge/contracts/said';
+import type { WaitingSays } from '@forge/contracts/standing';
 import type { IssueStatus } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import type { LeaseReading } from './session-claim.js';
@@ -179,15 +181,19 @@ export function heldReleaseWait(
 export function landedWait(
   status: string,
   evidence: Pick<StrandEvidence, 'merged' | 'step'>,
-): { waitingFor: string; owes: StrandOwner; reason: string; who: string; act: string } | null {
+): { waitingFor: string; owes: StrandOwner; reason: string; says: WaitingSays } | null {
   if (!evidence.merged) return null;
   if (status === 'open' || status === 'approved' || status === 'reopen') {
+    const rule = say('issues.rule.landed', { status });
     return {
-      who: 'Next run',
-      act: 'landed · claim it and judge what landed',
       waitingFor: 'a run to claim it and judge what landed',
       owes: 'agent',
-      reason: `the change landed and the issue stands at \`${status}\`: the run that claims it next judges what landed and moves it to \`awaiting_release\` rather than building it`,
+      reason: sayEn(rule),
+      says: {
+        who: say('issues.standing.who.nextRun'),
+        act: say('issues.standing.act.landedClaim'),
+        rule,
+      },
     };
   }
   return null;

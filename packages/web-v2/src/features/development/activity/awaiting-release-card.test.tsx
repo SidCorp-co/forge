@@ -3,6 +3,7 @@
 // issues' runs had ended. The card counts the issues at awaiting_release, as the flow does, and names
 // the draft release's turn from the draft forecast the dashboard's lateness reads.
 
+import { forecastWait, RULE, say } from "@/test/said";
 import type { QueryKey } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -24,7 +25,7 @@ const draft = (late: boolean) => ({
   progress: { total: 72, shipped: 0, awaitingRelease: 72, toDo: 0 },
   forecast: null,
   delivery: null,
-  next: { label: "forecast", asOf: AT, kind: "paused", who: "You", act: "cut 0.3.0", reason: "r", ref: null, since: AT, late: late ? { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } : null },
+  next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: late ? { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } : null },
 });
 
 function mount(seed: [QueryKey, unknown][]) {

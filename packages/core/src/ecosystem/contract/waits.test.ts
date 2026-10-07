@@ -1,4 +1,5 @@
 import { notLiveSentence } from '@forge/contracts/contract-waits';
+import { sayEn } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -52,7 +53,7 @@ describe('the contract wait gate', () => {
     } as unknown as StandingContext;
     const d = liveOf(facts, ctx);
     expect(d.state).toBe('waiting_gate');
-    expect(d.rule).toContain('CONTRACT_WAIT_UNSETTLED');
+    expect(sayEn(d.rule)).toContain('CONTRACT_WAIT_UNSETTLED');
   });
 });
 

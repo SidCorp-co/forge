@@ -1,3 +1,5 @@
+import type { Said } from "@forge/contracts/said";
+import { gateView, RULE, say, verbatim, waitingOn } from "./said";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { ComingNext } from "@/features/releases/components/coming-next";
@@ -29,8 +31,9 @@ import { Seeded } from "./vi-chrome-requirements";
 
 const P = "p1";
 const AT = "2026-10-07T10:00:00Z";
-const nobody = { kind: "none", who: "Nobody", act: "", rule: "r", ref: null, dueAt: null };
-const you = (act: string) => ({ kind: "you", who: "You", act, rule: "r", ref: null, dueAt: null });
+const nobody = waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE });
+const you = (act: Said) => waitingOn("you", { who: say("standing.who.you"), act, rule: RULE });
+const CUT = say("standing.act.cut", { v: "0.1.0", more: null });
 const lan = { id: "u1", name: "Lan", kind: "human" };
 
 const contents = [{ requirement: { key: "REQ-1", title: "Muc" }, issues: [{ key: "ISS-1", title: "Muc", proof: "proven" }] }, { requirement: null, issues: [{ key: "ISS-2", title: "Muc", proof: "open" }] }];
@@ -55,15 +58,17 @@ const summary = (over: Record<string, unknown>) => ({
   releasedAt: null,
   at: AT,
   attentionGroup: "needs_you",
-  waitingOn: you("cut 0.1.0"),
+  waitingOn: you(CUT),
   ...over,
 });
 
 const draft = summary({
-  waitingOn: {
-    ...you("split this release into smaller releases"),
-    effect: "Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.",
-  },
+  waitingOn: waitingOn("you", {
+    who: say("standing.who.you"),
+    act: say("standing.act.splitRelease"),
+    rule: RULE,
+    effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitRest", { n: 13 }) }),
+  }),
 });
 const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT });
 
@@ -76,8 +81,8 @@ const detail = {
   ],
   feedbackToldCounts: { on_ship: 1, told: 0, not_told: 1, before_notices: 1 },
   issues: [
-    { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you("cut 0.1.0"), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
-    { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you("cut 0.1.0"), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
+    { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
+    { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
   ],
   requirementsCompleted: [{ key: "REQ-1", title: "Muc", state: "in_delivery", completes: false, advances: [{ code: "BC-1", verdict: "passing" }], remaining: { issues: ["ISS-2"], criteria: ["BC-2"] } }],
   issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent" }] }],
@@ -100,15 +105,15 @@ const detail = {
     attention: [{ key: "ISS-1", title: "Muc", notInLanguage: true, references: ["src/a.ts"] }],
   },
   gates: [
-    {
+    gateView({
       code: "RELEASE_ROSTER_OVERSIZE",
       kind: "blocker",
-      title: "Cong A",
-      sentence: "Noi dung",
+      title: verbatim("Cong A"),
+      sentence: verbatim("Noi dung"),
       detail: "chi tiet",
       issues: ["ISS-1", "ISS-2", "ISS-3", "ISS-4", "ISS-5", "ISS-6"],
-      owner: { kind: "person", who: "A project admin", act: "cut the issues that are waiting" },
-    },
+      owner: { kind: "person", who: say("standing.who.holderOf", { perm: "project.admin" }), act: say("standing.act.cutWaiting") },
+    }),
   ],
   approval: { id: "a1", requestedBy: lan, requestedAt: AT, evidence: { environment: "prod", commit: "abcdef123", reading: "doc" }, note: null, decision: null, decidedBy: null, decidedAt: null, reason: null },
   approvals: [{ id: "a0", requestedBy: lan, requestedAt: AT, evidence: { environment: "prod", commit: "abcdef123", reading: "doc" }, note: null, decision: "returned", decidedBy: lan, decidedAt: AT, reason: "ly do" }],
@@ -141,7 +146,7 @@ const peek = { open: "0.1.0", position: { at: 1, of: 2 }, set: () => {}, move: (
 export const releasesScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleasesScreen projectId={P} slug="hop" />
-    <ComingNext next={coming as never} draft={summary({ waitingOn: { ...you("cut 0.1.0"), kind: "person", who: "A release approver" } }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
+    <ComingNext next={coming as never} draft={summary({ waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "releases.approve" }), act: CUT, rule: RULE }) }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
     <ReleasePeek projectId={P} version="0.1.0" peek={peek} onOpenFull={() => {}} />
   </Seeded>
 );
@@ -220,7 +225,7 @@ const workflowHealth = {
   orphanedTraces: [{ recordType: "feedback", key: "FB-1", href: null, target: { kind: "step", step: "b" } }],
   diff: null,
   observed: null,
-  reconciliation: { state: "reconciled", undecided: 0, cleaning: 0, issues: ["ISS-1"], version: { version: "0.1.0", releasedAt: AT }, criteria: { total: 2, proven: 1 }, rule: "da khop" },
+  reconciliation: { state: "reconciled", undecided: 0, cleaning: 0, issues: ["ISS-1"], version: { version: "0.1.0", releasedAt: AT }, criteria: { total: 2, proven: 1 }, rule: "da khop", says: { rule: verbatim("da khop") } },
 };
 const design = {
   workflowId: "w-dat-hang",
@@ -231,13 +236,13 @@ const design = {
   approvedRevision: 1,
   approver: "workflow-designs.approve",
   canDecide: true,
-  waitingOn: you("approve design Luong"),
+  waitingOn: you(say("standing.act.approveDesign", { what: "Luong" })),
   revisions: [
     { revision: 2, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: null, decidedBy: null, decidedByName: null, decidedAt: null, reason: null, state: "proposed", changes: { steps: { added: ["Buoc d"], removed: [], changed: ["Buoc a"] }, edges: { added: 1, removed: 0, changed: 2 } } },
     { revision: 1, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: "approve", decidedBy: "u2", decidedByName: "Minh", decidedAt: AT, reason: "ghi chu", state: "current", changes: null },
   ],
   builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress", builtAgainst: 1 }],
-  gate: { open: false, rule: "giu" },
+  gate: { open: false, rule: "giu", says: { rule: verbatim("giu") } },
   requirements: [{ key: "REQ-1", title: "Muc", status: "agreed", state: "in_delivery", pinnedRevision: 1 }],
 };
 const designSeed = (): [QueryKey, unknown][] => [
@@ -253,7 +258,7 @@ export const workflowDesignScreen = (): ReactElement => (
     {(["steps", "revisions"] as const).map((tab) => (
       <WorkflowDesignPage key={tab} projectId={P} slug="hop" d={design as never} record={designRecord as never} template={null} tab={tab} onTab={() => {}} />
     ))}
-    <WorkflowDesignFacts d={{ ...design, gate: { open: true, rule: "mo" } } as never} record={designRecord as never} shown={body("dat-hang", { kind: "state" }) as never} shownRevision={2} template={null} slug="hop" health={{ ...workflowHealth, rooted: { rooted: false, missing: ["approved_revision", "requirement"] }, observation: null } as never} />
+    <WorkflowDesignFacts d={{ ...design, gate: { open: true, rule: "mo", says: { rule: verbatim("mo") } } } as never} record={designRecord as never} shown={body("dat-hang", { kind: "state" }) as never} shownRevision={2} template={null} slug="hop" health={{ ...workflowHealth, rooted: { rooted: false, missing: ["approved_revision", "requirement"] }, observation: null } as never} />
     <OrphanedTraces traces={[{ recordType: "requirement_criterion", key: "REQ-1", href: null, target: { kind: "edge", from: "a", to: "b", label: null } }] as never} revision={2} />
   </Seeded>
 );

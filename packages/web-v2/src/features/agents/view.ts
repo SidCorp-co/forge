@@ -3,7 +3,7 @@ import type { BannerTone, ListGroup, WaitingOnView } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { formatCountdown, formatDateTime, formatRelative } from "@/lib/i18n/format";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said, saidView } from "@/lib/i18n/said";
 import type { RunStanding } from "./types";
 
 export const GROUP_MODES = ["attention", "lane", "box"] as const;
@@ -20,7 +20,7 @@ export function runKey(r: Pick<RunStanding, "issue" | "attempt" | "lane" | "rele
 
 /** "Run #4 · ISS-1402", or the run's own title where it carries no issue. */
 export const runName = (r: RunStanding, language = "en") =>
-  r.issue && r.attempt.source === "runs" ? productCopy(language)("runs.name", { n: r.attempt.n, key: r.issue.key }) : r.title;
+  r.issue && r.attempt.source === "runs" ? productCopy(language)("runs.name", { n: r.attempt.n, key: r.issue.key }) : said(r.says.title, language);
 
 export const stepLabel = (r: Pick<RunStanding, "step">, language = "en") => (r.step.step ? enumLabel("step", r.step.step, language) : null);
 
@@ -39,10 +39,11 @@ export function waitingView(r: RunStanding, language = "en"): WaitingOnView {
   const t = productCopy(language);
   if (w.kind === "gate") {
     const act = w.resumesAt ? t("runs.resumes", { when: formatCountdown(w.resumesAt, language) }) : t("runs.resumesItself");
-    return { kind: "gate", who: enumLabel("runGate", w.gate, language), act, rule: w.rule };
+    return { kind: "gate", who: enumLabel("runGate", w.gate, language), act, rule: said(w.says.rule, language) };
   }
-  if (w.kind === "run") return { ...w, act: [standingAct(w.act, language), leaseLeft(r, language)].filter(Boolean).join(" · ") };
-  return w;
+  const v = saidView(w, language);
+  if (w.kind === "run") return { ...v, act: [v.act, leaseLeft(r, language)].filter(Boolean).join(" · ") };
+  return v;
 }
 
 /** Who an outcome names: the person, else the kind of actor; null where core recorded none. */
@@ -54,34 +55,35 @@ export function runBanner(r: RunStanding, language = "en"): { tone: BannerTone; 
   const t = productCopy(language);
   const label = statusReading("runStanding", r.state, language).label;
   const stuck = r.stuck.source === "stuck" ? r.stuck : null;
+  const rule = said(r.says.rule, language);
   if (stuck) {
-    return { tone: "err", head: `${label} ·`, body: stuck.detail, detail: stuck.failsBy, rule: `${stuck.rule}: ${r.rule}` };
+    return { tone: "err", head: `${label} ·`, body: said(stuck.says.detail, language), detail: said(stuck.says.failsBy, language), rule: `${stuck.rule}: ${rule}` };
   }
   const o = r.outcome;
   if (o?.kind === "failed") {
-    return { tone: "err", head: `${label} ·`, body: enumLabel("failureCause", o.cause, language), detail: o.detail, rule: r.rule };
+    return { tone: "err", head: `${label} ·`, body: enumLabel("failureCause", o.cause, language), detail: o.detail, rule };
   }
   if (o?.kind === "cancelled") {
     const by = actorName(o.by, language);
-    return { tone: "calm", head: `${label} ·`, body: by ? t("runs.byWho", { who: by }) : r.rule, detail: "type" in o.by ? o.by.reason : null, rule: r.rule };
+    return { tone: "calm", head: `${label} ·`, body: by ? t("runs.byWho", { who: by }) : rule, detail: "type" in o.by ? o.by.reason : null, rule };
   }
-  if (o?.kind === "handed_back") return { tone: "calm", head: `${label} ·`, body: o.detail, detail: null, rule: r.rule };
-  if (o?.kind === "done") return { tone: "calm", head: `${label} ·`, body: r.rule, detail: null, rule: r.rule };
+  if (o?.kind === "handed_back") return { tone: "calm", head: `${label} ·`, body: said(o.says.detail, language), detail: null, rule };
+  if (o?.kind === "done") return { tone: "calm", head: `${label} ·`, body: rule, detail: null, rule };
   const w = waitingView(r, language);
   if (w.kind === "you" || w.kind === "person") {
     return {
       tone: "you",
-      head: w.kind === "you" ? t("runs.waitingOnYou") : t("runs.waitingOnWho", { who: standingWho(w.who, language) }),
-      body: standingAct(w.act, language),
+      head: w.kind === "you" ? t("runs.waitingOnYou") : t("runs.waitingOnWho", { who: w.who }),
+      body: w.act,
       detail: w.rule ?? null,
-      rule: r.rule,
+      rule,
     };
   }
-  if (w.kind === "gate") return { tone: "blocked", head: `${label} ·`, body: `${w.who}, ${w.act}`, detail: null, rule: r.rule };
+  if (w.kind === "gate") return { tone: "blocked", head: `${label} ·`, body: `${w.who}, ${w.act}`, detail: null, rule };
   const beat = r.lastBeatAt ? t("runs.beat", { when: formatRelative(r.lastBeatAt, language) }) : null;
   const step = stepLabel(r, language);
-  const body = [step ? t("runs.stepWord", { step }) : null, beat].filter(Boolean).join(" · ") || r.rule;
-  return { tone: r.state === "queued" ? "calm" : "run", head: `${label} ·`, body, detail: null, rule: r.rule };
+  const body = [step ? t("runs.stepWord", { step }) : null, beat].filter(Boolean).join(" · ") || rule;
+  return { tone: r.state === "queued" ? "calm" : "run", head: `${label} ·`, body, detail: null, rule };
 }
 
 const laneLabel = (l: RunLane, language: string) => (l === "job" ? productCopy(language)("runs.lane.jobs") : l === "issue" ? productCopy(language)("runs.lane.issueRuns") : enumLabel("runLane", l, language));

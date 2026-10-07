@@ -417,6 +417,11 @@ export function QuestionCard({
           <div className="space-y-2">
             <p className="fg-caption text-subtle">{t("agents.question.round", { n: current.round })}</p>
             {current.prompt && <p className="fg-body text-fg">{current.prompt}</p>}
+            {question.status === "open" && question.awaitsMerge && (
+              <p className="fg-body-sm text-fg" data-testid="waits-on-mark">
+                {t("agents.question.waitsOnMark", { key: question.awaitsMerge.key })}
+              </p>
+            )}
             {holds && <StillWaitsFields projectId={question.projectId} draft={wait} fault={waitFault} onChange={setWait} />}
             {question.answerShape === "choice" ? (
               question.options.map((option) => (

@@ -1,4 +1,5 @@
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
+import type { Said } from './said.js';
 import type { AgentPathKind, IntegrationProvider, schema } from '@forge/core/public';
 
 export type {
@@ -128,6 +129,8 @@ export interface IntegrationStatusCard {
   label: string;
   status: IntegrationCardStatus;
   detail: string;
+  /** `detail` as said (`said.ts`). */
+  says: { detail: Said };
   /** ISO timestamp of the last real sync/health-check, or null when none exists. */
   lastSyncAt: string | null;
   configured: boolean;

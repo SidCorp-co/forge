@@ -4,13 +4,24 @@
  * the cached prefix `tools[]` sits in. Applied to the provider copy only, never persisted.
  */
 
+import type { ReplyLanguage } from '../conversations/index.js';
 import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
+
+const LANGUAGE_NAME: Record<ReplyLanguage, string> = { en: 'English', vi: 'Vietnamese' };
 
 export interface TurnContext {
   conversationContext?: string | null | undefined;
   pageContext?: Record<string, unknown> | null | undefined;
   /** What is known about the person the newest message is from — `preference-line.ts` renders it (ISS-1034). */
   speakerContext?: string | null | undefined;
+  /** The language the newest message was written in, where it can be told. */
+  replyLanguage?: ReplyLanguage | null | undefined;
+}
+
+/** Said beside the message itself, so it is the last thing read before the first token. */
+function replyLanguageLine(language: ReplyLanguage): string {
+  const name = LANGUAGE_NAME[language];
+  return `Reply language: this message is written in ${name}. Write your whole reply in ${name} from its first word, whatever language the tool results, the project knowledge or earlier replies are in. Ids, status names, refusal codes and code stay as they are.`;
 }
 
 function renderTurnContext(ctx: TurnContext): string | null {
@@ -26,6 +37,7 @@ function renderTurnContext(ctx: TurnContext): string | null {
   }
   const speaker = ctx.speakerContext?.trim();
   if (speaker) sections.push(speaker);
+  if (ctx.replyLanguage) sections.push(replyLanguageLine(ctx.replyLanguage));
   return sections.length > 0 ? sections.join('\n\n') : null;
 }
 

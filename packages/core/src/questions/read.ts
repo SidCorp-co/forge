@@ -10,7 +10,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, projects } from '../db/schema.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import {
   type AnswerShape,
@@ -25,6 +25,7 @@ import {
 import { resolveIssueKeyInProject } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
@@ -58,6 +59,37 @@ function shapeOf(current: QuestionStep | undefined, access: PermissionFacts | nu
 
 function seenBy<T extends { steps: QuestionStep[] }>(row: T, access: PermissionFacts | null) {
   return { ...row, ...shapeOf(row.steps[row.steps.length - 1], access) };
+}
+
+/** The issue whose merge mark a question waits on, by its key, as every reader shows it. */
+export interface AwaitedMergeView {
+  issueId: string;
+  key: string;
+}
+
+/** Each row with the mark it waits on named by its issue's key (`awaitsMerge`), null where none. */
+async function withAwaitedMerge<T extends { awaitsMergeIssueId: string | null }>(
+  rows: T[],
+): Promise<Array<T & { awaitsMerge: AwaitedMergeView | null }>> {
+  const ids = [
+    ...new Set(rows.flatMap((r) => (r.awaitsMergeIssueId ? [r.awaitsMergeIssueId] : []))),
+  ];
+  const keys = new Map<string, string>();
+  if (ids.length > 0) {
+    const found = await db
+      .select({ id: issues.id, seq: issues.issSeq, prefix: projects.issuePrefix })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(inArray(issues.id, ids));
+    for (const f of found) keys.set(f.id, formatIssueRef(f.prefix, f.seq));
+  }
+  return rows.map((r) => {
+    const key = r.awaitsMergeIssueId ? keys.get(r.awaitsMergeIssueId) : undefined;
+    return {
+      ...r,
+      awaitsMerge: r.awaitsMergeIssueId && key ? { issueId: r.awaitsMergeIssueId, key } : null,
+    };
+  });
 }
 
 /**
@@ -197,6 +229,7 @@ export async function projectQuestionsFor(
         endedReason: agentQuestions.endedReason,
         awaitsWorkflowId: agentQuestions.awaitsWorkflowId,
         awaitsRevision: agentQuestions.awaitsRevision,
+        awaitsMergeIssueId: agentQuestions.awaitsMergeIssueId,
         createdAt: agentQuestions.createdAt,
         updatedAt: agentQuestions.updatedAt,
         rounds: sql<number>`jsonb_array_length(${agentQuestions.steps})::int`,
@@ -215,11 +248,13 @@ export async function projectQuestionsFor(
   const pageRows = hasMore ? rows.slice(0, page.limit) : rows;
   const last = pageRows[pageRows.length - 1];
   return {
-    questions: pageRows.map(({ cursor: _cursor, ...row }) => ({
-      ...row,
-      rounds: Number(row.rounds),
-      ...shapeOf(row.currentStep ?? undefined, access),
-    })),
+    questions: await withAwaitedMerge(
+      pageRows.map(({ cursor: _cursor, ...row }) => ({
+        ...row,
+        rounds: Number(row.rounds),
+        ...shapeOf(row.currentStep ?? undefined, access),
+      })),
+    ),
     total,
     hasMore,
     nextCursor: hasMore && last ? encodeCursor(last.cursor) : null,
@@ -257,7 +292,8 @@ export async function readQuestionFor(questionId: string, userId: string) {
   if (!row?.projectId) return null;
   const access = await accessOn(row.projectId, userId);
   if (!access) return null;
-  return seenBy(row, access);
+  const [seen] = await withAwaitedMerge([seenBy(row, access)]);
+  return seen ?? null;
 }
 
 export async function readQuestionsForIssue(issueId: string, userId: string) {
@@ -274,7 +310,7 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
     .from(agentQuestions)
     .where(and(eq(agentQuestions.issueId, issueId), eq(agentQuestions.projectId, issue.projectId)))
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
-  return rows.map((row) => seenBy(row, access));
+  return withAwaitedMerge(rows.map((row) => seenBy(row, access)));
 }
 
 export async function answerAs(args: {

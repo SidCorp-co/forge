@@ -9,7 +9,6 @@
 
 import {
   codeAuthored,
-  continuationEndedReply,
   conversationTransport,
   nothingMoreReply,
   openConversation,
@@ -28,7 +27,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { registerTurnStop, STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
-import { composeReply, type TurnContext } from './turn-compose.js';
+import { composeReply, reportOfFailure, type TurnContext } from './turn-compose.js';
 import { partialReplyText } from './turn-partial.js';
 import {
   type ContinuedEntry,
@@ -129,7 +128,15 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply);
   if ('kind' in reply) return reply;
   if (!reply.send) {
-    if (reply.ended === 'failed') return { kind: 'failed', code: reply.code, reason: reply.reason };
+    if (reply.ended === 'failed') {
+      return {
+        kind: 'failed',
+        code: reply.code,
+        reason: reply.reason,
+        cause: reply.cause,
+        report: reply.report,
+      };
+    }
     return { kind: reply.ended ?? 'diverted', reason: reply.reason };
   }
   return deliverReply(req, transport, conversation.id, reply);
@@ -168,6 +175,7 @@ async function composeWithin(
     },
     credential: credential.get,
     writes: null,
+    draft: { text: '' },
   };
   const settle = async () => {
     clearTimeout(ceiling);
@@ -189,7 +197,7 @@ async function composeWithin(
       abort.abort();
       if (req.externalStop?.aborted || abort.signal.reason === STOPPED_BY_A_PERSON)
         return stopped();
-      return failedTurn(req, err, phase, timedOut || abort.signal.reason === TURN_TIMED_OUT);
+      return failedTurn(ctx, err, phase, timedOut || abort.signal.reason === TURN_TIMED_OUT);
     }
   })();
 
@@ -241,13 +249,17 @@ function settledWithin<T>(work: Promise<T>, ms: number): Promise<T | typeof OUTR
   });
 }
 
-/** How a turn that threw ends: the coded line its window records, or the refusal an unconfigured model earns. */
-function failedTurn(
-  req: ConversationTurnRequest,
+/**
+ * How a turn that threw ends: the coded failure its window records with the report the person is
+ * owed, or the refusal an unconfigured model earns.
+ */
+async function failedTurn(
+  ctx: TurnContext,
   err: unknown,
   phase: string,
   timedOut: boolean,
-): TurnReply {
+): Promise<TurnReply> {
+  const { req } = ctx;
   logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
   reportFailure(err, {
     tags: { area: 'conversations', phase, timed_out: String(timedOut) },
@@ -261,7 +273,19 @@ function failedTurn(
     return { send: true, message: codeAuthored(text), screenReplaced: true };
   }
   const code = timedOut ? 'ASSISTANT_TURN_TIMED_OUT' : 'ASSISTANT_TURN_FAILED';
-  return { send: false, ended: 'failed', code, reason: turnFailureReason(code, req.handleName) };
+  const cause = timedOut ? 'timeout' : 'crash';
+  return {
+    send: false,
+    ended: 'failed',
+    code,
+    cause,
+    reason: turnFailureReason(code, req.handleName),
+    report: await reportOfFailure(
+      ctx,
+      { code, cause },
+      { draft: ctx.draft.text || null, progress: null },
+    ),
+  };
 }
 
 /**
@@ -311,11 +335,9 @@ async function continueInThread(
     const language = req.replyLanguage ?? 'en';
     const message = rest.send
       ? rest.message
-      : codeAuthored(
-          rest.ended === 'failed'
-            ? continuationEndedReply(req.handleName, language, rest.code)
-            : nothingMoreReply(req.handleName, language),
-        );
+      : rest.ended === 'failed'
+        ? rest.report
+        : codeAuthored(nothingMoreReply(req.handleName, language));
     entry?.onSettled?.({ text: message.text, screenReplaced: rest.send && rest.screenReplaced });
     const receipt = await transport.deliver(req.venue, message, {
       addressee: req.addressee ?? null,

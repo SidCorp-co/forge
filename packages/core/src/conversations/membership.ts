@@ -222,14 +222,22 @@ export async function addablePeople(
   const orgIds = await orgsOfProjects(scope, tx);
   if (orgIds.length === 0) return [];
 
-  const pool = await tx
-    .selectDistinct({
-      userId: users.id,
-      email: users.email,
-    })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(inArray(organizationMembers.orgId, orgIds), ne(users.kind, 'agent')));
+  // a role reaches a project two ways — through its organisation, or as a member of the project
+  // itself — so the pool is both, and `can` below decides; drawing it from the organisation alone
+  // left a project member nobody could add (dev QA 2026-10-07: "There is nobody left to add")
+  const [inOrgs, inProjects] = await Promise.all([
+    tx
+      .selectDistinct({ userId: users.id, email: users.email })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(and(inArray(organizationMembers.orgId, orgIds), ne(users.kind, 'agent'))),
+    tx
+      .selectDistinct({ userId: users.id, email: users.email })
+      .from(projectMembers)
+      .innerJoin(users, eq(users.id, projectMembers.userId))
+      .where(and(inArray(projectMembers.projectId, [...scope]), ne(users.kind, 'agent'))),
+  ]);
+  const pool = [...new Map([...inOrgs, ...inProjects].map((p) => [p.userId, p])).values()];
 
   const out: PersonCandidate[] = [];
   for (const person of pool) {

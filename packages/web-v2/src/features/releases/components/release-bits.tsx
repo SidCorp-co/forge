@@ -6,7 +6,7 @@ import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
-import { gateSentence, gateTitle, localizeWaiting, standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
 import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
@@ -78,16 +78,16 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
   const [open, setOpen] = useState(false);
   const more = gate.issues.length > NAMED_IN_SENTENCE;
   const owner = gate.owner;
-  const title = gateTitle(gate.title, language);
+  const title = said(gate.says.title, language);
   const read = tone ?? (gate.kind === "blocker" ? "problem" : "warning");
   return (
     <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code} data-tone={read}>
       <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: GATE_DOT[read] }} />
       <span className="min-w-0 flex-1">
-        <b className="font-semibold">{title}.</b> {gateSentence(gate.sentence, language)}
+        <b className="font-semibold">{title}.</b> {said(gate.says.sentence, language)}
         {owner.kind === "system" ? null : (
           <span className="mt-0.5 block text-12-5 text-muted" data-testid="gate-owner">
-            {t("releases.gateOwes", { who: standingWho(owner.who, language), act: standingAct(owner.act, language) })}
+            {t("releases.gateOwes", { who: said(owner.says.who, language), act: said(owner.says.act, language) })}
           </span>
         )}
         {gate.issues.length > 0 && !more ? <GateIssues issues={gate.issues} slug={slug} /> : null}
@@ -113,7 +113,7 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
 export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: string }) {
   const t = useCopy();
   const label = useLabel();
-  const w = localizeWaiting(r.waitingOn, useInterfaceLanguage());
+  const w = saidView(r.waitingOn, useInterfaceLanguage());
   const ended = r.attentionGroup === "done" || r.attentionGroup === "stopped";
   const stuck = r.attentionGroup === "stuck";
   const head = ended

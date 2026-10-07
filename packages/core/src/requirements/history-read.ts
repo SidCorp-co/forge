@@ -4,7 +4,8 @@
  */
 
 import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
-import type { RequirementHistoryEntry } from '@forge/contracts/requirements';
+import type { BaselineReadiness, RequirementHistoryEntry } from '@forge/contracts/requirements';
+import { type Said, type SaidPlainKey, say, sayEn, verbatim } from '@forge/contracts/said';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues, kernelTransitions } from '../db/schema.js';
@@ -19,13 +20,13 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 
-const SUGGESTION_LABEL: Record<string, string> = {
-  requirement_draft: 'a requirement draft',
-  revision_diff: 'a revision',
-  readiness: 'a readiness check',
-  breakdown: 'a breakdown',
-  triage: 'a triage',
-  duplicate: 'a duplicate',
+const SUGGESTION_LABEL: Record<string, SaidPlainKey> = {
+  requirement_draft: 'requirements.history.what.requirement_draft',
+  revision_diff: 'requirements.history.what.revision_diff',
+  readiness: 'requirements.history.what.readiness',
+  breakdown: 'requirements.history.what.breakdown',
+  triage: 'requirements.history.what.triage',
+  duplicate: 'requirements.history.what.duplicate',
 };
 
 const RECORD_KIND_LABEL: Record<string, string> = {
@@ -92,13 +93,26 @@ interface SuggestionRow {
 }
 
 interface Namer {
-  who: (id: string | null, fallback: string) => string;
+  who: (id: string | null, fallback: Said) => Said;
   sourceOf: (id: string | null) => 'person' | 'agent';
 }
 
-const entry = (
-  e: Omit<RequirementHistoryEntry, 'issue' | 'move'> & Partial<RequirementHistoryEntry>,
-): RequirementHistoryEntry => ({ issue: null, move: null, ...e });
+const SOMEONE = say('requirements.history.who.someone');
+const SIGNER = say('requirements.history.who.signer');
+const AN_AGENT = say('requirements.history.who.agent');
+
+type EntryInput = Omit<RequirementHistoryEntry, 'issue' | 'move' | 'who' | 'text' | 'says'> &
+  Partial<Pick<RequirementHistoryEntry, 'issue' | 'move'>> & { who: Said; text: Said };
+
+/** A history entry from what it says: its English `who` and `text` rendered from `says`. */
+const entry = ({ who, text, ...e }: EntryInput): RequirementHistoryEntry => ({
+  issue: null,
+  move: null,
+  ...e,
+  who: sayEn(who),
+  text: sayEn(text),
+  says: { who, text },
+});
 
 function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
   const out = [
@@ -106,9 +120,14 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
       id: `rev-${r.revision}-written`,
       at: r.createdAt.toISOString(),
       source: n.sourceOf(r.authorId),
-      who: n.who(r.authorId, 'Someone'),
+      who: n.who(r.authorId, SOMEONE),
       kind: 'Revision',
-      text: `Wrote r${r.revision}${r.fromSuggestionId ? ' (an accepted suggestion)' : ''}: ${r.changeSummary ?? r.reason}`,
+      text: say(
+        r.fromSuggestionId
+          ? 'requirements.history.text.wroteSuggested'
+          : 'requirements.history.text.wrote',
+        { r: r.revision, rest: r.changeSummary ?? r.reason },
+      ),
     }),
   ];
   if (r.proposedAt) {
@@ -117,9 +136,9 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
         id: `rev-${r.revision}-proposed`,
         at: r.proposedAt.toISOString(),
         source: n.sourceOf(r.proposedBy ?? r.authorId),
-        who: n.who(r.proposedBy ?? r.authorId, 'Someone'),
+        who: n.who(r.proposedBy ?? r.authorId, SOMEONE),
         kind: 'Revision',
-        text: `Proposed r${r.revision}`,
+        text: say('requirements.history.text.proposed', { r: r.revision }),
       }),
     );
   }
@@ -129,9 +148,11 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
         id: `rev-${r.revision}-accepted`,
         at: r.decidedAt.toISOString(),
         source: 'person',
-        who: n.who(r.decidedBy, 'A signer'),
+        who: n.who(r.decidedBy, SIGNER),
         kind: 'Decision',
-        text: `Accepted r${r.revision}${r.acceptReason ? `: ${r.acceptReason}` : ''}`,
+        text: r.acceptReason
+          ? say('requirements.history.text.acceptedWhy', { r: r.revision, rest: r.acceptReason })
+          : say('requirements.history.text.accepted', { r: r.revision }),
       }),
     );
   }
@@ -145,9 +166,9 @@ const returnEntry = (r: ReturnRow, n: Namer) =>
     id: `return-${r.id}`,
     at: r.returnedAt.toISOString(),
     source: 'person',
-    who: n.who(r.returnedBy, 'A signer'),
+    who: n.who(r.returnedBy, SIGNER),
     kind: 'Returned',
-    text: `Returned r${r.revision}: ${r.reason}`,
+    text: say('requirements.history.text.returned', { r: r.revision, rest: r.reason }),
   });
 
 const deferralEntry = (d: DeferralRow, n: Namer) =>
@@ -155,12 +176,19 @@ const deferralEntry = (d: DeferralRow, n: Namer) =>
     id: `deferral-${d.id}`,
     at: d.decidedAt.toISOString(),
     source: 'person',
-    who: n.who(d.decidedBy, 'A signer'),
+    who: n.who(d.decidedBy, SIGNER),
     kind: 'Decision',
     text:
       d.act === 'defer'
-        ? `Deferred out of the current release${d.targetPhase ? ` (for ${d.targetPhase})` : ''}: ${d.reason ?? ''}`
-        : `Undeferred${d.reason ? `: ${d.reason}` : ''}`,
+        ? d.targetPhase
+          ? say('requirements.history.text.deferredFor', {
+              phase: d.targetPhase,
+              rest: d.reason ?? '',
+            })
+          : say('requirements.history.text.deferred', { rest: d.reason ?? '' })
+        : d.reason
+          ? say('requirements.history.text.undeferredWhy', { rest: d.reason })
+          : say('requirements.history.text.undeferred'),
   });
 
 const baselineEntry = (b: BaselineRow, n: Namer) =>
@@ -168,18 +196,38 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
     id: `baseline-${b.revision}-${b.seq}`,
     at: b.agreedAt.toISOString(),
     source: 'person',
-    who: n.who(b.agreedBy, 'A signer'),
+    who: n.who(b.agreedBy, SIGNER),
     kind: 'Agreed',
-    text: `${b.act === 'repin' ? 'Re-pinned' : 'Agreed'} r${b.revision}${b.act === 'repin' ? ' onto the approved designs' : ''}${b.reason ? `: ${b.reason}` : ''}${readinessNote(b.readiness)}`,
+    text: noted(baselineText(b), readinessNote(b.readiness)),
   });
+
+function baselineText(b: BaselineRow): Said {
+  const r = b.revision;
+  if (b.act === 'repin') {
+    return b.reason
+      ? say('requirements.history.text.repinnedWhy', { r, rest: b.reason })
+      : say('requirements.history.text.repinned', { r });
+  }
+  return b.reason
+    ? say('requirements.history.text.agreedWhy', { r, rest: b.reason })
+    : say('requirements.history.text.agreed', { r });
+}
+
+const noted = (text: Said, note: Said | null): Said =>
+  note ? say('requirements.history.text.noted', { text, note }) : text;
 
 // A delivery accept and a drop write no row of their own: the requirement's kernel transition is
 // their record, the signer's reason on it (ISS-281)
 const MOVES_READ = ['accepted', 'dropped'];
 
-function moveText(m: MoveRow): string {
-  if (m.toStatus === 'accepted') return `Accepted the delivery${m.reason ? `: ${m.reason}` : ''}`;
-  if (m.toStatus === 'dropped') return `Dropped: ${m.reason ?? ''}`;
+function moveText(m: MoveRow): Said {
+  if (m.toStatus === 'accepted') {
+    return m.reason
+      ? say('requirements.history.text.deliveryAcceptedWhy', { rest: m.reason })
+      : say('requirements.history.text.deliveryAccepted');
+  }
+  if (m.toStatus === 'dropped')
+    return say('requirements.history.text.dropped', { rest: m.reason ?? '' });
   throw new Error(
     `history-read: read a requirement move to ${m.toStatus}; only ${MOVES_READ.join(' and ')} are read`,
   );
@@ -190,42 +238,73 @@ const moveEntry = (m: MoveRow, n: Namer) =>
     id: `move-${m.id}`,
     at: m.createdAt.toISOString(),
     source: n.sourceOf(m.actorId),
-    who: n.who(m.actorId, 'A signer'),
+    who: n.who(m.actorId, SIGNER),
     kind: 'Decision',
     text: moveText(m),
   });
 
-function readinessNote(r: BaselineRow['readiness']): string {
-  if (!r) return '';
-  const dedup = r.dedup && !r.dedup.ran ? ` (${r.dedup.why})` : '';
+// A dedup check stored before core said it carries only its English (`near-duplicate.ts:checkOf`);
+// read back to its key, any other sentence carried as written.
+const NOT_CHECKED = /^dedup was not checked: the head revision's vector is (.+)$/;
+
+function dedupWhy(d: NonNullable<BaselineReadiness['dedup']>): Said | null {
+  if (d.ran) return null;
+  if (d.says) return d.says.why;
+  const m = NOT_CHECKED.exec(d.why);
+  if (!m) return verbatim(d.why);
+  return m[1] === 'not written yet'
+    ? say('requirements.dedup.notWritten')
+    : say('requirements.dedup.notChecked', { status: m[1] as string });
+}
+
+function readinessNote(r: BaselineRow['readiness']): Said | null {
+  if (!r) return null;
+  const why = r.dedup ? dedupWhy(r.dedup) : null;
+  const dedup = why ? say('requirements.history.note.dedup', { why }) : null;
   if (r.gate === 'off') return dedup;
-  if (r.ready) return ` (ready)${dedup}`;
-  if (r.suggestionId === null) return ` (no readiness result)${dedup}`;
-  return ` (not ready: ${r.failed.join(', ')})${dedup}`;
+  if (r.ready) return say('requirements.history.note.ready', { dedup });
+  if (r.suggestionId === null) return say('requirements.history.note.noResult', { dedup });
+  return say('requirements.history.note.notReady', { failed: r.failed.join(', '), dedup });
 }
 
 function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[] {
-  const label = SUGGESTION_LABEL[s.kind] ?? 'a change';
+  const what = say(SUGGESTION_LABEL[s.kind] ?? 'requirements.history.what.change');
   const out = [
     entry({
       id: `sug-${s.id}`,
       at: s.createdAt.toISOString(),
       source: s.producerKind === 'person' ? 'person' : 'agent',
-      who: s.producerKind === 'ba_assistant' ? 'BA assistant' : n.who(s.producerId, 'An agent'),
+      who:
+        s.producerKind === 'ba_assistant'
+          ? say('requirements.history.who.assistant')
+          : n.who(s.producerId, AN_AGENT),
       kind: 'Suggestion',
-      text: `Suggested ${label}`,
+      text: say('requirements.history.text.suggested', { what }),
     }),
   ];
   if (s.decidedAt && (s.status === 'accepted' || s.status === 'rejected')) {
-    const verb = s.status === 'accepted' ? 'Accepted' : 'Rejected';
+    const accepted = s.status === 'accepted';
+    const text = s.reason
+      ? say(
+          accepted
+            ? 'requirements.history.text.acceptedSuggestionWhy'
+            : 'requirements.history.text.rejectedSuggestionWhy',
+          { what, rest: s.reason },
+        )
+      : say(
+          accepted
+            ? 'requirements.history.text.acceptedSuggestion'
+            : 'requirements.history.text.rejectedSuggestion',
+          { what },
+        );
     out.push(
       entry({
         id: `sug-${s.id}-${s.status}`,
         at: s.decidedAt.toISOString(),
         source: 'person',
-        who: n.who(s.decidedBy, 'Someone'),
+        who: n.who(s.decidedBy, SOMEONE),
         kind: 'Decision',
-        text: `${verb} ${label}${s.reason ? `: ${s.reason}` : ''}`,
+        text,
       }),
     );
   }
@@ -244,21 +323,22 @@ function activityEntry(
       id: a.id,
       at: a.createdAt.toISOString(),
       source: 'system',
-      who: 'Forge',
+      who: say('requirements.history.who.forge'),
       kind: 'Status',
-      text: '',
+      text: say('standing.empty'),
       issue,
       move: { from: move.from || null, to: move.to },
     });
   }
-  const actor = a.actorType === 'user' ? n.who(a.actorId, '') : '';
+  const fallback = a.actorAgency === 'agent' ? AN_AGENT : SOMEONE;
+  const lead = leadOf(a.payload);
   return entry({
     id: a.id,
     at: a.createdAt.toISOString(),
     source: a.actorAgency === 'agent' ? 'agent' : 'person',
-    who: actor || (a.actorAgency === 'agent' ? 'An agent' : 'Someone'),
+    who: a.actorType === 'user' ? n.who(a.actorId, fallback) : fallback,
     kind: RECORD_KIND_LABEL[a.action] ?? 'Record',
-    text: leadOf(a.payload) ?? '',
+    text: lead ? verbatim(lead) : say('standing.empty'),
     issue,
   });
 }
@@ -360,7 +440,10 @@ export async function historyOf(
     ...activity.filter((a) => a.actorType === 'user').map((a) => a.actorId),
   ]);
   const n: Namer = {
-    who: (id, fallback) => (id ? people.get(id)?.name : undefined) ?? fallback,
+    who: (id, fallback) => {
+      const name = id ? people.get(id)?.name : undefined;
+      return name ? say('standing.who.named', { name }) : fallback;
+    },
     sourceOf: (id) => (id && people.get(id)?.kind === 'agent' ? 'agent' : 'person'),
   };
   const out = [

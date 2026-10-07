@@ -3,6 +3,7 @@
 // peek and page draw them, so a state keeps one badge and nobody derives whom a release waits on in
 // the browser.
 
+import type { Said } from "./said.js";
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ArtifactChange,
@@ -227,7 +228,8 @@ export interface ReleaseSummary
 /**
  * How a release's close is proved: `probed` by production's source probes, `deployment` by the
  * commit production's deployment record names, `provider` by what a storefront provider reports it
- * publishes against each issue's landed draft (core `release-batch/provider-verify.ts`).
+ * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
+ * a design approval's record (core `release-batch/provider-verify.ts`).
  * `unverified` is a close from before the deployment check, kept as it was recorded.
  */
 export const RELEASE_VERIFICATIONS = [
@@ -372,6 +374,8 @@ export interface ReleaseChangeRiskView {
 	ref: string;
 	issues: string[];
 	sentence: string;
+	/** `sentence` as said (`said.ts`). */
+	says: { sentence: Said };
 }
 
 /** "What changes": per surface, what the release's landings name, and what the data flags. */
@@ -446,6 +450,8 @@ export interface ReleaseGateOwner {
 	act: string;
 	/** What doing the act changes, where the act's own words leave that open. */
 	effect?: string;
+	/** `who`, `act` and `effect` as said (`said.ts`). */
+	says: { who: Said; act: Said; effect?: Said };
 }
 
 export interface ReleaseGateView {
@@ -456,6 +462,8 @@ export interface ReleaseGateView {
 	detail: string;
 	issues: string[];
 	owner: ReleaseGateOwner;
+	/** `title` and `sentence` as said (`said.ts`). */
+	says: { title: Said; sentence: Said };
 }
 
 export interface ReleaseApprovalView {

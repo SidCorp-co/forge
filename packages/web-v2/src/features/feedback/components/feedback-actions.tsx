@@ -5,7 +5,7 @@ import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textar
 import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { feedbackNote } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -218,8 +218,8 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
             {dedup ? (
               <span className="text-12 text-muted">
                 {!dedup.ran
-                  ? dedup.why
-                    ? feedbackNote(dedup.why, language)
+                  ? dedup.says
+                    ? said(dedup.says.why, language)
                     : t("feedback.proposal.noDedup")
                   : dedup.nearest
                     ? `${t("feedback.proposal.nearest", { key: dedup.nearest })}${dedup.similarity !== undefined ? ` (${dedup.similarity})` : ""}`

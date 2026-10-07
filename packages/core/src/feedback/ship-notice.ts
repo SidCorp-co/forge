@@ -8,6 +8,7 @@
 
 import type { FeedbackNotTold, FeedbackPhase, FeedbackShipNotice } from '@forge/contracts/feedback';
 import { feedbackShippedPrefix } from '@forge/contracts/notifications';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { and, desc, eq, inArray, like, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from '../db/schema.js';
@@ -149,17 +150,20 @@ function untoldReason(
   notice: SentNotice | undefined,
   shipped: Shipped,
   began: Date | null,
-): string {
-  if (began) return `Shipped before release notices existed on this project (${day(began)}).`;
-  if (notice) {
-    return 'The reporter has turned this notice off, so it reached nobody: tell them yourself.';
-  }
-  if (item.reporterAgency === 'agent') {
-    return 'The reporter is an agent, which has no bell: tell it where it listens.';
-  }
+): Said {
+  if (began) return say('feedback.notice.before', { date: day(began) });
+  if (notice) return say('feedback.notice.turnedOff');
+  if (item.reporterAgency === 'agent') return say('feedback.notice.agent');
   return shipped.release
-    ? `${shipped.release} shipped it and sent the reporter no notice.`
-    : 'No release carries it, so none told the reporter: tell them yourself.';
+    ? say('feedback.notice.silent', { release: shipped.release })
+    : say('feedback.notice.noRelease');
+}
+
+/** How a person told the reporter, by name where the record has one. */
+function toldBy(relayed: boolean, by: string | null): Said {
+  if (relayed)
+    return by ? say('feedback.told.relayed', { by }) : say('feedback.told.relayedUnnamed');
+  return by ? say('feedback.told.message', { by }) : say('feedback.told.messageUnnamed');
 }
 
 /**
@@ -192,6 +196,8 @@ export async function shipNoticesOf(
         release: notice.release,
         by: null,
         shipped: { at: ship.at?.toISOString() ?? null, release: ship.release ?? notice.release },
+        told: null,
+        says: { told: null },
       });
       continue;
     }
@@ -200,20 +206,26 @@ export async function shipNoticesOf(
       (m) => m.feedbackId === item.id && (since === null || m.at >= since),
     );
     if (message) {
+      const by = names.get(message.by) ?? null;
+      const told = toldBy(message.relayed, by);
       out.set(item.id, {
         state: 'told',
         how: message.relayed ? 'relayed' : 'message',
         at: message.at.toISOString(),
         release: ship.release,
-        by: names.get(message.by) ?? null,
+        by,
         shipped: { at: ship.at?.toISOString() ?? null, release: ship.release },
+        told: sayEn(told),
+        says: { told },
       });
       continue;
     }
     const before = !notice && ship.at !== null && began !== null && ship.at < began;
+    const reason = untoldReason(item, notice, ship, before ? began : null);
     out.set(item.id, {
       state: 'not_told',
-      reason: untoldReason(item, notice, ship, before ? began : null),
+      reason: sayEn(reason),
+      says: { reason },
       shipped: { at: ship.at?.toISOString() ?? null, release: ship.release },
       beforeNotices: before,
       noticesBegan: began?.toISOString() ?? null,

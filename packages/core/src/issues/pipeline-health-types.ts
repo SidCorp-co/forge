@@ -1,4 +1,5 @@
 import type { PauseResumer } from '@forge/contracts/run-standing';
+import type { Said } from '@forge/contracts/said';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { IssueWorker, SessionWorkerLane } from './issue-worker.js';
 import type { RunnerAvailability } from './ports.js';
@@ -21,6 +22,8 @@ export interface PipelineReading {
   who: string;
   /** False when it clears itself. */
   needsAction: boolean;
+  /** `detail` and `who` as said (`@forge/contracts/said`). */
+  says: { detail: Said; who: Said };
 }
 
 export interface PipelineGate {

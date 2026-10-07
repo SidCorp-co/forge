@@ -1,3 +1,5 @@
+import type { Said } from "@forge/contracts/said";
+import { forecastWait, RULE, say, sentence, waitingOn } from "./said";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
@@ -16,11 +18,14 @@ import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 
 // The Feedback screens for the vi walking test, filled from a seeded query cache so they draw at once.
 // Fixture content (titles, names, bodies) carries no English chrome word; core's sentences (whom an item
-// waits on, why nobody was told) are the real ones core writes, since they reach the screen through
-// standing-copy patterns.
+// waits on, why nobody was told) are said by their registry keys, as core says them, and the screen
+// reads them in vi from there.
 
 const P = "p1";
 const AT = "2026-10-05T08:00:00.000Z";
+const LAN = say("standing.who.named", { name: "Lan" });
+/** A reason core sends as English beside what it said. */
+const noted = (s: Said) => ({ reason: sentence(s), says: { reason: s } });
 const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
@@ -33,7 +38,7 @@ const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummar
     status: "new",
     phase: "new",
     attentionGroup: "needs_you",
-    waitingOn: { kind: "you", who: "You", act: "triage it", rule: "r", ref: null, dueAt: null },
+    waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.triageIt"), rule: RULE }),
     target: { type: "requirement", key: "REQ-1", title: "Dang nhap" },
     route: null,
     reporter: { id: "u1", name: "Lan", agency: "human" },
@@ -49,10 +54,10 @@ const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummar
 const ROWS: FeedbackSummary[] = [
   summary(1),
   summary(2, { target: { type: "screen", key: "Bang dieu khien", title: null }, snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" } }),
-  summary(3, { phase: "planned", status: "triaged", attentionGroup: "moving", waitingOn: { kind: "work", who: "The linked issue", act: "be resolved", rule: "r", ref: "ISS-4" } as never }),
-  summary(4, { phase: "resolved", status: "triaged", attentionGroup: "waiting", waitingOn: { kind: "person", who: "Lan", act: "verify the fix shipped in 0.2.0", rule: "r", ref: "0.2.0" } as never }),
-  summary(5, { phase: "verified", status: "verified", attentionGroup: "done", waitingOn: { kind: "none", who: "Nobody", act: "", rule: "r", ref: null } as never }),
-  summary(6, { phase: "declined", status: "declined", attentionGroup: "done", waitingOn: { kind: "none", who: "Nobody", act: "", rule: "r", ref: null } as never }),
+  summary(3, { phase: "planned", status: "triaged", attentionGroup: "moving", waitingOn: waitingOn("issue", { who: say("standing.who.linkedIssue"), act: say("standing.act.beResolved"), rule: RULE }, { ref: "ISS-4" }) as never }),
+  summary(4, { phase: "resolved", status: "triaged", attentionGroup: "waiting", waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never }),
+  summary(5, { phase: "verified", status: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never }),
+  summary(6, { phase: "declined", status: "declined", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never }),
   summary(7, { phase: "reopened", status: "reopened" }),
 ];
 
@@ -69,9 +74,9 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     duplicates: ["FB-9"],
     source: null,
     decisions: [
-      { decision: "triaged", route: "issue", carrier: "ISS-4", reason: null, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: "co the" },
-      { decision: "verified", route: null, carrier: null, reason: "Verified automatically after 14 days with no reply", decidedBy: null, decidedByName: null, decidedAgency: "system", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
-      { decision: "snoozed", route: null, carrier: null, reason: null, decidedBy: "a1", decidedByName: "Tro ly", decidedAgency: "agent", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
+      { decision: "triaged", route: "issue", carrier: "ISS-4", reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: "co the" },
+      { decision: "verified", route: null, carrier: null, ...noted(say("feedback.notice.autoVerified", { n: 14 })), decidedBy: null, decidedByName: null, decidedAgency: "system", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
+      { decision: "snoozed", route: null, carrier: null, reason: null, says: { reason: null }, decidedBy: "a1", decidedByName: "Tro ly", decidedAgency: "agent", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
     ],
     attachments: [{ id: "a1", from: "Lan", name: "anh.png", mime: "image/png", size: 4096, flagged: true, createdAt: AT, url: "/api/projects/p/feedback/FB-2/attachments/a1" }],
     reporters: [
@@ -133,7 +138,7 @@ export const feedbackPeek = () => (
 /** The rail with both of its time rows, ETA and the forecast line, in the language the screen reads in. */
 function FactsWithForecast({ f }: { f: FeedbackView }) {
   const lang = useInterfaceLanguage();
-  const forecast = { key: f.key, triage: { label: "forecast", asOf: AT, kind: "paused", who: "A project writer", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null };
+  const forecast = { key: f.key, triage: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null };
   return <FeedbackFacts slug="hop" f={f} forecast={forecast as never} clock={{ lang, now: Date.parse(AT), timeZone: "UTC" }} />;
 }
 
@@ -145,27 +150,27 @@ export const feedbackFacts = () => (
       f={view({
         phase: "resolved",
         attentionGroup: "waiting",
-        waitingOn: { kind: "person", who: "Lan", act: "verify the fix shipped in 0.2.0", rule: "r", ref: "0.2.0" } as never,
+        waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never,
         route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null },
-        shipNotice: { state: "not_told", reason: "The reporter has turned this notice off, so it reached nobody: tell them yourself.", shipped: { at: AT, release: "0.2.0" }, beforeNotices: false, noticesBegan: null },
+        shipNotice: { state: "not_told", ...noted(say("feedback.notice.turnedOff")), shipped: { at: AT, release: "0.2.0" }, beforeNotices: false, noticesBegan: null },
         snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" },
         source: { agentReport: { id: "0123456789ab", kind: "bug", severity: "high", target: "issue", targetRef: "ISS-4", createdAt: AT } },
         sensitive: true,
       } as never)}
     />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, reason: "Verified automatically after 14 days with no reply" }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" } }, route: null })} />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null }, autoVerify: null })} />
-    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null }, shipNotice: { state: "not_told", reason: "No release carries it, so none told the reporter: tell them yourself.", shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
-    <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: { kind: "none", who: "Nobody", act: "", rule: "r", ref: null } as never })} />
-    <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: { kind: "you", who: "You", act: "Approve release 0.2.0", rule: "r", ref: "0.2.0" } as never })} />
-    <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: { kind: "person", who: "Lan", act: "verify the fix shipped in 0.2.0", rule: "r", ref: "0.2.0" } as never })} />
+    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
+    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, autoVerify: null })} />
+    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
+    <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never })} />
+    <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />
+    <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />
     <FeedbackBanner
       slug="hop"
       f={view({
         attentionGroup: "waiting",
         route: { route: "answer", carriers: [], answer: "Tra loi" },
-        decisions: [{ decision: "triaged", route: "answer", carrier: null, reason: null, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: null }],
-        waitingOn: { kind: "person", who: "Lan", act: "Confirm the answer", rule: "r", ref: null } as never,
+        decisions: [{ decision: "triaged", route: "answer", carrier: null, reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: null }],
+        waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.confirmAnswer"), rule: RULE }) as never,
       })}
     />
     <FeedbackHistory f={ITEM} />

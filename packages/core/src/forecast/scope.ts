@@ -9,6 +9,7 @@ import type {
   RequirementForecasts,
   ScopeForecast,
 } from '@forge/contracts/forecast';
+import { say } from '@forge/contracts/said';
 import { draftReleaseIssueIds } from '../release-batch/index.js';
 import { deliveryOf, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 import {
@@ -19,7 +20,7 @@ import {
   type RequirementRow,
   requirementBySeq,
 } from './facts.js';
-import { scopeForecast, scopeLandings, seedOf } from './model.js';
+import { scopeForecast, scopeLandings, seedOf, waitOn } from './model.js';
 import { issueProgressOf } from './progress.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
 import { type ForecastViewer, readReleaseFacts, readShipped } from './release.js';
@@ -168,13 +169,17 @@ function draftScope(r: Reads, rows: readonly IssueRow[]): ScopeForecast {
   if (read.forecast?.kind !== 'landed' || leg.kind !== 'person') return read;
   return {
     ...read,
-    next: pausedOf(r.f.run.asOf, {
-      who: leg.who,
-      act: leg.act,
-      reason: `every included issue has landed; ${leg.reason}`,
-      ref: null,
-      since: read.forecast.landedAt,
-    }),
+    next: pausedOf(
+      r.f.run.asOf,
+      waitOn(
+        {
+          ...leg.says,
+          reason: say('forecast.reason.allLanded', { reason: leg.says.reason }),
+        },
+        null,
+        read.forecast.landedAt,
+      ),
+    ),
   };
 }
 

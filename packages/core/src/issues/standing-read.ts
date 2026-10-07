@@ -44,12 +44,7 @@ import {
   holdsOpenHumanQuestion,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
-import {
-  deriveIssueStanding,
-  type IssueStandingInput,
-  type StandingEdge,
-  wavesOf,
-} from './standing.js';
+import { deriveIssueStanding, type IssueStandingInput, type StandingEdge } from './standing.js';
 import { issueBlockerOf } from './standing-blocker.js';
 import {
   criteriaOf,
@@ -58,6 +53,7 @@ import {
   type RequirementRaw,
   requirementsOf,
 } from './standing-facts-read.js';
+import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
 

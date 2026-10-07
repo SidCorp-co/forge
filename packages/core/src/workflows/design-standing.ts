@@ -1,5 +1,6 @@
 import type { DesignRevisionState, DesignStatus } from '@forge/contracts/design-status';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
+import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type {
   DesignBuildGate,
   DesignListReading,
@@ -22,23 +23,27 @@ interface DesignStandingInput extends DesignHeadFacts {
   baseUnapproved?: { code: string; detail: string } | null;
 }
 
-const wait = (
-  kind: DesignWaitingKind,
-  who: string,
-  act: string,
-  rule: string,
-): DesignWaitingOn => ({ kind, who, act, rule, ref: null, dueAt: null });
+const wait = (kind: DesignWaitingKind, who: Said, act: Said, rule: Said): DesignWaitingOn =>
+  waitingOn(kind, { who, act, rule });
+
+const NOBODY = say('standing.who.nobody');
+const NO_ACT = say('standing.act.none');
 
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
-  const act = `approve or return revision ${revision}`;
+  const act = say('designs.act.approveOrReturn', { r: revision });
   if (input.canDecide) {
-    return wait('you', 'You', act, `revision ${revision} is proposed and you may decide it`);
+    return wait(
+      'you',
+      say('standing.who.you'),
+      act,
+      say('designs.rule.youDecide', { r: revision }),
+    );
   }
   return wait(
     'person',
-    'A holder of workflow-designs.approve',
+    say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
     act,
-    'a design is decided by whoever holds workflow-designs.approve on the project (project admin, or an org owner or admin), person or agent',
+    say('designs.rule.approverDecides'),
   );
 }
 
@@ -47,41 +52,40 @@ function proposedWait(input: DesignStandingInput, revision: number): DesignWaiti
 // it; approved or not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
-  const writer = input.latest?.author ?? 'Master';
+  const author = input.latest?.author;
+  const writer = author ? say('standing.who.named', { name: author }) : say('standing.who.master');
   switch (input.status) {
     case 'proposed':
       if (input.baseUnapproved) {
         return wait(
           'agent',
           writer,
-          're-pin basedOn',
-          `${input.baseUnapproved.code}: ${input.baseUnapproved.detail} Its approver cannot approve it until its writer writes it again with basedOn re-pinned`,
+          say('designs.act.repin'),
+          say('designs.rule.baseUnapproved', {
+            code: input.baseUnapproved.code,
+            detail: input.baseUnapproved.detail,
+          }),
         );
       }
       return proposedWait(input, input.proposedRevision ?? latest ?? 1);
     case 'returned':
       return wait(
         'agent',
-        "The project's master",
-        latest === null ? 'revise it' : `revise revision ${latest}`,
-        "a returned design is owed by the project's master, whoever wrote it: core wakes it on the return and its box carries the return to every pass until the next revision is proposed",
+        say('standing.who.projectMaster'),
+        latest === null ? say('designs.act.revise') : say('designs.act.reviseR', { r: latest }),
+        say('designs.rule.returned'),
       );
     case 'draft':
-      return wait(
-        'agent',
-        writer,
-        'finish and propose it',
-        'a draft design is proposed once its master finishes drawing it',
-      );
+      return wait('agent', writer, say('designs.act.finish'), say('designs.rule.draft'));
     case 'approved':
       return wait(
         'none',
-        'Nobody',
-        '',
-        `revision ${input.approvedRevision ?? latest ?? 1} is approved; work that builds it may start`,
+        NOBODY,
+        NO_ACT,
+        say('designs.rule.approved', { r: input.approvedRevision ?? latest ?? 1 }),
       );
     default:
-      return wait('none', 'Nobody', '', 'this workflow is not under design approval');
+      return wait('none', NOBODY, NO_ACT, say('designs.rule.notUnderApproval'));
   }
 }
 
@@ -103,22 +107,21 @@ export function designListReadingOf(
 // The gate is `build-gate.ts:designUnapprovedSql` read for one design: an issue that builds it
 // is dispatched only while its status is approved, so a newer proposal holds builds again
 export function buildGateOf(head: DesignHeadFacts): DesignBuildGate {
+  const gate = (open: boolean, rule: Said): DesignBuildGate => ({
+    open,
+    rule: sayEn(rule),
+    says: { rule },
+  });
   if (head.status === 'approved') {
-    return {
-      open: true,
-      rule: `issues that build it may be dispatched: revision ${head.approvedRevision ?? '?'} is approved`,
-    };
+    return gate(true, say('designs.gate.open', { r: String(head.approvedRevision ?? '?') }));
   }
   const why =
     head.status === null
-      ? 'the design has no approval yet'
+      ? say('designs.gate.noApproval')
       : head.status === 'proposed'
-        ? `revision ${head.proposedRevision ?? '?'} waits on its approver`
-        : `the design is ${head.status}`;
-  return {
-    open: false,
-    rule: `issues that build it are held out of dispatch until a revision is approved; ${why}`,
-  };
+        ? say('designs.gate.waitsApprover', { r: String(head.proposedRevision ?? '?') })
+        : say('designs.gate.status', { status: head.status });
+  return gate(false, say('designs.gate.held', { why }));
 }
 
 /** The revision a build was linked against: the newest approval decided at or before the link,

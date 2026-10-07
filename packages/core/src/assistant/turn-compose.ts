@@ -1,14 +1,22 @@
 // Composing one turn's reply: the egress gate, the transport's hooks, the model, and the screen.
 
 import {
+  askerLanguageOf,
   codeAuthored,
-  confidentLanguageOf,
+  failedTurnReport,
+  type ReplyLanguage,
   recordSilence,
+  type ScreenedMessage,
+  type TurnFailureCause,
+  type TurnFailureCode,
   turnFailureReason,
 } from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
+import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
+import type { ProgressFacts } from '../messaging/facts.js';
+import { repairIssueLinks } from '../messaging/reply-marks.js';
 import { correctFalseClaims } from './confab.js';
 import { STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import {
@@ -21,6 +29,8 @@ import { type AwaitReplyCapture, awaitReplyCapture } from './tools/await-reply-t
 import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 import { cachedReads } from './tools/read-cache.js';
 import { type RoomSendCapture, roomSendCapture } from './tools/room-send-tool.js';
+import { failureReport } from './turn-findings.js';
+import { ledgerLines } from './turn-partial.js';
 import type {
   ConversationTurnRequest,
   TurnHookContext,
@@ -37,6 +47,8 @@ export interface TurnContext {
   credential: () => Promise<TurnCredential>;
   /** The turn's ledger once its toolset is built: what a partial reply names and the screen reads. */
   writes: TurnWrites | null;
+  /** What the first attempt has streamed in its current round: the draft a failure still shows. */
+  draft: { text: string };
 }
 
 /** Record a silence for this turn and close it as declined under `reason`. */
@@ -49,21 +61,63 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
   return { send: false, reason, ended: 'declined' };
 }
 
+/** The language the person asked in, where it can be told. */
+export const askedInOf = (ctx: TurnContext): ReplyLanguage | null =>
+  askerLanguageOf(ctx.req.message);
+
+/** The report a failed turn owes the person: why, and what it did and found, from its ledger and draft. */
+export function reportOfFailure(
+  ctx: TurnContext,
+  failure: { code: TurnFailureCode; cause: TurnFailureCause },
+  found: { draft: string | null; progress: ProgressFacts | null },
+): Promise<ScreenedMessage> {
+  const { req } = ctx;
+  return failureReport({
+    door: req.door,
+    projectId: req.venue.projectId,
+    name: req.handleName,
+    language: req.replyLanguage ?? 'en',
+    askedIn: askedInOf(ctx),
+    ...failure,
+    calls: ctx.writes?.calls() ?? [],
+    draft: found.draft,
+    toolResults: ctx.writes?.resultTexts() ?? [],
+    offeredTools: (ctx.writes?.tools?.tools ?? []).map((t) => t.function.name),
+    progress: found.progress,
+    ...(req.log ? { log: req.log } : {}),
+  });
+}
+
 /** A turn that ended in an error: a coded failure the window records, never a silence it chose. */
-function failed(ctx: TurnContext, result: ExternalChatTurnResult): TurnReply {
-  const code =
-    ctx.abort.signal.reason === TURN_TIMED_OUT
-      ? 'ASSISTANT_TURN_TIMED_OUT'
-      : 'ASSISTANT_TURN_FAILED';
+async function failed(ctx: TurnContext, result: ExternalChatTurnResult): Promise<TurnReply> {
+  const timedOut = ctx.abort.signal.reason === TURN_TIMED_OUT;
+  const code = timedOut ? 'ASSISTANT_TURN_TIMED_OUT' : 'ASSISTANT_TURN_FAILED';
+  const cause: TurnFailureCause = timedOut
+    ? 'timeout'
+    : result.errorSource === 'loop'
+      ? 'crash'
+      : 'provider';
   logger.warn(
-    { ...ctx.req.log, code, error: result.error },
+    { ...ctx.req.log, code, cause, error: result.error },
     'conversations: the turn ended in an error before it answered',
   );
+  const draft = result.partial || ctx.draft.text || null;
   return {
     send: false,
     ended: 'failed',
     code,
+    cause,
     reason: turnFailureReason(code, ctx.req.handleName),
+    report: await reportOfFailure(ctx, { code, cause }, { draft, progress: result.progress }),
+  };
+}
+
+/** Keep the text the current round streams, so a turn that breaks off can still show it. */
+function drafting(ctx: TurnContext, next: ((event: ChatStreamEvent) => void) | undefined) {
+  return (event: ChatStreamEvent): void => {
+    if (event.type === 'chunk') ctx.draft.text += event.text;
+    else if (event.type === 'tool_call' || event.type === 'round_retry') ctx.draft.text = '';
+    next?.(event);
   };
 }
 
@@ -158,12 +212,13 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,
     message: req.message,
+    replyLanguage: askedInOf(ctx),
   };
   const first = await runExternalChatTurn({
     ...turn,
     questionInHistory: Boolean(req.questionAlreadyRecorded),
     images: inputs.images,
-    ...(req.onTurnEvent && !capture ? { onTurnEvent: req.onTurnEvent } : {}),
+    ...(capture ? {} : { onTurnEvent: drafting(ctx, req.onTurnEvent) }),
   });
 
   // A stop that landed while the model was answering: a turn a person ended records, screens and
@@ -188,6 +243,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
         tools: withCaptures([again, asksAgain], writes.tools),
         record: 'nothing',
         message: done ? `${instruction}\n\n${done}` : instruction,
+        ...(capture ? {} : { priorRounds: first.rounds ?? [] }),
       }),
     };
   });
@@ -201,7 +257,7 @@ async function settleFirst(
 ): Promise<ExternalChatTurnResult | TurnReply> {
   let result = first;
   if (capture) {
-    if (result.terminal !== 'done') return failed(ctx, result);
+    if (result.terminal !== 'done') return await failed(ctx, result);
     const captured = capture.captured();
     if (captured === null) return silence(ctx, 'tool-not-called');
     result = { ...result, reply: captured };
@@ -209,11 +265,11 @@ async function settleFirst(
   result = { ...result, reply: correctFalseClaims(result.reply, first.toolCalls).text };
   // a turn its ceiling ended is a timeout whoever may decline, never an overloaded model
   if (result.terminal !== 'done' && ctx.abort.signal.reason === TURN_TIMED_OUT) {
-    return failed(ctx, result);
+    return await failed(ctx, result);
   }
 
   if (!ctx.req.mayDecline) return result;
-  if (result.terminal !== 'done') return failed(ctx, result);
+  if (result.terminal !== 'done') return await failed(ctx, result);
   if (result.reply.trim().length === 0) {
     return { send: false, reason: 'empty-reply', ended: 'declined' };
   }
@@ -256,9 +312,11 @@ async function screenReply(
     projectId: req.venue.projectId,
     handleName: req.handleName,
     language: req.replyLanguage ?? 'en',
-    askedIn: confidentLanguageOf(req.message),
+    askedIn: askedInOf(ctx),
     toolResults: () => ctx.writes?.resultTexts() ?? [],
     first: result,
+    brokenReport: (attempt) =>
+      failedReportText(ctx, attempt.errorSource === 'loop' ? 'crash' : 'provider'),
     offeredTools,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
@@ -282,7 +340,24 @@ async function screenReply(
   return {
     send: true,
     message: screened,
-    screenReplaced: screened.text.trim() !== result.reply.trim(),
+    screenReplaced: screened.text.trim() !== repairIssueLinks(result.reply).trim(),
     awaitsReply: asked && screened.proof !== null,
   };
+}
+
+/**
+ * The report of a rewrite the provider broke off: the ledger only, because the draft it would show
+ * is the one the screen refused.
+ */
+function failedReportText(ctx: TurnContext, cause: TurnFailureCause): string {
+  const { req } = ctx;
+  const language = req.replyLanguage ?? 'en';
+  const ledger = ledgerLines(ctx.writes?.calls() ?? [], language);
+  return failedTurnReport({
+    name: req.handleName,
+    language,
+    code: 'ASSISTANT_TURN_FAILED',
+    cause,
+    findings: ledger.length > 0 ? ledger.join('\n') : null,
+  });
 }

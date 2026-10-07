@@ -9,7 +9,7 @@ import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBa
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { feedbackNote, standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said, saysKey } from "@/lib/i18n/said";
 import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
@@ -59,13 +59,13 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   const g = f.attentionGroup;
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
   const version = f.route?.carriers.find((c) => c.release)?.release ?? null;
-  const approving = g !== "done" && version !== null && w.ref === version && slug && w.act.startsWith("Approve");
-  const verifying = g !== "done" && version !== null && w.ref === version && slug && w.act.startsWith("verify the fix shipped in");
-  const answer = g !== "done" && w.act === "Confirm the answer" ? answerOf(f) : null;
+  const approving = g !== "done" && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.approveReleaseV");
+  const verifying = g !== "done" && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.verifyFixIn");
+  const answer = g !== "done" && saysKey(w.says.act, "standing.act.confirmAnswer") ? answerOf(f) : null;
   return (
     <WaitBanner
       tone={g === "waiting" || g === "done" ? "calm" : tone}
-      head={g === "done" ? `${label("feedbackPhase", f.phase)}.` : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : standingWho(w.who, language) })}
+      head={g === "done" ? `${label("feedbackPhase", f.phase)}.` : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : said(w.says.who, language) })}
       body={
         g === "done" ? (
           t("feedback.banner.nothingOwed")
@@ -84,10 +84,10 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
             </Link>
           </>
         ) : (
-          (w.act ? standingAct(w.act, language) : "") || standingWho(w.who, language)
+          said(w.says.act, language) || said(w.says.who, language)
         )
       }
-      rule={w.rule}
+      rule={said(w.says.rule, language)}
       className={className}
     >
       {answer ? (
@@ -183,9 +183,9 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
               </Link>
             </>
           ) : null}
-          {notice.how !== "notice" ? (
+          {notice.says.told ? (
             <span className="block text-12-5 text-muted" data-testid="ship-notice-how">
-              {t(notice.how === "relayed" ? "feedback.fact.toldRelayed" : "feedback.fact.toldMessage", { by: notice.by ?? t("feedback.fact.aMember") })}
+              {said(notice.says.told, language)}
             </span>
           ) : null}
         </span>
@@ -196,11 +196,7 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
     <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
       <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
         <ShippedLine notice={notice} slug={slug} />
-        {notice.beforeNotices && notice.noticesBegan ? (
-          <span data-testid="ship-notice-before">{t("feedback.fact.notToldBefore", { date: time.date(notice.noticesBegan) })}</span>
-        ) : (
-          feedbackNote(notice.reason, language)
-        )}
+        {notice.beforeNotices ? <span data-testid="ship-notice-before">{said(notice.says.reason, language)}</span> : said(notice.says.reason, language)}
       </span>
     </Fact>
   );
@@ -221,7 +217,7 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
             : t("feedback.fact.verifiedBy", { who: v.byReporter ? t("feedback.fact.theReporter") : (v.byName ?? t("feedback.fact.aMember")) })}
           {" · "}
           {time.relative(v.at)}
-          {v.how === "automatic" && v.reason ? <span className="block text-12-5 text-muted">{feedbackNote(v.reason, language)}</span> : null}
+          {v.how === "automatic" && v.says.reason ? <span className="block text-12-5 text-muted">{said(v.says.reason, language)}</span> : null}
         </span>
       </Fact>
     );

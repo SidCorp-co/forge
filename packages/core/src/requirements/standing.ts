@@ -19,16 +19,16 @@ import {
   type RequirementDelivery,
   type RequirementStanding,
   type RequirementState,
-  type RequirementTask,
   type RequirementWaitingKind,
 } from '@forge/contracts/requirements';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { type Said, say } from '@forge/contracts/said';
+import { type WaitingOn, type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
-import { addWorkingDays } from '../lib/working-days.js';
 import { liveAt } from './rules.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
 import { proofTurn } from './standing-proof.js';
+import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -64,7 +64,7 @@ export interface StandingIssueCriterion {
   verdictAt: Date | null;
 }
 
-interface StandingInput {
+export interface StandingInput {
   status: RequirementStatus;
   owner: RequirementStanding['owner'];
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
@@ -99,9 +99,9 @@ type ProofInput = Pick<
 >;
 
 /** The input with its delivery phase read (`deliveryOf`). */
-type Phased = StandingInput & { phase: DeliveryPhase | null };
+export type Phased = StandingInput & { phase: DeliveryPhase | null };
 
-const SIGNER = 'BA or owner';
+const SIGNER = say('standing.who.baOrOwner');
 
 function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
   if (status !== 'agreed') return status;
@@ -160,14 +160,24 @@ type RequirementWaitingOn = WaitingOn<RequirementWaitingKind>;
 
 const wait = (
   kind: RequirementWaitingKind,
-  who: string,
-  act: string,
-  rule: string,
-): RequirementWaitingOn => ({ kind, who, act, rule, ref: null, dueAt: null });
+  who: Said,
+  act: Said,
+  rule: Said,
+  more: Partial<Pick<WaitingSays, 'effect'>> & { dueAt?: string | null } = {},
+): RequirementWaitingOn =>
+  waitingOn(
+    kind,
+    { who, act, rule, ...(more.effect ? { effect: more.effect } : {}) },
+    { dueAt: more.dueAt ?? null },
+  );
 
-const signerWait = (viewer: StandingInput['viewer'], act: string, rule: string) =>
+const YOU = say('standing.who.you');
+const MASTER = say('standing.who.master');
+const NONE = say('standing.who.dash');
+
+const signerWait = (viewer: StandingInput['viewer'], act: Said, rule: Said) =>
   viewer?.canSignOff
-    ? { group: 'needs_you' as const, waitingOn: wait('you', 'You', act, rule) }
+    ? { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule) }
     : { group: 'waiting' as const, waitingOn: wait('person', SIGNER, act, rule) };
 
 interface Turn {
@@ -178,10 +188,13 @@ interface Turn {
 function feedbackTurn(input: StandingInput): Turn | null {
   const untriaged = input.feedback.untriaged;
   if (untriaged.length === 0) return null;
+  const [one] = untriaged;
   return signerWait(
     input.viewer,
-    untriaged.length === 1 ? `triage ${untriaged[0]}` : `triage ${untriaged.length} feedback items`,
-    `feedback about it waits on a person to pick its route: ${untriaged.join(', ')}`,
+    untriaged.length === 1 && one !== undefined
+      ? say('standing.act.triage', { what: one })
+      : say('standing.act.triageMany', { n: untriaged.length }),
+    say('requirements.rule.feedbackWaits', { keys: untriaged.join(', ') }),
   );
 }
 
@@ -204,22 +217,27 @@ function turnOf(
     return (
       triage ?? {
         group: 'done',
-        waitingOn: wait('none', '—', '', `the requirement is ${status}`),
+        waitingOn: wait(
+          'none',
+          NONE,
+          say('standing.act.none'),
+          say('requirements.rule.ended', { status }),
+        ),
       }
     );
   }
   if (status === 'deferred') {
     return {
       group: 'deferred',
-      waitingOn: wait('none', '—', '', 'deferred out of the current release; it waits on nobody'),
+      waitingOn: wait('none', NONE, say('standing.act.none'), say('requirements.rule.deferred')),
     };
   }
   const proposed = input.revisions.find((r) => r.state === 'proposed');
   if (proposed) {
     return signerWait(
       viewer,
-      `accept r${proposed.revision}`,
-      'a proposed revision waits on a sign-off',
+      say('standing.act.acceptR', { r: proposed.revision }),
+      say('requirements.rule.proposed'),
     );
   }
   const draft = input.revisions.find((r) => r.state === 'draft');
@@ -230,41 +248,58 @@ function turnOf(
     if (designs) return designs;
     return signerWait(
       viewer,
-      head === null ? 'agree it' : `agree r${head}`,
-      'a current revision not yet agreed waits on a sign-off',
+      head === null ? say('standing.act.agreeIt') : say('standing.act.agreeR', { r: head }),
+      say('requirements.rule.unagreed'),
     );
   }
   const triage = feedbackTurn(input);
   if (triage) return triage;
   if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
     const act = updateToApprovedAct(input.stalePins, input.staleContractPins);
-    const rule =
-      'The design this requirement follows has a newer approved revision, or a contract it relies on has a newer version. Updating records that it follows the newer one.';
+    const rule = say('requirements.rule.pinBehind');
     const effect = updateToApprovedEffect(input.stalePins, input.staleContractPins);
     if (viewer?.canSignOff) {
-      return { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), effect } };
+      return { group: 'needs_you', waitingOn: wait('you', YOU, act, rule, { effect }) };
     }
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
     return {
       group: 'waiting',
-      waitingOn: { ...wait('person', owner ?? SIGNER, act, rule), effect },
+      waitingOn: wait(
+        'person',
+        owner ? say('standing.who.named', { name: owner }) : SIGNER,
+        act,
+        rule,
+        { effect },
+      ),
     };
   }
   const check = checkTaskOf(input, live);
   if (check) {
-    const act = `check ${coverage.map((c) => c.code).join(', ')} against the traceability matrix, ${check.overdue ? 'overdue since' : 'due'} ${check.dueAt.slice(0, 10)}`;
-    const rule = `delivered at r${check.revision}; the BA checks the business criteria by ${check.dueAt.slice(0, 10)}, ${CHECK_SLA_WORKING_DAYS} working days after delivery${check.overdue ? ', and it is overdue' : ''}`;
+    const date = check.dueAt.slice(0, 10);
+    const act = say('standing.act.check', {
+      codes: coverage.map((c) => c.code).join(', '),
+      when: say(check.overdue ? 'standing.overdueSince' : 'standing.due', { date }),
+    });
+    const rule = say('requirements.rule.check', {
+      r: check.revision,
+      date,
+      days: CHECK_SLA_WORKING_DAYS,
+      overdue: check.overdue ? say('requirements.rule.overdue') : null,
+    });
     return viewer?.canSignOff
-      ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
-      : { group: 'waiting', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
+      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule, { dueAt: check.dueAt }) }
+      : {
+          group: 'waiting',
+          waitingOn: wait('person', say('requirements.who.ba'), act, rule, { dueAt: check.dueAt }),
+        };
   }
   const proof = proofTurn(input.judge, live, coverage);
   if (proof) return proof;
   if (input.openSuggestionKinds.includes('breakdown')) {
     return signerWait(
       viewer,
-      'Review how this requirement is split into work',
-      'a breakdown suggestion waits on a person',
+      say('standing.act.reviewBreakdown'),
+      say('requirements.rule.breakdownWaits'),
     );
   }
   const replan = replanTasksOf(input, live);
@@ -273,9 +308,11 @@ function turnOf(
       group: 'waiting',
       waitingOn: wait(
         'agent',
-        'Master',
-        `re-plan ${replan.map((t) => t.displayId).join(', ')}`,
-        `planned against an earlier revision than r${input.currentRevision ?? '?'} (REQUIREMENT_CHANGED_SINCE_PLAN)`,
+        MASTER,
+        say('standing.act.replan', { keys: replan.map((t) => t.displayId).join(', ') }),
+        input.currentRevision === null
+          ? say('requirements.rule.replanUnknown')
+          : say('requirements.rule.replan', { r: input.currentRevision }),
       ),
     };
   }
@@ -283,27 +320,34 @@ function turnOf(
     const task = breakdownTaskOf(input, live);
     return {
       group: 'waiting',
-      waitingOn: {
-        ...wait(
-          'agent',
-          'Master',
-          task
-            ? `break down, ${task.overdue ? 'overdue since' : 'due'} ${task.dueAt.slice(0, 10)}`
-            : 'break down',
-          task
-            ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
-            : 'agreed with no linked issue',
-        ),
-        dueAt: task?.dueAt ?? null,
-      },
+      waitingOn: wait(
+        'agent',
+        MASTER,
+        task
+          ? say('standing.act.breakDownBy', {
+              when: say(task.overdue ? 'standing.overdueSince' : 'standing.due', {
+                date: task.dueAt.slice(0, 10),
+              }),
+            })
+          : say('standing.act.breakDown'),
+        task
+          ? say('requirements.rule.breakdownDue', {
+              date: task.dueAt.slice(0, 10),
+              days: BREAKDOWN_SLA_WORKING_DAYS,
+            })
+          : say('requirements.rule.noIssue'),
+        { dueAt: task?.dueAt ?? null },
+      ),
     };
   }
   const drafts = draftIssuesToPromote(status, live);
   if (drafts.length === live.length) {
     return signerWait(
       viewer,
-      `promote ${drafts.length} draft issue${drafts.length === 1 ? '' : 's'}`,
-      'its only live issues are drafts, which nothing works until a person promotes them',
+      drafts.length === 1
+        ? say('standing.act.promoteDraft')
+        : say('standing.act.promoteDrafts', { n: drafts.length }),
+      say('requirements.rule.onlyDrafts'),
     );
   }
   const running = live.filter((i) => i.status === 'in_progress').length;
@@ -312,90 +356,13 @@ function turnOf(
     group: 'moving',
     waitingOn: wait(
       'issue',
-      'Issues',
-      running > 0 ? `Running ${running} of ${live.length}` : `Shipped ${shipped} of ${live.length}`,
-      'agreed and its issues are being worked',
+      say('standing.who.issues'),
+      running > 0
+        ? say('standing.act.running', { a: running, b: live.length })
+        : say('standing.act.shippedOf', { a: shipped, b: live.length }),
+      say('requirements.rule.moving'),
     ),
   };
-}
-
-type SlaTask = Extract<RequirementTask, { kind: 'breakdown' | 'check' }>;
-type ReplanTask = Extract<RequirementTask, { kind: 're-plan' }>;
-
-const taskOf = (
-  kind: SlaTask['kind'],
-  owner: SlaTask['owner'],
-  revision: number,
-  openedAt: Date,
-  days: number,
-  now: Date,
-): SlaTask => {
-  const due = addWorkingDays(openedAt, days);
-  return {
-    kind,
-    owner,
-    revision,
-    openedAt: openedAt.toISOString(),
-    dueAt: due.toISOString(),
-    overdue: now.getTime() > due.getTime(),
-  };
-};
-
-// workflow requirement-to-delivery: `impact` opens one re-plan task in `delivery` per flagged issue and
-// revision, the master's, for each live issue of an agreed requirement still to ship whose plan a
-// later revision changed (changedSincePlan, the flag the awaiting_release gate refuses on); it opens
-// when the revision it is for became current, and the design gives it no SLA
-function replanTasksOf(input: StandingInput, live: readonly StandingIssue[]): ReplanTask[] {
-  const revision = input.currentRevision;
-  if (input.status !== 'agreed' || revision === null) return [];
-  const head = input.revisions.find((r) => r.revision === revision);
-  const openedAt = (head?.decidedAt ?? head?.createdAt ?? input.updatedAt).toISOString();
-  return live
-    .filter((i) => i.changedSincePlan && i.status !== 'closed')
-    .map((i) => ({
-      kind: 're-plan',
-      owner: 'Project master',
-      revision,
-      openedAt,
-      dueAt: null,
-      overdue: false,
-      issueId: i.id,
-      displayId: i.displayId,
-    }));
-}
-
-// workflow requirement-to-delivery step `breakdown`: the project master proposes the breakdown of
-// an agreed revision within 2 working days; the task is open while the revision has no live issue
-// and no open breakdown suggestion
-function breakdownTaskOf(input: StandingInput, live: readonly StandingIssue[]): SlaTask | null {
-  if (input.status !== 'agreed' || input.currentRevision === null || !input.agreedAt) return null;
-  if (live.length > 0 || input.openSuggestionKinds.includes('breakdown')) return null;
-  return taskOf(
-    'breakdown',
-    'Project master',
-    input.currentRevision,
-    input.agreedAt,
-    BREAKDOWN_SLA_WORKING_DAYS,
-    input.now,
-  );
-}
-
-// workflow requirement-to-delivery step `check`: a requirement delivered at its current revision holds
-// one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
-// completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is
-// `deliveryOf`'s, so the task is read from the same computation as delivered
-function checkTaskOf(input: Phased, live: readonly StandingIssue[]): SlaTask | null {
-  if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
-  if (input.currentRevision === null || live.length === 0) return null;
-  const ids = new Set(live.map((i) => i.id));
-  const times = [
-    ...live.map((i) => i.closedAt ?? i.updatedAt),
-    ...input.issueCriteria
-      .filter((c) => ids.has(c.issueId) && c.verdict === 'pass')
-      .flatMap((c) => (c.verdictAt ? [c.verdictAt] : [])),
-  ];
-  const openedAt = new Date(Math.max(...times.map((t) => t.getTime())));
-  return taskOf('check', 'BA', input.currentRevision, openedAt, CHECK_SLA_WORKING_DAYS, input.now);
 }
 
 function touchedAt(input: StandingInput): Date {
@@ -445,6 +412,10 @@ export function deliveryAt(input: ProofInput, revision: number | null) {
   return { live, coverage, delivery: deliveryOf(input.status, live, coverage) };
 }
 
+/** The same wait under another rule. */
+const waitingOn_ = (w: RequirementWaitingOn, rule: Said): RequirementWaitingOn =>
+  waitingOn(w.kind, { ...w.says, rule }, { ref: w.ref, dueAt: w.dueAt });
+
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
   const { live, coverage, delivery } = deliveryAt(raw, shownRevision);
@@ -454,10 +425,18 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
     if (input.owner === null) {
       group = 'stuck';
-      waitingOn = wait('none', 'No owner', 'assign one', 'no owner is set');
+      waitingOn = wait(
+        'none',
+        say('requirements.who.noOwner'),
+        say('requirements.act.assignOwner'),
+        say('requirements.rule.noOwner'),
+      );
     } else if (input.now.getTime() - touched.getTime() >= STUCK_AFTER_DAYS * DAY_MS) {
       group = 'stuck';
-      waitingOn = { ...waitingOn, rule: `untouched for ${STUCK_AFTER_DAYS} days or more` };
+      waitingOn = waitingOn_(
+        waitingOn,
+        say('requirements.rule.untouched', { days: STUCK_AFTER_DAYS }),
+      );
     }
   }
   return {
@@ -479,12 +458,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },
-    tasks: [
-      ...[breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
-        (t): t is SlaTask => t !== null,
-      ),
-      ...replanTasksOf(input, live),
-    ],
+    tasks: tasksOf(input, live),
     shownRevision,
     coverage,
     owner: input.owner,

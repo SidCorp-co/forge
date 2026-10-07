@@ -6,6 +6,7 @@ import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
+import { say, sentence } from "@/test/said";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
 import { FeedbackActions } from "./feedback-actions";
@@ -45,10 +46,11 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     snoozed: null,
     shipNotice: {
       state: "not_told",
-      reason: "The reporter is an agent, which has no bell: tell it where it listens.",
+      reason: sentence(say("feedback.notice.agent")),
+      says: { reason: say("feedback.notice.agent") },
       shipped: { at: "2026-10-07T09:00:00.000Z", release: "0.4.2" },
       beforeNotices: false,
-    noticesBegan: null,
+      noticesBegan: null,
     },
     attachments: [],
     decisions: [],
@@ -132,7 +134,16 @@ describe("a reporter no bell reaches is told by a person", () => {
   it("says in the rail who told the reporter, and how", () => {
     renderWithQuery(
       <FeedbackFacts
-        f={view({ shipNotice: { state: "told", how: "relayed", at: "2026-10-07T10:00:00.000Z", release: "0.4.2", by: "Dana", shipped: { at: "2026-10-07T09:00:00.000Z", release: "0.4.2" } } })}
+        f={view({ shipNotice: {
+            state: "told",
+            how: "relayed",
+            at: "2026-10-07T10:00:00.000Z",
+            release: "0.4.2",
+            by: "Dana",
+            shipped: { at: "2026-10-07T09:00:00.000Z", release: "0.4.2" },
+            told: sentence(say("feedback.told.relayed", { by: "Dana" })),
+            says: { told: say("feedback.told.relayed", { by: "Dana" }) },
+          }, })}
         slug="hop"
       />,
     );
@@ -143,7 +154,8 @@ describe("a reporter no bell reaches is told by a person", () => {
 describe("an item shipped before release notices existed is told on purpose, by anyone who wants to", () => {
   const legacy = {
     state: "not_told" as const,
-    reason: "Shipped before release notices existed on this project (2026-10-07).",
+    reason: sentence(say("feedback.notice.before", { date: "2026-10-07" })),
+    says: { reason: say("feedback.notice.before", { date: "2026-10-07" }) },
     shipped: { at: "2026-10-01T09:00:00.000Z", release: "0.3.0" },
     beforeNotices: true,
     noticesBegan: "2026-10-07T07:39:54.217Z",

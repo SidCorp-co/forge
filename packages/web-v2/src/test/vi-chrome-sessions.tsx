@@ -12,7 +12,6 @@ import { Seeded } from "./vi-chrome-requirements";
 const P = "p-sessions";
 const AT = "2026-10-07T08:00:00.000Z";
 const LATER = "2026-10-07T08:30:00.000Z";
-const noop = () => {};
 
 const row = (id: string, over: Partial<SessionRow> = {}): SessionRow =>
   ({

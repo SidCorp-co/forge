@@ -3,6 +3,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { RULE, say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackBanner } from "./feedback-facts";
 
@@ -10,7 +11,7 @@ const view = (over: Partial<FeedbackView>): FeedbackView =>
   ({
     phase: "new",
     attentionGroup: "needs_you",
-    waitingOn: { kind: "you", who: "You", act: "triage it", rule: "new: a holder of feedback.approve triages it", ref: null, dueAt: null },
+    waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.triageIt"), rule: say("feedback.rule.triagerTriages", { phase: "new" }) }),
     ...over,
   }) as FeedbackView;
 
@@ -28,7 +29,7 @@ describe("the feedback banner", () => {
       <FeedbackBanner
         f={view({
           attentionGroup: "waiting",
-          waitingOn: { kind: "agent", who: "Master", act: "triage FB-9", rule: "high feedback waits on the master", ref: null, dueAt: null },
+          waitingOn: waitingOn("agent", { who: say("standing.who.master"), act: say("standing.act.triage", { what: "FB-9" }), rule: say("feedback.rule.masterOwes", { phase: "new" }) }),
         })}
       />,
     );
@@ -50,7 +51,7 @@ describe("the feedback banner", () => {
         f={view({
           phase: "planned",
           attentionGroup: "waiting",
-          waitingOn: { kind: "person", who: "A release approver", act: "Approve release 0.4.0-dev.97", rule: "", ref: "0.4.0-dev.97", dueAt: null },
+          waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "releases.approve" }), act: say("standing.act.approveReleaseV", { v: "0.4.0-dev.97" }), rule: RULE }, { ref: "0.4.0-dev.97" }),
           route: { route: "issue", carriers: [{ key: "ISS-9", status: "awaiting_release", release: "0.4.0-dev.97" }], answer: null },
         })}
       />,
@@ -66,7 +67,7 @@ describe("the feedback banner", () => {
       <FeedbackBanner
         f={view({
           phase: "resolved",
-          waitingOn: { kind: "you", who: "You", act: "Confirm the answer", rule: "", ref: null, dueAt: null },
+          waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.confirmAnswer"), rule: RULE }),
           route: { route: "answer", carriers: [], answer: "Exports run nightly at 02:00." },
           decisions: [{ decision: "triage", route: "answer", decidedByName: "Minh" }] as unknown as FeedbackView["decisions"],
         })}

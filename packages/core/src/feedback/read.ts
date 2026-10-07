@@ -8,6 +8,7 @@ import {
 } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
+import { type Said, say, verbatim } from '@forge/contracts/said';
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -146,6 +147,21 @@ function messageViewsOf(
   }));
 }
 
+// The one decision reason Forge writes itself (`auto-verify.ts`), stored as its English: read back
+// to its key so a reader in another language gets its own words. `read.test.ts` holds the writer's
+// sentence to this pattern, so a reworded template is red there rather than English on screen.
+const AUTO_VERIFIED = /^Verified automatically after (\d+) days with no reply$/;
+
+/** A stored decision reason as said: Forge's own by its key, a person's or an agent's carried as written. */
+export function decisionReasonSaid(
+  reason: string | null,
+  agency: 'human' | 'agent' | 'system',
+): Said | null {
+  if (reason === null) return null;
+  const auto = agency === 'system' ? AUTO_VERIFIED.exec(reason) : null;
+  return auto ? say('feedback.notice.autoVerified', { n: Number(auto[1]) }) : verbatim(reason);
+}
+
 /** The confirmation of the fix, read off the item's last verified decision: who and when, or Forge's own. */
 function verifiedViewOf(
   row: Row,
@@ -163,6 +179,7 @@ function verifiedViewOf(
     byName: d.decidedBy ? (names.get(d.decidedBy) ?? null) : null,
     byReporter: d.decidedBy === row.reportedBy,
     reason: withhold ? null : d.reason,
+    says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
   };
 }
 
@@ -284,6 +301,7 @@ export async function detailAs(
             withhold || !d.fromSuggestionId
               ? null
               : (acceptReasons.get(d.fromSuggestionId) ?? null),
+          says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
         }),
       ),
       attachments: [

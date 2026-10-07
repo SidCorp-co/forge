@@ -1,5 +1,14 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { deriveStanding, type StandingIssue } from './standing.js';
+import { deriveStanding as deriveStanding_, type StandingIssue } from './standing.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const deriveStanding = ((...a: Parameters<typeof deriveStanding_>) =>
+  checked(deriveStanding_(...a))) as typeof deriveStanding_;
 
 const at = (iso: string) => new Date(iso);
 

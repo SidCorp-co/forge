@@ -20,6 +20,9 @@ const WRITE_TOOLS: ReadonlySet<string> = new Set(['forge_memory_note', 'forge_pr
 
 /** One call that landed this turn, as the partial reply and the retry name it. */
 export interface DoneCall {
+  /** The tool and the arguments it was called with, as the model wrote them. */
+  readonly name: string;
+  readonly arguments: string;
   readonly said: string;
   readonly result: string;
   /** It changed something: a filing, a comment, an attachment, a status, a note. */
@@ -112,6 +115,8 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
     shown.push(text.slice(0, GROUNDING_CHARS));
     if (!result.isError) {
       done.push({
+        name,
+        arguments: argsJson,
         said: callSaid(name, argsJson),
         result: oneLine(text, RESULT_CHARS),
         write: isWriteCall(name, argsJson),

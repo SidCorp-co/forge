@@ -39,7 +39,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatDateTime, formatRelative, formatNumber } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { productCopy, type Copy } from "@/lib/i18n/product-copy";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
 import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
@@ -60,7 +60,7 @@ function doing(m: MasterStanding, language: string): string {
   if (m.state === "in_pass" && m.pass) return t("agents.master.doingPass", { verb: enumLabel("masterVerb", m.pass.verb, language).toLowerCase() });
   if (m.state === "runs_out") return t(m.runsOut === 1 ? "agents.master.doingRunsOne" : "agents.master.doingRunsMany", { n: m.runsOut });
   if (m.state === "idle") return t("agents.master.doingIdle");
-  if (m.state === "waiting_person" && m.waitingOn) return standingAct(m.waitingOn.act, language).toLowerCase();
+  if (m.state === "waiting_person" && m.waitingOn) return said(m.waitingOn.says.act, language).toLowerCase();
   if (m.state === "silent") return t("agents.master.doingSilent", { when: m.lastBeatAt ? formatRelative(m.lastBeatAt, language) : t("agents.master.itsStart") });
   return t("agents.master.doingNone");
 }
@@ -128,7 +128,7 @@ export function MasterBanner({ m, className }: { m: MasterStanding; className?: 
     m.state === "in_pass" && m.pass
       ? t(m.pass.issueKey ? "agents.master.bannerPassOn" : "agents.master.bannerPass", { verb: enumLabel("masterVerb", m.pass.verb, language), when: formatRelative(m.pass.startedAt, language), key: m.pass.issueKey ?? "" })
       : m.state === "waiting_person" && m.waitingOn
-        ? `${standingWho(m.waitingOn.who, language)}: ${standingAct(m.waitingOn.act, language)}`
+        ? `${said(m.waitingOn.says.who, language)}: ${said(m.waitingOn.says.act, language)}`
         : m.state === "silent"
         ? t("agents.master.bannerSilent", { min: Math.round(m.silentAfterSeconds / 60) })
         : m.state === "none"
@@ -377,7 +377,7 @@ function Leased({ m, projectId, slug }: { m: MasterStanding; projectId: string; 
                       {fmtTime(d.startedAt, language)} {enumLabel("masterVerb", d.verb, language).toLowerCase()}
                     </span>
                   ) : (
-                    <span className="text-muted" title={d?.source === "master" ? d.detail : undefined}>
+                    <span className="text-muted" title={d?.source === "master" ? said(d.says.detail, language) : undefined}>
                       {t("runs.notKnown")}
                     </span>
                   )}

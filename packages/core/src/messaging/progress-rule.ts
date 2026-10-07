@@ -10,6 +10,7 @@
 
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { ProgressFacts } from './facts.js';
+import { blankMarkedClauses } from './reply-marks.js';
 
 const UUID_TOKEN_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const ISS_TOKEN_RE = /\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b/gi;
@@ -18,9 +19,9 @@ const ISO_DATE_RE =
 
 const blank = (m: string): string => ' '.repeat(m.length);
 
-/** The reply with ids and dates blanked in place, so every offset still points into the reply. */
+/** The reply with ids, dates and claims marked unverified blanked in place, so every offset still points into the reply. */
 function stripNonFigureTokens(reply: string): string {
-  return reply
+  return blankMarkedClauses(reply)
     .replace(UUID_TOKEN_RE, blank)
     .replace(ISS_TOKEN_RE, blank)
     .replace(ISO_DATE_RE, blank);

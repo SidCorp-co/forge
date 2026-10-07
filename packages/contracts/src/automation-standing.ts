@@ -2,6 +2,7 @@
 // needs_you and wait_triage; ISS-114): core derives every value below from the rows that own it, and
 // the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
 
+import type { Said } from "./said.js";
 import type { AgentReportTriage, AgentReportView } from "./agent-reports.js";
 import type {
 	ScheduleRunSkipReason,
@@ -32,15 +33,8 @@ export const AUTOMATION_ACTS = [
 ] as const;
 export type AutomationAct = (typeof AUTOMATION_ACTS)[number];
 
-/** How each act reads to a person, lower-case after "waiting on you". */
-export const AUTOMATION_ACT_LABELS: Record<AutomationAct, string> = {
-	triage_report: "triage a report",
-	fix_schedule: "fix a failing schedule",
-	reassign_owner: "take over a schedule whose owner is gone",
-};
-
 /** Whom a schedule, fire or report waits on: the viewer, its owner, the admins or writers, where a
- *  filed report went, or nobody. `act` is the owed act's label (`AUTOMATION_ACT_LABELS`). */
+ *  filed report went, or nobody. `act` is the owed act's words (core `automation/standing.ts:ACT_SAID`). */
 export const AUTOMATION_WAITING_KINDS = [
 	"you",
 	"person",
@@ -184,6 +178,8 @@ export interface ScheduleStanding
 	state: ScheduleState;
 	/** Why the schedule stands where it does, for the tooltip. */
 	rule: string;
+	/** `rule` as said (`said.ts`). */
+	says: { rule: Said };
 	/** When the ticker claims it next; null while it is off. */
 	nextFireAt: string | null;
 	/** Whom a prompt fire runs as; null once that account is gone. */

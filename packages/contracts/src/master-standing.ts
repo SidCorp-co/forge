@@ -2,6 +2,7 @@
 // edge master.declared; REQ-15 BC-6, ISS-106): the runner declares its slots and opens and closes each pass,
 // core stores them, and `GET /api/projects/:id/masters/standing` serves them so no screen guesses.
 
+import { type Said, say, sayEn, verbatim } from "./said.js";
 import { z } from "zod";
 
 /** The path a `master.wake` frame points a master at. */
@@ -201,6 +202,8 @@ export interface MasterWaitingOn {
 	act: string;
 	rule: "MASTER_PANE_DIALOG";
 	since: string;
+	/** `who` and `act` as said (`said.ts`). */
+	says: { who: Said; act: Said };
 }
 
 export interface MasterOpenPass {
@@ -329,13 +332,16 @@ export interface MasterPassList {
 	next: string | null;
 }
 
-export const NO_MASTER_SLOTS =
-	"No live master serves this project, so no box has declared slots for it.";
+export const NO_MASTER_SLOTS = sayEn(say("overview.signal.noSlotsNote"));
 
-/** What a project's slots line says when no live master declared slots for it; null when one did. */
-export function slotsNoteOf(
-	standing: Pick<MasterStanding, "slots">,
-): string | null {
-	if (!standing.slots) return NO_MASTER_SLOTS;
-	return standing.slots.undeclared?.detail ?? null;
+/** What a project's slots line says when no live master declared slots for it, a box's refusal as it wrote it; null when one did. */
+export function slotsNoteSaid(standing: Pick<MasterStanding, "slots">): Said | null {
+	if (!standing.slots) return say("overview.signal.noSlotsNote");
+	return standing.slots.undeclared ? verbatim(standing.slots.undeclared.detail) : null;
+}
+
+/** `slotsNoteSaid` in English. */
+export function slotsNoteOf(standing: Pick<MasterStanding, "slots">): string | null {
+	const s = slotsNoteSaid(standing);
+	return s ? sayEn(s) : null;
 }

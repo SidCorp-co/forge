@@ -6,12 +6,14 @@
 
 import { Button } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import { useTellShipped } from "../hooks";
 import type { FeedbackView } from "../types";
 
 export function TellShippedBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const tell = useTellShipped(projectId, f.key);
   return (
     <div className="grid gap-1.5" data-testid="feedback-tell-shipped">
@@ -21,7 +23,7 @@ export function TellShippedBar({ projectId, f }: { projectId: string; f: Feedbac
       <RefusalLine error={tell.error} />
       <div>
         <Button type="button" size="sm" loading={tell.isPending} onClick={() => tell.mutate()}>
-          {t("feedback.tell.act")}
+          {said({ key: "feedback.act.tellNow" }, language)}
         </Button>
       </div>
     </div>

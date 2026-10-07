@@ -6,6 +6,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { EtaClock } from "@/features/forecast/eta";
 import { renderWithQuery } from "@/test/render";
+import { forecastWait, RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackFacts } from "./feedback-facts";
 
@@ -17,9 +18,7 @@ const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
 const approval = {
   kind: "person" as const,
   mode: "approval" as const,
-  who: "Dana Lee",
-  act: "cut 0.1.0, then approve it",
-  reason: "a holder approves",
+  ...forecastWait(say("standing.who.named", { name: "Dana Lee" }), say("standing.act.cutThenApprove", { v: "0.1.0" }), say("forecast.reason.approval", { holders: null })),
   version: "0.1.0",
   holders: [{ id: "u1", name: "Dana Lee", kind: "human" as const }],
 };
@@ -35,7 +34,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     phase: "resolved",
     status: "triaged",
     attentionGroup: "moving",
-    waitingOn: { kind: "issue", who: "ISS-51", act: "ship", rule: "r", ref: "ISS-51", dueAt: null },
+    waitingOn: waitingOn("issue", { who: say("standing.who.named", { name: "ISS-51" }), act: say("standing.act.ship"), rule: RULE }, { ref: "ISS-51" }),
     target: { type: "screen", key: "The board", title: null },
     route: null,
     reporter: { id: "u9", name: "Ana", agency: "human" },
@@ -66,7 +65,7 @@ describe("feedback follows its work to the release", () => {
   });
 
   it("says when the reporter was told, and for which release", () => {
-    const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" } } });
+    const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" }, told: null, says: { told: null } } });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const fact = screen.getByTestId("facts-ship-notice");
     expect(fact.textContent).toContain("Reporter told");
@@ -77,10 +76,11 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: "The reporter is an agent, which has no bell: tell it where it listens.",
+        reason: sentence(say("feedback.notice.agent")),
+        says: { reason: say("feedback.notice.agent") },
         shipped: { at: null, release: null },
         beforeNotices: false,
-      noticesBegan: null,
+        noticesBegan: null,
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
@@ -91,16 +91,17 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: "Shipped before release notices existed on this project (2026-10-07).",
+        reason: sentence(say("feedback.notice.before", { date: "2026-10-07" })),
+        says: { reason: say("feedback.notice.before", { date: "2026-10-07" }) },
         shipped: { at: "2026-10-07T04:13:32.795Z", release: "0.4.0-dev.89" },
         beforeNotices: true,
-      noticesBegan: "2026-10-07T07:39:54.217Z",
+        noticesBegan: "2026-10-07T07:39:54.217Z",
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const line = screen.getByTestId("ship-notice-not-told");
     expect(line.textContent).toContain("Shipped in 0.4.0-dev.89 on ");
-    expect(screen.getByTestId("ship-notice-before").textContent).toMatch(/^Not told: shipped before release notices existed \(.*2026.*\)\.$/);
+    expect(screen.getByTestId("ship-notice-before").textContent).toBe("Shipped before release notices existed on this project (2026-10-07).");
     expect(line.textContent).not.toContain("No release has told");
     expect(within(line).getByRole("link", { name: "0.4.0-dev.89" }).getAttribute("href")).toBe("/projects/hop/releases/0.4.0-dev.89");
   });

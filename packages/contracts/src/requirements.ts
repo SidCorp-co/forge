@@ -3,6 +3,7 @@
 // decide it, and the coverage of each business criterion. Core writes the shapes; web-v2 reads the
 // labels, so one value keeps one badge on every screen.
 
+import type { Said } from "./said.js";
 import { z } from "zod";
 import { REASON_TEXT_MAX } from "./comments.js";
 import type {
@@ -40,8 +41,6 @@ export const BASELINE_ACTS = ["agree", "repin"] as const;
 
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
  *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
-/** The words a requirement's act opens with when a design it follows has a newer approved revision; the dashboard groups identical acts by them. */
-export const FOLLOW_NEWER_DESIGN_ACT = "Update to the approved design";
 
 export const REQUIREMENT_LIFECYCLE = [
 	"draft",
@@ -399,7 +398,10 @@ export const REQUIREMENT_READINESS_GATE_DEFAULT: RequirementReadinessGate =
  * head with no stored vector (embeddings down, withheld by policy, not written yet) is not compared,
  * and the agree says so rather than reading as if no near-duplicate exists.
  */
-export type RequirementDedupCheck = { ran: true } | { ran: false; why: string };
+/** Whether dedup compared the head; `says` is `why` as said, absent on a check stored before core said it. */
+export type RequirementDedupCheck =
+	| { ran: true }
+	| { ran: false; why: string; says?: { why: Said } };
 
 /**
  * What an agree read of readiness at the head. Absent where the gate is off and dedup ran; at gate
@@ -426,6 +428,8 @@ export interface RequirementHistoryEntry {
 	/** What kind of record: "Revision", "Decision", "Question", "Suggestion", "Agreed", "Returned". */
 	kind: string;
 	text: string;
+	/** `who` and `text` as said (`said.ts`): a person's words carried as written, Forge's by key. */
+	says: { who: Said; text: Said };
 	/** The issue it was recorded on, when it came from one. */
 	issue: string | null;
 	/** A linked issue's status move, as raw statuses the reader labels; else null. */
