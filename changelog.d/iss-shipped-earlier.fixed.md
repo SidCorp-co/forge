@@ -1,1 +1,0 @@
-**An issue whose commit an earlier release already shipped is now closed against that release, not held for a person.** The sweep and the cut find the earliest release holding it; an unreadable repository refuses by name.

@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.81] - 2026-10-07
+
+Shipped-earlier issues close against their release; held issues stop re-opening sessions
+
+### Changed
+
+- **One canonical JSON writer and one release crossing.** Four key-sorters share `packages/core/src/lib/canonical-json.ts`, stored hashes pinned. A release path reads one promotion; a stored chain of two is refused by name. The empty test-signal baseline goes.
+
+### Fixed
+
+- **The bell lists every open notification its badge counts.** It showed the newest 20 of any state, hiding older open ones. It now lists open rows only, offers "Show N more", and links to all notifications.
+- **A run declared over an issue a live `blocks` edge holds is refused at declare, by name.** The box asks core's new `run-sessions/preflight` first; an already-declared run whose open is held is retried every five minutes, not every sweep.
+- **An issue whose commit an earlier release already shipped is now closed against that release, not held for a person.** The sweep and the cut find the earliest release holding it; an unreadable repository refuses by name.
+- **A box's log now names the field core refused.** A refused call printed only the first 200 characters of core's answer, which opens with the valid shape, so the broken field never reached the log.
+
 ## [0.4.0-dev.80] - 2026-10-07
 
 A runner box refuses a stop that leaves work behind

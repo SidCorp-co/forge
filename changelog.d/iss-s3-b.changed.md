@@ -1,1 +1,0 @@
-**One canonical JSON writer and one release crossing.** Four key-sorters share `packages/core/src/lib/canonical-json.ts`, stored hashes pinned. A release path reads one promotion; a stored chain of two is refused by name. The empty test-signal baseline goes.
