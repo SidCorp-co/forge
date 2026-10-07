@@ -497,8 +497,10 @@ function renderFields(
     if (field.called) changed = true;
     const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;
-    if (array) items.push(out);
-    else if (typeof out !== 'function') next[key] = out;
+    // Each place an object is kept as itself holds it as it was read there.
+    const kept = typeof out === 'object' && out !== null ? (walk.snapshots.get(out) ?? out) : out;
+    if (array) items.push(kept);
+    else if (typeof kept !== 'function') next[key] = kept;
   }
   const snapshot = array ? items : next;
   walk.made.add(snapshot);
@@ -507,24 +509,21 @@ function renderFields(
 }
 
 /**
- * `rendered` with every object handed back as itself replaced by what it held when it was read:
- * a rendering that ran the caller's code may have run a hook that changed one read before it.
+ * A rendering that ran the caller's code, with each function in it written as JSON writes it: one
+ * kept as itself could be handed a `toJSON` by a hook that runs after it was read.
  */
-function settled(rendered: unknown, walk: Walk, done = new Map<object, unknown>()): unknown {
+function settled(rendered: unknown, walk: Walk, done = new Set<object>()): unknown {
   if (typeof rendered !== 'object' || rendered === null) return rendered;
-  if (done.has(rendered)) return done.get(rendered);
-  const own = walk.snapshots.get(rendered) ?? rendered;
-  done.set(rendered, own);
-  if (!walk.made.has(own)) return own;
-  const fields = own as Record<string, unknown>;
+  if (done.has(rendered) || !walk.made.has(rendered)) return rendered;
+  done.add(rendered);
+  const fields = rendered as Record<string, unknown>;
   for (const key of Object.keys(fields)) {
     const field = settled(fields[key], walk, done);
-    // A function kept as itself could be handed a toJSON yet: written as JSON writes it now.
     if (typeof field !== 'function') fields[key] = field;
-    else if (Array.isArray(own)) fields[key] = null;
+    else if (Array.isArray(rendered)) fields[key] = null;
     else delete fields[key];
   }
-  return own;
+  return rendered;
 }
 
 /** The one read of the caller's code a redaction makes, so what is redacted is what is written. */

@@ -389,6 +389,21 @@ describe('redactQueryParams, reading a value as JSON reads it', () => {
     expect(asked).toBe(0);
   });
 
+  it('writes an object met twice as it held at each place, a hook between them', () => {
+    const shared = { note: 'original' };
+    const value = {
+      first: shared,
+      get middle() {
+        shared.note = 'changed';
+        return 'kept';
+      },
+      last: shared,
+    };
+    expect(JSON.stringify(redactQueryParams(value))).toBe(
+      '{"first":{"note":"original"},"middle":"kept","last":{"note":"changed"}}',
+    );
+  });
+
   it('writes a function as JSON does once a hook ran, though a later hook gives it a toJSON', () => {
     let asked = 0;
     const late = () => {
