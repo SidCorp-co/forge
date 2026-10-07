@@ -343,7 +343,13 @@
     "feedback": {
       "kind": "domain",
       "context": "design",
-      "owns": ["feedback", "feedbackAttachments", "feedbackDecisions", "feedbackRouteIssues"],
+      "owns": [
+        "feedback",
+        "feedbackAttachments",
+        "feedbackDecisions",
+        "feedbackMessages",
+        "feedbackRouteIssues"
+      ],
       "serves": [
         "REQ-7",
         "feedback-lifecycle",

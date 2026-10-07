@@ -109,6 +109,8 @@ export const FEEDBACK_DECISIONS = [
 	"promoted",
 	"routed",
 	"retargeted",
+	"accepted",
+	"snoozed",
 ] as const;
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
@@ -163,6 +165,8 @@ export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
 	routed: "Route written",
 	promoted: "Promoted from an agent report",
 	retargeted: "Target changed",
+	accepted: "Accepted",
+	snoozed: "Snoozed",
 };
 
 export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
@@ -245,6 +249,16 @@ export const FEEDBACK_SEVERITY_TONES: Record<
 	critical: "err",
 };
 
+/**
+ * How long a resolved item waits for someone to confirm the fix before Forge verifies it itself
+ * (owner, 2026-10-07): the project's `feedback.verifyWindowDays`, whole days inside these bounds.
+ */
+export const FEEDBACK_VERIFY_WINDOW = {
+	defaultDays: 7,
+	minDays: 1,
+	maxDays: 90,
+} as const;
+
 /** Field limits a feedback write is held to. */
 export const FEEDBACK_LIMITS = {
 	title: 300,
@@ -256,6 +270,9 @@ export const FEEDBACK_LIMITS = {
 	carriers: 50,
 	attachmentBytes: 5 * 1024 * 1024,
 	attachmentsPerItem: 10,
+	/** The longest a snooze may run: past it the item is not parked, it is forgotten. */
+	snoozeDays: 365,
+	message: 4_000,
 } as const;
 
 /** Every refusal a feedback write answers with, by name. Who-may-act codes end `_FORBIDDEN`. */
@@ -274,6 +291,12 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_REOPEN_REASON_REQUIRED",
 	"FEEDBACK_DUPLICATE_CHAIN",
 	"FEEDBACK_DUPLICATE_SELF",
+	"FEEDBACK_DUPLICATE_OF_DECLINED",
+	"FEEDBACK_SNOOZE_PAST",
+	"FEEDBACK_SNOOZE_TOO_FAR",
+	"FEEDBACK_SNOOZE_REASON_REQUIRED",
+	"FEEDBACK_MESSAGE_EMPTY",
+	"FEEDBACK_MESSAGE_NO_RECIPIENT",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
 	"FEEDBACK_VERIFY_ASK_SELF",
@@ -418,6 +441,44 @@ export const feedbackVerifyRequestSchema = z.strictObject({
 });
 export const FEEDBACK_VERIFY_SHAPE = "{ note? }";
 
+/** `POST …/feedback/:fb/accept`: new or reopened to triaged without a route, optionally about a requirement. */
+export const feedbackAcceptRequestSchema = z.strictObject({
+	requirement: ref.optional(),
+});
+export const FEEDBACK_ACCEPT_SHAPE = "{ requirement?: REQ-n }";
+
+/** `POST …/feedback/:fb/snooze`: parked out of New until `until`, with the reason a triager reads on return. */
+export const feedbackSnoozeRequestSchema = z.strictObject({
+	until: z.iso.datetime({ offset: true }),
+	reason,
+});
+export const FEEDBACK_SNOOZE_SHAPE = "{ until: ISO 8601 date-time, reason }";
+
+/** Who a message reaches: the item's own reporter, every reporter merged into it, or nobody (a note for members). */
+export const FEEDBACK_MESSAGE_AUDIENCES = [
+	"reporter",
+	"all_reporters",
+	"internal",
+] as const;
+export type FeedbackMessageAudience =
+	(typeof FEEDBACK_MESSAGE_AUDIENCES)[number];
+
+export const FEEDBACK_MESSAGE_AUDIENCE_LABELS: Record<
+	FeedbackMessageAudience,
+	string
+> = {
+	reporter: "This reporter",
+	all_reporters: "Every reporter merged into it",
+	internal: "Internal note",
+};
+
+/** `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing. */
+export const feedbackMessageRequestSchema = z.strictObject({
+	audience: z.enum(FEEDBACK_MESSAGE_AUDIENCES),
+	text: z.string().max(FEEDBACK_LIMITS.message),
+});
+export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text }`;
+
 export const feedbackEmptyRequestSchema = z.strictObject({});
 export const FEEDBACK_EMPTY_SHAPE = "{}";
 
@@ -491,14 +552,51 @@ export interface FeedbackDecisionView {
 	route: FeedbackRoute | null;
 	carrier: string | null;
 	reason: string | null;
-	decidedBy: string;
+	/** Null on a decision Forge took itself, which has no person. */
+	decidedBy: string | null;
 	decidedByName: string | null;
-	decidedAgency: "human" | "agent";
+	decidedAgency: "human" | "agent" | "system";
 	decidedAt: string;
 	fromSuggestionId: string | null;
 	/** The person's reason on the accept of the suggestion that wrote this decision (ISS-281); null
 	 *  when it came from no suggestion, the accept gave none, or the item's text is withheld. */
 	acceptReason: string | null;
+}
+
+/** One person who reported the item, itself or by a duplicate merged into it (`from` names that duplicate). */
+export interface FeedbackReporterView {
+	id: string;
+	name: string | null;
+	agency: "human" | "agent";
+	/** The duplicate this reporter filed, when they reported it by one; null for the item's own reporter. */
+	from: string | null;
+}
+
+/** What a reader sees of one message: a notice a reporter received, or an internal note members keep. */
+export interface FeedbackMessageView {
+	id: string;
+	audience: FeedbackMessageAudience;
+	text: string;
+	sentBy: string;
+	sentByName: string | null;
+	sentAgency: "human" | "agent";
+	sentAt: string;
+	/** The reporters it was addressed to; empty for an internal note, which reaches no one. */
+	recipients: { id: string; name: string | null }[];
+}
+
+/** The exact notice a send would deliver, as its reporters will read it, and who gets it. */
+export interface FeedbackMessagePreview {
+	audience: Exclude<FeedbackMessageAudience, "internal">;
+	title: string;
+	body: string;
+	recipients: { id: string; name: string | null }[];
+	/** Reporters who have no bell and so are not told by it: named, never skipped. */
+	notReached: { id: string; name: string | null; why: string }[];
+}
+
+export interface FeedbackMessagePreviewResponse {
+	preview: FeedbackMessagePreview;
 }
 
 export interface FeedbackSourceView {
@@ -514,6 +612,8 @@ export interface FeedbackSourceView {
 
 export interface FeedbackAttachmentView {
 	id: string;
+	/** The duplicate this evidence was filed on, when it moved here with it; null on the item's own. */
+	from: string | null;
 	name: string;
 	mime: string;
 	size: number;
@@ -547,6 +647,8 @@ export interface FeedbackSummary
 	route: FeedbackRouteView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
 	dueAt: string | null;
+	/** Parked out of New until then, with the reason; null when not snoozed or the snooze ran out. */
+	snoozed: { until: string; reason: string | null } | null;
 	redacted: boolean;
 	redactedAt: string | null;
 	createdAt: string;
@@ -568,7 +670,23 @@ export type FeedbackShipNotice =
 			beforeNotices: boolean;
 	  };
 
+/** The confirmation of the fix: who and when, or that nobody did within the window and Forge did. */
+export interface FeedbackVerifiedView {
+	at: string;
+	how: "person" | "automatic";
+	/** Who confirmed it; null when Forge did after the window. */
+	by: string | null;
+	byName: string | null;
+	/** The reporter, when they are the one who confirmed it. */
+	byReporter: boolean;
+	reason: string | null;
+}
+
 export interface FeedbackView extends FeedbackSummary {
+	/** Set once the item is verified. */
+	verified: FeedbackVerifiedView | null;
+	/** While it reads resolved: when Forge verifies it if nobody has, and the window that dates it. */
+	autoVerify: { at: string; windowDays: number } | null;
 	/** Null until the work that carries the item has shipped (phase resolved or verified on an issue route). */
 	shipNotice: FeedbackShipNotice | null;
 	body: string | null;
@@ -578,6 +696,10 @@ export interface FeedbackView extends FeedbackSummary {
 	source: FeedbackSourceView | null;
 	decisions: FeedbackDecisionView[];
 	attachments: FeedbackAttachmentView[];
+	/** Everyone who reported it: its own reporter first, then the reporters of the duplicates merged into it. */
+	reporters: FeedbackReporterView[];
+	/** Messages sent to reporters, and the internal notes the viewer may read, oldest first. */
+	messages: FeedbackMessageView[];
 	clarification: {
 		id: string;
 		status: string;
@@ -595,6 +717,13 @@ export interface FeedbackView extends FeedbackSummary {
 		redact: boolean;
 		/** Correct what the item is about, at any phase; never on an item core filed about a contract version. */
 		retarget: boolean;
+		/** Accept it unrouted, or park it: while it reads new or reopened. */
+		accept: boolean;
+		snooze: boolean;
+		/** Send a message to its reporters. */
+		message: boolean;
+		/** Write an internal note, which no reporter is ever sent. */
+		note: boolean;
 	};
 	sensitive: boolean;
 }

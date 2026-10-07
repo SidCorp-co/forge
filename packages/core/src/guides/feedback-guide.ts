@@ -14,7 +14,7 @@ A feedback item (FB-n) is what a reporter says is wrong or wanted in the product
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, \`GET …/feedback/endpoints\` lists the routes and tools the project
 serves, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
-\`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
+\`accept\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -97,6 +97,27 @@ Nothing ever reads an item as \`verified\` on its own.
   accept is the triage (${guideRef('suggestions')}).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
   other phase is \`FEEDBACK_STATUS_INVALID\`.
+
+### The four verbs of a new item
+Each is a state transition by a holder of \`feedback.approve\`, refused by name where it does not apply.
+- \`accept\` \`{ requirement? }\` moves a new or reopened item to \`triaged\` with no route written, optionally
+  re-aimed at a requirement first; it then waits on a person to route it. Any other phase is
+  \`FEEDBACK_STATUS_INVALID\`.
+- \`triage\` with route \`decline\` and a \`note\` declines it; every reporter merged into the item with a bell gets one
+  notice naming the reason (\`FEEDBACK_DECLINE_REASON_REQUIRED\` without one).
+- \`triage\` with route \`duplicate\` and \`duplicateOf\` merges it into an original: its reporter and evidence read on the
+  original, its own record stays, and its reporter gets one notice naming the original. Itself is
+  \`FEEDBACK_DUPLICATE_SELF\`, a declined original \`FEEDBACK_DUPLICATE_OF_DECLINED\`, a chain \`FEEDBACK_DUPLICATE_CHAIN\`.
+- \`snooze\` \`{ until, reason }\` parks a new or reopened item out of New until a date still to come
+  (\`FEEDBACK_SNOOZE_PAST\`, beyond a year \`FEEDBACK_SNOOZE_TOO_FAR\`, no reason \`FEEDBACK_SNOOZE_REASON_REQUIRED\`);
+  it reads \`snoozed\` until then and is New again after, with nothing to clear. Triaging it lifts the snooze.
+
+### Messages to reporters
+\`POST …/feedback/:fb/messages/preview\` \`{ audience, text }\` answers the exact notice and who would get it, writing
+nothing; \`POST …/messages\` with the same body sends it. \`audience\` is \`reporter\` (the item's own),
+\`all_reporters\` (the reporters of every duplicate merged into it too) or \`internal\`, a note for project members
+that is stored and read back but never sent as a notice and has no preview. A message needs \`feedback.approve\`,
+a note \`project.write\`; a message reaching no reporter with a bell is \`FEEDBACK_MESSAGE_NO_RECIPIENT\`.
 
 ### Asking the reporter
 \`clarification\` \`{ prompt, needed }\` asks the reporter one question, before the item is routed

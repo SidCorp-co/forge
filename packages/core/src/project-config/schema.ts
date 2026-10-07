@@ -4,6 +4,7 @@ import {
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
+import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
@@ -217,6 +218,23 @@ export const projectDocumentSchema = z.strictObject({
   requirements: z
     .strictObject({
       readinessGate: z.enum(REQUIREMENT_READINESS_GATES).optional(),
+    })
+    .optional(),
+  // how long a resolved feedback item waits for anyone to confirm the fix before Forge verifies it
+  // itself (owner, 2026-10-07): whole days, `FEEDBACK_VERIFY_WINDOW.defaultDays` where absent. A
+  // value outside the bounds is refused naming the field, never clamped.
+  feedback: z
+    .strictObject({
+      verifyWindowDays: z
+        .number()
+        .int({ error: 'feedback.verifyWindowDays is a whole number of days' })
+        .min(FEEDBACK_VERIFY_WINDOW.minDays, {
+          error: `feedback.verifyWindowDays is at least ${FEEDBACK_VERIFY_WINDOW.minDays} day: a window of none would verify every fix the moment it shipped`,
+        })
+        .max(FEEDBACK_VERIFY_WINDOW.maxDays, {
+          error: `feedback.verifyWindowDays is at most ${FEEDBACK_VERIFY_WINDOW.maxDays} days: a longer window is a fix nobody is ever told was verified`,
+        })
+        .optional(),
     })
     .optional(),
   // the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,

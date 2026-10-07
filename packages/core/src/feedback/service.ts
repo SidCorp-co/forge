@@ -31,6 +31,8 @@ import { embedFeedbackLater } from './embeddings.js';
 import { phaseOfRow } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
+import { declinedNotice } from './reporter-notices.js';
+import { reportersOf, withBell } from './reporters.js';
 import {
   decideActRefusal,
   declineRefusal,
@@ -84,7 +86,8 @@ export const roleFacts = (actor: FeedbackActor, projectId: string) =>
 export async function decide(
   tx: Tx,
   row: Row,
-  actor: FeedbackActor,
+  /** `'system'` is a decision Forge took itself, which has no person to name. */
+  actor: FeedbackActor | 'system',
   d: {
     decision: typeof feedbackDecisions.$inferInsert.decision;
     route?: FeedbackRoute | null;
@@ -103,8 +106,8 @@ export async function decide(
     route: d.route ?? null,
     carrier: d.carrier ?? null,
     reason,
-    decidedBy: actor.userId,
-    decidedAgency: actor.agency,
+    decidedBy: actor === 'system' ? null : actor.userId,
+    decidedAgency: actor === 'system' ? 'system' : actor.agency,
     fromSuggestionId: d.fromSuggestionId ?? null,
   });
 }
@@ -122,6 +125,9 @@ export async function closeClarification(tx: Tx, feedbackId: string, why: string
     returning: ['id'],
   });
 }
+
+/** Lifts a snooze: written by every act that moves an item off New, since a snooze holds only there (feedback_snooze_chk). */
+export const NOT_SNOOZED = { snoozedUntil: null, snoozeReason: null } as const;
 
 type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
 
@@ -269,7 +275,7 @@ export async function declineIn(
   const moved = await transition(tx, FEEDBACK_MACHINE, {
     to: 'declined',
     expect: row.status,
-    set: { updatedAt: new Date() },
+    set: { ...NOT_SNOOZED, updatedAt: new Date() },
     where: eq(feedback.id, row.id),
     reason: reason ?? null,
     actor: feedbackKernelActor(actor),
@@ -279,6 +285,18 @@ export async function declineIn(
   movedRow(moved);
   await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
   await closeClarification(tx, row.id, 'declined');
+  // one notice naming the reason, to every reporter with a bell: the item's own and each merged into it
+  const told = withBell(await reportersOf(tx, row)).map((r) => r.id);
+  if (told.length > 0) {
+    const notice = declinedNotice(feedbackKey(row.fbSeq), row.title, reason ?? '');
+    await emitEvent(tx, 'feedback.reporterTold', {
+      projectId: row.projectId,
+      feedbackId: row.id,
+      kind: 'declined',
+      recipients: told,
+      ...notice,
+    });
+  }
   return null;
 }
 
@@ -304,7 +322,7 @@ async function personalAct(
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: act,
       expect: row.status,
-      set: { updatedAt: new Date() },
+      set: { resolvedSeenAt: null, updatedAt: new Date() },
       where: eq(feedback.id, row.id),
       reason: input.note?.trim() || null,
       actor: feedbackKernelActor(actor),

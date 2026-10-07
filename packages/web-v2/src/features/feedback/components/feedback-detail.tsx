@@ -26,6 +26,7 @@ import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
+import { Messages } from "./feedback-messages";
 
 const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
@@ -61,6 +62,7 @@ function Body({ f }: { f: FeedbackView }) {
           {f.attachments.map((a) => (
             <li key={a.id} className="flex items-center gap-2">
               <span className="font-mono">{a.name}</span>
+              {a.from ? <span className="text-12 text-muted">from {a.from}</span> : null}
               <span className="text-subtle">{Math.ceil(a.size / 1024)} KB</span>
               {a.flagged ? (
                 <span
@@ -91,7 +93,7 @@ export function FeedbackHistory({ f }: { f: FeedbackView }) {
             {d.carrier ? <span className="font-mono"> {d.carrier}</span> : null}
             <span className="text-muted">
               {" "}
-              · {d.decidedByName ?? d.decidedBy}
+              · {d.decidedAgency === "system" ? "Forge (automatic)" : (d.decidedByName ?? d.decidedBy)}
               {d.decidedAgency === "agent" ? " (agent)" : ""} · <span title={formatStamp(d.decidedAt)}>{formatRelativeTime(d.decidedAt)}</span>
             </span>
           </span>
@@ -153,6 +155,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <Body f={f} />
+                  <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}
               {tab === "history" ? (

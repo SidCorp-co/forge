@@ -17,6 +17,11 @@ const item = (over: Partial<FeedbackView> = {}): FeedbackView =>
     key: "FB-1",
     can: { triage: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false },
     openSuggestions: 1,
+    reporters: [],
+    messages: [],
+    verified: null,
+    autoVerify: null,
+    snoozed: null,
     decisions: [],
     ...over,
   }) as unknown as FeedbackView;

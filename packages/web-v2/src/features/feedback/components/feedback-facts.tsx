@@ -184,6 +184,31 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
   );
 }
 
+/** Who confirmed the fix and when, or the day Forge will if nobody does: the record behind "Reporter told". */
+function VerifiedFact({ f }: { f: FeedbackView }) {
+  if (f.verified) {
+    const v = f.verified;
+    return (
+      <Fact label="Verified" testId="facts-verified">
+        <span className="fg-body-sm" title={formatStamp(v.at)} data-testid="verified-line">
+          {v.how === "automatic" ? "Verified automatically" : `Verified by ${v.byReporter ? "the reporter" : (v.byName ?? "a member")}`}
+          {" · "}
+          {formatRelativeTime(v.at)}
+          {v.how === "automatic" && v.reason ? <span className="block text-12-5 text-muted">{v.reason}</span> : null}
+        </span>
+      </Fact>
+    );
+  }
+  if (!f.autoVerify) return null;
+  return (
+    <Fact label="Verifies itself" testId="facts-auto-verify">
+      <span className="fg-body-sm text-muted" title={formatStamp(f.autoVerify.at)}>
+        {formatStamp(f.autoVerify.at)} if nobody confirms it first ({f.autoVerify.windowDays}-day window)
+      </span>
+    </Fact>
+  );
+}
+
 export function FeedbackFacts({
   f,
   slug,
@@ -212,6 +237,15 @@ export function FeedbackFacts({
         ) : null}
         <ForecastFact forecast={forecast} slug={slug} clock={clock} />
         <ShipNoticeFact notice={f.shipNotice} slug={slug} />
+        <VerifiedFact f={f} />
+        {f.snoozed ? (
+          <Fact label="Snoozed" testId="facts-snoozed">
+            <span className="fg-body-sm" data-testid="snoozed-until">
+              Snoozed until {formatStamp(f.snoozed.until)}
+              {f.snoozed.reason ? <span className="block text-12-5 text-muted">{f.snoozed.reason}</span> : null}
+            </span>
+          </Fact>
+        ) : null}
         <Fact label="Severity">
           <StatusBadge family="severity" value={f.severity} />
         </Fact>
@@ -269,6 +303,18 @@ export function FeedbackFacts({
         <Fact label="Sent">
           <span title={formatStamp(f.createdAt)}>{formatRelativeTime(f.createdAt)}</span>
         </Fact>
+        {f.reporters.length > 1 ? (
+          <Fact label="Also reported by" testId="facts-reporters">
+            <span className="grid gap-0.5 text-13">
+              {f.reporters.slice(1).map((r) => (
+                <span key={r.id}>
+                  {r.name ?? "Unknown reporter"}
+                  {r.from ? <span className="text-12-5 text-muted"> via {r.from}</span> : null}
+                </span>
+              ))}
+            </span>
+          </Fact>
+        ) : null}
         {f.source ? (
           <Fact label="From" testId="facts-source">
             <Link

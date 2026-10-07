@@ -18,7 +18,7 @@ import {
   runDevicePrune,
   runDeviceStaleSweep,
 } from './devices/index.js';
-import { sweepDeclinedFeedback } from './feedback/index.js';
+import { sweepDeclinedFeedback, sweepResolvedFeedback } from './feedback/index.js';
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
 import { releaseHeldJobs, runStaleSweep } from './jobs/index.js';
@@ -86,6 +86,16 @@ export function coreTimers(): Timer[] {
     // Kernel sweeps.
     { kind: 'cluster', name: 'pipeline-sweeper', cron: '* * * * *', run: runPipelineSweep },
     { kind: 'cluster', name: 'pipeline-reconciler', cron: '* * * * *', run: runReconcilerOnce },
+    {
+      kind: 'cluster',
+      name: 'feedback-auto-verify',
+      cron: '*/15 * * * *',
+      run: logged(
+        'feedback-auto-verify: sweep complete',
+        sweepResolvedFeedback,
+        (r) => (r as { verified: number }).verified > 0,
+      ),
+    },
     {
       kind: 'cluster',
       name: 'phase-journal-backfill',

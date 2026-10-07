@@ -1,0 +1,1 @@
+**Feedback is triaged in four verbs and fixes verify themselves.** Accept, Decline, Duplicate and Snooze tell reporters once; messages preview their text, internal notes never reach a reporter; anyone may confirm a fix, else Forge verifies it after 7 days.

@@ -38,8 +38,9 @@ async function linksOf(projectId: string): Promise<Map<string, LinkRow>> {
   return new Map(rows.map((r) => [r.id, r]));
 }
 
+// a snoozed item is parked out of New until its date, so no triage is owed it yet
 const untriaged = (s: FeedbackSummary) =>
-  (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(s.phase);
+  (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(s.phase) && !s.snoozed;
 
 export async function readFeedbackForecasts(
   viewer: { userId: string; agency: ActorAgency },

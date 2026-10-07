@@ -1,6 +1,7 @@
 import {
   FEEDBACK_DECISIONS,
   FEEDBACK_KINDS,
+  FEEDBACK_MESSAGE_AUDIENCES,
   FEEDBACK_ROUTES,
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
@@ -86,6 +87,11 @@ export const feedback = pgTable(
     endpointContractVersion: text('endpoint_contract_version'),
     endpointElement: text('endpoint_element'),
     dueAt: timestamp('due_at', { withTimezone: true }),
+    /** Parked out of New until then, with the reason a triager reads on return; only while new or reopened. */
+    snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+    snoozeReason: text('snooze_reason'),
+    /** When a sweep first read the item resolved: the verify window counts from it; cleared when it stops reading resolved. */
+    resolvedSeenAt: timestamp('resolved_seen_at', { withTimezone: true }),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
     // an issue route's carriers are rows of `feedback_route_issues`, one or more (ISS-265)
@@ -187,6 +193,10 @@ export const feedback = pgTable(
     dedupUq: uniqueIndex('feedback_project_dedup_uq')
       .on(t.projectId, t.dedupKey)
       .where(sql`dedup_key IS NOT NULL`),
+    snoozeChk: check(
+      'feedback_snooze_chk',
+      sql`(${t.snoozedUntil} IS NULL) = (${t.snoozeReason} IS NULL) AND (${t.snoozedUntil} IS NULL OR (${t.snoozeReason} ~ '[^[:space:]]' AND ${t.status} IN ('new', 'reopened')))`,
+    ),
     statusIdx: index('feedback_project_status_idx').on(t.projectId, t.status),
     duplicateIdx: index('feedback_duplicate_of_idx')
       .on(t.duplicateOf)
@@ -230,10 +240,9 @@ export const feedbackDecisions = pgTable(
     /** What the route points at, by key (ISS-12, REQ-3, FB-4), as it read when decided. */
     carrier: text('carrier'),
     reason: text('reason'),
-    decidedBy: uuid('decided_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    decidedAgency: text('decided_agency', { enum: ['human', 'agent'] }).notNull(),
+    /** Null on a decision Forge took itself (`system`), which has no person. */
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
+    decidedAgency: text('decided_agency', { enum: ['human', 'agent', 'system'] }).notNull(),
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
@@ -250,11 +259,11 @@ export const feedbackDecisions = pgTable(
     ),
     reasonChk: check(
       'feedback_decisions_reason_chk',
-      sql`${t.decision} NOT IN ('declined', 'reopened') OR ${t.reason} ~ '[^[:space:]]'`,
+      sql`${t.decision} NOT IN ('declined', 'reopened', 'snoozed') OR ${t.reason} ~ '[^[:space:]]'`,
     ),
     agencyChk: check(
       'feedback_decisions_agency_chk',
-      sql`${t.decidedAgency} IN ('human', 'agent')`,
+      sql`${t.decidedAgency} IN ('human', 'agent', 'system') AND ((${t.decidedAgency} = 'system') = (${t.decidedBy} IS NULL))`,
     ),
     feedbackIdx: index('feedback_decisions_feedback_idx').on(t.feedbackId, t.decidedAt),
   }),
@@ -284,5 +293,42 @@ export const feedbackAttachments = pgTable(
   },
   (t) => ({
     feedbackIdx: index('feedback_attachments_feedback_idx').on(t.feedbackId),
+  }),
+);
+
+// a message to reporters, or an internal note: the row is what the thread shows. An internal note holds
+// no recipient by CHECK, so a notice cannot have been addressed from one; the notice itself goes out
+// on the `feedback.reporterTold` event, which a note never emits
+export const feedbackMessages = pgTable(
+  'feedback_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    feedbackId: uuid('feedback_id')
+      .notNull()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    audience: text('audience', { enum: FEEDBACK_MESSAGE_AUDIENCES }).notNull(),
+    body: text('body').notNull(),
+    recipients: uuid('recipients').array().notNull().default(sql`'{}'`),
+    sentBy: uuid('sent_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    sentAgency: text('sent_agency', { enum: ['human', 'agent'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    audienceChk: check(
+      'feedback_messages_audience_chk',
+      sql`${t.audience} IN (${inList(FEEDBACK_MESSAGE_AUDIENCES)})`,
+    ),
+    bodyChk: check('feedback_messages_body_chk', sql`${t.body} ~ '[^[:space:]]'`),
+    internalChk: check(
+      'feedback_messages_internal_chk',
+      sql`${t.audience} <> 'internal' OR cardinality(${t.recipients}) = 0`,
+    ),
+    agencyChk: check('feedback_messages_agency_chk', sql`${t.sentAgency} IN ('human', 'agent')`),
+    feedbackIdx: index('feedback_messages_feedback_idx').on(t.feedbackId, t.createdAt),
   }),
 );

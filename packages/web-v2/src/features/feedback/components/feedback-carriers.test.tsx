@@ -8,7 +8,7 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
 import { FeedbackFacts } from "./feedback-facts";
 
-const NONE = { triage: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false };
+const NONE = { triage: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, note: false };
 
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
@@ -30,6 +30,11 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     updatedAt: "2026-10-01T00:00:00.000Z",
     can: NONE,
     openSuggestions: 0,
+    reporters: [],
+    messages: [],
+    verified: null,
+    autoVerify: null,
+    snoozed: null,
     ...over,
   }) as FeedbackView;
 

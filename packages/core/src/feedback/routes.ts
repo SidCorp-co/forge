@@ -1,21 +1,28 @@
 import {
   CREATE_FEEDBACK_SHAPE,
   createFeedbackRequestSchema,
+  FEEDBACK_ACCEPT_SHAPE,
   FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_CLARIFICATION_SHAPE,
   FEEDBACK_EMPTY_SHAPE,
+  FEEDBACK_MESSAGE_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
   FEEDBACK_RETARGET_SHAPE,
+  FEEDBACK_SNOOZE_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
   type FeedbackEndpointsResponse,
+  type FeedbackMessagePreviewResponse,
   type FeedbackResponse,
+  feedbackAcceptRequestSchema,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
   feedbackEmptyRequestSchema,
+  feedbackMessageRequestSchema,
   feedbackReasonRequestSchema,
   feedbackRetargetRequestSchema,
+  feedbackSnoozeRequestSchema,
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
@@ -33,6 +40,7 @@ import { addAttachment, askClarification, attachmentBytes } from './attachments.
 import { similarFeedbackAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
 import { listFeedbackAs } from './list-read.js';
+import { previewMessage, sendMessage } from './messages.js';
 import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor } from './read.js';
 import { redactReporterData } from './redact.js';
@@ -45,6 +53,7 @@ import {
   verifyFeedback,
 } from './service.js';
 import { triageFeedback } from './triage.js';
+import { acceptFeedback, snoozeFeedback } from './verbs.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -171,6 +180,98 @@ feedbackRoutes.post(
         channel: 'web',
       }),
     );
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/accept',
+  itemParam,
+  strictBody(feedbackAcceptRequestSchema, FEEDBACK_ACCEPT_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return answer(
+      c,
+      await acceptFeedback({
+        projectId: id,
+        ref: fb,
+        actor: actorOf(c),
+        requirement: c.req.valid('json').requirement,
+      }),
+    );
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/snooze',
+  itemParam,
+  strictBody(feedbackSnoozeRequestSchema, FEEDBACK_SNOOZE_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await snoozeFeedback({
+        projectId: id,
+        ref: fb,
+        actor: actorOf(c),
+        until: new Date(body.until),
+        reason: body.reason,
+      }),
+    );
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/messages/preview',
+  itemParam,
+  strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const body = c.req.valid('json');
+    if (body.audience === 'internal') {
+      return refused(
+        c,
+        [
+          {
+            code: 'FEEDBACK_REFUSED',
+            path: '/audience',
+            detail:
+              'an internal note is shown to project members only and is never a notice, so it has no preview; send it as it is, or pick reporter or all_reporters.',
+          },
+        ],
+        'FEEDBACK_REFUSED',
+      );
+    }
+    const out = await previewMessage({
+      projectId: id,
+      ref: fb,
+      actor: actorOf(c),
+      audience: body.audience,
+      text: body.text,
+    });
+    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
+    const reply: FeedbackMessagePreviewResponse = { preview: out.preview };
+    return c.json(reply);
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/messages',
+  itemParam,
+  strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const out = await sendMessage({
+      projectId: id,
+      ref: fb,
+      actor: actorOf(c),
+      audience: body.audience,
+      text: body.text,
+    });
+    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
+    const reply: FeedbackResponse = { feedback: out.feedback };
+    return c.json(reply, 201);
   },
 );
 

@@ -19,7 +19,11 @@ import { type PermissionFacts, permissionRefusal } from '../permissions/index.js
 
 export type { FeedbackRefusal } from '@forge/contracts/feedback';
 
-const refusal = (code: FeedbackRefusalCode, path: string, detail: string): FeedbackRefusal => ({
+export const refusal = (
+  code: FeedbackRefusalCode,
+  path: string,
+  detail: string,
+): FeedbackRefusal => ({
   code,
   path,
   detail,
@@ -241,14 +245,19 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
 export const decideActRefusal = (facts: PermissionFacts, act: string) =>
   permissionRefusal(facts, 'feedback.approve', act);
 
-/** The reporter verifies or reopens their own item; anyone else does it with feedback.approve. */
+/**
+ * Anyone on the project, or the reporter, confirms a fix (owner, 2026-10-07): verifying is no longer
+ * a BA act, and the decision records who and when. Saying it is not fixed stays the reporter's, or
+ * a holder of feedback.approve on their behalf.
+ */
 export function personalActRefusal(
   facts: PermissionFacts,
   act: 'verified' | 'reopened',
   actorIsReporter: boolean,
 ): FeedbackRefusal | null {
   if (actorIsReporter) return null;
-  return decideActRefusal(facts, act === 'verified' ? 'verifying feedback' : 'reopening feedback');
+  if (act === 'verified') return permissionRefusal(facts, 'project.read', 'verifying feedback');
+  return decideActRefusal(facts, 'reopening feedback');
 }
 
 /** Deleting reporter data (UC15). */
@@ -438,37 +447,6 @@ export function routeRuleRefusal(
     return mismatch(
       '/requirement',
       `${f.routedRequirement.key} is ${f.routedRequirement.status}; a new-requirement route is carried by a draft. Route an agreed requirement's change as a revision.`,
-    );
-  }
-  return null;
-}
-
-// duplicate_of names a root that is not itself a duplicate, and an item other items point
-// at never becomes a duplicate (FEEDBACK_DUPLICATE_CHAIN); an item is never its own (FEEDBACK_DUPLICATE_SELF)
-export function duplicateRefusal(
-  selfId: string,
-  root: { id: string; key: string; duplicateOfKey: string | null },
-  pointedAtBy: readonly string[],
-): FeedbackRefusal | null {
-  if (root.id === selfId) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_SELF',
-      '/duplicateOf',
-      'an item is not a duplicate of itself.',
-    );
-  }
-  if (root.duplicateOfKey) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_CHAIN',
-      '/duplicateOf',
-      `${root.key} is itself a duplicate of ${root.duplicateOfKey}; point at the root, ${root.duplicateOfKey}.`,
-    );
-  }
-  if (pointedAtBy.length > 0) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_CHAIN',
-      '/duplicateOf',
-      `${pointedAtBy.join(', ')} ${pointedAtBy.length === 1 ? 'is a duplicate' : 'are duplicates'} of this item, so it stays a root; mark ${root.key} a duplicate of this one instead.`,
     );
   }
   return null;
