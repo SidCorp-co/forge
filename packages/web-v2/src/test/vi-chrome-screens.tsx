@@ -6,6 +6,7 @@ import { LandsThisWeek, LateItems } from "@/features/project-dashboard/component
 import type { PlanRow } from "@/features/project-dashboard/ba-derive";
 import { NavRail } from "@/design/patterns/nav-rail";
 import { PROJECT_ITEMS, WORKSPACE_ITEMS } from "@/features/shell";
+import { releaseDetailScreen, releasesScreen, systemOverviewScreen, workflowCanvasScreen, workflowDesignScreen, workflowsScreen } from "./vi-chrome-rel-wf";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
 // returns it filled with data that carries NO English words of its own (fixture content is not chrome).
@@ -44,4 +45,10 @@ export const CHROME_SCREENS: ChromeScreen[] = [
     name: "Navigation rail",
     render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS as never} activeKey="proj-overview" />,
   },
+  { name: "Releases", render: releasesScreen },
+  { name: "Release detail", render: releaseDetailScreen },
+  { name: "Workflows", render: workflowsScreen },
+  { name: "System overview", render: systemOverviewScreen },
+  { name: "Workflow design", render: workflowDesignScreen },
+  { name: "Workflow canvas", render: workflowCanvasScreen },
 ];

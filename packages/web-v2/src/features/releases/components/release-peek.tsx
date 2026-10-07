@@ -2,6 +2,7 @@
 
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
@@ -20,17 +21,18 @@ export function ReleasePeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   const q = useRelease(projectId, version);
   const forecastQ = useDraftReleaseForecast(projectId, q.data?.release.state === "draft");
   return (
-    <PeekPanel peek={peek} listLabel="Releases" noun="Release" onOpenFull={onOpenFull} testId="release-peek">
-      <QueryBoundary query={q} loadingLabel="loading release…">
+    <PeekPanel peek={peek} listLabel={t("releases.title")} noun={t("releases.noun")} onOpenFull={onOpenFull} testId="release-peek">
+      <QueryBoundary query={q} loadingLabel={t("releases.loadingOne")}>
         {(data) => {
           const r = data.release;
           return (
             <>
               <PeekHead
-                noun="Release"
+                noun={t("releases.noun")}
                 itemKey={r.version}
                 badge={<StatusBadge family="releaseState" value={r.state} />}
                 title={
@@ -39,7 +41,7 @@ export function ReleasePeek({
                       {r.headline}
                     </span>
                   ) : (
-                    `Release ${r.version}`
+                    t("releases.releaseVersion", { version: r.version })
                   )
                 }
                 action={<ReleaseActions projectId={projectId} r={r} />}

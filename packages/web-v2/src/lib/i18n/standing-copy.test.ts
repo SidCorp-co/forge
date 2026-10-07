@@ -17,7 +17,11 @@ const ACT = [
   "write the release note", "mark the merge", "declare a source probe on production", "pair a runner", "bring a runner online", "a release is running", "judge the criteria still owed",
   "give production a way to be read", "a check could not run", "label a runner for releases", "verdicts not re-read",
 ];
-const EFFECT = ["Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then."];
+const EFFECT = [
+  "Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.",
+  "Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.",
+  "Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.",
+];
 
 const vi = product.vi as Record<string, string>;
 const looksEnglish = (s: string) => /\b(the|and|then|it|of)\b/.test(s);
@@ -44,6 +48,13 @@ describe("the standing words, mapped by the shape of core's English", () => {
       for (const token of a.match(/\b(?:[A-Z]{2,}-\d+|r\d+|\d+\.\d+\.\d+|BC-\d)\b/g) ?? []) expect(vi, `${a} -> ${vi}`).toContain(token);
     }
     expect(standingEffect(EFFECT[0] as string, "vi")).toContain("Staff shell revision 3");
+    for (const e of EFFECT.slice(1)) {
+      const vi = standingEffect(e, "vi");
+      expect(vi, e).not.toBe(e);
+      expect(looksEnglish(vi), vi).toBe(false);
+      expect(vi).toContain("50");
+    }
+    expect(standingEffect(EFFECT[1] as string, "vi")).toContain("13");
   });
 
   it("reads several joined acts one by one, and leaves a sentence it does not know as core wrote it", () => {

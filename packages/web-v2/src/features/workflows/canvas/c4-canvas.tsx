@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, SegmentedControl } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { type DBox, type Diagram, fitZoom, layoutView, MIN_READABLE_ZOOM } from "../c4/layout";
 import { type Detail, FOCAL, foldable, type Level, relationshipText, viewOf } from "../c4/view";
@@ -25,15 +26,8 @@ const MAX_ZOOM = 2.5;
 const FIT_MAX = 1.25;
 const PAD = 16;
 
-const LEVELS = [
-  { value: "context" as const, label: "Context", title: "C4 level 1: the system as one box, the people who use it and the systems it talks to" },
-  { value: "containers" as const, label: "Containers", title: "C4 level 2: what runs inside the system, and who and what each part talks to" },
-];
-
-const DETAILS = [
-  { value: "boundaries" as const, label: "Boundaries", title: "Each outside boundary as one box with a count; hover one for its systems" },
-  { value: "systems" as const, label: "Every system", title: "Every person and every outside system, each boundary drawn round its own" },
-];
+const LEVELS = ["context", "containers"] as const;
+const DETAILS = ["boundaries", "systems"] as const;
 
 const KIND_HUE: Record<DBox["node"]["kind"], string> = { person: "orange", group: "slate", external: "slate", system: "blue", container: "blue", focal: "blue" };
 
@@ -51,7 +45,8 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
   const graph = read.data ?? null;
-  const c = useMemo(() => readCanvas(doc, template), [doc, template]);
+  const t = useCopy();
+  const c = useMemo(() => readCanvas(doc, template, t), [doc, template, t]);
   const f = useStepFocus(c);
   const { step, edge, focus, hits, setSelection } = f;
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
@@ -272,21 +267,24 @@ function C4Toolbar({
   onWalk: () => void;
   health: WorkflowCanvasProps["health"];
 }) {
+  const t = useCopy();
   return (
-    <div className="wfc-float wfc-tl" role="toolbar" aria-label="View" data-testid="c4-toolbar">
-      {compact ? null : <SegmentedControl<Level> options={LEVELS} value={level} onChange={onLevel} />}
+    <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")} data-testid="c4-toolbar">
+      {compact ? null : (
+        <SegmentedControl<Level> options={LEVELS.map((v) => ({ value: v, label: t(`workflows.c4.level.${v}`), title: t(`workflows.c4.level.${v}.hint`) }))} value={level} onChange={onLevel} />
+      )}
       {detail ? (
         <>
           {compact ? null : <span className="wfc-sep" />}
-          <SegmentedControl<Detail> options={DETAILS} value={detail} onChange={onDetail} />
+          <SegmentedControl<Detail> options={DETAILS.map((v) => ({ value: v, label: t(`workflows.c4.detail.${v}`), title: t(`workflows.c4.detail.${v}.hint`) }))} value={detail} onChange={onDetail} />
         </>
       ) : null}
       {compact ? null : (
         <>
           <span className="wfc-sep" />
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} title="Step through the design one element at a time" data-testid="walk-start-bar">
+          <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} title={t("workflows.c4.walkHint")} data-testid="walk-start-bar">
             <Play size={16} />
-            <span className="wfc-t">Walk through</span>
+            <span className="wfc-t">{t("workflows.canvas.walk")}</span>
           </Button>
         </>
       )}

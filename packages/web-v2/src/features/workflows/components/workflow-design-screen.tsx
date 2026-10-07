@@ -3,6 +3,7 @@
 import { DetailHeader, ErrorState, ProjectLoader, useListOrigin } from "@/design";
 import { useEntityDecisions } from "@/features/comments/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowsHref } from "@/lib/routes/workflows";
@@ -14,6 +15,7 @@ const centred = (node: React.ReactNode) => <div className="grid min-h-[40vh] pla
 
 // The shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Workflows, the flow, the title and the design's status; its one primary act is Approve while the design waits on the viewer
 export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: string; slug: string; flow: string }) {
+  const t = useCopy();
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);
   const record = list.data?.workflows.find((r) => r.document.flow === flow || r.document.id === flow) ?? null;
@@ -28,13 +30,13 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   const failed = list.error ?? templates.error ?? design.error;
 
   let body: React.ReactNode;
-  if (list.isLoading || templates.isLoading || (record && design.isLoading)) body = centred(<ProjectLoader label="loading workflow…" />);
+  if (list.isLoading || templates.isLoading || (record && design.isLoading)) body = centred(<ProjectLoader label={t("workflows.loadingOne")} />);
   else if (failed) {
     const retry = () => (list.isError ? list.refetch() : templates.isError ? templates.refetch() : design.refetch());
     body = centred(<ErrorState message={formatApiError(failed)} onRetry={isRetryableApiError(failed) ? retry : undefined} />);
-  } else if (!record || !d || !shown) body = centred(<ErrorState title="Workflow not found" message={`This project draws no workflow "${flow}".`} />);
+  } else if (!record || !d || !shown) body = centred(<ErrorState title={t("workflows.notFound")} message={t("workflows.notFoundMessage", { flow })} />);
   else {
-    const template = templateFor(shown, (templates.data?.templates ?? []).map((t) => t.template));
+    const template = templateFor(shown, (templates.data?.templates ?? []).map((x) => x.template));
     const noteControl = revision !== null ? (
       <>
         <DecisionNoteControl revision={revision} decide={decide} />
@@ -66,7 +68,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   return (
     <div className="min-h-full bg-app" data-testid="workflow-design-screen">
       <DetailHeader
-        back={{ href: back, label: "Workflows" }}
+        back={{ href: back, label: t("workflows.title") }}
         itemKey={record?.document.flow ?? flow}
         keyTitle={record?.document.id}
         title={shown?.title ?? flow}

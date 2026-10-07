@@ -3,25 +3,21 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
 import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import { projectDescriptionOf } from "@/features/project-settings/project-document";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
 
-/** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in. */
-const PURPOSES: readonly { id: Purpose; label: string; hint: string; templates: readonly string[] }[] = [
-  { id: "system", label: "System", hint: "Where the product sits between its users and the systems around it.", templates: [SYSTEM_CONTEXT_TEMPLATE] },
-  { id: "journeys", label: "Journeys", hint: "How work and people move through the product.", templates: ["operational-flow", "ux-flow"] },
-  { id: "lifecycles", label: "Lifecycles", hint: "The states one thing passes through.", templates: ["state-machine"] },
-  { id: "integrations", label: "Integrations", hint: "The calls between systems, in order.", templates: ["integration-sequence"] },
-  { id: "data", label: "Data", hint: "Where data comes from, where it lands and who it reaches.", templates: ["data-flow"] },
-  { id: "decisions", label: "Decisions", hint: "The tables behind a rule.", templates: ["decision-model"] },
-  {
-    id: "service",
-    label: "Service",
-    hint: "What the customer meets and what runs behind it.",
-    templates: ["service-blueprint", "service-blueprint-cross-functional"],
-  },
-  { id: "other", label: "Other", hint: "Designs drawn in one of the project's own templates.", templates: [] },
+/** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in; its words are `workflows.purpose.<id>` and `.hint`. */
+const PURPOSES: readonly { id: Purpose; templates: readonly string[] }[] = [
+  { id: "system", templates: [SYSTEM_CONTEXT_TEMPLATE] },
+  { id: "journeys", templates: ["operational-flow", "ux-flow"] },
+  { id: "lifecycles", templates: ["state-machine"] },
+  { id: "integrations", templates: ["integration-sequence"] },
+  { id: "data", templates: ["data-flow"] },
+  { id: "decisions", templates: ["decision-model"] },
+  { id: "service", templates: ["service-blueprint", "service-blueprint-cross-functional"] },
+  { id: "other", templates: [] },
 ];
 
 /** The template a listed design names, or the one a design stored before templates is read in. */
@@ -52,11 +48,11 @@ interface CatalogueGroup {
 }
 
 /** The designs grouped by purpose, each group most recently updated first; empty groups are left out. */
-export function catalogue(records: readonly WorkflowRecord[]): CatalogueGroup[] {
+export function catalogue(records: readonly WorkflowRecord[], t: Copy): CatalogueGroup[] {
   return PURPOSES.map((p) => ({
     id: p.id,
-    label: p.label,
-    hint: p.hint,
+    label: t(`workflows.purpose.${p.id}` as ProductCopyKey),
+    hint: t(`workflows.purpose.${p.id}.hint` as ProductCopyKey),
     rows: records
       .filter((r) => purposeOf(r) === p.id)
       .sort((a, b) => b.document.updatedAt.localeCompare(a.document.updatedAt)),
@@ -97,11 +93,15 @@ export function systemOverview(records: readonly WorkflowRecord[]): SystemOvervi
 }
 
 /** The facts the overview states, as core counted them in the design's graph. */
-export function overviewFacts(g: SystemGraph): OverviewFact[] {
+export function overviewFacts(g: SystemGraph, t: Copy): OverviewFact[] {
   const f = g.facts;
   return [
-    { label: "Users", value: `${f.people.length} ${f.people.length === 1 ? "role" : "roles"}`, rows: f.people },
-    { label: "External systems", value: `${f.externals}${f.namedBoundaries > 1 ? ` in ${f.namedBoundaries} boundaries` : ""}`, rows: f.boundaries },
+    { label: t("workflows.overview.users"), value: t(f.people.length === 1 ? "workflows.overview.roles.one" : "workflows.overview.roles.many", { n: f.people.length }), rows: f.people },
+    {
+      label: t("workflows.overview.externals"),
+      value: f.namedBoundaries > 1 ? t("workflows.overview.externalsIn", { n: f.externals, b: f.namedBoundaries }) : String(f.externals),
+      rows: f.boundaries,
+    },
   ];
 }
 

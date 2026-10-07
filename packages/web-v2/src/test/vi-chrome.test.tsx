@@ -5,6 +5,10 @@ import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
+// The canvas itself is drawn by React Flow, which jsdom cannot lay out; its chrome is rendered on its own ("Workflow canvas").
+vi.mock("@/features/workflows/canvas/workflow-canvas", () => ({ WorkflowCanvas: () => null }));
+// A query no screen was seeded with stays pending rather than reaching for a network.
+vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 // Words that are English chrome and have a Vietnamese word in the locale file. A screen rendered in vi
 // that still shows one of them has a string that never went through the locale file. Brand and
@@ -13,6 +17,11 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
+  "release train", "coming next", "approve", "return", "criteria", "proven", "maintenance", "what users get", "technical", "notes", "checks",
+  "issues in this release", "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason",
+  "designs", "diagram", "design", "steps", "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all",
+  "walk through", "zoom", "fit", "minimap", "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users",
+  "external systems", "where it stands", "properties", "template", "drawn by", "the code", "trace", "if",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

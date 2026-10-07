@@ -15,6 +15,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { issuesHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { WorkflowBody, WorkflowStep } from "./types";
 
 export const HEALTH_PARAM = "health";
@@ -42,22 +43,19 @@ export function layerOf(param: string | null, observed: boolean): HealthLayer {
 export const OBSERVED_PREFIX = "observed:";
 export const isObservedId = (id: string) => id.startsWith(OBSERVED_PREFIX);
 
+/** A node's rewrite reading: due until a decision names the node, then the decision. */
+export type RewriteReading = Exclude<HealthNode["rewrite"], "none">;
+
 /** What one drawn node shows: its provenance, one dot per kind, and its rewrite reading. */
 export interface NodeHealthView {
   provenance: NodeProvenance;
   kinds: HealthMarkerKind[];
   markers: HealthMarker[];
-  /** "Rewrite due" until a decision names the node, then the decision. */
-  rewrite: string | null;
+  rewrite: RewriteReading | null;
 }
 
-const REWRITE_WORDS: Record<HealthNode["rewrite"], string | null> = {
-  due: "Rewrite due",
-  decided_rewrite: "Decided: rewrite",
-  decided_keep: "Decided: keep",
-  decided_delete: "Decided: delete",
-  none: null,
-};
+/** "Rewrite due", "Decided: keep" and their Vietnamese readings. */
+export const rewriteWords = (r: RewriteReading, t: Copy) => t(`workflows.rewrite.${r}` as ProductCopyKey);
 
 const nodeId = (t: HealthMarker["target"]): string | null => {
   if (t.kind === "workflow") return null;
@@ -82,7 +80,7 @@ export function nodeHealthOf(health: WorkflowHealth): Map<string, NodeHealthView
   for (const n of health.nodes) {
     const id = nodeId(n.target);
     if (!id) continue;
-    out.set(id, { provenance: n.provenance, kinds: ordered(n.kinds), markers: [], rewrite: REWRITE_WORDS[n.rewrite] });
+    out.set(id, { provenance: n.provenance, kinds: ordered(n.kinds), markers: [], rewrite: n.rewrite === "none" ? null : n.rewrite });
   }
   for (const m of health.markers) {
     const id = nodeId(m.target);
@@ -166,8 +164,8 @@ export function sourceHref(slug: string, flow: string, s: MarkerSource): string 
 }
 
 /** A target as words: the step, the line, or the whole design. */
-export function targetWords(t: HealthMarker["target"]): string {
-  if (t.kind === "workflow") return "The whole design";
-  const where = t.layer === "observed" ? " (observed)" : "";
-  return t.kind === "step" ? `${t.step}${where}` : `${t.from} → ${t.to}${t.label ? ` “${t.label}”` : ""}${where}`;
+export function targetWords(x: HealthMarker["target"], t: Copy): string {
+  if (x.kind === "workflow") return t("workflows.target.whole");
+  const where = x.layer === "observed" ? t("workflows.target.observed") : "";
+  return x.kind === "step" ? `${x.step}${where}` : `${x.from} → ${x.to}${x.label ? ` “${x.label}”` : ""}${where}`;
 }

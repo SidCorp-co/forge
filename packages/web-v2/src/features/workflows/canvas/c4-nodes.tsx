@@ -11,6 +11,8 @@ import type { HealthMarkerKind } from "@forge/contracts/workflow-health";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { MARK_HUE } from "./style";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 
 // A C4 diagram is drawn by the same canvas as every other design: its boxes, frames and lines are
 // React Flow nodes and edges at the places the C4 layout computed.
@@ -48,20 +50,28 @@ const ends = (
   </>
 );
 
-const countWord = (b: DBox) => {
+const countWord = (b: DBox, t: Copy) => {
   const n = b.node.count ?? 0;
-  if (b.node.kind === "focal") return `${n} ${n === 1 ? "part" : "parts"} inside`;
+  const one = n === 1 ? "one" : "many";
+  if (b.node.kind === "focal") return t(`workflows.c4.parts.${one}`, { n });
   const people = b.node.members.every((m) => m.kind === "person");
-  return people ? `${n} ${n === 1 ? "person" : "people"}` : `${n} ${n === 1 ? "system" : "systems"}`;
+  return people ? t(`workflows.c4.people.${one}`, { n }) : t(`workflows.c4.systems.${one}`, { n });
+};
+
+/** One element's tooltip: its title, its owner and its purpose. */
+const tipOf = (b: DBox, t: Copy) => {
+  const n = b.node.node;
+  return n ? [n.title, n.owner ? t("workflows.c4.owner", { owner: n.owner }) : null, n.purpose].filter(Boolean).join("\n") : b.node.tip;
 };
 
 /** A folded boundary's card: who or what it stands for, each outside system with its integration state. */
 function Members({ box }: { box: DBox }) {
+  const t = useCopy();
   return (
     <div className="grid gap-2" data-testid="c4-group-card">
       <div className="flex items-baseline gap-2">
         <b className="text-13-5 font-semibold">{box.node.name}</b>
-        <span className="text-12 text-muted">{countWord(box)}</span>
+        <span className="text-12 text-muted">{countWord(box, t)}</span>
       </div>
       <ul className="m-0 grid list-none p-0">
         {box.node.members.map((x) => (
@@ -79,6 +89,7 @@ function Members({ box }: { box: DBox }) {
 }
 
 function C4Box({ data }: NodeProps & { data: C4BoxData }) {
+  const t = useCopy();
   const { box: b } = data;
   const anchor = useRef<HTMLDivElement>(null);
   const card = useHoverCard();
@@ -99,7 +110,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
         data-testid="c4-box"
         data-id={b.node.id}
         style={{ width: b.w, height: b.h, ["--mark" as string]: data.mark ? MARK_HUE[data.mark] : undefined }}
-        title={group ? undefined : b.node.tip}
+        title={group ? undefined : tipOf(b, t)}
         {...(group ? card.trigger : {})}
         onClickCapture={() => {
           if (group && !data.canOpen) card.pinned ? card.close() : card.pin();
@@ -107,7 +118,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
       >
         {ends}
         {b.node.count !== null ? (
-          <span className="wfc-c4-chip" style={{ fontSize: FONT.chip }} title={countWord(b)} data-testid="c4-count">
+          <span className="wfc-c4-chip" style={{ fontSize: FONT.chip }} title={countWord(b, t)} data-testid="c4-count">
             {b.node.count}
             {group && data.canOpen ? <ChevronDown size={12} aria-hidden /> : null}
           </span>
@@ -132,7 +143,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
           onDismiss={card.close}
           placement="right-start"
           role="dialog"
-          aria-label={`${b.node.name}: ${countWord(b)}`}
+          aria-label={`${b.node.name}: ${countWord(b, t)}`}
           maxWidth={360}
           className="w-[320px] rounded-lg border border-line bg-surface px-3.5 py-3 shadow-lg"
           {...card.card}
@@ -145,6 +156,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
 }
 
 function C4Frame({ data }: NodeProps & { data: C4FrameData }) {
+  const t = useCopy();
   const f = data.frame;
   const fold = f.frame.folds && data.onFold ? data.onFold : null;
   const label = (
@@ -160,7 +172,7 @@ function C4Frame({ data }: NodeProps & { data: C4FrameData }) {
           variant="ghost"
           size="sm"
           className="wfc-c4-fold nodrag nopan"
-          title="Fold this boundary back into one box"
+          title={t("workflows.c4.foldBoundary")}
           onClick={(e) => {
             e.stopPropagation();
             fold(f.frame.id);
@@ -177,6 +189,7 @@ function C4Frame({ data }: NodeProps & { data: C4FrameData }) {
 }
 
 function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4LineData }) {
+  const t = useCopy();
   const l = data.line;
   const anchor = useRef<HTMLDivElement>(null);
   const card = useHoverCard();
@@ -203,15 +216,15 @@ function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4Line
             style={{ fontSize: FONT.label, width: label.w, height: label.h, transform: `translate(${label.x}px, ${label.y}px)` }}
             {...card.trigger}
           >
-            {label.lines.map((t, i) => (
-              <span key={t} className="wfc-c4-label-line">
-                {t}
-                {label.more && !label.chipBelow && i === label.lines.length - 1 ? <span className="wfc-c4-more">+{label.more} more</span> : null}
+            {label.lines.map((line, i) => (
+              <span key={line} className="wfc-c4-label-line">
+                {line}
+                {label.more && !label.chipBelow && i === label.lines.length - 1 ? <span className="wfc-c4-more">{t("workflows.c4.more", { n: label.more })}</span> : null}
               </span>
             ))}
             {label.more && label.chipBelow ? (
               <span className="wfc-c4-label-line">
-                <span className="wfc-c4-more">+{label.more} more</span>
+                <span className="wfc-c4-more">{t("workflows.c4.more", { n: label.more })}</span>
               </span>
             ) : null}
           </div>

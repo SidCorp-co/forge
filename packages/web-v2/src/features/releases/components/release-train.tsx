@@ -1,55 +1,63 @@
 "use client";
 
-import { RELEASE_PROOF_LABELS, RELEASE_PROOF_TONES, RELEASE_STATE_LABELS, RELEASE_STATE_TONES } from "@forge/contracts/releases";
+import { RELEASE_PROOF_TONES, RELEASE_STATE_TONES } from "@forge/contracts/releases";
 import Link from "next/link";
 import { LEGEND, MarkStrip, ViewHeading } from "@/design";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { releaseHref } from "@/lib/routes/releases";
 import type { ReleaseContentGroup, ReleaseSummary } from "../types";
 
 const SHOWN = 6;
 const ROWS = 4;
-const DAY = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
-
-const groupKey = (g: ReleaseContentGroup) => g.requirement?.key ?? "Maintenance";
+const groupKey = (g: ReleaseContentGroup, t: Copy) => g.requirement?.key ?? t("releases.maintenance");
 
 function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
+  const t = useCopy();
+  const label = useLabel();
   const shown = groups.slice(0, ROWS);
   const rest = groups.slice(ROWS);
   return (
     <span className="grid gap-0.5" data-testid="train-contents">
       {shown.map((g) => (
-        <span key={groupKey(g)} className="flex items-center gap-2 text-12">
+        <span key={groupKey(g, t)} className="flex items-center gap-2 text-12">
           <span className={cn(g.requirement ? "font-mono text-fg" : "text-subtle")} title={g.requirement?.title}>
-            {groupKey(g)}
+            {groupKey(g, t)}
           </span>
           <MarkStrip
             size="sm"
             marks={g.issues.map((i) => ({
               key: i.key,
-              label: `${i.key} ${i.title} · ${RELEASE_PROOF_LABELS[i.proof]}`,
+              label: `${i.key} ${i.title} · ${label("releaseProof", i.proof)}`,
               ...(i.proof === "unrecorded" || i.proof === "open" ? { fill: "var(--paper-300)" } : { tone: RELEASE_PROOF_TONES[i.proof] }),
             }))}
           />
         </span>
       ))}
       {rest.length > 0 ? (
-        <span className="text-12 text-subtle" title={rest.map(groupKey).join(", ")} data-testid="train-more">
-          +{rest.length} more {rest.length === 1 ? "group" : "groups"}
+        <span className="text-12 text-subtle" title={rest.map((g) => groupKey(g, t)).join(", ")} data-testid="train-more">
+          {t(rest.length === 1 ? "releases.moreGroup" : "releases.moreGroups", { n: rest.length })}
         </span>
       ) : null}
     </span>
   );
 }
 
-function meta(r: ReleaseSummary): string {
-  const at = r.releasedAt ?? r.openedAt;
-  return [RELEASE_STATE_LABELS[r.state], at ? DAY.format(new Date(at)) : null, `Issues ${r.issueCount}`].filter(Boolean).join(" · ");
+function useMeta(): (r: ReleaseSummary) => string {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
+  return (r) => {
+    const at = r.releasedAt ?? r.openedAt;
+    return [label("releaseState", r.state), at ? time.date(at) : null, t("releases.issuesCount", { n: r.issueCount })].filter(Boolean).join(" · ");
+  };
 }
 
 const COLUMN = "grid w-[250px] flex-none content-start gap-1 py-1.5 pl-3 pr-3";
 
 function Cut({ r, slug, selected }: { r: ReleaseSummary; slug: string; selected: boolean }) {
+  const meta = useMeta();
   return (
     <Link
       href={releaseHref(slug, r.version)}
@@ -67,12 +75,13 @@ function Cut({ r, slug, selected }: { r: ReleaseSummary; slug: string; selected:
 }
 
 function Next({ draft, slug, selected }: { draft: ReleaseSummary | undefined; slug: string; selected: boolean }) {
+  const t = useCopy();
   const edge = { borderLeft: "3px dashed var(--ink-400)" };
   if (!draft) {
     return (
       <span className={COLUMN} style={edge} data-testid="train-next">
-        <b className="text-12-5 font-semibold text-fg">Next</b>
-        <span className="text-12 text-muted">No release planned. Issues queue at Awaiting release.</span>
+        <b className="text-12-5 font-semibold text-fg">{t("releases.trainNext")}</b>
+        <span className="text-12 text-muted">{t("releases.trainNonePlanned")}</span>
       </span>
     );
   }
@@ -85,9 +94,9 @@ function Next({ draft, slug, selected }: { draft: ReleaseSummary | undefined; sl
       data-testid="train-next"
       data-key={draft.key}
     >
-      <b className="text-12-5 font-semibold text-fg">Next</b>
+      <b className="text-12-5 font-semibold text-fg">{t("releases.trainNext")}</b>
       <span className="text-12 text-muted">
-        <span className="font-mono font-semibold text-link">{draft.version}</span> · not cut · Issues {draft.issueCount}
+        <span className="font-mono font-semibold text-link">{draft.version}</span> · {t("releases.trainNotCut", { n: draft.issueCount })}
       </span>
       <Contents groups={draft.contents} />
     </Link>
@@ -101,17 +110,18 @@ const Arrow = () => (
 );
 
 export function ReleaseTrain({ releases, slug, selected }: { releases: ReleaseSummary[]; slug: string; selected?: string }) {
+  const t = useCopy();
   const draft = releases.find((r) => r.state === "draft");
   const cut = releases.filter((r) => r.state !== "draft").reverse();
   const shown = cut.slice(-SHOWN);
   const earlier = cut.length - shown.length;
   return (
-    <section aria-label="Release train" className="px-5 pb-4 pt-4 max-md:px-3" data-testid="release-train">
-      <ViewHeading hint="Contents grouped by requirement; a bar is an issue">Release train</ViewHeading>
+    <section aria-label={t("releases.train")} className="px-5 pb-4 pt-4 max-md:px-3" data-testid="release-train">
+      <ViewHeading hint={t("releases.trainHint")}>{t("releases.train")}</ViewHeading>
       <ol className="m-0 flex list-none items-stretch gap-1 overflow-x-auto p-0">
         {earlier > 0 ? (
           <li className="grid flex-none content-center px-2 text-12 text-subtle" data-testid="train-earlier">
-            {earlier} earlier
+            {t("releases.trainEarlier", { n: earlier })}
           </li>
         ) : null}
         {shown.map((r, i) => (

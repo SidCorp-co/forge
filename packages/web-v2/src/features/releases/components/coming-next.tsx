@@ -10,6 +10,9 @@ import { ViewHeading } from "@/design";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import { type EtaClock, etaOfForecast, etaOfScope } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseSummary } from "../types";
@@ -18,10 +21,11 @@ const GRID = "grid grid-cols-[104px_minmax(0,1fr)_96px_128px] items-center gap-x
 const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
 
 /** "Waiting on you: cut 0.1.0" — the draft's own turn, as the release read model gives it to this viewer. */
-function draftTurnText(draft: ReleaseSummary): string | null {
+function draftTurnText(draft: ReleaseSummary, t: Copy, language: string): string | null {
   const w = draft.waitingOn;
   if (w.kind === "none" || !w.act) return null;
-  return `Waiting on ${w.kind === "you" ? "you" : w.who}: ${w.act}`;
+  const act = standingAct(w.act, language);
+  return w.kind === "you" ? t("releases.waitingOnYouAct", { act }) : t("releases.waitingOnAct", { who: standingWho(w.who, language), act });
 }
 
 export function ComingNext({
@@ -35,19 +39,21 @@ export function ComingNext({
   slug: string;
   clock: EtaClock;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const requirements = next?.requirements ?? [];
   if (requirements.length === 0 && !draft) return null;
-  const turn = draft ? draftTurnText(draft) : null;
+  const turn = draft ? draftTurnText(draft, t, language) : null;
   const draftScope = next?.draft;
   return (
-    <section aria-label="Coming next" className="pt-4" data-testid="coming-next">
+    <section aria-label={t("releases.comingNext")} className="pt-4" data-testid="coming-next">
       <div className="px-5 max-md:px-3">
-        <ViewHeading hint="Open work per requirement, and when it is in people's hands">Coming next</ViewHeading>
+        <ViewHeading hint={t("releases.comingNextHint")}>{t("releases.comingNext")}</ViewHeading>
       </div>
       <div className={`${GRID} h-8 border-y border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden`} data-testid="coming-next-header">
-        <span>Key</span>
-        <span>Title</span>
-        <span className="text-right">Landed</span>
+        <span>{t("list.col.key")}</span>
+        <span>{t("list.col.title")}</span>
+        <span className="text-right">{t("releases.colLanded")}</span>
         <span className="text-right">{ETA_COPY[clock.lang].header}</span>
       </div>
       <ul className="m-0 list-none p-0">
@@ -58,7 +64,7 @@ export function ComingNext({
             </Link>
             <span className="min-w-0 truncate text-13 text-fg max-md:order-3 max-md:col-span-3">{s.title}</span>
             <span className="text-right text-12 text-muted tabular-nums">
-              {s.landed}/{s.total} landed
+              {t("releases.landedOf", { landed: s.landed, total: s.total })}
             </span>
             <EtaCell eta={etaOfScope(s, clock)} clock={clock} />
           </li>
@@ -69,7 +75,7 @@ export function ComingNext({
               {draft.version}
             </Link>
             <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
-              <span className="truncate text-13 text-fg">Draft release · Issues {draft.issueCount}</span>
+              <span className="truncate text-13 text-fg">{t("releases.draftRelease", { n: draft.issueCount })}</span>
               {turn ? (
                 <span className="truncate text-12-5 font-semibold text-fg" title={draft.waitingOn.rule} data-testid="coming-next-draft-turn">
                   {turn}
@@ -77,7 +83,7 @@ export function ComingNext({
               ) : null}
             </span>
             <span className="text-right text-12 text-muted tabular-nums">
-              {draftScope && draftScope.total > 0 ? `${draftScope.landed}/${draftScope.total} landed` : null}
+              {draftScope && draftScope.total > 0 ? t("releases.landedOf", { landed: draftScope.landed, total: draftScope.total }) : null}
             </span>
             <EtaCell eta={draftScope?.forecast ? etaOfForecast(draftScope.forecast, clock) : null} clock={clock} />
           </li>
