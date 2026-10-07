@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.80] - 2026-10-07
+
+A runner box refuses a stop that leaves work behind
+
+### Fixed
+
+- **A refused stop's commit command now works after `git rm`.** It named the staged deletion on its `git add` line and failed. `forge-runner api` given `-f` with `-d` now says to drop `-d`, not to fix its JSON.
+
 ## [0.4.0-dev.79] - 2026-10-07
 
 Core is the one judge of an outdated pane and a limit record's freshness
