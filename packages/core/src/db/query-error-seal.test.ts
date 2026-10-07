@@ -110,24 +110,6 @@ describe('sealQueryError', () => {
     expect(`${cause.stack}`).not.toContain('abc');
   });
 
-  it("empties a field the driver fixed for good, and the database's failure stands", () => {
-    const value = 'zq9-debug-bound-value';
-    const pg = Object.assign(new Error(`invalid input syntax for type uuid: "${value}"`), {
-      severity: 'ERROR',
-      code: '22P02',
-    });
-    Object.defineProperties(pg, {
-      query: { value: 'select $1::uuid', enumerable: true },
-      parameters: { value: [value], enumerable: true },
-      args: { value: [value], enumerable: true },
-    });
-    expect(sealQueryError(pg)).toBe(pg);
-    expect(pg.message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
-    expect((pg as unknown as Record<string, unknown>).code).toBe('22P02');
-    expect(JSON.stringify(pg)).not.toContain('zq9');
-    expect(redactQueryParams({ copied: `saw ${value}` }, pg).copied).toBe(`saw ${REDACTED}`);
-  });
-
   it('keeps a sealed message whole beside a shorter one that a token of its own could hold', () => {
     const err = sealQueryError(
       new DrizzleQueryError('select $1', ['x'], pgRefusal('0', { code: 'P0001' }, [])),
@@ -145,6 +127,56 @@ describe('sealQueryError', () => {
     );
     expect(redactQueryParams({ copied: 'secret0value' }, err).copied).toBe(REDACTED);
     expect(redactedMessage(err)).toBe(err.message);
+  });
+
+  it('reads no redaction it made as a value, however often a transaction seals it', () => {
+    const err = new DrizzleQueryError(
+      'select $1::uuid',
+      ['Redact'],
+      pgRefusal('invalid input syntax for type uuid: "Redact"', { code: '22P02' }, ['Redact']),
+    );
+    sealQueryError(sealQueryError(err));
+    expect((err.cause as Error).message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    expect(redactedMessage(err.cause)).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    const logged = redactQueryParams(stdSerializers.err(err), err);
+    expect(logged.message).toContain(`: invalid input syntax for type uuid: ${REDACTED}`);
+    expect(logged.stack).toContain('    at ');
+    expect(err.message).toBe(`Failed query: select $1::uuid\nparams: ${REDACTED}`);
+  });
+
+  it('seals a driver error a transaction rejects by itself, with no drizzle error around it', () => {
+    const pg = pgRefusal(
+      'duplicate key value violates unique constraint "notes_body_key"',
+      {
+        code: '23505',
+        detail: 'Key (body)=(zq9-secret-document) already exists.',
+        constraint_name: 'notes_body_key',
+      },
+      [],
+    );
+    expect(sealQueryError(pg)).toBe(pg);
+    expect(JSON.stringify(pg)).not.toContain('zq9');
+    expect(pg.message).toBe('duplicate key value violates unique constraint "notes_body_key"');
+  });
+});
+
+describe('sealQueryError, given fields the driver defined for good', () => {
+  it("empties a field the driver fixed for good, and the database's failure stands", () => {
+    const value = 'zq9-debug-bound-value';
+    const pg = Object.assign(new Error(`invalid input syntax for type uuid: "${value}"`), {
+      severity: 'ERROR',
+      code: '22P02',
+    });
+    Object.defineProperties(pg, {
+      query: { value: 'select $1::uuid', enumerable: true },
+      parameters: { value: [value], enumerable: true },
+      args: { value: [value], enumerable: true },
+    });
+    expect(sealQueryError(pg)).toBe(pg);
+    expect(pg.message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    expect((pg as unknown as Record<string, unknown>).code).toBe('22P02');
+    expect(JSON.stringify(pg)).not.toContain('zq9');
+    expect(redactQueryParams({ copied: `saw ${value}` }, pg).copied).toBe(`saw ${REDACTED}`);
   });
 
   it.each([
@@ -193,34 +225,20 @@ describe('sealQueryError', () => {
     expect((sealed.cause as unknown as Record<string, unknown>).code).toBe('23514');
   });
 
-  it('reads no redaction it made as a value, however often a transaction seals it', () => {
-    const err = new DrizzleQueryError(
-      'select $1::uuid',
-      ['Redact'],
-      pgRefusal('invalid input syntax for type uuid: "Redact"', { code: '22P02' }, ['Redact']),
-    );
-    sealQueryError(sealQueryError(err));
-    expect((err.cause as Error).message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
-    expect(redactedMessage(err.cause)).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
-    const logged = redactQueryParams(stdSerializers.err(err), err);
-    expect(logged.message).toContain(`: invalid input syntax for type uuid: ${REDACTED}`);
-    expect(logged.stack).toContain('    at ');
-    expect(err.message).toBe(`Failed query: select $1::uuid\nparams: ${REDACTED}`);
-  });
-
-  it('seals a driver error a transaction rejects by itself, with no drizzle error around it', () => {
-    const pg = pgRefusal(
-      'duplicate key value violates unique constraint "notes_body_key"',
-      {
-        code: '23505',
-        detail: 'Key (body)=(zq9-secret-document) already exists.',
-        constraint_name: 'notes_body_key',
-      },
-      [],
-    );
-    expect(sealQueryError(pg)).toBe(pg);
-    expect(JSON.stringify(pg)).not.toContain('zq9');
-    expect(pg.message).toBe('duplicate key value violates unique constraint "notes_body_key"');
+  it('copies a driver error whose fixed array of bound values is frozen as well', () => {
+    const pg = Object.assign(new Error('duplicate key'), {
+      severity: 'ERROR',
+      code: '23505',
+      constraint_name: 'notes_key',
+    });
+    Object.defineProperty(pg, 'parameters', {
+      value: Object.freeze(['zq9-secret']),
+      enumerable: true,
+    });
+    const sealed = sealQueryError(pg) as Error & Record<string, unknown>;
+    expect(JSON.stringify(sealed)).not.toContain('zq9');
+    expect(sealed.code).toBe('23505');
+    expect(sealed.constraint_name).toBe('notes_key');
   });
 });
 

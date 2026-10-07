@@ -383,6 +383,17 @@ function sealedDriverMessage(text: string, values: string[]): string {
 
 type Change = { value: unknown; enumerable?: boolean };
 
+/** A fixed field's array emptied where it stands; false where it is frozen too, for a copy to drop. */
+function emptied(v: unknown): boolean {
+  if (!Array.isArray(v)) return false;
+  try {
+    v.splice(0, v.length);
+  } catch {
+    return false;
+  }
+  return v.length === 0;
+}
+
 function markSealed(link: Error, chain: ChainReading): Error {
   sealedErrors.add(link);
   sealedValues.set(link, chain.values);
@@ -414,8 +425,7 @@ function sealChanges(link: Fields, chain: ChainReading): Map<string, Change> {
     message = sealedDriverMessage(link.message, chain.values);
     for (const [key, v] of Object.entries(link)) {
       if (!driverFieldWithheld(key, v)) continue;
-      if (fixedForGood(link, key) && Array.isArray(v)) v.splice(0, v.length);
-      else changes.set(key, { value: REDACTED });
+      if (!(fixedForGood(link, key) && emptied(v))) changes.set(key, { value: REDACTED });
     }
   }
   if (message !== null) {
