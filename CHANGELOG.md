@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.140] - 2026-10-07
+
+A landing can say another issue carries a workflow it touched
+
+### Added
+
+- **A landing artifact can be marked carried by another issue.** Its release reports it carried while the carrier is open and outside the roster, the carrier's release verifies it, and both issues and the release page say so.
+
 ## [0.4.0-dev.139] - 2026-10-07
 
 Failed chat turns explain themselves, rewrites keep true answers, rooms add project members

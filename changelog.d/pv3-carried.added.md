@@ -1,1 +1,0 @@
-**A landing artifact can be marked carried by another issue.** Its release reports it carried while the carrier is open and outside the roster, the carrier's release verifies it, and both issues and the release page say so.
