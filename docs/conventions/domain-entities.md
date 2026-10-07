@@ -379,8 +379,11 @@ written:
   one durable outbox (`packages/core/src/db/schema-outbox.ts:pipelineOutbox`) by
   `packages/core/src/outbox/emit.ts:emitEvent`, its types in
   `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus. A type
-  added there owes the migration that rebuilds `pipeline_outbox_type_chk`: the table refuses it
-  until then, and `packages/core/src/db/schema-checks.test.ts` fails while the two disagree.
+  added there owes a one-row migration inserting it into `outbox_event_types`
+  (`packages/core/src/db/schema-outbox.ts:outboxEventTypes`), which `pipeline_outbox.type`
+  references: the table refuses it until then, `packages/core/src/db/schema-checks.test.ts` fails
+  while the two disagree, and the boot's migrate step exits 1 naming it
+  (`packages/core/src/db/migrate.ts:outboxTypesUnseeded`).
 - **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
   and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
   `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The workers refuse to start

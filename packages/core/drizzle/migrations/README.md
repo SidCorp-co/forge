@@ -68,11 +68,13 @@ When you hand-write a `NNNN_name.sql`, you **must also**:
    for 171 migrations until ISS-1001 removed it.
 
 **Declare every CHECK constraint in the schema module too**, not only in the `.sql`, and rebuild
-it in a migration whenever the schema's version changes — a vocabulary the CHECK is derived from
-(`OUTBOX_EVENT_TYPES` for `pipeline_outbox_type_chk`) included. `src/db/schema-checks.test.ts`
-replays these files in journal order and fails naming every CHECK whose literals differ from the
-schema's, or that no migration defines. 0405 left the outbox admitting 28 of 43 event types and
-every write of the other 15 failed; 0419 repaired it.
+it in a migration whenever the schema's version changes, a vocabulary the CHECK is derived from
+included. `src/db/schema-checks.test.ts` replays these files in journal order and fails naming
+every CHECK whose literals differ from the schema's, or that no migration defines. The outbox's
+event types are rows of `outbox_event_types` instead (0451): a new type is one
+`INSERT INTO "outbox_event_types"` migration, and the same test replays those writes against
+`OUTBOX_EVENT_TYPES`. 0405 left the outbox admitting 28 of 43 event types and every write of the
+other 15 failed; 0419 repaired it, and thirteen whole-list rewrites later 0451 retired the list.
 
 **A new migration must apply to a database that holds rows.** The integration suite's global
 setup (`tests/helpers/global-setup.ts`) reads the merge target the way every delta-scoped gate does
