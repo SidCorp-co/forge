@@ -44,6 +44,9 @@ struct Session {
     /// Completed turns, so an `applied` report can name the one that consumed
     /// the message.
     turns: u64,
+    /// Messages written to stdin. A close of parked sessions reads it to tell
+    /// a session still parked from one sent a message after the close began.
+    sends: u64,
     /// Raised after each turn's verdict is sent. The only signal a caller
     /// outside the turn loop has that a turn it started has finished.
     turn_done: Arc<tokio::sync::Notify>,
@@ -678,33 +681,47 @@ impl ClaudeCodeRunner {
         what you have changed so far, what you were about to do next, and anything you know that is \
         not already in the repository. Do not start new work.";
 
+    /// Checkpoint and close the sessions parked when this begins: resident,
+    /// with stdin open. A session started after it began is not among them,
+    /// and one sent anything after it began but the checkpoint request this
+    /// writes is no longer parked: each is left open and not counted, so a
+    /// handover that then gives up has ended nobody's conversation for it
+    /// (ISS-1223, judge j2b F3).
     pub async fn checkpoint_and_close(&self, budget: std::time::Duration) -> Vec<SessionId> {
-        let resident: Vec<SessionId> = {
+        let parked: Vec<Parked> = {
             let map = self.sessions.lock().await;
             map.iter()
                 .filter(|(_, s)| s.stdin.is_some())
-                .map(|(id, _)| id.clone())
+                .map(|(id, s)| Parked {
+                    id: id.clone(),
+                    sends: s.sends,
+                    done: s.turn_done.clone(),
+                })
                 .collect()
         };
-        for id in &resident {
-            let done = {
-                let map = self.sessions.lock().await;
-                map.get(id).map(|s| s.turn_done.clone())
-            };
-            let Some(done) = done else { continue };
-            let notified = done.notified();
-            if self
-                .send_resident(id, Self::CHECKPOINT_PROMPT, None)
-                .await
-                .is_err()
-            {
+        let mut closing = Vec::with_capacity(parked.len());
+        for mut p in parked {
+            if !self.still_parked(&p).await {
                 continue;
             }
-            if tokio::time::timeout(budget, notified).await.is_err() {
-                tracing::warn!("[claude] session={id} did not finish its checkpoint in time");
+            let done = p.done.clone();
+            let notified = done.notified();
+            if self
+                .send_resident(&p.id, Self::CHECKPOINT_PROMPT, None)
+                .await
+                .is_ok()
+            {
+                p.sends += 1;
+                if tokio::time::timeout(budget, notified).await.is_err() {
+                    tracing::warn!(
+                        "[claude] session={} did not finish its checkpoint in time",
+                        p.id
+                    );
+                }
             }
+            closing.push(p);
         }
-        let closed = self.close_all_resident().await;
+        let closed = self.close_parked(&closing).await;
         let core =
             crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone());
         for id in &closed {
@@ -720,15 +737,41 @@ impl ClaudeCodeRunner {
         closed
     }
 
-    pub async fn close_all_resident(&self) -> Vec<SessionId> {
+    /// Whether `p` is the same session, sent nothing since it was read.
+    async fn still_parked(&self, p: &Parked) -> bool {
+        let map = self.sessions.lock().await;
+        map.get(&p.id).is_some_and(|s| p.is(s))
+    }
+
+    /// End each of `parked` that is still the session it was read as, sent
+    /// nothing since but what the close wrote itself.
+    async fn close_parked(&self, parked: &[Parked]) -> Vec<SessionId> {
         let mut map = self.sessions.lock().await;
         let mut closed = Vec::new();
-        for (id, s) in map.iter_mut() {
-            if s.stdin.take().is_some() {
-                closed.push(id.clone());
+        for p in parked {
+            if let Some(s) = map.get_mut(&p.id) {
+                if p.is(s) && s.stdin.take().is_some() {
+                    closed.push(p.id.clone());
+                }
             }
         }
         closed
+    }
+}
+
+/// A session as a close of parked sessions read it: which one it is, and how
+/// many messages it had been sent.
+struct Parked {
+    id: SessionId,
+    sends: u64,
+    /// The session's own turn signal, which no other session shares, so an id
+    /// a new session took over meanwhile is not read as this one.
+    done: Arc<tokio::sync::Notify>,
+}
+
+impl Parked {
+    fn is(&self, s: &Session) -> bool {
+        Arc::ptr_eq(&self.done, &s.turn_done) && s.sends == self.sends
     }
 }
 
@@ -863,6 +906,7 @@ impl Runner for ClaudeCodeRunner {
                 turn_started: turn_started.clone(),
                 pending_inbox: None,
                 turns: 0,
+                sends: 0,
                 turn_done: turn_done.clone(),
                 is_issue_job,
                 model: spec.model.clone(),
@@ -1217,6 +1261,7 @@ impl Runner for ClaudeCodeRunner {
             .flush()
             .await
             .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
+        sess.sends += 1;
         let _ = tx.send(RunnerEvent::StateChanged("working")).await;
         *sess.turn_tx.lock().await = tx;
         sess.turn_started.notify_one();
@@ -1779,6 +1824,16 @@ mod tests {
         mpsc::Receiver<RunnerEvent>,
         Arc<tokio::sync::Notify>,
     ) {
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let (rx, turn_done) = park(&runner, "j1").await;
+        (runner, rx, turn_done)
+    }
+
+    /// Put a resident session `id` around a trivial child into `runner`.
+    async fn park(
+        runner: &ClaudeCodeRunner,
+        id: &str,
+    ) -> (mpsc::Receiver<RunnerEvent>, Arc<tokio::sync::Notify>) {
         let mut child = tokio::process::Command::new("cat")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
@@ -1787,9 +1842,8 @@ mod tests {
         let stdin = child.stdin.take();
         let (tx, rx) = mpsc::channel(16);
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
         runner.sessions.lock().await.insert(
-            "j1".to_string(),
+            id.to_string(),
             Session {
                 status: RunnerStatus::Running,
                 child: Some(child),
@@ -1799,6 +1853,7 @@ mod tests {
                 turn_started: Arc::new(tokio::sync::Notify::new()),
                 pending_inbox: None,
                 turns: 0,
+                sends: 0,
                 turn_done: turn_done.clone(),
                 is_issue_job: true,
                 model: None,
@@ -1807,7 +1862,67 @@ mod tests {
                 project_slug: None,
             },
         );
-        (runner, rx, turn_done)
+        (rx, turn_done)
+    }
+
+    /// ISS-1223 criterion 29: a session started while the parked sessions
+    /// close was not parked when the close began, so the close leaves it open
+    /// and does not count it.
+    #[tokio::test]
+    async fn a_session_started_during_the_close_is_not_closed_by_it() {
+        let runner = Arc::new(ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1));
+        let _j1 = park(&runner, "j1").await;
+        let arriving = runner.clone();
+        let started = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            park(&arriving, "j2").await
+        });
+        let closed = runner
+            .checkpoint_and_close(std::time::Duration::from_millis(300))
+            .await;
+        let _j2 = started.await.unwrap();
+        assert_eq!(
+            closed,
+            vec!["j1".to_string()],
+            "only the parked one is closed"
+        );
+        assert!(
+            runner.resident(&"j2".to_string()).await.is_some(),
+            "a session started during the close is still open"
+        );
+    }
+
+    /// ISS-1223 criterion 30: a parked session that is sent a person's message
+    /// after the close began is no longer parked, whether the message came
+    /// before its checkpoint request or after it, so the close leaves it open.
+    #[tokio::test]
+    async fn a_parked_session_sent_a_message_during_the_close_is_not_closed_by_it() {
+        let runner = Arc::new(ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1));
+        let _a = park(&runner, "a").await;
+        let _b = park(&runner, "b").await;
+        let sender = runner.clone();
+        // Each checkpoint holds its whole budget, so the message at 50ms lands
+        // after the first session's checkpoint request and before the second's.
+        let sent = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            for id in ["a", "b"] {
+                sender
+                    .send_resident(&id.to_string(), "a person's message", None)
+                    .await
+                    .expect("the session is resident");
+            }
+        });
+        let closed = runner
+            .checkpoint_and_close(std::time::Duration::from_millis(300))
+            .await;
+        sent.await.unwrap();
+        assert!(closed.is_empty(), "closed {closed:?}");
+        for id in ["a", "b"] {
+            assert!(
+                runner.resident(&id.to_string()).await.is_some(),
+                "{id} was sent a message during the close and is still open"
+            );
+        }
     }
 
     #[tokio::test]

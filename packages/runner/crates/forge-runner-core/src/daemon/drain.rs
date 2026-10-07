@@ -85,8 +85,60 @@ impl std::fmt::Display for NotNow {
 /// when it began, so a handover can say which session or pane it waits on.
 #[derive(Default)]
 pub struct Turns {
-    held: Mutex<BTreeMap<u64, (String, Instant)>>,
+    held: Mutex<BTreeMap<u64, Held>>,
     next: AtomicU64,
+}
+
+/// One thing a handover waits on: what it is, and when it began where it is
+/// one piece of work rather than a count.
+#[derive(Debug, Clone)]
+pub(crate) struct Held {
+    what: String,
+    /// On the clock the drain's own bound reads, for its journal lines.
+    started: Option<Instant>,
+    /// On the wall clock, for the record `status` reads after the fact.
+    since_ms: Option<i64>,
+}
+
+impl Held {
+    fn count(what: String) -> Self {
+        Self {
+            what,
+            started: None,
+            since_ms: None,
+        }
+    }
+
+    /// How a journal line names it now.
+    fn line(&self) -> String {
+        match self.started {
+            Some(at) => format!(
+                "{}, running {}",
+                self.what,
+                serving::span_secs(at.elapsed().as_secs())
+            ),
+            None => self.what.clone(),
+        }
+    }
+
+    fn holder(&self) -> serving::Holder {
+        serving::Holder {
+            what: self.what.clone(),
+            since_ms: self.since_ms,
+        }
+    }
+}
+
+fn recorded(holding: &[Held]) -> Vec<serving::Holder> {
+    holding.iter().map(Held::holder).collect()
+}
+
+fn lines(holding: &[Held]) -> String {
+    holding
+        .iter()
+        .map(Held::line)
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// One turn, from its frame until it ends.
@@ -107,31 +159,36 @@ impl Turns {
         Arc::new(Self::default())
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, (String, Instant)>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, Held>> {
         self.held.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     /// Hold `what` until the returned turn drops.
     pub fn enter(self: &Arc<Self>, what: impl Into<String>) -> Turn {
         let id = self.next.fetch_add(1, Ordering::AcqRel);
-        self.lock().insert(id, (what.into(), Instant::now()));
+        self.lock().insert(
+            id,
+            Held {
+                what: what.into(),
+                started: Some(Instant::now()),
+                since_ms: Some(now_ms()),
+            },
+        );
         Turn {
             turns: self.clone(),
             id,
         }
     }
 
+    /// Each turn, oldest first.
+    fn held(&self) -> Vec<Held> {
+        self.lock().values().cloned().collect()
+    }
+
     /// Each turn, oldest first, with how long it has run.
+    #[cfg(test)]
     fn named(&self) -> Vec<String> {
-        self.lock()
-            .values()
-            .map(|(what, since)| {
-                format!(
-                    "{what}, running {}",
-                    serving::span_secs(since.elapsed().as_secs())
-                )
-            })
-            .collect()
+        self.held().iter().map(Held::line).collect()
     }
 }
 
@@ -425,7 +482,7 @@ impl Drain {
     }
 
     /// Open admission again and go back to waiting, keeping the attempt.
-    fn release_window(&self, attempt: &Attempt, outstanding: &[String]) {
+    fn release_window(&self, attempt: &Attempt, outstanding: &[Held]) {
         let mut inner = self.lock();
         if inner.attempt != Some(attempt.id) {
             return;
@@ -435,7 +492,7 @@ impl Drain {
             cause: attempt.cause.clone(),
             since_ms: attempt.since_ms,
             bound_secs: DRAIN_TIMEOUT_SECS,
-            outstanding: outstanding.to_vec(),
+            outstanding: recorded(outstanding),
         };
         inner.state = Some(state.clone());
         drop(inner);
@@ -484,7 +541,7 @@ impl Drain {
         self.lock().admitting
     }
 
-    fn report(&self, attempt: &Attempt, outstanding: &[String]) {
+    fn report(&self, attempt: &Attempt, outstanding: &[Held]) {
         let mut inner = self.lock();
         if inner.attempt != Some(attempt.id) || inner.closed {
             return;
@@ -493,19 +550,19 @@ impl Drain {
             cause: attempt.cause.clone(),
             since_ms: attempt.since_ms,
             bound_secs: DRAIN_TIMEOUT_SECS,
-            outstanding: outstanding.to_vec(),
+            outstanding: recorded(outstanding),
         };
         inner.state = Some(state.clone());
         drop(inner);
         self.publish(Some(state));
     }
 
-    fn give_up(&self, attempt: Attempt, outstanding: Vec<String>, next: &NextAttempt) {
+    fn give_up(&self, attempt: Attempt, outstanding: &[Held], next: &NextAttempt) {
         let mut inner = self.lock();
         if inner.attempt != Some(attempt.id) {
             return;
         }
-        Self::defer(&mut inner, attempt.cause, outstanding, next);
+        Self::defer(&mut inner, attempt.cause, recorded(outstanding), next);
         let state = inner.state.clone();
         drop(inner);
         self.socket.set_accepting(true);
@@ -536,7 +593,12 @@ impl Drain {
         self.publish(state);
     }
 
-    fn defer(inner: &mut Inner, cause: String, outstanding: Vec<String>, next: &NextAttempt) {
+    fn defer(
+        inner: &mut Inner,
+        cause: String,
+        outstanding: Vec<serving::Holder>,
+        next: &NextAttempt,
+    ) {
         inner.attempt = None;
         inner.closed = false;
         inner.reopened_at = Some(Instant::now());
@@ -637,7 +699,8 @@ pub(crate) enum Drained {
     /// between here and the exec.
     Idle,
     /// The bound passed with in-process work outstanding. Nothing was stopped,
-    /// and admission was open throughout.
+    /// and admission is open: it was closed only for the closing windows the
+    /// attempt opened, each of which reopened it.
     GaveUp,
     /// No attempt was started.
     NotNow(NotNow),
@@ -646,59 +709,159 @@ pub(crate) enum Drained {
 /// What in this process a handover waits for with admission open. Control
 /// requests are not among them: each lasts a moment and another follows, so
 /// they are waited for inside the closing window, where none can begin.
-fn holders(drain: &Drain, turns: &Turns) -> Vec<String> {
+fn holders(drain: &Drain, turns: &Turns) -> Vec<Held> {
     let mut out = Vec::new();
     let admitting = drain.admitting();
     if admitting > 0 {
-        out.push(format!(
+        out.push(Held::count(format!(
             "{admitting} admission(s) between the gate and their ledger write"
-        ));
+        )));
     }
-    out.extend(turns.named());
+    out.extend(turns.held());
     out
 }
 
 /// What the closing window waits for: the holders, and the control requests
 /// accepted before the server stopped accepting.
-fn window_holders(drain: &Drain, turns: &Turns) -> Vec<String> {
+fn window_holders(drain: &Drain, turns: &Turns) -> Vec<Held> {
     let mut out = holders(drain, turns);
     let requests = drain.socket.in_flight();
     if requests > 0 {
-        out.push(format!(
+        out.push(Held::count(format!(
             "{requests} control request(s) between their accept and their reply"
-        ));
+        )));
     }
     out
 }
 
-fn waiting_line(what: &str, cause: &str, waited: Duration, holding: &[String]) -> String {
+/// The step a waiting handover is in when it writes a line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    /// Between looks, with admission open.
+    Waiting,
+    /// The one close of parked sessions, with admission open.
+    ClosingParked,
+    /// A closing window, with admission closed.
+    Window,
+}
+
+fn waiting_line(what: &str, cause: &str, waited: Duration, holding: &[Held], step: Step) -> String {
+    let admission = match step {
+        Step::Waiting => "Admission stays open meanwhile".to_string(),
+        Step::ClosingParked => "Admission stays open meanwhile, while the parked chat sessions are checkpointed and closed".to_string(),
+        Step::Window => format!(
+            "Admission is closed for this closing window, at most {}, while the requests in flight are answered",
+            serving::span_secs(HANDOVER_QUIET_SECS)
+        ),
+    };
     format!(
-        "[{what}] handing over for {cause} once this process's own work ends: {} of {} waited, {} outstanding — {}. Admission stays open meanwhile, and the runs in the ledger hold nothing: they live in their panes, which the next build adopts",
+        "[{what}] handing over for {cause} once this process's own work ends: {} of {} waited, {} outstanding — {}. {admission}, and the runs in the ledger hold nothing: they live in their panes, which the next build adopts",
         serving::span_secs(waited.as_secs()),
         serving::span_secs(DRAIN_TIMEOUT_SECS),
         holding.len(),
-        holding.join("; ")
+        lines(holding)
     )
 }
 
+/// What a give-up says about admission: open throughout, or closed for each
+/// closing window the attempt opened, every one of which reopened it.
+fn admission_while_waiting(windows: usize) -> String {
+    if windows == 0 {
+        "Admission was never closed while it waited".to_string()
+    } else {
+        format!(
+            "Admission was closed {windows} time(s), for at most {} each, while a closing window waited for the work in flight, and is open now",
+            serving::span_secs(HANDOVER_QUIET_SECS)
+        )
+    }
+}
+
 /// The give-up, and what it costs: time on the build this process started
-/// with, and nothing else — admission was open throughout.
+/// with, and the closing windows it opened on the way.
 fn give_up_line(
     what: &str,
     cause: &str,
     waited: Duration,
-    holding: &[String],
+    holding: &[Held],
+    windows: usize,
     next: &NextAttempt,
 ) -> String {
     let due_in = next.due_in.max(Duration::from_secs(DRAIN_REOPEN_SECS));
     format!(
-        "[{what}] gave up handing over for {cause} after {} with {} outstanding — {}. Admission was never closed while it waited, and nothing was stopped; this process goes on serving the build it started with. The next attempt is {}, in {}",
+        "[{what}] gave up handing over for {cause} after {} with {} outstanding — {}. {}; nothing was stopped, and this process goes on serving the build it started with. The next attempt is {}, in {}",
         serving::span_secs(waited.as_secs()),
         holding.len(),
-        holding.join("; "),
+        lines(holding),
+        admission_while_waiting(windows),
         next.by,
         serving::span_secs(due_in.as_secs())
     )
+}
+
+/// When a waiting handover next owes a line: one report clock for the whole
+/// attempt, whatever step it is in.
+struct Reports {
+    started: Instant,
+    /// Time since `started` at which the next line is owed.
+    due: Duration,
+}
+
+impl Reports {
+    fn owed(&self) -> bool {
+        self.started.elapsed() >= self.due
+    }
+
+    /// A line was written: the next is owed at the first mark after now.
+    fn said(&mut self) {
+        let waited = self.started.elapsed();
+        while self.due <= waited {
+            self.due += Duration::from_secs(DRAIN_REPORT_SECS);
+        }
+    }
+
+    /// The next look: the next poll or the next mark, whichever comes first,
+    /// and no later than `deadline` where one is given.
+    fn next_look(&self, deadline: Option<Instant>) -> Instant {
+        let now = Instant::now();
+        let mut wake = now + Duration::from_secs(DRAIN_POLL_SECS);
+        if let Some(deadline) = deadline {
+            wake = wake.min(deadline);
+        }
+        let mark = self.started + self.due;
+        if mark > now {
+            wake = wake.min(mark);
+        }
+        wake
+    }
+}
+
+/// Run `step` to its end, writing the waiting line at each mark that falls
+/// inside it where `holding` names work outstanding then, so no step a
+/// waiting handover takes leaves it silent past its interval (ISS-1223,
+/// criterion 6).
+async fn speaking<T>(
+    step: impl std::future::Future<Output = T>,
+    reports: &mut Reports,
+    mut holding: impl FnMut() -> Vec<Held>,
+    mut say: impl FnMut(&[Held]),
+) -> T {
+    tokio::pin!(step);
+    loop {
+        let wake = reports.next_look(None);
+        tokio::select! {
+            biased;
+            out = &mut step => return out,
+            _ = tokio::time::sleep_until(wake) => {
+                if reports.owed() {
+                    let now = holding();
+                    if !now.is_empty() {
+                        say(&now);
+                        reports.said();
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Wait, with admission open, until nothing in this process would be cut by
@@ -730,14 +893,30 @@ where
     };
     let started = Instant::now();
     let bound = Duration::from_secs(DRAIN_TIMEOUT_SECS);
-    let every = Duration::from_secs(DRAIN_REPORT_SECS);
-    let mut report_at = Duration::ZERO;
+    let mut reports = Reports {
+        started,
+        due: Duration::ZERO,
+    };
+    let say = |holding: &[Held], step: Step| {
+        tracing::warn!(
+            "{}",
+            waiting_line(what, cause, started.elapsed(), holding, step)
+        );
+        drain.report(&attempt, holding);
+    };
+    let mut windows = 0;
     let mut close_parked = Some(close_parked);
     loop {
         let mut holding = holders(drain, turns);
         if holding.is_empty() {
             if let Some(close) = close_parked.take() {
-                let closed = close().await;
+                let closed = speaking(
+                    close(),
+                    &mut reports,
+                    || holders(drain, turns),
+                    |h| say(h, Step::ClosingParked),
+                )
+                .await;
                 if closed > 0 {
                     tracing::warn!(
                         "[{what}] closed {closed} parked session(s) before handing over"
@@ -748,12 +927,20 @@ where
                 holding = holders(drain, turns);
             }
             if holding.is_empty() {
-                match closing_window(drain, &attempt, turns).await {
+                windows += 1;
+                let window = speaking(
+                    closing_window(drain, &attempt, turns),
+                    &mut reports,
+                    || window_holders(drain, turns),
+                    |h| say(h, Step::Window),
+                )
+                .await;
+                match window {
                     Ok(()) => return Drained::Idle,
                     Err(left) => {
                         tracing::warn!(
                             "[{what}] the closing window for {cause} still found {} — admission is open again and the handover goes on waiting",
-                            left.join("; ")
+                            lines(&left)
                         );
                         holding = left;
                     }
@@ -763,37 +950,28 @@ where
         let waited = started.elapsed();
         if waited >= bound {
             let next = next();
-            tracing::warn!("{}", give_up_line(what, cause, waited, &holding, &next));
-            drain.give_up(attempt, holding, &next);
+            tracing::warn!(
+                "{}",
+                give_up_line(what, cause, waited, &holding, windows, &next)
+            );
+            drain.give_up(attempt, &holding, &next);
             return Drained::GaveUp;
         }
-        if waited >= report_at && !holding.is_empty() {
-            tracing::warn!("{}", waiting_line(what, cause, waited, &holding));
-            drain.report(&attempt, &holding);
-            while report_at <= waited {
-                report_at += every;
-            }
+        if reports.owed() && !holding.is_empty() {
+            say(&holding, Step::Waiting);
+            reports.said();
         }
         // The next look is the next poll, the next report or the bound,
         // whichever comes first, so neither a line nor the give-up is late
         // by up to a poll.
-        let now = Instant::now();
-        let mut wake = (started + bound).min(now + Duration::from_secs(DRAIN_POLL_SECS));
-        if started + report_at > now {
-            wake = wake.min(started + report_at);
-        }
-        tokio::time::sleep_until(wake).await;
+        tokio::time::sleep_until(reports.next_look(Some(started + bound))).await;
     }
 }
 
 /// Close admission, stop accepting, and wait for what is in flight to be
 /// answered. `Err` carries what was still there at the bound, with the window
 /// already released.
-async fn closing_window(
-    drain: &Drain,
-    attempt: &Attempt,
-    turns: &Turns,
-) -> Result<(), Vec<String>> {
+async fn closing_window(drain: &Drain, attempt: &Attempt, turns: &Turns) -> Result<(), Vec<Held>> {
     let stop = drain.close_window(attempt);
     let bound = Duration::from_secs(HANDOVER_QUIET_SECS);
     let started = Instant::now();
@@ -805,9 +983,9 @@ async fn closing_window(
         let still = stop.is_some_and(|stop| !drain.socket.stood_for(stop));
         let mut holding = window_holders(drain, turns);
         if still {
-            holding.push(
+            holding.push(Held::count(
                 "the control server, which has not yet said it stopped accepting".to_string(),
-            );
+            ));
         }
         if holding.is_empty() {
             return Ok(());
@@ -1297,7 +1475,7 @@ mod tests {
             .expect_err("released at the bound");
         assert!(
             held.iter()
-                .any(|h| h.contains("has not yet said it stopped accepting")),
+                .any(|h| h.what.contains("has not yet said it stopped accepting")),
             "{held:?}"
         );
         assert!(drain.refusal().is_none());
@@ -1357,6 +1535,120 @@ mod tests {
             "{gave_up}"
         );
         assert!(gave_up.contains("Admission was never closed"), "{gave_up}");
+    }
+
+    /// ISS-1223 criterion 6, judged short by j2b: a turn that arrives while
+    /// the one close of parked sessions runs holds the handover, and the
+    /// waiting line owed at the report mark is written while that close still
+    /// runs — not after it, up to 120s late.
+    #[tokio::test(start_paused = true)]
+    async fn a_turn_arriving_during_the_parked_close_is_reported_before_the_close_ends() {
+        const CLOSE: Duration = Duration::from_secs(120);
+        let (buf, _guard) = capture();
+        let drain = Drain::unrecorded();
+        let turns = Turns::new();
+        let first = turns.enter("a chat turn in session s1");
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(DRAIN_REPORT_SECS - 10)).await;
+            drop(first);
+        });
+        let (arriving, seen) = (turns.clone(), buf.clone());
+        let said_in_close = Arc::new(Mutex::new(None::<String>));
+        let keep = said_in_close.clone();
+        let held = Arc::new(Mutex::new(None::<Turn>));
+        let hold = held.clone();
+        let close = move || async move {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            *hold.lock().unwrap() = Some(arriving.enter("a chat turn starting session s2"));
+            tokio::time::sleep(CLOSE - Duration::from_secs(10)).await;
+            *keep.lock().unwrap() = Some(text(&seen));
+            1
+        };
+        let out = drain_to_idle(&drain, "test", "c", &turns, close, next).await;
+        assert_eq!(out, Drained::GaveUp);
+        let said = said_in_close
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("the close ran");
+        let line = said
+            .lines()
+            .find(|l| l.contains("— a chat turn starting session s2, running"))
+            .unwrap_or_else(|| panic!("no waiting line while the close ran:\n{said}"));
+        assert!(
+            line.contains("while the parked chat sessions are checkpointed and closed"),
+            "the line says which step is under way: {line}"
+        );
+    }
+
+    /// ISS-1223 criterion 6, the closing window: a report mark that falls
+    /// inside a closing window is answered inside it, and the line says that
+    /// admission is closed for the window rather than that it stays open.
+    #[tokio::test(start_paused = true)]
+    async fn a_report_mark_inside_a_closing_window_is_answered_there() {
+        let (buf, _guard) = capture();
+        let drain = Arc::new(Drain::unrecorded());
+        let _stuck = drain.socket().serving();
+        let turns = Turns::new();
+        let first = turns.enter("a chat turn in session s1");
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(25)).await;
+            drop(first);
+        });
+        // The close takes 5s, so every closing window after it opens 5s off
+        // the poll grid: the one from 595s to 605s spans the 600s mark.
+        let close = || async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            0
+        };
+        let arriving = turns.clone();
+        let late = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(DRAIN_REPORT_SECS - 3)).await;
+            let turn = arriving.enter("a chat turn in session s2");
+            tokio::time::sleep(Duration::from_secs(DRAIN_TIMEOUT_SECS)).await;
+            drop(turn);
+        });
+        let out = drain_to_idle(&drain, "test", "c", &turns, close, next).await;
+        assert_eq!(out, Drained::GaveUp);
+        late.abort();
+        let log = text(&buf);
+        let line = log
+            .lines()
+            .find(|l| l.contains("Admission is closed for this closing window"))
+            .unwrap_or_else(|| panic!("no line inside the window:\n{log}"));
+        assert!(
+            line.contains("a chat turn in session s2, running 3s"),
+            "{line}"
+        );
+    }
+
+    /// ISS-1223 criterion 27 (judge j2b F1): a handover whose closing windows
+    /// refused admission does not give up saying admission was never closed;
+    /// it says how many times it closed it.
+    #[tokio::test(start_paused = true)]
+    async fn a_give_up_after_closing_windows_says_how_often_admission_was_closed() {
+        let (buf, _guard) = capture();
+        let drain = Drain::unrecorded();
+        let turns = Turns::new();
+        let _stuck = drain.socket().serving();
+        assert_eq!(drain_with(&drain, &turns).await, Drained::GaveUp);
+        let log = text(&buf);
+        let windows = log
+            .lines()
+            .filter(|l| l.contains("] the closing window for "))
+            .count();
+        assert!(windows > 1, "{log}");
+        let gave_up = log
+            .lines()
+            .find(|l| l.contains("gave up handing over"))
+            .expect("a give-up line");
+        assert!(!gave_up.contains("never closed"), "{gave_up}");
+        assert!(
+            gave_up.contains(&format!(
+                "Admission was closed {windows} time(s), for at most 10s each"
+            )),
+            "{gave_up}"
+        );
     }
 
     /// ISS-1223 criterion 24: the credential loop gives up stating its next
@@ -1612,13 +1904,16 @@ mod tests {
         assert_eq!(boot.pid, std::process::id());
         assert_eq!(boot.drain, None);
         let attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
-        drain.report(&attempt, &["1 interactive turn(s)".to_string()]);
+        drain.report(&attempt, &[Held::count("1 interactive turn(s)".into())]);
         match serving::read(&dir).unwrap().unwrap().drain {
             Some(DrainState::Waiting {
                 cause, outstanding, ..
             }) => {
                 assert_eq!(cause, "update 0.1.0 → 0.1.1");
-                assert_eq!(outstanding, ["1 interactive turn(s)"]);
+                assert_eq!(
+                    outstanding,
+                    [serving::Holder::from("1 interactive turn(s)")]
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -1627,7 +1922,11 @@ mod tests {
             serving::read(&dir).unwrap().unwrap().drain,
             Some(DrainState::Draining { .. })
         ));
-        drain.give_up(attempt, vec!["1 interactive turn(s)".into()], &next());
+        drain.give_up(
+            attempt,
+            &[Held::count("1 interactive turn(s)".into())],
+            &next(),
+        );
         assert!(matches!(
             serving::read(&dir).unwrap().unwrap().drain,
             Some(DrainState::Deferred { .. })
