@@ -336,21 +336,40 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   return out;
 }
 
-/** `value` with each of its own fields named in `names` censored: a copy on its own prototype. */
-function censored(value: object, names: ReadonlySet<string>): object {
-  const keys = attempt(() => Object.keys(value));
-  if (keys === UNREADABLE) return value;
-  const hit = keys.filter((k) => names.has(k));
-  if (hit.length === 0) return value;
+/**
+ * `value` with every field named in `names` censored, at any depth of its own fields: a copy on
+ * its own prototype wherever one is, the same value where none is. A copy that cannot be made
+ * stands as an empty object, so the caller's code asked with it finds no field to read.
+ */
+function censored(
+  value: object,
+  names: ReadonlySet<string>,
+  depth = 0,
+  seen = new Set<object>(),
+): object {
+  if (depth > MAX_DEPTH || seen.has(value)) return value;
+  seen.add(value);
+  const fields = attempt(() => Object.getOwnPropertyDescriptors(value));
+  if (fields === UNREADABLE) return {};
+  const changes: [string, unknown][] = [];
+  for (const [key, own] of Object.entries(fields)) {
+    if (names.has(key)) changes.push([key, REDACTED]);
+    else if ('value' in own && typeof own.value === 'object' && own.value !== null) {
+      const inner = censored(own.value, names, depth + 1, seen);
+      if (inner !== own.value) changes.push([key, inner]);
+    }
+  }
+  if (changes.length === 0) return value;
   const copy = attempt(() => {
-    const out = Object.create(Object.getPrototypeOf(value)) as object;
-    Object.defineProperties(out, Object.getOwnPropertyDescriptors(value));
-    for (const k of hit) {
-      Object.defineProperty(out, k, { value: REDACTED, enumerable: true, writable: true });
+    const out = (Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value))) as object;
+    Object.defineProperties(out, fields);
+    for (const [key, v] of changes) {
+      const enumerable = fields[key]?.enumerable ?? true;
+      Object.defineProperty(out, key, { value: v, enumerable, writable: true, configurable: true });
     }
     return out;
   });
-  return copy === UNREADABLE ? Object.fromEntries(keys.map((k) => [k, REDACTED])) : copy;
+  return copy === UNREADABLE ? {} : copy;
 }
 
 /** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */

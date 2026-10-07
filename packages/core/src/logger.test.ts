@@ -524,8 +524,19 @@ describe('the core logger, given a value whose text only a serializer renders', 
       },
       'deep',
     );
-    expect(lines).toHaveLength(4);
+    const request = () => ({
+      headers: { authorization: 'ordinary-secret' },
+      toJSON() {
+        return this.headers.authorization;
+      },
+    });
+    log.warn({ req: request() }, 'request');
+    log.child({ req: request() }).warn('bound request');
+    rebound.setBindings({ req: request() });
+    rebound.warn('rebound request');
+    expect(lines).toHaveLength(7);
     for (const line of lines) {
+      expect(line).not.toContain('ordinary-secret');
       expect(line).not.toContain('ordinary-password');
       expect(line).not.toContain('ordinary-token');
     }
