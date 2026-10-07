@@ -5,6 +5,7 @@
 // row reads core's standing (`requirements/standing.ts`); nothing here derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
+import type { IssueProgress } from "@forge/contracts/forecast";
 import { REQUIREMENT_ATTENTION_GROUPS, REQUIREMENT_ATTENTION_LABELS, REQUIREMENT_STATE_TONES, REQUIREMENT_STATES } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -21,6 +22,7 @@ import type { SuggestionView as Suggestion } from "@/features/suggestions/types"
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import { type Eta, type EtaClock, etaOfScope, etaSortValue } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { progressText } from "@/features/forecast/progress";
 import { useEtaClock, useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
@@ -105,25 +107,26 @@ function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label): Li
   });
 }
 
-/** The secondary line: revision, coverage, issues — label-first counts. */
-function factsLine(t: Copy, r: RequirementSummary): string[] {
+/** The secondary line: revision, coverage, and its issues' progress, core's one count of it (JU-2). */
+function factsLine(t: Copy, r: RequirementSummary, progress: IssueProgress | undefined): string[] {
   const f = r.standing.facts;
   const parts = [revisionText(t, r.currentRevision, r.standing)];
   if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? t("requirements.row.criteria", { n: f.criteria }) : t("requirements.row.noCriteria"));
   else parts.push(t("requirements.row.passing", { a: f.passing, b: f.criteria }));
-  parts.push(f.issuesTotal === 0 ? t("requirements.row.notBrokenDown") : t("requirements.row.issuesDone", { a: f.issuesDone, b: f.issuesTotal }));
+  if (f.issuesTotal === 0) parts.push(t("requirements.row.notBrokenDown"));
+  else if (progress) parts.push(progressText(progress, t));
   return parts;
 }
 
 type TimeFormat = ReturnType<typeof useTimeFormat>;
 
 const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: TimeFormat) =>
+  (slug: string, etaOf: (key: string) => Eta | null, progressOf: (key: string) => IssueProgress | undefined, clock: EtaClock, t: Copy, time: TimeFormat) =>
   (r: RequirementSummary): ListRowView => ({
     key: r.key,
     href: requirementHref(slug, r.key),
     title: r.title,
-    facts: factsLine(t, r),
+    facts: factsLine(t, r, progressOf(r.key)),
     eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
     state: <StatusBadge family="requirement" value={r.standing.state} />,
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
@@ -240,7 +243,8 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, etaOf, clock, t, time), [slug, etaOf, clock, t, time]);
+  const progressOf = useCallback((k: string) => forecasts.get(k)?.progress, [forecasts]);
+  const row = useMemo(() => rowOf(slug, etaOf, progressOf, clock, t, time), [slug, etaOf, progressOf, clock, t, time]);
 
   const openFull = useCallback(
     (key: string) => {

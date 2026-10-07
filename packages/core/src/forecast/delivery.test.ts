@@ -97,6 +97,18 @@ describe('delivery: in people’s hands, not merged', () => {
     expect(none).toMatchObject({ who: 'A release approver', holders: [] });
   });
 
+  // JU-7: hop's dashboard read 'then orchestrator cuts it' to orchestrator, beside Needs-you's 'You · cut 0.3.0'
+  it('names the reader as You where the release act is theirs, whatever the mode', () => {
+    const h = { id: 'o1', name: 'orchestrator', kind: 'human' as const };
+    const mine = (mode: 'approval' | 'manual' | 'none') =>
+      releaseLegOf({ mode, nextVersion: '0.3.0', lags: [], holders: [h], viewerOwes: true });
+    expect(mine('approval')).toMatchObject({ who: 'You', act: 'cut 0.3.0, then approve it' });
+    expect(mine('manual')).toMatchObject({ who: 'You', act: 'cut 0.3.0' });
+    expect(mine('none')).toMatchObject({ who: 'You', act: 'release it by hand and close it' });
+    const theirs = releaseLegOf({ mode: 'approval', nextVersion: '0.3.0', lags: [], holders: [h] });
+    expect(theirs).toMatchObject({ who: 'orchestrator' });
+  });
+
   it('gives no in-hands span below the release history floor', () => {
     const d = deliver({ release: automatic(9) });
     expect(d.release).toEqual({ kind: 'not_enough_history', n: 9, floor: 10 });

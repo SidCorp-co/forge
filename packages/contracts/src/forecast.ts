@@ -130,12 +130,23 @@ export interface ProjectForecast extends ForecastStamp {
 const FORECAST_SCOPES = ["requirement", "release"] as const;
 type ForecastScope = (typeof FORECAST_SCOPES)[number];
 
+/**
+ * A scope's live issues by how far each has got, each counted once and a dropped one not at all:
+ * in people's hands (`closed`), landed and waiting for a release (`awaiting_release`), and still to
+ * land. The one progress every surface prints, so "done" never means two counts.
+ */
+export interface IssueProgress {
+	total: number;
+	shipped: number;
+	awaitingRelease: number;
+	toDo: number;
+}
+
 /** A requirement's issues, or a draft release's: forecast when all of them have landed. */
 export interface ScopeForecast extends ForecastStamp {
 	scope: ForecastScope;
 	key: string;
-	total: number;
-	landed: number;
+	progress: IssueProgress;
 	/** Null where the scope holds no issue. */
 	forecast: Forecast | null;
 	/** What follows once every issue has landed, such as a release a person cuts. */

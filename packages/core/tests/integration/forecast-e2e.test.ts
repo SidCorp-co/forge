@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { peopleOf } from '../../src/lib/people.js';
-import { api, type Body } from '../helpers/api.js';
+import { api, type Body, userToken } from '../helpers/api.js';
+import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { ago, issue, landHistory, read, type World, world } from '../helpers/forecast-world.js';
 
 // A forecast is a range read off the project's own history, through its queue at its own
@@ -48,11 +49,17 @@ describe('forecast read', () => {
   });
 
   it('says paused and who owes the move for a needs_info issue, by name, with no date', async () => {
-    const f = (await read(w, `/issues/${keys.parked}`)).forecast as Body;
+    const reader = await createTestUser({ verified: true });
+    await addProjectMember(w.projectId, reader.id, 'viewer');
+    const asReader = { ...w, token: await userToken(reader.id) };
+    const f = (await read(asReader, `/issues/${keys.parked}`)).forecast as Body;
     // the project's one writer, named (FB-104), never "A project writer" naming nobody
     const writer = (await peopleOf([w.userId])).get(w.userId)?.name;
     expect(f).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
     expect(f).not.toHaveProperty('p50At');
+    // JU-7: to that writer it is their own turn, so it reads You, never their name in third person
+    const own = (await read(w, `/issues/${keys.parked}`)).forecast as Body;
+    expect(own).toMatchObject({ kind: 'paused', who: 'You', act: 'answer a question' });
   });
 
   it('reads landed for an issue already merged, and lists every open issue on the board read', async () => {
@@ -67,7 +74,11 @@ describe('forecast read', () => {
 
   it('forecasts the draft release as landed once every issue it holds has', async () => {
     const draft = await read(w, '/releases/draft');
-    expect(draft).toMatchObject({ scope: 'release', key: 'draft', total: 1, landed: 1 });
+    expect(draft).toMatchObject({
+      scope: 'release',
+      key: 'draft',
+      progress: { total: 1, shipped: 0, awaitingRelease: 1, toDo: 0 },
+    });
     expect((draft.forecast as Body).kind).toBe('landed');
   });
 

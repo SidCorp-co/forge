@@ -6,6 +6,7 @@
  */
 
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
+import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
   type BcVerdict,
   BREAKDOWN_SLA_WORKING_DAYS,
@@ -27,6 +28,7 @@ import { addWorkingDays } from '../lib/working-days.js';
 import { liveAt } from './rules.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
+import { proofTurn } from './standing-proof.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -80,6 +82,8 @@ interface StandingInput {
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
+  /** Who judges an issue's criteria: its own runs (`self`) or a judge apart from them (`independent`), the policy's `qa`; null where no policy is declared. */
+  judge: PolicyQaMode | null;
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
   updatedAt: Date;
@@ -177,8 +181,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
 // its author; 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a signer
 // triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
-// issue closed and every BC proven → the BA's check task, a BC unproven → the master proves it; 7. an open
-// breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
+// issue closed and every BC proven → the BA's check task, a BC unproven → whoever owes its proof
+// (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
 // re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
 // 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
@@ -246,18 +250,8 @@ function turnOf(
       ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
       : { group: 'waiting', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
   }
-  const unproven = coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
-  if (live.length > 0 && live.every((i) => i.status === 'closed') && unproven.length > 0) {
-    return {
-      group: 'waiting',
-      waitingOn: wait(
-        'agent',
-        'Master',
-        `prove ${unproven.join(', ')}`,
-        'every linked issue is closed, but these BCs hold no passing traced verdict, so it is not delivered',
-      ),
-    };
-  }
+  const proof = proofTurn(input.judge, live, coverage);
+  if (proof) return proof;
   if (input.openSuggestionKinds.includes('breakdown')) {
     return signerWait(
       viewer,
@@ -305,13 +299,13 @@ function turnOf(
     );
   }
   const running = live.filter((i) => i.status === 'in_progress').length;
-  const done = live.filter((i) => i.status === 'closed').length;
+  const shipped = live.filter((i) => i.status === 'closed').length;
   return {
     group: 'moving',
     waitingOn: wait(
       'issue',
       'Issues',
-      running > 0 ? `Running ${running} of ${live.length}` : `Done ${done} of ${live.length}`,
+      running > 0 ? `Running ${running} of ${live.length}` : `Shipped ${shipped} of ${live.length}`,
       'agreed and its issues are being worked',
     ),
   };
@@ -467,7 +461,6 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       passing: coverage.filter((c) => c.verdict === 'passing').length,
       judged: coverage.filter((c) => c.verdict === 'passing' || c.verdict === 'failing').length,
       criteria: coverage.length,
-      issuesDone: live.filter((i) => i.status === 'closed').length,
       issuesRunning: live.filter((i) => i.status === 'in_progress').length,
       issuesTotal: live.length,
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,

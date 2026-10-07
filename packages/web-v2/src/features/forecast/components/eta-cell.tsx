@@ -14,7 +14,7 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
         className={cn(
           "inline-flex max-w-full items-center gap-1 truncate text-12-5",
           eta.kind === "range" && "font-semibold text-fg",
-          eta.kind === "waits" && "text-muted",
+          (eta.kind === "waits" || eta.kind === "landed") && "text-muted",
           (eta.kind === "done" || eta.kind === "none") && "text-subtle",
         )}
         data-testid="eta-line"

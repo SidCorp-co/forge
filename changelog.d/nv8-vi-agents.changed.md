@@ -1,1 +1,0 @@
-**Sessions, agents, runs, schedules, skills and conversations now read in Vietnamese.** With the interface set to Tiếng Việt, their menus, labels, gate reasons, dates and release settings are translated; what people and agents wrote stays as written.

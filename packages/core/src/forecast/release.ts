@@ -5,7 +5,7 @@
  * stamp `release_released_at`), and which version shipped each closed issue.
  */
 
-import { FORECAST_WINDOW_DAYS } from '@forge/contracts/forecast';
+import { FORECAST_WINDOW_DAYS, type ReleaseMode } from '@forge/contracts/forecast';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -14,14 +14,34 @@ import { readReleaseMode } from '../project-config/index.js';
 import { approversOf, nextDraftVersion } from '../release-batch/index.js';
 import type { ReleaseFacts, Shipped } from './delivery.js';
 
-export async function readReleaseFacts(projectId: string, now: Date): Promise<ReleaseFacts> {
+/** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
+export interface ForecastViewer {
+  userId: string;
+  isAdmin: boolean;
+  mayApprove: boolean;
+  canWrite: boolean;
+}
+
+/** Whether the act a release mode leaves to a person is the viewer's: approve, cut, or release by hand. */
+function viewerOwesRelease(mode: ReleaseMode, viewer: ForecastViewer | null): boolean {
+  if (!viewer) return false;
+  if (mode === 'approval') return viewer.mayApprove;
+  if (mode === 'manual') return viewer.isAdmin;
+  return mode === 'none' && viewer.canWrite;
+}
+
+export async function readReleaseFacts(
+  projectId: string,
+  now: Date,
+  viewer: ForecastViewer | null,
+): Promise<ReleaseFacts> {
   const mode = await readReleaseMode(projectId);
   const [nextVersion, lags, holders] = await Promise.all([
     mode === 'manual' || mode === 'approval' ? nextDraftVersion(projectId) : null,
     mode === 'automatic' ? readReleaseLags(projectId, now) : [],
     mode === 'approval' ? approversOf(projectId) : [],
   ]);
-  return { mode, nextVersion, lags, holders };
+  return { mode, nextVersion, lags, holders, viewerOwes: viewerOwesRelease(mode, viewer) };
 }
 
 async function readReleaseLags(projectId: string, now: Date): Promise<number[]> {

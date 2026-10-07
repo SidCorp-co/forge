@@ -135,7 +135,8 @@ const isAwaitingRelease = (r: PipelineRunListItem) => r.issueStatus === "awaitin
 
 /** Currently-live runs (running or paused), most recent first (the list arrives
  *  ordered by `startedAt` desc). Includes runs parked at the manual release
- *  gate — prefer `activeRuns`/`awaitingReleaseRuns` for anything user-facing. */
+ *  gate — prefer `activeRuns`/`idleRuns` for anything user-facing; the gate's issues are read from
+ *  core's issue list (`awaiting-release-card.tsx`), never from runs. */
 export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return (runs ?? []).filter((r) => (LIVE_PIPELINE_RUN_STATUSES as readonly string[]).includes(r.status));
 }
@@ -144,18 +145,14 @@ export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRun
   return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
 }
 
-/** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
- *  that one names the single expected park (the release gate); this one is
- *  everything else, which is the set nobody could see before. */
+/** Live runs with no live JOB on them, leaving out the one expected park (the release gate), whose
+ *  issues the awaiting-release card lists: everything else, which is the set nobody could see before. */
 export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && !isAwaitingRelease(r),
   );
 }
 
-export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return liveRuns(runs).filter(isAwaitingRelease);
-}
 /** Sum of estimated cost across genuinely-active runs only. */
 export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
   return activeRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);

@@ -1,6 +1,6 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type DeviceStatus,
@@ -286,7 +286,7 @@ export async function listAdminProjects({
     .leftJoin(users, eq(users.id, projects.createdBy))
     .leftJoin(memberCountSq, eq(memberCountSq.projectId, projects.id))
     .where(where)
-    .orderBy(desc(projects.createdAt))
+    .orderBy(desc(projects.createdAt), asc(projects.id))
     .limit(limit)
     .offset(offset);
 
@@ -308,7 +308,7 @@ export async function listAdminDevices({
     .select()
     .from(devices)
     .where(where)
-    .orderBy(desc(devices.createdAt))
+    .orderBy(desc(devices.createdAt), asc(devices.id))
     .limit(limit)
     .offset(offset);
   return { rows, total: Number(n) };

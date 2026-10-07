@@ -5,6 +5,7 @@ import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { type EtaClock, partsOf, rangeText } from "./clock";
 import { ETA_COPY } from "./eta-copy";
+import { progressText } from "./progress";
 
 // The forecast sentences a screen reads: a line, and the tooltip behind it. Their words are the
 // `fc.*` keys of the locale file, drawn in the clock's language; the names, keys and versions in
@@ -119,7 +120,7 @@ export function scopeText(s: ScopeForecast, c: EtaClock, opts: { next?: boolean 
   const t = productCopy(c.lang);
   if (!s.forecast) return { line: t("fc.noIssues"), detail: t("eta.nothingLinked") };
   const own = forecastText(s.forecast, c);
-  const head = t("fc.scopeHead", { landed: s.landed, total: s.total });
+  const head = progressText(s.progress, t);
   if (s.forecast.kind === "landed") {
     const inHands = s.delivery?.inHands;
     const next =
@@ -130,7 +131,7 @@ export function scopeText(s: ScopeForecast, c: EtaClock, opts: { next?: boolean 
           : "";
     const detail = s.next?.reason ?? (s.delivery ? deliveryText(s.delivery, c).detail : own.detail);
     const by = s.forecast.landedAt ? t("fc.landedBy", { day: dayOf(s.forecast.landedAt, c) }) : "";
-    return { line: t("fc.allLanded", { total: s.total, by, next }), detail };
+    return { line: t("fc.allLanded", { total: s.progress.total, by, next }), detail };
   }
   if (s.forecast.kind === "forecast") return { line: t("fc.scopeForecast", { head, when: when(s.forecast, c) }), detail: own.detail };
   return { line: `${head} · ${own.line}`, detail: own.detail };
