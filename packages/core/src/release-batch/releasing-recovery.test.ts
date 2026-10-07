@@ -65,6 +65,32 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('shipped with this batch');
   });
 
+  it('says so where a refusal names no blocking object', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
+      projectId: PROJECT,
+      version: '2.0.0',
+      destination: 'awaiting_release',
+    });
+    expect(said).toContain('The refusal named no blocking object.');
+    expect(said).toContain('What clears it: mark the issue merged on its Properties rail');
+  });
+
+  it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
+      projectId: PROJECT,
+      version: '2.0.0',
+      destination: 'releasing',
+      held: 'This batch recorded a promotion; abort it to settle.',
+    });
+    expect(said).toContain('This batch recorded a promotion; abort it to settle.');
+    expect(said).toContain('Clear the reason above first');
+    expect(said).not.toContain('The issue is at');
+  });
+});
+
+describe('what a failed write says, never its statement or a bound value (ISS-1381 r2)', () => {
   it('names the database’s own reason for a failed write, and never its statement or a bound value (ISS-1381 r2)', () => {
     const issueId = '9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f';
     const failed = new DrizzleQueryError(
@@ -152,7 +178,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     }
   });
 
-  it('keeps a one-character bound value out where the reason names it as a word (ISS-1381 r2)', () => {
+  it('keeps a one-character bound value out, standing alone or inside a word (ISS-1381 r2)', () => {
     const failed = new DrizzleQueryError(
       'update "issues" set "tenant" = $1 where "issues"."id" = $2',
       [7, 'bad'],
@@ -162,10 +188,22 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       }),
     );
 
-    const text = closeFailureText(closeRefusalOf(failed));
+    const embedded = new DrizzleQueryError(
+      'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+      [7, 'bad'],
+      Object.assign(new Error('tenant-7: invalid input syntax for type uuid: "bad"'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
 
-    expect(text).not.toContain('tenant 7');
-    expect(text).toContain('a database function or trigger raised an error');
+    for (const text of [
+      closeFailureText(closeRefusalOf(failed)),
+      closeFailureText(closeRefusalOf(embedded)),
+    ]) {
+      expect(text).not.toMatch(/tenant.?7/);
+      expect(text).toContain('a database function or trigger raised an error');
+    }
   });
 
   it('says a database query failed without a reason when drizzle’s wrapper carries no driver error', () => {
@@ -179,29 +217,5 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     const text = closeFailureText(closeRefusalOf(failed));
 
     expect(text).toBe('a database query failed without saying why');
-  });
-
-  it('says so where a refusal names no blocking object', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
-      projectId: PROJECT,
-      version: '2.0.0',
-      destination: 'awaiting_release',
-    });
-    expect(said).toContain('The refusal named no blocking object.');
-    expect(said).toContain('What clears it: mark the issue merged on its Properties rail');
-  });
-
-  it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
-      projectId: PROJECT,
-      version: '2.0.0',
-      destination: 'releasing',
-      held: 'This batch recorded a promotion; abort it to settle.',
-    });
-    expect(said).toContain('This batch recorded a promotion; abort it to settle.');
-    expect(said).toContain('Clear the reason above first');
-    expect(said).not.toContain('The issue is at');
   });
 });
