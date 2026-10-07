@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.106] - 2026-10-07
+
+Feedback screens read in Vietnamese; Duplicate of becomes a feedback search
+
+### Changed
+
+- **Feedback reads in the interface language.** The list, triage funnel, detail page, peek, triage verbs, messages and filing form follow Tiếng Việt or English, with dates in the same language; Duplicate of now picks the original by key or title.
+
 ## [0.4.0-dev.105] - 2026-10-07
 
 Requirements screens read in Vietnamese when that is the interface language

@@ -1,1 +1,0 @@
-**Feedback reads in the interface language.** The list, triage funnel, detail page, peek, triage verbs, messages and filing form follow Tiếng Việt or English, with dates in the same language; Duplicate of now picks the original by key or title.
