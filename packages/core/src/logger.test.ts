@@ -498,6 +498,39 @@ describe('the core logger, given a value whose text only a serializer renders', 
     for (const line of lines) expect(line).not.toContain('zq');
   });
 
+  it("asks a value's toJSON with the fields the logger censors by name already censored", () => {
+    const { lines, log } = capture();
+    const reading = () => ({
+      password: 'ordinary-password',
+      toJSON() {
+        return { said: this.password };
+      },
+    });
+    log.warn({ reading: reading() }, 'read');
+    log.child({ reading: reading() }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ reading: reading() });
+    rebound.warn('rebound');
+    log.warn(
+      {
+        nested: {
+          deeper: {
+            token: 'ordinary-token',
+            toJSON() {
+              return this.token;
+            },
+          },
+        },
+      },
+      'deep',
+    );
+    expect(lines).toHaveLength(4);
+    for (const line of lines) {
+      expect(line).not.toContain('ordinary-password');
+      expect(line).not.toContain('ordinary-token');
+    }
+  });
+
   it('keeps what a format argument renders when it carries nothing to redact', () => {
     const { lines, log } = capture();
     log.warn('read %s and %s', { toString: () => 'a reading' }, new URL('https://example.test/x'));

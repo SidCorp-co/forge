@@ -6,6 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 
 expect.extend(matchers);
 
@@ -14,6 +15,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ register }) }));
 
 const { RegisterForm } = await import("./register-form");
+
+const duplicate = () => new ApiError(409, "Email already registered", "CONFLICT");
 
 afterEach(() => {
   cleanup();
@@ -25,7 +28,7 @@ function fill(label: string, value: string) {
 }
 
 async function submitDuplicate() {
-  register.mockRejectedValueOnce(new Error("Email already registered"));
+  register.mockRejectedValueOnce(duplicate());
   render(<RegisterForm />);
   fill("Email", "taken@example.test");
   fill("Password", "a-long-enough-password");
@@ -56,8 +59,23 @@ describe("the register form's banner", () => {
     fill("Confirm password", "a-long-enough-password");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     fill("Email", "other@example.test");
-    refuse(new Error("Email already registered"));
+    refuse(duplicate());
     await waitFor(() => expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled());
     expect(screen.queryByText("Email already registered")).not.toBeInTheDocument();
+  });
+
+  it("keeps a failure that is not about the address when the email changes, or arrives late", async () => {
+    let refuse: (err: Error) => void = () => {};
+    register.mockReturnValueOnce(new Promise((_, reject) => (refuse = reject)));
+    render(<RegisterForm />);
+    fill("Email", "taken@example.test");
+    fill("Password", "a-long-enough-password");
+    fill("Confirm password", "a-long-enough-password");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    fill("Email", "other@example.test");
+    refuse(new Error("Network unavailable"));
+    await waitFor(() => expect(screen.getByText("Network unavailable")).toBeInTheDocument());
+    fill("Email", "third@example.test");
+    expect(screen.getByText("Network unavailable")).toBeInTheDocument();
   });
 });

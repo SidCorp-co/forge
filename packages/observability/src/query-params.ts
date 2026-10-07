@@ -286,6 +286,11 @@ export interface Rendering {
   fields?: boolean;
   /** An `Error` is handed back as it is, for a serializer of errors to read. */
   errorsAsThemselves?: boolean;
+  /**
+   * Field names the sink censors by path, as pino's `redact` does: a `toJSON` is asked with them
+   * already censored, since the text it renders carries no name for the sink to censor it by.
+   */
+  censor?: ReadonlySet<string>;
 }
 
 interface Walk extends Rendering {
@@ -314,7 +319,8 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
       collectHeld(value, walk, depth);
-      const out = attempt(() => toJSON.call(value, key) as unknown);
+      const self = walk.censor ? censored(value, walk.censor) : value;
+      const out = attempt(() => toJSON.call(self, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
@@ -328,6 +334,23 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   const out = renderFields(value, depth, walk, copy);
   walk.open.delete(value);
   return out;
+}
+
+/** `value` with each of its own fields named in `names` censored: a copy on its own prototype. */
+function censored(value: object, names: ReadonlySet<string>): object {
+  const keys = attempt(() => Object.keys(value));
+  if (keys === UNREADABLE) return value;
+  const hit = keys.filter((k) => names.has(k));
+  if (hit.length === 0) return value;
+  const copy = attempt(() => {
+    const out = Object.create(Object.getPrototypeOf(value)) as object;
+    Object.defineProperties(out, Object.getOwnPropertyDescriptors(value));
+    for (const k of hit) {
+      Object.defineProperty(out, k, { value: REDACTED, enumerable: true, writable: true });
+    }
+    return out;
+  });
+  return copy === UNREADABLE ? Object.fromEntries(keys.map((k) => [k, REDACTED])) : copy;
 }
 
 /** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */

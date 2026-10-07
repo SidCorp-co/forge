@@ -39,6 +39,11 @@ const redactPaths = [
   'headers.cookie',
 ];
 
+/** The names those paths end in: a value's own toJSON is asked with them censored, as pino would. */
+const censor: ReadonlySet<string> = new Set(
+  redactPaths.map((path) => path.split('.').at(-1) ?? path),
+);
+
 /**
  * A finished line with a failed query's params, and any value the database's own text quotes,
  * redacted: the last pass, blind to the call's errors, over what reached the line by a path the
@@ -145,7 +150,7 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
         );
       return String(v);
     }
-    const written = asSerialized(v, { fields: i === 0, errorsAsThemselves: true });
+    const written = asSerialized(v, { fields: i === 0, errorsAsThemselves: true, censor });
     found.push(...written.errors);
     return written.value;
   });
@@ -191,7 +196,7 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
 
 /** A child's bindings, or `setBindings`', rendered once, with every error met on the way. */
 function writtenBindings(given: Bindings): { bindings: Bindings; errors: Error[] } {
-  const written = asSerialized(given, { fields: true, errorsAsThemselves: true });
+  const written = asSerialized(given, { fields: true, errorsAsThemselves: true, censor });
   const bindings = written.value as Bindings;
   return {
     bindings,
