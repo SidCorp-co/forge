@@ -1,4 +1,4 @@
-import type { Forecast, ForecastPaused, ScopeForecast } from "@forge/contracts/forecast";
+import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastPaused, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
 
 /** "40 min", "2.6 h", "3 d": a span read as a range bound, never as a promise. */
 export function spanText(minutes: number): string {
@@ -55,13 +55,20 @@ export function forecastText(f: Forecast, now: number = Date.now()): { line: str
 }
 
 /** A requirement's or a draft release's line: how many have landed, then when the last will. */
-export function scopeText(s: ScopeForecast, now: number = Date.now()): { line: string; detail: string } {
+export function scopeText(s: ScopeForecast, now: number = Date.now(), opts: { next?: boolean } = {}): { line: string; detail: string } {
   if (!s.forecast) return { line: "No issues to forecast", detail: "Nothing is linked to it yet." };
   const own = forecastText(s.forecast, now);
   const head = `${s.landed}/${s.total} landed`;
   if (s.forecast.kind === "landed") {
-    const next = s.next ? ` · then ${pausedText(s.next).replace(/^Paused — w/, "w")}` : "";
-    return { line: `All ${s.total} landed${s.forecast.landedAt ? ` by ${day(s.forecast.landedAt)}` : ""}${next}`, detail: s.next?.reason ?? own.detail };
+    const inHands = s.delivery?.inHands;
+    const next =
+      s.next && opts.next !== false
+        ? ` · then ${pausedText(s.next).replace(/^Paused — w/, "w")}`
+        : inHands
+          ? ` · forecast live in ${spanBetween(inHands, now)}`
+          : "";
+    const detail = s.next?.reason ?? (s.delivery ? deliveryText(s.delivery, now).detail : own.detail);
+    return { line: `All ${s.total} landed${s.forecast.landedAt ? ` by ${day(s.forecast.landedAt)}` : ""}${next}`, detail };
   }
   if (s.forecast.kind === "forecast") {
     const low = Math.max(0, until(s.forecast.p50At, now));
@@ -72,4 +79,72 @@ export function scopeText(s: ScopeForecast, now: number = Date.now()): { line: s
     };
   }
   return { line: `${head} · ${own.line}`, detail: own.detail };
+}
+
+const spanBetween = (span: ForecastSpan, now: number) => {
+  const low = Math.max(0, until(span.p50At, now));
+  const high = Math.max(low, until(span.p85At, now));
+  return `${spanText(low)} – ${spanText(high)}`;
+};
+
+const legDetail = (leg: ReleaseLeg): string => {
+  switch (leg.kind) {
+    case "automatic":
+      return ` Production releases on its own: the release lag is sampled from ${leg.basis.n} releases in the last ${leg.basis.windowDays} days (p50 ${spanText(leg.basis.lagP50Minutes)}, p85 ${spanText(leg.basis.lagP85Minutes)}).`;
+    case "not_enough_history":
+      return ` Production releases on its own, but only ${leg.n} of the ${leg.floor} releases a release lag needs are on record, so no in-hands range is given.`;
+    case "person":
+      return ` Then ${leg.who} owes the release: ${leg.act}. No date is forecast for a person's act — ${leg.reason}.`;
+  }
+};
+
+const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" }>) => `waits on ${leg.who} to ${leg.act}`;
+
+/**
+ * Done as a person means it — in their hands, not merged — as one line and its tooltip: shipped in a
+ * version; a range to people's hands where production releases on its own; else the landing and the
+ * person who owes the release, never a date for their act.
+ */
+export function deliveryText(d: DeliveryForecast, now: number = Date.now()): { line: string; detail: string } {
+  if (d.shipped) {
+    const when = d.shipped.at ? ` · ${day(d.shipped.at)}` : "";
+    return {
+      line: d.shipped.version ? `Shipped in ${d.shipped.version}${when}` : `Shipped${when}`,
+      detail: d.shipped.at ? `Shipped ${new Date(d.shipped.at).toLocaleString()}` : "Shipped, with no release run on record",
+    };
+  }
+  const landing = forecastText(d.landing, now);
+  const leg = d.release;
+  if (!leg || (d.landing.kind !== "forecast" && d.landing.kind !== "landed")) return landing;
+  const lead = d.landing.kind === "landed" ? `${landing.detail}.` : landing.detail;
+  const detail = `${lead}${legDetail(leg)}`;
+  if (d.landing.kind === "landed") {
+    if (d.inHands) return { line: `Fixed · forecast live in ${spanBetween(d.inHands, now)} · as of ${clock(d.asOf)}`, detail };
+    if (leg.kind === "person") return { line: `Fixed · ${waitsOnText(leg)}`, detail };
+    return { line: "Fixed · waits on the automatic release", detail };
+  }
+  const lands = `Forecast lands in ${spanBetween(d.landing, now)}`;
+  if (d.inHands) return { line: `Forecast live in ${spanBetween(d.inHands, now)} · as of ${clock(d.asOf)}`, detail };
+  if (leg.kind === "person") return { line: `${lands} · then ${waitsOnText(leg)}`, detail };
+  return { line: `${lands} · release time not known yet`, detail };
+}
+
+/** A feedback item's line: untriaged, who triages it; else its linked work's delivery; null where nothing ships. */
+export function feedbackForecastText(f: FeedbackForecast, now: number = Date.now()): { line: string; detail: string } | null {
+  if (f.triage) return { line: `Waiting on triage — ${f.triage.who} to ${f.triage.act}`, detail: f.triage.reason };
+  return f.delivery ? deliveryText(f.delivery, now) : null;
+}
+
+/** A requirement's detail line: how many criteria are proven, then when the rest is in people's hands. */
+export function criteriaRestText(
+  proven: number,
+  criteria: number,
+  s: ScopeForecast | undefined,
+  now: number = Date.now(),
+): { line: string; detail: string } | null {
+  if (criteria === 0) return s?.delivery ? deliveryText(s.delivery, now) : null;
+  const head = proven >= criteria ? `All ${criteria} criteria proven` : `${proven} of ${criteria} criteria proven`;
+  if (proven >= criteria || !s?.delivery) return { line: head, detail: "Business criteria with a passing verdict." };
+  const rest = deliveryText(s.delivery, now);
+  return { line: `${head} · rest ${rest.line.charAt(0).toLowerCase()}${rest.line.slice(1)}`, detail: rest.detail };
 }

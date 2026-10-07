@@ -65,6 +65,31 @@ describe("the issues that carry an item", () => {
   });
 });
 
+describe("the item's line as its reporter means done", () => {
+  const stamp = { label: "forecast" as const, asOf: new Date().toISOString() };
+
+  it("says a fixed item still unreleased waits on whoever cuts the release", () => {
+    const forecast = {
+      key: "FB-1",
+      triage: null,
+      delivery: {
+        ...stamp,
+        landing: { ...stamp, kind: "landed" as const, landedAt: stamp.asOf },
+        release: { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.4.0", reason: "an admin cuts each release" },
+        inHands: null,
+        shipped: null,
+      },
+    };
+    renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={forecast} />);
+    expect(screen.getByTestId("feedback-forecast-line").textContent).toBe("Fixed · waits on A project admin to cut 0.4.0");
+  });
+
+  it("draws no forecast fact where the item carries no work that ships", () => {
+    renderWithQuery(<FeedbackFacts f={view()} slug="hop" forecast={{ key: "FB-1", triage: null, delivery: null }} />);
+    expect(screen.queryByTestId("facts-feedback-forecast")).toBeNull();
+  });
+});
+
 describe("linking issues in the triage", () => {
   it("reads one key as one issue and several as a list", () => {
     expect(issueKeysOf("ISS-4")).toBe("ISS-4");

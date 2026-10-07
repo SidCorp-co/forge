@@ -22,6 +22,9 @@ import { cn } from "@/lib/utils/cn";
 import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import type { ScopeForecast } from "@forge/contracts/forecast";
+import { useRequirementForecasts } from "@/features/forecast/hooks";
+import { deliveryText } from "@/features/forecast/text";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
@@ -95,22 +98,23 @@ function groupsOf(rows: RequirementSummary[], mode: GroupMode): ListGroup<Requir
 }
 
 /** The secondary line: revision, coverage, issues — label-first counts. */
-function factsLine(r: RequirementSummary): string[] {
+function factsLine(r: RequirementSummary, scope: ScopeForecast | undefined): string[] {
   const f = r.standing.facts;
   const parts = [revisionText(r.currentRevision, r.standing)];
   if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? `Criteria ${f.criteria}` : "No criteria");
   else parts.push(`Passing ${f.passing}/${f.criteria}`);
   parts.push(f.issuesTotal === 0 ? "Not broken down" : `Issues done ${f.issuesDone}/${f.issuesTotal}`);
+  if (scope?.delivery && scope.total > 0) parts.push(deliveryText(scope.delivery).line);
   return parts;
 }
 
 const rowOf =
-  (slug: string) =>
+  (slug: string, forecastOf: (key: string) => ScopeForecast | undefined = () => undefined) =>
   (r: RequirementSummary): ListRowView => ({
     key: r.key,
     href: requirementHref(slug, r.key),
     title: r.title,
-    facts: factsLine(r),
+    facts: factsLine(r, forecastOf(r.key)),
     state: <StatusBadge family="requirement" value={r.standing.state} />,
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
@@ -198,7 +202,9 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug), [slug]);
+  const forecastQ = useRequirementForecasts(projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
+  const row = useMemo(() => rowOf(slug, (k) => forecasts.get(k)), [slug, forecasts]);
 
   const openFull = useCallback(
     (key: string) => {

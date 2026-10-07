@@ -11,6 +11,7 @@ import type {
   FeedbackStatus,
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
+import type { ReleaseMode } from '@forge/contracts/forecast';
 import type { Standing, WaitingOn } from '@forge/contracts/standing';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 
@@ -121,12 +122,8 @@ export interface StandingViewer {
   canWrite: boolean;
 }
 
-/**
- * How the release a planned item's carrier issue waits at is made, read off the project document:
- * no production environment (`none`), a release approval required (`approval`), production
- * deploying on land (`automatic`), or a release a person cuts (`manual`).
- */
-export type CarrierRelease = 'none' | 'approval' | 'manual' | 'automatic';
+/** How the release a planned item's carrier issue waits at is made (`project-config/release-path.ts:releaseModeOf`). */
+export type CarrierRelease = ReleaseMode;
 
 export interface StandingFacts {
   /** An item the project's live master owes a triage (`owed-triage.ts:owedTriages`). */

@@ -1,0 +1,1 @@
+**Feedback, Requirements and Releases now forecast when work is in people's hands.** Each line adds the project's sampled release lag, or names who cuts or approves the release, and the simulation never works more lanes than recently ran.

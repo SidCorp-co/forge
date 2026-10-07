@@ -14,10 +14,24 @@ import { workflowHref } from "@/lib/routes/workflows";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
-import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
+import type { ScopeForecast } from "@forge/contracts/forecast";
+import { criteriaRestText } from "@/features/forecast/text";
 import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper } from "./standing-bits";
+
+/** "3 of 5 criteria proven · rest forecast live in 1 d – 3 d": the proof so far, then when the rest is in people's hands. */
+function CriteriaRest({ passing, criteria, scope }: { passing: number; criteria: number; scope: ScopeForecast }) {
+  const read = criteriaRestText(passing, criteria, scope);
+  if (!read) return null;
+  return (
+    <p className="pb-1.5" data-testid="facts-forecast">
+      <span className="fg-body-sm text-muted" title={read.detail} data-testid="criteria-rest-line">
+        {read.line}
+      </span>
+    </p>
+  );
+}
 
 const VIA_LABEL: Record<RequirementFeedbackItem["via"]["type"], string> = {
   requirement: "",
@@ -152,11 +166,7 @@ export function RequirementFacts({
       </FactsGroup>
 
       <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
-        {d.issues.length > 0 && forecast?.forecast ? (
-          <p className="pb-1.5" data-testid="facts-forecast">
-            <ScopeForecastLine scope={forecast} />
-          </p>
-        ) : null}
+        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} /> : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
         ) : (

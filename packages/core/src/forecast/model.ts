@@ -2,13 +2,15 @@
  * The forecast itself, pure: a seeded Monte Carlo over the project's own in_progress→landed
  * durations (Magennis's cycle-time sampling, Vacanti's "when will it be done"), run through the
  * queue in the order the dispatcher takes it, with each `blocks` edge holding its dependent until
- * the blocker lands, on as many lanes as Little's law reads off the history. `read.ts` gathers
+ * the blocker lands, on as many lanes as Little's law reads off the history and never more than the
+ * project has had in progress at once lately. `read.ts` gathers
  * the facts; every honesty rule below is a unit test in `model.test.ts`.
  */
 
 import {
   FORECAST_HISTORY_FLOOR,
   FORECAST_LABEL,
+  FORECAST_PEAK_DAYS,
   FORECAST_TRIALS,
   FORECAST_WINDOW_DAYS,
   type Forecast,
@@ -29,6 +31,8 @@ export interface History {
   samples: readonly CycleSample[];
   /** Days the landings were counted over. */
   spanDays: number;
+  /** The most issues in progress at once over the recent days; null where none was read. */
+  peak: number | null;
 }
 
 export interface Wait {
@@ -111,8 +115,9 @@ const ascending = (values: readonly number[]) => [...values].sort((a, b) => a - 
 
 /**
  * Little's law, L = λ·W: the issues the project has had in progress at once on average, read from
- * its landings per day and their mean duration. The simulation works that many lanes, so its
- * throughput is the throughput the project actually had, whatever any box declares.
+ * its landings per day and their mean duration, never above the most it has actually had in
+ * progress at once lately. A burst of landings reads a λ no lane ever sustained, and the work a
+ * master runs as a two-run wave is never worked six at a time (HOP ISS-71's next-day p85).
  */
 export function concurrencyOf(history: History): Concurrency | null {
   const n = history.samples.length;
@@ -120,11 +125,32 @@ export function concurrencyOf(history: History): Concurrency | null {
   const perDay = n / history.spanDays;
   const meanMinutes = history.samples.reduce((s, c) => s + c.minutes, 0) / n;
   const wip = (perDay * meanMinutes) / DAY_MINUTES;
-  const value = Math.max(1, Math.round(wip));
+  const little = Math.max(1, Math.round(wip));
+  const read = `Little's law over the last ${FORECAST_WINDOW_DAYS} days: ${perDay.toFixed(1)} landings a day × ${Math.round(meanMinutes)} min mean in progress ≈ ${wip.toFixed(1)} at once`;
+  const cap = history.peak === null ? null : Math.max(1, history.peak);
+  if (cap === null || little <= cap) return { value: little, basis: read };
   return {
-    value,
-    basis: `Little's law over the last ${FORECAST_WINDOW_DAYS} days: ${perDay.toFixed(1)} landings a day × ${Math.round(meanMinutes)} min mean in progress ≈ ${wip.toFixed(1)} at once`,
+    value: cap,
+    basis: `${read}, held to ${cap}: the most issues in progress at once over the last ${FORECAST_PEAK_DAYS} days`,
   };
+}
+
+/** The most spells open at one instant; a spell ending as another starts does not overlap it. */
+export function peakOf(spells: readonly (readonly [number, number])[]): number {
+  const edges = spells
+    .filter(([a, b]) => b > a)
+    .flatMap(([a, b]) => [
+      [a, 1],
+      [b, -1],
+    ])
+    .sort((x, y) => (x[0] as number) - (y[0] as number) || (x[1] as number) - (y[1] as number));
+  let open = 0;
+  let most = 0;
+  for (const [, step] of edges) {
+    open += step as number;
+    most = Math.max(most, open);
+  }
+  return most;
 }
 
 function pools(samples: readonly CycleSample[], floor: number) {
@@ -385,14 +411,19 @@ export function scopeForecast(
   const ranged = members.filter((f): f is ForecastRange => f.kind === 'forecast');
   const last = [...ranged].sort((a, b) => b.p85Minutes - a.p85Minutes)[0];
   if (!last) return null;
+  return rangeOf(run.asOf, now, scopeLandings(run, openKeys), last.basis, {
+    ahead: last.aheadKeys,
+    waitsOn: last.waitsOn,
+  });
+}
+
+/** Each trial's last landing among `keys`, in minutes from now; zero where none of them was simulated. */
+export function scopeLandings(run: ForecastRun, keys: readonly string[]): Float64Array {
   const latest = new Float64Array(run.trials);
-  for (const key of openKeys) {
+  for (const key of keys) {
     const at = run.landings.get(key);
     if (!at) continue;
     for (let t = 0; t < run.trials; t++) latest[t] = Math.max(latest[t] as number, at[t] as number);
   }
-  return rangeOf(run.asOf, now, latest, last.basis, {
-    ahead: last.aheadKeys,
-    waitsOn: last.waitsOn,
-  });
+  return latest;
 }

@@ -27,6 +27,8 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";
 import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
 import type { ReleaseSummary } from "../types";
+import { useComingNext } from "@/features/forecast/hooks";
+import { ComingNext } from "./coming-next";
 import { ReleasePeek } from "./release-peek";
 import { ReleaseTrain } from "./release-train";
 
@@ -56,6 +58,7 @@ const rowOf =
 
 export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useReleases(projectId);
+  const comingQ = useComingNext(projectId);
   const router = useRouter();
   const [params, setParams] = useUrlParams();
   const text = params.get("q") ?? "";
@@ -94,6 +97,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                   onText={(q) => setParams({ q: q || null })}
                   productionUnreadable={production.ok ? null : production.reason}
                 />
+                <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} />
                 {all.length === 0 ? (
                   <div className="px-5 py-10">
                     <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />

@@ -1,6 +1,6 @@
-import type { Forecast, ForecastBasis } from "@forge/contracts/forecast";
+import type { DeliveryForecast, Forecast, ForecastBasis, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
-import { forecastText, scopeText, spanText } from "./text";
+import { criteriaRestText, deliveryText, feedbackForecastText, forecastText, scopeText, spanText } from "./text";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
@@ -47,6 +47,8 @@ describe("forecast text", () => {
         landed: 2,
         forecast: { ...stamp, kind: "landed", landedAt: at(-60) },
         next: { ...stamp, kind: "paused", who: "A release approver", act: "cut the version, then approve the release", reason: "r", ref: null },
+        title: null,
+        delivery: null,
       },
       NOW,
     ).line;
@@ -55,5 +57,64 @@ describe("forecast text", () => {
 
   it("spans minutes, hours and days", () => {
     expect([spanText(0), spanText(35), spanText(150), spanText(3000)]).toEqual(["1 min", "35 min", "2.5 h", "2 d"]);
+  });
+});
+
+const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(300), p50Minutes: 120, p85Minutes: 300, ahead: 0, aheadKeys: [], waitsOn: [], basis };
+const lag = { kind: "automatic" as const, basis: { n: 14, floor: 10, windowDays: 60, lagP50Minutes: 30, lagP85Minutes: 90 } };
+const span = (lo: number, hi: number) => ({ p50At: at(lo), p85At: at(hi), p50Minutes: lo, p85Minutes: hi });
+const delivery = (over: Partial<DeliveryForecast>): DeliveryForecast => ({ ...stamp, landing: range, release: lag, inHands: span(150, 390), shipped: null, ...over });
+const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release" };
+
+describe("delivery text: in people's hands, not merged", () => {
+  it("ranges to people's hands where production releases on its own, labelled a forecast", () => {
+    const { line, detail } = deliveryText(delivery({}), NOW);
+    expect(line).toMatch(/^Forecast live in 2\.5 h – 6\.5 h · as of /);
+    expect(detail).toContain("sampled from 14 releases");
+  });
+
+  it("names the person and the act, with no date for it, where a person cuts the release", () => {
+    const { line } = deliveryText(delivery({ release: manual, inHands: null }), NOW);
+    expect(line).toMatch(/^Forecast lands in 2\.0 h – 5\.0 h · then waits on A project admin to cut 0\.2\.0$/);
+  });
+
+  it("reads a fixed change still unreleased as waiting on the release", () => {
+    const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-30) };
+    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), NOW).line).toBe("Fixed · waits on A project admin to cut 0.2.0");
+    expect(deliveryText(delivery({ landing: landed, inHands: span(10, 60) }), NOW).line).toMatch(/^Fixed · forecast live in 10 min – 1\.0 h/);
+  });
+
+  it("says shipped in its version and when, with no range", () => {
+    const line = deliveryText(delivery({ shipped: { version: "0.3.1", at: at(-1440) }, release: null, inHands: null }), NOW).line;
+    expect(line).toMatch(/^Shipped in 0\.3\.1 · /);
+    expect(line).not.toMatch(/Forecast/);
+  });
+
+  it("gives no in-hands number below the release floor", () => {
+    const line = deliveryText(delivery({ release: { kind: "not_enough_history", n: 4, floor: 10 }, inHands: null }), NOW).line;
+    expect(line).toBe("Forecast lands in 2.0 h – 5.0 h · release time not known yet");
+  });
+});
+
+describe("feedback and requirement lines", () => {
+  it("says an untriaged item waits on triage and who, with no date", () => {
+    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null }, delivery: null }, NOW)?.line;
+    expect(line).toBe("Waiting on triage — A holder of feedback.approve to triage it");
+  });
+
+  it("draws nothing for an item that carries no work that ships", () => {
+    expect(feedbackForecastText({ key: "FB-2", triage: null, delivery: null }, NOW)).toBeNull();
+  });
+
+  it("reads the proof so far, then when the rest is in people's hands", () => {
+    const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-3", title: "t", total: 3, landed: 1, forecast: range, next: null, delivery: delivery({}) };
+    expect(criteriaRestText(2, 5, scope, NOW)?.line).toMatch(/^2 of 5 criteria proven · rest forecast live in 2\.5 h – 6\.5 h/);
+    expect(criteriaRestText(5, 5, scope, NOW)?.line).toBe("All 5 criteria proven");
+  });
+
+  it("adds the release lag to a draft that has landed where nobody cuts it", () => {
+    const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-60) };
+    const draft: ScopeForecast = { ...stamp, scope: "release", key: "draft", title: null, total: 2, landed: 2, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
+    expect(scopeText(draft, NOW).line).toMatch(/^All 2 landed by .+ · forecast live in 20 min – 1\.3 h$/);
   });
 });
