@@ -67,6 +67,7 @@ function facts(over: Doc = {}): Doc {
     master: 'alive',
     liveMasterInProject: false,
     thisBoot: true,
+    bootEnded: false,
     bound: true,
     process: 'none',
     ledgerDead: false,
