@@ -9,6 +9,30 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.142] - 2026-10-07
+
+Feedback reporters hear in their language what shipped, or someone relays it
+
+### Fixed
+
+- **A reporter hears their feedback shipped**: every reporter notice reads in their language; one ship notice per item; untold items owe a relay on Needs you, or, shipped before release notices, read a dated state with "Tell the reporter now".
+
+## [0.4.0-dev.141] - 2026-10-07
+
+Requirements carry open questions and decisions; Decisions log and Roadmap pages
+
+### Added
+
+- **A requirement says what is still unclear**: revisions carry open questions and assumptions; a blocking open question refuses the agree; business answers become requirement decisions; a project Decisions log and a Roadmap page; issues link to requirements from either page.
+
+## [0.4.0-dev.140] - 2026-10-07
+
+A landing can say another issue carries a workflow it touched
+
+### Added
+
+- **A landing artifact can be marked carried by another issue.** Its release reports it carried while the carrier is open and outside the roster, the carrier's release verifies it, and both issues and the release page say so.
+
 ## [0.4.0-dev.139] - 2026-10-07
 
 Failed chat turns explain themselves, rewrites keep true answers, rooms add project members

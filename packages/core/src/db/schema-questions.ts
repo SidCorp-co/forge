@@ -13,7 +13,7 @@ import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
-import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
+import type { AnswerHold, AnswerResume, QuestionAbout } from '@forge/contracts/questions';
 
 import { sql } from 'drizzle-orm';
 import {
@@ -134,11 +134,11 @@ export const agentQuestions = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
-    /** The requirement a BA clarification is scoped to (Q5); null on every other question. */
+    /** The requirement a BA clarification or a revision's open question is asked of; null on every other question. */
     requirementId: uuid('requirement_id').references(() => requirements.id, {
       onDelete: 'cascade',
     }),
-    /** The feedback item a BA clarification is scoped to (Q5); null on every other question. */
+    /** The feedback item a BA clarification is scoped to: at most one open per item; null on every other question. */
     feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
       onDelete: 'cascade',
     }),
@@ -171,6 +171,8 @@ export const agentQuestions = pgTable(
     awaitsMergeIssueId: uuid('awaits_merge_issue_id').references((): AnyPgColumn => issues.id, {
       onDelete: 'set null',
     }),
+    /** What the asker named the question as about (a requirement or a contract); it moves no visibility. */
+    about: jsonb('about').$type<QuestionAbout>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -200,10 +202,25 @@ export const agentQuestions = pgTable(
     index('agent_questions_issue_idx').on(t.issueId),
     index('agent_questions_batch_idx').on(t.batchId),
     check('agent_questions_batch_item_chk', sql`(${t.batchId} IS NULL) = (${t.item} IS NULL)`),
-    // the BA assistant asks the reporter at most one open question per item (Q5)
-    uniqueIndex('agent_questions_requirement_open_uq')
+    index('agent_questions_requirement_idx')
       .on(t.requirementId)
-      .where(sql`${t.status} = 'open' and ${t.requirementId} is not null`),
+      .where(sql`${t.requirementId} is not null`),
+    index('agent_questions_about_requirement_idx')
+      .on(sql`(${t.about} ->> 'requirementId')`)
+      .where(sql`${t.about} ->> 'kind' = 'requirement'`),
+    // a merge mark answers its park with the mark; a business question is a person's to answer
+    check(
+      'agent_questions_about_not_merge_wait_chk',
+      sql`${t.about} is null or ${t.awaitsMergeIssueId} is null`,
+    ),
+    check(
+      'agent_questions_about_shape_chk',
+      sql`${t.about} is null or (
+        (${t.about} ->> 'kind' = 'requirement' and jsonb_typeof(${t.about} -> 'requirementId') = 'string')
+        or (${t.about} ->> 'kind' = 'contract' and jsonb_typeof(${t.about} -> 'contract') = 'string')
+      )`,
+    ),
+    // the BA assistant asks the reporter of a feedback item one clarification at a time
     uniqueIndex('agent_questions_feedback_open_uq')
       .on(t.feedbackId)
       .where(sql`${t.status} = 'open' and ${t.feedbackId} is not null`),

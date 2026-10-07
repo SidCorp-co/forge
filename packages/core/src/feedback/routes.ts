@@ -52,6 +52,7 @@ import {
   reopenFeedback,
   verifyFeedback,
 } from './service.js';
+import { tellShippedNow } from './tell-shipped.js';
 import { triageFeedback } from './triage.js';
 import { acceptFeedback, snoozeFeedback } from './verbs.js';
 
@@ -228,6 +229,20 @@ feedbackRoutes.post(
   async (c) => {
     const { id, fb } = c.req.valid('param');
     const body = c.req.valid('json');
+    if (body.relayed) {
+      return refused(
+        c,
+        [
+          {
+            code: 'FEEDBACK_REFUSED',
+            path: '/relayed',
+            detail:
+              'a relay records what you already told reporters outside Forge and sends no notice, so it has no preview; send it as it is.',
+          },
+        ],
+        'FEEDBACK_REFUSED',
+      );
+    }
     if (body.audience === 'internal') {
       return refused(
         c,
@@ -268,6 +283,7 @@ feedbackRoutes.post(
       actor: actorOf(c),
       audience: body.audience,
       text: body.text,
+      relayed: body.relayed ?? false,
     });
     if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
     const reply: FeedbackResponse = { feedback: out.feedback };
@@ -318,6 +334,16 @@ feedbackRoutes.post(
   async (c) => {
     const { id, fb } = c.req.valid('param');
     return answer(c, await askReporterToVerify({ projectId: id, ref: fb, actor: actorOf(c) }));
+  },
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/:fb/tell-shipped',
+  itemParam,
+  strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return answer(c, await tellShippedNow({ projectId: id, ref: fb, actor: actorOf(c) }));
   },
 );
 

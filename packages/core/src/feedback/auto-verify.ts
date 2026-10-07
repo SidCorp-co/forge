@@ -18,6 +18,7 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { linkedOf, phaseIn } from './list-read.js';
 import { type Row, rowIn } from './read.js';
+import { tellReporters } from './reporter-language.js';
 import { autoVerifiedNotice } from './reporter-notices.js';
 import { reportersOf, withBell } from './reporters.js';
 import { decide, inTx, lockFeedback } from './service.js';
@@ -59,15 +60,9 @@ async function verifyIn(rowId: string, projectId: string, days: number): Promise
       decision: 'verified',
     });
     const told = withBell(await reportersOf(tx, row)).map((r) => r.id);
-    if (told.length > 0) {
-      await emitEvent(tx, 'feedback.reporterTold', {
-        projectId,
-        feedbackId: row.id,
-        kind: 'verified',
-        recipients: told,
-        ...autoVerifiedNotice(key, row.title, days),
-      });
-    }
+    await tellReporters(tx, { projectId, feedbackId: row.id, kind: 'verified' }, told, (language) =>
+      autoVerifiedNotice(language, key, row.title, days),
+    );
     verified = true;
     return null;
   });

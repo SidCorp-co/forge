@@ -26,7 +26,7 @@ const AT = "2026-10-05T08:00:00.000Z";
 const LAN = say("standing.who.named", { name: "Lan" });
 /** A reason core sends as English beside what it said. */
 const noted = (s: Said) => ({ reason: sentence(s), says: { reason: s } });
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, note: true, attach: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({
@@ -152,15 +152,15 @@ export const feedbackFacts = () => (
         attentionGroup: "waiting",
         waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never,
         route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null },
-        shipNotice: { state: "not_told", ...noted(say("feedback.notice.turnedOff")), shipped: { at: AT, release: "0.2.0" }, beforeNotices: false },
+        shipNotice: { state: "not_told", ...noted(say("feedback.notice.turnedOff")), shipped: { at: AT, release: "0.2.0" }, beforeNotices: false, noticesBegan: null },
         snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" },
         source: { agentReport: { id: "0123456789ab", kind: "bug", severity: "high", target: "issue", targetRef: "ISS-4", createdAt: AT } },
         sensitive: true,
       } as never)}
     />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", at: AT, release: "0.2.0" }, route: null })} />
+    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
     <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, autoVerify: null })} />
-    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false } })} />
+    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
     <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) as never })} />
     <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />
     <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) as never })} />

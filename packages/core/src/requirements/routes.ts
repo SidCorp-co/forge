@@ -22,6 +22,7 @@ import { strictBody } from '../middleware/zod-validator.js';
 import { acceptDelivery, dropRequirement } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
 import { requestContract } from './contract-request.js';
+import { readRequirementDecisionsAs } from './decisions-read.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
@@ -58,6 +59,11 @@ requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) =>
   const requirements =
     c.req.valid('query').view === 'summary' ? listed.map(requirementSummaryOf) : listed;
   return c.json({ requirements, returned: requirements.length });
+});
+
+requirementRoutes.get('/:id/requirements/:req/decisions', reqParam, async (c) => {
+  const { id, req } = c.req.valid('param');
+  return c.json(await readRequirementDecisionsAs(actorOf(c), id, req));
 });
 
 requirementRoutes.post(

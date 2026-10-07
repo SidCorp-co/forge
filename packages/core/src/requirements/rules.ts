@@ -10,6 +10,7 @@ import type {
   RequirementDedupCheck,
   RequirementReadinessGate,
   RequirementRefusalCode,
+  RequirementSpec,
 } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { refuser } from '../lib/refusal.js';
@@ -452,4 +453,27 @@ export function repinRefusals(input: {
     ];
   }
   return [];
+}
+
+// the agree waits for every blocking question its head names that is still open
+// (REQUIREMENT_OPEN_QUESTIONS, JU-6): a question no entry marks blocking, or one already answered,
+// holds nothing back
+export function openQuestionsRefusalOf(
+  spec: RequirementSpec | null | undefined,
+  open: ReadonlySet<string>,
+  revision: number,
+): RequirementRefusal | null {
+  const standing = (spec?.openQuestions ?? []).filter(
+    (q) => q.blocking && q.questionId !== undefined && open.has(q.questionId),
+  );
+  if (standing.length === 0) return null;
+  return {
+    code: 'REQUIREMENT_OPEN_QUESTIONS',
+    path: '/spec/openQuestions',
+    detail: `revision ${revision} leaves ${standing.length} blocking question${standing.length === 1 ? '' : 's'} open: ${standing
+      .map((q) => `"${q.question}" (answered by ${q.whoAnswers})`)
+      .join(
+        '; ',
+      )}. Answer each, or write a revision that no longer marks it blocking, before the agree.`,
+  };
 }

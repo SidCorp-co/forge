@@ -1,6 +1,6 @@
 /**
  * The BA door's tool set (ISS-58): read the room's requirement, an issue and similar requirements;
- * write a suggestion; ask one clarification; propose a wireframe mockup (ISS-78). It is the whole catalog a BA turn is offered — no
+ * write a suggestion; ask a clarification; propose a wireframe mockup (ISS-78). It is the whole catalog a BA turn is offered — no
  * forge CLI, no requirement or issue write — so the role's bound is what the model can call, not
  * what its prompt asks of it. The requirement is bound when the toolset is built, from the room.
  */
@@ -34,7 +34,7 @@ const readRequirement =
     route: '/api/projects',
     grant: 'projects:read',
     description:
-      'Read the requirement this room is about: its revisions (newest first) with criteria, the head (currentRevision), the suggestions waiting on it, the latest clarification question and its answer, and whether its head is embedded for dedup.',
+      'Read the requirement this room is about: its revisions (newest first) with criteria and spec (open questions and assumptions included), the head (currentRevision), the questions standing on it (`questions`, open first, with who answers and whether each blocks the agree; `unclear` counts the open ones), the suggestions waiting on it, the latest clarification question and its answer, and whether its head is embedded for dedup.',
     inputSchema: schema(z.strictObject({})),
     handler: async () => {
       const detail = await readRequirementAs(
@@ -191,7 +191,7 @@ const suggest =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. A breakdown takes suggestions.write (PERMISSION_FORBIDDEN without it). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`); a first requirement for a journey is drafted in its case room. baseRevision is the currentRevision you read (null when there is none).',
+      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). In spec, write what the revision leaves unsettled as spec.openQuestions [{ question, whoAnswers, blocking }] (a blocking one still open refuses the agree, REQUIREMENT_OPEN_QUESTIONS; keep the questionId of one already asked) and what it takes as true without proof as spec.assumptions [{ text, owner, confirmBy }], never as prose in goal or scope. readiness: { checks: [{ check, passed, detail? }] }. A breakdown takes suggestions.write (PERMISSION_FORBIDDEN without it). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`); a first requirement for a journey is drafted in its case room. baseRevision is the currentRevision you read (null when there is none).',
     inputSchema: schema(suggestInput),
     handler: async (args) => {
       const input = suggestInput.parse(args);

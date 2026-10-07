@@ -14,6 +14,7 @@ import {
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { withAskedQuestions } from './clarity.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
   createRequirementIn,
@@ -88,10 +89,16 @@ export async function writeRevision(input: {
     const notDraft = stateRefusal(target.revision, target.state as RevisionState, 'draft');
     if (notDraft) return [notDraft];
     const stored = storedWrite(await dataPolicyOf(projectId), write);
+    const asked = await withAskedQuestions(tx, {
+      projectId,
+      requirementId: row.id,
+      spec: specOf(stored.spec),
+    });
+    if ('refusals' in asked) return asked.refusals;
     await tx
       .update(requirementRevisions)
       .set({
-        spec: specOf(stored.spec),
+        spec: asked.spec,
         tldr: stored.tldr ?? null,
         changeSummary: stored.changeSummary ?? null,
         reason: stored.reason.trim(),

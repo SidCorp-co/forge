@@ -15,10 +15,10 @@ import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
-import { and, asc, desc, eq, ilike, inArray } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
-import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
+import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
@@ -33,8 +33,9 @@ import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
-import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
+import { feedbackIdsOfRequirement, NO_FEEDBACK, routeIssuesOf } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
+import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
 import {
   type CarrierRelease,
   feedbackStandingOf,
@@ -80,6 +81,8 @@ export interface Linked {
   releaseHolders: string[];
   /** The project's verify window in days, read only where a triaged item could read resolved. */
   verifyWindowDays: number;
+  /** Whose reporter nothing told among these rows (`ship-notice.ts:untoldAmong`). */
+  untold: UntoldAmong;
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -104,21 +107,6 @@ export async function viewerCanIn(userId: string, projectId: string): Promise<Vi
 const AT_RELEASE_GATE = 'awaiting_release';
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
-
-/** Every issue an issue route names, per item, oldest issue first. */
-async function routeIssuesOf(rows: Row[]): Promise<Map<string, string[]>> {
-  const routed = rows.filter((r) => r.route === 'issue').map((r) => r.id);
-  const out = new Map<string, string[]>();
-  if (routed.length === 0) return out;
-  const links = await db
-    .select({ feedbackId: feedbackRouteIssues.feedbackId, issueId: feedbackRouteIssues.issueId })
-    .from(feedbackRouteIssues)
-    .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
-    .where(inArray(feedbackRouteIssues.feedbackId, routed))
-    .orderBy(asc(issues.issSeq));
-  for (const l of links) out.set(l.feedbackId, [...(out.get(l.feedbackId) ?? []), l.issueId]);
-  return out;
-}
 
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const routeIssues = await routeIssuesOf(rows);
@@ -217,7 +205,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     release && release !== 'automatic'
       ? await holderNames(RELEASE_ACT_PERMISSION[release], projectId)
       : [];
-  return {
+  const linked: Linked = {
+    untold: NONE_UNTOLD,
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
@@ -273,6 +262,13 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     roots: new Map(allRows.map((r) => [r.id, r])),
     names: await userNames(allRows.map((r) => r.reportedBy)),
   };
+  const shipped = rows.flatMap((r) => {
+    const phase = r.route === 'issue' ? phaseIn(r, linked) : null;
+    return phase === 'resolved' || phase === 'verified'
+      ? [{ id: r.id, route: r.route, phase, reporterAgency: r.reporterAgency }]
+      : [];
+  });
+  return { ...linked, untold: await untoldAmong(projectId, shipped) };
 }
 
 /** Every issue an issue-routed item names, by key with its own status; none for another route. */
@@ -412,6 +408,8 @@ export function summaryOf(
           ? l.release
           : null,
       releaseHolders: l.releaseHolders,
+      relayOwed: phase === 'resolved' && l.untold.untold.has(r.id),
+      relayHolders: l.untold.relayHolders,
       carrierVersion:
         owed.find((c) => c.release)?.release ??
         (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??
@@ -419,6 +417,7 @@ export function summaryOf(
     },
   );
   return {
+    reporterNotTold: notToldOf(r.id, l.untold),
     id: r.id,
     key: feedbackKey(r.fbSeq),
     title: withhold ? `${feedbackKey(r.fbSeq)} (${WITHHELD})` : r.title,
@@ -483,7 +482,12 @@ export async function listFeedbackAs(
     number
   >;
   for (const s of all) counts[s.attentionGroup] += 1;
-  return { ok: true, list: { feedback: listed, counts, sensitive: level !== 'off' } };
+  const untold = {
+    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
+    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
+    noticesBegan: linked.untold.noticesBegan,
+  };
+  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
 }
 
 /** The phase of one item as a write reads it, under the write's own transaction where given. */

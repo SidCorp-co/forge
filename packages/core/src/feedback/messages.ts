@@ -2,7 +2,9 @@
  * Messages from a feedback item. To reporters: pick the audience (this reporter, or every reporter
  * merged into the item), preview the exact notice, send; it is one `feedback.reporterTold` event, the
  * same text the preview showed. An internal note is a row for project members and nothing else: it
- * emits no event, and its row cannot hold a recipient (feedback_messages_internal_chk).
+ * emits no event, and its row cannot hold a recipient (feedback_messages_internal_chk). A relay is what a
+ * person told reporters outside Forge: a reporters row with no recipient, which emits no event either,
+ * and which `ship-notice.ts` reads as the reporter told.
  */
 
 import type {
@@ -16,9 +18,9 @@ import { feedbackMessages } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
-import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
+import { reporterLanguageOf, tellReporters } from './reporter-language.js';
 import { messageNotice } from './reporter-notices.js';
 import { type Reporter, reportersOf, withBell } from './reporters.js';
 import { decideActRefusal } from './rules.js';
@@ -35,7 +37,9 @@ async function plan(tx: Tx, row: Row, audience: ToReporters, text: string) {
   const said = storedText(level, text.trim()).text;
   const addressed = audienceOf(await reportersOf(tx, row), audience);
   const reached = withBell(addressed);
-  const notice = messageNotice(feedbackKey(row.fbSeq), row.title, said);
+  // the preview reads as the first reporter it reaches will read it; each reporter gets their own language
+  const first = reached[0] ? await reporterLanguageOf(reached[0].id, row.projectId) : 'en';
+  const notice = messageNotice(first, feedbackKey(row.fbSeq), row.title, said);
   return { addressed, reached, notice, said };
 }
 
@@ -91,8 +95,10 @@ export async function sendMessage(input: {
   actor: FeedbackActor;
   audience: FeedbackMessageAudience;
   text: string;
+  relayed?: boolean;
 }): Promise<{ ok: true; feedback: FeedbackView } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor, audience } = input;
+  const relayed = input.relayed === true;
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const facts = await roleFacts(actor, projectId);
   const forbidden =
@@ -104,10 +110,10 @@ export async function sendMessage(input: {
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const row = await rowIn(tx, projectId, first.id, true);
-    if (audience === 'internal') {
+    if (audience === 'internal' || relayed) {
       const level = await dataPolicyOf(projectId);
       const note = storedText(level, input.text.trim()).text;
-      const refused = messageRefusal('internal', note, 0);
+      const refused = messageRefusal(audience, note, 0, relayed);
       if (refused) return [refused];
       await tx.insert(feedbackMessages).values({
         projectId,
@@ -133,14 +139,12 @@ export async function sendMessage(input: {
       sentBy: actor.userId,
       sentAgency: actor.agency,
     });
-    await emitEvent(tx, 'feedback.reporterTold', {
-      projectId,
-      feedbackId: row.id,
-      kind: 'message',
+    await tellReporters(
+      tx,
+      { projectId, feedbackId: row.id, kind: 'message' },
       recipients,
-      title: p.notice.title,
-      body: p.notice.body,
-    });
+      (language) => messageNotice(language, feedbackKey(row.fbSeq), row.title, p.said),
+    );
     return null;
   });
   if (refusals) return { ok: false, refusals };

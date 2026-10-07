@@ -522,13 +522,16 @@ export interface ReleaseFeedbackView {
 	title: string;
 	reporter: string;
 	agency: "human" | "agent";
-	told: "on_ship" | "told" | "not_told";
+	/** `before_notices`: it shipped before this project's first release notice, so none was owed. */
+	told: "on_ship" | "told" | "not_told" | "before_notices";
 	toldAt: string | null;
 }
 
 export interface ReleaseDetail extends ReleaseSummary {
 	/** The feedback this release answers, by key: what the people who asked are waiting to hear. */
 	feedbackAnswered: ReleaseFeedbackView[];
+	/** `feedbackAnswered` counted by whether each reporter was told. */
+	feedbackToldCounts: Record<ReleaseFeedbackView["told"], number>;
 	issues: ReleaseIssueView[];
 	requirementsCompleted: ReleaseRequirementView[];
 	issueCriteria: ReleaseIssueCriteria[];
