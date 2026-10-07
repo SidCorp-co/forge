@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.115] - 2026-10-07
+
+Image builds stop corrupting the Next SWC binding through a shared pnpm store
+
+### Fixed
+
+- **The web and core image builds no longer install into one pnpm store at once, and the web build refuses a corrupt or missing native Next.js SWC binding at install.** Concurrent installs left a truncated `.node` file in dev.110.
+
 ## [0.4.0-dev.114] - 2026-10-07
 
 Needs-you page reads each input once per project, opening large projects fast
