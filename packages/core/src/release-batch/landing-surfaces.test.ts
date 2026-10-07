@@ -139,19 +139,17 @@ describe("a git landing's surfaces, read from its changed paths", () => {
   it('never reads a git issue whose mark holds only its design revision as shipping nothing (FB-105)', async () => {
     // dev.113, 2026-10-07: ISS-350 changed code, but a design approval stamped it first and the
     // commit the run claimed afterwards reached no column, so the release read "ships nothing"
-    const facts = [
-      {
-        id: 'e',
-        marked: true,
-        landing: null,
-        artifacts: [
-          { surface: 'design' as const, ref: 'issue-delivery@rev18', change: 'changed' as const },
-        ],
-        commitSha: null,
-        readPaths: null,
-      },
-    ];
-    const readings = await readLandingReadings('p', facts, {
+    const fact = {
+      id: 'e',
+      marked: true,
+      landing: null as string | null,
+      artifacts: [
+        { surface: 'design' as const, ref: 'issue-delivery@rev18', change: 'changed' as const },
+      ],
+      commitSha: null,
+      readPaths: null,
+    };
+    const readings = await readLandingReadings('p', [fact], {
       document: async () => gitDocument('github.com/SidCorp-co/forge-core', FORGE_CORE_SURFACES),
     });
     const reading = readings.get('e');
@@ -165,7 +163,7 @@ describe("a git landing's surfaces, read from its changed paths", () => {
 
     const outside = await readLandingReadings(
       'p',
-      [{ ...facts[0], landing: 'forge-workflow:issue-delivery@rev18' } as (typeof facts)[number]],
+      [{ ...fact, landing: 'forge-workflow:issue-delivery@rev18' }],
       { document: async () => ({ source: { type: 'none' } }) as unknown as ProjectDocument },
     );
     expect(outside.get('e'), 'outside git the revision is the whole landing').toMatchObject({
