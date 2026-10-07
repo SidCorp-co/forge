@@ -85,7 +85,9 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
 
     expect(said).toContain('Release now');
     expect(said).toContain('fails the same way until that failure is fixed');
-    expect(said).not.toContain('Once that is fixed, the release banner on this page offers Release now');
+    expect(said).not.toContain(
+      'Once that is fixed, the release banner on this page offers Release now',
+    );
   });
 
   it('names every earlier release a repeated failure came from, beside the one that shipped (ISS-1381 r4)', () => {

@@ -139,7 +139,9 @@ function databaseReason(err: unknown, driver: { code: string; message: string })
     reason,
   );
   const readable = restored.split(REDACTED).join(WITHHELD_VALUE);
-  const beside = cut.filter((o) => !inPlace.includes(o)).map(({ kind, name }) => `${kind} "${name}"`);
+  const beside = cut
+    .filter((o) => !inPlace.includes(o))
+    .map(({ kind, name }) => `${kind} "${name}"`);
   return beside.length > 0 ? `${readable} (the database names ${beside.join(', ')})` : readable;
 }
 
@@ -420,7 +422,6 @@ function promotedNote(runId: string): (projectId: string) => string {
     `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
-/** The comment a finish leaves on an issue it could not close, one per cause (`close-failures.ts`). */
 function sayRefusedClose(
   runId: string,
   issue: { id: string; projectId: string },
