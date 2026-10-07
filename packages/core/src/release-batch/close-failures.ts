@@ -35,15 +35,15 @@ function recordOf(raw: unknown): CloseFailureRecord | null {
   };
 }
 
-/** The latest close failure each issue carries on any release run of the project. */
+/** The latest close failure each issue carries on any release run of the project, and that run. */
 export async function lastCloseFailures(
   projectId: string,
   issueIds: readonly string[],
-): Promise<Map<string, CloseFailureRecord>> {
-  const out = new Map<string, CloseFailureRecord>();
+): Promise<Map<string, CloseFailureRecord & { runId: string }>> {
+  const out = new Map<string, CloseFailureRecord & { runId: string }>();
   if (issueIds.length === 0) return out;
-  const rows = await db.execute<{ issue_id: string; record: unknown }>(sql`
-    SELECT DISTINCT ON (f.key) f.key AS issue_id, f.value AS record
+  const rows = await db.execute<{ issue_id: string; record: unknown; run_id: string }>(sql`
+    SELECT DISTINCT ON (f.key) f.key AS issue_id, f.value AS record, r.id AS run_id
       FROM pipeline_runs r
       CROSS JOIN LATERAL jsonb_each(r.metadata -> 'closeFailures') AS f(key, value)
      WHERE r.project_id = ${projectId}
@@ -56,7 +56,7 @@ export async function lastCloseFailures(
   `);
   for (const row of rows) {
     const record = recordOf(row.record);
-    if (record) out.set(row.issue_id, record);
+    if (record) out.set(row.issue_id, { ...record, runId: row.run_id });
   }
   return out;
 }
@@ -79,7 +79,12 @@ export async function sayCloseFailure(args: {
   const prior = (await lastCloseFailures(args.projectId, [args.issueId])).get(args.issueId);
   const same =
     prior?.commentId && prior.kind === args.kind && prior.reason === args.reason ? prior : null;
-  const repeats = same ? [...same.repeats, same.version] : [];
+  // A recovery this run already wrote is said again, never counted as an earlier release.
+  const repeats = !same
+    ? []
+    : same.runId === args.runId
+      ? same.repeats
+      : [...same.repeats, same.version];
   const body = args.body(repeats);
   let commentId: string | null = null;
   if (same?.commentId) {
@@ -102,7 +107,7 @@ export async function sayCloseFailure(args: {
     reason: args.reason,
     version: args.version,
     commentId,
-    repeats: same ? repeats : [],
+    repeats,
     at: new Date().toISOString(),
   };
   await db.execute(sql`

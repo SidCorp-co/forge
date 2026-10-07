@@ -350,6 +350,42 @@ describe('a close that fails the same way in two releases (ISS-1381 r4)', () => 
     }
   });
 
+  it('says a recovery its own run already wrote again, never as an earlier release', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { sayCloseFailure } = await import('../../src/release-batch/close-failures.js');
+    const broken = await fx.insertIssue();
+    await harness.db.execute(
+      sql.raw(`ALTER TABLE issues ADD CONSTRAINT gj_closed_needs_ledger
+        CHECK (status <> 'closed' OR id <> '${broken}') NOT VALID`),
+    );
+    try {
+      const { runId, version } = await fx.claim([broken]);
+      const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+      const seen: Array<ReadonlyArray<string | null>> = [];
+      await sayCloseFailure({
+        runId,
+        projectId,
+        issueId: broken,
+        authorId: ownerId,
+        kind: 'failed',
+        reason: result.failed[0]?.reason ?? '',
+        version,
+        body: (repeats) => {
+          seen.push(repeats);
+          return 'said again';
+        },
+      });
+
+      expect(seen).toEqual([[]]);
+      expect(await failureComments(broken)).toHaveLength(0);
+      expect(await lastComment(broken)).toBe('said again');
+    } finally {
+      await harness.db.execute(
+        sql.raw('ALTER TABLE issues DROP CONSTRAINT IF EXISTS gj_closed_needs_ledger'),
+      );
+    }
+  });
+
   it('posts a second comment where the second release fails it for another reason', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const broken = await fx.insertIssue();
