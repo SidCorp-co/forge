@@ -1,4 +1,4 @@
-import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
@@ -20,31 +20,40 @@ export const stillTrue = sql`(
 )`;
 
 /**
- * How many of the caller's deliveries still carry a record that is true — the rows the bell lists
- * as open. A grouped delivery carrying fifteen firing parks is one row and reads one: counting its
- * records put 136 on a badge over a list of 21 open rows (FB-76).
+ * ISS-289 — what an open delivery is, in one place: not a resolved notice, and carrying at least one
+ * record still true (in `projectId`, where given). The badge counts these and the bell lists them, so
+ * the two cannot read different populations. It selects the delivery and leaves its records alone: a
+ * group of three with two still firing is listed reading 2 of 3, never 2 of 2.
+ */
+export function openDelivery(projectId?: string): SQL {
+  const openRecord = db
+    .select({ one: sql`1` })
+    .from(notificationDeliveryMembers)
+    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+    .where(
+      and(
+        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
+        isNull(notifications.resolvedAt),
+        stillTrue,
+        ...(projectId ? [eq(notifications.projectId, projectId)] : []),
+      ),
+    );
+  return sql`(${eq(notificationDeliveries.resolvedNotice, false)} AND ${exists(openRecord)})`;
+}
+
+/**
+ * How many of the caller's deliveries are open — the rows the bell lists. A grouped delivery
+ * carrying fifteen firing parks is one row and reads one: counting its records put 136 on a badge
+ * over a list of 21 open rows (FB-76).
  */
 export async function openNotificationCount(
   userId: string,
   projectId: string | undefined,
 ): Promise<number> {
-  const conditions = [
-    eq(notificationDeliveries.userId, userId),
-    eq(notificationDeliveries.resolvedNotice, false),
-    isNull(notifications.resolvedAt),
-    stillTrue,
-  ];
-  if (projectId) conditions.push(eq(notifications.projectId, projectId));
-
   const [row] = await db
-    .select({ n: countDistinct(notificationDeliveries.id) })
+    .select({ n: count() })
     .from(notificationDeliveries)
-    .innerJoin(
-      notificationDeliveryMembers,
-      eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-    )
-    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-    .where(and(...conditions));
+    .where(and(eq(notificationDeliveries.userId, userId), openDelivery(projectId)));
   return row?.n ?? 0;
 }
 

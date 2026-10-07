@@ -1,14 +1,35 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invitationsApi, notificationsApi } from "./api";
+import type { NotificationRow } from "./types";
 
-export function useNotifications(enabled = true) {
-  return useQuery({
-    queryKey: ["notifications"],
-    queryFn: () => notificationsApi.list(),
+/**
+ * The bell's list: the open rows its badge counts, a page at a time (ISS-289). `remaining` is how
+ * many open rows core holds that are not loaded yet, so the bell can offer them until none is left.
+ */
+export function useOpenNotifications(enabled = true) {
+  const query = useInfiniteQuery({
+    queryKey: ["notifications", "open"],
+    queryFn: ({ pageParam }) => notificationsApi.openPage(pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0);
+      return last.items.length > 0 && loaded < last.totalCount ? pages.length + 1 : undefined;
+    },
     enabled,
   });
+  const pages = query.data?.pages ?? [];
+  // offset pages can repeat a row when a newer one opens between fetches; it is listed once
+  const seen = new Set<string>();
+  const rows: NotificationRow[] = [];
+  for (const row of pages.flatMap((p) => p.items)) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    rows.push(row);
+  }
+  const total = pages.at(-1)?.totalCount ?? 0;
+  return { query, rows, remaining: query.hasNextPage ? Math.max(0, total - rows.length) : 0 };
 }
 
 export function useOpenCount() {

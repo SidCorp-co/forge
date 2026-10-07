@@ -105,3 +105,43 @@ describe('the bell badge', () => {
     expect(await openRows()).toBe(2);
   });
 });
+
+/**
+ * ISS-289: the bell now lists `openOnly=true`, so that list has to describe each open delivery whole.
+ * Selecting open deliveries by dropping their cleared records from the join made a group of three
+ * with two still firing read "2 of 2 still open"; and a resolved notice is no open row on either side.
+ */
+describe('the open list the bell reads', () => {
+  let grouper = '';
+  let groupToken = '';
+  let group = '';
+
+  beforeAll(async () => {
+    grouper = (await createTestUser({ verified: true })).id;
+    groupToken = await userToken(grouper);
+    const cleared = await record(atlas, { kind: 'condition', state: 'resolved', resolved: true });
+    const members = [await record(atlas, firing), await record(atlas, firing), cleared];
+    group = await delivery(grouper, members, { groupKey: `sweep:idle-issues:${atlas}:289` });
+    await delivery(grouper, [await record(atlas, firing)], { resolvedNotice: true });
+  });
+
+  async function listed(): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    const res = await api(groupToken, 'GET', '/api/notifications?openOnly=true&pageSize=100');
+    expect(res.status).toBe(200);
+    return res.body as { items: Record<string, unknown>[]; total: number };
+  }
+
+  it('reads a grouped delivery whole: every record it carries, and how many are still open', async () => {
+    const row = (await listed()).items.find((i) => i.id === group);
+    expect(row).toMatchObject({ members: 3, openMembers: 2 });
+  });
+
+  it('leaves a resolved notice out of the list as the badge leaves it out of the count', async () => {
+    const res = await api(groupToken, 'GET', '/api/notifications/open-count');
+    expect(res.status).toBe(200);
+    const list = await listed();
+    expect(list.items.map((i) => i.id)).toEqual([group]);
+    expect(list.total).toBe(res.body.count);
+    expect(res.body.count).toBe(1);
+  });
+});

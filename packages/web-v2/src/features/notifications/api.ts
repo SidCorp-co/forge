@@ -4,8 +4,12 @@ import type { NotificationMember, NotificationRow, PendingInvitation } from "./t
 export const BELL_PAGE_SIZE = 20;
 
 export const notificationsApi = {
-  list: () =>
-    apiClientList<NotificationRow>(`/notifications?page=1&pageSize=${BELL_PAGE_SIZE}`),
+  /**
+   * One page of the rows the badge counts (ISS-289): open deliveries only, newest first. Every
+   * delivery of any state is Settings > Notifications, never the bell.
+   */
+  openPage: (page: number) =>
+    apiClientList<NotificationRow>(`/notifications?openOnly=true&page=${page}&pageSize=${BELL_PAGE_SIZE}`),
 
   openCount: () => apiClient<{ count: number }>(`/notifications/open-count`),
 
