@@ -281,8 +281,17 @@ export function isError(value: unknown): value is Error {
 }
 
 /** A getter's read that threw, remembered with what it threw. */
-class Thrown {
-  constructor(readonly error: unknown) {}
+interface Thrown {
+  error: unknown;
+}
+
+/** Every `Thrown` made here, told by identity: asking a caller's answer its prototype may throw. */
+const THROWN = new WeakSet<object>();
+
+function thrownBy(error: unknown): Thrown {
+  const thrown = { error };
+  THROWN.add(thrown);
+  return thrown;
 }
 
 /** Which primitive `value` boxes, read by its brand alone, so none of its own code runs. */
@@ -344,8 +353,8 @@ export function readOnce(
 ): { value: unknown; called: boolean; threw: boolean; error?: unknown } {
   const known = reads?.get(holder);
   const answer = (read: unknown) =>
-    read instanceof Thrown
-      ? { value: REDACTED, called: true, threw: true, error: read.error }
+    typeof read === 'object' && read !== null && THROWN.has(read)
+      ? { value: REDACTED, called: true, threw: true, error: (read as Thrown).error }
       : { value: read, called: true, threw: false };
   if (known?.has(key)) return answer(known.get(key));
   const own = attempt(() => Object.getOwnPropertyDescriptor(holder, key));
@@ -357,7 +366,7 @@ export function readOnce(
   try {
     read = (holder as Record<string, unknown>)[key];
   } catch (error) {
-    read = new Thrown(error);
+    read = thrownBy(error);
   }
   if (reads) reads.set(holder, (known ?? new Map()).set(key, read));
   return answer(read);
@@ -588,10 +597,18 @@ export function errorsWithin(value: unknown): unknown[] {
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
   const written = asSerialized(value);
-  const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
-  errs.push(...written.errors);
-  const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
-  return redactValue(written.value, chain, 0) as T;
+  try {
+    const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
+    errs.push(...written.errors);
+    const chain = errs.reduce<ChainReading | null>(
+      (acc, e) => mergeChains(acc, readChain(e)),
+      null,
+    );
+    return redactValue(written.value, chain, 0) as T;
+  } catch {
+    // A value, or an error naming its bound values, that throws when read again is not handed on.
+    return REDACTED as T;
+  }
 }
 
 /**
@@ -599,7 +616,8 @@ export function redactQueryParams<T>(value: T, err?: unknown): T {
  * is still in hand: once it is a bare string, a value only the error could name cannot be found.
  */
 export function redactedMessage(err: unknown): string {
-  return redactQueryParams(isError(err) ? err.message : String(err), err);
+  const text = attempt(() => (isError(err) ? err.message : String(err)));
+  return text === UNREADABLE ? REDACTED : redactQueryParams(text, err);
 }
 
 /** A field the driver defined for good: postgres-js's `parameters` and `args` under `debug`. */

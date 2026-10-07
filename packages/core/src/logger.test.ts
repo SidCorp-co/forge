@@ -34,6 +34,11 @@ function hostile(): object {
   );
 }
 
+/** `answer` as a getter's answer, under `reading`. */
+function answering(answer: object): object {
+  return Object.defineProperty({}, 'reading', { get: () => answer, enumerable: true });
+}
+
 /** A proxy that throws on any use at all, `Array.isArray` included. */
 function revoked(): object {
   const { proxy, revoke } = Proxy.revocable({}, {});
@@ -901,9 +906,11 @@ describe('the core logger, given a value whose text only a serializer renders', 
       ['child field', () => log.child({ reading: make() }).warn('bound')],
       ['prefixed', () => log.child({}, { msgPrefix: 'read: ' }).warn(make() as never)],
       ['setBindings', () => log.child({ requestId: 'r1' }).setBindings(make())],
+      ['getter answer', () => log.warn(answering(make()), 'read')],
+      ['bound getter answer', () => log.child(answering(make())).warn('bound')],
     ];
     for (const [name, call] of calls) expect(call, name).not.toThrow();
-    expect(lines).toHaveLength(8);
+    expect(lines).toHaveLength(10);
     for (const line of lines) {
       JSON.parse(line);
       expect(line).not.toContain(HASH);

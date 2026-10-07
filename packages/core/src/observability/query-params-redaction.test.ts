@@ -482,6 +482,31 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
       const out = JSON.stringify(redactQueryParams({ reading: unreadable, reason: 'kept' }));
       expect(out).toBe('{"reading":"[Redacted]","reason":"kept"}');
     }
+    for (const unreadable of [hostile, revoked]) {
+      const answered = Object.defineProperty({ reason: 'kept' }, 'reading', {
+        get: () => unreadable,
+        enumerable: true,
+      });
+      expect(JSON.stringify(redactQueryParams(answered))).toBe(
+        '{"reason":"kept","reading":"[Redacted]"}',
+      );
+    }
+    let listed = 0;
+    const once = new Proxy(
+      { note: 'kept' },
+      {
+        ownKeys: (target) => {
+          if (++listed > 1) throw duplicate();
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    expect(redactQueryParams(once)).toBe(REDACTED);
+    // An error that cannot be read cannot name the values to find: the text it came with is withheld.
+    expect(redactQueryParams('text', revoked)).toBe(REDACTED);
+    expect(redactQueryParams('text', [revoked, hostile])).toBe(REDACTED);
+    expect(redactedMessage(revoked)).toBe(REDACTED);
+    expect(redactedMessage(hostile)).toBe(REDACTED);
     // What the unreadable value threw still names the values to find beside it.
     expect(JSON.stringify(redactQueryParams({ reading: hostile, reason: HASH }))).not.toContain(HASH);
   });
