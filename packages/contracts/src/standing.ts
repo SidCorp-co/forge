@@ -2,6 +2,7 @@
 // under and whom the row waits on, in one vocabulary, so two screens reading one row cannot disagree.
 
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type { ProjectPermission } from "./permissions.js";
 
 /** Every party a row can wait on, across every read model. A slice declares the subset it serves. */
 export const WAITING_KINDS = [
@@ -132,3 +133,18 @@ export const nobodyWaits = (rule: string): WaitingOn<"none"> => ({
 	ref: null,
 	dueAt: null,
 });
+
+/** A permission's holders as one `who`: a few by name and the count of the rest ("Ana", "Ana, Bo", "Ana, Bo, Chi +2"), `Nobody` for none. */
+export function holdersWho(names: readonly string[]): string {
+	if (names.length === 0) return "Nobody";
+	const shown = names.slice(0, 3).join(", ");
+	return names.length > 3 ? `${shown} +${names.length - 3}` : shown;
+}
+
+/** The act a wait names when nobody holds the permission it needs: the act, then where it is granted. */
+export function nobodyHoldsAct(
+	act: string,
+	permission: ProjectPermission,
+): string {
+	return `${act}: no person on this project holds ${permission} until it is granted under Settings → Members`;
+}

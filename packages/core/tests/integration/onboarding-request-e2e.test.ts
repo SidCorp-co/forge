@@ -43,7 +43,9 @@ beforeAll(async () => {
   say = requester(app, {
     owner: await signUserToken(owner.id),
     viewer: await signUserToken(viewer),
-    master: (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] })).plaintext,
+    master: (
+      await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
+    ).plaintext,
   });
 }, 120_000);
 

@@ -11,7 +11,6 @@ import {
   agentSessionEventsRetention,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
-  requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   transitionSessions,
@@ -152,7 +151,6 @@ function provideWorkPipelinePorts(): void {
   providePipelinePorts({
     insertJobRow,
     wakeMastersForProject,
-    requestSessionSend,
     resolveSessionSend,
     transitionSessions,
     broadcastSessionEvent,

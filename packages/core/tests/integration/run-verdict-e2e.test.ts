@@ -48,10 +48,23 @@ beforeAll(async () => {
   await issue(2, 'on_hold', ownerId);
   await issue(3, 'in_progress', ownerId);
   say = requester(app, {
-    box: (await mintPat({ userId: ownerId, name: 'box', deviceId, projectIds: [projectId] }))
-      .plaintext,
+    box: (
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name: 'box',
+        deviceId,
+        projectIds: [projectId],
+      })
+    ).plaintext,
     otherBox: (
-      await mintPat({ userId: ownerId, name: 'other', deviceId: otherDevice, projectIds: [] })
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name: 'other',
+        deviceId: otherDevice,
+        projectIds: [],
+      })
     ).plaintext,
   }) as typeof say;
 }, 120_000);

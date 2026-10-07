@@ -259,8 +259,8 @@ export async function findTurnInSession(sessionId: string, turnId: string) {
 }
 
 /**
- * Extract a non-empty string prompt from a `messages[i].content` value. The
- * legacy schema lets `content` be either a string or an array of structured
+ * Extract a non-empty string prompt from a `messages[i].content` value. A
+ * transcript's `content` is either a string or an array of structured
  * blocks (Anthropic-style `[{ type: 'text', text: '…' }, …]`). Returns the
  * trimmed string, or empty string if nothing dispatchable can be recovered.
  */

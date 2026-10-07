@@ -38,7 +38,7 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 
 Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
 
-Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them (ISS-791, ISS-845) describing drafts being filed and forgotten while themselves sitting filed and forgotten.
+Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them describing drafts being filed and forgotten while themselves sitting filed and forgotten.
 
 So anything a stage wants to hand onward routes as:
 
@@ -224,7 +224,7 @@ Leaving costs nothing beyond naming the status the park left — \`issue_work_st
 | \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision |
 | \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource |
 
-A plan awaiting approval and a tradeoff awaiting a call are both \`needs_decision\`. These were the old \`waiting\` park's kinds; \`waiting\` folded into \`needs_info\` with its kind kept (ISS-54).
+A plan awaiting approval and a tradeoff awaiting a call are both \`needs_decision\`. These were the old \`waiting\` park's kinds; \`waiting\` folded into \`needs_info\` with its kind kept.
 
 **A step that cannot RUN is not \`needs_info\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays where it is. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
@@ -257,7 +257,7 @@ Write the reason for the person who will read it, not for the audit trail. "bloc
 There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### \`merged_at\` is written deliberately, and by nothing else
-Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, an observed merge of a pull request Forge has projected, and the approval of a workflow design revision, which records the revision as the landing of the issue it was drawn under (on a project whose work lands outside git it re-points a landing somebody's word wrote, never a merge Forge observed, and never the mark of an issue already \`closed\` or \`dropped\`) — unless that issue is linked as the build of a workflow, where the build is the deliverable and the approval is a notice on the issue, never its mark. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`DELETE /api/issues/:id/merge\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed.
+Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, an observed merge of a pull request Forge has projected, and the approval of a workflow design revision, which records the revision as the landing of the issue it was drawn under (on a project whose work lands outside git it re-points a landing somebody's word wrote, never a merge Forge observed, and never the mark of an issue already \`closed\` or \`dropped\`) — unless that issue is linked as the build of a workflow, where the build is the deliverable and the approval is a notice on the issue, never its mark. No transition stamps it as a side effect — closing once did and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`DELETE /api/issues/:id/merge\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed.
 
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.

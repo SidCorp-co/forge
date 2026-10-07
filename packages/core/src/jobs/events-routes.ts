@@ -16,6 +16,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { jobEphemeralTarget } from './job-push.js';
 import { readJobGate } from './job-queries.js';
@@ -87,6 +88,20 @@ function isParkEvent(e: { kind: string; data?: unknown }): boolean {
   return runtimeStateOf(e) === 'awaiting_input';
 }
 
+/**
+ * A job's session never parks in its process: a box at the claim floor reports `working` or
+ * `starting` for a pool job, and only a chat turn waits in a process between turns. A frame saying
+ * otherwise is refused by name rather than leaving the session exempt from every clock.
+ */
+function assertNoJobPark(events: ReadonlyArray<{ kind: string; data?: unknown }>): void {
+  if (!events.some(isParkEvent)) return;
+  throw refuseJob(
+    'JOB_SESSION_PARK_RETIRED',
+    `a job's session does not wait in its process between turns, and this batch reports \`awaiting_input\` for one; a box claiming jobs reports \`working\` or \`starting\` (claim floor ${CLAIM_MIN_RUNNER}). Update forge-runner on this box.`,
+    '/events',
+  );
+}
+
 /** The runtime states that report a turn ran, as against one that reports the process only. */
 const TURN_RUNTIME_STATES: ReadonlySet<SessionRuntimeState> = new Set(['working', 'checkpointing']);
 
@@ -129,24 +144,22 @@ async function syncLinkedSession(
   events: ReadonlyArray<{ kind: string; data?: unknown }>,
   deviceId: string,
 ): Promise<void> {
-  if (events.some((e) => !isParkEvent(e))) {
-    const started = await beatLinkedSession(
-      sessionId,
-      new Date(),
-      events.some(isTurnEvidence),
-      deviceId,
+  const started = await beatLinkedSession(
+    sessionId,
+    new Date(),
+    events.some(isTurnEvidence),
+    deviceId,
+  );
+  if (started) {
+    await broadcastSessionEvent(
+      started.id,
+      started.projectId,
+      started.deviceId,
+      'agent-session.status',
+      {
+        status: 'running',
+      },
     );
-    if (started) {
-      await broadcastSessionEvent(
-        started.id,
-        started.projectId,
-        started.deviceId,
-        'agent-session.status',
-        {
-          status: 'running',
-        },
-      );
-    }
   }
   const reported = events.reduce<SessionRuntimeState | undefined>(
     (acc, e) => runtimeStateOf(e) ?? acc,
@@ -183,6 +196,7 @@ jobEventsRoutes.post(
       );
     }
 
+    assertNoJobPark(events);
     if (job.agentSessionId) await syncLinkedSession(job.agentSessionId, events, device.id);
 
     const persisted = await scrubJobOutput(

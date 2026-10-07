@@ -7,11 +7,8 @@ export const DEFAULT_RECOVERY_STATS: RecoveryStats = {
   autoRetries: 0,
 };
 /**
- * Coerce a legacy or partial `recoveryStats` blob into the canonical
- * structured shape. Pre-ISS-197 rows wrote a free-form
- * `Record<string, number>`; those values are dropped (they were never
- * meaningful) and replaced with DEFAULT_RECOVERY_STATS so the next failure
- * starts a clean counter.
+ * Coerce a stored `recoveryStats` blob into the canonical structured shape: each field that is not
+ * the shape it should be reads as DEFAULT_RECOVERY_STATS's, so the next failure counts from there.
  */
 export function normaliseRecoveryStats(raw: unknown): RecoveryStats {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_RECOVERY_STATS };

@@ -67,7 +67,7 @@ const queries = (activeOrg = "o2"): [QueryKey, unknown][] => [
   [["agent-accounts", "o2"], [agent(1), agent(2, { projects: [], activeTokens: 1, canAct: false }), agent(3, { activeTokens: 0, canAct: false })]],
   [["agent-accounts", "o2", "self", "a1"], { userId: "a1", soul: null, instructions: null, emoji: null, greeting: null, presence: { answerInGroup: "mention" }, updatedBy: null, createdAt: null, updatedAt: null }],
   [["settings", "tokens"], {
-    tokens: [token(1), token(2, { grant: "full", boundProjectId: "p1", scopes: ["read", "write"] }), token(3, { grant: "legacy", revokedAt: ago(5), expiresAt: null, lastUsedAt: null }), token(4, { permissions: ["issues.read"] })],
+    tokens: [token(1), token(2, { grant: "full", boundProjectId: "p1", scopes: ["read", "write"] }), token(3, { grant: "unstated", revokedAt: ago(5), expiresAt: null, lastUsedAt: null }), token(4, { permissions: ["issues.read"] })],
     menu: { permissions: ["issues.read", "issues.write"], full: "*" },
   }],
 ];

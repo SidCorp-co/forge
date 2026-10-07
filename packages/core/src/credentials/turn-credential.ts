@@ -24,6 +24,7 @@ import {
   PAT_PERMISSION_NAMES,
   type PatPermission,
   patGrantCovers,
+  patGrantIsStated,
 } from './pat-permissions.js';
 import { patPrincipalOf } from './pat-principal.js';
 
@@ -130,7 +131,7 @@ export async function mintTurnCredential(args: {
 }): Promise<TurnCredential> {
   const { authority } = args;
   const granted = args.menu.filter((p) => patGrantCovers(authority.grant, p));
-  if (granted.length === 0) {
+  if (!patGrantIsStated(granted)) {
     throw turnRefused(
       'TURN_GRANT_EMPTY',
       `I cannot act on this: the access token it was sent with grants none of what my tools use (${args.menu.join(', ')}).`,

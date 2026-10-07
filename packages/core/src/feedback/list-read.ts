@@ -11,6 +11,7 @@ import {
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
@@ -26,7 +27,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, holderNames, holds, projectResource, requireCan } from '../permissions/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
@@ -75,6 +76,8 @@ export interface Linked {
   masterOwed: Set<string>;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
   release: CarrierRelease | null;
+  /** Who holds the permission that release's person act takes, by name; empty where none is owed. */
+  releaseHolders: string[];
   /** The project's verify window in days, read only where a triaged item could read resolved. */
   verifyWindowDays: number;
 }
@@ -89,6 +92,7 @@ export function viewerCanOf(facts: PermissionFacts): ViewerCan {
     canTriage: holds(facts, 'feedback.approve'),
     canApproveRelease: holds(facts, 'releases.approve'),
     canWrite: holds(facts, 'project.write'),
+    canAdmin: holds(facts, 'project.admin'),
   };
 }
 
@@ -209,7 +213,12 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     atGate ? readReleaseMode(projectId) : null,
     rows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
   ]);
+  const releaseHolders =
+    release && release !== 'automatic'
+      ? await holderNames(RELEASE_ACT_PERMISSION[release], projectId)
+      : [];
   return {
+    releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
     release,
@@ -402,6 +411,7 @@ export function summaryOf(
         owed.every((c) => c.status === AT_RELEASE_GATE)
           ? l.release
           : null,
+      releaseHolders: l.releaseHolders,
       carrierVersion:
         owed.find((c) => c.release)?.release ??
         (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??

@@ -122,8 +122,7 @@ projectRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    // Settings PATCH keeps the legacy owner-only strictness: org owner/admin,
-    // not a merely-invited project admin.
+    // Settings PATCH needs org owner/admin, not a merely-invited project admin.
     const access = await loadProjectAccess(id, userId);
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 

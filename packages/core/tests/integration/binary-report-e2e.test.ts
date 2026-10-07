@@ -62,7 +62,8 @@ describe('a box reporting its binaries', () => {
     await truncateAll();
     ownerId = (await createTestUser({ verified: true })).id;
     deviceId = await createTestDevice(ownerId, { status: 'online' });
-    boxToken = (await mintPat({ userId: ownerId, name: 'box', deviceId })).plaintext;
+    boxToken = (await mintPat({ permissions: ['*'], userId: ownerId, name: 'box', deviceId }))
+      .plaintext;
     ownerToken = await userToken(ownerId);
   });
 

@@ -5,13 +5,18 @@
  * stamp `release_released_at`), and which version shipped each closed issue.
  */
 
-import { FORECAST_WINDOW_DAYS, type ReleaseMode } from '@forge/contracts/forecast';
+import {
+  FORECAST_WINDOW_DAYS,
+  RELEASE_ACT_PERMISSION,
+  type ReleaseMode,
+} from '@forge/contracts/forecast';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
-import { approversOf, nextDraftVersion } from '../release-batch/index.js';
+import { nextDraftVersion } from '../release-batch/index.js';
 import type { ReleaseFacts, Shipped } from './delivery.js';
 
 /** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
@@ -39,7 +44,7 @@ export async function readReleaseFacts(
   const [nextVersion, lags, holders] = await Promise.all([
     mode === 'manual' || mode === 'approval' ? nextDraftVersion(projectId) : null,
     mode === 'automatic' ? readReleaseLags(projectId, now) : [],
-    mode === 'approval' ? approversOf(projectId) : [],
+    mode === 'automatic' ? [] : namedHolders(RELEASE_ACT_PERMISSION[mode], projectId),
   ]);
   return { mode, nextVersion, lags, holders, viewerOwes: viewerOwesRelease(mode, viewer) };
 }

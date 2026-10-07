@@ -31,6 +31,7 @@ vi.mock('../project-config/index.js', () => ({
   readDeclaredSource: vi.fn(async () => ({ repository: null })),
 }));
 vi.mock('../projects/index.js', () => ({ missingProjectKnowledge: vi.fn(() => []) }));
+vi.mock('../permissions/index.js', () => ({ holderNames: vi.fn(async () => ['Ada']) }));
 
 const { loadReleaseReadiness } = await import('./readiness.js');
 

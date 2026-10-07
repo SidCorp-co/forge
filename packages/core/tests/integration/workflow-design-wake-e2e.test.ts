@@ -61,7 +61,9 @@ beforeAll(async () => {
   await addProjectMember(projectId, agent, 'member');
   const tokens = {
     owner: await signUserToken(ownerId),
-    master: (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] })).plaintext,
+    master: (
+      await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
+    ).plaintext,
   };
   say = requester(app, tokens);
   deviceId = await createTestDevice(ownerId);

@@ -8,11 +8,12 @@
 import { FORECAST_LABEL, type Forecast, type ProjectForecast } from '@forge/contracts/forecast';
 import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { holderNames } from '../permissions/index.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
 import { readEffectivePolicy } from '../project-config/index.js';
 import {
-  INTAKE_WAIT,
   type IssueRow,
+  intakeWaitOf,
   issueRowsBySeq,
   LANDED_STATUSES,
   projectWaitOf,
@@ -45,12 +46,13 @@ export async function simulate(
   now: Date,
   viewer: ForecastViewer | null,
 ): Promise<Facts> {
-  const [standing, history, projectWait, prefix, policy] = await Promise.all([
+  const [standing, history, projectWait, prefix, policy, writers] = await Promise.all([
     listIssueStanding(projectId, 'open', viewer ? { userId: viewer.userId } : null, now),
     readHistory(projectId, now),
     projectWaitOf(projectId),
     activeIssuePrefix(projectId),
     readEffectivePolicy(projectId),
+    holderNames('project.write', projectId),
   ]);
   const manualIntake = policy
     ? isEntryGateClosed(policy.document as Parameters<typeof isEntryGateClosed>[0])
@@ -86,10 +88,10 @@ export async function simulate(
       blockedBy: s.standing.blockedBy
         .filter((b) => !LANDED_STATUSES.includes(b.status) && b.status !== 'dropped')
         .map((b) => b.key),
-      wait: waitOf(s) ?? (intakeHeld ? INTAKE_WAIT : null),
+      wait: waitOf(s) ?? (intakeHeld ? intakeWaitOf(writers) : null),
     });
   }
-  const run = runForecast({ now, items, history, projectWait, seed: seedOf(projectId) });
+  const run = runForecast({ now, items, history, projectWait, writers, seed: seedOf(projectId) });
   return {
     now,
     run,

@@ -2,6 +2,7 @@
 // word is a free string here on purpose: an unknown one is refused by name by
 // `verdict-input.ts:verdictDraftFault` (VERDICT_VALUE_UNKNOWN), not by a schema's generic 400.
 
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
 import type { CriterionInput } from './store.js';
@@ -53,7 +54,7 @@ export const verdictPostSchema = z
   .object({
     criterion: z.number().int().min(1),
     verdict: z.string().trim().min(1).max(32),
-    reason: z.string().trim().max(4000).nullable().optional(),
+    reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
     identity: verdictIdentitySchema.nullable().optional(),
     evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
   })

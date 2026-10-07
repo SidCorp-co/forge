@@ -32,6 +32,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   releaseNoted: true,
   viewer: null,
   writers: [],
+  admins: ['Ada'],
   withheld,
   now,
 });
@@ -55,8 +56,20 @@ describe('Issues > Stuck names the refusal the admissible list withholds a row b
       input(st, { code: 'POLICY_UNDECLARED', detail: 'project p has no policy.' }),
     );
     expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn.act).toBe('declare the policy');
+    expect(s.waitingOn).toMatchObject({ who: 'Ada', act: 'declare the policy' });
     expect(s.waitingOn.rule).toMatch(/^POLICY_UNDECLARED: /);
+  });
+
+  it('a policy refusal names the admins who declare it, and says where admin is granted when none does', () => {
+    const gap = { code: 'POLICY_UNDECLARED' as const, detail: 'project p has no policy.' };
+    expect(deriveIssueStanding({ ...input('open', gap), writers: ['Wes'] }).waitingOn.who).toBe(
+      'Ada',
+    );
+    const none = deriveIssueStanding({ ...input('open', gap), admins: [] }).waitingOn;
+    expect(none).toMatchObject({ who: 'Nobody' });
+    expect(none.act).toBe(
+      'declare the policy: no person on this project holds project.admin until it is granted under Settings → Members',
+    );
   });
 
   it('an open issue nothing withholds stays queued for a master', () => {

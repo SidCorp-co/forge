@@ -79,9 +79,7 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const pairs = await listBindingsForProject(projectId);
-  // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
-  const bindings = pairs.map(summarizeBinding);
-  return c.json({ bindings, items: bindings });
+  return c.json({ items: pairs.map(summarizeBinding) });
 });
 
 integrationsRoutes.patch(

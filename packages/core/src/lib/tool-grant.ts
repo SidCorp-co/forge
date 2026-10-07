@@ -100,7 +100,7 @@ function assertToolDeclaresGrant(tool: GrantedTool): void {
 export function toolGrantRefusal(
   tool: GrantedTool,
   args: Record<string, unknown>,
-  granted: readonly string[] | null | undefined,
+  granted: readonly string[] | null,
   holder = 'this token',
 ): string | null {
   const grant = tool.grant;

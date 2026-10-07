@@ -46,7 +46,7 @@ const gate = (code: string): ReleaseGateView => ({
   issues: [],
   owner: {
     kind: 'person',
-    who: 'A project admin',
+    who: 'Ada',
     act: 'split this release into smaller releases',
   },
 });
@@ -72,6 +72,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   required: false,
   viewer: { userId: 'u1', agency: 'human', isAdmin, mayApprove: isAdmin },
   approvers: [],
+  admins: ['Ada'],
   facts: facts(n),
   contentLanguage: 'en',
 });

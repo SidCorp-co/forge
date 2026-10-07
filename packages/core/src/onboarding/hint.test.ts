@@ -115,6 +115,7 @@ describe('project-onboarding checkout: a queued job names the run read model wai
     const ctx = {
       now: T0,
       viewer: null,
+      holders: { write: ['Ana'], admin: ['Ada'], approve: [] },
       slots: null,
       queuedGates: new Map([['j1', 'checkout_unbound']]),
     } as unknown as StandingContext;
@@ -122,7 +123,14 @@ describe('project-onboarding checkout: a queued job names the run read model wai
     expect(d.state).toBe('waiting_person');
     if (d.waitingOn.kind === 'gate') throw new Error('checkout_unbound reads a person, not a gate');
     expect(d.waitingOn.act).toBe('bind a checkout on the box');
+    expect(d.waitingOn.who).toBe('Ana');
     expect(d.waitingOn.rule).toContain('POOL_CHECKOUT_UNBOUND');
+    const nobody = liveOf(facts, { ...ctx, holders: { write: [], admin: ['Ada'], approve: [] } });
+    if (nobody.waitingOn.kind === 'gate') throw new Error('checkout_unbound reads a person');
+    expect(nobody.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
+    expect(nobody.waitingOn.act).toBe(
+      'bind a checkout on the box: no person on this project holds project.write until it is granted under Settings → Members',
+    );
   });
 });
 

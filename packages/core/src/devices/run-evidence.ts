@@ -19,6 +19,7 @@
  */
 
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { REASON_PARAGRAPH_MAX, REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -136,7 +137,7 @@ export const heldWorktreeSchema = z
     branch: z.string().max(400).nullish(),
     head: z.string().min(1).max(64),
     commitsUnpushed: z.number().int().nonnegative().nullish(),
-    reason: z.string().min(1).max(600),
+    reason: z.string().min(1).max(REASON_SENTENCE_MAX),
     kept: z.boolean(),
   })
   .strict();
@@ -150,7 +151,7 @@ export const resumeChoiceSchema = z
   .object({
     runId: z.string().min(1).max(200),
     choice: z.enum(['continue', 'restart', 'leave']),
-    why: z.string().min(1).max(2000),
+    why: z.string().min(1).max(REASON_PARAGRAPH_MAX),
   })
   .strict();
 

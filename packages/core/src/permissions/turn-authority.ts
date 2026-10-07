@@ -6,7 +6,7 @@
  */
 
 import type { TurnAuthorityRefusalCode } from '@forge/contracts/auth';
-import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
+import { PAT_GRANT_EPOCH, patGrantIsStated } from '../credentials/pat-permissions.js';
 import { liveTurnToken, type TurnAuthorityOutcome } from '../credentials/turn-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { holds } from './can.js';
@@ -53,7 +53,13 @@ export async function resolveTurnAuthority(args: {
         'I will not act on this: the access token it was sent with does not reach this project, and acting here would reach past it.',
       );
     }
-    grant = row.permissions ?? null;
+    if (!patGrantIsStated(row.permissions)) {
+      return refuse(
+        'TURN_TOKEN_GRANT_UNSTATED',
+        'I will not act on this: the access token it was sent with was minted before a token stated what it may reach, so it reaches nothing. Revoke it under Settings → API Tokens and send it again signed in, or with a token naming what it may reach.',
+      );
+    }
+    grant = row.permissions;
     fence = tokenFence;
     scopes = row.scopes;
     grantEpoch = row.grantEpoch;

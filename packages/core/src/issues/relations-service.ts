@@ -6,6 +6,7 @@
  * resolved.
  */
 
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { z } from 'zod';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
@@ -34,7 +35,7 @@ export const issueRelationInputSchema = z
     kind: z.enum(RELATION_KINDS).default('blocks'),
     dependsOnId: z.uuid().optional(),
     blocksId: z.uuid().optional(),
-    reason: z.string().max(2000).optional(),
+    reason: z.string().max(REASON_PARAGRAPH_MAX).optional(),
     validUntil: z.iso.datetime().optional(),
   })
   .strict()

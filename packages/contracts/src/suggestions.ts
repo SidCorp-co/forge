@@ -3,6 +3,7 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
+import { REASON_TEXT_MAX } from "./reason-text.js";
 import {
 	CONTRACT_WAIT_TARGET_REFUSAL_CODES,
 	contractWaitTargetSchema,
@@ -168,7 +169,7 @@ export const requirementCriterionSchema = z.strictObject({
 });
 
 const revisionWrite = {
-	reason: z.string().trim().min(1).max(4_000),
+	reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
 	spec: requirementSpecSchema.optional(),
 	tldr: z.string().max(4_000).nullable().optional(),
 	changeSummary: z.string().max(4_000).nullable().optional(),
@@ -281,7 +282,7 @@ export const SUGGESTION_PAYLOADS = {
 			category: z.string().max(100).optional(),
 			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
 			route: z.string().max(200).optional(),
-			note: z.string().trim().min(1).max(4_000),
+			note: z.string().trim().min(1).max(REASON_TEXT_MAX),
 		}),
 	},
 	feedback_triage: {
@@ -299,7 +300,7 @@ export const SUGGESTION_PAYLOADS = {
 		schema: z.strictObject({
 			duplicateOf: z.string().trim().min(1).max(200),
 			similarity: z.number().min(0).max(1).optional(),
-			note: z.string().max(4_000).optional(),
+			note: z.string().max(REASON_TEXT_MAX).optional(),
 		}),
 	},
 } as const satisfies Record<
@@ -326,7 +327,7 @@ export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")},
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({
-	reason: z.string().max(4_000).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const ACCEPT_SUGGESTION_SHAPE =
 	"{ reason? } — why it is accepted, and on whose authority";
@@ -335,14 +336,14 @@ export const ACCEPT_SUGGESTION_SHAPE =
  *  with `reason` and a new suggestion carrying `payload` is proposed by the reviewer (ISS-117). */
 export const reviseSuggestionRequestSchema = z.strictObject({
 	payload: z.unknown(),
-	reason: z.string().max(4_000),
+	reason: z.string().max(REASON_TEXT_MAX),
 });
 export const REVISE_SUGGESTION_SHAPE =
 	"{ payload, reason } — the whole payload as it should read, and why the original is changed";
 
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({
-	reason: z.string().max(4_000),
+	reason: z.string().max(REASON_TEXT_MAX),
 });
 
 /** `GET /api/projects/:id/suggestions` — `status` is comma-separated. */

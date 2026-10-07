@@ -1,14 +1,8 @@
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { AnswerOutcome } from '@forge/contracts/questions';
-import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  agentSessions,
-  type IssueStatus,
-  issues,
-  jobs,
-  terminalAgentSessionStatuses,
-} from '../db/schema.js';
+import { type IssueStatus, issues, jobs } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { accountActor, readWorkState, transitionIssueStatus } from '../issues/index.js';
@@ -23,7 +17,6 @@ import {
   type LoopScope,
   postIssueNoticeOnce,
   recordAnswerResume,
-  requestSessionSend,
   resolveSessionSend,
 } from './ports.js';
 
@@ -88,45 +81,6 @@ async function resumeUnasked(
 }
 
 /**
- * The session that asked this question, if it is alive and still waiting.
- */
-async function parkedSessionFor(issueId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id })
-    .from(jobs)
-    .innerJoin(agentSessions, eq(agentSessions.id, jobs.agentSessionId))
-    .where(
-      and(
-        eq(jobs.issueId, issueId),
-        eq(agentSessions.runtimeState, 'awaiting_input'),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-      ),
-    )
-    .limit(1);
-  return row?.id ?? null;
-}
-
-/**
- * Deliver the answer to the session that asked, if there is one: the session it went to when core
- * has handed it to a runner and must wait for the episode to resolve rather than dispatch.
- */
-async function deliverToPark(
-  issueId: string,
-  commentId: string,
-  body: string,
-): Promise<string | null> {
-  const agentSessionId = await parkedSessionFor(issueId);
-  if (!agentSessionId) return null;
-  const { published } = await requestSessionSend({
-    agentSessionId,
-    kind: 'answer',
-    intentId: commentId,
-    body,
-  });
-  return published ? agentSessionId : null;
-}
-
-/**
  * Whether a box registered itself to read THIS answer back.
  */
 async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
@@ -141,7 +95,8 @@ async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
 /**
  * What one answer does to the park it stopped. An answer that says the issue still waits holds it
  * where it is, unless it named a blocker whose `blocks` edge withholds the status the park returns
- * to (ISS-257); otherwise the answer goes to whoever asked, or the park returns where it left.
+ * to (ISS-257); otherwise a box that registered to read it back does, or the park returns where it
+ * left. A job's session never waits in its process for one (`jobs/events-routes.ts:assertNoJobPark`).
  */
 async function answerThePark(
   issue: ParkedIssue,
@@ -155,8 +110,6 @@ async function answerThePark(
       hold.blockedBy !== undefined && target !== null && TAKEABLE_STATUSES.includes(target);
     return edgeHolds ? resumeUnasked(issue, target, p) : { kind: 'held' };
   }
-  const sessionId = await deliverToPark(issue.id, p.questionId, p.body);
-  if (sessionId) return { kind: 'sent_to_run', sessionId };
   if (await aBoxWillReadThisAnswer(p.questionId)) return { kind: 'box_reads' };
   return resumeUnasked(issue, target, p);
 }
@@ -220,8 +173,8 @@ async function sayAnswerUndelivered(
 /**
  * Hop 3d — the answer that never reached anyone.
  *
- * `deliverToPark` hands an answer to a runner and returns; it cannot know
- * whether the message arrived, and RFC 0003 forbids guessing. This is where
+ * An answer handed to a live session (`questions/answer-record.ts`, `release-batch/approval-wake.ts`)
+ * returns before anyone knows whether it arrived, and RFC 0003 forbids guessing. This is where
  * that episode is decided: `gone` means no live session consumed it, so the
  * answer becomes a dispatch after all — the print behaviour, arrived at late
  * rather than assumed early.

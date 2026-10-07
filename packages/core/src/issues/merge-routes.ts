@@ -19,6 +19,7 @@
  * `member` for both.
  */
 
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
 import { type Context, Hono } from 'hono';
@@ -37,7 +38,7 @@ issueMergeRoutes.use('*', requireAuth(), assertEmailVerified());
 const mergeMarkerBodySchema = z
   .object({
     target: z.string().trim().min(1).max(200).optional(),
-    note: z.string().trim().min(1).max(2000).optional(),
+    note: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
     artifacts: landingArtifactsSchema.optional(),

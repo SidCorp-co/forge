@@ -11,7 +11,7 @@ import type {
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
 import type { BcVerdict } from '@forge/contracts/requirements';
-import { nobodyWaits, type Standing } from '@forge/contracts/standing';
+import { holdersWho, nobodyHoldsAct, nobodyWaits, type Standing } from '@forge/contracts/standing';
 import { agrees, counted } from '../lib/plural.js';
 
 export interface ViewerFacts {
@@ -31,6 +31,8 @@ interface TurnFacts {
     reason: string | null;
   } | null;
   approvers: readonly ReleasePerson[];
+  /** Who holds project.admin, by name: whom a cut names. */
+  admins: readonly string[];
   viewer: ViewerFacts | null;
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
   gates: readonly { code: string; owner: ReleaseGateOwner }[];
@@ -121,16 +123,23 @@ function draftTurn(f: TurnFacts): Turn {
       waitingOn: { kind: 'you', who: 'You', act: `cut ${f.version}`, rule, ref: null, dueAt: null },
     };
   }
+  const act = `cut ${f.version}`;
+  if (f.admins.length === 0) {
+    return {
+      attentionGroup: 'stuck',
+      waitingOn: {
+        kind: 'none',
+        who: holdersWho(f.admins),
+        act: nobodyHoldsAct(act, 'project.admin'),
+        rule,
+        ref: null,
+        dueAt: null,
+      },
+    };
+  }
   return {
     attentionGroup: 'waiting',
-    waitingOn: {
-      kind: 'person',
-      who: 'A project admin',
-      act: `cut ${f.version}`,
-      rule,
-      ref: null,
-      dueAt: null,
-    },
+    waitingOn: { kind: 'person', who: holdersWho(f.admins), act, rule, ref: null, dueAt: null },
   };
 }
 
@@ -163,14 +172,14 @@ function approvalTurn(f: TurnFacts): Turn {
       },
     };
   }
-  const [only] = f.approvers;
-  if (f.approvers.length === 0) {
+  const approvers = f.approvers.map((a) => a.name);
+  if (approvers.length === 0) {
     return {
       attentionGroup: 'stuck',
       waitingOn: {
         kind: 'none',
-        who: 'No approver',
-        act: 'no other admin can decide',
+        who: holdersWho(approvers),
+        act: nobodyHoldsAct('approve', 'releases.approve'),
         rule: `${rule}, and none is left`,
         ref: null,
         dueAt: null,
@@ -181,7 +190,7 @@ function approvalTurn(f: TurnFacts): Turn {
     attentionGroup: 'waiting',
     waitingOn: {
       kind: 'person',
-      who: f.approvers.length === 1 && only ? only.name : 'A holder of releases.approve',
+      who: holdersWho(approvers),
       act: 'approve',
       rule,
       ref: null,

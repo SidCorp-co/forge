@@ -48,8 +48,15 @@ beforeAll(async () => {
   const deviceId = await createTestDevice(ownerId);
   runnerId = await bindTestRunner(projectId, deviceId);
   const asDevice = requester(app, {
-    box: (await mintPat({ userId: ownerId, name: 'box', deviceId, projectIds: [projectId] }))
-      .plaintext,
+    box: (
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name: 'box',
+        deviceId,
+        projectIds: [projectId],
+      })
+    ).plaintext,
   });
   say = (method, path, body) => asDevice('box', method, path, body);
   limitOf = async () => {
