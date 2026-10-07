@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.125] - 2026-10-07
+
+Approvals and answers reach a running pool job's pane without a manual nudge
+
+### Fixed
+
+- **A release decision or answer sent to a running pool job now reaches its pane.** The box told core the job had ended; it now types into the pane, confirms the submit, and says `gone` only for a vanished pane.
+
 ## [0.4.0-dev.124] - 2026-10-07
 
 Project and issue pages load their data in parallel, by slug and key
