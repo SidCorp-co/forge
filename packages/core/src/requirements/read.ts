@@ -42,6 +42,7 @@ import { dedupCheckOf } from './near-duplicate.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -306,6 +307,7 @@ function issueViews(
   changedTraced: Map<string, ChangedTrace[]>,
   prefix: string | null,
   releaseApproval: boolean,
+  shipped: ReadonlyMap<string, ShippedRelease>,
 ) {
   return linked.map((i) => ({
     issueId: i.id,
@@ -320,6 +322,7 @@ function issueViews(
       currentRevision: row.currentRevision,
       changedTraced: changedTraced.get(i.id) ?? [],
     }),
+    shippedIn: shipped.get(i.id) ?? null,
   }));
 }
 
@@ -359,7 +362,7 @@ export async function detailOf(
     ),
     requestViewOf(row),
   ]);
-  const [people, standings, changedTraced] = await Promise.all([
+  const [people, standings, changedTraced, shipped] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -374,6 +377,10 @@ export async function detailOf(
     }),
     changedTracedOf(
       db,
+      linked.map((i) => i.id),
+    ),
+    shippedReleasesOf(
+      row.projectId,
       linked.map((i) => i.id),
     ),
   ]);
@@ -393,7 +400,8 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval),
+    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval, shipped),
+    releases: releasesOf(shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
     standing,
     history,

@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import { currentQueryTiming } from '../db/query-timing.js';
 import { getLogger } from '../lib/logger.js';
 import type { RequestIdVars } from './request-id.js';
 
@@ -15,7 +16,14 @@ export const requestLogger = (): MiddlewareHandler<{ Variables: RequestIdVars }>
 
     const status = c.res.status;
     const durationMs = Date.now() - start;
-    const payload = { method, path, status, durationMs };
+    const timing = currentQueryTiming();
+    const payload = {
+      method,
+      path,
+      status,
+      durationMs,
+      ...(timing ? { queries: timing.queries, dbMs: Math.round(timing.dbMs) } : {}),
+    };
 
     if (status >= 500) {
       log.error(payload, 'request.end');

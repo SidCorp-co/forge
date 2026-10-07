@@ -8,6 +8,7 @@
 
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
+import Link from "next/link";
 import { type ComponentProps, useId } from "react";
 import { Avatar, Button, enumLabel, MonoTag, type SelectOption, Stat, StatusBadge, StatusChip } from "@/design";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
@@ -21,6 +22,7 @@ import { MergeMarkerControl } from "./merge-marker-control";
 import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { releaseHref } from "@/lib/routes/releases";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -293,6 +295,15 @@ export function PropertiesRail({
           <EtaInline eta={etaOfForecast(forecast, clock)} clock={clock} />
         </Row>
       )}
+      {issue.shippedIn ? (
+        <div data-testid="rail-shipped-in">
+          <Row label={t("issues.shippedIn")}>
+            <Link href={releaseHref(slug, issue.shippedIn.version)} className="font-mono text-12 text-link hover:underline">
+              {issue.shippedIn.version}
+            </Link>
+          </Row>
+        </div>
+      ) : null}
       {runChip && (
         <Row label={t("issues.rail.run")}>
           <StatusChip status={runChip} size="sm" domain="session" />

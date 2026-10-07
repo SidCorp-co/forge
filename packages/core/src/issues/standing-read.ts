@@ -27,7 +27,7 @@ import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { holds } from '../permissions/index.js';
+import { holdersOf, holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { designHoldPhrase } from './design-delivery.js';
@@ -197,6 +197,18 @@ async function viewerOf(viewer: StandingViewer | null, projectId: string) {
   };
 }
 
+/** The people who may take a person's turn on this project, by name: holders of project.write. */
+async function writersOf(projectId: string): Promise<string[]> {
+  const ids = (await holdersOf('project.write', [projectId])).get(projectId) ?? [];
+  const people = await peopleOf(ids);
+  return ids
+    .flatMap((id) => {
+      const p = people.get(id);
+      return p && p.kind !== 'agent' ? [p.name] : [];
+    })
+    .sort((a, b) => a.localeCompare(b));
+}
+
 type Facts = {
   key: (seq: number) => string;
   edges: BlockingEdge[];
@@ -208,6 +220,7 @@ type Facts = {
   people: Awaited<ReturnType<typeof peopleOf>>;
   releaseApproval: boolean;
   viewer: Awaited<ReturnType<typeof viewerOf>>;
+  writers: string[];
   withheld: Map<string, IssueWithheld>;
   now: Date;
 };
@@ -303,6 +316,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     releaseApproval: f.releaseApproval,
     releaseNoted: r.release_noted,
     viewer: f.viewer,
+    writers: f.writers,
     withheld: f.withheld.get(r.id) ?? null,
     now: f.now,
   };
@@ -316,7 +330,7 @@ async function standingRows(
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
-  const [prefix, edges, criteria, modules, feedback, releaseApproval, who, withheld] =
+  const [prefix, edges, criteria, modules, feedback, releaseApproval, who, withheld, writers] =
     await Promise.all([
       activeIssuePrefix(projectId),
       blockingEdgesIn(db, projectId, ids),
@@ -326,6 +340,7 @@ async function standingRows(
       approvalRequired(projectId),
       viewerOf(viewer, projectId),
       withheldOf(projectId, raws),
+      writersOf(projectId),
     ]);
   const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
@@ -344,6 +359,7 @@ async function standingRows(
     people,
     releaseApproval,
     viewer: who,
+    writers,
     withheld,
     now,
   };

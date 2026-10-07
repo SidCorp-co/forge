@@ -1,5 +1,6 @@
 import { secretRefOf } from '@forge/contracts/project-config';
 import type { z } from 'zod';
+import { memoizedRead } from '../db/read-memo.js';
 import {
   encryptSecret,
   getAdapter,
@@ -100,9 +101,13 @@ export async function readProjectDocument(
   return held ? { revision: held.revision, document: held.document } : null;
 }
 
-export async function readProjectConfig(projectId: string): Promise<Held<ProjectDocument> | null> {
-  const stored = await drizzleConfigStore.readProject(projectId);
-  return stored ? reread(projectDocumentSchema, stored, `project document of ${projectId}`) : null;
+export function readProjectConfig(projectId: string): Promise<Held<ProjectDocument> | null> {
+  return memoizedRead(`projectConfig:${projectId}`, async () => {
+    const stored = await drizzleConfigStore.readProject(projectId);
+    return stored
+      ? reread(projectDocumentSchema, stored, `project document of ${projectId}`)
+      : null;
+  });
 }
 
 export async function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {

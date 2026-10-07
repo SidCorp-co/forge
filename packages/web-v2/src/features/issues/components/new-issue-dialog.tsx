@@ -13,7 +13,7 @@ import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { CreatedIssue, IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
-import { StagedFileList, useStagedFiles } from "./staged-files";
+import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 
 async function fileToBase64(file: File): Promise<string> {

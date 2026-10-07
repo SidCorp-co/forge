@@ -14,6 +14,7 @@ import { workflowHref } from "@/lib/routes/workflows";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { standingEffect } from "@/lib/i18n/standing-copy";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
+import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { ScopeForecast } from "@forge/contracts/forecast";
@@ -127,6 +128,42 @@ export function RequirementPhoneProgressOf({ d, slug, projectId }: { d: Requirem
   return <RequirementPhoneProgress state={d.standing.state} passing={passing} criteria={criteria} scope={d.issues.length > 0 ? forecast : undefined} slug={slug} />;
 }
 
+type Shipped = { version: string; at: string };
+
+/** The releases that shipped the requirement's issues, each a link; nothing while none has (FB-102). */
+export function RequirementShipped({ releases, slug }: { releases: readonly Shipped[]; slug: string }) {
+  const t = useCopy();
+  if (releases.length === 0) return null;
+  return (
+    <div data-testid="facts-shipped-in">
+      <Fact label={t("issues.shippedIn")}>
+        <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+          {releases.map((r) => (
+            <Link key={r.version} href={releaseHref(slug, r.version)} className="font-mono text-12 text-link hover:underline">
+              {r.version}
+            </Link>
+          ))}
+        </span>
+      </Fact>
+    </div>
+  );
+}
+
+/** The release that shipped one of its issues, beside the issue's status. */
+export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug: string }) {
+  const t = useCopy();
+  return (
+    <Link
+      href={releaseHref(slug, shippedIn.version)}
+      aria-label={`${t("issues.shippedIn")} ${shippedIn.version}`}
+      title={`${t("issues.shippedIn")} ${shippedIn.version}`}
+      className="flex-none font-mono text-11 text-link hover:underline"
+    >
+      {shippedIn.version}
+    </Link>
+  );
+}
+
 export function RequirementFacts({
   d,
   slug,
@@ -169,6 +206,7 @@ export function RequirementFacts({
         <Fact label={t("requirements.facts.owner")}>
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
+        <RequirementShipped releases={d.releases} slug={slug} />
         <Fact label={t("requirements.facts.current")}>
           <span>{d.currentRevision !== null ? `r${d.currentRevision}` : t("requirements.facts.noneAccepted")}</span>
         </Fact>
@@ -215,6 +253,7 @@ export function RequirementFacts({
                   <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
+                {i.shippedIn ? <IssueShippedLink shippedIn={i.shippedIn} slug={slug} /> : null}
                 <PromoteDraftRow projectId={projectId} d={d} issue={i} />
               </li>
             ))}

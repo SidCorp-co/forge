@@ -65,7 +65,9 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
   const decide = useReleaseDecision(projectId);
   const cut = useCutRelease(projectId);
   const decision = r.can.decide && r.approval && r.runId ? { runId: r.runId, approvalId: r.approval.id } : null;
-  if (!decision && !r.can.cut) return null;
+  // the act RELEASE_ROSTER_OVERSIZE names: core chose the oldest merged issues one release carries
+  const split = r.can.split && r.split ? r.split : null;
+  if (!decision && !r.can.cut && !split) return null;
   return (
     <span className="flex flex-wrap items-center gap-2" data-testid="release-actions">
       {decision ? (
@@ -82,6 +84,20 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
             {t("releases.approve")}
           </Button>
           <RefusalText error={decide.error} />
+        </>
+      ) : split ? (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            loading={cut.isPending}
+            onClick={() => cut.mutate(split.issueIds)}
+            data-testid="release-split"
+          >
+            {t("releases.split", { n: split.issueIds.length, version: r.version })}
+          </Button>
+          <RefusalText error={cut.error} />
         </>
       ) : (
         <>

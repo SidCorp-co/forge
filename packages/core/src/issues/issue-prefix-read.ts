@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
@@ -12,12 +13,15 @@ export async function activeIssuePrefix(
   projectId: string,
   dbi: IssueRefReader = defaultDb,
 ): Promise<string | null> {
-  const [row] = await dbi
-    .select({ issuePrefix: projects.issuePrefix })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.issuePrefix ?? null;
+  const read = async () => {
+    const [row] = await dbi
+      .select({ issuePrefix: projects.issuePrefix })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    return row?.issuePrefix ?? null;
+  };
+  return dbi === defaultDb ? memoizedRead(`issuePrefix:${projectId}`, read) : read();
 }
 
 /** Every prefix this project has ever held, for parsing a reference somebody published earlier. */

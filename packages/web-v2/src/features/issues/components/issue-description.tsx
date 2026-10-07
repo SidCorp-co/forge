@@ -11,7 +11,7 @@ import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { AttachmentRow, IssueDetail } from "../types";
-import { AttachmentList } from "./attachment-list";
+import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { BodyEditor } from "./body-editor";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";

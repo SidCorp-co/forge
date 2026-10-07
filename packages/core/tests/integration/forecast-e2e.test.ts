@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { peopleOf } from '../../src/lib/people.js';
 import { api, type Body } from '../helpers/api.js';
 import { ago, issue, landHistory, read, type World, world } from '../helpers/forecast-world.js';
 
@@ -46,9 +47,11 @@ describe('forecast read', () => {
     expect(typeof f.asOf).toBe('string');
   });
 
-  it('says paused and who owes the move for a needs_info issue, with no date', async () => {
+  it('says paused and who owes the move for a needs_info issue, by name, with no date', async () => {
     const f = (await read(w, `/issues/${keys.parked}`)).forecast as Body;
-    expect(f).toMatchObject({ kind: 'paused', who: 'A project writer', act: 'answer a question' });
+    // the project's one writer, named (FB-104), never "A project writer" naming nobody
+    const writer = (await peopleOf([w.userId])).get(w.userId)?.name;
+    expect(f).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
     expect(f).not.toHaveProperty('p50At');
   });
 

@@ -60,6 +60,19 @@ export function useCreateFeedback(projectId: string) {
   });
 }
 
+/** Attach files to an item: to the one a page shows, or to the key a filing was just answered with. */
+export function useAttachFeedback(projectId: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: ({ key, files }: { key: string; files: readonly File[] }) => feedbackApi.attach(projectId, key, files),
+    onSuccess: (r, { key }) => {
+      if (r) qc.setQueryData(["feedback-item", projectId, key], r);
+    },
+    onSettled: invalidate,
+  });
+}
+
 export function usePromoteFeedback(projectId: string) {
   const qc = useQueryClient();
   const invalidate = useInvalidate(projectId);

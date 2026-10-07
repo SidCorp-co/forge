@@ -21,7 +21,7 @@ import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 
 const P = "p1";
 const AT = "2026-10-05T08:00:00.000Z";
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, note: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, note: true, attach: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({
@@ -73,7 +73,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
       { decision: "verified", route: null, carrier: null, reason: "Verified automatically after 14 days with no reply", decidedBy: null, decidedByName: null, decidedAgency: "system", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
       { decision: "snoozed", route: null, carrier: null, reason: null, decidedBy: "a1", decidedByName: "Tro ly", decidedAgency: "agent", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
     ],
-    attachments: [{ id: "a1", from: "Lan", name: "anh.png", mime: "image/png", size: 4096, flagged: true, createdAt: AT }],
+    attachments: [{ id: "a1", from: "Lan", name: "anh.png", mime: "image/png", size: 4096, flagged: true, createdAt: AT, url: "/api/projects/p/feedback/FB-2/attachments/a1" }],
     reporters: [
       { id: "u1", name: "Lan", agency: "human", from: null },
       { id: "u3", name: null, agency: "human", from: "FB-9" },

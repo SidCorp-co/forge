@@ -182,6 +182,13 @@ export interface ReleaseContentGroup {
 	issues: ReleaseContentIssue[];
 }
 
+export interface ReleaseSplit {
+	/** Oldest merge first, at most RELEASE_ROSTER_LIMIT. */
+	issueIds: string[];
+	/** How many stay at the release gate for the next release. */
+	rest: number;
+}
+
 export interface ReleaseSummary
 	extends Standing<ReleaseAttentionGroup, ReleaseWaitingKind> {
 	key: string;
@@ -196,7 +203,13 @@ export interface ReleaseSummary
 	contents: ReleaseContentGroup[];
 	owner: ReleasePerson | null;
 	ownerAct: string | null;
-	can: { cut: boolean; decide: boolean };
+	/**
+	 * `split`: the draft is refused for one reason only, RELEASE_ROSTER_OVERSIZE, and the viewer is
+	 * an admin — the act that gate names, cutting `split.issueIds` as this release.
+	 */
+	can: { cut: boolean; decide: boolean; split: boolean };
+	/** What a split cuts: the oldest RELEASE_ROSTER_LIMIT merged issues; `rest` stay at the gate. */
+	split: ReleaseSplit | null;
 	openedAt: string | null;
 	releasedAt: string | null;
 	at: string;

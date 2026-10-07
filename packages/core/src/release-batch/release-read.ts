@@ -15,6 +15,7 @@ import { approvalRequired, readContentLanguage, readReleasePath } from '../proje
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { closeVerification, type RecordedVerification, resolveReleaseChannels } from './channel.js';
+import { readFinishRecord } from './finish-record.js';
 import { readLandingReadings } from './landing-surfaces.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
@@ -59,7 +60,14 @@ async function draftPart(projectId: string): Promise<Part | null> {
     approvals: [],
     gates: gateViews(report.blockers, report.warnings),
     verification: null,
+    commit: null,
   };
+}
+
+/** The commit a finished release's probes verified; an attempt still in flight claims one only. */
+function finishedCommit(metadata: unknown): string | null {
+  const finish = readFinishRecord(metadata);
+  return finish?.state === 'finished' ? finish.commit : null;
 }
 
 function runPart(
@@ -79,6 +87,7 @@ function runPart(
     approvals,
     gates: [],
     verification: recordedVerificationOf(run.metadata),
+    commit: finishedCommit(run.metadata),
   };
 }
 

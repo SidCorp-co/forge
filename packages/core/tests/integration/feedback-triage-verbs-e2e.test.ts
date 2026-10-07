@@ -221,6 +221,27 @@ describe('duplicate: the reporters and evidence read on the original, each told 
   });
 });
 
+describe('attachments: a reporter attaches, and the item names where the bytes are read (FB-106)', () => {
+  it('stores a screenshot posted to the route, offers Attach to a writer, and serves the url it names', async () => {
+    const fb = await file('ann', 'The board renders blank');
+    expect((await read(fb, 'ann')).can).toMatchObject({ attach: true });
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]).toString('base64');
+    const out = ok(
+      await say('ann', 'POST', item(fb, 'attachments'), {
+        name: 'board.png',
+        mime: 'image/png',
+        contentBase64: png,
+      }),
+    ).feedback;
+    const [a] = out.attachments as Doc[];
+    expect(a).toMatchObject({ name: 'board.png', mime: 'image/png', from: null });
+    expect(a?.url, 'the url is the item’s own attachment route, under its key').toBe(
+      item(fb, `attachments/${a?.id}`),
+    );
+    expect((await say('bo', 'GET', a?.url as string)).status).toBe(200);
+  });
+});
+
 describe('snooze: parked out of New until a date, returned by the clock', () => {
   it('refuses a past date, a date beyond a year, no reason, and a triaged item', async () => {
     const fb = await file('ann', 'Snooze me');

@@ -75,7 +75,9 @@ import { provideMessageReads } from './messaging/reads.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
+import { readMemo } from './middleware/read-memo.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { SERVER_TIMING_HEADER, serverTiming } from './middleware/server-timing.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
@@ -208,9 +210,6 @@ provideFeedbackDependents({
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 
-app.use('*', requestId());
-app.use('*', requestLogger());
-
 let corsOrigins: string[] | undefined;
 function allowedOrigins(): string[] {
   corsOrigins ??= env.CORS_ORIGINS.split(',')
@@ -218,6 +217,14 @@ function allowedOrigins(): string[] {
     .filter((s) => s.length > 0);
   return corsOrigins;
 }
+
+app.use(
+  '*',
+  serverTiming((origin) => allowedOrigins().includes(origin)),
+);
+app.use('*', readMemo());
+app.use('*', requestId());
+app.use('*', requestLogger());
 const corsMiddleware = cors({
   origin: (origin) => (allowedOrigins().includes(origin) ? origin : null),
   credentials: true,
@@ -231,6 +238,7 @@ const corsMiddleware = cors({
     'X-RateLimit-Reset',
     'X-RateLimit-Scope',
     PAT_ACCEPTED_PERMISSIONS_HEADER,
+    SERVER_TIMING_HEADER,
   ],
 });
 app.use('/api/*', corsMiddleware);

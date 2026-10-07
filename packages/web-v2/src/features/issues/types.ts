@@ -279,6 +279,8 @@ export interface IssueDetail extends IssueRow {
   /** ISS-1176 — the release note, whose `userFacing` line is the one sentence written for the person who filed. */
   releaseNotes?: ReleaseNotes | null;
   workState?: IssueWorkState | null;
+  /** The release that shipped it (FB-102); null while none has, absent from an older core. */
+  shippedIn?: { version: string; at: string } | null;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core

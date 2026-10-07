@@ -719,6 +719,8 @@ export interface RequirementIssueLink {
 	tone: IssueStatusTone;
 	plannedRevision: number | null;
 	changedSincePlan: boolean;
+	/** The release that shipped it, by version; null while no shipped release carries it. */
+	shippedIn: { version: string; at: string } | null;
 }
 
 export interface RequirementDetail extends RequirementSummary {
@@ -732,6 +734,8 @@ export interface RequirementDetail extends RequirementSummary {
 	/** Newest first. */
 	baselines: RequirementBaseline[];
 	issues: RequirementIssueLink[];
+	/** The releases that shipped its issues, oldest ship first, each once. */
+	releases: { version: string; at: string }[];
 	/** The viewer is a person allowed to accept, return or agree. */
 	canSignOff: boolean;
 	history: RequirementHistoryEntry[];

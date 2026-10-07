@@ -2866,6 +2866,13 @@
       "breakpoints": true
     },
     {
+      "idx": 443,
+      "version": "7",
+      "when": 1821225600000,
+      "tag": "0443_a_firing_root_is_found_by_index",
+      "breakpoints": true
+    },
+    {
       "idx": 447,
       "version": "7",
       "when": 1821571200000,
