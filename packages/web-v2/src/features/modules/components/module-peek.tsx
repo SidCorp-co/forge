@@ -4,7 +4,8 @@
 // one line whom the module waits on, its open issues by state and activity, then the same facts the
 // full page's sticky rail shows.
 
-import { CoverageBar, PeekHead, PeekPanel, type PeekState, QueryBoundary } from "@/design";
+import { CoverageBar, PeekHead, PeekPanel, type PeekState } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useModuleDetail } from "../hooks";
 import { ActivityBars, AttentionBadge, ModuleAction, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleFacts } from "./module-facts";

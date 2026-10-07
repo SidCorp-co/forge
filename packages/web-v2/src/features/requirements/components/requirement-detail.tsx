@@ -17,8 +17,8 @@ import {
   useUrlTab,
   FieldLabel,
   ViewHeading,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useEntityDecisions } from "@/features/comments/hooks";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";

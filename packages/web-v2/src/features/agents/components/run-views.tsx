@@ -33,8 +33,8 @@ import {
   ViewHeading,
   WaitBanner,
   WaitingOn,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, type StatusFamily, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";

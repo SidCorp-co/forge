@@ -27,8 +27,8 @@ import {
   ViewHeading,
   WaitBanner,
   WaitingOn,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useTriageAgentReport } from "@/features/automation/report-hooks";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";

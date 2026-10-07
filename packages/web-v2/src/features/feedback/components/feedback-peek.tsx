@@ -3,7 +3,8 @@
 // The peek (`?peek=FB-3`) beside the list: a summary, not the page — the header with the one
 // primary act, whose turn it is, and the facts the full page's rail shows.
 
-import { PeekHead, PeekPanel, type PeekState, StatusBadge, QueryBoundary } from "@/design";
+import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";

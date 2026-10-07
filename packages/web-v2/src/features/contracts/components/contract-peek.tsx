@@ -1,6 +1,7 @@
 "use client";
 
-import { PeekHead, PeekPanel, type PeekState, StatusBadge, QueryBoundary } from "@/design";
+import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useContractDetail } from "../hooks";
 import { AdoptionStrip, ContractAction, ContractBanner } from "./contract-bits";
 import { ContractFacts } from "./contract-facts";

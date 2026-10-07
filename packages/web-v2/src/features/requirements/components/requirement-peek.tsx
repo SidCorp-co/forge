@@ -3,7 +3,8 @@
 // The peek (`?peek=REQ-12`) beside the list: the shared PeekPanel holding the full page's header —
 // key, state, title, the one primary act — over the same facts its sticky rail shows.
 
-import { PeekHead, PeekPanel, type PeekState, rememberListOrigin, StatusBadge, QueryBoundary } from "@/design";
+import { PeekHead, PeekPanel, type PeekState, rememberListOrigin, StatusBadge } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useRequirement } from "../hooks";
 import { REQUIREMENTS_LIST } from "@/lib/routes/requirements";
 import { PrimaryActions } from "./requirement-actions";

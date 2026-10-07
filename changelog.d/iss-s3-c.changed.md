@@ -1,1 +1,1 @@
-**Loading and failed screens are drawn by one shared boundary.** About 30 web screens, peeks and detail pages now use `QueryBoundary` instead of repeating the loader and error shell; no screen changes, except that a peek shows no extra padding around a failed load.
+**Loading and failed screens share one boundary.** About 30 web screens, peeks and detail pages draw their loader and error shell through `QueryBoundary` instead of repeating it; what a person sees is unchanged.

@@ -3,7 +3,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "./client";
 import { QueryBoundary } from "./query-boundary";
 
 const query = (over: Partial<Parameters<typeof QueryBoundary<string>>[0]["query"]>) => ({

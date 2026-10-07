@@ -23,8 +23,8 @@ import {
   ViewHeading,
   WaitBanner,
   WaitingOn,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatAge, formatStamp } from "@/lib/utils/format";

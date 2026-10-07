@@ -1,6 +1,7 @@
 "use client";
 
-import { EmptyState, PageTitle, ViewHeading, WaitBanner, QueryBoundary } from "@/design";
+import { EmptyState, PageTitle, ViewHeading, WaitBanner } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useDevelopmentOverview } from "../hooks";
 import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";

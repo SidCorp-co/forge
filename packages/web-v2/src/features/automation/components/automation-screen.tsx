@@ -28,8 +28,8 @@ import {
   useUrlParams,
   useUrlTab,
   visibleRows,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCreateSchedule } from "@/features/automation/schedule-hooks";
 import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";

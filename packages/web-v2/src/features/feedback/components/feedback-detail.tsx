@@ -16,8 +16,8 @@ import {
   LEGEND,
   StatusBadge,
   useUrlTab,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";

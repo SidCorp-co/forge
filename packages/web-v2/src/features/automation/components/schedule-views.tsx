@@ -31,8 +31,8 @@ import {
   ViewHeading,
   WaitBanner,
   WaitingOn,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { statusReading } from "@/design/vocabulary";
 import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
 import { formatRefusal } from "@/lib/api/error";

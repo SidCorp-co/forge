@@ -8,8 +8,8 @@ import {
   FactsRail,
   StatusBadge,
   useUrlTab,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useRelease, useReleases } from "../hooks";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";

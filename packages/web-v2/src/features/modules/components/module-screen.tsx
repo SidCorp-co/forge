@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { DetailHeader, useListOrigin, useViewMode, ViewModeSwitcher, QueryBoundary } from "@/design";
+import { DetailHeader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useModuleDetail, useModuleRollup } from "../hooks";
 import { MODULES_LIST, moduleHref, modulesHref } from "@/lib/routes/modules";
 import { ancestorsOf } from "../tree";

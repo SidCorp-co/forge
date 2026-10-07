@@ -1,6 +1,7 @@
 "use client";
 
-import { PeekHead, PeekPanel, type PeekState, StatusBadge, QueryBoundary } from "@/design";
+import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
 import { ReleaseBanner } from "./release-bits";

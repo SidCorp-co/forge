@@ -1,9 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ErrorState } from "@/design/primitives/error-state";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { ProjectLoader } from "./mascot-loaders";
+import { ErrorState, ProjectLoader } from "@/design";
+import { formatApiError, isRetryableApiError } from "./error";
 
 const HEIGHTS = { "30vh": "min-h-[30vh]", "40vh": "min-h-[40vh]", "50vh": "min-h-[50vh]", "60vh": "min-h-[60vh]" } as const;
 

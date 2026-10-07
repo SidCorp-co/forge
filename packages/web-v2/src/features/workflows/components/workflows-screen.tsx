@@ -2,7 +2,8 @@
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip, QueryBoundary } from "@/design";
+import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useProjectDocument } from "@/features/project-config/hooks";

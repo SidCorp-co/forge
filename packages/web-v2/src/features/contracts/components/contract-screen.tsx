@@ -1,6 +1,7 @@
 "use client";
 
-import { DetailHeader, StatusBadge, useListOrigin, useUrlTab, QueryBoundary } from "@/design";
+import { DetailHeader, StatusBadge, useListOrigin, useUrlTab } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useContractDetail } from "../hooks";
 import { CONTRACTS_LIST, contractsHref } from "@/lib/routes/contracts";
 import { ContractAction } from "./contract-bits";

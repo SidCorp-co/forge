@@ -31,8 +31,8 @@ import {
   useUrlTab,
   ViewHeading,
   WaitBanner,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError } from "@/lib/api/error";

@@ -3,7 +3,8 @@
 // The Modules screen opens on the business modules, the roots of the module tree, with every count
 // rolled up from the modules beneath them; a module's children are on its own page.
 
-import { EmptyState, PageTitle, QueryBoundary } from "@/design";
+import { EmptyState, PageTitle } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCodeTrace, useModuleRollup } from "../hooks";
 import { ModuleLevel } from "./module-level";
 

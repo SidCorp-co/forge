@@ -20,8 +20,8 @@ import {
   useUrlParams,
   visibleRows,
   WaitingOn,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";

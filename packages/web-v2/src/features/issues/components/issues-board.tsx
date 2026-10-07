@@ -31,8 +31,8 @@ import {
   usePeekKeys,
   useUrlParams,
   visibleRows,
-  QueryBoundary,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { useIssueStanding } from "../hooks";
 import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";

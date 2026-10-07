@@ -14,14 +14,12 @@ import {
   Button,
   EmptyState,
   enumLabel,
- 
   GroupedList,
   ListSearch,
   LEGEND,
   type ListGroup,
   type ListRowView,
   PageTitle,
-  QueryBoundary,
   rememberListOrigin,
   StatusBadge,
   standingGroups,
@@ -36,6 +34,7 @@ import {
   visibleRows,
   WaitingOn,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFeedbackList } from "../hooks";
