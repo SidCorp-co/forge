@@ -11,7 +11,7 @@
 ### Security
 
 - **Signing up with an email already registered says so.** It used to fail as a server error, and the failed save's values, including the typed password's hash, could reach logs, error reports and error messages; none do now.
-- **A failed save's values stay out of every error Forge reports.** They no longer reach a log line, a tool's reply or a stream's error, wherever the error's text is copied.
+- **A failed save's values stay out of every error Forge reports.** They no longer reach a log line, a tool's reply or a stream's error, wherever the error's text is copied, or rendered from a value only as the log or reply is written.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
@@ -3151,6 +3151,8 @@
   `1280` show that one issue rather than the issues mentioning it, and a key this project does not
   hold is said so by name.
 
+- **The sign-up page drops "Email already registered" once you change the email**, so the
+  message never describes an address that is no longer in the field.
 - **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while
   chats close, says how often it paused new work, leaves new chats open, and never advises
   restarting onto an older binary (ISS-1223).

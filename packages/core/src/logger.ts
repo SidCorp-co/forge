@@ -36,7 +36,8 @@ const redactPaths = [
 
 /**
  * A finished line with a failed query's params, and any value the database's own text quotes,
- * redacted: the last pass, for what only the written line shows, such as a value's own `toJSON`.
+ * redacted: the last pass, blind to the call's errors, over what reached the line by a path the
+ * call's own redaction did not see. A value's `toJSON`, getters and boxed text were rendered there.
  */
 function redactLine(line: string): string {
   if (!mayCarryBoundValues(line)) return line;
@@ -52,8 +53,9 @@ function redactLine(line: string): string {
 
 /**
  * `record` with `redact` applied to everything but `err` as ONE record, so a `query` keeps its
- * `params` beside it. `err` is left as it is: `serializeError` redacted whatever it held, and a
- * second, blind pass would take the database's reason that follows the params along with them.
+ * `params` beside it. `err` is left as it is: `serializeError` redacted whatever it held, as it
+ * will be serialized, and a second, blind pass would take the database's reason that follows the
+ * params along with them.
  */
 function besideErr(
   record: Record<string, unknown>,
