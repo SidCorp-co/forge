@@ -36,6 +36,8 @@ struct Bindings {
     /// Every name a `use` binds, so a bare name it brought in resolves through any `const` of
     /// that name rather than counting as unknown.
     imported: BTreeSet<String>,
+    /// The path each name a `use` binds stands for, so a `use` through it is read as that path.
+    aliases: BTreeMap<String, Vec<String>>,
     /// A `macro_rules!` that builds a path from a metavariable, by name.
     assembling: BTreeSet<String>,
     /// What the scan refuses outright: a glob import from a route module, and a macro that
@@ -125,7 +127,7 @@ fn consts_at(tokens: &[TokenTree]) -> Consts {
                 .find(|&k| is_punct(&tokens[k], ';'))
                 .unwrap_or(tokens.len());
             let value = &tokens[eq + 1..end];
-            let v = folded(value).or_else(|| path_name(value).map(|n| format!("\u{0}{n}")));
+            let v = folded(value).or_else(|| path_text(value).map(|n| format!("\u{0}{n}")));
             into.entry(name.to_string()).or_default().push(v);
             i = end;
         }
@@ -145,7 +147,8 @@ fn resolve(consts: &Consts, name: &str, depth: usize) -> Option<Vec<String>> {
                 if depth > 8 {
                     return None;
                 }
-                out.extend(resolve(consts, &v[1..], depth + 1)?);
+                let name = v[1..].rsplit_once("::").map_or(&v[1..], |(_, last)| last);
+                out.extend(resolve(consts, name, depth + 1)?);
             }
             Some(v) => out.push(v.to_string()),
             None => return None,
@@ -512,9 +515,11 @@ impl Scan<'_> {
         let mut out = Vec::new();
         for d in defs {
             match d.as_deref() {
-                Some(v) if v.starts_with('\u{0}') => {
-                    out.extend(self.value_of(&v[1..], false, stack, depth + 1)?)
-                }
+                // A qualified reference names its own module's const, never the one in scope here.
+                Some(v) if v.starts_with('\u{0}') => match v[1..].rsplit_once("::") {
+                    Some((_, last)) => out.extend(resolve(self.consts, last, depth + 1)?),
+                    None => out.extend(self.value_of(&v[1..], false, stack, depth + 1)?),
+                },
                 Some(v) => out.push(v.to_string()),
                 None => return None,
             }
@@ -698,14 +703,12 @@ fn expanded(path: &[String], known: &Bindings) -> Vec<String> {
     let Some(first) = path.first() else {
         return Vec::new();
     };
-    let head: Vec<String> = if known.env_modules.contains(first) && first != "env" {
-        vec!["std".into(), "env".into()]
-    } else if known.dirs_modules.contains(first) && first != "dirs_next" {
-        vec!["dirs_next".into()]
-    } else {
-        return path.to_vec();
-    };
-    head.into_iter().chain(path[1..].iter().cloned()).collect()
+    match known.aliases.get(first) {
+        Some(stands_for) if stands_for.len() > 1 || stands_for[0] != *first => {
+            stands_for.iter().chain(&path[1..]).cloned().collect()
+        }
+        _ => path.to_vec(),
+    }
 }
 
 /// `name` is bound to `path`.
@@ -719,6 +722,10 @@ fn bind(path: &[String], name: &str, b: &mut Bindings) {
         return;
     };
     b.imported.insert(name.to_string());
+    b.aliases.insert(
+        name.to_string(),
+        path.iter().map(|s| s.to_string()).collect(),
+    );
     if last == "dirs_next" {
         b.dirs_modules.insert(name.to_string());
     } else if path.contains(&"dirs_next") {
@@ -773,6 +780,19 @@ fn folded_concat(args: &[TokenTree]) -> Option<String> {
         out.push_str(&folded(part)?);
     }
     Some(out)
+}
+
+/// A path such as `A`, `m::A` or `Self::A` as written, segments joined by `::`.
+fn path_text(tokens: &[TokenTree]) -> Option<String> {
+    path_name(tokens)?;
+    let segments: Vec<String> = tokens
+        .iter()
+        .filter_map(|t| match t {
+            TokenTree::Ident(id) => Some(id.to_string()),
+            _ => None,
+        })
+        .collect();
+    Some(segments.join("::"))
 }
 
 /// The last identifier of a path such as `A`, `m::A` or `Self::A`.
@@ -994,6 +1014,32 @@ mod tests {
         counts(
             "use std::env::var_os as get; fn a(m: &M, k: &str) { m.get(k); }",
             0,
+        );
+    }
+
+    /// The third whole-set read's F1 and F2: a reader imported again under a second name, and a
+    /// const that names a qualified one beside a local of the same last name.
+    #[test]
+    fn a_second_alias_and_a_qualified_reference_are_followed() {
+        counts(
+            "use std::env::var_os as first; use first as second; fn read(k: &str) { let _ = second(k); }",
+            1,
+        );
+        counts(
+            "use first as second; use std::env::var_os as first;
+             fn read(k: &str) { let _ = second(k); let _ = second(k); }",
+            2,
+        );
+        let qualified = r#"mod keys { pub const KEY: &str = concat!("HO", "ME"); }
+            const KEY: &str = "FORGE_TOKEN"; const READ: &str = keys::KEY;
+            fn read() { let _ = std::env::var_os(READ); }"#;
+        counts(qualified, 2);
+        counts(
+            &qualified.replace(
+                "var_os(READ); }",
+                "var_os(READ); let _ = std::env::var_os(READ); }",
+            ),
+            3,
         );
     }
 
