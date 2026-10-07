@@ -24,13 +24,13 @@ import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
   AGENT_TURN_LABEL,
-  SILENCE_REASON,
   type AgentTurn,
   type AgentTurnState,
   type ConversationMessage,
   type ConversationWindow,
   type ConversationProgressEntry,
   type OutboxMessage,
+  silenceDetailSentence,
   silenceSentence,
   threadEntries,
   turnFailureOf,
@@ -392,7 +392,7 @@ export function ConversationThread({
                 ? `This reply was never delivered — ${undelivered.reason}`
                 : failure
                   ? `${failure.reason} (${failure.code})`
-                  : SILENCE_REASON[entry.decision]}
+                  : silenceDetailSentence(entry.decision, entry.detail)}
             </p>
             {undelivered && (
               <p className="fg-body-sm mt-1 whitespace-pre-wrap" data-testid="thread-undelivered-reply">

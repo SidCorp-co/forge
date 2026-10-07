@@ -2,6 +2,7 @@
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
+import { formatDateTime } from "@/lib/i18n/format";
 
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
 export type ConversationShape = "direct" | "group";
@@ -209,6 +210,29 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
   undetermined: "A reply was sent and never confirmed — the agent will not send it again.",
   stopped: "You stopped this answer, so the agent never finished it.",
 };
+
+/**
+ * The sentence for a silence whose window named why the agent stayed out of a group room (core
+ * `window-decision.ts:hearGroup`), or the decision's own sentence when it named nothing more.
+ */
+export function silenceDetailSentence(decision: SilenceDecision, detail: unknown): string {
+  const d = (detail ?? {}) as { reason?: unknown; by?: unknown; since?: unknown };
+  const by = typeof d.by === "string" && d.by ? ` by ${d.by}` : "";
+  const when =
+    typeof d.since === "string" && !Number.isNaN(Date.parse(d.since)) ? ` since ${formatDateTime(d.since, "en")}` : "";
+  switch (d.reason) {
+    case "asked-to-stop":
+      return `Asked to stop${by}. The agent stays quiet in this room until someone mentions it.`;
+    case "quiet-until-mentioned":
+      return `Quiet${when}, as asked${by}. The agent answers here again once someone mentions it.`;
+    case "addressed-to-person":
+      return "This was addressed to someone else, so the agent stayed quiet.";
+    case "not-mentioned":
+      return "Nobody asked the agent here, so it stayed quiet.";
+    default:
+      return SILENCE_REASON[decision];
+  }
+}
 
 /**
  * A reply core composed and could not deliver (`assistant/window-decision.ts:routedOutcome`): the

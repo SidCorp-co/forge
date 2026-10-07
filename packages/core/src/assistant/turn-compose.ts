@@ -21,6 +21,7 @@ import type {
   TurnInputs,
   TurnReply,
 } from './turn-request.js';
+import { turnWrites } from './turn-writes.js';
 
 export interface TurnContext {
   req: ConversationTurnRequest;
@@ -129,6 +130,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if ('send' in inputs) return inputs;
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const asks = asksCapture(req);
+  const writes = turnWrites(inputs.tools);
 
   ctx.setPhase('turn');
   const turn: ExternalChatTurnArgs = {
@@ -143,7 +145,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
     pageContext: inputs.pageContext ?? null,
-    tools: withCaptures([capture, asks], inputs.tools),
+    tools: withCaptures([capture, asks], writes.tools),
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,
     message: req.message,
@@ -167,14 +169,15 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   return screenReply(ctx, settled, asks?.declared() ?? false, (instruction) => {
     const again = capture ? roomSendCapture() : null;
     const asksAgain = asksCapture(req);
+    const done = writes.doneSoFar();
     return {
       again,
       asks: asksAgain,
       run: runExternalChatTurn({
         ...turn,
-        tools: withCaptures([again, asksAgain], inputs.tools),
+        tools: withCaptures([again, asksAgain], writes.tools),
         record: 'nothing',
-        message: instruction,
+        message: done ? `${instruction}\n\n${done}` : instruction,
       }),
     };
   });
@@ -231,6 +234,7 @@ async function screenReply(
   const { req } = ctx;
   let declinedInRetry = false;
   let asked = firstAsked;
+  const calls = [...result.toolCalls];
   const screened = await screenedTurnReply({
     door: req.door,
     projectId: req.venue.projectId,
@@ -244,13 +248,14 @@ async function screenReply(
       const { again, asks, run } = retry(instruction);
       const retried = await run;
       asked = asks?.declared() ?? false;
+      calls.push(...retried.toolCalls);
       const reply = again ? (again.captured() ?? '') : retried.reply;
-      const text = correctFalseClaims(reply, [...result.toolCalls, ...retried.toolCalls]).text;
+      const text = correctFalseClaims(reply, calls).text;
       if (req.mayDecline && declinedTurn(text)) {
         declinedInRetry = true;
-        return { ...retried, reply: '' };
+        return { ...retried, toolCalls: [...calls], reply: '' };
       }
-      return { ...retried, reply: text };
+      return { ...retried, toolCalls: [...calls], reply: text };
     },
   });
   if (declinedInRetry) return silence(ctx, 'nothing-to-say');
