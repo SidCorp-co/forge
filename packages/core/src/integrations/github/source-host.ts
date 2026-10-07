@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   HostCommitFiles,
   HostCompare,
+  HostFileChange,
   HostFileCompare,
   SourceHost,
   SourceHostFactory,
@@ -32,6 +33,23 @@ const COMPARE_FILE_CEILING = 300;
 interface CompareFile {
   filename?: string;
   previous_filename?: string;
+  status?: string;
+}
+
+/** What each file of a compare became; `filesOf` has already refused an entry with no name. */
+function changesOf(files: CompareFile[]): HostFileChange[] {
+  return files.flatMap((f): HostFileChange[] => {
+    const path = f.filename as string;
+    if (f.status === 'renamed' && f.previous_filename) {
+      return [
+        { path: f.previous_filename, change: 'removed' },
+        { path, change: 'added' },
+      ];
+    }
+    if (f.status === 'added' || f.status === 'copied') return [{ path, change: 'added' }];
+    if (f.status === 'removed') return [{ path, change: 'removed' }];
+    return [{ path, change: 'changed' }];
+  });
 }
 
 /** Each file a compare names, a rename by both its names: the old path no longer holds it either.
@@ -130,7 +148,7 @@ function githubSourceHostOf(
     if (!status) return { why: `${client.fullName} answered no compare status` };
     const files = filesOf(read.files);
     if (typeof files === 'string') return { why: files };
-    return { status, files };
+    return { status, files, changes: changesOf(read.files ?? []) };
   };
   const commitFiles = async (sha: string): Promise<HostCommitFiles> => {
     const commit = await client.get<{ parents?: Array<{ sha?: string }> }>(
@@ -139,7 +157,7 @@ function githubSourceHostOf(
     const parent = commit.parents?.[0]?.sha;
     if (!parent) return { why: `${sha} has no parent to diff it against` };
     const read = await compareFiles(parent, sha);
-    return 'why' in read ? read : { files: read.files };
+    return 'why' in read ? read : { files: read.files, changes: read.changes };
   };
   return {
     provider: 'github',

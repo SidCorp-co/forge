@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   HostCommitFiles,
   HostCompare,
+  HostFileChange,
   HostFileCompare,
   LiveDivergence,
   SourceHost,
@@ -26,7 +27,13 @@ interface CommitBody {
 
 interface CompareBody {
   commits?: CommitBody[];
-  diffs?: Array<{ old_path?: string; new_path?: string }>;
+  diffs?: Array<{
+    old_path?: string;
+    new_path?: string;
+    new_file?: boolean;
+    deleted_file?: boolean;
+    renamed_file?: boolean;
+  }>;
 }
 
 const enc = encodeURIComponent;
@@ -77,9 +84,22 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
     const named = (p: unknown): p is string => typeof p === 'string' && p !== '';
     if (read.diffs.some((d) => !named(d.new_path) || !named(d.old_path)))
       return { why: 'the compare answered a file entry with no name' };
+    const changes = read.diffs.flatMap((d): HostFileChange[] => {
+      const path = d.new_path as string;
+      if (d.renamed_file) {
+        return [
+          { path: d.old_path as string, change: 'removed' },
+          { path, change: 'added' },
+        ];
+      }
+      if (d.new_file) return [{ path, change: 'added' }];
+      if (d.deleted_file) return [{ path: d.old_path as string, change: 'removed' }];
+      return [{ path, change: 'changed' }];
+    });
     return {
       status,
       files: [...new Set(read.diffs.flatMap((d) => [d.new_path, d.old_path].filter(named)))],
+      changes,
     };
   };
 
@@ -124,7 +144,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
       const parent = commit.parent_ids?.[0];
       if (!parent) return { why: `${sha} has no parent to diff it against` };
       const read = await compareFiles(parent, sha);
-      return 'why' in read ? read : { files: read.files };
+      return 'why' in read ? read : { files: read.files, changes: read.changes };
     },
 
     async branchContains(branch, sha) {

@@ -1,0 +1,1 @@
+**A release says what it changes.** Each landing names its artifacts by surface — from the mark, a design approval, or its commit's paths read by host or box — and the release page and peek open with "What changes".

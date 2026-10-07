@@ -7,6 +7,12 @@
  * docs/modules/issues/merge-mark.md.
  */
 
+import {
+  designArtifact,
+  designLandingRef,
+  type LandingArtifact,
+  type ReadPaths,
+} from '@forge/contracts/landing-artifacts';
 import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { type Db, db } from '../db/client.js';
@@ -152,6 +158,106 @@ export function landingMarkRefusal(args: {
     };
   }
   return null;
+}
+
+type ArtifactsRefusalCode = 'ARTIFACTS_NOT_THIS_SHAPE' | 'ARTIFACTS_NOT_DESIGN';
+
+/**
+ * The artifacts a mark records, or its refusal. On `git` they are read from the landing commit's
+ * changed paths through the project's surface map, so a list sent by hand would be a second source
+ * and is refused. A landing naming a design revision is surface `design` whether or not the caller
+ * said so, and a non-design artifact beside it is refused: a revision deploys nothing.
+ */
+export function markArtifacts(args: {
+  shape: LandingShape;
+  landing: string | null;
+  sent: readonly LandingArtifact[] | null;
+}):
+  | { ok: true; artifacts: LandingArtifact[] | null }
+  | { ok: false; code: ArtifactsRefusalCode; detail: string } {
+  const { shape, landing, sent } = args;
+  if (shape === 'git' && sent) {
+    return {
+      ok: false,
+      code: 'ARTIFACTS_NOT_THIS_SHAPE',
+      detail:
+        'this project lands its work in git (`source.type` is `git`), where what a landing changed is ' +
+        "read from its commit's changed paths through the project document's `release.surfaces`, so " +
+        'nothing was marked. Send the mark without `artifacts`.',
+    };
+  }
+  const design = designLandingRef(landing);
+  if (!design) return { ok: true, artifacts: sent ? [...sent] : null };
+  const stray = (sent ?? []).filter((a) => a.surface !== 'design');
+  if (stray.length > 0) {
+    return {
+      ok: false,
+      code: 'ARTIFACTS_NOT_DESIGN',
+      detail:
+        `the landing names design revision ${design}, which deploys nothing, and the call names ` +
+        `${stray.map((a) => `\`${a.surface}\` ${a.ref}`).join(', ')} beside it, so nothing was marked. ` +
+        'Mark the design issue with the revision alone, and the work that builds it on its own issue.',
+    };
+  }
+  return { ok: true, artifacts: sent && sent.length > 0 ? [...sent] : [designArtifact(design)] };
+}
+
+/**
+ * The paths a box read sent with a mark, as the row stores them, or the refusal. They describe a
+ * commit, so they belong to a project that lands in git, and to the commit the mark names.
+ */
+export function markReadPaths(args: {
+  shape: LandingShape;
+  commit: string | null;
+  sent: { commit: string; changes: ReadPaths['changes'] } | null;
+}):
+  | { ok: true; paths: ReadPaths | null }
+  | {
+      ok: false;
+      code: 'CHANGED_PATHS_NOT_THIS_SHAPE' | 'CHANGED_PATHS_UNMATCHED';
+      detail: string;
+    } {
+  const { shape, commit, sent } = args;
+  if (!sent) return { ok: true, paths: null };
+  if (shape !== 'git') {
+    return {
+      ok: false,
+      code: 'CHANGED_PATHS_NOT_THIS_SHAPE',
+      detail:
+        "`changedPaths` are a commit's changed files, and this project's work lands outside git, so " +
+        'nothing was marked. Name what landed with `artifacts` beside `landing` instead.',
+    };
+  }
+  const read = sent.commit.toLowerCase();
+  const named = (commit ?? '').toLowerCase();
+  if (!named || !(read.startsWith(named) || named.startsWith(read))) {
+    return {
+      ok: false,
+      code: 'CHANGED_PATHS_UNMATCHED',
+      detail: `\`changedPaths\` were read at ${sent.commit}, and the mark names ${commit ? `commit ${commit}` : 'no commit'}, so nothing was marked. Send them with the \`commit\` they were read at.`,
+    };
+  }
+  return { ok: true, paths: { commit: sent.commit, read: 'box', changes: sent.changes } };
+}
+
+/** Artifacts the stamp did not record because a mark already stands, or `null` where it did. */
+export function standingArtifactsRefusal(args: {
+  sent: readonly LandingArtifact[] | null;
+  wrote: boolean;
+  held: readonly LandingArtifact[] | null;
+}): { code: 'MARK_ALREADY_STANDS'; detail: string } | null {
+  if (!args.sent || args.wrote) return null;
+  if (JSON.stringify(args.held ?? null) === JSON.stringify(args.sent)) return null;
+  const stands = args.held
+    ? `this issue's mark already names ${args.held.length} artifact(s)`
+    : "this issue's mark already stands and names no artifact";
+  return {
+    code: 'MARK_ALREADY_STANDS',
+    detail:
+      `${stands}, and the first mark stands, so the artifacts sent were not recorded and nothing ` +
+      'changed. To change them, `unmark` (Unmark on the rail), then mark again with the landing and ' +
+      'artifacts that are right.',
+  };
 }
 
 /** `target` names the branch a mark merged through, so only a shape that moves branches owes one. */

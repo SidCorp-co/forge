@@ -357,6 +357,23 @@ mod tests {
         );
     }
 
+    /// A release reads what each landing changed from its mark; a master marking outside git without
+    /// `artifacts` leaves every row unclassified, so the skill names the list and its surfaces.
+    #[test]
+    fn the_skill_tells_a_master_a_mark_names_its_artifacts() {
+        for word in [
+            "`artifacts`",
+            "`[{surface, ref, change}]`",
+            "`design`",
+            "`commit`",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer names {word}, so a master's marks leave its releases unclassified"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

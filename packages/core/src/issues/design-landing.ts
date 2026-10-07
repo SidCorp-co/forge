@@ -7,6 +7,7 @@
  * takes the next move, on this evidence.
  */
 
+import { designArtifact } from '@forge/contracts/landing-artifacts';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { Actor } from './activity.js';
@@ -78,6 +79,7 @@ export async function markApprovedDesign(
   const stamp = await recordDesignLanding(tx, {
     issueId: args.issueId,
     landing,
+    artifacts: [designArtifact(`${args.flow}@rev${args.revision}`)],
     actor: { type: args.actor.type, id: args.actor.id, agency: args.actor.agency },
   });
   const mark = mergeMarkKindOf({

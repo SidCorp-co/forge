@@ -97,8 +97,9 @@ async function markOf(issueId: string) {
     merged_at: string | null;
     merged_commit_sha: string | null;
     merged_landing: string | null;
+    merged_artifacts: unknown;
   }>(
-    sql`SELECT status, merged_at, merged_commit_sha, merged_landing FROM issues WHERE id = ${issueId}`,
+    sql`SELECT status, merged_at, merged_commit_sha, merged_landing, merged_artifacts FROM issues WHERE id = ${issueId}`,
   );
   return row && { ...row, merged_at: row.merged_at === null ? null : new Date(row.merged_at) };
 }
@@ -279,6 +280,9 @@ describe('an approval records the approved revision on the issue that drew it (I
     expect(row?.status).toBe('in_progress');
     expect(row?.merged_at).not.toBeNull();
     expect(row?.merged_landing).toBe(designLandingOf('marked-flow', 1));
+    expect(row?.merged_artifacts).toEqual([
+      { surface: 'design', ref: 'marked-flow@rev1', change: 'changed' },
+    ]);
     expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toBeNull();
   });
 
@@ -333,6 +337,9 @@ describe('an approval records the approved revision on the issue that drew it (I
     const stamped = await markOf(unmarked.id);
     expect(stamped?.merged_at).not.toBeNull();
     expect(stamped?.merged_landing).toBeNull();
+    expect(stamped?.merged_artifacts).toEqual([
+      { surface: 'design', ref: 'git-marked-flow@rev1', change: 'changed' },
+    ]);
 
     const at = new Date('2026-10-01T10:00:00Z');
     const marked = await plantIssue(gitProject, 'awaiting_release', { mergedAt: at });

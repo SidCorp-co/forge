@@ -4,6 +4,11 @@
 // the browser.
 
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
+import type {
+	ArtifactChange,
+	LandingArtifact,
+	LandingSurface,
+} from "./landing-artifacts.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { BcVerdict, RequirementState } from "./requirements.js";
 import type {
@@ -223,6 +228,85 @@ export interface ReleaseIssueView {
 	proof: ReleaseProof;
 	criteria: ReleaseCriteriaTotals;
 	waitingOn: WaitingOn<ReleaseWaitingKind>;
+	/** The surfaces its landing touches, in `LANDING_SURFACES` order; empty where none is named. */
+	surfaces: LandingSurface[];
+	landing: IssueLandingReading;
+	/** True where some of what its landing changed is named by no surface (core `landing-surfaces.ts:gapOf`). */
+	unclassified: boolean;
+}
+
+/**
+ * What an issue's landing says it changed. `named`: the artifacts, with any changed paths the
+ * project's surface map claims for none. `unclassified`: nothing structured names them — a prose
+ * landing, a commit not read, a project declaring no surface map — with why, and the paths where
+ * they were read.
+ */
+export type IssueLandingReading =
+	| {
+			kind: "named";
+			artifacts: LandingArtifact[];
+			unmappedPaths: string[];
+			/** Why the commit's paths were not read, beside artifacts the row names of its own. */
+			unread: string | null;
+			source: LandingReadingSource;
+	  }
+	| {
+			kind: "unclassified";
+			why: string;
+			paths: string[];
+			/** Who read the paths shown, where any were read. */
+			source: Exclude<LandingReadingSource, "mark"> | null;
+	  };
+
+/**
+ * Who named what a landing changed: `mark` — the mark or a design approval named it; `host` — the
+ * source host's record of the observed commit; `box` — a box read the commit's paths from its own
+ * checkout and sent them with the mark, which is the box's reading, not a merge Forge observed.
+ */
+export type LandingReadingSource = "mark" | "host" | "box";
+
+export interface ReleaseChangeArtifact {
+	ref: string;
+	change: ArtifactChange;
+	/** The issue keys whose landings name it. */
+	issues: string[];
+}
+
+export interface ReleaseSurfaceChanges {
+	surface: LandingSurface;
+	/** How many distinct artifacts it names. */
+	count: number;
+	/** True for `design`: a design revision deploys nothing. */
+	shipsNothing: boolean;
+	issues: string[];
+	artifacts: ReleaseChangeArtifact[];
+}
+
+export const RELEASE_CHANGE_RISKS = [
+	"data_removed",
+	"data_changed",
+	"api_removed",
+] as const;
+export type ReleaseChangeRisk = (typeof RELEASE_CHANGE_RISKS)[number];
+
+export interface ReleaseChangeRiskView {
+	risk: ReleaseChangeRisk;
+	surface: LandingSurface;
+	ref: string;
+	issues: string[];
+	sentence: string;
+}
+
+/** "What changes": per surface, what the release's landings name, and what the data flags. */
+export interface ReleaseChanges {
+	surfaces: ReleaseSurfaceChanges[];
+	risks: ReleaseChangeRiskView[];
+	/** Issues whose landing leaves something unnamed — all of it, or paths no surface claims — with why. */
+	unclassified: { key: string; why: string; paths: string[] }[];
+	/** Issues whose paths a box read from its checkout rather than Forge observing the merge. */
+	boxRead: string[];
+	/** True where every classified artifact ships nothing and nothing is unclassified. */
+	shipsNothing: boolean;
 }
 
 export interface ReleaseRequirementView {
@@ -334,6 +418,7 @@ export interface ReleaseDetail extends ReleaseSummary {
 	issues: ReleaseIssueView[];
 	requirementsCompleted: ReleaseRequirementView[];
 	issueCriteria: ReleaseIssueCriteria[];
+	changes: ReleaseChanges;
 	notes: {
 		sections: ReleaseNoteSection[];
 		withoutNotes: { key: string; title: string }[];

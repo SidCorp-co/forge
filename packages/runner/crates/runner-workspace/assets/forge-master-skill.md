@@ -111,6 +111,11 @@ reading the tracker both find it. What you decided is countable; what you asked 
 
 **The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
 
+**A mark names what landed.** On an outside-git project, the mark (`forge-runner api issues/<id>/merge`)
+carries `landing` and `artifacts` `[{surface, ref, change}]` — Autoflow workflows are `logic`, routes `api`,
+tables `data`, storefront pages and themes `ui`, a `forge-workflow:` revision `design` — so its release says what
+it changes; on git, name the `commit`, and `forge-runner api` sends the paths it changed from this checkout.
+
 **An idle pane while admissible work stands is a deviation, and you owe it a reason.**
 This does not mean dispatch everything: a row you choose not to spend a run on is a pass-over,
 which you record on the issue as above, and a row that genuinely needs a person goes to

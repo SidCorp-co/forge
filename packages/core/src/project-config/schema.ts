@@ -14,6 +14,7 @@ import {
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
+import { surfacesSchema } from './surfaces-schema.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SLUG = /^[a-z][a-z0-9-]{0,62}$/;
@@ -177,6 +178,9 @@ export const projectDocumentSchema = z.strictObject({
     })
     .optional(),
   release: releaseRuleSchema.optional(),
+  // which surface each changed path of a git landing touches (`surfaces-schema.ts`); absent, a
+  // landing's paths are shown unclassified
+  surfaces: surfacesSchema.optional(),
   // what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
   // `verdictsRequired: false` lets `awaiting_release` and the release cut pass without a passing
   // verdict per criterion, and the move's record says `verdicts-waived`

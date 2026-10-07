@@ -9,7 +9,7 @@ const die = dieAs('check-merged-at-writers');
 const OWNER = 'packages/core/src/issues/merge-record.ts';
 const ROOTS = ['packages/core/src', 'packages/web-v2/src'];
 const SKIP_DIRS = ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle'];
-const COLUMNS = ['mergedAt', 'mergedCommitSha', 'mergedLanding'];
+const COLUMNS = ['mergedAt', 'mergedCommitSha', 'mergedLanding', 'mergedArtifacts'];
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
@@ -35,7 +35,7 @@ export function faultsIn(rel, source) {
 
   // B — raw SQL updating the table.
   for (const hit of text.matchAll(
-    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha|landing)\b/gi,
+    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha|landing|artifacts)\b/gi,
   )) {
     faults.push({ rel, line: lineOf(text, hit.index), how: 'raw SQL updates issues.merged_*' });
   }

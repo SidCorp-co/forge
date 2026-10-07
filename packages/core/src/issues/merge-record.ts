@@ -1,3 +1,4 @@
+import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
@@ -16,8 +17,9 @@ type MergeEvidence =
       mergedAt: Date;
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
+      artifacts?: LandingArtifact[] | null;
     }
-  | { kind: 'landed'; landing: string; at?: Date | null }
+  | { kind: 'landed'; landing: string; at?: Date | null; artifacts?: LandingArtifact[] | null }
   | { kind: 'asserted'; at?: Date | null };
 
 export interface MergeRecord {
@@ -26,6 +28,8 @@ export interface MergeRecord {
   mergedAt: Date | null;
   commitSha: string | null;
   landing: string | null;
+  /** What the landing names it changed; null where it names nothing structured. */
+  artifacts: LandingArtifact[] | null;
 }
 
 /** The one name for what the pair of columns means, and the ONLY reading of it:
@@ -84,12 +88,13 @@ export function describeMergeMark(args: {
 async function readBack(
   executor: MergeRecordExecutor,
   issueId: string,
-): Promise<{ mergedAt: Date | null; commitSha: string | null; landing: string | null }> {
+): Promise<Omit<MergeRecord, 'wrote'>> {
   const [row] = await executor
     .select({
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
+      mergedArtifacts: issues.mergedArtifacts,
     })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -98,8 +103,18 @@ async function readBack(
     mergedAt: row?.mergedAt ?? null,
     commitSha: row?.mergedCommitSha ?? null,
     landing: row?.mergedLanding ?? null,
+    artifacts: row?.mergedArtifacts ?? null,
   };
 }
+
+const STAMP_FIELDS = ['mergedAt', 'mergedCommitSha', 'mergedLanding', 'mergedArtifacts'];
+
+const stampColumns = {
+  mergedAt: issues.mergedAt,
+  mergedCommitSha: issues.mergedCommitSha,
+  mergedLanding: issues.mergedLanding,
+  mergedArtifacts: issues.mergedArtifacts,
+};
 
 /**
  * Write the merge onto the issue, or report the stamp that was already there.
@@ -120,12 +135,7 @@ export async function recordIssueMerge(
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
   const [prior] = await executor
-    .select({
-      projectId: issues.projectId,
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-      mergedLanding: issues.mergedLanding,
-    })
+    .select({ projectId: issues.projectId, ...stampColumns })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
@@ -139,6 +149,7 @@ export async function recordIssueMerge(
   const gate =
     evidence.kind === 'observed' ? isNull(issues.mergedCommitSha) : isNull(issues.mergedAt);
   const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
+  const artifacts = evidence.kind === 'asserted' ? null : (evidence.artifacts ?? null);
 
   const [wrote] = await executor
     .update(issues)
@@ -146,14 +157,11 @@ export async function recordIssueMerge(
       mergedAt: stampExpr,
       ...(evidence.kind === 'observed' ? { mergedCommitSha: evidence.commitSha } : {}),
       ...(landing ? { mergedLanding: landing } : {}),
+      ...(artifacts ? { mergedArtifacts: artifacts } : {}),
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
-    .returning({
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-      mergedLanding: issues.mergedLanding,
-    });
+    .returning(stampColumns);
 
   if (wrote && prior && args.actor) {
     // every writer of the stamp tells its readers in the stamp's own transaction
@@ -162,14 +170,10 @@ export async function recordIssueMerge(
       issueId,
       projectId,
       actor: args.actor,
-      fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      fields: STAMP_FIELDS,
       via: args.via,
       before,
-      after: {
-        mergedAt: wrote.mergedAt,
-        mergedCommitSha: wrote.mergedCommitSha,
-        mergedLanding: wrote.mergedLanding,
-      },
+      after: { ...wrote },
     });
   }
   if (wrote) {
@@ -178,6 +182,7 @@ export async function recordIssueMerge(
       mergedAt: wrote.mergedAt,
       commitSha: wrote.mergedCommitSha,
       landing: wrote.mergedLanding,
+      artifacts: wrote.mergedArtifacts,
     };
   }
   const held = await readBack(executor, issueId);
@@ -193,16 +198,17 @@ export async function recordIssueMerge(
  */
 export async function recordDesignLanding(
   executor: Tx,
-  args: { issueId: string; landing: string | null; actor: OutboxActor },
+  args: {
+    issueId: string;
+    landing: string | null;
+    /** The design revision's artifact, written on either shape: a revision deploys nothing. */
+    artifacts: LandingArtifact[];
+    actor: OutboxActor;
+  },
 ): Promise<MergeRecord & { before: MergeMarkColumns }> {
   const { issueId, landing } = args;
   const [prior] = await executor
-    .select({
-      projectId: issues.projectId,
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-      mergedLanding: issues.mergedLanding,
-    })
+    .select({ projectId: issues.projectId, ...stampColumns })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
@@ -218,14 +224,11 @@ export async function recordDesignLanding(
     .set({
       mergedAt: sql`now()`,
       ...(landing === null ? {} : { mergedLanding: landing }),
+      mergedArtifacts: args.artifacts,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
-    .returning({
-      mergedAt: issues.mergedAt,
-      mergedCommitSha: issues.mergedCommitSha,
-      mergedLanding: issues.mergedLanding,
-    });
+    .returning(stampColumns);
   const before: MergeMarkColumns = {
     mergedAt: prior?.mergedAt ?? null,
     mergedCommitSha: prior?.mergedCommitSha ?? null,
@@ -237,9 +240,9 @@ export async function recordDesignLanding(
       issueId,
       projectId: prior.projectId,
       actor: args.actor,
-      fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      fields: STAMP_FIELDS,
       via: 'design',
-      before: { ...before },
+      before: { ...before, mergedArtifacts: prior.mergedArtifacts },
       after: { ...wrote },
     });
   }
@@ -248,8 +251,43 @@ export async function recordDesignLanding(
     mergedAt: wrote.mergedAt,
     commitSha: wrote.mergedCommitSha,
     landing: wrote.mergedLanding,
+    artifacts: wrote.mergedArtifacts,
     before,
   };
+}
+
+/**
+ * The paths a box read for the landing commit from its own checkout, written onto a stamped row that
+ * holds none: the first reading stands, as the first stamp does. Called in the mark's transaction
+ * after the stamp, so a mark refused later drops it too: docs/modules/issues/merge-mark.md.
+ */
+export async function recordReadPaths(
+  executor: Tx,
+  args: { issueId: string; paths: ReadPaths; actor: OutboxActor },
+): Promise<{ wrote: boolean; held: ReadPaths | null }> {
+  const [wrote] = await executor
+    .update(issues)
+    .set({ mergedPaths: args.paths, updatedAt: sql`now()` })
+    .where(and(eq(issues.id, args.issueId), isNotNull(issues.mergedAt), isNull(issues.mergedPaths)))
+    .returning({ projectId: issues.projectId });
+  if (wrote) {
+    await emitEvent(executor, 'issue.updated', {
+      issueId: args.issueId,
+      projectId: wrote.projectId,
+      actor: args.actor,
+      fields: ['mergedPaths'],
+      via: 'mark',
+      before: { mergedPaths: null },
+      after: { mergedPaths: args.paths },
+    });
+    return { wrote: true, held: args.paths };
+  }
+  const [row] = await executor
+    .select({ mergedPaths: issues.mergedPaths })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  return { wrote: false, held: row?.mergedPaths ?? null };
 }
 
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
@@ -265,6 +303,8 @@ export async function clearIssueMerge(
       mergedAt: null,
       mergedCommitSha: null,
       mergedLanding: null,
+      mergedArtifacts: null,
+      mergedPaths: null,
       mergedTarget: null,
       updatedAt: sql`now()`,
     })

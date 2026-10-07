@@ -6,6 +6,7 @@ import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
 import { ReleaseBanner } from "./release-bits";
+import { WhatChanges } from "./release-changes";
 import { ReleaseFacts } from "./release-facts";
 
 export function ReleasePeek({
@@ -44,6 +45,9 @@ export function ReleasePeek({
                 action={<ReleaseActions projectId={projectId} r={r} />}
               />
               <ReleaseBanner r={r} className="px-[18px]" />
+              <div className="px-[18px] pt-4">
+                <WhatChanges changes={r.changes} />
+              </div>
               <div className="px-[18px] pb-4 pt-4">
                 <ReleaseFacts r={r} forecast={forecastQ.data} />
               </div>
