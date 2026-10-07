@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.130] - 2026-10-07
+
+Questions owned by no issue reach needs-you, and the question block reads Vietnamese
+
+### Fixed
+
+- **A question tied to no issue now waits on you in Needs you and the dashboard, and the question block reads in your language.** It opens on the Agents Questions tab; the card, tabs and badges follow the interface language.
+
 ## [0.4.0-dev.129] - 2026-10-07
 
 The assistant keeps working past 90 s, reads before stating facts, answers in your language

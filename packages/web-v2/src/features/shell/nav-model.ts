@@ -76,6 +76,7 @@ const AREA_OF: Record<string, NeedsYouAreaKey> = {
   "proj-contracts": "contracts",
   "proj-automation": "automation",
   "proj-workflows": "designs",
+  "proj-agents": "questions",
 };
 
 function badgeOf(key: string, badges: ProjectBadges, language: string): Pick<NavItem, "badge" | "badgeHint"> {
