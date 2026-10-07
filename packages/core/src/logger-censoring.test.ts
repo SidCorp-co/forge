@@ -145,6 +145,33 @@ describe("the core logger's redact paths, censored before a hook reads them", ()
 });
 
 describe("the core logger's redact paths, read through getters", () => {
+  it('censors a redact path past a getter that answers a function, and puts it back', () => {
+    const { lines, log } = capture();
+    const headers = Object.assign(() => 'ordinary', { authorization: 'ordinary-secret' });
+    let reads = 0;
+    const req = () => ({
+      get headers() {
+        reads++;
+        return headers;
+      },
+      toJSON() {
+        return this.headers.authorization;
+      },
+    });
+    log.warn({ req: req() }, 'read');
+    log.child({ req: req() }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ req: req() });
+    rebound.warn('rebound');
+    expect(lines.map((line) => JSON.parse(line).req)).toEqual([
+      '[Redacted]',
+      '[Redacted]',
+      '[Redacted]',
+    ]);
+    expect(reads).toBe(3);
+    expect(headers.authorization).toBe('ordinary-secret');
+  });
+
   it('reads a getter on a censored path once, sharing that read with what it writes', () => {
     const { lines, log } = capture();
     let reads = 0;

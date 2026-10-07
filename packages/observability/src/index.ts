@@ -119,7 +119,8 @@ function readField(
 /** Scrubs every string in `obj` in place; false where a field refused the scrubbed text. */
 export function scrubStringValues(obj: unknown, depth = 0, held?: Holding): boolean {
   if (depth > 8 || !obj) return true;
-  if (typeof obj !== 'object') return true;
+  // A function JSON renders through its toJSON holds fields as an object does.
+  if (typeof obj !== 'object' && typeof obj !== 'function') return true;
   let whole = true;
   const keys = Array.isArray(obj) ? obj.map((_, i) => String(i)) : Object.keys(obj);
   for (const k of keys) {
@@ -154,7 +155,7 @@ export function scrubPatInString(s: string): string {
 
 /** Key-named secrets in `obj` censored in place: true only if each one held. */
 export function scrubBodyKeys(obj: unknown, depth = 0, held?: Holding): boolean {
-  if (depth > 8 || !obj || typeof obj !== 'object') return true;
+  if (depth > 8 || !obj || (typeof obj !== 'object' && typeof obj !== 'function')) return true;
   let whole = true;
   const array = Array.isArray(obj);
   const keys = array ? obj.map((_, i) => String(i)) : Object.keys(obj);

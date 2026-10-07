@@ -237,6 +237,17 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect([sets, stored]).toEqual([0, 'ordinary-password']);
   });
 
+  it('scrubs a key-named secret a function in the body holds before its toJSON reads it', () => {
+    const fn = Object.assign(() => 'ordinary', {
+      password: 'ordinary-password',
+      toJSON() {
+        return { said: (this as { password: string }).password };
+      },
+    });
+    const sent = JSON.stringify(scrubSentryEvent({ request: { data: { fn } } }));
+    expect(sent).toBe('{"request":{"data":{"fn":{"said":"[Filtered]"}}}}');
+  });
+
   it('drops an event the scrub cannot read through, throwing nothing itself', () => {
     const broken = Object.defineProperty({ note: 'kept' }, 'reason', {
       get: () => {

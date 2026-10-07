@@ -97,7 +97,8 @@ function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T):
         const read = readOnce(at, key, censored.reads);
         // A throw stands as read: what it threw is a hint the rendering still collects.
         if (read.threw) continue;
-        if (typeof read.value !== 'object' || read.value === null) {
+        const answer = read.value;
+        if (answer === null || (typeof answer !== 'object' && typeof answer !== 'function')) {
           // Nothing lies past it: the rendering reads it once more, after every censor landed.
           censored.reads.get(at)?.delete(key);
           continue;
