@@ -122,8 +122,16 @@ interface IssuePorts {
       needed?: string | undefined;
       /** The design revision whose decision answers the question (ISS-254). */
       awaitsDesign?: { workflowId: string; revision: number } | undefined;
+      /** Core linked `awaitsDesign` as the one revision proposed under this issue. */
+      linkedUnderIssue?: boolean | undefined;
     },
   ) => Promise<unknown>;
+  /** The one design revision proposed under the issue still awaiting its approver; refused when several are. */
+  pendingDesignOfPark: (
+    executor: Tx,
+    projectId: string,
+    issueId: string,
+  ) => Promise<{ workflowId: string; revision: number; flow: string } | null>;
   openHumanQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
   /** The question answered most recently on this issue after `after`, with what its answer did (ISS-258). */
   answeredSince: (
@@ -284,6 +292,7 @@ export const settleOpenQuestions = port('settleOpenQuestions');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');
+export const pendingDesignOfPark = port('pendingDesignOfPark');
 export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');

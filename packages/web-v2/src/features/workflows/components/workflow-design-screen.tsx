@@ -7,7 +7,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowsHref } from "@/lib/routes/workflows";
-import { ApproveAction, DecisionError, DecisionNoteControl, decidableRevision } from "./design-decision";
+import { ApprovalReading, ApproveAction, DecisionError, DecisionNoteControl, decidableRevision } from "./design-decision";
 import { shownDesign, useDesignTab, WorkflowDesignPage } from "./workflow-design-page";
 import { DesignPill } from "./workflow-parts";
 
@@ -37,16 +37,19 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   } else if (!record || !d || !shown) body = centred(<ErrorState title={t("workflows.notFound")} message={t("workflows.notFoundMessage", { flow })} />);
   else {
     const template = templateFor(shown, (templates.data?.templates ?? []).map((x) => x.template));
+    const blocked = d.approvalBlocked !== null;
     const noteControl = revision !== null ? (
       <>
-        <DecisionNoteControl revision={revision} decide={decide} />
+        <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
+        <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />
         <DecisionError decide={decide} />
       </>
     ) : null;
     const walkDecision = revision !== null ? (
       <span className="grid gap-2">
-        <ApproveAction revision={revision} decide={decide} />
-        <DecisionNoteControl revision={revision} decide={decide} />
+        <ApproveAction revision={revision} decide={decide} block={d.approvalBlocked} />
+        <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
+        <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />
       </span>
     ) : null;
     body = (
@@ -73,7 +76,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         keyTitle={record?.document.id}
         title={shown?.title ?? flow}
         badge={d?.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : null}
-        action={<ApproveAction revision={revision} decide={decide} />}
+        action={<ApproveAction revision={revision} decide={decide} block={d?.approvalBlocked} />}
       />
       {body}
     </div>
