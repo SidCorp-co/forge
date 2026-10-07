@@ -75,6 +75,8 @@ interface LandingFacts {
 const PROSE =
   'its landing is text that names no artifact: it was marked before a landing named what it changed';
 const UNMARKED = 'it carries no merged mark, so nothing names what it changed';
+const COMMIT_UNREAD =
+  'its mark records no commit Forge observed and no paths a box read, so what its git landing changed beyond the artifacts named is not read';
 const NO_LANDING = 'its mark names no landing, so nothing names what it changed';
 
 /** Uncached commit reads one release read makes at most; a cached answer costs none. */
@@ -177,7 +179,9 @@ async function gitReading(
   if (f.commitSha) commit = await hostReading(f.commitSha, map, reader, spend);
   else if (f.readPaths) commit = classifiedReading(f.readPaths.changes, map, 'box');
   if (!commit) {
-    if (own) return named(own, 'mark');
+    // a design approval stamps a git row first (`recordDesignLanding`), so its revision may be all
+    // the row names of a landing that also changed code: never read that as everything it changed
+    if (own) return named(own, 'mark', [], COMMIT_UNREAD);
     return unclassified(
       'its mark records no commit Forge observed and no paths a box read, so what it changed cannot be named',
       null,
@@ -201,7 +205,8 @@ export async function readLandingReadings(
   const pending: LandingFacts[] = [];
   for (const f of facts) {
     const own = ownArtifacts(f);
-    if (own && !f.commitSha && !f.readPaths) out.set(f.id, named(own, 'mark'));
+    // a landing that names where it went is read as named on any shape; a git one waits for the map
+    if (own && f.landing && !f.commitSha && !f.readPaths) out.set(f.id, named(own, 'mark'));
     else pending.push(f);
   }
   if (pending.length === 0) return out;

@@ -7,7 +7,7 @@
 import { RELEASE_ROSTER_LIMIT, type ReleaseGateView } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import type { ReleaseFacts } from './release-facts.js';
-import { type Part, type Shared, summaryOf } from './release-read-views.js';
+import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 1);
@@ -60,6 +60,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     openedAt: null,
     releasedAt: null,
     attempts: [],
+    commit: null,
     approvals: [],
     gates,
   };
@@ -103,5 +104,23 @@ describe('splitting an oversize draft', () => {
     const s = summaryOf(part(3, []), shared(3));
     expect(s.can).toMatchObject({ cut: true, split: false });
     expect(s.split).toBeNull();
+  });
+});
+
+describe('the commit a shipped release names (FB-105)', () => {
+  // dev.113 and dev.114 read "Head: none yet" though each finished at a commit its probes verified:
+  // no approval was asked and the deploy attempt recorded none, and only those two were read
+  it('reads the commit the release finished at where no approval or attempt names one', () => {
+    const shipped = {
+      ...part(1, [], 'shipped'),
+      runId: 'r1',
+      commit: '17126a694866e8c48a277579fce9bce59ce213ca',
+    };
+    const d = detailOf(shipped, shared(1), null, new Map(), []);
+    expect(d.head).toBe('17126a694866e8c48a277579fce9bce59ce213ca');
+  });
+
+  it('reads none on a draft, which has not been deployed', () => {
+    expect(detailOf(part(1, []), shared(1), null, new Map(), []).head).toBeNull();
   });
 });

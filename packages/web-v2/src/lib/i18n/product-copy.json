@@ -3608,7 +3608,7 @@
     "releases.run": "Lượt chạy",
     "releases.cutBy": "Người cắt",
     "releases.factCut": "Đã cắt",
-    "releases.head": "Commit đầu",
+    "releases.head": "Commit đã triển khai",
     "releases.noneYet": "Chưa có",
     "releases.notCutYet": "Chưa cắt: chưa có lượt chạy nào giữ các issue này.",
     "releases.production": "Production",

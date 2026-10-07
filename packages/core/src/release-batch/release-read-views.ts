@@ -46,6 +46,8 @@ export interface Part {
   attempts: ReleaseAttemptRow[];
   approvals: ApprovalView[];
   gates: ReleaseGateView[];
+  /** The commit a finished release's probes verified live (`metadata.finish.commit`); null before. */
+  commit: string | null;
 }
 
 export interface Shared {
@@ -328,6 +330,9 @@ export function detailOf(
     attempts: p.attempts.map(attemptView),
     production,
     head:
-      latest?.evidence.commit ?? [...p.attempts].reverse().find((a) => a.commit)?.commit ?? null,
+      p.commit ??
+      latest?.evidence.commit ??
+      [...p.attempts].reverse().find((a) => a.commit)?.commit ??
+      null,
   };
 }
