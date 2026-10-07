@@ -92,8 +92,12 @@ async function resolveRoster(
     );
     if (!named) return undefined;
     // In the order the caller named them: a SELECT keeps no order, and every refusal lists these.
-    const held = new Set(named.map((r) => r.id));
-    const ids = [...new Set(issueIds)].filter((id) => held.has(id));
+    // Postgres matches a uuid in either case and answers in lower case, so each id is read back
+    // as the row's own spelling, once, or a roster in upper case is checked by no blocker.
+    const held = new Map(named.map((r) => [r.id.toLowerCase(), r.id]));
+    const ids = [...new Set(issueIds.map((id) => held.get(id.toLowerCase())))].filter(
+      (id): id is string => id !== undefined,
+    );
     return { ids, unclaimed: ids };
   }
   const rows = await evaluate(
