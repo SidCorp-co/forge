@@ -343,6 +343,13 @@ export interface ReleaseNoteEntry {
 	technical: string | null;
 }
 
+export interface ReleaseNoteAttentionView {
+	key: string;
+	title: string;
+	notInLanguage: boolean;
+	references: string[];
+}
+
 export interface ReleaseNoteSection {
 	section: string;
 	entries: ReleaseNoteEntry[];
@@ -424,6 +431,10 @@ export interface ReleaseDetail extends ReleaseSummary {
 	notes: {
 		sections: ReleaseNoteSection[];
 		withoutNotes: { key: string; title: string }[];
+		/** The language the project's notes are written in (BCP-47). */
+		language: string;
+		/** Notes whose user-facing line is not in `language` or carries an engineer's reference. A reader aid, not a gate. */
+		attention: ReleaseNoteAttentionView[];
 	};
 	gates: ReleaseGateView[];
 	approval: ReleaseApprovalView | null;

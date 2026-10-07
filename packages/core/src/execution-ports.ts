@@ -81,6 +81,7 @@ import {
   createReleaseBatch,
   loadReleaseRoster,
   owedReleaseNotes,
+  warnedReleaseNotes,
 } from './release-batch/index.js';
 import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
@@ -206,6 +207,7 @@ export function provideExecutionPorts(): void {
     triagesOwed: (projectId) => owedTriages(projectId),
     designsOwed: owedDesignRevisions,
     releaseNotesOwed: owedReleaseNotes,
+    releaseNotesWarned: warnedReleaseNotes,
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
   });
 

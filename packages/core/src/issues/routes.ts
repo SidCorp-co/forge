@@ -1,4 +1,7 @@
-import { contentLanguageScriptWarning } from '@forge/contracts/content-language';
+import {
+  contentLanguageScriptWarning,
+  releaseNoteReferenceWarning,
+} from '@forge/contracts/content-language';
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import { Hono } from 'hono';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -169,6 +172,8 @@ issueRoutes.patch(
         'releaseNotes.userFacing',
       );
       if (mismatch) warnings.push(mismatch);
+      const references = releaseNoteReferenceWarning(note.userFacing, 'releaseNotes.userFacing');
+      if (references) warnings.push(references);
     }
     return c.json(warnings.length > 0 ? { ...patched, warnings } : patched);
   },

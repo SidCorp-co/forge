@@ -22,6 +22,8 @@ interface Owed {
   documents: { id: string; number: string | null }[];
   builderRuns: { id: string; ecosystem: string }[];
   releaseNotes: { issueId: string; key: string }[];
+  /** Notes written but not in the content language, or carrying an engineer's reference. */
+  warnedNotes: { issueId: string; key: string; problems: string[] }[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -45,8 +47,16 @@ function returnedLine(owed: Owed): string {
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
   let line = returnedLine(owed);
-  const { breakdowns, triages, comments, documents, builderRuns, releaseNotes, contentLanguage } =
-    owed;
+  const {
+    breakdowns,
+    triages,
+    comments,
+    documents,
+    builderRuns,
+    releaseNotes,
+    warnedNotes,
+    contentLanguage,
+  } = owed;
   if (breakdowns.length > 0) {
     const keys = breakdowns.map((b) => (b.overdue ? `${b.key} overdue` : b.key));
     line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.`;
@@ -70,6 +80,10 @@ export function owedLine(owed: Owed): string {
   if (releaseNotes.length > 0) {
     const keys = releaseNotes.map((r) => `${r.key} ${r.issueId}`);
     line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","userFacing":"<the one plain line a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the line is written in it whatever language the issue or its commits are in, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
+  }
+  if (warnedNotes.length > 0) {
+    const keys = warnedNotes.map((n) => `${n.key} ${n.issueId} (${n.problems.join('; ')})`);
+    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each as the one plain line a user would read, in ${contentLanguageName(contentLanguage)}, with no commit sha, issue key or rule code in it (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","userFacing":"<the line>"}}'\`), keeping the engineering detail in \`technical\`; this is a reader aid, the release is not refused for it.`;
   }
   return line;
 }
@@ -98,6 +112,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
     ...owed.releaseNotes.map((r) => `release-note:${r.issueId}`),
+    ...owed.warnedNotes.map((n) => `warned-note:${n.issueId}|${n.problems.join(';')}`),
   ];
   return [...issues, ...ids].sort();
 }
@@ -152,6 +167,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.releaseNotesOwed(projectId),
     ports.contentLanguageOf(projectId),
   ]);
+  const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
   return masterWork(admissible.items, {
     designs,
     revisions,
@@ -161,6 +177,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     documents: channel.documents,
     builderRuns: channel.builderRuns,
     releaseNotes,
+    warnedNotes,
     contentLanguage,
   });
 }

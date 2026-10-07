@@ -62,4 +62,18 @@ describe('release note language warning', () => {
     const en = await seed('en');
     expect((await write(en.id, en.token, english)).body.warnings).toBeUndefined();
   });
+
+  it("warns on each engineer's reference in a note, for any language, and still stores it", async () => {
+    const { id, token } = await seed('en');
+    const note =
+      'Fixed in 9db12a21a (ISS-12), enforcing SOD-RULE-MAKER-CHECKER. Technical note: index added.';
+    const res = await write(id, token, note);
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toEqual([
+      expect.stringContaining(
+        'carries commit sha 9db12a21a, issue key ISS-12, code SOD-RULE-MAKER-CHECKER, label "Technical note"',
+      ),
+    ]);
+    expect((res.body.releaseNotes as { userFacing: string }).userFacing).toBe(note);
+  });
 });

@@ -10,6 +10,7 @@
 // claimed rows, it writes nothing, and `service.ts` went back over budget as
 // the ledger, the method gate and the promotion-aware abort landed.
 
+import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
@@ -357,6 +358,43 @@ export async function owedReleaseNotes(
     activeIssuePrefix(projectId),
   ]);
   return rows.map((r) => ({ issueId: r.id, key: formatIssueRef(prefix, r.seq) }));
+}
+
+/**
+ * The issues waiting at the gate whose release note is written but would read wrong to a user:
+ * not in the project's content language, or carrying an engineer's reference. The same test the
+ * draft page and the write-time warning apply (`releaseNoteAttention`); a master fixes each note.
+ */
+export async function warnedReleaseNotes(
+  projectId: string,
+  language: string,
+): Promise<{ issueId: string; key: string; problems: string[] }[]> {
+  const [rows, prefix] = await Promise.all([
+    db
+      .select({ id: issues.id, seq: issues.issSeq, notes: issues.releaseNotes })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.projectId, projectId),
+          eq(issues.status, RELEASE_GATE_STATUS),
+          isNull(issues.releaseBatchRunId),
+          sql`${issues.releaseNotes} IS NOT NULL AND ${issues.releaseNotes} <> 'null'::jsonb`,
+        ),
+      )
+      .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id)),
+    activeIssuePrefix(projectId),
+  ]);
+  return rows.flatMap((r) => {
+    if (!r.notes || r.notes.section === 'Skip') return [];
+    const found = releaseNoteAttention(language, r.notes.userFacing);
+    const problems = [
+      ...(found.notInLanguage ? [`not in ${contentLanguageName(language)}`] : []),
+      ...found.references,
+    ];
+    return problems.length > 0
+      ? [{ issueId: r.id, key: formatIssueRef(prefix, r.seq), problems }]
+      : [];
+  });
 }
 
 export async function waitingIssueIds(projectId: string): Promise<string[]> {

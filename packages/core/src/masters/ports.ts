@@ -19,6 +19,11 @@ interface MastersPorts {
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
   /** Issues waiting at the release gate with no release note, which the draft release refuses. */
   releaseNotesOwed(projectId: string): Promise<{ issueId: string; key: string }[]>;
+  /** Issues at the release gate whose note's user-facing line is not in the content language or carries an engineer's reference; each says what to fix. */
+  releaseNotesWarned(
+    projectId: string,
+    language: string,
+  ): Promise<{ issueId: string; key: string; problems: string[] }[]>;
   /** The language the project writes the prose it stores in Forge in (a BCP-47 tag), `en` where its document declares none. */
   contentLanguageOf(projectId: string): Promise<string>;
 }

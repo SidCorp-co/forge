@@ -1,5 +1,6 @@
 // A release's views, projected from what the loaders in release-read.ts read: pure, no I/O.
 
+import { releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNotesSections } from '@forge/contracts/release-notes';
 import type {
   IssueLandingReading,
@@ -50,6 +51,8 @@ export interface Shared {
   viewer: ViewerFacts | null;
   approvers: ReleasePerson[];
   facts: ReleaseFacts;
+  /** The project's content language tag, which its release notes are written in. */
+  contentLanguage: string;
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -203,9 +206,19 @@ function noteSections(p: Part, s: Shared) {
         technical: i.releaseNotes?.technical ?? null,
       })),
   })).filter((x) => x.entries.length > 0);
+  // a reader aid on the draft, not a gate: the release gate's own reasons are unchanged
+  const attention = facts.flatMap((i) => {
+    if (!i.releaseNotes || i.releaseNotes.section === 'Skip') return [];
+    const found = releaseNoteAttention(s.contentLanguage, i.releaseNotes.userFacing);
+    return found.notInLanguage || found.references.length > 0
+      ? [{ key: i.key, title: i.title, ...found }]
+      : [];
+  });
   return {
     sections,
     withoutNotes: facts.filter((i) => !i.releaseNotes).map((i) => ({ key: i.key, title: i.title })),
+    language: s.contentLanguage,
+    attention,
   };
 }
 

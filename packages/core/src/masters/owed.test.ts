@@ -13,6 +13,7 @@ const none = {
   documents: [],
   builderRuns: [],
   releaseNotes: [],
+  warnedNotes: [],
   contentLanguage: 'en',
 };
 
@@ -99,6 +100,19 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(two).toContain(
       '2 issues wait at the release gate with no release note (ISS-6 u6, ISS-11 u11)',
     );
+  });
+
+  it('lists the notes that warn with what is wrong, counts them as owed, and moves the digest', () => {
+    const warned = [
+      { issueId: 'u6', key: 'ISS-6', problems: ['not in Vietnamese', 'issue key ISS-6'] },
+    ];
+    const line = owedLine({ ...none, warnedNotes: warned });
+    expect(line).toContain(
+      '1 release note at the release gate reads wrong to a user (ISS-6 u6 (not in Vietnamese; issue key ISS-6))',
+    );
+    expect(line).toContain('the release is not refused for it');
+    expect(masterWork([], { ...none, warnedNotes: warned }).owed).toBe(1);
+    expect(workDigest([], { ...none, warnedNotes: warned })).not.toBe(workDigest([], none));
   });
 
   it('says nothing when nothing is owed', () => {
