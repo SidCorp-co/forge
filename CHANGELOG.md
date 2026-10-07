@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.118] - 2026-10-07
+
+Development space screens and New issue form read in Vietnamese
+
+### Fixed
+
+- **Issues, the overviews, Runners, Integrations and the Settings tabs read in the interface language you chose.** The New issue form, issue pages, devices, connections, organizations, agents, API tokens and MCP show Vietnamese, including core's sentences on waiting and integration health.
+
 ## [0.4.0-dev.117] - 2026-10-07
 
 A committed move answers success, holds follow the live design, answers leave a record

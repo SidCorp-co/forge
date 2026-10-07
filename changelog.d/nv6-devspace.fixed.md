@@ -1,1 +1,0 @@
-**Issues, the overviews, Runners, Integrations and the Settings tabs read in the interface language you chose.** The New issue form, issue pages, devices, connections, organizations, agents, API tokens and MCP show Vietnamese, including core's sentences on waiting and integration health.
