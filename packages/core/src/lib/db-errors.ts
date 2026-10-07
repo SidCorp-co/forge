@@ -54,6 +54,39 @@ export function pgDriverError(err: unknown): { code: string; message: string } |
   return found;
 }
 
+/** A schema object the driver's error names. */
+export interface PgObjectName {
+  kind: 'constraint' | 'table' | 'column' | 'schema' | 'type';
+  name: string;
+}
+
+/** Each field naming a schema object, as postgres-js and node-postgres spell it. */
+const OBJECT_NAME_FIELDS: ReadonlyArray<readonly [string, PgObjectName['kind']]> = [
+  ['constraint_name', 'constraint'],
+  ['constraint', 'constraint'],
+  ['table_name', 'table'],
+  ['table', 'table'],
+  ['column_name', 'column'],
+  ['column', 'column'],
+  ['schema_name', 'schema'],
+  ['schema', 'schema'],
+  ['data_type_name', 'type'],
+  ['dataType', 'type'],
+];
+
+/** Longest name first; a name is the schema's own text, never a value of the statement. */
+export function pgObjectNames(err: unknown): PgObjectName[] {
+  const found = new Map<string, PgObjectName>();
+  for (const link of causeChain(err)) {
+    if (typeof link.code !== 'string' || !SQLSTATE.test(link.code)) continue;
+    for (const [field, kind] of OBJECT_NAME_FIELDS) {
+      const name = link[field];
+      if (typeof name === 'string' && name !== '') found.set(`${kind}:${name}`, { kind, name });
+    }
+  }
+  return [...found.values()].sort((a, b) => b.name.length - a.name.length);
+}
+
 /** Every value bound to a failed statement on the chain, as text, empty ones left out. */
 export function pgBoundValues(err: unknown): string[] {
   const values: string[] = [];

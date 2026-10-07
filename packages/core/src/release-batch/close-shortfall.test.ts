@@ -75,7 +75,10 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found?.code).toBe('OPEN_QUESTIONS');
     expect(found?.reason).toBe('holds 2 open questions');
-    expect(found?.clears).toMatch(/^Answer them, or void them/);
+    // The issue page offers answering and nothing that voids a question (ISS-1381 r3).
+    expect(found?.clears).toBe(
+      'Answer them in their "Decision waiting" cards on the issue\'s page.',
+    );
     expect(found?.detail).toContain('this issue holds 2 open questions (q-1, q-2)');
     expect(found?.details).toEqual({ to: 'closed', openQuestionIds: ['q-1', 'q-2'] });
   });

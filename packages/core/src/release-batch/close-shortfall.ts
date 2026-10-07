@@ -59,7 +59,11 @@ async function shortfallsOf(
     found.push({
       code: 'OPEN_QUESTIONS',
       reason: `holds ${n} open question${n === 1 ? '' : 's'}`,
-      clears: `Answer ${n === 1 ? 'it' : 'them'}, or void ${n === 1 ? 'it' : 'them'} with the reason ${n === 1 ? 'it' : 'they'} died with the work.`,
+      // The issue's page offers an answer and nothing that voids a question (ISS-1381 r3).
+      clears:
+        n === 1
+          ? 'Answer it in its "Decision waiting" card on the issue\'s page.'
+          : 'Answer them in their "Decision waiting" cards on the issue\'s page.',
       detail: fault.detail,
       details: fault.details,
     });

@@ -38,6 +38,8 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
       qc.invalidateQueries({ queryKey: ["attention"] });
+      // An open question is a close refusal the release banner reads off the roster (ISS-1381).
+      qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: "Decision recorded",
         description: "Your answer is on the question. Whoever asked reads it there.",
