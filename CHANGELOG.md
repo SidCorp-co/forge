@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.86] - 2026-10-07
+
+Integrations screens tell the truth, and held-runner cards say why
+
+### Fixed
+
+- **A limited runner says why and since when on the dashboard.** The Runners card reads usage limit, refused when and next try when, names a printed reset as the account's claim, and a limit's error copy clears with it.
+- **The Integrations screens tell the truth.** A repository no source host reaches reads not connected with a Connect GitHub act, health rows leave the list, bindings are named apart, and connections carry their status.
+
 ## [0.4.0-dev.85] - 2026-10-07
 
 Runner keeps live checkouts, closes reboot-orphaned runs, binds resumed subagents, holds crashing updates

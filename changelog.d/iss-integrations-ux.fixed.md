@@ -1,1 +1,0 @@
-**The Integrations screens tell the truth.** A repository no source host reaches reads not connected with a Connect GitHub act, health rows leave the list, bindings are named apart, and connections carry their status.
