@@ -54,7 +54,8 @@ export interface TargetFields {
 }
 
 // an item is about exactly one target (FEEDBACK_TARGET_NOT_ONE): a requirement, an issue,
-// a release, a workflow, a route or tool the project serves, or a screen named in words
+// a release, a workflow, a route or tool the project serves, or a screen named in words; a screen
+// item stores its screen as where it was seen, so a whereSeen beside it is FEEDBACK_SCREEN_TWICE
 export function targetCountRefusal(
   fields: TargetFields,
   whereSeen: string | undefined,
@@ -73,7 +74,7 @@ export function targetCountRefusal(
   }
   if (named[0] === 'screen' && whereSeen?.trim()) {
     return refusal(
-      'FEEDBACK_TARGET_NOT_ONE',
+      'FEEDBACK_SCREEN_TWICE',
       '/whereSeen',
       'an item about a screen names it in `screen`, which is where it was seen; send one of them, not both.',
     );
