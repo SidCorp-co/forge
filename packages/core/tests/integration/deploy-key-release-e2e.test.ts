@@ -205,7 +205,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain(
-      "attach a deploy key under the project's Settings → Runners → Git access",
+      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(reason).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);
@@ -246,7 +246,7 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
 
     const warned = readiness?.warnings.find((w) => w.code === 'RELEASE_CARRIED_UNREAD');
     expect(warned?.message).toContain(
-      "attach a deploy key under the project's Settings → Runners → Git access",
+      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(warned?.message).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);

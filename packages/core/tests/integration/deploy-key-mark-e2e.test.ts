@@ -164,7 +164,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
     );
     expect(refused.message).toContain(
-      "attach a deploy key under the project's Settings → Runners → Git access",
+      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(refused.message).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

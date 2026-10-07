@@ -80,7 +80,7 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key under the project's Settings → Runners → Git access",
+      `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key that can read ${GITLAB} under the project's Settings → Runners → Git access`,
     );
     expect(reason).not.toMatch(/GitHub repository|Integrations/);
     expect(s).toMatchObject({ unbound: true, route: 'deploy_key' });

@@ -69,7 +69,7 @@ function noCredential(repoUrl: string | null): string {
   }
   const host = hostOf(repoUrl);
   const github = host === 'github.com' ? ', or bind the repository on its Integrations page' : '';
-  return `Forge holds no GitHub binding and no deploy key for this project's repository on ${host}, so it cannot read the branches — attach a deploy key under ${GIT_ACCESS}${github}`;
+  return `Forge holds no GitHub binding and no deploy key for this project's repository on ${host}, so it cannot read the branches — attach a deploy key that can read ${repoUrl.trim()} under ${GIT_ACCESS}${github}`;
 }
 
 /**
