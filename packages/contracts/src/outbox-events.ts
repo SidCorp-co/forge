@@ -288,7 +288,8 @@ export interface OutboxEventPayloads {
 	"user.preferencesChanged": {
 		userId: string;
 		theme: string;
-		language: string;
+		/** The interface language the person chose; null follows each project's content language. */
+		language: string | null;
 	};
 	/** An explicit push: the one thing that tells a device to pull its skills. */
 	"skill.syncRequested": {

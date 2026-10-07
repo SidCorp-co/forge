@@ -31,7 +31,7 @@ export const ME_PREFERENCES = {
 /** What a person who never saved a preference reads on `/me/preferences`. */
 export const ME_PREFERENCE_DEFAULTS = {
   theme: 'system' as const,
-  language: 'en' as const,
+  language: null as 'en' | 'vi' | null,
   notifyOnMention: true,
   activeOrgId: null as string | null,
 };
@@ -47,7 +47,7 @@ export async function readPreferences(userId: string) {
     row ?? {
       userId,
       theme: 'system' as const,
-      language: 'en' as const,
+      language: null as 'en' | 'vi' | null,
       answerStyle: ASSISTANT_PREFERENCE_DEFAULTS.answerStyle,
       assistantInstructions: ASSISTANT_PREFERENCE_DEFAULTS.assistantInstructions,
       updatedAt: null,

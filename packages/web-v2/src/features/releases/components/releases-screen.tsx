@@ -59,7 +59,7 @@ const rowOf =
 export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useReleases(projectId);
   const comingQ = useComingNext(projectId);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
   const router = useRouter();
   const [params, setParams] = useUrlParams();
   const text = params.get("q") ?? "";

@@ -4,7 +4,7 @@ import type { TourStateValue } from "@forge/contracts/product-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useCurrentProject } from "@/features/projects/current-project";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { toursApi } from "./api";
 import { tourHref } from "./links";
 import { useTourRelease } from "./release-context";
@@ -29,7 +29,7 @@ export function useSaveTourState() {
 
 /** The chrome tours speak. */
 export function useTourCopy() {
-  return productCopy();
+  return useCopy();
 }
 
 /** Where a tour opens: a page of the open project, a release of it for the release tour; null where none is open. */

@@ -18,16 +18,16 @@ import { useAuth } from "@/providers/auth-provider";
 import { usePreferences, useUpdatePreferences } from "@/features/preferences/hooks";
 import { AssistantPreferencesCard } from "./assistant-preferences-card";
 import type { LanguagePref, ThemePref } from "@/features/preferences/types";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 const THEME_OPTIONS: SelectOption[] = [
   { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
 ];
-const LANGUAGE_OPTIONS: SelectOption[] = [
-  { value: "en", label: "English" },
-  { value: "vi", label: "Tiếng Việt" },
-];
+// A language is named in its own words wherever the screen is read (`language.*` of the locale file).
+const PROJECT_DEFAULT = "project";
+type LanguageChoice = LanguagePref | typeof PROJECT_DEFAULT;
 
 export function AccountTab() {
   const { user } = useAuth();
@@ -58,17 +58,23 @@ function PreferencesCard() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
   const [theme, setTheme] = useState<ThemePref>("system");
-  const [language, setLanguage] = useState<LanguagePref>("en");
+  const [language, setLanguage] = useState<LanguageChoice>(PROJECT_DEFAULT);
+  const t = useCopy();
+  const languageOptions: SelectOption[] = [
+    { value: PROJECT_DEFAULT, label: t("language.project") },
+    { value: "en", label: t("language.en") },
+    { value: "vi", label: t("language.vi") },
+  ];
 
   // Hydrate the local form once the server preferences load.
   useEffect(() => {
     if (prefsQ.data) {
       setTheme(prefsQ.data.theme);
-      setLanguage(prefsQ.data.language);
+      setLanguage(prefsQ.data.language ?? PROJECT_DEFAULT);
     }
   }, [prefsQ.data]);
 
-  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== prefsQ.data.language);
+  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? PROJECT_DEFAULT));
 
   return (
     <PageSection>
@@ -88,11 +94,11 @@ function PreferencesCard() {
                 onChange={(v) => setTheme(v as ThemePref)}
               />
             </Field>
-            <Field label="Language">
+            <Field label={t("language.label")} hint={t("language.hint")}>
               <Select
-                options={LANGUAGE_OPTIONS}
+                options={languageOptions}
                 value={language}
-                onChange={(v) => setLanguage(v as LanguagePref)}
+                onChange={(v) => setLanguage(v as LanguageChoice)}
               />
             </Field>
             <div>
@@ -100,7 +106,7 @@ function PreferencesCard() {
                 variant="primary"
                 loading={update.isPending}
                 disabled={!dirty}
-                onClick={() => update.mutate({ theme, language })}
+                onClick={() => update.mutate({ theme, language: language === PROJECT_DEFAULT ? null : language })}
                 className="min-h-11"
               >
                 Save preferences

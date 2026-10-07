@@ -1,0 +1,79 @@
+import { ARTIFACT_CHANGE_LABELS, LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
+import { DESIGN_REVISION_STATE_LABELS, DESIGN_STATUS_LABELS } from "@forge/contracts/design-status";
+import {
+  FEEDBACK_ATTENTION_LABELS,
+  FEEDBACK_DECISION_LABELS,
+  FEEDBACK_KIND_LABELS,
+  FEEDBACK_PHASE_LABELS,
+  FEEDBACK_ROUTE_LABELS,
+  FEEDBACK_SEVERITY_LABELS,
+  FEEDBACK_TARGET_LABELS,
+} from "@forge/contracts/feedback";
+import {
+  CRITERION_STANDING_LABELS,
+  ISSUE_PRIORITY_LABELS,
+  ISSUE_STATUS_LABELS,
+  WORK_STEP_LABELS,
+} from "@forge/contracts/issue-vocabulary";
+import { NEEDS_YOU_AREA_LABELS } from "@forge/contracts/needs-you";
+import { RELEASE_ATTENTION_LABELS, RELEASE_PROOF_LABELS, RELEASE_STATE_LABELS } from "@forge/contracts/releases";
+import {
+  BC_VERDICT_LABELS,
+  REQUIREMENT_ATTENTION_LABELS,
+  REQUIREMENT_STATE_LABELS,
+  REVISION_STATE_LABELS,
+} from "@forge/contracts/requirements";
+import { HEALTH_MARKER_LABELS } from "@forge/contracts/workflow-health";
+import { copyOr } from "./product-copy";
+
+// The words the contracts give an enum value (a requirement's state, a feedback's phase, an area of
+// Needs you). The contract's label is English and stays the source: it is what a language without a
+// translation reads, and what the locale file's English holds, key for key (`labels.test.ts` walks
+// every value of every group, so a value added to a contract with no translation is red).
+
+const labelsOf = <V extends { label: string }>(m: Record<string, V>): Record<string, string> =>
+  Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.label]));
+const hintsOf = <V extends { hint: string | null }>(m: Record<string, V>): Record<string, string> =>
+  Object.fromEntries(Object.entries(m).flatMap(([k, v]) => (v.hint ? [[k, v.hint]] : [])));
+
+export const LABEL_GROUPS = {
+  requirementState: REQUIREMENT_STATE_LABELS,
+  bcVerdict: BC_VERDICT_LABELS,
+  revisionState: REVISION_STATE_LABELS,
+  requirementAttention: labelsOf(REQUIREMENT_ATTENTION_LABELS),
+  requirementAttentionHint: hintsOf(REQUIREMENT_ATTENTION_LABELS),
+  releaseState: RELEASE_STATE_LABELS,
+  releaseProof: RELEASE_PROOF_LABELS,
+  releaseAttention: labelsOf(RELEASE_ATTENTION_LABELS),
+  releaseAttentionHint: hintsOf(RELEASE_ATTENTION_LABELS),
+  feedbackPhase: FEEDBACK_PHASE_LABELS,
+  feedbackKind: FEEDBACK_KIND_LABELS,
+  feedbackSeverity: FEEDBACK_SEVERITY_LABELS,
+  feedbackRoute: FEEDBACK_ROUTE_LABELS,
+  feedbackDecision: FEEDBACK_DECISION_LABELS,
+  feedbackTarget: FEEDBACK_TARGET_LABELS,
+  feedbackAttention: labelsOf(FEEDBACK_ATTENTION_LABELS),
+  feedbackAttentionHint: hintsOf(FEEDBACK_ATTENTION_LABELS),
+  needsYouArea: NEEDS_YOU_AREA_LABELS,
+  healthMarker: HEALTH_MARKER_LABELS,
+  designStatus: DESIGN_STATUS_LABELS,
+  designRevisionState: DESIGN_REVISION_STATE_LABELS,
+  landingSurface: LANDING_SURFACE_LABELS,
+  artifactChange: ARTIFACT_CHANGE_LABELS,
+  criterionStanding: CRITERION_STANDING_LABELS,
+  issuePriority: ISSUE_PRIORITY_LABELS,
+  issueStatus: ISSUE_STATUS_LABELS,
+  workStep: WORK_STEP_LABELS,
+} as const satisfies Record<string, Record<string, string>>;
+
+export type LabelGroup = keyof typeof LABEL_GROUPS;
+
+export const labelKey = (group: LabelGroup, value: string) => `label.${group}.${value}`;
+
+/** The label of `value` in `group`, in `language`; a value no group names reads as itself. */
+export function labelCopy(language?: string | null) {
+  return (group: LabelGroup, value: string): string => {
+    const source = (LABEL_GROUPS[group] as Record<string, string>)[value] ?? value;
+    return copyOr(language, labelKey(group, value), source);
+  };
+}

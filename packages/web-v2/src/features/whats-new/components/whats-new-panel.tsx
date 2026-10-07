@@ -2,7 +2,8 @@
 
 import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { FilterChip, SlideOver } from "@/design";
-import { type Copy, copyLocale, productCopy } from "@/lib/i18n/product-copy";
+import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { entriesByKey, sectionsOf, type WhatsNewSection } from "../group";
 import type { WhatsNewDigestView, WhatsNewEntry, WhatsNewFeed, WhatsNewKind } from "../types";
@@ -146,8 +147,8 @@ interface WhatsNewPanelProps {
 export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now = new Date() }: WhatsNewPanelProps) {
   const [kind, setKind] = useState<WhatsNewKind | null>(null);
   const [showRest, setShowRest] = useState(false);
-  const t = productCopy();
-  const locale = copyLocale();
+  const t = useCopy();
+  const locale = useCopyLocale();
   const sections = useMemo(() => (feed ? sectionsOf(feed, now, kind) : []), [feed, now, kind]);
   const total = feed ? feed.days.reduce((n, d) => n + d.entries.length, 0) : 0;
   const countOf = (k: WhatsNewKind) => (feed ? feed.days.reduce((n, d) => n + d.entries.filter((e) => e.kind === k).length, 0) : 0);

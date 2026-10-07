@@ -118,7 +118,7 @@ export function FeedbackPage({
 }) {
   const q = useFeedbackItem(projectId, fbKey);
   const forecasts = useFeedbackForecasts(projectId);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
   const mockups = useMockups(projectId, { type: "feedback", key: fbKey });
   return (
     <QueryBoundary query={q} loadingLabel="loading feedback…">

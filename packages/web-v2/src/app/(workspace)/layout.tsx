@@ -37,6 +37,7 @@ import {
   useRailProjectData,
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
+import { WorkspaceInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
@@ -220,6 +221,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <CurrentProjectProvider project={railProject}>
+    <WorkspaceInterfaceLanguage>
     <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>
     <TopBarSlotProvider>
@@ -302,6 +304,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     </TopBarSlotProvider>
     </ChatDockProvider>
     </TourReleaseProvider>
+    </WorkspaceInterfaceLanguage>
     </CurrentProjectProvider>
   );
 }

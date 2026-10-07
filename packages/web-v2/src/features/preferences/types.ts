@@ -3,7 +3,8 @@ export type LanguagePref = "en" | "vi";
 
 export interface Preferences {
   theme: ThemePref;
-  language: LanguagePref;
+  /** The interface language the person chose; null follows each project's content language. */
+  language: LanguagePref | null;
   notifyOnMention: boolean;
   /** The org the user is currently "working in" (ISS-469 global org switcher);
    *  null = no explicit choice (client resolves to the personal org). */

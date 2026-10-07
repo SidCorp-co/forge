@@ -58,7 +58,7 @@ export default function ProjectOverviewPage() {
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
 
   if (projectsQ.isLoading) {
     return (
