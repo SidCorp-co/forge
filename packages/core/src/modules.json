@@ -843,7 +843,7 @@
     "preferences": {
       "kind": "domain",
       "context": "project-config",
-      "owns": ["preferenceChanges", "userPreferences"],
+      "owns": ["preferenceChanges", "userPreferences", "userProductState"],
       "serves": ["REQ-19"]
     },
     "project-config": {
@@ -1032,6 +1032,12 @@
       "context": "work",
       "owns": ["downloadTickets", "uploadTickets"],
       "serves": ["personal-data-flow#ds-uploads", "core-components#door-mcp"]
+    },
+    "whats-new": {
+      "kind": "domain",
+      "context": "release",
+      "owns": ["whatsNewDigests"],
+      "serves": ["REQ-14", "issue-delivery#act-release"]
     },
     "workflows": {
       "kind": "domain",
@@ -1250,6 +1256,9 @@
     },
     "version": {
       "serves": ["REQ-12"]
+    },
+    "whats-new": {
+      "serves": ["REQ-14", "issue-delivery#act-release"]
     },
     "workflows": {
       "serves": [

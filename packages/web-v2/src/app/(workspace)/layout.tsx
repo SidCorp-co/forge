@@ -50,6 +50,7 @@ import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { TopBarSlotProvider } from "@/design";
 import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
+import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -251,10 +252,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onCreateProject={() => router.push("/projects?new=1")}
         onViewAllProjects={() => router.push("/projects")}
         version={
-          <SidebarVersion
-            onDocs={() => router.push("/docs")}
-            activeKey={activeKey}
-          />
+          <>
+            <WhatsNewButton />
+            <SidebarVersion
+              onDocs={() => router.push("/docs")}
+              activeKey={activeKey}
+            />
+          </>
         }
         search={<SidebarSearch onOpen={openPalette} />}
         bell={<SidebarBell ref={drawerBellRef} count={bellCount} onToggle={() => toggleBell(drawerBellRef)} />}

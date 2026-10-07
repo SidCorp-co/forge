@@ -1,0 +1,1 @@
+**What's new reads Forge's releases by time.** The rail's What's new opens a panel of released notes since your last look, by day, with a weekly agent-written digest; a dot clears on opening, and a week away reads a summary first.

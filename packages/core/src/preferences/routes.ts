@@ -1,16 +1,24 @@
+import {
+  PRODUCT_STATE_KEY_SHAPE,
+  type ProductStateKey,
+  productStateKeySchema,
+  putProductStateRequestSchema,
+} from '@forge/contracts/product-state';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { refused } from '../lib/refusal.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
-import { readMePreferences, readPreferences } from './read.js';
+import { listProductState, readMePreferences, readPreferences, readProductState } from './read.js';
 import {
   listPreferenceChanges,
   restorePreferenceChange,
   writeAssistantPreferences,
   writeMePreferences,
+  writeProductState,
 } from './service.js';
 
 const PREF_THEMES = ['system', 'light', 'dark'] as const;
@@ -105,3 +113,38 @@ preferenceRoutes.patch('/me/preferences', zValidator('json', preferencesSchema),
 
   return c.json(await writeMePreferences(userId, patch));
 });
+
+const productStateKeyParam = zValidator(
+  'param',
+  z.object({ key: productStateKeySchema }),
+  invalid(`invalid path: a product state key is ${PRODUCT_STATE_KEY_SHAPE}`, 'PRODUCT_STATE_KEY_UNKNOWN'),
+);
+
+/** A person's product state: What's new's seen mark and each tour's outcome, per key. */
+export const productStateRoutes = new Hono<{ Variables: AuthVars }>();
+
+productStateRoutes.use('/product-state', requireAuth());
+productStateRoutes.use('/product-state/*', requireAuth());
+
+productStateRoutes.get('/product-state', async (c) =>
+  c.json({ items: await listProductState(c.get('userId')) }),
+);
+
+productStateRoutes.get('/product-state/:key', productStateKeyParam, async (c) =>
+  c.json(await readProductState(c.get('userId'), c.req.valid('param').key as ProductStateKey)),
+);
+
+productStateRoutes.put(
+  '/product-state/:key',
+  productStateKeyParam,
+  strictBody(putProductStateRequestSchema, '{ value: the value the key holds }'),
+  async (c) => {
+    const outcome = await writeProductState({
+      userId: c.get('userId'),
+      key: c.req.valid('param').key as ProductStateKey,
+      value: c.req.valid('json').value,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'PRODUCT_STATE_REFUSED');
+    return c.json(outcome.state);
+  },
+);
