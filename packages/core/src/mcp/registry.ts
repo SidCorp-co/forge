@@ -14,10 +14,6 @@ import {
   forgeStorefrontTargetTool,
 } from '../integration-door/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
-import {
-  forgeMetricsProjectStepDurationsTool,
-  forgeMetricsProjectTimeseriesTool,
-} from '../metrics/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
@@ -43,12 +39,3 @@ export const MCP_TOOLS = {
   forge_sentry: (ctx) => forgeSentryTool(ctx),
   forge_storefront_target: (ctx) => forgeStorefrontTargetTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;
-
-/**
- * The chat assistant's tools over read models it may not import (ADR 0008); not served on /mcp.
- * The process entry hands them to the assistant's allowlist at boot.
- */
-export const CHAT_READ_MODEL_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [
-  { factory: forgeMetricsProjectStepDurationsTool },
-  { factory: forgeMetricsProjectTimeseriesTool },
-];

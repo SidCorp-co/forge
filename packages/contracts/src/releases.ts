@@ -207,6 +207,8 @@ export interface ReleaseSummary
 	issueCount: number;
 	requirements: string[];
 	criteria: ReleaseCriteriaTotals;
+	/** What was verified, in one level a reader states in words (JU-11). */
+	verified: ReleaseVerified;
 	contents: ReleaseContentGroup[];
 	owner: ReleasePerson | null;
 	ownerAct: string | null;
@@ -225,7 +227,8 @@ export interface ReleaseSummary
 /**
  * How a release's close is proved: `probed` by production's source probes, `deployment` by the
  * commit production's deployment record names, `provider` by what a storefront provider reports it
- * publishes against each issue's landed draft (core `release-batch/provider-verify.ts`).
+ * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
+ * a design approval's record (core `release-batch/provider-verify.ts`).
  * `unverified` is a close from before the deployment check, kept as it was recorded.
  */
 export const RELEASE_VERIFICATIONS = [
@@ -242,6 +245,39 @@ export interface ReleaseVerifiedBy {
 	kind: RecordedReleaseVerification;
 	/** The production binding's provider as a person reads it (`Autoflow`), or `null` where none is bound. */
 	provider: string | null;
+}
+
+/**
+ * What a release verified, read off its criteria and how its run proves the deploy:
+ * `criteria` every recorded criterion proven; `some_criteria` some recorded and not all proven;
+ * `deploy_only` no criterion recorded and only the deploy checked; `none` neither. A reader is told
+ * the level in words, so a deploy probe is never read as proof of the change (JU-11).
+ */
+export const RELEASE_VERIFIED_LEVELS = [
+	"criteria",
+	"some_criteria",
+	"deploy_only",
+	"none",
+] as const;
+export type ReleaseVerifiedLevel = (typeof RELEASE_VERIFIED_LEVELS)[number];
+
+export interface ReleaseVerified {
+	level: ReleaseVerifiedLevel;
+	proven: number;
+	total: number;
+	/** How the run recorded the deploy proved; null on the draft and on a run that recorded none. */
+	check: RecordedReleaseVerification | null;
+}
+
+/** The one rule for `ReleaseVerified.level`, so every surface states the same level. */
+export function releaseVerifiedLevel(
+	criteria: Pick<ReleaseCriteriaTotals, "proven" | "total">,
+	check: RecordedReleaseVerification | null,
+): ReleaseVerifiedLevel {
+	if (criteria.total > 0) {
+		return criteria.proven === criteria.total ? "criteria" : "some_criteria";
+	}
+	return check !== null && check !== "unverified" ? "deploy_only" : "none";
 }
 
 export type ReleaseProduction =
@@ -490,6 +526,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 	changes: ReleaseChanges;
 	notes: {
 		sections: ReleaseNoteSection[];
+		/** Issues whose landing touched only a design: approved designs, which users do not get as a change. */
+		designs: ReleaseNoteEntry[];
 		withoutNotes: { key: string; title: string }[];
 		/** The language the project's notes are written in (BCP-47). */
 		language: string;

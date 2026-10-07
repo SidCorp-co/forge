@@ -8,13 +8,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { facts } from '../messaging/facts.js';
 
 vi.mock('../messaging/gather.js', () => ({
-  gatherFacts: async () =>
+  gatherFacts: async (input: {
+    toolCalls?: readonly { name: string; arguments: string }[];
+    offeredTools?: readonly string[];
+  }) =>
     facts({
+      toolCalls: input.toolCalls ?? [],
+      offeredTools: input.offeredTools ?? [],
       prefix: 'ISS',
       prefixes: ['ISS'],
-      knownIssueSeqs: new Set([261, 277, 290, 299]),
+      knownIssueSeqs: new Set([261, 277, 290, 299, 300]),
       issueRows: new Map(
-        [261, 277, 290, 299].map((seq) => [seq, { seq, merged: true, status: 'needs_info' }]),
+        [261, 277, 290, 299, 300].map((seq) => [seq, { seq, merged: true, status: 'needs_info' }]),
       ),
     }),
 }));
@@ -40,17 +45,25 @@ const FALSE_REWRITE =
 
 const WRONG_DATE = 'Issue cũ nhất là ISS-261, được tạo lúc 2026-10-01.'; // i18n-allow: the case under test
 
-const attempt = (reply: string, terminal: 'done' | 'error' = 'done') => ({
+const attempt = (
+  reply: string,
+  terminal: 'done' | 'error' = 'done',
+  toolCalls: readonly { name: string; arguments: string }[] = CALLS,
+) => ({
   conversationId: 'c-1',
   reply,
   terminal,
   error: terminal === 'error' ? 'stream disconnected' : null,
   iterations: 1,
-  toolCalls: CALLS,
+  toolCalls: [...toolCalls],
   progress: null,
 });
 
-async function screen(first: string, retries: ReturnType<typeof attempt>[]) {
+async function screen(
+  first: string,
+  retries: ReturnType<typeof attempt>[],
+  more: { offeredTools?: readonly string[]; results?: readonly string[] } = {},
+) {
   const asked: string[] = [];
   const message = await screenedTurnReply({
     door: 'web-chat-reply',
@@ -66,7 +79,8 @@ async function screen(first: string, retries: ReturnType<typeof attempt>[]) {
       return next;
     },
     setPhase: () => undefined,
-    toolResults: () => RESULTS,
+    toolResults: () => [...RESULTS, ...(more.results ?? [])],
+    ...(more.offeredTools ? { offeredTools: more.offeredTools } : {}),
     fallback: 'code-authored',
     brokenReport: () => 'BROKEN-REPORT',
   });
@@ -114,5 +128,47 @@ describe('a true answer is never rewritten into a false one', () => {
   it('a rewrite the provider broke off, over an answer nothing can mark, is reported as the failure it is', async () => {
     const out = await screen('Mình sẽ kiểm tra ISS-261 rồi báo lại nhé.', [attempt('', 'error')]); // i18n-allow: the case under test
     expect(out.text).toBe('BROKEN-REPORT');
+  });
+});
+
+describe('a rewrite answers to both the status-claims rule and the rewrite rule', () => {
+  const OFFERED = ['forge', 'forge_project_status'];
+  const STATUS_READ = { name: 'forge_project_status', arguments: '{}' };
+  const STATUS = '{"shipped":[{"issue":"ISS-290","release":"0.4.0-dev.123"}]}';
+  // a shipped claim with no status read this turn: refused by status-claims-grounded
+  const UNREAD = 'ISS-261 đã phát hành.'; // i18n-allow: the case under test
+  const STILL_UNREAD = 'ISS-261 đã phát hành rồi.'; // i18n-allow: the case under test
+
+  it('a rewrite that reads the status and names what that read returned passes both', async () => {
+    const out = await screen(
+      UNREAD,
+      [
+        attempt('ISS-290 đã phát hành trong 0.4.0-dev.123.', 'done', [...CALLS, STATUS_READ]), // i18n-allow: the case under test
+      ],
+      { offeredTools: OFFERED, results: [STATUS] },
+    );
+    expect(out.asked).toHaveLength(1);
+    expect(out.asked[0]).toContain('no read this turn grounds it');
+    expect(out.text).toBe('ISS-290 đã phát hành trong 0.4.0-dev.123.'); // i18n-allow: the case under test
+  });
+
+  it('a rewrite that reads the status but names an issue no result carries fails the rewrite rule', async () => {
+    const out = await screen(
+      UNREAD,
+      [attempt('ISS-300 đã phát hành.', 'done', [...CALLS, STATUS_READ])], // i18n-allow: the case under test
+      { offeredTools: OFFERED, results: ['{"shipped":[]}'] },
+    );
+    expect(out.text).not.toContain('ISS-300');
+    expect(out.text, 'the original is still unread, so marking it cannot pass either').toContain(
+      'chưa đối chiếu được số liệu', // i18n-allow: the unverified line under test
+    );
+  });
+
+  it('a rewrite that keeps the claim and still reads nothing fails the status-claims rule', async () => {
+    const out = await screen(UNREAD, [attempt(STILL_UNREAD)], {
+      // i18n-allow: the case under test
+      offeredTools: OFFERED,
+    });
+    expect(out.text).not.toContain('đã phát hành rồi'); // i18n-allow: the case under test
   });
 });

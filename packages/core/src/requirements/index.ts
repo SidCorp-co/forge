@@ -5,6 +5,7 @@ export {
   type StaleContractPin,
   staleOnContract,
 } from './contract-links.js';
+export { deferralOf } from './deferral-read.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';

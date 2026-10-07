@@ -4,22 +4,32 @@
 // the workflow and both identities where it does not carry one.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StorefrontPublishedReading } from '../integrations/index.js';
+import type {
+  StorefrontPublishedReading,
+  StorefrontServed,
+  StorefrontServedAsk,
+} from '../integrations/index.js';
 import type { CriterionWithVerdict } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import type { ReleaseChannel } from './plan.js';
+import type { RosterIssue } from './provider-landings.js';
 
 const reads = vi.hoisted(() => ({
   channels: [] as ReleaseChannel[],
-  rows: [] as Array<{ id: string; seq: number }>,
-  criteria: new Map<string, CriterionWithVerdict[]>(),
+  roster: [] as RosterIssue[],
+  approvals: new Map<string, string>(),
   published: new Map<string, StorefrontPublishedReading>(),
-  asked: [] as Array<{ provider: string; binding: string; workflowIds: readonly string[] }>,
+  served: {} as Partial<Omit<StorefrontServed, 'workflows'>>,
+  asked: [] as Array<{ provider: string; binding: string; ask: StorefrontServedAsk }>,
   stamped: [] as unknown[],
 }));
 
 vi.mock('../db/client.js', () => ({
-  db: { select: () => ({ from: () => ({ where: async () => reads.rows }) }) },
+  db: {
+    select: () => ({
+      from: () => ({ where: async () => reads.roster.map((r) => ({ id: r.key })) }),
+    }),
+  },
 }));
 vi.mock('../pipeline/index.js', () => ({
   cancelConcludedRun: vi.fn(),
@@ -29,10 +39,9 @@ vi.mock('../pipeline/index.js', () => ({
     reads.stamped.push(patch);
   }),
 }));
-vi.mock('../issues/index.js', () => ({
-  transitionIssueStatus: vi.fn(),
-  activeIssuePrefix: async () => 'ISS',
-  listCriteriaOf: async () => reads.criteria,
+vi.mock('./provider-roster.js', () => ({
+  readProviderRoster: async () => reads.roster,
+  readDesignApprovals: async () => reads.approvals,
 }));
 vi.mock('../integrations/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../integrations/index.js')>()),
@@ -43,10 +52,16 @@ vi.mock('../integrations/index.js', async (importOriginal) => ({
   readStorefrontPublished: async (args: {
     provider: string;
     binding: string;
-    workflowIds: readonly string[];
+    ask: StorefrontServedAsk;
   }) => {
     reads.asked.push(args);
-    return reads.published;
+    return {
+      workflows: reads.published,
+      routes: reads.served.routes ?? new Map(),
+      pages: reads.served.pages ?? new Map(),
+      theme: reads.served.theme ?? null,
+      settings: reads.served.settings ?? new Map(),
+    };
   },
 }));
 vi.mock('./abort-stamp.js', () => ({
@@ -142,8 +157,22 @@ const published = (
 });
 
 function roster(issues: Record<number, CriterionWithVerdict[]>) {
-  reads.rows = Object.keys(issues).map((seq) => ({ id: `issue-${seq}`, seq: Number(seq) }));
-  reads.criteria = new Map(Object.entries(issues).map(([seq, c]) => [`issue-${seq}`, c]));
+  reads.roster = Object.entries(issues).map(([seq, criteria]) => ({
+    key: `ISS-${seq}`,
+    criteria,
+    mergedAt: null,
+    landing: null,
+    artifacts: null,
+    builds: false,
+  }));
+}
+
+function designMark(key: string, ref: string) {
+  const issue = reads.roster.find((r) => r.key === key);
+  if (!issue) throw new Error(`${key} is not on the planted roster`);
+  issue.mergedAt = JUDGED;
+  issue.landing = `workflow design \`${ref.split('@')[0]}\` revision ${ref.split('@rev')[1]}, approved`;
+  issue.artifacts = [{ surface: 'design', ref, change: 'changed' }];
 }
 
 async function refusalOf(p: Promise<unknown>) {
@@ -159,6 +188,8 @@ async function refusalOf(p: Promise<unknown>) {
 beforeEach(() => {
   reads.channels = [storefront];
   reads.published = new Map();
+  reads.approvals = new Map();
+  reads.served = {};
   reads.asked = [];
   reads.stamped = [];
   n = 0;
@@ -178,6 +209,8 @@ describe('a release on a storefront is proved by what the provider publishes', (
       59: [verdict('storefront_draft', { workflowId: '102', draftVersion: sha('b') })],
       63: [verdict('design')],
     });
+    designMark('ISS-63', 'hop-staff-shell-ux@rev7');
+    reads.approvals = new Map([['hop-staff-shell-ux@rev7', JUDGED]]);
     reads.published = new Map([
       ['155', published('hop_attention_sweep', sha('a'))],
       ['102', published('hop_derived_state', sha('c'))],
@@ -185,7 +218,17 @@ describe('a release on a storefront is proved by what the provider publishes', (
     const onVerified = vi.fn();
     await verifyBeforeClose('run-hop', run, { onVerified });
     expect(reads.asked).toEqual([
-      { provider: 'autoflow', binding: 'binding-production', workflowIds: ['155', '102'] },
+      {
+        provider: 'autoflow',
+        binding: 'binding-production',
+        ask: {
+          workflowIds: ['155', '102'],
+          routeIds: [],
+          pageIds: [],
+          theme: false,
+          settingKeys: [],
+        },
+      },
     ]);
     expect(onVerified).toHaveBeenCalledWith('provider');
     expect(reads.stamped).toEqual([{ merge: { verification: 'provider' }, touch: false }]);
@@ -240,14 +283,16 @@ describe('a release on a storefront is proved by what the provider publishes', (
     expect(refusal?.detail).toContain('unauthorized: token expired');
   });
 
-  it('refuses an issue whose verdicts name no storefront draft, and a release with nothing to check', async () => {
+  it('refuses an issue that names nothing the provider can attest, and a release with nothing to check', async () => {
     roster({ 7: [verdict('runtime')] });
     expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
-      "ISS-7's verdicts name no storefront draft (runtime)",
+      'ISS-7 names nothing Autoflow can attest: its verdicts name no storefront draft (runtime), and it carries no merged mark',
     );
     roster({ 63: [verdict('design')] });
+    designMark('ISS-63', 'hop-staff-shell-ux@rev7');
+    reads.approvals = new Map([['hop-staff-shell-ux@rev7', JUDGED]]);
     expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
-      'no issue of this release landed a storefront draft',
+      'no issue of this release landed anything Autoflow serves',
     );
     roster({});
     expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
@@ -256,9 +301,127 @@ describe('a release on a storefront is proved by what the provider publishes', (
   });
 });
 
+describe('every landing kind a mark names is read against what the provider serves', () => {
+  const MARKED = '2026-10-07T13:23:32.025Z';
+  function marked(seq: number, artifacts: Array<{ surface: string; ref: string }>, extra = {}) {
+    reads.roster = [
+      {
+        key: `ISS-${seq}`,
+        criteria: [verdict('runtime')],
+        mergedAt: MARKED,
+        landing: 'https://hop.example.test',
+        artifacts: artifacts.map((a) => ({ ...a, change: 'changed' })) as RosterIssue['artifacts'],
+        builds: false,
+        ...extra,
+      },
+    ];
+  }
+  const theme = (id: string, publishedAt: string | null, files: Record<string, string> = {}) => ({
+    kind: 'served' as const,
+    themeId: id,
+    publishedAt,
+    files: new Map(Object.entries(files)),
+  });
+
+  it('carries a theme served since after the landing, and refuses one live since before it, naming both themes', async () => {
+    marked(125, [{ surface: 'ui', ref: 'theme 800 templates/index.json' }]);
+    reads.served = { theme: theme('815', AFTER, { 'templates/index.json': 'ab'.repeat(32) }) };
+    await verifyBeforeClose('run-hop', run, {});
+    reads.served = { theme: theme('815', BEFORE, { 'templates/index.json': 'ab'.repeat(32) }) };
+    const refusal = await refusalOf(verifyBeforeClose('run-hop', run, {}));
+    expect(refusal?.detail).toContain(
+      `ISS-125 landed theme 800, and Autoflow serves theme \`815\`, published at ${BEFORE}, which is not after the landing was recorded at ${MARKED}, so it cannot carry theme \`800\``,
+    );
+    expect(refusal?.mismatches).toEqual([
+      expect.objectContaining({
+        issue: 'ISS-125',
+        kind: 'theme',
+        landed: 'theme 800',
+        served: 'theme 815',
+      }),
+    ]);
+  });
+
+  it('refuses a served theme that no longer holds a file the landing added', async () => {
+    marked(83, [
+      { surface: 'ui', ref: 'draft theme 568 sections/hop-patient-360.liquid (sha256 b9bec199)' },
+    ]);
+    reads.served = { theme: theme('815', AFTER) };
+    expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
+      'Autoflow serves theme `815` with no file `sections/hop-patient-360.liquid`',
+    );
+  });
+
+  it('refuses an unpublished route, a missing page and a setting holding another value', async () => {
+    marked(84, [
+      { surface: 'api', ref: 'route 320 POST /hop/his/appointments/events (unpublished)' },
+      { surface: 'ui', ref: 'page 17 /pages/reports (published)' },
+      { surface: 'config', ref: 'setting commerce_enabled = false' },
+    ]);
+    reads.served = {
+      routes: new Map([
+        [
+          '320',
+          {
+            kind: 'unpublished',
+            method: 'POST',
+            path: '/hop/his/appointments/events',
+            workflowCode: 'hop_his_adapter',
+          },
+        ],
+      ]),
+      pages: new Map([
+        [
+          '17',
+          { kind: 'missing', detail: 'Autoflow site `hop` holds no page with id `17` on store 11' },
+        ],
+      ]),
+      settings: new Map([['commerce_enabled', { kind: 'value', value: 'true' }]]),
+    };
+    const refusal = await refusalOf(verifyBeforeClose('run-hop', run, {}));
+    expect(refusal?.detail).toContain(
+      'ISS-84 landed route `320`, and Autoflow holds route `320` (POST /hop/his/appointments/events) unpublished: it answers no live traffic',
+    );
+    expect(refusal?.detail).toContain(
+      'ISS-84 landed page `17`, and Autoflow site `hop` holds no page with id `17`',
+    );
+    expect(refusal?.detail).toContain(
+      'ISS-84 landed setting `commerce_enabled` = `false`, and Autoflow holds setting `commerce_enabled` = `true`, not the `false` landed',
+    );
+    expect(refusal?.mismatches).toHaveLength(3);
+  });
+
+  it('refuses a mark naming only what the provider keeps no state of, saying the grammar', async () => {
+    marked(87, [{ surface: 'data', ref: 'table 87 hop_tasks: type option remind_appointment' }]);
+    expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
+      'ISS-87 names nothing Autoflow can attest: its verdicts name no storefront draft (runtime), and its mark names only what Autoflow reports no state for (table 87 hop_tasks: type option remind_appointment). A storefront landing names what it changed as `workflow <id>',
+    );
+  });
+
+  it('proves a design-only issue by its approval, and refuses one with no approval or that builds a workflow', async () => {
+    roster({
+      119: [],
+      1: [verdict('storefront_draft', { workflowId: '155', draftVersion: sha('a') })],
+    });
+    reads.published = new Map([['155', published('hop_attention_sweep', sha('a'))]]);
+    designMark('ISS-119', 'hop-complaint-ux@rev2');
+    const refusal = await refusalOf(verifyBeforeClose('run-hop', run, {}));
+    expect(refusal?.detail).toContain(
+      'ISS-119 landed design `hop-complaint-ux@rev2`, and no approval of `hop-complaint-ux@rev2` is recorded in this project',
+    );
+    reads.approvals = new Map([['hop-complaint-ux@rev2', JUDGED]]);
+    await verifyBeforeClose('run-hop', run, {});
+    const issue = reads.roster.find((r) => r.key === 'ISS-119');
+    if (issue) issue.builds = true;
+    expect((await refusalOf(verifyBeforeClose('run-hop', run, {})))?.detail).toContain(
+      'ISS-119 is linked as the build of a workflow, so the approval of design hop-complaint-ux@rev2 is evidence on it, never its landing',
+    );
+  });
+});
+
 describe('landingsOf', () => {
   it('keeps the newest draft an issue judged per workflow', async () => {
-    const { landingsOf } = await import('./provider-verify.js');
+    const { landingsOf } = await import('./provider-landings.js');
     const found = landingsOf([
       {
         key: 'ISS-20',
@@ -266,10 +429,20 @@ describe('landingsOf', () => {
           verdict('storefront_draft', { workflowId: '102', draftVersion: sha('1'), at: BEFORE }),
           verdict('storefront_draft', { workflowId: '102', draftVersion: sha('2'), at: JUDGED }),
         ],
+        mergedAt: null,
+        landing: null,
+        artifacts: null,
+        builds: false,
       },
     ]);
-    expect(found.landings).toEqual([
-      { issue: 'ISS-20', workflowId: '102', draftVersion: sha('2'), judgedAt: JUDGED },
+    expect(found.workflows).toEqual([
+      expect.objectContaining({
+        issue: 'ISS-20',
+        workflowId: '102',
+        graph: sha('2'),
+        landedAt: JUDGED,
+        from: 'verdict',
+      }),
     ]);
   });
 });

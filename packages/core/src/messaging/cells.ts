@@ -10,6 +10,7 @@ import { NO_ROLE, ROLE_HOLDER, ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.
 import { ISSUE_KEYS_EXIST, ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
 import { type Audience, type CellId, type CellSpec, cellId, type Intent } from './contract.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
+import { STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
 import {
   COMMENT_HAS_TEXT,
   ISSUE_LINK_SHAPE,
@@ -56,6 +57,7 @@ const SHIPPED: readonly CellSpec[] = [
     ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
+    STATUS_CLAIMS_GROUNDED,
     NO_REDACTED_SECRET,
   ]),
 
@@ -76,6 +78,7 @@ const SHIPPED: readonly CellSpec[] = [
     ISSUE_LINK_SHAPE,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
+    STATUS_CLAIMS_GROUNDED,
   ]),
 ];
 

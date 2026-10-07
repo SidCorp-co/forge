@@ -140,7 +140,13 @@ export {
   type GitCredentialMint,
   type IntegrationDeclaration,
   type StorefrontDraftReading,
+  type StorefrontPageReading,
   type StorefrontPublishedReading,
+  type StorefrontRouteReading,
+  type StorefrontServed,
+  type StorefrontServedAsk,
+  type StorefrontSettingReading,
+  type StorefrontThemeReading,
 } from './types.js';
 export {
   assertVaultBootSafety,

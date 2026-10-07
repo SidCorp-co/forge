@@ -21,6 +21,7 @@ import { datesIn, GROUNDING_RULE } from '../messaging/grounding-rule.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { markUnverified, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 
 /**
@@ -102,8 +103,12 @@ const ISSUE_CLAIM_RULES: ReadonlySet<string> = new Set([
   'status-matches-the-row',
 ]);
 
-/** What kind of claim a refusal was about: the date one stated, the issue one named, or neither. */
-function claimRefused(r: MessageRefusal): 'date' | 'issue' | null {
+/**
+ * What kind of claim a refusal was about: the date one stated, the issue one named, a status claim
+ * that has to be read and restated (`status-claims-rule.ts`, which may bring either), or neither.
+ */
+function claimRefused(r: MessageRefusal): 'date' | 'issue' | 'status' | null {
+  if (r.rule === STATUS_CLAIMS_GROUNDED.id) return 'status';
   if (ISSUE_CLAIM_RULES.has(r.rule)) return 'issue';
   if (r.rule !== GROUNDING_RULE.id) return null;
   return r.why.includes('states the date') ? 'date' : 'issue';
@@ -126,8 +131,9 @@ export function withRewriteKept(
   },
 ): MessageVerdict {
   const read = args.toolResults.join('\n');
-  const keyRefused = args.refused.some((r) => claimRefused(r) === 'issue');
-  const dateRefused = args.refused.some((r) => claimRefused(r) === 'date');
+  const kinds = new Set(args.refused.map(claimRefused));
+  const keyRefused = kinds.has('issue') || kinds.has('status');
+  const dateRefused = kinds.has('date') || kinds.has('status');
   const before = keysIn(args.original);
   const breaks: MessageRefusal[] = [];
   const refuse = (quote: string, why: string) => breaks.push({ ...REWRITE_RULE, quote, why });
@@ -200,6 +206,8 @@ export interface ScreenedTurnArgs {
   language: ReplyLanguage;
   /** The first attempt, already run. */
   first: ExternalChatTurnResult;
+  /** The tools the turn was offered, by the names it calls them: a status claim is held to a read only where one was offered. */
+  offeredTools?: readonly string[];
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
   retry: (instruction: string) => Promise<ExternalChatTurnResult>;
   setPhase: (phase: string) => void;
@@ -253,6 +261,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       projectId: args.projectId,
       segments: [text],
       toolCalls: of.toolCalls,
+      ...(args.offeredTools ? { offeredTools: args.offeredTools } : {}),
       progress: of.progress,
       ...(args.toolResults ? { toolResults: args.toolResults() } : {}),
     });

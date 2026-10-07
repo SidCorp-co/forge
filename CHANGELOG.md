@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.135] - 2026-10-07
+
+A project status read the assistant answers from, and a status page
+
+### Added
+
+- **A project's status is one read the assistant must answer from**: `GET /api/projects/:id/status` (shipped, in flight, waits, proof, next release, late, roadmap); chat read tools; ungrounded status claims refused; dashboard leads with Shipped recently; printable report; releases state verification.
+
 ## [0.4.0-dev.134] - 2026-10-07
 
 Design fingerprints ignore key order and hash their template

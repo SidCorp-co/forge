@@ -38,6 +38,8 @@ export interface FailureReportArgs {
   /** The text the turn had streamed in its last round, or nothing. */
   draft: string | null;
   toolResults: readonly string[];
+  /** The tools the turn was offered, so a rule holding a claim to a read judges the draft as it would the reply. */
+  offeredTools: readonly string[];
   progress: ProgressFacts | null;
   log?: Record<string, unknown>;
 }
@@ -52,6 +54,7 @@ async function screenedDraft(
       projectId: args.projectId,
       segments: [draft],
       toolCalls: args.calls.map((c) => ({ name: c.name, arguments: c.arguments })),
+      offeredTools: args.offeredTools,
       progress: args.progress,
       toolResults: args.toolResults,
     });
