@@ -201,8 +201,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         let every = Duration::from_secs(args.interval);
         let mut due = tokio::time::Instant::now() + every;
         // A key redraws this frame at once; the next gather still comes at
-        // `due`, unless the key turned a page, which then stays a whole
-        // interval from the key.
+        // `due`, unless the key opened a detail or turned its page, which
+        // then stays a whole interval from the key.
         draw(&snapshot, &mut view, &keys)?;
         loop {
             let key = tokio::select! {
@@ -278,7 +278,8 @@ async fn next_key(keys: &mut Result<keys::Keys, String>) -> Option<keys::Key> {
 struct Paging {
     page: usize,
     held: bool,
-    /// `n` or `p` turned to this page since the last interval ended: the
+    /// Enter opened this page, or `n` or `p` turned to it, since the last
+    /// interval ended: the
     /// interval that ends next was running before the key, so it leaves the
     /// page where the key put it (judge w10, reopen 4).
     keyed: bool,
