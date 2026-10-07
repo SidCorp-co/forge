@@ -39,6 +39,21 @@ impl Ledger {
         Ok(())
     }
 
+    /// Record that core would not open this run's session because something holds its
+    /// issues. The first call marks it; later calls only move the retry clock, so the
+    /// refusal is named once and the next try waits `SESSION_RETRY_MS` from `at`.
+    pub fn mark_session_refused(&self, run_id: &str, refusal: &str, at: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET session_refused_at = COALESCE(session_refused_at, ?2),
+                                 session_refusal = ?3, session_retry_at = ?2
+                 WHERE run_id = ?1 AND session_id IS NULL",
+                params![run_id, at, refusal],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub(crate) fn stamp(&self, column: &str, run_id: &str) -> Result<()> {
         debug_assert!(matches!(column, "session_terminal_at" | "worktree_gone_at"));
         self.conn

@@ -89,7 +89,39 @@ fn unanswered_inherited(
     }
 }
 
-pub(crate) fn run_declare_as(
+/// Why core would not open a run over these issues, asked at declare time, or `None`.
+///
+/// A declaration is a row on this box and nothing else, so before this a run over an issue
+/// a live `blocks` edge holds was accepted here, refused by core at every sweep, and
+/// never reported to the master that dispatched it (HOP ISS-46, 19 refusals in 10
+/// minutes). Core answers with the function the open calls, so the two cannot disagree.
+///
+/// Only a hold core names is a refusal. A core that cannot be reached, a box with no
+/// core client, a token core will not take, and a core from before the route all leave the
+/// declaration to be written as it always was, because the open at the next sweep asks the
+/// same question and a master must still be able to declare while core is down. That
+/// silence is logged by name, never swallowed.
+pub(crate) async fn preflight_refusal(
+    core: Option<&runner_transport::CoreClient>,
+    project_id: &str,
+    issue_keys: &[String],
+) -> Option<String> {
+    let client = core?;
+    match runner_transport::run_sessions::preflight(client, project_id, issue_keys).await {
+        Ok(()) => None,
+        Err(runner_platform::error::Error::Held { said, .. }) => Some(format!(
+            "core would not open a run over these issues, so nothing was declared: {said}. A dispatch on them would be accepted by this box and refused at every sweep. Declare it once the hold named above has lifted. Nothing was recorded"
+        )),
+        Err(e) => {
+            tracing::warn!(
+                "[control] {project_id}: the declaration was not checked with core ({e}); it is written, and core's open at the next sweep asks the same question"
+            );
+            None
+        }
+    }
+}
+
+pub(crate) async fn run_declare_as(
     ctl: &Arc<Control>,
     holder: &Holder,
     project_id: &str,
@@ -146,6 +178,9 @@ pub(crate) fn run_declare_as(
             "a run carries at most {cap} issues and this declaration names {}. Core refuses more by name and the refusal reaches this box's sweep rather than this pane, so the run would be opened nowhere and retried for ever. Declare the work in groups of {cap} or fewer. Nothing was recorded",
             issue_keys.len()
         ));
+    }
+    if let Some(refused) = preflight_refusal(ctl.core.as_deref(), project_id, issue_keys).await {
+        return ClaimReply::refused(refused);
     }
     let run_id = uuid::Uuid::new_v4().to_string();
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
@@ -326,5 +361,60 @@ pub(crate) fn bind_declared(
             StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
         },
         Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod preflight_tests {
+    use super::*;
+
+    fn keys() -> Vec<String> {
+        vec!["ISS-46".to_string()]
+    }
+
+    #[tokio::test]
+    async fn a_hold_core_names_refuses_the_declaration_by_name_and_sends_the_issues() {
+        let (client, seen) = crate::test_core::fake_core(|_| {
+            (
+                422,
+                r#"{"error":{"code":"ISSUE_BLOCKED","refusals":[{"code":"ISSUE_BLOCKED","path":"","detail":"a run session over these issues is refused. ISS-46: a live blocks edge holds it, ISS-44 is at in_progress"}]}}"#,
+            )
+        })
+        .await;
+        let why = preflight_refusal(Some(&client), "proj-1", &keys())
+            .await
+            .expect("a blocked issue is refused at declare");
+        assert!(why.contains("ISS-46") && why.contains("ISS-44"), "{why}");
+        assert!(why.contains("Nothing was recorded"), "{why}");
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen[0].0, "/api/devices/me/run-sessions/preflight");
+        assert!(seen[0].1.contains("ISS-46") && seen[0].1.contains("proj-1"));
+    }
+
+    #[tokio::test]
+    async fn an_unblocked_issue_is_declared_as_before() {
+        let (client, _) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
+        assert!(preflight_refusal(Some(&client), "p", &keys())
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn a_core_that_cannot_answer_leaves_the_declaration_to_the_open() {
+        for status in [404u16, 401, 500, 503] {
+            let (client, _) = match status {
+                404 => crate::test_core::fake_core(|_| (404, "{}")).await,
+                401 => crate::test_core::fake_core(|_| (401, "{}")).await,
+                500 => crate::test_core::fake_core(|_| (500, "{}")).await,
+                _ => crate::test_core::fake_core(|_| (503, "{}")).await,
+            };
+            assert!(
+                preflight_refusal(Some(&client), "p", &keys())
+                    .await
+                    .is_none(),
+                "status {status} refused a declaration core had not held"
+            );
+        }
+        assert!(preflight_refusal(None, "p", &keys()).await.is_none());
     }
 }

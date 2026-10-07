@@ -579,7 +579,7 @@ fn spawn_panes_and_master(
         cancel_rx.clone(),
     ));
     #[cfg(unix)]
-    actors::control(activity, masters, &drain, cancel_rx.clone())?;
+    actors::control(client, activity, masters, &drain, cancel_rx.clone())?;
     let pool = pool_jobs::PoolPanes {
         panes: Arc::new(pool_jobs::TmuxPanes),
         records: job_records.clone(),

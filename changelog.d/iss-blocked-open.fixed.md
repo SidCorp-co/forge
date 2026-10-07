@@ -1,0 +1,1 @@
+**A run declared over an issue a live `blocks` edge holds is refused at declare, by name, and one already declared is no longer re-sent every sweep.** The box asks core's new `POST /api/devices/me/run-sessions/preflight` (the open's own refusal function, writing nothing); a held open is retried every five minutes, named once.

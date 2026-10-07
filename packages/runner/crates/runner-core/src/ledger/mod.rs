@@ -181,6 +181,15 @@ pub struct Run {
     pub close_refused_at: Option<i64>,
     /// The constraints core named, one line each.
     pub close_refusal: Option<String>,
+    /// When core first refused to open this run's session because something holds its
+    /// issues (a `blocks` edge, an unapproved design, an unsettled wait, another lease).
+    /// The row stands, and the sweep re-sends it every `SESSION_RETRY_MS` rather than every
+    /// pass, because a hold lifts when its holder moves and not when the same bytes are re-sent.
+    pub session_refused_at: Option<i64>,
+    /// The refusal as core said it, which the log named once.
+    pub session_refusal: Option<String>,
+    /// When the open was last sent while refused, the start of the interval the next try waits out.
+    pub session_retry_at: Option<i64>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -502,7 +511,8 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         released_as, ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
-        host_ended_by, host_pid, host_start, close_refused_at, close_refusal
+        host_ended_by, host_pid, host_start, close_refused_at, close_refusal,
+        session_refused_at, session_refusal, session_retry_at
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -617,6 +627,9 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         host_start: row.get(32)?,
         close_refused_at: row.get(33)?,
         close_refusal: row.get(34)?,
+        session_refused_at: row.get(35)?,
+        session_refusal: row.get(36)?,
+        session_retry_at: row.get(37)?,
     })
 }
 

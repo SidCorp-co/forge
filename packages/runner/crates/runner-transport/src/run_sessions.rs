@@ -154,6 +154,26 @@ pub async fn open(
     Ok((parsed.session_id, parsed.run_id))
 }
 
+/// Ask core whether a run over these issues would be opened, writing nothing: the
+/// refusal a master is owed at declare time, from the function the open itself calls.
+/// `Ok` is "would open as far as core can tell now"; a `422` is `Error::Held`.
+pub async fn preflight(client: &CoreClient, project_id: &str, issue_keys: &[String]) -> Result<()> {
+    let body = serde_json::json!({ "projectId": project_id, "issueKeys": issue_keys });
+    let req = client
+        .post("/api/devices/me/run-sessions/preflight")
+        .json(&body);
+    let resp = status::sent(req, "run-session preflight").await?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(status::refusal("run-session preflight", code, &text));
+    }
+    Ok(())
+}
+
 pub async fn beat(client: &CoreClient, session_id: &str) -> Result<()> {
     patch_session(
         client,

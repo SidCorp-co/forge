@@ -183,6 +183,9 @@ pub struct Control {
     /// The box's process table, read for the Claude Code process above
     /// whatever connects, which is the process a subagent runs in.
     pub hosts: Arc<dyn runner_platform::subagent_host::Hosts>,
+    /// Core, asked one read-only question when a master declares a run (`preflight_refusal`).
+    /// Nothing else on the socket reaches core: a declaration is still a row on this box.
+    pub core: Option<Arc<runner_transport::CoreClient>>,
 }
 
 #[derive(Default)]
@@ -320,7 +323,9 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match caller_of(&ctl, req.token()) {
-            Some((holder, session_id)) => serve_request(&ctl, req, &holder, &session_id, peer),
+            Some((holder, session_id)) => {
+                serve_request(&ctl, req, &holder, &session_id, peer).await
+            }
             None => ClaimReply::refused("unknown_token"),
         },
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
@@ -410,7 +415,7 @@ fn declaring_project(
 }
 
 #[cfg(unix)]
-fn serve_request(
+async fn serve_request(
     ctl: &Arc<Control>,
     req: Request,
     holder: &Holder,
@@ -444,15 +449,18 @@ fn serve_request(
             issue_keys,
             worktree_path,
             ..
-        } => run_declare_as(
-            ctl,
-            holder,
-            &project_id,
-            &issue_keys,
-            &worktree_path,
-            session_id,
-            peer,
-        ),
+        } => {
+            run_declare_as(
+                ctl,
+                holder,
+                &project_id,
+                &issue_keys,
+                &worktree_path,
+                session_id,
+                peer,
+            )
+            .await
+        }
         Request::RunChoice {
             run_id,
             choice,

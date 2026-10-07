@@ -28,6 +28,20 @@ pub enum Error {
         named: Vec<String>,
     },
 
+    /// Core answered `422` naming a take refusal: the issues are held by something that
+    /// is not this request's shape and not this moment's luck, a `blocks` edge, an
+    /// unapproved design, an unsettled contract wait or another holder's lease. Sending
+    /// the same declaration again before that changes is a loop, and sending it never is
+    /// a stranded run, so a caller that sweeps matches this to slow its retry and say
+    /// so once.
+    #[error("{said}")]
+    Held {
+        /// The refusal as any other would read it, from `transport::status`.
+        said: String,
+        /// Core's refusal code, such as `ISSUE_BLOCKED`.
+        code: String,
+    },
+
     #[error("{0}")]
     Other(String),
 }
