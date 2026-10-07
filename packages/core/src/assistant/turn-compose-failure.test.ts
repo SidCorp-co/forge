@@ -5,6 +5,7 @@ const silences: unknown[] = [];
 vi.mock('../conversations/index.js', async () => {
   const replies = await import('../conversations/fallback-replies.js');
   return {
+    confidentLanguageOf: replies.confidentLanguageOf,
     codeAuthored: (text: string) => ({ text, authored: 'code' }),
     recordSilence: async (row: unknown) => {
       silences.push(row);

@@ -28,9 +28,13 @@ export {
 } from './conversation-agent-read.js';
 export {
   CORRECTIVE_PREFIX,
+  confidentLanguageOf,
+  continuationEndedReply,
   emptyFallbackReply,
   errorFallbackReply,
   isTurnFailureCode,
+  nothingMoreReply,
+  partialReplyWords,
   type ReplyLanguage,
   replyLanguageOf,
   replyLanguageOfTag,

@@ -1,6 +1,7 @@
 import {
   CORRECTIVE_PREFIX,
   codeAuthored,
+  confidentLanguageOf,
   emptyFallbackReply,
   errorFallbackReply,
   type ReplyLanguage,
@@ -45,6 +46,33 @@ export function declinedTail(text: string): string {
 const correctiveMessage = (refusals: readonly MessageRefusal[]): string =>
   `${CORRECTIVE_PREFIX} Your previous reply cannot be sent as-is: ${refusals.map((r) => r.why).join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
+const LANGUAGE_NAME: Record<ReplyLanguage, string> = { en: 'English', vi: 'Vietnamese' };
+
+/**
+ * Hold the reply to the language the person wrote in (content-language `chat`: "Answer the person
+ * in the language they wrote in"), and record the judgement on every turn, matched or not, so the
+ * rate is read from the log rather than guessed. Only what can be told with confidence is judged.
+ */
+export function withReplyLanguage(
+  verdict: MessageVerdict,
+  reply: string,
+  asked: ReplyLanguage | null,
+  log?: Record<string, unknown>,
+): MessageVerdict {
+  const replied = confidentLanguageOf(reply);
+  const match = asked && replied ? asked === replied : null;
+  logger.info({ ...log, asked, replied, match }, 'conversations: reply language');
+  if (match !== false || !asked || !replied) return verdict;
+  const refusal: MessageRefusal = {
+    rule: 'reply-language',
+    why: `the person wrote in ${LANGUAGE_NAME[asked]} and the reply is in ${LANGUAGE_NAME[replied]}`,
+    quote: null,
+    shape: 'answer in the language the person wrote in',
+    example: asked === 'vi' ? 'ISS-61 đang chờ phát hành.' : 'ISS-61 is awaiting release.', // i18n-allow: the example a Vietnamese asker is answered with
+  };
+  return { ok: false, refusals: [...(verdict.ok ? [] : verdict.refusals), refusal] };
+}
+
 const EMPTY_RETRY = {
   rule: 'non-empty',
   why: 'empty retry reply',
@@ -68,6 +96,10 @@ export interface ScreenedTurnArgs {
   setPhase: (phase: string) => void;
   /** What stands when the screen is exhausted or the model wrote nothing: a code-authored line, or nothing at all. */
   fallback?: 'code-authored' | 'none';
+  /** What this turn's tools returned so far; a tracker date or status the reply states is held to it. */
+  toolResults?: () => readonly string[];
+  /** The language the person wrote in, where it can be told; the reply is held to it. */
+  askedIn?: ReplyLanguage | null;
   log?: Record<string, unknown>;
 }
 
@@ -98,12 +130,14 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
           ? ({ ok: true } as MessageVerdict)
           : { ok: false, refusals: [EMPTY_RETRY] };
       }
-      return screenReplyAtDoor(args.door, {
+      const verdict = await screenReplyAtDoor(args.door, {
         projectId: args.projectId,
         segments: [text],
         toolCalls: result.toolCalls,
         progress: result.progress,
+        ...(args.toolResults ? { toolResults: args.toolResults() } : {}),
       });
+      return withReplyLanguage(verdict, text, args.askedIn ?? null, args.log);
     },
     rewrite: async (verdict) => {
       attempt += 1;

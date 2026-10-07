@@ -89,14 +89,11 @@ export function PrimaryActions({
   let primary: React.ReactNode = null;
   if (d.status === "deferred") {
     primary = d.canSignOff ? (
-      <Tooltip
-        label={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "", from: d.deferral?.from ? statusWord(d.deferral.from) : t("requirements.act.itsStatus") })}
-        multiline
-      >
-        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "undefer" })}>
-          {t("requirements.act.undefer")}
-        </Button>
-      </Tooltip>
+      <UndeferAct
+        projectId={projectId}
+        reqKey={d.key}
+        tip={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "", from: d.deferral?.from ? statusWord(d.deferral.from) : t("requirements.act.itsStatus") })}
+      />
     ) : null;
   } else if (proposed) {
     primary = inPeek ? (
@@ -287,6 +284,41 @@ function DeferAct({ projectId, reqKey }: { projectId: string; reqKey: string }) 
       <Input aria-label={t("requirements.act.meantForLabel")} placeholder={t("requirements.act.meantFor")} value={targetPhase} onChange={(e) => setTargetPhase(e.target.value)} />
       <Button type="submit" size="sm" disabled={!reason.trim()} loading={act.isPending}>
         {t("requirements.act.defer")}
+      </Button>
+      <RefusalLine error={act.error} />
+    </form>
+  );
+}
+
+/** Puts a deferred requirement back at the status it left, saying why it comes back, as its defer said why it left. */
+function UndeferAct({ projectId, reqKey, tip }: { projectId: string; reqKey: string; tip: string }) {
+  const t = useCopy();
+  const act = useRequirementAction(projectId, reqKey);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <Tooltip label={tip} multiline>
+        <Button type="button" size="sm" variant="primary" onClick={() => setOpen(true)}>
+          {t("requirements.act.undefer")}
+        </Button>
+      </Tooltip>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        act.mutate({ kind: "undefer", reason: reason.trim() }, { onSuccess: () => setOpen(false) });
+      }}
+    >
+      <Input aria-label={t("requirements.act.undeferWhyLabel")} placeholder={t("requirements.act.undeferWhy")} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+      <Button type="submit" size="sm" disabled={!reason.trim()} loading={act.isPending}>
+        {t("requirements.act.undefer")}
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        {t("common.cancel")}
       </Button>
       <RefusalLine error={act.error} />
     </form>

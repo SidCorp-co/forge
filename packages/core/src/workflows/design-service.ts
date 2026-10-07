@@ -16,6 +16,7 @@ import {
 import {
   baseApprovalRefusal,
   basesOfStored,
+  designsLeftStale,
   readBases,
   standingBaseRefusal,
 } from './design-bases.js';
@@ -99,6 +100,8 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   const latest = designs[0]
     ? { revision: designs[0].revision, author: name(designs[0].proposedByUser) }
     : null;
+  const blocked =
+    awaiting !== null ? standingBaseRefusal(awaiting, designs[0]?.document, held) : null;
   return {
     workflowId: row.id,
     flow: row.flow,
@@ -112,9 +115,18 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       ...head,
       latest,
       canDecide,
-      baseUnapproved:
-        awaiting !== null ? standingBaseRefusal(awaiting, designs[0]?.document, held) : null,
+      baseUnapproved: blocked,
     }),
+    // what the approver reads before Approve: a refusal core already knows, and the designs it strands
+    approvalBlocked: blocked
+      ? {
+          code: blocked.code,
+          revision: blocked.revision,
+          bases: blocked.bases,
+          detail: blocked.detail,
+        }
+      : null,
+    approvalLeavesStale: awaiting !== null ? designsLeftStale(row.flow, awaiting, held) : [],
     revisions: designs.map((d, at) => ({
       revision: d.revision,
       designIssueId: d.designIssueId,

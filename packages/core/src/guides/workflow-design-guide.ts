@@ -48,8 +48,11 @@ names the workflow it builds is not dispatched while that design is not approved
    \`needs_info\` with \`awaitsDesign: { workflowId, revision }\` naming the revision now waiting: the
    decision, approve or return, is written as the answer to the question that park asks, and the issue
    moves back to the status it left as any answer moves it. A park naming any other revision is refused
-   \`QUESTION_DESIGN_UNKNOWN\` or \`QUESTION_DESIGN_NOT_AWAITING\`; a park asked in prose alone stays open
-   after the approval until a person answers it too. Writing a new revision while one is still waiting
+   \`QUESTION_DESIGN_UNKNOWN\` or \`QUESTION_DESIGN_NOT_AWAITING\`. A \`needs_decision\` park that names no
+   revision, on an issue with exactly one revision proposed under it still awaiting its approver, is linked to
+   that revision by core, and its question says so (\`linked to <flow> r<N>, proposed under this issue\`); with
+   two or more awaiting it is refused \`QUESTION_DESIGN_AMBIGUOUS\`, naming each, until \`awaitsDesign\` picks
+   one. Any other park asked in prose alone stays open after the approval until a person answers it too. Writing a new revision while one is still waiting
    voids the questions on the old one and asks each issue again of the new one. A return no live issue carries is the
    master's own work: core counts it every time the master's box sweeps, and names it on the pass until
    the next revision is proposed. A returned design is revised by writing it again, which

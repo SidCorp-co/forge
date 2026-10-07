@@ -17,6 +17,7 @@ const offered: string[][] = [];
 vi.mock('../conversations/index.js', async () => {
   const replies = await import('../conversations/fallback-replies.js');
   return {
+    confidentLanguageOf: replies.confidentLanguageOf,
     codeAuthored: (text: string) => ({ text, proof: null }),
     recordSilence: async () => undefined,
     turnFailureReason: replies.turnFailureReason,

@@ -34,3 +34,27 @@ describe('a conversation progress frame is ephemeral', () => {
     expect(outboxRows).toEqual([]);
   });
 });
+
+describe('a turn is shown working before it has produced anything', () => {
+  it('publishes an empty entry at once, and a continuation under its own entry', async () => {
+    frames.length = 0;
+    const started = Date.now();
+    const progress = new ConversationProgress('c-1', 'e-2');
+    progress.begin();
+    const rest = progress.next();
+    await progress.close();
+    await rest.close();
+    expect(frames).toHaveLength(2);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(rest.entryId).not.toBe('e-2');
+  });
+
+  it('does not publish a second empty entry over one that already streamed', async () => {
+    frames.length = 0;
+    const progress = new ConversationProgress('c-1', 'e-3');
+    progress.onTurnEvent({ type: 'tool_call', id: 't-1', name: 'x', arguments: '{}' } as never);
+    progress.begin();
+    await progress.close();
+    expect(frames).toHaveLength(1);
+  });
+});

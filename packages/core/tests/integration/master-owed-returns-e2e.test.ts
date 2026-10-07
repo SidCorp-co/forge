@@ -301,7 +301,19 @@ describe('a returned requirement revision an agent wrote is owed to the project 
     );
     expect(await owedLine()).not.toContain(`${key} r1`);
 
-    ok(await say('owner', 'POST', at(`/requirements/${key}/undefer`), {}));
+    const bare = await say('owner', 'POST', at(`/requirements/${key}/undefer`), {});
+    expect(bare.status, JSON.stringify(bare.json)).toBe(400);
+    const blank = await say('owner', 'POST', at(`/requirements/${key}/undefer`), { reason: ' ' });
+    expect(blank.status, JSON.stringify(blank.json)).toBe(422);
+    expect(blank.json.error.refusals.map((r: { code: string }) => r.code)).toEqual([
+      'REQUIREMENT_UNDEFER_REASON_REQUIRED',
+    ]);
+    expect(await owedLine()).not.toContain(`${key} r1`);
+    ok(
+      await say('owner', 'POST', at(`/requirements/${key}/undefer`), {
+        reason: 'planned into v1 after all',
+      }),
+    );
     expect(await owedLine()).toContain(`(${key} r1)`);
   });
 });

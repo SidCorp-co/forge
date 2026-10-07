@@ -56,6 +56,34 @@ export interface DesignListReading {
 	waitingOn: WaitingOn<DesignWaitingKind>;
 }
 
+/** Why one base a design declares refuses its approval: no such workflow, approved at another revision now, or not approved at all. */
+export type DesignBaseFaultState = "missing" | "stale" | "unapproved";
+
+/** One declared base that refuses the approval, as `WORKFLOW_DESIGN_BASE_UNAPPROVED` carries it beside its detail. */
+export interface DesignBaseFault {
+	workflow: string;
+	revision: number;
+	state: DesignBaseFaultState;
+	approvedRevision: number | null;
+	designStatus: DesignStatus | null;
+}
+
+/** The refusal approving the proposed revision would meet on its bases now: its facts for a client to word, and core's sentence. */
+export interface DesignApprovalBlock {
+	code: "WORKFLOW_DESIGN_BASE_UNAPPROVED";
+	revision: number;
+	bases: DesignBaseFault[];
+	detail: string;
+}
+
+/** A design whose declared base names this one at another revision than the proposed one, so approving it leaves that design on a stale base. */
+export interface DesignLeftStale {
+	workflowId: string;
+	flow: string;
+	revision: number;
+	basedOnRevision: number;
+}
+
 export const DESIGN_WAITING_KINDS = [
 	"you",
 	"person",

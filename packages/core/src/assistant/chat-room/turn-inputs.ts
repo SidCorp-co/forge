@@ -15,7 +15,11 @@
 
 import { ESCALATE_TOOL_NAME } from '@forge/contracts/assistant';
 import { agentRefusalText } from '../../agent-sessions/index.js';
-import { type ConversationVenue, codeAuthored } from '../../conversations/index.js';
+import {
+  type ConversationVenue,
+  codeAuthored,
+  replyLanguageOf,
+} from '../../conversations/index.js';
 import type {
   RocketChatImageRef,
   RocketChatRestAuth,
@@ -187,14 +191,16 @@ async function divertToEscalation(
     shape: args.shape,
     asker: authority,
   });
+  // a room's agent lines answer in the asker's language; a room that cannot tell keeps Vietnamese
+  const language = replyLanguageOf(subject.text) ?? 'vi';
   const text = started.started
-    ? ESCALATION_ACK(bot.botName)
+    ? ESCALATION_ACK(bot.botName, language)
     : started.reason === 'deduped'
-      ? ESCALATION_DEDUP_REPLY(bot.botName)
+      ? ESCALATION_DEDUP_REPLY(bot.botName, language)
       : started.reason === 'no-device'
-        ? ESCALATION_NO_DEVICE_REPLY(bot.botName)
+        ? ESCALATION_NO_DEVICE_REPLY(bot.botName, language)
         : started.reason === 'runner-outdated' || started.reason === 'authority-refused'
-          ? agentRefusalText(started)
+          ? agentRefusalText(started, language)
           : null;
   return text === null
     ? { send: false, reason: 'escalation-dispatch-failed', ended: 'not-dispatched' }

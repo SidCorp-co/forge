@@ -9,9 +9,12 @@
 
 import {
   codeAuthored,
+  continuationEndedReply,
   conversationTransport,
+  nothingMoreReply,
   openConversation,
   recordDeliveredReply,
+  type ScreenedMessage,
   turnFailureReason,
 } from '../conversations/index.js';
 import {
@@ -23,13 +26,16 @@ import {
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
+import { registerTurnStop, STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
-import { composeReply } from './turn-compose.js';
+import { composeReply, type TurnContext } from './turn-compose.js';
+import { partialReplyText } from './turn-partial.js';
 import {
+  type ContinuedEntry,
   type ConversationTurnRequest,
   REPLY_NOT_DELIVERED,
   REPLY_NOT_DELIVERED_REASON,
+  type TurnBudget,
   type TurnOutcome,
   type TurnReply,
 } from './turn-request.js';
@@ -42,8 +48,12 @@ export type {
   TurnReply,
 } from './turn-request.js';
 
-const TURN_TIMEOUT_MS = 90_000;
-const HANDLE_TIMEOUT_MS = 120_000;
+/** When a turn still answering posts what it has so far and keeps working. */
+const PARTIAL_AFTER_MS = 90_000;
+/** The most a turn that keeps working may run, from its start; inside its token's life. */
+const CONTINUED_CEILING_MS = 8 * 60 * 1000;
+/** A turn past its abort that has not returned is given up this much later. */
+const HANDLE_GRACE_MS = 30_000;
 /** The turn's token outlives the turn's own ceiling and a CLI call begun at its edge; it is revoked when the turn ends. */
 const CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
@@ -80,6 +90,29 @@ type Transport = NonNullable<ReturnType<typeof conversationTransport>>;
 
 const STOPPED: TurnOutcome = { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
 
+/** A turn that outran its first ceiling: the partial reply to post now, and the work still running. */
+interface PartialReply {
+  partial: ScreenedMessage;
+  rest: Promise<TurnReply | TurnOutcome>;
+  /** End the work still running: its partial could not be delivered, so nothing may follow it. */
+  cancel: () => void;
+  /** Point the work's stream at the entry the rest is recorded under. */
+  continueIn: (entry: ContinuedEntry | null) => void;
+}
+
+type Composed = TurnReply | TurnOutcome | PartialReply;
+
+/** A turn whose answer is the model's reply can post a partial one; one that answers only through `room_send` cannot. */
+function budgetOf(req: ConversationTurnRequest): TurnBudget & { continues: boolean } {
+  const continues = req.sendMode !== 'tool';
+  const partialAfterMs = req.budget?.partialAfterMs ?? PARTIAL_AFTER_MS;
+  return {
+    continues,
+    partialAfterMs,
+    ceilingMs: continues ? (req.budget?.ceilingMs ?? CONTINUED_CEILING_MS) : partialAfterMs,
+  };
+}
+
 /**
  * Take one turn in a venue, and deliver what it produced.
  */
@@ -93,6 +126,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   }
   const conversation = await openConversation(req.venue);
   const reply = await composeWithin(req, conversation.id);
+  if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply);
   if ('kind' in reply) return reply;
   if (!reply.send) {
     if (reply.ended === 'failed') return { kind: 'failed', code: reply.code, reason: reply.reason };
@@ -101,64 +135,219 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   return deliverReply(req, transport, conversation.id, reply);
 }
 
-/** Compose under the turn's timeout, its abort and its token; a stop from the room wins every arm. */
+/**
+ * Compose under the turn's ceilings, its abort and its token; a stop from the room wins every arm.
+ * A turn still running at its first ceiling hands back what it did so far and keeps going; its
+ * token, its abort and its stop stay held until the rest has settled.
+ */
 async function composeWithin(
   req: ConversationTurnRequest,
   conversationId: string,
-): Promise<TurnReply | TurnOutcome> {
+): Promise<Composed> {
+  const budget = budgetOf(req);
+  const startedAt = Date.now();
   const abort = new AbortController();
   const credential = turnCredentialHolder(req.authority);
-  const timer = setTimeout(() => abort.abort(TURN_TIMED_OUT), TURN_TIMEOUT_MS);
-  timer.unref?.();
+  const ceiling = setTimeout(() => abort.abort(TURN_TIMED_OUT), budget.ceilingMs);
+  ceiling.unref?.();
   const onExternalStop = () => abort.abort(STOPPED_BY_A_PERSON);
   req.externalStop?.addEventListener('abort', onExternalStop, { once: true });
+  const stream = { current: req.onTurnEvent };
   let phase = 'start';
   let timedOut = false;
   const stopped = () => {
     logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
     return STOPPED;
   };
-  const ctx = {
-    req,
+  const ctx: TurnContext = {
+    req: req.onTurnEvent ? { ...req, onTurnEvent: (event) => stream.current?.(event) } : req,
     conversationId,
     abort,
     setPhase: (p: string) => {
       phase = p;
     },
     credential: credential.get,
+    writes: null,
   };
-  try {
-    if (req.externalStop?.aborted) return stopped();
-    const reply = await withTimeout(composeReply(ctx), HANDLE_TIMEOUT_MS, () => {
-      timedOut = true;
-    });
-    // A provider can END on a cancellation instead of throwing on it; the reply is not delivered.
-    return req.externalStop?.aborted ? stopped() : reply;
-  } catch (err) {
-    abort.abort();
-    if (req.externalStop?.aborted) return stopped();
-    logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
-    reportFailure(err, {
-      tags: { area: 'conversations', phase, timed_out: String(timedOut) },
-      extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
-    });
-    const unconfigured = isRefusal(err)
-      ? err.refusals.find((r) => r.code === 'ASSISTANT_MODEL_NOT_CONFIGURED')
-      : undefined;
-    if (unconfigured && req.sendMode !== 'tool' && req.fallbacks !== 'silence') {
-      const text = `${unconfigured.code}: ${unconfigured.detail}`;
-      return { send: true, message: codeAuthored(text), screenReplaced: true };
-    }
-    const code =
-      timedOut || abort.signal.reason === TURN_TIMED_OUT
-        ? 'ASSISTANT_TURN_TIMED_OUT'
-        : 'ASSISTANT_TURN_FAILED';
-    return { send: false, ended: 'failed', code, reason: turnFailureReason(code, req.handleName) };
-  } finally {
-    clearTimeout(timer);
+  const settle = async () => {
+    clearTimeout(ceiling);
     req.externalStop?.removeEventListener('abort', onExternalStop);
     await credential.release();
     await req.dispose?.();
+  };
+  const work: Promise<TurnReply | TurnOutcome> = (async () => {
+    try {
+      if (req.externalStop?.aborted) return stopped();
+      const reply = await withTimeout(composeReply(ctx), budget.ceilingMs + HANDLE_GRACE_MS, () => {
+        timedOut = true;
+      });
+      // A provider can END on a cancellation instead of throwing on it; the reply is not delivered.
+      return abort.signal.reason === STOPPED_BY_A_PERSON || req.externalStop?.aborted
+        ? stopped()
+        : reply;
+    } catch (err) {
+      abort.abort();
+      if (req.externalStop?.aborted || abort.signal.reason === STOPPED_BY_A_PERSON)
+        return stopped();
+      return failedTurn(req, err, phase, timedOut || abort.signal.reason === TURN_TIMED_OUT);
+    }
+  })();
+
+  const first = budget.continues ? await settledWithin(work, budget.partialAfterMs) : await work;
+  if (first !== OUTRAN) {
+    await settle();
+    return first;
+  }
+  // a room that may stay silent hears a partial only when the turn already changed something in it;
+  // otherwise the turn ends at the first ceiling, as a turn there always has
+  if (req.fallbacks === 'silence' && !ctx.writes?.calls().some((c) => c.write)) {
+    abort.abort(TURN_TIMED_OUT);
+    const ended = await work;
+    await settle();
+    return ended;
+  }
+  logger.info(
+    { ...req.log, phase, partialAfterMs: budget.partialAfterMs },
+    'conversations: the turn outran its first ceiling; posting what it has and working on',
+  );
+  return {
+    partial: codeAuthored(
+      partialReplyText({
+        calls: ctx.writes?.calls() ?? [],
+        language: req.replyLanguage ?? 'en',
+        handleName: req.handleName,
+        waitedMs: Date.now() - startedAt,
+      }),
+    ),
+    rest: work.finally(settle),
+    cancel: () => abort.abort(STOPPED_BY_A_PERSON),
+    continueIn: (entry) => {
+      stream.current = entry?.onTurnEvent;
+    },
+  };
+}
+
+const OUTRAN = Symbol('outran');
+
+/** The work's result if it settles within `ms`, else {@link OUTRAN}; the work keeps running. */
+function settledWithin<T>(work: Promise<T>, ms: number): Promise<T | typeof OUTRAN> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(OUTRAN), ms);
+    t.unref?.();
+    work.then((value) => {
+      clearTimeout(t);
+      resolve(value);
+    });
+  });
+}
+
+/** How a turn that threw ends: the coded line its window records, or the refusal an unconfigured model earns. */
+function failedTurn(
+  req: ConversationTurnRequest,
+  err: unknown,
+  phase: string,
+  timedOut: boolean,
+): TurnReply {
+  logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
+  reportFailure(err, {
+    tags: { area: 'conversations', phase, timed_out: String(timedOut) },
+    extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
+  });
+  const unconfigured = isRefusal(err)
+    ? err.refusals.find((r) => r.code === 'ASSISTANT_MODEL_NOT_CONFIGURED')
+    : undefined;
+  if (unconfigured && req.sendMode !== 'tool' && req.fallbacks !== 'silence') {
+    const text = `${unconfigured.code}: ${unconfigured.detail}`;
+    return { send: true, message: codeAuthored(text), screenReplaced: true };
+  }
+  const code = timedOut ? 'ASSISTANT_TURN_TIMED_OUT' : 'ASSISTANT_TURN_FAILED';
+  return { send: false, ended: 'failed', code, reason: turnFailureReason(code, req.handleName) };
+}
+
+/**
+ * Post the partial reply under the window's own delivery, then let the work finish and post the
+ * rest into the same thread. A partial that could not be delivered ends the work: nothing may
+ * follow a message the thread never got.
+ */
+async function deliverPartial(
+  req: ConversationTurnRequest,
+  transport: Transport,
+  conversationId: string,
+  reply: PartialReply,
+): Promise<TurnOutcome> {
+  const outcome = await deliverReply(req, transport, conversationId, {
+    send: true,
+    message: reply.partial,
+    screenReplaced: false,
+  });
+  if (outcome.kind !== 'delivered') {
+    reply.cancel();
+    void reply.rest.catch(() => undefined);
+    return outcome;
+  }
+  const entry = req.continueEntry?.() ?? null;
+  reply.continueIn(entry);
+  return {
+    ...outcome,
+    continuation: continueInThread(req, transport, conversationId, reply, entry),
+  };
+}
+
+/** The rest of a turn that posted a partial reply, delivered into the same thread as its own message. */
+async function continueInThread(
+  req: ConversationTurnRequest,
+  transport: Transport,
+  conversationId: string,
+  reply: PartialReply,
+  entry: ContinuedEntry | null,
+): Promise<TurnOutcome> {
+  const stop = registerTurnStop(conversationId);
+  const onStop = () => reply.cancel();
+  stop.signal.addEventListener('abort', onStop, { once: true });
+  const where = { ...req.log, adapter: req.venue.adapter, externalId: req.venue.externalId };
+  try {
+    const rest = await reply.rest;
+    if ('kind' in rest) return rest;
+    const language = req.replyLanguage ?? 'en';
+    const message = rest.send
+      ? rest.message
+      : codeAuthored(
+          rest.ended === 'failed'
+            ? continuationEndedReply(req.handleName, language, rest.code)
+            : nothingMoreReply(req.handleName, language),
+        );
+    entry?.onSettled?.({ text: message.text, screenReplaced: rest.send && rest.screenReplaced });
+    const receipt = await transport.deliver(req.venue, message, {
+      addressee: req.addressee ?? null,
+    });
+    const row = entry?.replyEntry?.(message.text);
+    await recordDeliveredReply({
+      conversationId,
+      projectId: req.venue.projectId,
+      text: receipt.deliveredText ?? message.text,
+      receipt,
+      ...(req.deliveryKey ? { deliveryKey: `${req.deliveryKey}:continued` } : {}),
+      awaitsReply: rest.send && rest.awaitsReply === true,
+      ...(row ? { messageId: row.id, blocks: row.blocks } : {}),
+    });
+    await transport.notifySettled?.(req.venue).catch(() => undefined);
+    return { kind: 'delivered', messageId: receipt.messageId };
+  } catch (err) {
+    logger.error(
+      { err, ...where },
+      'conversations: the rest of a continued turn was not delivered',
+    );
+    reportFailure(err, { tags: { area: 'conversations', phase: 'continue' }, extra: where });
+    return {
+      kind: 'undeliverable',
+      code: REPLY_NOT_DELIVERED,
+      reason: REPLY_NOT_DELIVERED_REASON,
+      reply: '',
+    };
+  } finally {
+    stop.signal.removeEventListener('abort', onStop);
+    stop.release();
+    await entry?.close();
   }
 }
 
