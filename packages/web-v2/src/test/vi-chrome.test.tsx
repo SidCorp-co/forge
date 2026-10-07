@@ -49,8 +49,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      // a snake_case value (`in_progress`) or a dotted permission (`workflow-designs.approve`) is an identifier the tooltip names on purpose, not chrome
-      if (new RegExp(`[^\\p{L}_.-]${w.trim()}[^\\p{L}_]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`) or a field in code quotes (`persona`) is an identifier the text names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_.\`-]${w.trim()}[^\\p{L}_\`]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

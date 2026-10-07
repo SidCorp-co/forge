@@ -7,7 +7,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useProjectDocument } from "@/features/project-config/hooks";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useQueryParam } from "@/lib/utils/use-query-param";
@@ -31,6 +31,7 @@ function size(r: WorkflowRecord, t: Copy): string {
 
 function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const t = useCopy();
+  const label = useLabel();
   const time = useTimeFormat();
   const w = r.document;
   const status = r.design.shown;
@@ -50,7 +51,7 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
         {w.title}
       </span>
       <span className="truncate text-12-5 text-muted max-md:order-3" data-testid="workflow-template">
-        {templateTitle(templateIdOf(r), templates)}
+        {templateTitle(templateIdOf(r), templates, label)}
       </span>
       <span className="text-12-5 tabular-nums text-muted max-md:hidden">{size(r, t)}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-2 max-md:order-2 max-md:justify-end">
@@ -70,6 +71,7 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
 /** A design in the narrow list beside the overview: its title and state, then what it is drawn in, its size and age. */
 function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const t = useCopy();
+  const label = useLabel();
   const time = useTimeFormat();
   const w = r.document;
   const status = r.design.shown;
@@ -89,7 +91,7 @@ function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; te
         <ProposedMarker r={r} />
       </span>
       <span className="col-span-2 truncate text-12 text-muted" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>
-        <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates)}</span> · {size(r, t)} · {time.relative(w.updatedAt)}
+        <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span> · {size(r, t)} · {time.relative(w.updatedAt)}
       </span>
       <span className="col-span-2 min-w-0 empty:hidden">
         <HealthSummaryChips health={r.health} />
@@ -111,8 +113,9 @@ function Designs({
   narrow: boolean;
 }) {
   const t = useCopy();
+  const label = useLabel();
   const [picked, setPicked] = useQueryParam("template");
-  const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates).localeCompare(templateTitle(b, templates)));
+  const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates, label).localeCompare(templateTitle(b, templates, label)));
   const filter = picked && chips.includes(picked) ? picked : null;
   const groups = catalogue(filter ? all.filter((r) => templateIdOf(r) === filter) : all, t);
   const pad = narrow ? "px-5 max-md:px-4" : "px-7 max-md:px-4";
@@ -139,7 +142,7 @@ function Designs({
                 )}
                 data-testid="template-chip"
               >
-                {k ? templateTitle(k, templates) : t("workflows.all")}
+                {k ? templateTitle(k, templates, label) : t("workflows.all")}
               </Button>
             ))}
           </span>

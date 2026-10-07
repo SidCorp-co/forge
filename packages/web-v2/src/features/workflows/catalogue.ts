@@ -4,6 +4,7 @@ import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
 import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import { projectDescriptionOf } from "@/features/project-settings/project-document";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+import { builtinTemplateTitle } from "./template-words";
 import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
@@ -32,10 +33,12 @@ export function purposeOf(r: WorkflowRecord): Purpose {
   return PURPOSES.find((p) => p.templates.includes(id))?.id ?? "other";
 }
 
-/** A template's name as a person reads it; an unknown id is spelled out rather than shown raw. */
-export function templateTitle(id: string, templates: readonly WorkflowTemplate[]): string {
+/** A template's name as a person reads it: the loaded template's, else a built-in's by its id; an unknown id is spelled out rather than shown raw. */
+export function templateTitle(id: string, templates: readonly WorkflowTemplate[], label: Parameters<typeof builtinTemplateTitle>[1]): string {
   const t = templates.find((x) => x.id === id);
   if (t) return t.title;
+  const builtin = builtinTemplateTitle(id, label);
+  if (builtin) return builtin;
   const words = id.replace(/[-_]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

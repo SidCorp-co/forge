@@ -7,7 +7,10 @@ import { WhatChanges } from "@/features/releases/components/release-changes";
 import { CriteriaPane, IssuesPane, NotesPane } from "@/features/releases/components/release-panes";
 import { ReleasePeek } from "@/features/releases/components/release-peek";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
-import { HealthBar, SearchBox, ViewBar, WalkBar, ZoomBar } from "@/features/workflows/canvas/controls";
+import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
+import { HealthBar, Legend, SearchBox, ViewBar, WalkBar, ZoomBar } from "@/features/workflows/canvas/controls";
+import { useWorkflowTemplates } from "@/features/workflows/hooks";
+import { TypeChip } from "@/features/workflows/canvas/nodes";
 import { type Canvas, readCanvas } from "@/features/workflows/canvas/model";
 import { DetailPanel } from "@/features/workflows/canvas/panel";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
@@ -174,7 +177,7 @@ const record = (flow: string, status: string, pending: number | null, over: Reco
 const records = [record("dat-hang", "approved", 2), record("vong-doi", "proposed", null, { kind: "state" }), record("tich-hop", "returned", null, { version: 2, template: { id: "integration-sequence", version: 1 } })];
 const workflowSeed = (): [QueryKey, unknown][] => [
   [["workflows", P], { workflows: records, returned: records.length }],
-  [["workflow-templates", P], { templates: [], returned: 0 }],
+  [["workflow-templates", P], { templates: BUILTIN_WORKFLOW_TEMPLATES.map((template) => ({ origin: "builtin", template })), returned: BUILTIN_WORKFLOW_TEMPLATES.length }],
 ];
 
 export const workflowsScreen = (): ReactElement => (
@@ -251,8 +254,31 @@ export const workflowDesignScreen = (): ReactElement => (
 const canvas: Canvas = readCanvas(body("dat-hang") as never, null, productCopy("vi"));
 const overlay = { on: true, onToggle: () => {}, layer: "both", onLayer: () => {}, observed: true, nodes: new Map(), edges: new Map(), hrefOf: () => null } as never;
 
+/** Every built-in template as the canvas draws it: its title, its legend (node types and line kinds), each node type's chip and its bands. */
+function BuiltinTemplates() {
+  const templates = useWorkflowTemplates(P).data?.templates ?? [];
+  return (
+    <>
+      {templates.map(({ template }) => (
+        <section key={template.id} title={template.title}>
+          <Legend template={template} />
+          {template.nodeTypes.map((n) => (
+            <TypeChip key={n.id} type={n} />
+          ))}
+          {(template.lanes.from === "template" ? template.lanes.bands : []).map((b) => (
+            <span key={b.id} title={b.tooltip}>
+              {b.label}
+            </span>
+          ))}
+        </section>
+      ))}
+    </>
+  );
+}
+
 export const workflowCanvasScreen = (): ReactElement => (
-  <>
+  <Seeded data={workflowSeed()}>
+    <BuiltinTemplates />
     <ViewBar language="business" lod={1} banded allOpen={false} onLanguage={() => {}} onLod={() => {}} onToggleAll={() => {}} onWalk={() => {}} health={overlay} />
     <HealthBar health={overlay} />
     <SearchBox c={canvas} hits={[]} query="x" onQuery={() => {}} onPick={() => {}} />
@@ -262,5 +288,5 @@ export const workflowCanvasScreen = (): ReactElement => (
     <DetailPanel canvas={canvas} selection={{ step: "b" }} walk={{ order: ["a", "b", "c"], at: 1 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
     <DetailPanel canvas={canvas} selection={null} walk={{ order: ["a", "b", "c"], at: 3 }} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
     <DetailPanel canvas={canvas} selection={{ edge: "a>b" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
-  </>
+  </Seeded>
 );
