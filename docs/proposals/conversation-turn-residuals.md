@@ -1,7 +1,7 @@
 # What the conversation surface still loses around a turn
 
-**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, the
-fallback reply follows the room's language, and the person-stop and dock-draft questions are
+**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, and the
+person-stop and dock-draft questions are
 answered on that issue, which dev ISS-129 carries. The change that lands it deletes this file.
 
 ISS-1146's independent judge, at deployment `5adef4c`, recorded three losses. None of them fails a
@@ -26,25 +26,19 @@ only, or dropping it as today. That is a product call, not a repair.
 
 **What ends it:** that choice, recorded on whatever change carries it out.
 
-## 2. A turn core abandons at its timeout reads as the agent having nothing to add
+## 2. A turn core abandons at its timeout has no window decision of its own
 
-**Seen (older than ISS-1146):** a long Assistant turn ran 90 s. Its window closed with decision
-`nothing-to-say`, reason `This operation was aborted`. The thread said "The agent read this and had
-nothing to add", and then showed the Vietnamese fallback reply (`conversations/fallback-replies.ts`)
-in an English room.
+**Stands:** `runConversationTurn` aborts on `TURN_TIMEOUT_MS` with the reason `TURN_TIMED_OUT`
+(`assistant/conversation-stops.ts`), the failure carries its own code `ASSISTANT_TURN_TIMED_OUT`, and
+the fallback reply speaks the room's language (`conversations/fallback-replies.ts:replyLanguageOf`).
+What is left: the window's decision vocabulary (`db/schema-conversations.ts`,
+`conversation_windows_decision_known`) has no `timed-out` value, so a timed-out turn's window cannot
+say so in its own decision the way a person's stop says `stopped`.
 
-**Mechanism:** `runConversationTurn` aborts on `TURN_TIMEOUT_MS` with no reason of its own. Because
-the abort carries no reason, `external-chat.ts` takes it for an ordinary failure and appends a
-silence row whose text is the abort's message. ISS-1146 gave a person's stop its own `stopped`
-decision. A timeout still has no decision of its own.
+**Why it was not built here:** a new window decision widens that CHECK constraint in a migration, and
+a migration's `when` is shared across every open branch.
 
-**Why it was not built here:** telling a timeout apart needs its own window decision, which means
-widening `conversation_windows_decision_known` in a migration. A migration's `when` is shared across
-every open branch. The fallback reply's language is a separate question: which language that door
-answers in.
-
-**What ends it:** a `timed-out` decision written by the timeout path, plus a fallback reply that
-follows the room's language.
+**What ends it:** a `timed-out` decision written by the timeout path.
 
 ## 3. Closing the dock discards the unsent draft
 
@@ -68,8 +62,8 @@ carry them.
 - **Taking 1 either keeps unchecked text or drops it.** An answer cut short before the reply check
   can be stored with a mark saying it was not checked, kept on screen only, or dropped as today.
   Each choice gives up something the other two keep.
-- **Leaving 2 keeps a state-lie on the thread.** A turn core gave up on reads as the agent choosing
-  silence, which is the sentence ISS-1146 removed for a person's stop.
+- **Leaving 2 keeps the window's decision short of the cause.** A turn core gave up on records no
+  `timed-out` decision, so a reader of the window cannot tell it from another failure.
 - **Taking 2 costs a migration.** A new window decision widens a CHECK constraint, and its `when`
   has to be read off `scripts/check-migration-order.mjs` against every open branch.
 - **Leaving 3 costs a draft at every deliberate close.** Escape no longer causes that loss. The close
