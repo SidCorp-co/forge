@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
 import { is, SQL } from 'drizzle-orm';
 import { getTableConfig, PgDialect, PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -149,13 +150,69 @@ describe('replaying the migrations leaves the CHECK the last statement to touch 
   });
 });
 
+const EVENT_TYPE_WRITES =
+  /\b(INSERT\s+INTO|DELETE\s+FROM|UPDATE|TRUNCATE(?:\s+TABLE)?)\s+"?outbox_event_types"?([^;]*);/gi;
+
+/**
+ * Replays every migration's writes to `outbox_event_types` in journal order: an INSERT adds each
+ * literal it names, a DELETE removes each. Any other write to the table is refused naming its
+ * migration, since what it leaves cannot be read from the text.
+ */
+function eventTypesInMigrations(migrations: { tag: string; sql: string }[]): Set<string> {
+  const held = new Set<string>();
+  for (const { tag, sql } of migrations) {
+    const text = sql.replace(/--[^\n]*/g, '');
+    for (const [, verb = '', rest = ''] of text.matchAll(EVENT_TYPE_WRITES)) {
+      const literals = literalsOf(rest);
+      if (/^INSERT/i.test(verb)) for (const l of literals) held.add(l);
+      else if (/^DELETE/i.test(verb) && literals.size > 0) for (const l of literals) held.delete(l);
+      else throw new Error(`${tag}: a ${verb} on outbox_event_types this replay cannot read`);
+    }
+  }
+  return held;
+}
+
+describe('the outbox event types the migrations seed are the registry', () => {
+  const m = (tag: string, sql: string) => ({ tag, sql });
+
+  it('an INSERT adds its literals and a later DELETE removes them', () => {
+    const held = eventTypesInMigrations([
+      m(
+        'a',
+        `INSERT INTO "outbox_event_types" ("type") VALUES ('x.a'), ('x.b') ON CONFLICT DO NOTHING;`,
+      ),
+      m('b', `DELETE FROM "outbox_event_types" WHERE "type" IN ('x.a');`),
+      m('c', `-- INSERT INTO "outbox_event_types" ("type") VALUES ('x.c');`),
+    ]);
+    expect([...held]).toEqual(['x.b']);
+  });
+
+  it('a write the replay cannot read is refused naming its migration', () => {
+    expect(() =>
+      eventTypesInMigrations([m('0999_x', `UPDATE outbox_event_types SET type = 'y';`)]),
+    ).toThrow(/0999_x: a UPDATE on outbox_event_types/);
+  });
+
+  it('every type OUTBOX_EVENT_TYPES emits is seeded, and nothing else is', () => {
+    const held = eventTypesInMigrations(migrationSources());
+    const unseeded = OUTBOX_EVENT_TYPES.filter((t) => !held.has(t));
+    const stray = [...held].filter((t) => !(OUTBOX_EVENT_TYPES as readonly string[]).includes(t));
+    expect({ unseeded, stray }).toEqual({ unseeded: [], stray: [] });
+  });
+
+  it('the outbox type CHECK the table replaced is dropped and declared nowhere', () => {
+    expect(checksInMigrations(migrationSources()).has('pipeline_outbox_type_chk')).toBe(false);
+    expect(declaredChecks().map((c) => c.name)).not.toContain('pipeline_outbox_type_chk');
+  });
+});
+
 describe('every CHECK the schema derives from a vocabulary is the CHECK the migrations leave', () => {
   const effective = checksInMigrations(migrationSources());
   const declared = declaredChecks();
 
-  it('reads the outbox type check from both sides, so an empty read cannot pass', () => {
-    expect(declared.map((c) => c.name)).toContain('pipeline_outbox_type_chk');
-    expect(effective.has('pipeline_outbox_type_chk')).toBe(true);
+  it('reads CHECKs from both sides, so an empty read cannot pass', () => {
+    expect(declared.length).toBeGreaterThan(0);
+    expect(effective.size).toBeGreaterThan(0);
   });
 
   it('the drizzle schema and the last migration to define each CHECK hold the same literals', () => {

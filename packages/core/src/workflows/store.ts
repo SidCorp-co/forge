@@ -312,6 +312,7 @@ interface StoredBuild {
   issSeq: number;
   title: string;
   status: string;
+  linkedAt: Date;
 }
 
 export async function buildsOf(tx: Tx, workflowIds: readonly string[]): Promise<StoredBuild[]> {
@@ -323,6 +324,7 @@ export async function buildsOf(tx: Tx, workflowIds: readonly string[]): Promise<
       issSeq: issues.issSeq,
       title: issues.title,
       status: issues.status,
+      linkedAt: workflowBuilds.linkedAt,
     })
     .from(workflowBuilds)
     .innerJoin(issues, eq(issues.id, workflowBuilds.issueId))

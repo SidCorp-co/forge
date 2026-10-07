@@ -22,7 +22,8 @@ into FB-n when it is product feedback after all.
 - \`create\` takes a \`kind\` (\`bug\`, \`change_request\`, \`question\`, \`idea\`, \`contract_change\`), a
   \`title\`, and **exactly one** target: a \`requirement\`, \`issue\`, \`release\` or \`workflow\` of this
   project by reference, an \`endpoint\` it serves, or a \`screen\` named in words. Two targets is
-  \`FEEDBACK_TARGET_NOT_ONE\`; a reference that resolves to nothing is \`FEEDBACK_TARGET_UNKNOWN\`, one in
+  \`FEEDBACK_TARGET_NOT_ONE\`; a \`screen\` is where the item was seen, so \`whereSeen\` beside it is
+  \`FEEDBACK_SCREEN_TWICE\`; a reference that resolves to nothing is \`FEEDBACK_TARGET_UNKNOWN\`, one in
   another project \`FEEDBACK_TARGET_NOT_IN_PROJECT\`.
 - An \`endpoint\` is an API route or tool, never free text: an element of the current (approved) version
   of an openapi contract (\`GET /pets\`) or an mcp-tools contract (a tool's name, not one of its input

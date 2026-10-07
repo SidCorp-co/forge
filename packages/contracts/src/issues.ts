@@ -144,5 +144,10 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"SESSION_CONTEXT_MISMATCH",
 	"BRANCH_SELF_REFERENCE",
 	"ASSIGNEE_NOT_MEMBER",
+	"STATUS_MOVES_BY_TRANSITION",
 ] as const;
 export type IssueUpdateRefusalCode = (typeof ISSUE_UPDATE_REFUSAL_CODES)[number];
+
+export const ISSUE_UPDATE_REFUSAL_STATUSES = {
+	STATUS_MOVES_BY_TRANSITION: 400,
+} as const satisfies RefusalStatuses<IssueUpdateRefusalCode>;
