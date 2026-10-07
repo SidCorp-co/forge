@@ -14,12 +14,12 @@ import {
 } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, sortGroupsBy, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { AcceptStep, ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, sortGroupsBy, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
-import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
+import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
@@ -163,6 +163,7 @@ function AssistantStrip({
 
 function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
+  const [accepting, setAccepting] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2 py-[3px]" data-testid="assistant-strip-row">
       <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
@@ -170,12 +171,23 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
       <span className="min-w-0 truncate">{summaryOf(s)}</span>
       <span className="flex-1" />
       <PendingBadge />
-      <Button type="button" size="sm" loading={decide.isPending} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
+      <Button type="button" size="sm" disabled={decide.isPending} onClick={() => setAccepting((v) => !v)} aria-expanded={accepting}>
         Accept
       </Button>
       <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
         Review
       </Button>
+      {accepting ? (
+        <div className="basis-full">
+          <AcceptStep
+            confirmLabel="Accept"
+            consequence={acceptConsequence(s)}
+            loading={decide.isPending}
+            onCancel={() => setAccepting(false)}
+            onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setAccepting(false) })}
+          />
+        </div>
+      ) : null}
       {decide.error ? (
         <span className="basis-full">
           <RefusalLine error={decide.error} />

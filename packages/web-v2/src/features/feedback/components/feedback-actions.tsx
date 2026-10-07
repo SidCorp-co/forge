@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
+import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -184,11 +184,13 @@ function routeLine(s: SuggestionView): string {
   return [t.route ? enumLabel("feedbackRoute", t.route) : "Route", carrier].filter(Boolean).join(" → ");
 }
 
-/** An assistant's triage suggestion is an accent bar an approver accepts or rejects, never an edit. */
+/** An assistant's triage suggestion is an accent bar an approver accepts (through the confirm step that takes
+ *  their reason) or rejects with one, never an edit. */
 export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const q = useWaitingSuggestions(projectId, { feedback: f.id }, f.openSuggestions > 0);
   const decide = useSuggestionDecision(projectId, [["feedback", projectId], ["feedback-item", projectId]]);
   const [rejecting, setRejecting] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
@@ -214,7 +216,15 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
               </span>
             ) : null}
             {f.can.triage ? (
-              rejecting === s.id ? (
+              accepting === s.id ? (
+                <AcceptStep
+                  confirmLabel="Accept"
+                  consequence={`Accepting routes the item: ${routeLine(s)}.`}
+                  loading={decide.isPending}
+                  onCancel={() => setAccepting(null)}
+                  onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setAccepting(null) })}
+                />
+              ) : rejecting === s.id ? (
                 <span className="flex gap-2">
                   <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why not" />
                   <Button type="button" size="sm" disabled={!reason.trim()} onClick={() => decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() })}>
@@ -223,7 +233,7 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
                 </span>
               ) : (
                 <span className="flex gap-2">
-                  <Button type="button" size="sm" variant="primary" loading={decide.isPending} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
+                  <Button type="button" size="sm" variant="primary" disabled={decide.isPending} onClick={() => setAccepting(s.id)}>
                     Accept
                   </Button>
                   <Button type="button" size="sm" onClick={() => setRejecting(s.id)}>

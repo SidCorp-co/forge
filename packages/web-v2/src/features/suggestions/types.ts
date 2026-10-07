@@ -9,5 +9,5 @@ export type {
   SuggestionView,
 } from "@forge/contracts/suggestions";
 
-/** One decision a person takes on a suggestion from the requirement page. */
-export type SuggestionDecision = { kind: "accept"; id: string } | { kind: "reject"; id: string; reason: string };
+/** One decision a person takes on a suggestion; an accept carries the reason the API keeps, where one was given. */
+export type SuggestionDecision = { kind: "accept"; id: string; reason?: string } | { kind: "reject"; id: string; reason: string };

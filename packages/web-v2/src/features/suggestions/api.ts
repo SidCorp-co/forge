@@ -13,5 +13,5 @@ export const suggestionsApi = {
     return apiClient<SuggestionListResponse>(`${base(projectId)}?${on}status=proposed`);
   },
   decide: (projectId: string, d: SuggestionDecision) =>
-    apiClient<SuggestionResponse>(`${base(projectId)}/${d.id}/${d.kind}`, post(d.kind === "reject" ? { reason: d.reason } : {})),
+    apiClient<SuggestionResponse>(`${base(projectId)}/${d.id}/${d.kind}`, post(d.reason ? { reason: d.reason } : {})),
 };

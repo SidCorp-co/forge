@@ -3,11 +3,12 @@
 // The acts a requirement offers where it stands — review a proposal, propose a draft, agree the
 // head, accept a delivery, defer or drop it — and the BA assistant door (ISS-58) that "Propose change" and the top
 // bar's Ask Agent open. The peek and the full page's header draw the same one primary act from the
-// same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff.
+// same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff. Every sign-off
+// (accept, agree, re-pin, accept a delivery) opens a confirm step taking the signer's reason (ISS-281).
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Button, Input, showToast, Tooltip } from "@/design";
+import { AcceptStep, Button, Input, showToast, Tooltip } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
@@ -15,7 +16,7 @@ import { draftIssuesToPromote } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
-import type { RequirementDetail } from "../types";
+import type { RequirementAction, RequirementDetail } from "../types";
 import { PromoteDrafts } from "./promote-drafts";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
@@ -110,11 +111,14 @@ export function PrimaryActions({
       ...s.facts.staleContractPins.map((p) => `${p.contract}@${p.current} (was ${p.pinned ?? "unpinned"})`),
     ];
     primary = (
-      <Tooltip label={`Pins ${moved.join(", ")} in a new baseline of r${head.revision}`} multiline>
-        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "repin", revision: head.revision })}>
-          Re-pin r{head.revision}
-        </Button>
-      </Tooltip>
+      <SignOff
+        projectId={projectId}
+        reqKey={d.key}
+        label={`Re-pin r${head.revision}`}
+        tip={`Pins ${moved.join(", ")} in a new baseline of r${head.revision}`}
+        consequence={`Re-pinning writes a new baseline of r${head.revision} pinning ${moved.join(", ")}.`}
+        act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
+      />
     );
   } else if (d.canSignOff && d.status === "draft" && head && !draft && s.facts.unapprovedDesigns.length > 0) {
     const designs = s.facts.unapprovedDesigns.map((x) => `${x.flow} (${x.designStatus ?? "no design yet"})`).join(", ");
@@ -127,17 +131,24 @@ export function PrimaryActions({
     );
   } else if (d.canSignOff && d.status === "draft" && head && !draft) {
     primary = (
-      <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "agree", revision: head.revision })}>
-        Agree r{head.revision}
-      </Button>
+      <SignOff
+        projectId={projectId}
+        reqKey={d.key}
+        label={`Agree r${head.revision}`}
+        consequence={`Agreeing writes the baseline of r${head.revision}.`}
+        act={(reason) => ({ kind: "agree", revision: head.revision, reason })}
+      />
     );
   } else if (s.state === "delivered" && d.canSignOff && head) {
     primary = (
-      <Tooltip label={`Every linked issue shipped and every business criterion is proven at r${head.revision}; accepting stores it as accepted`} multiline>
-        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "accept-delivery", revision: head.revision })}>
-          Accept r{head.revision}
-        </Button>
-      </Tooltip>
+      <SignOff
+        projectId={projectId}
+        reqKey={d.key}
+        label={`Accept r${head.revision}`}
+        tip={`Every linked issue shipped and every business criterion is proven at r${head.revision}; accepting stores it as accepted`}
+        consequence={`Accepting stores the delivery of r${head.revision} as accepted.`}
+        act={(reason) => ({ kind: "accept-delivery", revision: head.revision, reason })}
+      />
     );
   } else if (d.canSignOff && draftIssuesToPromote(d.status, d.issues).length > 0) {
     primary = <PromoteDrafts projectId={projectId} d={d} />;
@@ -152,6 +163,54 @@ export function PrimaryActions({
       {droppable ? <DropAct projectId={projectId} reqKey={d.key} /> : null}
       <RefusalLine error={act.error} />
     </div>
+  );
+}
+
+/** A signer's sign-off: the button opens the confirm step, which sends the act with the reason typed. */
+function SignOff({
+  projectId,
+  reqKey,
+  label,
+  tip,
+  consequence,
+  act: build,
+}: {
+  projectId: string;
+  reqKey: string;
+  label: string;
+  tip?: string;
+  consequence: string;
+  act: (reason: string | undefined) => RequirementAction;
+}) {
+  const act = useRequirementAction(projectId, reqKey);
+  const [open, setOpen] = useState(false);
+  const button = (
+    <Button type="button" size="sm" variant="primary" disabled={act.isPending} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      {label}
+    </Button>
+  );
+  return (
+    <>
+      {tip ? (
+        <Tooltip label={tip} multiline>
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
+      {open ? (
+        <div className="basis-full">
+          <AcceptStep
+            confirmLabel={label}
+            consequence={consequence}
+            loading={act.isPending}
+            onCancel={() => setOpen(false)}
+            onConfirm={(reason) => act.mutate(build(reason), { onSuccess: () => setOpen(false) })}
+          />
+        </div>
+      ) : null}
+      <RefusalLine error={act.error} />
+    </>
   );
 }
 
@@ -218,10 +277,10 @@ function DeferAct({ projectId, reqKey }: { projectId: string; reqKey: string }) 
   );
 }
 
-/** Accept or return the proposed revision, the return carrying why. */
+/** Accept or return the proposed revision: the accept through its confirm step, the return carrying why. */
 export function ProposalDecision({ projectId, d, revision }: { projectId: string; d: RequirementDetail; revision: number }) {
   const act = useRequirementAction(projectId, d.key);
-  const [returning, setReturning] = useState(false);
+  const [step, setStep] = useState<"accept" | "return" | null>(null);
   const [reason, setReason] = useState("");
   if (!d.canSignOff) {
     return <p className="text-12 text-subtle">A BA or the owner accepts or returns it.</p>;
@@ -230,14 +289,23 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" loading={busy} onClick={() => act.mutate({ kind: "accept", revision })}>
+        <Button type="button" size="sm" disabled={busy} onClick={() => setStep((v) => (v === "accept" ? null : "accept"))} aria-expanded={step === "accept"}>
           Accept
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setReturning((v) => !v)} aria-expanded={returning}>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep((v) => (v === "return" ? null : "return"))} aria-expanded={step === "return"}>
           Reject
         </Button>
       </div>
-      {returning ? (
+      {step === "accept" ? (
+        <AcceptStep
+          confirmLabel={`Accept r${revision}`}
+          consequence={`r${revision} becomes the current revision.`}
+          loading={busy}
+          onCancel={() => setStep(null)}
+          onConfirm={(why) => act.mutate({ kind: "accept", revision, reason: why }, { onSuccess: () => setStep(null) })}
+        />
+      ) : null}
+      {step === "return" ? (
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
@@ -246,7 +314,7 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
               { kind: "return", revision, reason: reason.trim() },
               {
                 onSuccess: () => {
-                  setReturning(false);
+                  setStep(null);
                   setReason("");
                 },
               },

@@ -68,6 +68,7 @@ export { StreamingText } from "./patterns/streaming-text";
 export { SlideOver } from "./patterns/slide-over";
 export { Menu, type MenuItem } from "./patterns/menu";
 export { HoverCard, useHoverCard } from "./patterns/hover-card";
+export { AcceptStep } from "./patterns/accept-step";
 export { Markdown } from "./patterns/markdown";
 export { BodyView } from "./patterns/body-view";
 export { PreviewPane } from "./patterns/preview-pane";

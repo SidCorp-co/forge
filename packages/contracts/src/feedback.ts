@@ -494,6 +494,9 @@ export interface FeedbackDecisionView {
 	decidedAgency: "human" | "agent";
 	decidedAt: string;
 	fromSuggestionId: string | null;
+	/** The person's reason on the accept of the suggestion that wrote this decision (ISS-281); null
+	 *  when it came from no suggestion, the accept gave none, or the item's text is withheld. */
+	acceptReason: string | null;
 }
 
 export interface FeedbackSourceView {

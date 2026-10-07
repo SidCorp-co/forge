@@ -1,13 +1,13 @@
 /**
- * The history a requirement's page reads: its revisions, agrees and suggestions, and the decisions,
- * questions and status moves recorded on its linked issues.
+ * The history a requirement's page reads: its revisions, agrees and suggestions, its own moves to
+ * accepted and dropped, and the decisions, questions and status moves recorded on its linked issues.
  */
 
 import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
 import type { RequirementHistoryEntry } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, issues } from '../db/schema.js';
+import { activityLog, issues, kernelTransitions } from '../db/schema.js';
 import {
   requirementBaselines,
   requirementDeferrals,
@@ -75,6 +75,10 @@ type BaselineRow = typeof requirementBaselines.$inferSelect;
 type ReturnRow = typeof requirementReturns.$inferSelect;
 type DeferralRow = typeof requirementDeferrals.$inferSelect;
 type ActivityRow = typeof activityLog.$inferSelect;
+type MoveRow = Pick<
+  typeof kernelTransitions.$inferSelect,
+  'id' | 'toStatus' | 'reason' | 'actorId' | 'createdAt'
+>;
 interface SuggestionRow {
   id: string;
   kind: string;
@@ -169,6 +173,28 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
     text: `${b.act === 'repin' ? 'Re-pinned' : 'Agreed'} r${b.revision}${b.act === 'repin' ? ' onto the approved designs' : ''}${b.reason ? `: ${b.reason}` : ''}${readinessNote(b.readiness)}`,
   });
 
+// A delivery accept and a drop write no row of their own: the requirement's kernel transition is
+// their record, the signer's reason on it (ISS-281)
+const MOVES_READ = ['accepted', 'dropped'];
+
+function moveText(m: MoveRow): string {
+  if (m.toStatus === 'accepted') return `Accepted the delivery${m.reason ? `: ${m.reason}` : ''}`;
+  if (m.toStatus === 'dropped') return `Dropped: ${m.reason ?? ''}`;
+  throw new Error(
+    `history-read: read a requirement move to ${m.toStatus}; only ${MOVES_READ.join(' and ')} are read`,
+  );
+}
+
+const moveEntry = (m: MoveRow, n: Namer) =>
+  entry({
+    id: `move-${m.id}`,
+    at: m.createdAt.toISOString(),
+    source: n.sourceOf(m.actorId),
+    who: n.who(m.actorId, 'A signer'),
+    kind: 'Decision',
+    text: moveText(m),
+  });
+
 function readinessNote(r: BaselineRow['readiness']): string {
   if (!r) return '';
   const dedup = r.dedup && !r.dedup.ran ? ` (${r.dedup.why})` : '';
@@ -238,40 +264,60 @@ function activityEntry(
 }
 
 async function historyRows(requirementId: string, projectId: string) {
-  const [revisions, baselines, returns, deferrals, suggested, linked, prefix] = await Promise.all([
-    db
-      .select()
-      .from(requirementRevisions)
-      .where(eq(requirementRevisions.requirementId, requirementId)),
-    db
-      .select()
-      .from(requirementBaselines)
-      .where(eq(requirementBaselines.requirementId, requirementId)),
-    db.select().from(requirementReturns).where(eq(requirementReturns.requirementId, requirementId)),
-    db
-      .select()
-      .from(requirementDeferrals)
-      .where(eq(requirementDeferrals.requirementId, requirementId)),
-    db
-      .select({
-        id: suggestions.id,
-        kind: suggestions.kind,
-        status: suggestions.status,
-        producerKind: suggestions.producerKind,
-        producerId: suggestions.producerId,
-        decidedBy: suggestions.decidedBy,
-        reason: suggestions.reason,
-        createdAt: suggestions.createdAt,
-        decidedAt: suggestions.decidedAt,
-      })
-      .from(suggestions)
-      .where(eq(suggestions.requirementId, requirementId)),
-    db
-      .select({ id: issues.id, issSeq: issues.issSeq })
-      .from(issues)
-      .where(eq(issues.requirementId, requirementId)),
-    activeIssuePrefix(projectId),
-  ]);
+  const [revisions, baselines, returns, deferrals, moves, suggested, linked, prefix] =
+    await Promise.all([
+      db
+        .select()
+        .from(requirementRevisions)
+        .where(eq(requirementRevisions.requirementId, requirementId)),
+      db
+        .select()
+        .from(requirementBaselines)
+        .where(eq(requirementBaselines.requirementId, requirementId)),
+      db
+        .select()
+        .from(requirementReturns)
+        .where(eq(requirementReturns.requirementId, requirementId)),
+      db
+        .select()
+        .from(requirementDeferrals)
+        .where(eq(requirementDeferrals.requirementId, requirementId)),
+      db
+        .select({
+          id: kernelTransitions.id,
+          toStatus: kernelTransitions.toStatus,
+          reason: kernelTransitions.reason,
+          actorId: kernelTransitions.actorId,
+          createdAt: kernelTransitions.createdAt,
+        })
+        .from(kernelTransitions)
+        .where(
+          and(
+            eq(kernelTransitions.entity, 'requirement'),
+            eq(kernelTransitions.entityId, requirementId),
+            inArray(kernelTransitions.toStatus, MOVES_READ),
+          ),
+        ),
+      db
+        .select({
+          id: suggestions.id,
+          kind: suggestions.kind,
+          status: suggestions.status,
+          producerKind: suggestions.producerKind,
+          producerId: suggestions.producerId,
+          decidedBy: suggestions.decidedBy,
+          reason: suggestions.reason,
+          createdAt: suggestions.createdAt,
+          decidedAt: suggestions.decidedAt,
+        })
+        .from(suggestions)
+        .where(eq(suggestions.requirementId, requirementId)),
+      db
+        .select({ id: issues.id, issSeq: issues.issSeq })
+        .from(issues)
+        .where(eq(issues.requirementId, requirementId)),
+      activeIssuePrefix(projectId),
+    ]);
   const activity = linked.length
     ? await db
         .select()
@@ -289,11 +335,12 @@ async function historyRows(requirementId: string, projectId: string) {
         .limit(HISTORY_LIMIT * 2)
     : [];
   const keyOf = new Map(linked.map((i) => [i.id, formatIssueRef(prefix, i.issSeq)]));
-  return { revisions, baselines, returns, deferrals, suggested, activity, keyOf };
+  return { revisions, baselines, returns, deferrals, moves, suggested, activity, keyOf };
 }
 
 // The history is assembled from the rows that already record each act — revisions (written,
-// proposed, accepted, returned), baselines (agreed), suggestions (proposed, decided) and the linked
+// proposed, accepted, returned), baselines (agreed), the requirement's kernel moves (delivery
+// accepted, dropped), suggestions (proposed, decided) and the linked
 // issues' activity (decisions, questions, answers, status moves) — because requirement writes emit
 // no events of their own. Feedback acts are left out on purpose: the detail lists the requirement's
 // feedback with its own phase, so the history does not repeat them
@@ -301,13 +348,14 @@ export async function historyOf(
   requirementId: string,
   projectId: string,
 ): Promise<RequirementHistoryEntry[]> {
-  const { revisions, baselines, returns, deferrals, suggested, activity, keyOf } =
+  const { revisions, baselines, returns, deferrals, moves, suggested, activity, keyOf } =
     await historyRows(requirementId, projectId);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.proposedBy, r.decidedBy]),
     ...baselines.map((b) => b.agreedBy),
     ...returns.map((r) => r.returnedBy),
     ...deferrals.map((d) => d.decidedBy),
+    ...moves.map((m) => m.actorId),
     ...suggested.flatMap((s) => [s.producerId, s.decidedBy]),
     ...activity.filter((a) => a.actorType === 'user').map((a) => a.actorId),
   ]);
@@ -320,6 +368,7 @@ export async function historyOf(
     ...baselines.map((b) => baselineEntry(b, n)),
     ...returns.map((r) => returnEntry(r, n)),
     ...deferrals.map((d) => deferralEntry(d, n)),
+    ...moves.map((m) => moveEntry(m, n)),
     ...suggested.flatMap((s) => suggestionEntries(s, n)),
     ...activity.flatMap((a) => activityEntry(a, keyOf.get(a.issueId) ?? null, n) ?? []),
   ];

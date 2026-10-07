@@ -201,3 +201,68 @@ describe('a breakdown waiting on a person', () => {
     expect(s.breakdown.unreadable).toMatch(/criteria/);
   });
 });
+
+// ISS-281, from ISS-278's judge: the read hand-copied Accept's numeric-blocker checks and the copy
+// disagreed (its own SUGGESTION_BLOCKER_UNKNOWN words for a self-block or an out-of-range index, two
+// plain edges for a cycle). propose.ts refuses all three, so each is planted in the stored payload.
+describe('a numeric blocker in a proposed breakdown reads exactly as Accept refuses it', () => {
+  const slices = (a: (number | string)[], b: (number | string)[]) => ({
+    issues: [
+      {
+        title: 'Board reads the issue',
+        criteria: [{ body: 'shows it', tracesTo: 'BC-1' }],
+        complexity: 's',
+        builds: null,
+        blockedBy: a,
+      },
+      {
+        title: 'Board caches the issue',
+        criteria: [{ body: 'reload', tracesTo: 'BC-1' }],
+        complexity: 'm',
+        builds: null,
+        blockedBy: b,
+      },
+    ],
+  });
+  const plant = (payload: unknown) =>
+    db.execute(
+      sql`UPDATE suggestions SET payload = ${JSON.stringify(payload)}::jsonb WHERE id = ${ids.suggestion}`,
+    );
+  const acceptRefusalAt = async (path: string) => {
+    const r = await say('plugin', 'POST', at(`/suggestions/${ids.suggestion}/accept`), {});
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    const found = (r.json.error?.refusals ?? []).find((x: Doc) => x.path === path);
+    expect(found, JSON.stringify(r.json)).toBeDefined();
+    return found as Doc;
+  };
+
+  it('a slice naming itself shows the refusal Accept gives, in its words', async () => {
+    await plant(slices([], [1]));
+    const shown = (await waiting()).breakdown.slices[1].blockedBy;
+    const refused = await acceptRefusalAt('/payload/issues/1/blockedBy/0');
+    expect(refused.code).toBe('SUGGESTION_PAYLOAD_INVALID');
+    expect(shown).toEqual([{ ref: '1', code: refused.code, refusal: refused.detail }]);
+    expect(shown[0].refusal).toMatch(/this issue itself/);
+  });
+
+  it('an index outside the breakdown shows the refusal Accept gives, in its words', async () => {
+    await plant(slices([5], []));
+    const shown = (await waiting()).breakdown.slices[0].blockedBy;
+    const refused = await acceptRefusalAt('/payload/issues/0/blockedBy/0');
+    expect(shown).toEqual([
+      { ref: '5', code: 'SUGGESTION_PAYLOAD_INVALID', refusal: refused.detail },
+    ]);
+    expect(shown[0].refusal).toMatch(/outside the 2 proposed issues/);
+  });
+
+  it("a cycle among the slices shows Accept's cycle refusal on the edge that closes it, not two plain edges", async () => {
+    await plant(slices([1], [0]));
+    const [first, second] = (await waiting()).breakdown.slices;
+    const refused = await acceptRefusalAt('/payload/issues/1/blockedBy/0');
+    expect(refused.detail).toMatch(/form a cycle/);
+    expect(first.blockedBy).toEqual([{ slice: 1, title: 'Board caches the issue' }]);
+    expect(second.blockedBy).toEqual([
+      { ref: '0', code: 'SUGGESTION_PAYLOAD_INVALID', refusal: refused.detail },
+    ]);
+  });
+});

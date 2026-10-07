@@ -18,8 +18,11 @@ function actionPath(projectId: string, req: string, a: RequirementAction): strin
   return `${one(projectId, req)}/revisions/${a.revision}/${a.kind}`;
 }
 
+const given = (reason: string | undefined) => (reason ? { reason } : {});
+
 function actionBody(a: RequirementAction): unknown {
-  if (a.kind === "agree" || a.kind === "repin" || a.kind === "accept-delivery") return { revision: a.revision };
+  if (a.kind === "agree" || a.kind === "repin" || a.kind === "accept-delivery") return { revision: a.revision, ...given(a.reason) };
+  if (a.kind === "accept") return given(a.reason);
   if (a.kind === "drop") return { reason: a.reason };
   if (a.kind === "return") return { reason: a.reason };
   if (a.kind === "defer") return { reason: a.reason, ...(a.targetPhase ? { targetPhase: a.targetPhase } : {}) };

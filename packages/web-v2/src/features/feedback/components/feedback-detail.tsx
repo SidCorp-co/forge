@@ -79,7 +79,7 @@ function Body({ f }: { f: FeedbackView }) {
   );
 }
 
-function History({ f }: { f: FeedbackView }) {
+export function FeedbackHistory({ f }: { f: FeedbackView }) {
   if (f.decisions.length === 0) return <p className="text-13 text-subtle">No decision yet.</p>;
   return (
     <ol className="border-t border-line-subtle" data-testid="feedback-history">
@@ -96,6 +96,7 @@ function History({ f }: { f: FeedbackView }) {
             </span>
           </span>
           {d.reason ? <span className="text-muted">{d.reason}</span> : null}
+          {d.acceptReason ? <span className="text-muted">Accepted: {d.acceptReason}</span> : null}
         </li>
       ))}
     </ol>
@@ -155,7 +156,7 @@ export function FeedbackPage({
               ) : null}
               {tab === "history" ? (
                 <section aria-label="History">
-                  <History f={f} />
+                  <FeedbackHistory f={f} />
                 </section>
               ) : null}
             </DetailPane>

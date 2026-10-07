@@ -5,7 +5,7 @@ import {
 } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, asc, count, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -73,6 +73,20 @@ export async function targetRequirementOf(tx: Tx, row: Row): Promise<TargetRequi
   return { id: req.id, key: requirementKey(req.reqSeq), status: req.status };
 }
 
+/** The person's reason on each accepted suggestion a decision came from (ISS-281): the triage the
+ *  accept wrote carries the agent's note as its own reason, so the accept's is read off the row. */
+async function acceptReasonsOf(
+  ids: readonly (string | null)[],
+): Promise<Map<string, string | null>> {
+  const named = [...new Set(ids.filter((id): id is string => id !== null))];
+  if (named.length === 0) return new Map();
+  const rows = await db
+    .select({ id: suggestions.id, reason: suggestions.reason })
+    .from(suggestions)
+    .where(and(inArray(suggestions.id, named), eq(suggestions.status, 'accepted')));
+  return new Map(rows.map((r) => [r.id, r.reason]));
+}
+
 export async function detailAs(
   viewer: FeedbackActor,
   projectId: string,
@@ -117,6 +131,7 @@ export async function detailAs(
   const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
   const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts));
   const deciders = await userNames(decisions.map((d) => d.decidedBy));
+  const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
   const q = questions[0];
   const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
@@ -140,6 +155,10 @@ export async function detailAs(
           decidedAgency: d.decidedAgency,
           decidedAt: d.decidedAt.toISOString(),
           fromSuggestionId: d.fromSuggestionId,
+          acceptReason:
+            withhold || !d.fromSuggestionId
+              ? null
+              : (acceptReasons.get(d.fromSuggestionId) ?? null),
         }),
       ),
       attachments: attachments.map((a) => ({

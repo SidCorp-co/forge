@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AGENT_TINT, Button, Input } from "@/design";
+import { AcceptStep, AGENT_TINT, Button, Input } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
@@ -54,6 +54,30 @@ export function summaryOf(s: Suggestion): string {
   }
 }
 
+/** What confirming an accept writes, said in the confirm step before it is pressed. */
+export function acceptConsequence(s: Suggestion): string {
+  const p = (s.payload ?? {}) as Payload;
+  const at = s.baseRevision !== null ? ` against r${s.baseRevision}` : "";
+  switch (s.kind) {
+    case "revision_diff":
+      return "Accepting writes it as a proposed revision of this requirement.";
+    case "requirement_draft":
+      return "Accepting writes it as a new draft requirement.";
+    case "readiness":
+      return `Accepting records it as the readiness result${s.baseRevision !== null ? ` of r${s.baseRevision}` : ""}.`;
+    case "breakdown":
+      return `Accepting files ${list(p.issues).length} issues at draft${at}.`;
+    case "duplicate":
+      return `Accepting drops this as a duplicate of ${str(p.duplicateOf) ?? "the one it names"}.`;
+    case "triage":
+      return "Accepting applies this triage to the issue.";
+    case "feedback_triage":
+      return `Accepting routes the item as ${str(p.route) ?? "it names"}.`;
+    case "design_change":
+      return "Accepting records it as accepted.";
+  }
+}
+
 function detailLines(s: Suggestion): string[] {
   const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
@@ -90,7 +114,7 @@ export function PendingBadge() {
 
 function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
-  const [rejecting, setRejecting] = useState(false);
+  const [step, setStep] = useState<"accept" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const details = detailLines(s);
   const busy = decide.isPending;
@@ -128,19 +152,28 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
         </details>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 pt-0.5">
-        <Button type="button" size="sm" loading={busy} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
+        <Button type="button" size="sm" disabled={busy} onClick={() => setStep((v) => (v === "accept" ? null : "accept"))} aria-expanded={step === "accept"}>
           Accept
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setRejecting((v) => !v)} aria-expanded={rejecting}>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep((v) => (v === "reject" ? null : "reject"))} aria-expanded={step === "reject"}>
           Reject
         </Button>
       </div>
-      {rejecting ? (
+      {step === "accept" ? (
+        <AcceptStep
+          confirmLabel="Accept"
+          consequence={acceptConsequence(s)}
+          loading={busy}
+          onCancel={() => setStep(null)}
+          onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
+        />
+      ) : null}
+      {step === "reject" ? (
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() }, { onSuccess: () => setRejecting(false) });
+            decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() }, { onSuccess: () => setStep(null) });
           }}
         >
           <Input
@@ -161,7 +194,8 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
   );
 }
 
-/** The suggestions waiting on this requirement, each an accent bar with Accept and Reject; nothing when none wait. */
+/** The suggestions waiting on this requirement, each an accent bar whose Accept opens a confirm step taking the
+ *  reason and whose Reject requires one; nothing when none wait. */
 export function RequirementSuggestions({ projectId, reqKey }: { projectId: string; reqKey: string }) {
   const q = useWaitingSuggestions(projectId, { requirement: reqKey });
   const rows = q.data?.suggestions ?? [];

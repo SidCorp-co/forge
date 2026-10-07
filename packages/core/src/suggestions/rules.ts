@@ -224,44 +224,60 @@ function cycleAt(p: Breakdown): [number, number] | null {
   return null;
 }
 
-// A breakdown's traces name BCs live at its base revision and its blockedBy edges name
-// other proposed issues without a cycle, at propose and at accept (SUGGESTION_PAYLOAD_INVALID by path)
+function cycleFault(p: Breakdown): SuggestionRefusal[] {
+  const cycle = cycleAt(p);
+  if (!cycle) return [];
+  return [
+    {
+      code: 'SUGGESTION_PAYLOAD_INVALID',
+      path: `/payload/issues/${cycle[0]}/blockedBy/${cycle[1]}`,
+      detail:
+        'the blockedBy edges among the proposed issues form a cycle, so none of them could ever start.',
+    },
+  ];
+}
+
+function indexFaults(p: Breakdown, i: number): SuggestionRefusal[] {
+  return (p.issues[i]?.blockedBy ?? []).flatMap((k, j): SuggestionRefusal[] =>
+    typeof k === 'number' && (k >= p.issues.length || k === i)
+      ? [
+          {
+            code: 'SUGGESTION_PAYLOAD_INVALID',
+            path: `/payload/issues/${i}/blockedBy/${j}`,
+            detail: `blockedBy names issue index ${k}, which is ${k === i ? 'this issue itself' : `outside the ${p.issues.length} proposed issues`}.`,
+          },
+        ]
+      : [],
+  );
+}
+
+// A breakdown's blockedBy edges among its own proposed issues name another issue of it, inside the
+// breakdown, without a cycle (SUGGESTION_PAYLOAD_INVALID by path). The accept refuses by this rule and
+// a breakdown's read shows the same refusal (breakdown-read.ts:blockersIn), so the two never differ
+export function blockerFaults(p: Breakdown): SuggestionRefusal[] {
+  return [...cycleFault(p), ...p.issues.flatMap((_, i) => indexFaults(p, i))];
+}
+
+// A breakdown's traces name BCs live at its base revision and its blockedBy edges hold
+// (blockerFaults), at propose and at accept (SUGGESTION_PAYLOAD_INVALID by path)
 export function breakdownFaults(
   p: Breakdown,
   codes: ReadonlyMap<string, unknown>,
   revision: number,
 ): SuggestionRefusal[] {
-  const out: SuggestionRefusal[] = [];
-  const cycle = cycleAt(p);
-  if (cycle) {
-    out.push({
-      code: 'SUGGESTION_PAYLOAD_INVALID',
-      path: `/payload/issues/${cycle[0]}/blockedBy/${cycle[1]}`,
-      detail:
-        'the blockedBy edges among the proposed issues form a cycle, so none of them could ever start.',
-    });
-  }
-  p.issues.forEach((issue, i) => {
-    issue.criteria.forEach((c, j) => {
-      if (!codes.has(c.tracesTo)) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/criteria/${j}/tracesTo`,
-          detail: `${c.tracesTo} is not a business criterion of revision ${revision}; it holds ${[...codes.keys()].join(', ') || 'none'}.`,
-        });
-      }
-    });
-    (issue.blockedBy ?? []).forEach((k, j) => {
-      if (typeof k === 'number' && (k >= p.issues.length || k === i)) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/blockedBy/${j}`,
-          detail: `blockedBy names issue index ${k}, which is ${k === i ? 'this issue itself' : `outside the ${p.issues.length} proposed issues`}.`,
-        });
-      }
-    });
-  });
-  return out;
+  const traces = (i: number): SuggestionRefusal[] =>
+    (p.issues[i]?.criteria ?? []).flatMap((c, j): SuggestionRefusal[] =>
+      codes.has(c.tracesTo)
+        ? []
+        : [
+            {
+              code: 'SUGGESTION_PAYLOAD_INVALID',
+              path: `/payload/issues/${i}/criteria/${j}/tracesTo`,
+              detail: `${c.tracesTo} is not a business criterion of revision ${revision}; it holds ${[...codes.keys()].join(', ') || 'none'}.`,
+            },
+          ],
+    );
+  return [...cycleFault(p), ...p.issues.flatMap((_, i) => [...traces(i), ...indexFaults(p, i)])];
 }
 
 /** An existing issue a breakdown names as a blocker, as it was read; null when nothing answers. */

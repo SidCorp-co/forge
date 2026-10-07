@@ -1,9 +1,10 @@
+import { statusReading } from "@/design";
 import type { SuggestionBreakdownBlocker, SuggestionBreakdownRead, SuggestionBreakdownSlice } from "../types";
 
 /** What a slice waits on, in the words its accept would write the edge with, or the refusal it would give. */
 function blockerLine(b: SuggestionBreakdownBlocker): { text: string; refused?: string } {
   if ("slice" in b) return { text: `After slice ${b.slice + 1} · ${b.title}` };
-  if ("issue" in b) return { text: `After ${b.issue} · ${b.title} (${b.status})` };
+  if ("issue" in b) return { text: `After ${b.issue} · ${b.title} (${statusReading("issue", b.status).label})` };
   return { text: `Accept would refuse ${b.ref}: ${b.refusal}`, refused: b.code };
 }
 
@@ -47,11 +48,18 @@ const numbered = (slices: SuggestionBreakdownSlice[]) => slices.map((s, i) => ({
 /**
  * A proposed breakdown's slices as core reads them for its accept (ISS-278): each slice's description,
  * criteria by BC code, the design revision it builds and what it waits on, so it is judged before its
- * issues exist. A breakdown core could not read says so instead of showing what it could.
+ * issues exist. A breakdown that no longer reads says so in words, its code and path beside them.
  */
 export function BreakdownSlices({ read }: { read: SuggestionBreakdownRead | undefined }) {
   if (!read) return <p data-testid="breakdown-slices">Core sent no reading of this breakdown's slices.</p>;
-  if (read.unreadable) return <p data-testid="breakdown-slices" className="text-danger">{`Core could not read this breakdown: ${read.unreadable}`}</p>;
+  if (read.unreadable) {
+    return (
+      <div data-testid="breakdown-slices" className="mt-1 grid gap-0.5">
+        <p className="text-danger">This breakdown can no longer be read, so it cannot be accepted as it is stored.</p>
+        <p className="font-mono text-11-5 text-subtle">{read.unreadable}</p>
+      </div>
+    );
+  }
   return (
     <div className="mt-1 grid gap-2" data-testid="breakdown-slices">
       <ol className="grid gap-2">

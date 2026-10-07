@@ -4,7 +4,7 @@ import { mockupKindOfFile } from "@forge/contracts/mockups";
 import { parseWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActorChip, Button, EnumBadge, Input, StatusBadge, ViewHeading } from "@/design";
+import { AcceptStep, ActorChip, Button, EnumBadge, Input, StatusBadge, ViewHeading } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { SketchPad } from "@/features/chat/components/sketch/sketch-pad";
 import { formatApiError } from "@/lib/api/error";
@@ -75,9 +75,13 @@ function Preview({ m }: { m: MockupView }) {
   return <pre className="max-h-[420px] overflow-auto bg-sunken p-3 font-mono text-12 leading-relaxed">{shown}</pre>;
 }
 
+/** Whose words a mockup's reason is: the accept's or the return's. */
+const REASON_LEAD: Partial<Record<MockupView["status"], string>> = { accepted: "Accepted: ", returned: "Returned: " };
+
 function Row({ projectId, m }: { projectId: string; m: MockupView }) {
   const act = useMockupAct(projectId);
   const [returning, setReturning] = useState(false);
+  const [accepting, setAccepting] = useState(false);
   const [reason, setReason] = useState("");
   const busy = act.isPending;
   return (
@@ -94,12 +98,12 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
           </span>
         </span>
       </div>
-      {m.reason ? <p className="text-13 text-muted">{m.status === "returned" ? "Returned: " : ""}{m.reason}</p> : null}
+      {m.reason ? <p className="text-13 text-muted">{REASON_LEAD[m.status] ?? ""}{m.reason}</p> : null}
       <Preview m={m} />
       {m.can.accept || m.can.return || m.can.withdraw ? (
         <div className="flex flex-wrap items-center gap-2">
           {m.can.accept ? (
-            <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ key: m.key, act: "accept" })}>
+            <Button type="button" size="sm" variant="primary" disabled={busy} aria-expanded={accepting} onClick={() => setAccepting((v) => !v)}>
               Accept
             </Button>
           ) : null}
@@ -127,6 +131,21 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
             <Button type="button" size="sm" variant="ghost" loading={busy} onClick={() => act.mutate({ key: m.key, act: "withdraw" })}>
               Withdraw
             </Button>
+          ) : null}
+          {accepting ? (
+            <div className="basis-full">
+              <AcceptStep
+                confirmLabel="Accept"
+                consequence={
+                  m.target.type === "requirement"
+                    ? "Accepting lets the next agree or re-pin pin it beside the designs."
+                    : "Accepting gives it to the runs on this item."
+                }
+                loading={busy}
+                onCancel={() => setAccepting(false)}
+                onConfirm={(why) => act.mutate({ key: m.key, act: "accept", reason: why }, { onSuccess: () => setAccepting(false) })}
+              />
+            </div>
           ) : null}
           <RefusalLine error={act.error} />
         </div>

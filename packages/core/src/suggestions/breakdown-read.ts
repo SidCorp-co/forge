@@ -20,7 +20,7 @@ import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn, rowIn } from '../requirements/index.js';
 import { type Breakdown, namedBlockersIn, pinnedDesignsIn } from './breakdown.js';
 import type { Row } from './read.js';
-import { breakdownBuilds, payloadRefusal } from './rules.js';
+import { blockerFaults, breakdownBuilds, payloadRefusal } from './rules.js';
 
 /** The pinned designs at `head`, each with the design revision the latest baseline pins it at. */
 async function pinnedAt(tx: Tx, requirementId: string, head: number | null) {
@@ -34,10 +34,11 @@ async function pinnedAt(tx: Tx, requirementId: string, head: number | null) {
   return { designs, revisionOf };
 }
 
-/** Each blockedBy entry as the accept would write its edge, or the refusal it would give. */
+/** Each blockedBy entry as the accept would write its edge, or the refusal it would give: a slice by
+ *  index through the accept's own blockerFaults, an issue by key through its namedBlockersIn. */
 async function blockersIn(tx: Tx, projectId: string, p: Breakdown) {
   const named = await namedBlockersIn(tx, projectId, p);
-  const refusedAt = new Map(named.refusals.map((r) => [r.path, r]));
+  const refusedAt = new Map([...blockerFaults(p), ...named.refusals].map((r) => [r.path, r]));
   const ids = [...new Set(named.ids.values())];
   const rows = ids.length
     ? await tx
@@ -54,17 +55,16 @@ async function blockersIn(tx: Tx, projectId: string, p: Breakdown) {
   const byId = new Map(rows.map((r) => [r.id, r]));
   return p.issues.map((item, i) =>
     (item.blockedBy ?? []).map((ref, j): SuggestionBreakdownBlocker => {
-      if (typeof ref === 'number') {
-        const sibling = p.issues[ref];
-        return sibling && ref !== i
-          ? { slice: ref, title: sibling.title }
-          : {
-              ref: String(ref),
-              code: 'SUGGESTION_BLOCKER_UNKNOWN',
-              refusal: `blockedBy entry ${ref} names no other slice of this breakdown, which has ${p.issues.length}.`,
-            };
-      }
       const refusal = refusedAt.get(`/payload/issues/${i}/blockedBy/${j}`);
+      if (typeof ref === 'number') {
+        if (refusal) return refusedBlocker(String(ref), refusal);
+        const sibling = p.issues[ref];
+        if (!sibling)
+          throw new Error(
+            `breakdown-read: blockedBy index ${ref} passed blockerFaults yet names no slice`,
+          );
+        return { slice: ref, title: sibling.title };
+      }
       const row = byId.get(named.ids.get(ref) ?? '');
       if (refusal || !row) return refusedBlocker(ref, refusal);
       return { issue: formatIssueRef(prefix, row.issSeq), title: row.title, status: row.status };
