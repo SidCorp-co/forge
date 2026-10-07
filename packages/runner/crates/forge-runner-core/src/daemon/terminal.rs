@@ -101,6 +101,14 @@ fn socket_args() -> Vec<String> {
     }
 }
 
+/// Whether a test said this box has no user manager to give the session server
+/// a unit; never in a build that is not a test's. The test build's twin is
+/// `testing::no_user_manager`.
+#[cfg(not(test))]
+fn no_user_manager() -> bool {
+    false
+}
+
 /// The one place a tmux process is built, so a test build can hand the
 /// transport a tmux of its own without moving the process's `PATH`, which
 /// every other test's spawn by bare name resolves through (ISS-1312). The test
@@ -445,8 +453,7 @@ impl Drop for OverlapWatch {
 
 async fn ask_systemd_for_the_server(id: &SessionIdentity) -> Placement {
     let _overlap = OverlapWatch::enter();
-    #[cfg(test)]
-    if testing::no_unit() {
+    if no_user_manager() {
         return Placement::Unavailable("a test said this box has no user manager".into());
     }
     let sock = id.socket.to_string_lossy().into_owned();
@@ -881,7 +888,7 @@ pub fn pane_env() -> Vec<(String, String)> {
 /// module's transport and the rules they break are `daemon/master.rs`'s. A
 /// second copy over there would be a second thing to keep true.
 #[cfg(test)]
-use testing::tmux_command;
+use testing::{no_user_manager, tmux_command};
 
 #[cfg(test)]
 pub(crate) mod testing {
@@ -917,7 +924,7 @@ pub(crate) mod testing {
         }
     }
 
-    pub(super) fn no_unit() -> bool {
+    pub(super) fn no_user_manager() -> bool {
         NO_UNIT.with(Cell::get)
     }
 

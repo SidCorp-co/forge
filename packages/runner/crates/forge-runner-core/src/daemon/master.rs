@@ -6624,6 +6624,7 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
+        let (_env, _home, _var) = scratch_home();
         let repo = crate::test_scratch::Scratch::new("resume-log");
         let out = logged_while(|| {
             assert_eq!(
