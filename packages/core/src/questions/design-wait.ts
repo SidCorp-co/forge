@@ -16,6 +16,7 @@ import type { IssueDependencyExecutor } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
+import { recordAnswerOnIssue } from './answer-record.js';
 
 type Executor = IssueDependencyExecutor;
 
@@ -168,6 +169,14 @@ export async function answerDesignQuestions(
       actor: { type: 'user', id: args.by, agency: args.agency },
       source: 'workflows',
       returning: ['id'],
+    });
+    await recordAnswerOnIssue(tx, {
+      issueId: row.issueId ?? null,
+      questionId: row.id,
+      round: answered.round,
+      answer: body,
+      by: args.by,
+      agency: args.agency,
     });
     await emitEvent(tx, 'question.answered', {
       questionId: row.id,

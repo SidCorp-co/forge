@@ -17,27 +17,39 @@ const latestVerdictDesign = sql`
      LIMIT 1
   ) v ON v.identity_kind = 'design'`;
 
-const unapproved = (alias: SQL) => sql`NOT EXISTS (
+const approved = (alias: SQL) => sql`EXISTS (
   SELECT 1 FROM project_workflow_designs a
    WHERE a.workflow_id = ${alias}.workflow_id
      AND a.revision = ${alias}.revision
      AND a.decision = 'approve'
 )`;
 
+const unapproved = (alias: SQL) => sql`NOT ${approved(alias)}`;
+
 // an issue delivers a design revision when it is that revision's design issue (the latest it
 // proposed, per workflow) or when the latest verdict on one of its live criteria names a design
 // revision (a design verdict counts on any issue, ISS-91); either way the work it owes is that
-// revision approved, so a blocks edge from it holds until then (FB-57)
+// revision approved, so a blocks edge from it holds until then (FB-57). Only the newest revision of
+// a workflow is ever decided (`design-service.ts:decideDesignAs`), so one a later write superseded
+// undecided can never be approved: the hold follows the workflow's newest revision instead, and
+// lifts when that one is approved (hop ISS-44, held on a superseded rev 4 while rev 5 went on)
 function deliveredBy(issueId: SQL): SQL {
   return sql`(
-    SELECT d.workflow_id, max(d.revision) AS revision
-      FROM project_workflow_designs d
-     WHERE d.design_issue_id = ${issueId}
-     GROUP BY d.workflow_id
-    UNION
-    SELECT v.design_workflow_id, v.design_revision
-      FROM issue_criteria c ${latestVerdictDesign}
-     WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
+    SELECT DISTINCT u.workflow_id,
+           CASE WHEN ${approved(sql`u`)} THEN u.revision
+                ELSE coalesce((SELECT max(n.revision) FROM project_workflow_designs n
+                                WHERE n.workflow_id = u.workflow_id), u.revision)
+           END AS revision
+      FROM (
+        SELECT d.workflow_id, max(d.revision) AS revision
+          FROM project_workflow_designs d
+         WHERE d.design_issue_id = ${issueId}
+         GROUP BY d.workflow_id
+        UNION
+        SELECT v.design_workflow_id, v.design_revision
+          FROM issue_criteria c ${latestVerdictDesign}
+         WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
+      ) u
   )`;
 }
 

@@ -14,6 +14,7 @@ const none = {
   builderRuns: [],
   releaseNotes: [],
   warnedNotes: [],
+  answers: [],
   contentLanguage: 'en',
 };
 
@@ -46,6 +47,40 @@ function issue(issueId: string, status = 'open', blocker: string | null = null) 
 }
 
 describe('owedLine: what a pass is told it owes besides issues', () => {
+  // hop 2026-10-07: six answers moved their parks back with nothing on the nudge, and the master
+  // reported answered questions as owner-pending for several passes
+  it('names each park question answered since the last pass, with what the answer did', () => {
+    const line = owedLine({
+      ...none,
+      answers: [
+        { issueKey: 'ISS-69', questionId: 'q1', outcome: { kind: 'resumed', to: 'open', at: 't' } },
+        { issueKey: 'ISS-51', questionId: 'q2', outcome: { kind: 'held', at: 't' } },
+        { issueKey: 'ISS-6', questionId: 'q3', outcome: null },
+      ],
+    });
+    expect(line).toContain('3 park questions were answered since your last pass');
+    expect(line).toContain('ISS-69 question q1: moved back to `open`');
+    expect(line).toContain(
+      'ISS-51 question q2: still parked: the answer says the issue still waits',
+    );
+    expect(line).toContain('ISS-6 question q3: not acted on yet');
+    expect(
+      masterWork([], { ...none, answers: [{ issueKey: 'ISS-6', questionId: 'q3', outcome: null }] })
+        .owed,
+    ).toBe(1);
+  });
+
+  it('moves the digest when an answer lands or what it did changes', () => {
+    const answered = { issueKey: 'ISS-6', questionId: 'q3', outcome: null };
+    const before = workDigest([], none);
+    const landed = workDigest([], { ...none, answers: [answered] });
+    const acted = workDigest([], {
+      ...none,
+      answers: [{ ...answered, outcome: { kind: 'resumed' as const, to: 'open', at: 't' } }],
+    });
+    expect(new Set([before, landed, acted]).size).toBe(3);
+  });
+
   it('names an owed triage by its key, and its method', () => {
     const line = owedLine({ ...none, triages: [{ key: 'FB-2' }] });
     expect(line).toContain('1 feedback item owes a triage (FB-2)');

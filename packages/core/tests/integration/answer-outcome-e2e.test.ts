@@ -360,3 +360,52 @@ describe("an agent's question comment is a Question a person answers (ISS-260)",
     expect(owed).not.toContain(theirs.id);
   });
 });
+
+// hop 2026-10-07: six answers moved their issues back with no comment and no issue event, and the
+// pass nudge named none, so a master reported answered questions as owner-pending for passes
+describe('an answer leaves its record on the issue it stopped', () => {
+  it('writes an answer event naming the question, and the move back names it too', async () => {
+    const before = new Date();
+    const issue = await parked();
+    ok(await answer(issue.questionId));
+    await settleOutbox();
+
+    expect(await statusOf(issue.id)).toBe('open');
+    const events = ok(await say('owner', 'GET', `/api/issues/${issue.id}/events?kind=answer`));
+    expect(events.items).toEqual([
+      expect.objectContaining({
+        kind: 'answer',
+        fields: expect.arrayContaining([
+          { key: 'question', value: issue.questionId },
+          { key: 'round', value: '1' },
+          { key: 'answer', value: 'the intake flow ships first' },
+        ]),
+      }),
+    ]);
+    const [moved] = await rows<{ reason: string | null; to_status: string }>(sql`
+      SELECT reason, to_status FROM kernel_transitions
+       WHERE entity = 'issue' AND entity_id = ${issue.id} ORDER BY created_at DESC, id DESC LIMIT 1
+    `);
+    expect(moved).toMatchObject({ to_status: 'open' });
+    expect(moved?.reason).toContain(issue.questionId);
+
+    const { mastersPorts } = await import('../../src/masters/ports.js');
+    const since = await mastersPorts().answersSince(projectId, before);
+    expect(since).toContainEqual({
+      issueKey: issue.key,
+      questionId: issue.questionId,
+      outcome: expect.objectContaining({ kind: 'resumed', to: 'open' }),
+    });
+    expect(await mastersPorts().answersSince(projectId, new Date())).toEqual([]);
+  });
+
+  it('carries what the answer says the issue still waits on', async () => {
+    const issue = await parked();
+    ok(await answer(issue.questionId, { stillWaits: { reason: 'the intake design lands first' } }));
+    const events = ok(await say('owner', 'GET', `/api/issues/${issue.id}/events?kind=answer`));
+    expect(events.items[0]?.fields).toContainEqual({
+      key: 'still-waits',
+      value: 'the intake design lands first',
+    });
+  });
+});

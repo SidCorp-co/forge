@@ -1,6 +1,8 @@
 export {
+  type AnsweredOnIssue,
   type AnsweredSince,
   answeredHoldOf,
+  answeredOnIssuesSince,
   answeredSince,
   answeredSinceSql,
   recordAnswerResume,
