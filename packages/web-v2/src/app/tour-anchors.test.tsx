@@ -41,6 +41,7 @@ const RELEASE = {
   issues: [],
   gates: [],
   requirementsCompleted: [],
+  feedbackAnswered: [],
   notes: { sections: [{ section: "Added", entries: [{ key: "ISS-1", title: "A board keeps its cards", userFacing: "Saved boards keep every card.", technical: null }] }], withoutNotes: [] },
   changes: CHANGES,
 } as unknown as ReleaseDetail;

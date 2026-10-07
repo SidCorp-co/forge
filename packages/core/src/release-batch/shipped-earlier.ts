@@ -41,6 +41,7 @@ import {
 } from '../integrations/source-host/index.js';
 import { accountActor, claimIssuesForRelease, mergeMarkKindOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { emitEvent } from '../outbox/index.js';
 import { closeRoster } from './finish.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { clearReleaseHolds } from './hold.js';
@@ -389,6 +390,17 @@ export async function closeShippedEarlier(
             logger.warn({ err, issueId: id }, 'release-shipped-earlier: the notice was not posted');
           }
         }
+      }
+      if (outcome.closed.length > 0) {
+        // The release's own `release.shipped` went out before these issues were closed into it, so
+        // it named none of them: tell the outbox again, naming only the late ones, or the reporter
+        // whose feedback they carry is never told (the notice is once per item and release).
+        await emitEvent(db, 'release.shipped', {
+          projectId,
+          runId: release.runId,
+          version: release.version,
+          issueIds: outcome.closed,
+        });
       }
       for (const f of outcome.failed) {
         unresolved.push({

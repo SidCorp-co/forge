@@ -23,8 +23,25 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
 
 afterEach(() => vi.unstubAllGlobals());
 
-function open() {
+/** The lists the About picker reads beside whatever a test serves: the viewer's projects, and the project's requirements, workflows and releases. */
+const REQUIREMENTS = { requirements: [{ key: "REQ-3", title: "The board keeps its cards" }, { key: "REQ-12", title: "Labels" }], returned: 2 };
+const lists = (c: { path: string }) =>
+  c.path === "/projects"
+    ? { body: [{ id: "p1", role: "member" }] }
+    : c.path === "/projects/p1/requirements"
+      ? { body: REQUIREMENTS }
+      : c.path === "/projects/p1/workflows"
+        ? { body: { workflows: [{ document: { flow: "sign-in", title: "Signing in" } }], returned: 1 } }
+        : c.path === "/projects/p1/releases"
+          ? { body: { releases: [{ version: "0.1.0" }] } }
+          : undefined;
+const core = (reply: (c: { method: string; path: string; body?: unknown }) => { status?: number; body: unknown } | undefined) =>
+  fakeCore((c) => reply(c) ?? lists(c));
+
+
+async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
+  await screen.findByTestId("feedback-choices");
   fireEvent.change(screen.getByLabelText("Target"), { target: { value: "REQ-12" } });
 }
 
@@ -34,6 +51,20 @@ describe("changing what a feedback item is about", () => {
     expect(screen.getByTestId("feedback-retarget")).toBeInTheDocument();
   });
 
+  it("picks the requirement by title, sending its key, and refuses text naming none by name", async () => {
+    const calls = core((c) => (c.method === "POST" ? { body: { feedback: view() } } : undefined));
+    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
+    await screen.findByTestId("feedback-choices");
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "Nothing like this" } });
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement of this project is titled or keyed “Nothing like this”: pick one from the list.");
+    expect(screen.getByRole("button", { name: "Move it" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "labels" } });
+    expect(screen.queryByTestId("feedback-target-unmatched")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Move it" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ requirement: "REQ-12" }));
+  });
+
   it("is not offered to a reader core says may not", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ can: NONE })} />);
     expect(screen.queryByTestId("feedback-retarget")).toBeNull();
@@ -41,17 +72,15 @@ describe("changing what a feedback item is about", () => {
   });
 
   it("sends the one target typed and shows the item's new target", async () => {
-    const calls = fakeCore((c) =>
-      c.method === "POST"
-        ? { body: { feedback: view({ target: { type: "requirement", key: "REQ-12", title: "Labels" } }) } }
-        : { body: { feedback: [], counts: {}, sensitive: false } },
+    const calls = core((c) =>
+      c.method === "POST" ? { body: { feedback: view({ target: { type: "requirement", key: "REQ-12", title: "Labels" } }) } } : undefined,
     );
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
-    open();
+    await open();
     fireEvent.change(screen.getByLabelText("Why (optional)"), { target: { value: "now a criterion" } });
     fireEvent.click(screen.getByRole("button", { name: "Move it" }));
     await waitFor(() => expect(screen.getByText("Now about requirement REQ-12.")).toBeInTheDocument());
-    expect(calls[0]).toEqual({
+    expect(calls.find((c) => c.method === "POST")).toEqual({
       method: "POST",
       path: "/projects/p1/feedback/FB-1/retarget",
       body: { requirement: "REQ-12", reason: "now a criterion" },
@@ -66,7 +95,7 @@ describe("changing what a feedback item is about", () => {
   });
 
   it("tells the mover before Move it that a project serving nothing has no route or tool to name", async () => {
-    fakeCore(() => ({ body: { endpoints: [] } }));
+    core((c) => (c.path.endsWith("/endpoints") ? { body: { endpoints: [] } } : undefined));
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
@@ -74,7 +103,7 @@ describe("changing what a feedback item is about", () => {
   });
 
   it("shows a refusal by its code and keeps what was typed", async () => {
-    fakeCore(() => ({
+    core((c) => c.method !== "POST" ? undefined : ({
       status: 422,
       body: {
         error: {
@@ -85,7 +114,7 @@ describe("changing what a feedback item is about", () => {
       },
     }));
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
-    open();
+    await open();
     fireEvent.click(screen.getByRole("button", { name: "Move it" }));
     const line = await screen.findByTestId("refusal");
     expect(line).toHaveTextContent("FEEDBACK_TARGET_UNCHANGED");

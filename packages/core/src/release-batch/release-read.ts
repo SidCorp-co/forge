@@ -6,6 +6,7 @@ import type {
 import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
 import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
+import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readReleasePath } from '../project-config/index.js';
@@ -189,10 +190,17 @@ export async function readRelease(
     }),
   );
   const prod = read.ok ? read.path.production : null;
+  const feedbackAnswered = await feedbackAnsweredBy(
+    projectId,
+    part.issueIds,
+    { runId: part.runId, shipped: part.state === 'shipped' },
+    viewer?.agency ?? 'human',
+  );
   return detailOf(
     part,
     shared,
     prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
     landings,
+    feedbackAnswered,
   );
 }

@@ -9,6 +9,22 @@ import { FeedbackForm } from "./feedback-form";
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** The lists the About picker reads beside whatever a test serves: the viewer's projects, and the project's requirements, workflows and releases. */
+const REQUIREMENTS = { requirements: [{ key: "REQ-3", title: "The board keeps its cards" }, { key: "REQ-12", title: "Labels" }], returned: 2 };
+const lists = (c: { path: string }) =>
+  c.path === "/projects"
+    ? { body: [{ id: "p1", role: "member" }] }
+    : c.path === "/projects/p1/requirements"
+      ? { body: REQUIREMENTS }
+      : c.path === "/projects/p1/workflows"
+        ? { body: { workflows: [{ document: { flow: "sign-in", title: "Signing in" } }], returned: 1 } }
+        : c.path === "/projects/p1/releases"
+          ? { body: { releases: [{ version: "0.1.0" }] } }
+          : undefined;
+const core = (reply: (c: { method: string; path: string; body?: unknown }) => { status?: number; body: unknown } | undefined) =>
+  fakeCore((c) => reply(c) ?? lists(c));
+
+
 const SERVED = {
   endpoints: [
     { key: "shop-api:GET /pets", contract: "shop-api", version: "3.0.0", type: "openapi", element: "GET /pets" },
@@ -23,16 +39,42 @@ const SERVED = {
 };
 
 describe("the feedback About picker", () => {
-  it("offers a route or tool beside the other targets", () => {
+  it("offers a route or tool beside the other targets, and an issue only to a member of the Development space", async () => {
+    core(() => undefined);
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    const options = () => [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
+    await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]));
+  });
+
+  it("does not offer Issue to a reader who is not a member", async () => {
+    core((c) => (c.path === "/projects" ? { body: [{ id: "p1", role: "viewer" }] } : undefined));
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    await screen.findByTestId("feedback-choices");
     const options = [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
-    expect(options).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]);
+    expect(options).toEqual(["Requirement", "Release", "Workflow", "API route or tool", "Screen"]);
+  });
+
+  it("picks About by title from the project's own requirements, never a typed key, and refuses text naming none", async () => {
+    const calls = core((c) => (c.method === "POST" ? { status: 201, body: { feedback: { key: "FB-3" } } } : undefined));
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    const list = await screen.findByTestId("feedback-choices");
+    expect([...list.querySelectorAll("option")].map((o) => [o.getAttribute("value"), o.getAttribute("label")])).toEqual([
+      ["The board keeps its cards", "REQ-3"],
+      ["Labels", "REQ-12"],
+    ]);
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board kept cards" } });
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement of this project is titled or keyed “The board kept cards”: pick one from the list.");
+    expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ requirement: "REQ-3" }));
   });
 
   it("reads what the project serves only once a route or tool is picked, and suggests it", async () => {
-    const calls = fakeCore((c) => (c.path === "/projects/p1/feedback/endpoints" ? { body: SERVED } : undefined));
+    const calls = core((c) => (c.path === "/projects/p1/feedback/endpoints" ? { body: SERVED } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
-    expect(calls).toHaveLength(0);
+    expect(calls.filter((c) => c.path.endsWith("/endpoints"))).toHaveLength(0);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const list = await screen.findByTestId("feedback-endpoints");
     expect([...list.querySelectorAll("option")].map((o) => [o.getAttribute("value"), o.textContent])).toEqual([
@@ -44,7 +86,7 @@ describe("the feedback About picker", () => {
 
   // ISS-279's judge: on a project serving nothing the refusal came only after Send, in API terms
   it("says before Send that a project serving nothing has no route or tool to name, and to file it as a Screen", async () => {
-    const calls = fakeCore(() => ({ body: { endpoints: [] } }));
+    const calls = core((c) => (c.path.endsWith("/endpoints") ? { body: { endpoints: [] } } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const note = await screen.findByTestId("feedback-endpoints-none");
@@ -54,7 +96,7 @@ describe("the feedback About picker", () => {
   });
 
   it("says nothing of the kind where the project serves routes or tools", async () => {
-    fakeCore(() => ({ body: SERVED }));
+    core((c) => (c.path.endsWith("/endpoints") ? { body: SERVED } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     await screen.findByTestId("feedback-endpoints");
@@ -62,9 +104,9 @@ describe("the feedback About picker", () => {
   });
 
   it("sends the name typed as the item's endpoint", async () => {
-    const calls = fakeCore((c) => {
-      if (c.method === "GET") return { body: SERVED };
-      return { status: 201, body: { feedback: { key: "FB-2" } } };
+    const calls = core((c) => {
+      if (c.path.endsWith("/endpoints")) return { body: SERVED };
+      return c.method === "POST" ? { status: 201, body: { feedback: { key: "FB-2" } } } : undefined;
     });
     const onDone = vi.fn();
     renderWithQuery(<FeedbackForm projectId="p1" onDone={onDone} />);

@@ -33,6 +33,15 @@ export function useFeedbackEndpoints(projectId: string, enabled: boolean) {
   });
 }
 
+export function useFeedbackChoices(projectId: string, type: "requirement" | "workflow" | "release" | null) {
+  return useQuery({
+    queryKey: ["feedback-choices", projectId, type],
+    queryFn: () => feedbackApi.choices(projectId, type as "requirement" | "workflow" | "release"),
+    enabled: Boolean(projectId) && type !== null,
+    staleTime: 15_000,
+  });
+}
+
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {

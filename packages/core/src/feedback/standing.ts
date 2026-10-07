@@ -205,7 +205,15 @@ function waitingOf(
         };
       }
       return {
-        wait: wait('person', reporter, 'verify the fix', 'resolved: the reporter verifies the fix'),
+        wait: wait(
+          'person',
+          reporter,
+          facts.carrierVersion
+            ? `verify the fix shipped in ${facts.carrierVersion}`
+            : 'verify the fix',
+          'resolved: the reporter verifies the fix',
+          { ref: facts.carrierVersion ?? null },
+        ),
         yours: viewer.isReporter,
       };
     default:

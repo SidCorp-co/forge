@@ -7,6 +7,7 @@ import type {
   ReleaseAttemptView,
   ReleaseContentGroup,
   ReleaseDetail,
+  ReleaseFeedbackView,
   ReleaseGateView,
   ReleaseIssueView,
   ReleaseNoteSection,
@@ -253,6 +254,7 @@ export function detailOf(
   s: Shared,
   production: ReleaseDetail['production'],
   landings: ReadonlyMap<string, IssueLandingReading>,
+  feedbackAnswered: ReleaseFeedbackView[],
 ): ReleaseDetail {
   const summary = summaryOf(p, s);
   const issues = issueViews(p, s, summary.waitingOn, landings);
@@ -263,6 +265,7 @@ export function detailOf(
   const strip = ({ runId: _run, ...view }: ApprovalView): ReleaseApprovalView => view;
   return {
     ...summary,
+    feedbackAnswered,
     issues,
     changes: releaseChangesOf(issues.map((i) => ({ key: i.key, reading: i.landing }))),
     requirementsCompleted: [...reqIds]
