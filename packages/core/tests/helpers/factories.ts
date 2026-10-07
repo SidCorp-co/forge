@@ -130,3 +130,121 @@ export async function seedIssueStatus(issueId: string, status: string): Promise<
     tx.execute(sql`UPDATE issues SET status = ${status} WHERE id = ${issueId}`),
   );
 }
+
+/** A person's preferences row, every column at its default. */
+export async function createTestPreferences(userId: string): Promise<void> {
+  await db.execute(sql`INSERT INTO user_preferences (user_id) VALUES (${userId})`);
+}
+
+export interface TestIssueInput {
+  status: string;
+  createdAt: Date;
+  mergedAt?: Date | null;
+  waitingKind?: string;
+  priority?: string;
+  requirementId?: string | null;
+}
+
+/** Issue `ISS-<seq>` in the project, inserted at `status` as it stands, not moved there. */
+export async function createTestIssue(
+  projectId: string,
+  createdBy: string,
+  seq: number,
+  over: TestIssueInput,
+): Promise<{ id: string; key: string }> {
+  const id = randomUUID();
+  await db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, waiting_kind, priority, requirement_id)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${over.status}, ${createdBy},
+            ${over.createdAt.toISOString()}, ${over.mergedAt?.toISOString() ?? null},
+            ${over.waitingKind ?? null}, ${over.priority ?? 'medium'}, ${over.requirementId ?? null})
+  `);
+  return { id, key: `ISS-${seq}` };
+}
+
+/** The `issue.statusChanged` activity row a person's move from `from` to `to` leaves at `at`. */
+export async function recordStatusMove(
+  issueId: string,
+  actorId: string,
+  from: string,
+  to: string,
+  at: Date,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+    VALUES (${issueId}, 'user', ${actorId}, 'human', 'issue.statusChanged',
+            ${JSON.stringify({ from, to })}::jsonb, ${at.toISOString()})
+  `);
+}
+
+/** A run a box declared: its run session started at `start`, its run finished at `end` (null: still open). */
+export async function createTestRunSession(
+  projectId: string,
+  deviceId: string,
+  start: Date,
+  end: Date | null,
+): Promise<string> {
+  const runId = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, metadata)
+    VALUES (${runId}, ${projectId}, 'system', ${end ? 'completed' : 'running'}, ${start.toISOString()},
+            ${end?.toISOString() ?? null}, '{}'::jsonb)
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at)
+    VALUES (${projectId}, ${deviceId}, ${runId}, 'run_session', ${end ? 'completed' : 'running'},
+            ${start.toISOString()}, ${start.toISOString()})
+  `);
+  return runId;
+}
+
+/** A completed release run that shipped `issueIds` at `at` as `version`. */
+export async function createTestRelease(
+  projectId: string,
+  version: string,
+  issueIds: readonly string[],
+  at: Date,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
+    VALUES (${randomUUID()}, ${projectId}, 'system', 'completed', ${at.toISOString()}, ${at.toISOString()},
+            ${version}, ${at.toISOString()}, ${JSON.stringify({ issueIds })}::jsonb)
+  `);
+}
+
+/** Requirement `REQ-<seq>`, at draft. */
+export async function createTestRequirement(
+  projectId: string,
+  seq: number,
+  title: string,
+): Promise<{ id: string; key: string }> {
+  const id = randomUUID();
+  await db.execute(sql`
+    INSERT INTO requirements (id, project_id, req_seq, title, status)
+    VALUES (${id}, ${projectId}, ${seq}, ${title}, 'draft')
+  `);
+  return { id, key: `REQ-${seq}` };
+}
+
+/** Feedback `FB-<seq>` a person reported, untriaged, or triaged onto `carriers` as an issue route. */
+export async function createTestFeedback(
+  projectId: string,
+  reportedBy: string,
+  seq: number,
+  carriers: readonly string[] = [],
+): Promise<string> {
+  await db.transaction(async (tx) => {
+    const [made] = (await tx.execute(sql`
+      INSERT INTO feedback (project_id, fb_seq, kind, title, where_seen, status, route, reported_by, reporter_agency)
+      VALUES (${projectId}, ${seq}, 'bug', ${`feedback ${seq}`}, 'The board',
+              ${carriers.length ? 'triaged' : 'new'}, ${carriers.length ? 'issue' : null}, ${reportedBy}, 'human')
+      RETURNING id
+    `)) as unknown as { id: string }[];
+    for (const issueId of carriers) {
+      await tx.execute(sql`
+        INSERT INTO feedback_route_issues (feedback_id, issue_id) VALUES (${made?.id}, ${issueId})
+      `);
+    }
+  });
+  return `FB-${seq}`;
+}

@@ -495,7 +495,11 @@ jobs:
     if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — the template seeds rows before the migrations this tree adds to its merge
+      # target, and a dispatched branch's checkout holds no ref for that target without it.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
       - run: pnpm --filter @forge/core test:integration:ci
 

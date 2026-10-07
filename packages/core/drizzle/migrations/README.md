@@ -69,6 +69,15 @@ replays these files in journal order and fails naming every CHECK whose literals
 schema's, or that no migration defines. 0405 left the outbox admitting 28 of 43 event types and
 every write of the other 15 failed; 0419 repaired it.
 
+**A new migration must apply to a database that holds rows.** The integration suite's global
+setup (`tests/helpers/global-setup.ts`) reads the merge target the way every delta-scoped gate does
+(`scripts/lib/base-branch.mjs`), migrates a copy through the newest migration that target carries,
+seeds it through `tests/helpers/factories.ts`, and applies this tree's new migrations over those rows
+one at a time. The first one Postgres refuses fails the suite, naming its tag and SQLSTATE: 0442
+reset a NOT NULL column to null before dropping the constraint, passed on the empty template, and
+stopped the dev.103 deploy. A row whose shape no factory writes is not seeded, so a migration about
+such a table still owes its own `groundBefore` test (`tests/helpers/migration-ground.ts`).
+
 ## Common failure modes
 
 ### Symptom: column from a new migration "does not exist" in prod
