@@ -978,9 +978,8 @@ built-in defaults rather than to an empty scope.
 
 ## lib/checker-config.mjs — the manifest reader
 
-The checkers' shared read of `.forge/conformance.json`. It was `debt-ratchet.mjs` while it also held
-the per-file freeze (ISS-848); the last frozen baseline of that shape was deleted empty, and the
-freeze with it. What it holds is `readManifest` / `checkerConfig` / `scopeConfig` / `tunedConfig`,
+The checkers' shared read of `.forge/conformance.json`. It also held the per-file freeze
+(ISS-848) until the last frozen baseline of that shape was deleted empty, and the freeze with it. What it holds is `readManifest` / `checkerConfig` / `scopeConfig` / `tunedConfig`,
 `parseMode` and `stagedFiles` (an unreadable manifest or a failed `git diff --cached` is an error the
 caller exits 2 on, never an empty answer a hook would report clean). What stays in each checker is
 its analyzer.

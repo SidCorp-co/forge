@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalJson } from './lib/canonical-json.js';
 import { enterHermeticEnv } from './api-contract/hermetic-env.js';
+import { canonicalJson } from './lib/canonical-json.js';
 
 const GENERATOR = 'packages/core/src/contracts-generate.ts';
 const DEFAULT_OUT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'contracts');
