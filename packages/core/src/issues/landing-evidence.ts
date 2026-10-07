@@ -147,12 +147,14 @@ export const mergedLandingSchema = z
   .max(MERGED_LANDING_MAX, `landing must be at most ${MERGED_LANDING_MAX} characters`);
 
 /** How work that did land is claimed on this lane, written once for every refusal naming it.
- *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first. */
-export function landingRoute(lane: Lane, held: MergeMarkKind = 'unmarked'): string {
+ *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first.
+ *  `then` is the act the refused caller takes once the claim stands: the close, or the status. */
+export function landingRoute(lane: Lane, held: MergeMarkKind = 'unmarked', then = 'close'): string {
   if (lane.shape === 'git') {
     return (
       'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
-      '`mark_merged` naming where it landed, then close.'
+      '`mark_merged`, naming the commit it landed at in `data.commit` where there is one, then ' +
+      `${then}. ${DECLARE_OUTSIDE_GIT}`
     );
   }
   const clear =
@@ -165,8 +167,8 @@ export function landingRoute(lane: Lane, held: MergeMarkKind = 'unmarked'): stri
     `${whereItLands(lane, true)}, so claim it with \`forge_issues\` ` +
     '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
     'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +
-    'Mark merged rail) — then close. A mark naming no landing is not evidence here, and a commit ' +
-    'is not asked for.'
+    `Mark merged rail) — then ${then}. A mark naming no landing is not evidence here, and a ` +
+    'commit is not asked for.'
   );
 }
 
@@ -246,20 +248,29 @@ export function standingMarkRefusal(args: {
 }
 
 /** Why `landingShape` was not changed: a mark stands, and it was judged on the lane it was made
- *  under, so changing the lane would re-judge it in silence. `unmark` is the way through. */
+ *  under, so changing the lane would re-judge it in silence. `unmark` is the way through. `held`
+ *  null means the issue declared nothing and `project` decided; an unplaceable `project` is
+ *  omitted from the sentence rather than allowed to turn this refusal into a different error. */
 export function landingShapeMarkStandsDetail(args: {
   held: LandingShape | null;
   sent: LandingShape | null;
+  project: LandingShape | null;
   mark: MergeMarkKind;
 }): string {
-  const shown = (v: LandingShape | null) =>
-    v === null ? "null (the project's shape)" : `\`${v}\``;
+  const projectShape = `its project's shape${args.project ? ` (\`${args.project}\`)` : ''}`;
+  const madeUnder =
+    args.held === null
+      ? `while the issue declared nothing and ${projectShape} applied`
+      : `while the issue declared \`${args.held}\``;
+  const refused =
+    args.sent === null
+      ? `\`landingShape\` was not cleared back to ${projectShape}`
+      : `\`landingShape\` was not changed to \`${args.sent}\``;
   return (
-    `this issue carries a merged mark (\`${args.mark}\`), made while it declared ` +
-    `${shown(args.held)}, and a mark is judged on the lane it was made under, so ` +
-    `\`landingShape\` was not changed to ${shown(args.sent)} and nothing was written. \`unmark\` it ` +
-    'first (`forge_issues` `unmark`, or Unmark on the rail), change `landingShape`, then mark it ' +
-    'again on the new lane; a `closed` issue is reopened before it can be unmarked.'
+    `this issue carries a merged mark (\`${args.mark}\`), made ${madeUnder}, and a mark is judged ` +
+    `on the lane it was made under, so ${refused} and nothing was written. \`unmark\` it first ` +
+    '(`forge_issues` `unmark`, or Unmark on the rail), change `landingShape`, then mark it again ' +
+    'on the new lane; a `closed` issue is reopened before it can be unmarked.'
   );
 }
 

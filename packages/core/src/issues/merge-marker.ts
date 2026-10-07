@@ -182,7 +182,7 @@ async function agentEvidence(
   shape: LandingShape,
   sent: { commit?: string | undefined; landing?: string | undefined },
 ): Promise<Extract<CommitLanding, { ok: true }> | null> {
-  const missing = await findMissingWorkEvidence(issueId);
+  const missing = await findMissingWorkEvidence(issueId, db, 'mark');
   if (!missing || (shape === 'outside_git' && sent.landing)) return null;
   if (!sent.commit || shape !== 'git') throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
   const read = await readCommitLanding({ issueId, commit: sent.commit });

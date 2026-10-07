@@ -66,8 +66,9 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     expect(refusal).not.toBeNull();
     expect(refusal?.detail).toContain('nothing on it shows the work shipped');
     expect(refusal?.detail).toContain('`dropped`');
-    expect(refusal?.detail).toContain('`mark_merged` naming where it landed');
-    expect(refusal?.detail).not.toContain('landing');
+    expect(refusal?.detail).toContain('`data.commit`');
+    expect(refusal?.detail).toContain('`landingShape: outside_git`');
+    expect(refusal?.detail).not.toContain('naming where it landed');
     expect(refusal?.details).toEqual({ requires: 'mergedAt', useInstead: 'dropped' });
   });
 

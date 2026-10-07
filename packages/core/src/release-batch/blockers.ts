@@ -91,7 +91,9 @@ async function resolveRoster(
       out,
     );
     if (!named) return undefined;
-    const ids = named.map((r) => r.id);
+    // In the order the caller named them: a SELECT keeps no order, and every refusal lists these.
+    const held = new Set(named.map((r) => r.id));
+    const ids = [...new Set(issueIds)].filter((id) => held.has(id));
     return { ids, unclaimed: ids };
   }
   const rows = await evaluate(
@@ -205,6 +207,7 @@ async function rosterBlockers(
   }
   // The close's own refusals, read at both doors before anything is claimed (ISS-1337): a batch
   // that claimed such a row would release it and hand it back to the gate, said only afterwards.
+  // `issueIds` is in the caller's roster order (`resolveRoster`), and so is every list below.
   const shortfalls = await evaluate(
     'close',
     async () => await rosterCloseShortfalls(projectId, issueIds),

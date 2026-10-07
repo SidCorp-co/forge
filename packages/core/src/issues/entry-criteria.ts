@@ -5,7 +5,8 @@ import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { landingShortfall, laneOf } from './landing-evidence.js';
+import { landingRoute, landingShortfall, laneOf } from './landing-evidence.js';
+import { mergeMarkKindOf } from './merge-record.js';
 
 type CriterionExecutor = Pick<Db, 'select'>;
 
@@ -53,15 +54,16 @@ const criteriaWith = (
   merged_mark: (_id, record) => {
     const lane = laneOf({ declared: record.declaredLandingShape, kind: record.projectKind });
     const short = landingShortfall(record, lane);
-    return short ? `${short} — mark it merged before this status` : null;
+    if (!short) return null;
+    return `${short}. ${landingRoute(lane, mergeMarkKindOf(record), 'enter this status')}`;
   },
 });
 
 // `work_evidence` holds a person too (`transition-evidence.ts:entryCriteriaRule`), so its refusal
 // names the routes anyone can take, never the agent-only commit route alone.
-const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor, 'anyone'));
+const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor, 'criterion'));
 const STRICT_CRITERIA = criteriaWith((id, executor) =>
-  missingWorkEvidenceStrict(id, executor, 'anyone'),
+  missingWorkEvidenceStrict(id, executor, 'criterion'),
 );
 
 /**

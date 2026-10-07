@@ -3145,6 +3145,10 @@
   what clears it, cannot be selected, and is left off automatic and scheduled releases instead of
   being shipped and handed back (ISS-1337).
 
+- **Refusals on the landing route name a route that works.** A git project's close names a
+  commit or declaring the issue outside git, never a landing; re-sending an issue's own landing
+  declaration no longer counts as an edit (ISS-1384).
+
 - **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
   names each such box, and the notification clears once the box recovers (ISS-1324).
 
