@@ -1,1 +1,0 @@
-**An issue a failed release held is closed once a later release ships its commit.** A release that failed after deploying no longer leaves its issues waiting forever: the next shipped release holding their commit closes and lists them.
