@@ -21,7 +21,7 @@ pub(crate) struct Hit {
 
 /// What a file's `use` items bind. Built before any route is counted, because a `use` may stand
 /// below the code that uses its names.
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq)]
 struct Bindings {
     /// A name for the `dirs_next` crate itself: `d` in `use dirs_next as d`.
     dirs_modules: BTreeSet<String>,
@@ -33,6 +33,9 @@ struct Bindings {
     env_reads: BTreeSet<String>,
     /// A name for the runner's `Config`.
     configs: BTreeSet<String>,
+    /// Every name a `use` binds, so a bare name it brought in resolves through any `const` of
+    /// that name rather than counting as unknown.
+    imported: BTreeSet<String>,
     /// A `macro_rules!` that builds a path from a metavariable, by name.
     assembling: BTreeSet<String>,
     /// What the scan refuses outright: a glob import from a route module, and a macro that
@@ -69,14 +72,27 @@ pub(crate) fn lex(src: &str, file: &str) -> Vec<TokenTree> {
         .collect()
 }
 
-/// Every `const` and `static` in `tokens` with the value it is defined with, where that value is
-/// a literal, a `concat!` of literals or the name of another; `None` for any other.
+/// Every `const` and `static` in `tokens`, at any depth, with the value it is defined with. The
+/// table a qualified or imported name resolves through, by its last identifier: every definition
+/// of that name in either crate, so one that is a route, or one the scan cannot read, counts.
 pub(crate) fn collect_consts(tokens: &[TokenTree], into: &mut Consts) {
-    let mut i = 0;
-    while i < tokens.len() {
-        if let TokenTree::Group(g) = &tokens[i] {
+    for t in tokens {
+        if let TokenTree::Group(g) = t {
             collect_consts(&g.stream().into_iter().collect::<Vec<_>>(), into);
         }
+    }
+    for (name, defs) in consts_at(tokens) {
+        into.entry(name).or_default().extend(defs);
+    }
+}
+
+/// The `const`s and `static`s defined directly in `tokens`, not inside a group of them, with the
+/// value each is defined with: a literal, a `concat!` of literals or the name of another; `None`
+/// for any other.
+fn consts_at(tokens: &[TokenTree]) -> Consts {
+    let mut into = Consts::new();
+    let mut i = 0;
+    while i < tokens.len() {
         if (is_ident(&tokens[i], "const") || is_ident(&tokens[i], "static"))
             && matches!(tokens.get(i + 1), Some(TokenTree::Ident(_)))
         {
@@ -102,6 +118,7 @@ pub(crate) fn collect_consts(tokens: &[TokenTree], into: &mut Consts) {
         }
         i += 1;
     }
+    into
 }
 
 /// The literal values `name` may hold, following one const through another; `None` where any
@@ -124,11 +141,18 @@ fn resolve(consts: &Consts, name: &str, depth: usize) -> Option<Vec<String>> {
     Some(out)
 }
 
+/// What one file holds: its routes, and what the scan refuses outright because it cannot see
+/// through it, which no allowance admits.
+#[derive(Debug)]
+pub(crate) struct Scanned {
+    pub routes: Vec<Hit>,
+    pub refused: Vec<Hit>,
+}
+
 /// Every route in one file. `in_config` is `config.rs`, whose `Self::path()` is `Config::path()`.
-pub(crate) fn routes(tokens: &[TokenTree], consts: &Consts, in_config: bool) -> Vec<Hit> {
-    let mut b = Bindings::default();
-    collect_bindings(tokens, &mut b);
-    let mut hits = b.refused.clone();
+pub(crate) fn routes(tokens: &[TokenTree], consts: &Consts, in_config: bool) -> Scanned {
+    let b = bindings(tokens);
+    let mut hits = Vec::new();
     let scan = Scan {
         b: &b,
         consts,
@@ -136,9 +160,64 @@ pub(crate) fn routes(tokens: &[TokenTree], consts: &Consts, in_config: bool) -> 
         variables: variables(),
         platform: platform_names(),
     };
-    scan.walk(tokens, false, &mut hits);
+    let mut stack = vec![Frame {
+        module: true,
+        consts: consts_at(tokens),
+    }];
+    scan.walk(tokens, false, &mut hits, &mut stack);
     hits.sort_by_key(|h| h.line);
-    hits
+    Scanned {
+        routes: hits,
+        refused: b.refused,
+    }
+}
+
+/// The `const`s one level of a file defines, and whether that level opens a module, past which a
+/// name the module does not import is not in scope.
+#[derive(Clone)]
+struct Frame {
+    module: bool,
+    consts: Consts,
+}
+
+/// What a brace group's header says it opens.
+enum Opens {
+    Module,
+    /// An `impl` or `trait` body, whose `const`s are reached as `Self::NAME`, never bare.
+    Associated,
+    Block,
+}
+
+/// The item a brace group at `tokens[i]` is the body of, read back to the previous item's end.
+fn opens(tokens: &[TokenTree], i: usize) -> Opens {
+    let start = tokens[..i]
+        .iter()
+        .rposition(|t| {
+            is_punct(t, ';')
+                || matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Brace)
+        })
+        .map_or(0, |k| k + 1);
+    let header = &tokens[start..i];
+    let has = |w: &str| header.iter().any(|t| is_ident(t, w));
+    if has("mod") {
+        Opens::Module
+    } else if has("fn") {
+        Opens::Block
+    } else if has("impl") || has("trait") {
+        Opens::Associated
+    } else {
+        Opens::Block
+    }
+}
+
+/// Whether a module body imports everything of its parent, `use super::*`.
+fn imports_its_parent(tokens: &[TokenTree]) -> bool {
+    tokens.windows(5).any(|w| {
+        is_ident(&w[0], "use")
+            && is_ident(&w[1], "super")
+            && is_path_sep(w, 2)
+            && is_punct(&w[4], '*')
+    })
 }
 
 struct Scan<'a> {
@@ -152,7 +231,13 @@ struct Scan<'a> {
 impl Scan<'_> {
     /// `handed_to_a_setter`: `tokens` are the arguments of a call that sets or removes a
     /// variable, so the name it is handed first scopes the variable rather than reading it.
-    fn walk(&self, tokens: &[TokenTree], handed_to_a_setter: bool, hits: &mut Vec<Hit>) {
+    fn walk(
+        &self,
+        tokens: &[TokenTree],
+        handed_to_a_setter: bool,
+        hits: &mut Vec<Hit>,
+        stack: &mut Vec<Frame>,
+    ) {
         let mut i = 0;
         while i < tokens.len() {
             let t = &tokens[i];
@@ -207,13 +292,44 @@ impl Scan<'_> {
                 }
                 TokenTree::Ident(id) => {
                     let name = id.to_string();
-                    self.ident(&name, tokens, i, hits);
+                    self.ident(&name, tokens, i, hits, stack);
                 }
                 TokenTree::Group(g) => {
                     let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                     let setter =
                         g.delimiter() == Delimiter::Parenthesis && is_setter_call(tokens, i);
-                    self.walk(&inner, setter, hits);
+                    let opened = if g.delimiter() == Delimiter::Brace {
+                        opens(tokens, i)
+                    } else {
+                        Opens::Block
+                    };
+                    match opened {
+                        Opens::Module => {
+                            let from = stack.iter().rposition(|f| f.module).unwrap_or(0);
+                            let mut inner_stack = if imports_its_parent(&inner) {
+                                stack[from..].to_vec()
+                            } else {
+                                Vec::new()
+                            };
+                            inner_stack.push(Frame {
+                                module: true,
+                                consts: consts_at(&inner),
+                            });
+                            self.walk(&inner, setter, hits, &mut inner_stack);
+                        }
+                        Opens::Associated | Opens::Block => {
+                            let consts = match opened {
+                                Opens::Associated => Consts::new(),
+                                _ => consts_at(&inner),
+                            };
+                            stack.push(Frame {
+                                module: false,
+                                consts,
+                            });
+                            self.walk(&inner, setter, hits, stack);
+                            stack.pop();
+                        }
+                    }
                 }
                 TokenTree::Punct(_) => {}
             }
@@ -244,7 +360,14 @@ impl Scan<'_> {
         }
     }
 
-    fn ident(&self, name: &str, tokens: &[TokenTree], i: usize, hits: &mut Vec<Hit>) {
+    fn ident(
+        &self,
+        name: &str,
+        tokens: &[TokenTree],
+        i: usize,
+        hits: &mut Vec<Hit>,
+        stack: &[Frame],
+    ) {
         let line = line_of(&tokens[i]);
         let mut hit = |what: String| hits.push(Hit { line, what });
         let qualified = i >= 1 && (is_punct(&tokens[i - 1], '.') || path_sep_before(tokens, i));
@@ -287,7 +410,7 @@ impl Scan<'_> {
             if let Some(TokenTree::Ident(f)) = tokens.get(i + 3) {
                 let f = f.to_string();
                 if READERS.contains(&f.as_str()) {
-                    if let Some(why) = self.read_at(tokens, i + 3) {
+                    if let Some(why) = self.read_at(tokens, i + 3, stack) {
                         hit(format!("{name}::{f} {why}"));
                     }
                 }
@@ -296,12 +419,12 @@ impl Scan<'_> {
         if (name == "env" || name == "option_env")
             && tokens.get(i + 1).is_some_and(|t| is_punct(t, '!'))
         {
-            if let Some(why) = self.read_at(tokens, i + 1) {
+            if let Some(why) = self.read_at(tokens, i + 1, stack) {
                 hit(format!("{name}! {why}"));
             }
         }
         if self.b.env_reads.contains(name) && !qualified {
-            if let Some(why) = self.read_at(tokens, i) {
+            if let Some(why) = self.read_at(tokens, i, stack) {
                 hit(format!("{name}, a reader imported from std::env, {why}"));
             }
         }
@@ -318,7 +441,7 @@ impl Scan<'_> {
 
     /// Whether the reader at `tokens[at]` reads a route, and how: `None` where its argument is a
     /// literal (counted as a literal) or names a variable no route reads.
-    fn read_at(&self, tokens: &[TokenTree], at: usize) -> Option<String> {
+    fn read_at(&self, tokens: &[TokenTree], at: usize, stack: &[Frame]) -> Option<String> {
         let Some(TokenTree::Group(g)) = tokens.get(at + 1) else {
             return Some("taken as a value, so what it reads is not known here".into());
         };
@@ -333,7 +456,8 @@ impl Scan<'_> {
             return None;
         }
         if let Some(n) = path_name(&args) {
-            return match resolve(self.consts, &n, 0) {
+            let qualified = (0..args.len()).any(|k| is_path_sep(&args, k));
+            return match self.value_of(&n, qualified, stack, 0) {
                 Some(vals) if vals.iter().any(|v| self.variables.contains(&v.as_str())) => {
                     Some(format!("reads {vals:?} through {n}"))
                 }
@@ -342,6 +466,45 @@ impl Scan<'_> {
             };
         }
         Some("reads a name the scan cannot resolve".into())
+    }
+
+    /// The literal values the name `n` may hold where it is read: through the `const` of that name
+    /// in scope there for a bare name, or through every definition of it in either crate for a
+    /// qualified or imported one. `None` where it holds anything else, or nothing names it: a bare
+    /// name no `const` in scope defines is a local, whatever it is called.
+    fn value_of(
+        &self,
+        n: &str,
+        qualified: bool,
+        stack: &[Frame],
+        depth: usize,
+    ) -> Option<Vec<String>> {
+        if depth > 8 {
+            return None;
+        }
+        let defs = if qualified {
+            None
+        } else {
+            stack.iter().rev().find_map(|f| f.consts.get(n))
+        };
+        let Some(defs) = defs else {
+            return if qualified || self.b.imported.contains(n) {
+                resolve(self.consts, n, depth)
+            } else {
+                None
+            };
+        };
+        let mut out = Vec::new();
+        for d in defs {
+            match d.as_deref() {
+                Some(v) if v.starts_with('\u{0}') => {
+                    out.extend(self.value_of(&v[1..], false, stack, depth + 1)?)
+                }
+                Some(v) => out.push(v.to_string()),
+                None => return None,
+            }
+        }
+        Some(out)
     }
 
     /// Inside a `use`: the identifiers that are routes wherever they stand, and nothing it binds.
@@ -366,12 +529,28 @@ impl Scan<'_> {
     }
 }
 
-/// What every `use` and `extern crate` in `tokens` binds, at any depth.
-fn collect_bindings(tokens: &[TokenTree], b: &mut Bindings) {
+/// What a file's `use` and `extern crate` items bind, read until a pass learns nothing new, so an
+/// import through another's alias resolves in whichever order the two stand.
+fn bindings(tokens: &[TokenTree]) -> Bindings {
+    let mut known = Bindings::default();
+    for _ in 0..8 {
+        let mut b = Bindings::default();
+        collect_bindings(tokens, &mut b, &known);
+        if b == known {
+            break;
+        }
+        known = b;
+    }
+    known
+}
+
+/// What every `use` and `extern crate` in `tokens` binds, at any depth, reading a path that opens
+/// with an alias `known` holds as the path it stands for.
+fn collect_bindings(tokens: &[TokenTree], b: &mut Bindings, known: &Bindings) {
     let mut i = 0;
     while i < tokens.len() {
         if let TokenTree::Group(g) = &tokens[i] {
-            collect_bindings(&g.stream().into_iter().collect::<Vec<_>>(), b);
+            collect_bindings(&g.stream().into_iter().collect::<Vec<_>>(), b, known);
         }
         if is_ident(&tokens[i], "macro_rules")
             && tokens.get(i + 1).is_some_and(|t| is_punct(t, '!'))
@@ -395,7 +574,7 @@ fn collect_bindings(tokens: &[TokenTree], b: &mut Bindings) {
             let end = (i..tokens.len())
                 .find(|&k| is_punct(&tokens[k], ';'))
                 .unwrap_or(tokens.len());
-            use_tree(&tokens[i + 1..end], &[], b, line_of(&tokens[i]));
+            use_tree(&tokens[i + 1..end], &[], b, known, line_of(&tokens[i]));
             i = end;
         } else if is_ident(&tokens[i], "extern")
             && tokens.get(i + 1).is_some_and(|t| is_ident(t, "crate"))
@@ -428,19 +607,26 @@ fn assembles_a_path(tokens: &[TokenTree]) -> bool {
 }
 
 /// One `use` tree under `prefix`.
-fn use_tree(tokens: &[TokenTree], prefix: &[String], b: &mut Bindings, line: usize) {
+fn use_tree(
+    tokens: &[TokenTree],
+    prefix: &[String],
+    b: &mut Bindings,
+    known: &Bindings,
+    line: usize,
+) {
     let mut path = prefix.to_vec();
     let mut i = 0;
     while i < tokens.len() {
         match &tokens[i] {
             TokenTree::Ident(id) if id == "as" => {
                 if let Some(TokenTree::Ident(alias)) = tokens.get(i + 1) {
-                    bind(&path, &alias.to_string(), b);
+                    bind(&expanded(&path, known), &alias.to_string(), b);
                 }
                 return;
             }
             TokenTree::Ident(id) => path.push(id.to_string()),
             TokenTree::Punct(p) if p.as_char() == '*' => {
+                let path = expanded(&path, known);
                 let from = path.join("::");
                 let route = path.iter().any(|s| s == "dirs_next")
                     || path.ends_with(&["std".into(), "env".into()])
@@ -458,7 +644,7 @@ fn use_tree(tokens: &[TokenTree], prefix: &[String], b: &mut Bindings, line: usi
             TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 for part in inner.split(|t| is_punct(t, ',')) {
-                    use_tree(part, &path, b, line);
+                    use_tree(part, &path, b, known, line);
                 }
                 return;
             }
@@ -470,12 +656,27 @@ fn use_tree(tokens: &[TokenTree], prefix: &[String], b: &mut Bindings, line: usi
         if last == "self" {
             let module: Vec<String> = path[..path.len() - 1].to_vec();
             if let Some(name) = module.last().cloned() {
-                bind(&module, &name, b);
+                bind(&expanded(&module, known), &name, b);
             }
         } else {
-            bind(&path, &last, b);
+            bind(&expanded(&path, known), &last, b);
         }
     }
+}
+
+/// `path` with an opening alias of `std::env` or `dirs_next` written out.
+fn expanded(path: &[String], known: &Bindings) -> Vec<String> {
+    let Some(first) = path.first() else {
+        return Vec::new();
+    };
+    let head: Vec<String> = if known.env_modules.contains(first) && first != "env" {
+        vec!["std".into(), "env".into()]
+    } else if known.dirs_modules.contains(first) && first != "dirs_next" {
+        vec!["dirs_next".into()]
+    } else {
+        return path.to_vec();
+    };
+    head.into_iter().chain(path[1..].iter().cloned()).collect()
 }
 
 /// `name` is bound to `path`.
@@ -488,6 +689,7 @@ fn bind(path: &[String], name: &str, b: &mut Bindings) {
     let Some(&last) = path.last() else {
         return;
     };
+    b.imported.insert(name.to_string());
     if last == "dirs_next" {
         b.dirs_modules.insert(name.to_string());
     } else if path.contains(&"dirs_next") {
@@ -576,18 +778,32 @@ pub(crate) fn unquote(lit: &str) -> Option<String> {
             out.push(c);
             continue;
         }
-        match chars.next() {
-            Some('n') => out.push('\n'),
-            Some('t') => out.push('\t'),
-            Some('r') => out.push('\r'),
-            Some('0') => out.push('\0'),
-            Some('\n') => {
+        match chars.next()? {
+            'n' => out.push('\n'),
+            't' => out.push('\t'),
+            'r' => out.push('\r'),
+            '0' => out.push('\0'),
+            c @ ('\\' | '"' | '\'') => out.push(c),
+            'x' => {
+                let hex: String = [chars.next()?, chars.next()?].iter().collect();
+                out.push(char::from(u8::from_str_radix(&hex, 16).ok()?));
+            }
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let hex: String = chars.by_ref().take_while(|&c| c != '}').collect();
+                out.push(char::from_u32(
+                    u32::from_str_radix(&hex.replace('_', ""), 16).ok()?,
+                )?);
+            }
+            '\n' => {
                 while chars.peek().is_some_and(|c| c.is_whitespace()) {
                     chars.next();
                 }
             }
-            Some(other) => out.push(other),
-            None => {}
+            // An escape the scan does not know is no value it can vouch for.
+            _ => return None,
         }
     }
     Some(out)
@@ -623,7 +839,7 @@ fn line_of(t: &TokenTree) -> usize {
 mod tests {
     use super::*;
 
-    fn scan(src: &str) -> Vec<Hit> {
+    fn scanned(src: &str) -> Scanned {
         let tokens = lex(src, "a fixture");
         let mut consts = Consts::new();
         collect_consts(&tokens, &mut consts);
@@ -632,8 +848,9 @@ mod tests {
 
     #[track_caller]
     fn counts(src: &str, want: usize) {
-        let hits = scan(src);
-        assert_eq!(hits.len(), want, "{src}\n{hits:#?}");
+        let s = scanned(src);
+        assert!(s.refused.is_empty(), "{src}\n{:#?}", s.refused);
+        assert_eq!(s.routes.len(), want, "{src}\n{:#?}", s.routes);
     }
 
     /// Judge j5's G1-G4 at edc8778, each of which the line scan let through.
@@ -677,6 +894,71 @@ mod tests {
         counts(r#"fn a() { std::env::var(handover::UNKNOWN_NAME); }"#, 1);
     }
 
+    /// The whole-set read's F1: an escape spells the name as surely as its letters do.
+    #[test]
+    fn an_escaped_literal_is_read_for_the_name_it_spells() {
+        counts(r#"fn a() { std::env::var_os("\x48OME"); }"#, 1);
+        counts(r#"fn a() { std::env::var_os("\u{48}OME"); }"#, 1);
+        counts(
+            r#"const H: &str = "\x48OME"; fn a() { std::env::var_os(H); }"#,
+            2,
+        );
+        counts(
+            r#"fn a() { std::env::var_os(concat!("\u{48}O", "ME")); }"#,
+            1,
+        );
+        assert_eq!(
+            unquote(r#""a\"b\\c\x41\u{1F600}""#).as_deref(),
+            Some("a\"b\\cA\u{1F600}")
+        );
+    }
+
+    /// The whole-set read's F2: a name resolves through the `const` in scope where it is read,
+    /// never through an unrelated one that happens to share it.
+    #[test]
+    fn a_local_that_shares_a_consts_name_is_no_const() {
+        counts(
+            r#"mod other { pub const key: &str = "FORGE_TOKEN"; }
+               fn read(key: &str) { let _ = std::env::var_os(key); }"#,
+            1,
+        );
+        counts(
+            r#"mod a { const KEY: &str = "FORGE_TOKEN"; }
+               mod b { fn read(k: &str) { let KEY = k; let _ = std::env::var_os(KEY); } }"#,
+            1,
+        );
+        counts(
+            r#"impl X { const KEY: &str = "FORGE_TOKEN"; fn read(KEY: &str) { std::env::var(KEY); } }"#,
+            1,
+        );
+        counts(
+            r#"const KEY: &str = "FORGE_TOKEN"; fn read() { std::env::var(KEY); }
+               mod tests { use super::*; fn t() { std::env::var(KEY); } }"#,
+            0,
+        );
+        counts(
+            r#"use crate::daemon::handover::LISTENER_ENV; fn a() { std::env::var_os(LISTENER_ENV); }"#,
+            1,
+        );
+    }
+
+    /// The whole-set read's F3: an import through another import's alias, in either order.
+    #[test]
+    fn an_import_through_an_alias_is_followed_in_either_order() {
+        counts(
+            "use std::env as e; use e::var_os as get; fn read(k: &str) { let _ = get(k); }",
+            1,
+        );
+        counts(
+            "use e::var_os as get; use std::env as e; fn read(k: &str) { let _ = get(k); }",
+            1,
+        );
+        counts(
+            "use dirs_next as d; use d::config_dir as cd; fn a() { cd(); }",
+            2,
+        );
+    }
+
     #[test]
     fn a_name_a_use_binds_to_a_route_counts_wherever_it_is_used() {
         counts(
@@ -703,7 +985,7 @@ mod tests {
             "pub fn home_dir() {} fn a() { home_dir(); dirs_next::home_dir(); }",
             "config.rs",
         );
-        let hits = routes(&config, &Consts::new(), true);
+        let hits = routes(&config, &Consts::new(), true).routes;
         assert_eq!(hits.len(), 2, "{hits:#?}");
     }
 
@@ -717,23 +999,32 @@ mod tests {
 
     #[test]
     fn what_the_scan_cannot_see_through_is_refused_by_name() {
-        let glob = scan("use std::env::*; fn a() { var(\"X\"); }");
+        let glob = scanned("use std::env::*; fn a() { var(\"X\"); }").refused;
         assert!(
             glob.iter()
                 .any(|h| h.what.contains("a glob import from std::env")),
             "{glob:#?}"
         );
-        counts("use dirs_next::*;", 2);
+        let dirs = scanned("use dirs_next::*;");
+        assert_eq!((dirs.routes.len(), dirs.refused.len()), (1, 1), "{dirs:#?}");
+        let aliased = scanned("use dirs_next as d; use d::*;");
+        assert_eq!(
+            aliased.refused.len(),
+            1,
+            "a glob through an alias: {aliased:#?}"
+        );
         // The consult's macro, which builds `std::env::var_os` from its arguments.
         let assembled = r#"macro_rules! read {
                 ($m:ident, $f:ident, $k:expr) => { std::$m::$f($k) };
             }
             fn a(x: &str) { read!(env, var_os, ["HO", "ME"].concat()); read!(env, var_os, x); }"#;
-        let hits = scan(assembled);
-        assert_eq!(hits.len(), 3, "{hits:#?}");
+        let s = scanned(assembled);
+        assert_eq!((s.routes.len(), s.refused.len()), (2, 1), "{s:#?}");
         assert!(
-            hits[0].what.contains("macro_rules! read builds a path"),
-            "{hits:#?}"
+            s.refused[0]
+                .what
+                .contains("macro_rules! read builds a path"),
+            "{s:#?}"
         );
         counts(
             "macro_rules! at { ($x:expr) => { $crate::daemon::at($x) }; } fn a() { at!(1); }",

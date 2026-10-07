@@ -736,14 +736,28 @@ mod tests {
         }
         let mut seen = std::collections::BTreeMap::<String, usize>::new();
         let mut sites = std::collections::BTreeMap::new();
+        let mut refused = Vec::new();
         for (rel, tokens) in &files {
             let in_config = rel == "forge-runner-core/src/config.rs";
-            let hits = crate::route_scan::routes(tokens, &consts, in_config);
+            let scanned = crate::route_scan::routes(tokens, &consts, in_config);
+            refused.extend(
+                scanned
+                    .refused
+                    .iter()
+                    .map(|h| format!("{rel} line {}: {}", h.line, h.what)),
+            );
+            let hits = scanned.routes;
             if !hits.is_empty() {
                 seen.insert(rel.clone(), hits.len());
                 sites.insert(rel.clone(), hits);
             }
         }
+        // Before the allowances: what the scan cannot see through is no count one can admit.
+        assert!(
+            refused.is_empty(),
+            "the scan refuses what it cannot see through, whatever ALLOWED says:\n{}",
+            refused.join("\n")
+        );
         let want: std::collections::BTreeMap<String, usize> = ALLOWED
             .iter()
             .map(|(f, n, _)| (f.to_string(), *n))
