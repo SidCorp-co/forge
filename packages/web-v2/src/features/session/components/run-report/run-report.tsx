@@ -13,6 +13,8 @@
 import { useMemo, useState } from "react";
 import { Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, EmptyState } from "@/design";
 import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useRun } from "@/features/pipeline/hooks";
 import { useSessionCost } from "@/features/sessions/hooks";
 import type { SessionRow } from "@/features/sessions/types";
@@ -38,12 +40,6 @@ import { TranscriptLens } from "./transcript-lens";
 
 type Lens = "story" | "diff" | "transcript";
 
-function compact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
 function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-3">
@@ -53,10 +49,10 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
-const LENSES: { key: Lens; label: string }[] = [
-  { key: "story", label: "Story" },
-  { key: "diff", label: "Diff" },
-  { key: "transcript", label: "Transcript" },
+const LENSES: { key: Lens; label: ProductCopyKey }[] = [
+  { key: "story", label: "runs.report.lens.story" },
+  { key: "diff", label: "runs.report.lens.diff" },
+  { key: "transcript", label: "runs.report.lens.transcript" },
 ];
 
 export interface RunReportProps {
@@ -66,19 +62,22 @@ export interface RunReportProps {
 }
 
 export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const [lens, setLens] = useState<Lens>("story");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const runQ = useRun(session.pipelineRunId ?? undefined, !!session.pipelineRunId);
   const costQ = useSessionCost(session.id);
 
-  const groups = useMemo(() => deriveActivityGroups(items), [items]);
-  const rows = useMemo(() => deriveTranscriptRows(items), [items]);
+  const groups = useMemo(() => deriveActivityGroups(items, t), [items, t]);
+  const rows = useMemo(() => deriveTranscriptRows(items, t), [items, t]);
   const narration = useMemo(() => deriveNarration(items), [items]);
   const files = useMemo(() => deriveFilesChanged(items), [items]);
   const ticks = useMemo(() => deriveTape(items), [items]);
-  const blocker = useMemo(() => deriveBlocker(items), [items]);
+  const blocker = useMemo(() => deriveBlocker(items, t), [items, t]);
   const meta = useMemo(() => readTranscriptMeta(session.messages, items), [session.messages, items]);
-  const spend = useMemo(() => deriveTimeSpend(session), [session]);
+  const spend = useMemo(() => deriveTimeSpend(session, t), [session, t]);
 
   function openFile(path: string) {
     setSelectedPath(path);
@@ -88,7 +87,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
   if (items.length === 0) {
     return (
       <div className="grid flex-1 place-items-center p-6">
-        <EmptyState title="No transcript yet" message="This step has not reported any activity." />
+        <EmptyState title={t("runs.report.empty")} message={t("runs.report.emptyBody")} />
       </div>
     );
   }
@@ -110,12 +109,12 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
         <div className="flex flex-col gap-4">
           <PageSection>
             <PageSectionHeader>
-              <PageSectionTitle>Files changed</PageSectionTitle>
-              <span className="fg-caption">{files.length}</span>
+              <PageSectionTitle>{t("runs.report.files")}</PageSectionTitle>
+              <span className="fg-caption">{time.number(files.length)}</span>
             </PageSectionHeader>
             <PageSectionBody className="py-2">
               {files.length === 0 ? (
-                <p className="fg-caption">Nothing was edited.</p>
+                <p className="fg-caption">{t("runs.report.noEdits")}</p>
               ) : (
                 <ul className="space-y-0.5">
                   {files.map((file) => (
@@ -133,10 +132,10 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
                           {shortenPath(file.path, session.repoPath)}
                         </span>
                         <span className="fg-caption font-mono" style={{ color: "var(--green-600)" }}>
-                          +{file.added}
+                          +{time.number(file.added)}
                         </span>
                         <span className="fg-caption font-mono" style={{ color: "var(--red-600)" }}>
-                          −{file.removed}
+                          −{time.number(file.removed)}
                         </span>
                       </button>
                     </li>
@@ -149,7 +148,7 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
 
         <PageSection className="flex min-h-0 flex-col">
           <PageSectionHeader>
-            <div className="flex gap-1" role="tablist" aria-label="View">
+            <div className="flex gap-1" role="tablist" aria-label={t("runs.report.view")}>
               {LENSES.map((l) => (
                 <button
                   key={l.key}
@@ -164,13 +163,13 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
                       : { color: "var(--fg-subtle)" }
                   }
                 >
-                  {l.label}
+                  {t(l.label)}
                 </button>
               ))}
             </div>
             <span className="fg-caption">
-              {rows.filter((r) => r.kind === "tool").length} tool calls
-              {blocker ? ` · ${blocker.errorCount} errors` : ""}
+              {t("runs.report.toolCalls", { n: time.number(rows.filter((r) => r.kind === "tool").length) })}
+              {blocker ? t("runs.report.errors", { n: time.number(blocker.errorCount) }) : ""}
             </span>
           </PageSectionHeader>
           <div className="flex min-h-0 flex-1 gap-2 p-2">
@@ -200,58 +199,58 @@ export function RunReport({ session, items, onOpenIssue }: RunReportProps) {
         <div className="flex flex-col gap-4">
           <PageSection>
             <PageSectionHeader>
-              <PageSectionTitle>Cost &amp; tokens</PageSectionTitle>
+              <PageSectionTitle>{t("runs.report.costTokens")}</PageSectionTitle>
               <span className="fg-caption">
-                {formatUsd(meta.totals?.totalCostUsd ?? costQ.data?.estimatedCost)}
+                {formatUsd(meta.totals?.totalCostUsd ?? costQ.data?.estimatedCost, language)}
               </span>
             </PageSectionHeader>
             <PageSectionBody className="space-y-1.5 py-2">
-              <Figure label="Turns" value={String(meta.totals?.numTurns ?? session.usage?.turns ?? "—")} />
+              <Figure label={t("runs.report.turns")} value={String(meta.totals?.numTurns ?? session.usage?.turns ?? "—")} />
               <Figure
-                label="API time"
+                label={t("runs.report.apiTime")}
                 value={
                   meta.totals?.durationApiMs != null
-                    ? `${formatDurationMs(meta.totals.durationApiMs)} of ${formatDurationMs(meta.totals.durationMs ?? null)}`
+                    ? t("runs.report.apiOf", { api: formatDurationMs(meta.totals.durationApiMs, language), total: formatDurationMs(meta.totals.durationMs ?? null, language) })
                     : "—"
                 }
               />
-              <Figure label="Permission denials" value={String(meta.totals?.permissionDenials ?? "—")} />
+              <Figure label={t("runs.report.denials")} value={String(meta.totals?.permissionDenials ?? "—")} />
               <Figure
-                label="Tokens in / out"
+                label={t("runs.report.tokens")}
                 value={
                   costQ.data
-                    ? `${compact(costQ.data.inputTokens)} / ${compact(costQ.data.outputTokens)}`
+                    ? `${time.compact(costQ.data.inputTokens)} / ${time.compact(costQ.data.outputTokens)}`
                     : "—"
                 }
               />
               <Figure
-                label="Cache read / write"
+                label={t("runs.report.cache")}
                 value={
                   costQ.data
-                    ? `${compact(costQ.data.cacheReadTokens)} / ${compact(costQ.data.cacheCreationTokens)}`
+                    ? `${time.compact(costQ.data.cacheReadTokens)} / ${time.compact(costQ.data.cacheCreationTokens)}`
                     : "—"
                 }
               />
-              <Figure label="Model" value={costQ.data?.models[0]?.model ?? "—"} />
+              <Figure label={t("runs.report.model")} value={costQ.data?.models[0]?.model ?? "—"} />
             </PageSectionBody>
           </PageSection>
 
           <PageSection>
             <PageSectionHeader>
-              <PageSectionTitle>Runner</PageSectionTitle>
+              <PageSectionTitle>{t("runs.report.runner")}</PageSectionTitle>
             </PageSectionHeader>
             <PageSectionBody className="space-y-1.5 py-2">
-              <Figure label="Device" value={session.deviceId ? session.deviceId.slice(0, 8) : "—"} />
-              <Figure label="Repo" value={session.repoPath ?? "—"} />
+              <Figure label={t("runs.report.device")} value={session.deviceId ? session.deviceId.slice(0, 8) : "—"} />
+              <Figure label={t("runs.report.repo")} value={session.repoPath ?? "—"} />
               {runQ.data?.retrySummary && (
-                <Figure label="Attempts" value={String(runQ.data.retrySummary.totalAttempts)} />
+                <Figure label={t("runs.report.attempts")} value={String(runQ.data.retrySummary.totalAttempts)} />
               )}
             </PageSectionBody>
           </PageSection>
 
           {onOpenIssue && (
             <Button variant="secondary" size="sm" icon="list" onClick={onOpenIssue}>
-              Open issue
+              {t("runs.report.openIssue")}
             </Button>
           )}
         </div>

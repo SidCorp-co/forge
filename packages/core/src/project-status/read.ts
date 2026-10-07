@@ -6,7 +6,12 @@
  * not already decide: lateness is the forecast's, whom a row waits on is its own read model's.
  */
 
-import type { DeliveryForecast, ForecastLate, ScopeForecast } from '@forge/contracts/forecast';
+import type {
+  DeliveryForecast,
+  ForecastLate,
+  IssueProgress,
+  ScopeForecast,
+} from '@forge/contracts/forecast';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import {
   PROJECT_STATUS_ROWS,
@@ -29,9 +34,17 @@ import {
   type RequirementSummary,
 } from '@forge/contracts/requirements';
 import { needsViewer, type WaitingKind } from '@forge/contracts/standing';
-import { type AttentionRow, type NeedsYouViewer, readAttention } from '../development/index.js';
+import {
+  type AttentionRow,
+  type NeedsYouViewer,
+  needsYouViewerOf,
+  readAttention,
+} from '../development/index.js';
 import { readFeedbackForecasts, readForecastLine } from '../forecast/index.js';
+import type { ProjectAccess } from '../lib/authz.js';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { peopleOf } from '../lib/people.js';
+import { holds } from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
 import { deferralOf } from '../requirements/index.js';
 
@@ -51,7 +64,21 @@ const LINE_STATES: ReadonlySet<RequirementState> = new Set([
 const byKey = (a: { key: string }, b: { key: string }) =>
   a.key.localeCompare(b.key, 'en', { numeric: true });
 
-export type StatusViewer = NeedsYouViewer;
+/** The reader: whom the needs-you rows name as You, and whose act a forecast's person leg is. */
+export interface StatusViewer extends NeedsYouViewer {
+  canWrite: boolean;
+}
+
+export const statusViewerOf = (
+  access: ProjectAccess,
+  userId: string,
+  agency: ActorAgency,
+): StatusViewer => ({
+  ...needsYouViewerOf(access, userId, agency),
+  canWrite: holds(access, 'project.write'),
+});
+
+const NO_PROGRESS: IssueProgress = { total: 0, shipped: 0, awaitingRelease: 0, toDo: 0 };
 
 /** A promise's value and the moment it answered, so each section says when it was read. */
 async function stamped<T>(p: Promise<T>): Promise<{ value: T; at: string }> {
@@ -146,9 +173,17 @@ function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWait
 
 function requirementsOf(
   list: readonly RequirementSummary[],
-  delivery: ReadonlyMap<string, DeliveryForecast | null>,
+  scopes: ReadonlyMap<string, ScopeForecast>,
   asOf: string,
 ): StatusRequirements {
+  const scopeOf = (key: string): ScopeForecast => {
+    const s = scopes.get(key);
+    if (!s)
+      throw new Error(
+        `project status: ${key} is on the delivery line and the forecast read no scope for it — every requirement not dropped has one`,
+      );
+    return s;
+  };
   const tally = new Map<RequirementState, number>();
   for (const r of list) tally.set(r.standing.state, (tally.get(r.standing.state) ?? 0) + 1);
   const items = list
@@ -161,9 +196,9 @@ function requirementsOf(
         proven: r.delivery.criteriaCoverage.passing,
         total: r.delivery.criteriaCoverage.criteria,
       },
-      issues: { shipped: r.delivery.closedIssues, live: r.delivery.liveIssues },
+      progress: scopeOf(r.key).progress,
       waitingOn: r.standing.waitingOn,
-      delivery: delivery.get(r.key) ?? null,
+      delivery: scopeOf(r.key).delivery,
     }))
     .sort(
       (a, b) =>
@@ -193,7 +228,7 @@ function nextReleaseOf(
   return {
     asOf,
     version: summary?.version ?? null,
-    issueCount: summary?.issueCount ?? 0,
+    progress: summary ? draft.progress : NO_PROGRESS,
     requirements: summary?.requirements ?? [],
     forecast: summary ? draft : null,
     cut: summary ? cut : null,
@@ -295,12 +330,13 @@ export async function readProjectStatus(
   const [head, attention, line, feedback, people] = await Promise.all([
     projectOrgHead(projectId),
     stamped(readAttention(projectId, viewer, now)),
-    readForecastLine(projectId, now),
-    readFeedbackForecasts({ userId: viewer.userId, agency: viewer.agency }, projectId, now),
+    readForecastLine(projectId, viewer, now),
+    readFeedbackForecasts({ userId: viewer.userId, agency: viewer.agency }, projectId, viewer, now),
     peopleOf([viewer.userId]),
   ]);
   if (!head) throw new Error(`project status: project ${projectId} has no head row`);
   const { value: read, at } = attention;
+  const scopes = new Map(line.requirements.map((s) => [s.key, s]));
   const delivery = new Map(line.requirements.map((s) => [s.key, s.delivery]));
   const draftVersion = read.releases.releases.find((r) => r.state === 'draft')?.version ?? null;
   return {
@@ -313,7 +349,7 @@ export async function readProjectStatus(
     shipped: shippedOf(read.releases, line.requirements, since, at),
     inFlight: inFlightOf(read.issues, at),
     waits: waitsOf(read.rows, at),
-    requirements: requirementsOf(read.requirements, delivery, at),
+    requirements: requirementsOf(read.requirements, scopes, at),
     nextRelease: nextReleaseOf(read.releases, line.coming.draft, line.coming.asOf),
     late: lateOf(line.coming, feedback, {
       feedback: new Map(read.feedback.map((f) => [f.key, f.title])),

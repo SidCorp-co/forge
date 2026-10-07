@@ -7,6 +7,7 @@ import type { ProjectStatus, RoadmapItem, StatusWait } from "@forge/contracts/pr
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import type { WaitingOn } from "@forge/contracts/standing";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
+import { progressText } from "@/features/forecast/progress";
 import { needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
 import { spanText } from "@/features/forecast/text";
@@ -91,7 +92,7 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
       `- **${r.key}** ${r.title} · ${join([
         label("requirementState", r.state),
         t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
-        t("status.issuesShipped", { shipped: r.issues.shipped, live: r.issues.live }),
+        progressText(r.progress, t),
         etaText(r.delivery, clock),
       ])}`,
     );
@@ -104,7 +105,7 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   else {
     out.push(
       `**${n.version}** · ${join([
-        t("dash.shippedIssues", { n: n.issueCount }),
+        progressText(n.progress, t),
         n.forecast?.delivery ? etaInline(etaOfDelivery(n.forecast.delivery, clock), clock) : null,
         n.cut ? waitText({ kind: "person", who: n.cut.who, act: n.cut.act, rule: "", ref: null, dueAt: null }, clock.lang) : null,
       ])}`,

@@ -1,4 +1,4 @@
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memorySources } from '../db/schema.js';
@@ -65,7 +65,7 @@ export async function runMemoryRevisions(
     })
     .from(memoryRevisions)
     .where(where)
-    .orderBy(desc(memoryRevisions.replacedAt))
+    .orderBy(desc(memoryRevisions.replacedAt), asc(memoryRevisions.id))
     .limit(input.limit)
     .offset(input.offset);
 

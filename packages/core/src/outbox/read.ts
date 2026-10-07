@@ -36,7 +36,9 @@ function viewOf(copy: JobWithMetadata<DeliveryJob>): DeadOutboxDelivery {
  */
 async function readAllDead(): Promise<DeadOutboxDelivery[]> {
   const copies = await boss.findJobs<DeliveryJob>(DEAD_QUEUE, {});
-  return copies.map(viewOf).sort((a, b) => b.deadAt.localeCompare(a.deadAt));
+  return copies
+    .map(viewOf)
+    .sort((a, b) => b.deadAt.localeCompare(a.deadAt) || a.id.localeCompare(b.id));
 }
 
 /** Every dead delivery, for the platform admin door. */

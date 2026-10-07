@@ -101,7 +101,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
               {sessionFailures.map((r) => (
                 <li key={r.reason} className="fg-body-sm flex justify-between gap-2">
                   <span className={r.reason === "unclassified" ? "text-subtle" : ""} title={`reason: ${r.reason}`}>
-                    {failureReasonLabel(r.reason) ?? sentenceCase(r.reason)}
+                    {failureReasonLabel(r.reason, language) ?? sentenceCase(r.reason)}
                   </span>
                   <span className="tabular-nums text-muted">{r.count}</span>
                 </li>

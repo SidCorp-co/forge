@@ -29,6 +29,7 @@ import {
   type Wait,
   type WorkItem,
 } from './model.js';
+import type { ForecastViewer } from './release.js';
 
 export interface Facts {
   now: Date;
@@ -39,9 +40,13 @@ export interface Facts {
 }
 
 /** One simulation over the project's open work, every issue's forecast read from it. */
-export async function simulate(projectId: string, now: Date): Promise<Facts> {
+export async function simulate(
+  projectId: string,
+  now: Date,
+  viewer: ForecastViewer | null,
+): Promise<Facts> {
   const [standing, history, projectWait, prefix, policy] = await Promise.all([
-    listIssueStanding(projectId, 'open', null, now),
+    listIssueStanding(projectId, 'open', viewer ? { userId: viewer.userId } : null, now),
     readHistory(projectId, now),
     projectWaitOf(projectId),
     activeIssuePrefix(projectId),
@@ -100,9 +105,10 @@ export { pausedOf };
 
 export async function readProjectForecast(
   projectId: string,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<ProjectForecast> {
-  const f = await simulate(projectId, now);
+  const f = await simulate(projectId, now, viewer);
   return {
     ...stamp(f.run.asOf),
     projectId,
@@ -123,11 +129,12 @@ export function forecastOf(f: Facts, row: IssueRow): Forecast {
 export async function readIssueForecast(
   projectId: string,
   issSeq: number,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<{ issueId: string; key: string; forecast: Forecast } | null> {
   const [row] = await issueRowsBySeq(projectId, issSeq);
   if (!row) return null;
-  const f = await simulate(projectId, now);
+  const f = await simulate(projectId, now, viewer);
   return {
     issueId: row.id,
     key: f.keyOf.get(row.id) ?? formatIssueRef(f.prefix, row.iss_seq),

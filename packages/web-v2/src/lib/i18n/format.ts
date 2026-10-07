@@ -25,6 +25,19 @@ export function formatClock(at: string | number | Date, language: string, timeZo
   return new Intl.DateTimeFormat(copyLocale(language), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(new Date(at));
 }
 
+/** `14:05:09`: the clock time of an instant, to the second. */
+export function formatClockSeconds(at: string | number | Date, language: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat(copyLocale(language), { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone }).format(new Date(at));
+}
+
+/** `1,2k`: a count shortened to thousands or millions, one decimal, in the language's digits. */
+export function formatCompact(n: number, language: string): string {
+  const one = (v: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v);
+  if (n >= 1_000_000) return `${one(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${one(n / 1_000)}k`;
+  return formatNumber(n, language);
+}
+
 /** `1.234` in vi, `1,234` in en. */
 export function formatNumber(n: number, language: string): string {
   return new Intl.NumberFormat(copyLocale(language)).format(n);

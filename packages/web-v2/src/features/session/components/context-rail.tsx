@@ -39,6 +39,7 @@ import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { formatRefusal } from "@/lib/api/error";
+import { useRailCopy, useRailLanguage, useRailTime } from "../chrome-language";
 import { useRun } from "@/features/pipeline/hooks";
 import { useDeviceVersionLabel, useDevices } from "@/features/runners/hooks";
 import { deviceHealth } from "@/features/runners/types";
@@ -46,10 +47,10 @@ import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
 import { LoadedForRun } from "./loaded-for-run";
 
-function fmtNum(n: number | undefined): string {
+function fmtNum(n: number | undefined, num: (n: number) => string): string {
   if (n == null) return "—";
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
-  return String(n);
+  if (n >= 1000) return `${num(Number((n / 1000).toFixed(n >= 10_000 ? 0 : 1)))}k`;
+  return num(n);
 }
 
 const GATE_TONE: Record<RunGateNote["verdict"], "info" | "attention" | "success"> = {
@@ -83,6 +84,9 @@ export function ContextRail({
   projectSlug?: string;
 }) {
   const router = useRouter();
+  const t = useRailCopy();
+  const language = useRailLanguage();
+  const time = useRailTime();
   const versionLabel = useDeviceVersionLabel();
   const stuck = useStuckRuns(session.projectId);
   const display = deriveSessionDisplayStatus(session, stuck);
@@ -94,7 +98,7 @@ export function ContextRail({
     ? "—"
     : live
       ? elapsed
-      : formatDuration(new Date(session.updatedAt).getTime() - startMs);
+      : formatDuration(new Date(session.updatedAt).getTime() - startMs, t);
 
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
@@ -107,9 +111,9 @@ export function ContextRail({
   const gateNote = !isRunSession
     ? null
     : runQ.data
-      ? runGateNote(runQ.data.gateAtOpen)
+      ? runGateNote(runQ.data.gateAtOpen, language)
       : runQ.isError
-        ? runGateUnfetched(formatRefusal(runQ.error))
+        ? runGateUnfetched(formatRefusal(runQ.error), language)
         : null;
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 
@@ -138,7 +142,7 @@ export function ContextRail({
     ? null
     : otherModels.length === 0
       ? firstModel.model
-      : `${otherModels.length + 1} models`;
+      : t("sessions.rail.models", { n: otherModels.length + 1 });
 
   // On-failure blocker-card: concrete reason + a one-line suggested next action.
   const failureReason = session.failureReason ?? null;
@@ -148,7 +152,7 @@ export function ContextRail({
   return (
     <div className="flex flex-col gap-6">
       {session.deviceId && (
-        <Section title="Runner">
+        <Section title={t("sessions.rail.runner")}>
           {device ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 overflow-hidden">
@@ -159,7 +163,7 @@ export function ContextRail({
                 <HealthDot health={deviceHealth(device.status)} />
               </div>
               <span className="fg-caption">
-                {enumLabel("platform", device.platform)}
+                {enumLabel("platform", device.platform, language)}
                 {` · ${versionLabel(device.agentVersion)}`}
               </span>
               {session.repoPath && (
@@ -191,7 +195,7 @@ export function ContextRail({
       )}
 
       {gateNote && (
-        <Section title="Declaration gate">
+        <Section title={t("sessions.rail.gate")}>
           <Banner tone={GATE_TONE[gateNote.verdict]}>
             <span className="font-semibold">{gateNote.headline}</span>
             <span className="mt-0.5 block">{gateNote.detail}</span>
@@ -201,30 +205,30 @@ export function ContextRail({
       )}
 
       {isPipeline && (
-        <Section title="Pipeline">
+        <Section title={t("sessions.rail.pipeline")}>
           <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
         </Section>
       )}
 
-      <Section title="Run stats">
+      <Section title={t("sessions.rail.stats")}>
         <div className="flex flex-col gap-2.5">
           {!isPipeline && <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />}
-          <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
-          <Stat icon="clock" title="Duration">{duration}</Stat>
-          <Stat icon="cpu" title="Context window used">{fmtNum(usage.contextUsed)} ctx</Stat>
-          <Stat icon="arrowRight" title="Tokens in / out">
-            {fmtNum(usage.inputTotal)} / {fmtNum(usage.outputTotal)} tok
+          <Stat icon="activity" title={t("sessions.rail.turnsTitle")}>{usage.turns != null ? t("sessions.rail.turns", { n: time.number(usage.turns) }) : "—"}</Stat>
+          <Stat icon="clock" title={t("sessions.rail.durationTitle")}>{duration}</Stat>
+          <Stat icon="cpu" title={t("sessions.rail.contextTitle")}>{t("sessions.rail.ctx", { n: fmtNum(usage.contextUsed, time.number) })}</Stat>
+          <Stat icon="arrowRight" title={t("sessions.rail.tokensTitle")}>
+            {t("sessions.rail.tok", { in: fmtNum(usage.inputTotal, time.number), out: fmtNum(usage.outputTotal, time.number) })}
           </Stat>
           {hasCache && (
-            <Stat icon="cpu" title="Cache tokens read / write">
-              {fmtNum(usage.cacheRead)} / {fmtNum(usage.cacheWrite)} cache
+            <Stat icon="cpu" title={t("sessions.rail.cacheTitle")}>
+              {t("sessions.rail.cache", { read: fmtNum(usage.cacheRead, time.number), write: fmtNum(usage.cacheWrite, time.number) })}
             </Stat>
           )}
-          <Stat icon="dollar" title="Estimated cost (usage_records)">
-            {formatCost(cost?.estimatedCost)} cost
+          <Stat icon="dollar" title={t("sessions.rail.costTitle")}>
+            {t("sessions.rail.cost", { amount: formatCost(cost?.estimatedCost, language) })}
           </Stat>
           {modelLabel && (
-            <Stat icon="cpu" title="Model(s) billed against this session">
+            <Stat icon="cpu" title={t("sessions.rail.modelsTitle")}>
               {modelLabel}
             </Stat>
           )}
@@ -235,22 +239,22 @@ export function ContextRail({
           session's task breakdown is the first thing seen after the headline
           stats. Renders only when the transcript yielded Task/Skill blocks. */}
       {agentTasks.length > 0 && (
-        <Section title={`Agents & tasks · ${agentTasks.length}`}>
+        <Section title={t("sessions.rail.agentsTasks", { n: agentTasks.length })}>
           <ul className="flex flex-col gap-1.5">
-            {agentTasks.map((t) => (
-              <li key={t.id} className="flex items-center gap-2 overflow-hidden">
+            {agentTasks.map((a) => (
+              <li key={a.id} className="flex items-center gap-2 overflow-hidden">
                 <Icon
-                  name={t.tool === "Skill" ? "command" : "agent"}
+                  name={a.tool === "Skill" ? "command" : "agent"}
                   size={13}
                   className="flex-none text-subtle"
                 />
-                <span className="flex-1 truncate fg-body-sm" title={t.label}>
-                  {t.label}
+                <span className="flex-1 truncate fg-body-sm" title={a.label}>
+                  {a.label}
                 </span>
-                {t.isError && (
+                {a.isError && (
                   <Icon name="alert" size={12} className="flex-none" style={{ color: "var(--red-600)" }} />
                 )}
-                <MonoTag hue={t.tool === "Skill" ? "flame" : "cobalt"}>{t.tool}</MonoTag>
+                <MonoTag hue={a.tool === "Skill" ? "flame" : "cobalt"}>{a.tool}</MonoTag>
               </li>
             ))}
           </ul>
@@ -258,13 +262,13 @@ export function ContextRail({
       )}
 
       {showBlocker && (
-        <Section title="Blocked">
+        <Section title={t("sessions.rail.blocked")}>
           <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
             <span className="font-semibold">
-              {failureReasonLabel(failureReason) ?? failureReason}
+              {failureReasonLabel(failureReason, language) ?? failureReason}
             </span>
-            {failureReasonAction(failureReason) && (
-              <span className="mt-0.5 block">{failureReasonAction(failureReason)}</span>
+            {failureReasonAction(failureReason, language) && (
+              <span className="mt-0.5 block">{failureReasonAction(failureReason, language)}</span>
             )}
           </Banner>
         </Section>
@@ -272,20 +276,20 @@ export function ContextRail({
 
       <LoadedForRun metadata={session.metadata} />
 
-      <Section title="Timing">
+      <Section title={t("sessions.rail.timing")}>
         <div className="flex flex-col gap-2.5">
-          <Stat icon="calendar" title="Dispatched to a runner">
-            {formatShortTime(session.dispatchedAt)} dispatched
+          <Stat icon="calendar" title={t("sessions.rail.dispatchedTitle")}>
+            {t("sessions.rail.dispatched", { at: formatShortTime(session.dispatchedAt, time.dateTime) })}
           </Stat>
-          <Stat icon="play" title="Agent started">{formatShortTime(session.startedAt)} started</Stat>
-          <Stat icon="check" title="Ended (last update on a terminal session)">
-            {live ? "—" : formatShortTime(session.updatedAt)} ended
+          <Stat icon="play" title={t("sessions.rail.startedTitle")}>{t("sessions.rail.started", { at: formatShortTime(session.startedAt, time.dateTime) })}</Stat>
+          <Stat icon="check" title={t("sessions.rail.endedTitle")}>
+            {t("sessions.rail.ended", { at: live ? "—" : formatShortTime(session.updatedAt, time.dateTime) })}
           </Stat>
         </div>
       </Section>
 
       {issueId && siblings.length > 0 && (
-        <Section title={`Sessions for this issue · ${siblings.length}`}>
+        <Section title={t("sessions.rail.siblings", { n: siblings.length })}>
           {/* Resumed/fresh continuity is the issue detail's session-group timeline; not repeated here. */}
           <ul className="flex flex-col gap-1.5">
             {siblings.map((s) => (
@@ -301,9 +305,9 @@ export function ContextRail({
         </Section>
       )}
 
-      <Section title={`Files changed${files.length ? ` · ${files.length}` : ""}`}>
+      <Section title={files.length ? t("sessions.rail.filesN", { n: files.length }) : t("sessions.rail.files")}>
         {files.length === 0 ? (
-          <p className="fg-caption">No file edits yet.</p>
+          <p className="fg-caption">{t("sessions.rail.noEdits")}</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {files.map((f) => (
@@ -330,6 +334,8 @@ export function ContextRail({
 /** One sibling-session row in "Sessions for this issue" — step label + status
  *  chip, links to its own detail when a project slug is known. */
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
+  const t = useRailCopy();
+  const language = useRailLanguage();
   const stuck = useStuckRuns(row.projectId);
   const display = deriveSessionDisplayStatus(row, stuck);
   const stage = sessionStep(row.metadata) ?? undefined;
@@ -337,13 +343,13 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
     (row.metadata?.step as string | undefined) ??
     (row.metadata?.stage as string | undefined) ??
     row.title ??
-    `Session ${row.id.slice(0, 8)}`;
+    t("sessions.detail.sessionShort", { id: row.id.slice(0, 8) });
 
   const inner = (
     <>
       <Icon name="pipeline" size={13} className="flex-none text-subtle" />
       <span className="flex-1 truncate fg-body-sm" title={label}>
-        {row.title && label === row.title ? label : enumLabel("jobType", label)}
+        {row.title && label === row.title ? label : enumLabel("jobType", label, language)}
       </span>
       <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
     </>

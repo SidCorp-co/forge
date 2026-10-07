@@ -4,7 +4,7 @@
 // already draw, so a status report and the screens it summarises cannot disagree. Every section
 // carries `asOf`, the moment its own read answered, and a forecast carries its own label.
 
-import type { DeliveryForecast, ForecastLate, ScopeForecast } from "./forecast.js";
+import type { DeliveryForecast, ForecastLate, IssueProgress, ScopeForecast } from "./forecast.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
 import type { ReleaseContentGroup, ReleaseVerified } from "./releases.js";
@@ -89,7 +89,8 @@ export interface StatusRequirement {
 	state: RequirementState;
 	/** BCs of the shown revision holding a passing traced verdict, of all its BCs. */
 	criteria: { proven: number; total: number };
-	issues: { shipped: number; live: number };
+	/** Its issues in the one progress vocabulary: shipped, landed awaiting release, to do (`IssueProgress`). */
+	progress: IssueProgress;
 	waitingOn: WaitingOn;
 	/** When the last of its issues is in people's hands; null where it holds no open work. */
 	delivery: DeliveryForecast | null;
@@ -106,7 +107,8 @@ export interface StatusRequirements extends Stamped {
 /** The draft release: what it holds, when it is forecast to reach people and who cuts it. */
 export interface StatusNextRelease extends Stamped {
 	version: string | null;
-	issueCount: number;
+	/** Its issues in the one progress vocabulary; all zero where no release is being prepared. */
+	progress: IssueProgress;
 	requirements: string[];
 	forecast: ScopeForecast | null;
 	cut: { who: string; act: string } | null;

@@ -54,8 +54,7 @@ describe("forecast text", () => {
         ...stamp,
         scope: "release",
         key: "draft",
-        total: 2,
-        landed: 2,
+        progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
         forecast: { ...stamp, kind: "landed", landedAt: at(-60) },
         next: { ...stamp, kind: "paused", who: "A release approver", act: "cut the version, then approve the release", reason: "r", ref: null, since: null, late: null },
         title: null,
@@ -119,14 +118,14 @@ describe("feedback and requirement lines", () => {
   });
 
   it("reads the proof so far, then when the rest is in people's hands", () => {
-    const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-3", title: "t", total: 3, landed: 1, forecast: range, next: null, delivery: delivery({}) };
+    const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-3", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery({}) };
     expect(criteriaRestText(2, 5, scope, CLOCK)?.line).toBe("2 of 5 criteria proven · rest forecast live 14:30 – 18:30 today");
     expect(criteriaRestText(5, 5, scope, CLOCK)?.line).toBe("All 5 criteria proven");
   });
 
   it("adds the release lag to a draft that has landed where nobody cuts it", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-60) };
-    const draft: ScopeForecast = { ...stamp, scope: "release", key: "draft", title: null, total: 2, landed: 2, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
+    const draft: ScopeForecast = { ...stamp, scope: "release", key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
     expect(scopeText(draft, CLOCK).line).toMatch(/^All 2 landed by .+ · forecast live 12:20 – 13:20 today$/);
   });
 });

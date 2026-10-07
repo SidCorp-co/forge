@@ -20,6 +20,7 @@ import {
   Tooltip,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRemoveParticipant } from "../hooks";
 import { agentsOf, initialsOf, peopleOf, removalClaim, scopeDerivation } from "../membership";
 import type { ConversationMembership, ConversationParticipant } from "../types";
@@ -39,6 +40,7 @@ export function ConversationMembers({
   open: boolean;
   onClose: () => void;
 }) {
+  const t = useCopy();
   const [addingAgent, setAddingAgent] = useState(false);
   const [addingPerson, setAddingPerson] = useState(false);
   const remove = useRemoveParticipant(conversationId);
@@ -48,10 +50,10 @@ export function ConversationMembers({
 
   return (
     <>
-      <SlideOver open={open} onClose={onClose} title="Who is in this room" width={420}>
+      <SlideOver open={open} onClose={onClose} title={t("conversations.members.title")} width={420}>
         <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto">
           <p className="fg-caption text-subtle" data-testid="members-scope-derivation">
-            {scopeDerivation(room)}
+            {scopeDerivation(room, t)}
           </p>
 
           {remove.isError && (
@@ -62,8 +64,8 @@ export function ConversationMembers({
 
           {(
             [
-              ["Agents", "What this room can see comes from these.", "Add agent", agents, () => setAddingAgent(true)],
-              ["People", "Who can read this room.", "Add person", people, () => setAddingPerson(true)],
+              [t("conversations.members.agents"), t("conversations.members.agentsHint"), t("conversations.members.addAgent"), agents, () => setAddingAgent(true)],
+              [t("conversations.members.people"), t("conversations.members.peopleHint"), t("conversations.members.addPerson"), people, () => setAddingPerson(true)],
             ] as const
           ).map(([title, hint, addLabel, members, onAdd]) => (
             <section key={title} className="flex flex-col gap-2">
@@ -125,6 +127,7 @@ function MemberRow({
   busy: boolean;
   onRemove: () => void;
 }) {
+  const t = useCopy();
   const isAgent = member.kind === "handle";
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
   return (
@@ -147,23 +150,23 @@ function MemberRow({
       )}
       <div className="min-w-0 flex-1">
         <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>
-          {isAgent ? `@${member.displayName ?? member.label}` : (member.displayName ?? "Unknown")}
+          {isAgent ? `@${member.displayName ?? member.label}` : (member.displayName ?? t("conversations.members.unknown"))}
         </span>
         <span className="fg-caption block truncate text-subtle">
-          {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
+          {isAgent ? (project?.name ?? t("conversations.members.noLongerAbout")) : t("conversations.members.person")}
         </span>
       </div>
       {isAgent && member.reachable === false && (
-        <Tooltip label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
-          <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
+        <Tooltip label={t("conversations.members.cantActHint")}>
+          <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">{t("conversations.members.cantAct")}</span>
         </Tooltip>
       )}
       {canChange && (
-        <Tooltip label={removalClaim(member, room)}>
+        <Tooltip label={removalClaim(member, room, t)}>
           <IconButton
             icon="x"
             size="sm"
-            aria-label={`Take ${member.displayName ?? "this member"} out of the room`}
+            aria-label={t("conversations.members.takeOut", { name: member.displayName ?? t("conversations.members.thisMember") })}
             disabled={busy}
             onClick={onRemove}
           />

@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { Kbd } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { TranscriptRow } from "../../run-report";
 
 const TONE_COLOR = {
@@ -23,17 +24,10 @@ const TONE_COLOR = {
 
 const MAX_BODY_CHARS = 1200;
 
-function clockOf(ts: number | undefined): string {
-  if (!ts) return "";
-  return new Date(ts).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
-
 function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onToggle: () => void }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const clockOf = (ts: number | undefined) => (ts ? time.clockSeconds(ts) : "");
   const body = row.body.length > MAX_BODY_CHARS ? `${row.body.slice(0, MAX_BODY_CHARS)}\n…` : row.body;
   return (
     <li
@@ -63,7 +57,7 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
                 : undefined
           }
         >
-          {row.tool}
+          {row.kind === "said" ? t("runs.report.said") : row.tool}
         </span>
         <span
           className={`fg-body-sm min-w-0 flex-1 truncate ${row.kind === "said" ? "" : "font-mono"}`}
@@ -93,6 +87,8 @@ function Row({ row, open, onToggle }: { row: TranscriptRow; open: boolean; onTog
 }
 
 export function TranscriptLens({ rows }: { rows: TranscriptRow[] }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -110,11 +106,10 @@ export function TranscriptLens({ rows }: { rows: TranscriptRow[] }) {
     <div>
       <div className="border-line-subtle flex items-center gap-2 border-b px-3 py-2">
         <span className="fg-caption flex-1">
-          {rows.length} events, newest last · {rows.filter((r) => r.kind === "said").length} written
-          by the agent
+          {t("runs.transcript.events", { n: time.number(rows.length), said: time.number(rows.filter((r) => r.kind === "said").length) })}
         </span>
         <span className="fg-caption">
-          expand all <Kbd>e</Kbd> · collapse <Kbd>c</Kbd>
+          {t("runs.transcript.expandAll")} <Kbd>e</Kbd> · {t("runs.transcript.collapse")} <Kbd>c</Kbd>
         </span>
       </div>
       <ul>

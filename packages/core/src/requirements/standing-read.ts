@@ -23,7 +23,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedTracedOf } from './plan-drift.js';
@@ -109,6 +109,7 @@ export async function standingsOf(
     contracts,
     contractPins,
     unapproved,
+    policy,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -173,6 +174,7 @@ export async function standingsOf(
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
+    readEffectivePolicy(projectId),
   ]);
   const [people, issueCriteria, feedbackLinks, closedAt, changedTraced] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
@@ -241,6 +243,7 @@ export async function standingsOf(
           designStatus,
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
+        judge: policy?.document.qa ?? null,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         updatedAt: row.updatedAt,
         now,

@@ -1,14 +1,13 @@
 "use client";
 
-// Awaiting-release card — pipeline runs parked at `awaiting_release`: every
-// criterion passed, just waiting for the release to close them. These
-// are NOT live/executing work (see `LiveRunsCard`), so they get their own
-// list with a calm "Verified" chip instead of the pulsing "running" one, and a
-// collapsed default so a large backlog can't push the rest of the dashboard
-// (Runners, Upcoming schedules) below the fold.
+// Awaiting-release card: the issues standing at `awaiting_release`, counted by core's issue list as
+// the issue flow beside it counts them, and the draft release's turn read from the same draft
+// forecast the dashboard's lateness reads (JU-8), so the page never says "nothing" beside a flow
+// that says 72. Collapsed by default so a large backlog cannot push Runners below the fold.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import {
   Button,
   PageSection,
@@ -18,54 +17,54 @@ import {
   Icon,
   StatusChip,
 } from "@/design";
+import { useDraftReleaseForecast } from "@/features/forecast/hooks";
+import { spanText } from "@/features/forecast/text";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
-import { formatUsd } from "@/features/pipeline/derive";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useIssues } from "@/features/issues/hooks";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { issueHref, issuesHref } from "@/lib/routes/issues";
 
 const COLLAPSED_LIMIT = 5;
+/** The page the card reads; past it the card counts the rest and links the list. */
+const READ_LIMIT = 50;
 
-/** Oldest-parked first — the longest a run has sat awaiting release is the
- *  clearest signal of what to triage first. */
-function byOldestFirst(runs: PipelineRunListItem[]): PipelineRunListItem[] {
-  return [...runs].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+/** Who the draft release waits on, and how late, as the dashboard says it. */
+function DraftTurn({ projectId }: { projectId: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const next = useDraftReleaseForecast(projectId, true).data?.next ?? null;
+  if (!next) return null;
+  const who = standingWho(next.who, language);
+  const line = next.late
+    ? t("dash.lateWaiting", { who, by: spanText(next.late.byMinutes, language === "vi" ? "vi" : "en") })
+    : t("fc.waitingOnTo", { who, act: standingAct(next.act, language) });
+  return (
+    <p className="fg-body-sm pb-2 text-muted" title={next.reason} data-testid="awaiting-release-turn">
+      {line}
+    </p>
+  );
 }
 
-export function AwaitingReleaseCard({
-  runs,
-  slug,
-  projectId,
-}: {
-  runs: PipelineRunListItem[];
-  slug: string;
-  projectId: string;
-}) {
+export function AwaitingReleaseCard({ slug, projectId }: { slug: string; projectId: string }) {
   const router = useRouter();
   const t = useCopy();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
-  const sorted = byOldestFirst(runs);
-  const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
-  const hiddenCount = sorted.length - visible.length;
-  const selectableAll = sorted.filter((run) => run.issueId != null);
-  const selectableVisible = visible.filter((run) => run.issueId != null);
+  const read = useIssues(projectId, { status: ["awaiting_release"], sort: "createdAt:asc", pageSize: READ_LIMIT });
+  const issues = read.data?.items ?? [];
+  const total = read.data?.totalCount ?? issues.length;
+  const visible = expanded ? issues : issues.slice(0, COLLAPSED_LIMIT);
+  const hiddenCount = issues.length - visible.length;
+  const unread = total - issues.length;
   const selectedCount = selected.size;
-  const allVisibleSelected =
-    selectableVisible.length > 0 && selectableVisible.every((run) => selected.has(run.issueId as string));
+  const allVisibleSelected = visible.length > 0 && visible.every((i) => selected.has(i.id));
 
-  const selectedIssues: BatchReleaseIssue[] = selectableAll
-    .filter((run) => selected.has(run.issueId as string))
-    .map((run) => ({
-      id: run.issueId as string,
-      displayId: run.issueRef ?? (run.issueId as string),
-      title: run.issueTitle ?? "",
-    }));
-
-  const open = (run: PipelineRunListItem) => {
-    router.push(run.issueId ? `/projects/${slug}/issues/${run.issueId}` : `/projects/${slug}/pipeline`);
-  };
+  const selectedIssues: BatchReleaseIssue[] = issues
+    .filter((i) => selected.has(i.id))
+    .map((i) => ({ id: i.id, displayId: i.displayId, title: i.title }));
 
   const toggle = (issueId: string, checked: boolean) => {
     setSelected((prev) => {
@@ -79,9 +78,9 @@ export function AwaitingReleaseCard({
   const toggleAllVisible = (checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const run of selectableVisible) {
-        if (checked) next.add(run.issueId as string);
-        else next.delete(run.issueId as string);
+      for (const i of visible) {
+        if (checked) next.add(i.id);
+        else next.delete(i.id);
       }
       return next;
     });
@@ -95,14 +94,15 @@ export function AwaitingReleaseCard({
           <Icon name="check" size={16} className="text-subtle" />
           <PageSectionTitle>{t("overview.flow.awaiting_release")}</PageSectionTitle>
         </div>
-        {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
+        {total > 0 && <span className="fg-caption font-mono text-subtle" data-testid="awaiting-release-count">{total}</span>}
       </div>
       <PageSectionBody className="flex-1">
-        {runs.length === 0 ? (
+        {read.isSuccess && total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">{t("overview.awaiting.empty")}</p>
         ) : (
           <>
-            {selectableVisible.length > 0 && (
+            <DraftTurn projectId={projectId} />
+            {visible.length > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Checkbox
                   checked={allVisibleSelected}
@@ -123,36 +123,21 @@ export function AwaitingReleaseCard({
               </div>
             )}
             <ul className="flex flex-col divide-y divide-line-subtle">
-              {visible.map((run) => (
-                <li
-                  key={run.id}
-                  className="flex items-center gap-2.5 py-2 transition-colors hover:bg-hover"
-                >
-                  {run.issueId && (
-                    <Checkbox
-                      checked={selected.has(run.issueId)}
-                      onChange={(checked) => toggle(run.issueId as string, checked)}
-                      ariaLabel={t("overview.awaiting.select", { what: run.issueRef ?? t("overview.awaiting.run") })}
-                    />
-                  )}
+              {visible.map((i) => (
+                <li key={i.id} className="flex items-center gap-2.5 py-2 transition-colors hover:bg-hover" data-testid="awaiting-release-issue">
+                  <Checkbox
+                    checked={selected.has(i.id)}
+                    onChange={(checked) => toggle(i.id, checked)}
+                    ariaLabel={t("overview.awaiting.select", { what: i.displayId })}
+                  />
                   <button
                     type="button"
-                    onClick={() => open(run)}
+                    onClick={() => router.push(issueHref(slug, i.displayId))}
                     className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                   >
                     <StatusChip status="passed" domain="session" size="sm" />
                     <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
-                      {run.issueRef ? (
-                        <>
-                          <span className="font-mono text-fg">{run.issueRef}</span>
-                          {run.issueTitle ? ` ${run.issueTitle}` : ""}
-                        </>
-                      ) : (
-                        t("overview.awaiting.runTitle")
-                      )}
-                    </span>
-                    <span className="font-mono text-sm font-semibold tabular-nums text-fg">
-                      {formatUsd(run.cost?.estimatedCost)}
+                      <span className="font-mono text-fg">{i.displayId}</span> {i.title}
                     </span>
                     <Icon name="chevronRight" size={14} className="flex-none text-subtle" />
                   </button>
@@ -168,6 +153,15 @@ export function AwaitingReleaseCard({
                 {t("overview.awaiting.showMore", { n: hiddenCount })}
               </button>
             )}
+            {expanded && unread > 0 && (
+              <Link
+                href={`${issuesHref(slug)}?status=awaiting_release`}
+                className="fg-body-sm mt-2 block text-center text-link hover:underline"
+                data-testid="awaiting-release-all"
+              >
+                {t("overview.awaiting.onList", { n: unread })}
+              </Link>
+            )}
           </>
         )}
       </PageSectionBody>
@@ -179,7 +173,7 @@ export function AwaitingReleaseCard({
       onClose={() => setBatchDialogOpen(false)}
       onSuccess={() => {
         setSelected(new Set());
-        qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+        qc.invalidateQueries({ queryKey: ["issues"] });
       }}
     />
     </>

@@ -22,7 +22,12 @@ export type Eta =
   | { kind: "range"; p50At: string; p85At: string; tail: EtaTail | null; detail: string }
   | { kind: "waits"; who: string; act: string; detail: string }
   | { kind: "done"; at: string | null; tail: EtaTail | null; detail: string }
+  /** Landed and not yet in people's hands: no tick and no date in the cell, only who releases it (JU-7). */
+  | { kind: "landed"; at: string | null; tail: EtaTail | null; detail: string }
   | { kind: "none"; detail: string };
+
+/** The release a person still owes after the landing, the viewer's own as "then you cut it". */
+const thenCuts = (who: string, lang: EtaClock["lang"]) => (who === "You" ? ETA_COPY[lang].thenYouCut : ETA_COPY[lang].thenCuts(shortWho(who, lang)));
 
 /** "project writer" from "A project writer", the box from "Whoever can reach box-1": who, short. */
 function shortWho(who: string, lang: EtaClock["lang"]): string {
@@ -75,14 +80,14 @@ export function etaOfDelivery(d: DeliveryForecast, c: EtaClock): Eta {
   if (d.inHands) return { kind: "range", p50At: d.inHands.p50At, p85At: d.inHands.p85At, tail: null, detail: `${rangeHead(d.inHands, d.asOf, c)} ${said}` };
   const own = etaOfForecast(d.landing, c);
   if (own.kind === "range") return { ...own, tail, detail: `${rangeHead(own, d.asOf, c)} ${said}` };
-  if (own.kind === "done") return { ...own, tail, detail: said };
+  if (own.kind === "done") return { kind: "landed", at: own.at, tail, detail: said };
   return own;
 }
 
 /** A requirement's row: when the last of its issues is in people's hands. */
 export function etaOfScope(s: ScopeForecast | undefined, c: EtaClock): Eta | null {
   if (!s) return null;
-  if (!s.delivery || s.total === 0) return { kind: "none", detail: ETA_COPY[c.lang].nothingLinked };
+  if (!s.delivery || s.progress.total === 0) return { kind: "none", detail: ETA_COPY[c.lang].nothingLinked };
   return etaOfDelivery(s.delivery, c);
 }
 
@@ -97,15 +102,15 @@ export function etaOfFeedback(f: FeedbackForecast | undefined, c: EtaClock): Eta
 export function etaSortValue(e: Eta | null): number | null {
   if (!e) return null;
   if (e.kind === "range") return Date.parse(e.p50At);
-  if (e.kind === "done" && e.at) return Date.parse(e.at);
+  if ((e.kind === "done" || e.kind === "landed") && e.at) return Date.parse(e.at);
   return null;
 }
 
 /** The cell's two lines: the time and, quieter, the p85 or the person who cuts the release. */
 export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null } {
   const copy = ETA_COPY[c.lang];
-  const tail = e.kind === "range" || e.kind === "done" ? e.tail : null;
-  const sub = tail ? copy.thenCuts(shortWho(tail.who, c.lang)) : null;
+  const tail = e.kind === "range" || e.kind === "done" || e.kind === "landed" ? e.tail : null;
+  const sub = tail ? thenCuts(tail.who, c.lang) : null;
   switch (e.kind) {
     case "range":
       return { line: whenText(e.p50At, c), sub: sub ?? copy.latest(whenText(e.p85At, c)) };
@@ -113,6 +118,8 @@ export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | nul
       return { line: copy.waitsOn(shortWho(e.who, c.lang)), sub: null };
     case "done":
       return { line: e.at ? doneDayText(e.at, c) : "", sub };
+    case "landed":
+      return { line: copy.awaitingRelease, sub };
     case "none":
       return { line: "—", sub: null };
   }
@@ -123,7 +130,7 @@ export function etaInline(e: Eta, c: EtaClock): string {
   const copy = ETA_COPY[c.lang];
   if (e.kind === "range") {
     const head = `${whenText(e.p50At, c, true)} · ${copy.latestInline(whenText(e.p85At, c, true))}`;
-    return e.tail ? `${head} · ${copy.thenCuts(shortWho(e.tail.who, c.lang))}` : head;
+    return e.tail ? `${head} · ${thenCuts(e.tail.who, c.lang)}` : head;
   }
   const { line, sub } = etaLines(e, c);
   const head = e.kind === "done" ? `✓ ${line}`.trim() : line;

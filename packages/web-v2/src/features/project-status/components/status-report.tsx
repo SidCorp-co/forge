@@ -9,6 +9,7 @@ import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
+import { IssueProgressText } from "@/features/forecast/components/issue-progress";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
 import { spanText } from "@/features/forecast/text";
 import { formatDateTime } from "@/lib/i18n/format";
@@ -231,7 +232,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
                 <span className="min-w-0 flex-1">{r.title}</span>
                 <StatusBadge family="requirement" value={r.state} />
                 <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
-                <span className="text-12-5 text-muted">{t("status.issuesShipped", { shipped: r.issues.shipped, live: r.issues.live })}</span>
+                <IssueProgressText progress={r.progress} className="text-12-5 text-muted" />
                 {eta(r.delivery, clock)}
               </li>
             ))}
@@ -247,7 +248,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
             <Link href={releaseHref(slug, s.nextRelease.version)} className="font-mono text-13 font-semibold text-link hover:underline">
               {s.nextRelease.version}
             </Link>
-            <span className="text-muted">{t("dash.shippedIssues", { n: s.nextRelease.issueCount })}</span>
+            <IssueProgressText progress={s.nextRelease.progress} className="text-muted" />
             {s.nextRelease.forecast?.delivery ? eta(s.nextRelease.forecast.delivery, clock) : null}
             {s.nextRelease.cut ? <WaitingOn w={{ kind: "person", who: s.nextRelease.cut.who, act: s.nextRelease.cut.act }} /> : null}
           </p>

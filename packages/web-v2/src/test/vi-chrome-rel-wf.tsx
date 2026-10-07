@@ -124,8 +124,8 @@ const stamp = { label: "forecast" as const, asOf: AT };
 const coming = {
   ...stamp,
   projectId: P,
-  requirements: [{ ...stamp, scope: "requirement", key: "REQ-1", title: "Muc", total: 3, landed: 1, forecast: null, next: null, delivery: null }],
-  draft: { ...stamp, scope: "release", key: "draft", title: null, total: 2, landed: 1, forecast: null, next: null, delivery: null },
+  requirements: [{ ...stamp, scope: "requirement", key: "REQ-1", title: "Muc", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: null, next: null, delivery: null }],
+  draft: { ...stamp, scope: "release", key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 1, toDo: 1 }, forecast: null, next: null, delivery: null },
 };
 
 const releaseSeed = (): [QueryKey, unknown][] => [

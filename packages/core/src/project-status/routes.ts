@@ -5,14 +5,13 @@ import {
 } from '@forge/contracts/project-status';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { needsYouViewerOf } from '../development/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { readProjectStatus } from './read.js';
+import { readProjectStatus, statusViewerOf } from './read.js';
 
 const statusQuery = z.strictObject({
   days: z.coerce.number().int().min(1).max(PROJECT_STATUS_DAYS_MAX).optional(),
@@ -35,7 +34,7 @@ projectStatusRoutes.get(
     requireHeld(access, 'project.read');
     const read = await readProjectStatus(
       projectId,
-      needsYouViewerOf(access, userId, agency),
+      statusViewerOf(access, userId, agency),
       c.req.valid('query').days ?? PROJECT_STATUS_DAYS_DEFAULT,
     );
     return c.json(await egressForRequest(agency, projectId, 'issue', read, 'the project status'));

@@ -20,8 +20,9 @@ import {
   requirementBySeq,
 } from './facts.js';
 import { scopeForecast, scopeLandings, seedOf } from './model.js';
+import { issueProgressOf } from './progress.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
-import { readReleaseFacts, readShipped } from './release.js';
+import { type ForecastViewer, readReleaseFacts, readShipped } from './release.js';
 
 /** One simulation, the release that follows it, and who shipped the closed issues in view. */
 export interface Reads {
@@ -34,11 +35,12 @@ export async function readsFor(
   projectId: string,
   now: Date,
   rows: readonly IssueRow[],
+  viewer: ForecastViewer | null,
 ): Promise<Reads> {
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   const [f, release, shipped] = await Promise.all([
-    simulate(projectId, now),
-    readReleaseFacts(projectId, now),
+    simulate(projectId, now, viewer),
+    readReleaseFacts(projectId, now, viewer),
     readShipped(projectId, closed),
   ]);
   return { f, release, shipped };
@@ -106,8 +108,7 @@ export function scopeOf(
     scope,
     key,
     title,
-    total: members.length,
-    landed: landed.length,
+    progress: issueProgressOf(members),
     forecast,
     next: null,
     delivery,
@@ -120,17 +121,19 @@ const requirementScope = (r: Reads, req: RequirementRow, rows: readonly IssueRow
 export async function readRequirementForecast(
   projectId: string,
   reqSeq: number,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<ScopeForecast | null> {
   const req = await requirementBySeq(projectId, reqSeq);
   if (!req) return null;
   const rows = (await issueRowsOfRequirements(projectId, [req.id])).get(req.id) ?? [];
-  return requirementScope(await readsFor(projectId, now, rows), req, rows);
+  return requirementScope(await readsFor(projectId, now, rows, viewer), req, rows);
 }
 
 async function allRequirementScopes(
   projectId: string,
   now: Date,
+  viewer: ForecastViewer | null,
   extra: readonly IssueRow[] = [],
 ): Promise<{ reads: Reads; scopes: ScopeForecast[] }> {
   const reqs = await liveRequirements(projectId);
@@ -138,7 +141,7 @@ async function allRequirementScopes(
     projectId,
     reqs.map((q) => q.id),
   );
-  const reads = await readsFor(projectId, now, [...[...byReq.values()].flat(), ...extra]);
+  const reads = await readsFor(projectId, now, [...[...byReq.values()].flat(), ...extra], viewer);
   return {
     reads,
     scopes: reqs.map((q) => requirementScope(reads, q, byReq.get(q.id) ?? [])),
@@ -148,9 +151,10 @@ async function allRequirementScopes(
 /** Every live requirement's end-to-end forecast from one simulation, for the list rows. */
 export async function readRequirementForecasts(
   projectId: string,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<RequirementForecasts> {
-  const { reads, scopes } = await allRequirementScopes(projectId, now);
+  const { reads, scopes } = await allRequirementScopes(projectId, now, viewer);
   return { ...stamp(reads.f.run.asOf), projectId, requirements: scopes };
 }
 
@@ -176,10 +180,11 @@ function draftScope(r: Reads, rows: readonly IssueRow[]): ScopeForecast {
 
 export async function readDraftReleaseForecast(
   projectId: string,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<ScopeForecast> {
   const rows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
-  return draftScope(await readsFor(projectId, now, rows), rows);
+  return draftScope(await readsFor(projectId, now, rows, viewer), rows);
 }
 
 const SOONEST: Record<Forecast['kind'], number> = {
@@ -196,10 +201,11 @@ const SOONEST: Record<Forecast['kind'], number> = {
  */
 export async function readForecastLine(
   projectId: string,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<{ requirements: ScopeForecast[]; coming: ComingNextForecast }> {
   const draftRows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
-  const { reads, scopes } = await allRequirementScopes(projectId, now, draftRows);
+  const { reads, scopes } = await allRequirementScopes(projectId, now, viewer, draftRows);
   const open = scopes.filter(
     (s) => s.forecast && s.forecast.kind !== 'landed' && s.forecast.kind !== 'ended',
   );
@@ -225,7 +231,8 @@ export async function readForecastLine(
 /** Each requirement with work still to land, soonest landing first, then the draft release. */
 export async function readComingNext(
   projectId: string,
+  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<ComingNextForecast> {
-  return (await readForecastLine(projectId, now)).coming;
+  return (await readForecastLine(projectId, viewer, now)).coming;
 }

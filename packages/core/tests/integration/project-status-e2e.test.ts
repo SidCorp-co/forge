@@ -132,7 +132,13 @@ describe('the project status read', () => {
     const releases = (await get(w, '/releases')).releases as Body[];
     const draft = releases.find((r) => r.state === 'draft');
     expect((status.nextRelease as Body).version).toBe(draft?.version ?? null);
-    expect((status.nextRelease as Body).issueCount).toBe(1);
+    const coming = await get(w, '/forecast/releases/coming');
+    expect((status.nextRelease as Body).progress).toEqual((coming.draft as Body).progress);
+    expect(((status.nextRelease as Body).progress as Body).total).toBe(draft?.issueCount);
+    const forecasts = (await get(w, '/forecast/requirements')).requirements as Body[];
+    for (const r of (status.requirements as Body).items as Body[]) {
+      expect(r.progress, String(r.key)).toEqual(forecasts.find((f) => f.key === r.key)?.progress);
+    }
   });
 
   it('counts open work by status and names what a run is on', () => {

@@ -125,9 +125,22 @@ describe("a release a person still cuts", () => {
     expect(etaLines(etaOfDelivery(d, en), en).sub).toBe("then project admin cuts it");
   });
 
-  it("reads a landed change waiting on the cut as landed, then who cuts it", () => {
+  // JU-7: hop's REQ-11 read '✓ Oct 4' under ETA while still in delivery; a landed change not in people's hands has no tick and no date
+  it("reads a landed change waiting on the cut as awaiting release with no tick or date, then who cuts it", () => {
     const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-30) }, release: manual, inHands: null, shipped: null };
-    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "Hôm nay", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
+    const eta = etaOfDelivery(d, vi);
+    expect(eta.kind).toBe("landed");
+    expect(etaLines(eta, vi)).toEqual({ line: "Xong code, chờ release", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
+    expect(etaInline(eta, vi)).not.toContain("✓");
+    render(<EtaCell eta={eta} clock={vi} />);
+    expect(screen.getByTestId("eta-cell").querySelector("svg")).toBeNull();
+  });
+
+  it("names the viewer as you where the release act is theirs, never their own account name", () => {
+    const mine = { ...manual, who: "You" };
+    const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-30) }, release: mine, inHands: null, shipped: null };
+    expect(etaLines(etaOfDelivery(d, vi), vi).sub).toBe("rồi bạn cắt"); // i18n-allow: asserts the vi ETA copy
+    expect(etaInline(etaOfDelivery(d, en), en)).toBe("Landed, awaiting release · then you cut it");
   });
 
   it("reads the time in people's hands where production releases on its own", () => {
@@ -192,7 +205,7 @@ describe("the ETA column's language and order", () => {
       />,
     );
     const header = screen.getByTestId("list-sort-eta");
-    expect(header.textContent).toBe("Dự kiến xong"); // i18n-allow: asserts the vi ETA copy
+    expect(header.textContent).toBe("Dự kiến tới người dùng"); // i18n-allow: asserts the vi ETA copy
     expect(header.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(header);
     expect(onSort).toHaveBeenCalledTimes(1);
