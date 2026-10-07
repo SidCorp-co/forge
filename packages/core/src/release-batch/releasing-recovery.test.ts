@@ -271,7 +271,7 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     );
   }
 
-  it('names a rule whole where the seal cut a bound value out of its name (ISS-1381 r3)', () => {
+  it('names a rule whole beside the reason where the seal cut a bound value out of its name', () => {
     const failed = sealedClose(
       'new row for relation "issues" violates check constraint "gj_closed_needs_ledger"',
       { code: '23514', constraint_name: 'gj_closed_needs_ledger', table_name: 'issues' },
@@ -285,7 +285,7 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
-      expect(text).toContain('violates check constraint "gj_closed_needs_ledger"');
+      expect(text).toContain('(the database names constraint "gj_closed_needs_ledger")');
       expect(text).toContain('23514');
       for (const leaked of ['[Redacted]', ISSUE, 'releasing', 'update "issues"', 'Failed query']) {
         expect(text).not.toContain(leaked);
@@ -309,40 +309,20 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).not.toContain('releasing');
   });
 
-  it('puts back no name where two names the error carries were cut alike', () => {
-    const failed = sealedClose(
-      'new row for relation "x_releasing_rule" violates check constraint "x_closed_rule"',
-      { code: '23514', constraint_name: 'x_closed_rule', table_name: 'x_releasing_rule' },
-    );
-
-    const text = closeFailureText(closeRefusalOf(failed));
-
-    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
-    expect(text).toContain('"x_(a value of this write, withheld)_rule"');
-  });
-
-  it('puts back a name only where the message quotes it as that object, never a look-alike', () => {
-    const failed = sealedClose('label "x_releasing_rule" is not allowed', {
-      code: 'P0001',
-      constraint_name: 'x_closed_rule',
-    });
-
-    const text = closeFailureText(closeRefusalOf(failed));
-
-    expect(text).toContain('label "x_(a value of this write, withheld)_rule" is not allowed');
-    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
-  });
-
   it.each([
-    ['constraint "x_closed_rule" conflicts with constraint "x_releasing_rule"', 'constraint_name'],
-    ['relation "x_closed_rule" conflicts with table "x_releasing_rule"', 'table_name'],
-  ])('puts back no name where the message quotes two names cut alike: %s', (message, field) => {
-    const failed = sealedClose(message, { code: 'P0001', [field]: 'x_closed_rule' });
+    ['label "x_releasing_rule" is not allowed', 1],
+    ['constraint "x_releasing_rule" rejected the write', 1],
+    ['constraint "x_closed_rule" conflicts with constraint "x_releasing_rule"', 2],
+  ])('rewrites no quote in the message as the name the error carries: %s', (message, cuts) => {
+    const failed = sealedClose(message, { code: 'P0001', constraint_name: 'x_closed_rule' });
 
     const text = closeFailureText(closeRefusalOf(failed));
+    const [inMessage, beside] = text.split(' (the database names ');
 
-    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
-    expect(text.match(/"x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(2);
+    expect(inMessage).not.toMatch(/x_closed_rule|x_releasing_rule/);
+    expect(inMessage?.match(/"x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(cuts);
+    expect(beside).toBe('constraint "x_closed_rule")');
+    expect(text).not.toContain('x_releasing_rule');
   });
 
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {

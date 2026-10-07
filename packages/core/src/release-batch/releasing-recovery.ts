@@ -110,32 +110,24 @@ const WITHHELD_VALUE = '(a value of this write, withheld)';
 
 /**
  * The database's own reason, read with no bound value in it. A schema object's name is the schema's
- * text, so where the query-error seal cut a bound value out of one (`gj_[Redacted]_needs_ledger`)
- * it is put back whole — only where the message quotes it after the word Postgres names that kind
- * of object by (`constraint "…"`), only where no other name was cut alike, and never where the whole
- * name is a bound value. A bound value left outside those names, or a reason withheld whole, falls
- * back to what the SQLSTATE's class means (ISS-1381 r3).
+ * text, so one the query-error seal cut a bound value out of (`gj_[Redacted]_needs_ledger`) is
+ * named beside the reason, off the driver's own field: put back into the message, it could land on
+ * a quote that was cut alike and was never that name. A name that is a bound value stays out. A
+ * bound value left outside those names, or a reason withheld whole, falls back to what the
+ * SQLSTATE's class means (ISS-1381 r3).
  */
 function databaseReason(err: unknown, driver: { code: string; message: string }): string {
   const values = pgBoundValues(err);
   const objects = pgObjectNames(err).filter(({ name }) => !values.includes(name));
-  const cut = new Map(objects.map(({ name }) => [name, redactQueryParams(`"${name}"`, err)]));
-  const quoted = (words: readonly string[], name: string) => words.map((w) => `${w} "${name}"`);
-  let reason = redactQueryParams(driver.message);
-  for (const { words, name } of objects) {
-    const form = cut.get(name) ?? '';
-    const alike = [...cut.values()].filter((other) => other === form).length;
-    if (form === `"${name}"` || alike > 1) continue;
-    // A second quote cut alike, after any word, cannot be told from this one: both stay withheld.
-    if (reason.split(form).length !== 2) continue;
-    for (const w of words) reason = reason.split(`${w} ${form}`).join(`${w} "${name}"`);
-  }
-  const outsideNames = objects
-    .flatMap(({ words, name }) => quoted(words, name))
-    .reduce((text, occurrence) => text.split(occurrence).join(''), reason);
+  const reason = redactQueryParams(driver.message);
+  const outsideNames = objects.reduce((text, { name }) => text.split(`"${name}"`).join(''), reason);
   const leaks = values.some((v) => outsideNames.includes(v));
   if (leaks || outsideNames.trim() === REDACTED) return pgErrorClassDescription(driver.code);
-  return reason.split(REDACTED).join(WITHHELD_VALUE);
+  const readable = reason.split(REDACTED).join(WITHHELD_VALUE);
+  const cut = objects
+    .filter(({ name }) => redactQueryParams(`"${name}"`, err) !== `"${name}"`)
+    .map(({ kind, name }) => `${kind} "${name}"`);
+  return cut.length > 0 ? `${readable} (the database names ${cut.join(', ')})` : readable;
 }
 
 /** What a finish reports for one issue it could not close, on its answer and its record. */

@@ -163,9 +163,9 @@ describe('pgObjectNames', () => {
       table: 'not-a-driver-field',
     });
 
-    expect(pgObjectNames(wrapped).map((o) => [o.words[0], o.name])).toEqual([
+    expect(pgObjectNames(wrapped).map((o) => [o.kind, o.name])).toEqual([
       ['constraint', 'gj_closed_needs_ledger'],
-      ['relation', 'issues'],
+      ['table', 'issues'],
       ['schema', 'public'],
     ]);
   });

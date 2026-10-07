@@ -163,11 +163,11 @@ A close that failed without a refusal names the database's own reason with its S
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
 passed through `@forge/observability`'s redaction, and says that reason is for whoever operates
 Forge, not an act on the issue. A schema object's name the driver error carries
-(`packages/core/src/lib/db-errors.ts:pgObjectNames`) is kept whole where the query-error seal cut a
-bound value out of it, the message quotes it after the word for its kind (`constraint "…"`), and
-no other quote in the message, name or not, was cut alike; never where the whole name is a bound
-value. Any other cut reads "(a value of this write, withheld)". Where a bound value would survive outside
-those names, the SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
+(`packages/core/src/lib/db-errors.ts:pgObjectNames`) that the query-error seal cut a bound value
+out of is named whole beside the reason (`the database names constraint "…"`), never put back
+into the message, where it could land on a quote that was cut alike; a name that is a bound value
+stays out. Any cut in the message reads "(a value of this write, withheld)". Where a bound value
+would survive outside those names, the SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
 The SQL statement and its bound values reach neither the comment nor the finish answer's
 `failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.
