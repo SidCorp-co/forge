@@ -2,6 +2,7 @@ import {
   asSerialized,
   errorsWithin,
   type FieldReads,
+  isError,
   readOnce,
   mayCarryBoundValues,
   REDACTED,
@@ -95,7 +96,15 @@ function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T):
     const [head, ...tail] = path;
     if (typeof at !== 'object' || at === null || head === undefined) return;
     const on = [...trail, at];
-    for (const key of head === '*' ? Object.keys(at) : [head]) {
+    let keys: string[];
+    try {
+      keys = head === '*' ? Object.keys(at) : [head];
+    } catch {
+      // Fields that cannot be listed cannot be censored: none of the object's code runs after.
+      withhold(on);
+      return;
+    }
+    for (const key of keys) {
       try {
         if (!(key in at)) continue;
         if (tail.length === 0) {
@@ -176,9 +185,9 @@ function besideErr(
 
 /** The error a call logs: its message text reads it, and pino takes `msg` from it when none is named. */
 function loggedError(first: unknown): Error | null {
-  if (first instanceof Error) return first;
+  if (isError(first)) return first;
   const err = (first as { err?: unknown } | null)?.err;
-  return err instanceof Error ? err : null;
+  return isError(err) ? err : null;
 }
 
 /**
@@ -186,7 +195,7 @@ function loggedError(first: unknown): Error | null {
  * interpolated with `%j` brings its message and SQLSTATE and none of its bound values.
  */
 function withErrorsSerialized(value: unknown, depth = 0): unknown {
-  if (value instanceof Error) return serializeError(value);
+  if (isError(value)) return serializeError(value);
   if (depth >= 8 || typeof value !== 'object' || value === null) return value;
   if (!Array.isArray(value) && Object.prototype.toString.call(value) !== '[object Object]') {
     return value;
@@ -248,14 +257,14 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
         return String(v);
       } catch (error) {
         // What it threw still names the values to find in the rest of the call.
-        if (error instanceof Error) found.push(error);
+        if (isError(error)) found.push(error);
         return REDACTED;
       }
     }
     // pino censors its redact paths in the merging object and in every argument it writes as JSON.
     const how = { fields: i === 0, errorsAsThemselves: true };
     const written =
-      v instanceof Error
+      isError(v)
         ? asSerialized(v, how)
         : withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }));
     found.push(...written.errors);
@@ -268,7 +277,7 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
   if (typeof first === 'string') first = clean(first);
-  else if (first instanceof Error) first = { err: serializeError(first, errors) };
+  else if (isError(first)) first = { err: serializeError(first, errors) };
   else if (typeof first === 'object' && first !== null) {
     const record = besideErr(first as Record<string, unknown>, clean);
     first = Object.hasOwn(record, 'err')
@@ -288,7 +297,7 @@ const serialized = new WeakSet<object>();
 function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unknown {
   if (typeof err === 'object' && err !== null && serialized.has(err)) return err;
   let out: unknown;
-  if (err instanceof Error) {
+  if (isError(err)) {
     out = redactQueryParams(stdSerializers.err(err), hints.length > 0 ? hints : [err]);
     const sqlstate = pgErrorCode(err);
     if (sqlstate && typeof out === 'object' && out !== null) {

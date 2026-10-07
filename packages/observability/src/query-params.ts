@@ -263,8 +263,20 @@ function attempt<T>(read: () => T, thrown?: unknown[]): T | typeof UNREADABLE {
   try {
     return read();
   } catch (error) {
-    if (thrown && error instanceof Error) thrown.push(error);
+    if (thrown && isError(error)) thrown.push(error);
     return UNREADABLE;
+  }
+}
+
+/**
+ * Whether `value` is an `Error`, read without letting it throw: `instanceof` asks a proxy's
+ * `getPrototypeOf`, and a value whose every read throws is no error to read.
+ */
+export function isError(value: unknown): value is Error {
+  try {
+    return value instanceof Error;
+  } catch {
+    return false;
   }
 }
 
@@ -276,7 +288,8 @@ class Thrown {
 /** Which primitive `value` boxes, read by its brand alone, so none of its own code runs. */
 function boxed(value: object): 'string' | 'number' | 'boolean' | null {
   const proto = attempt(() => Object.getPrototypeOf(value));
-  if (proto === Object.prototype || proto === null || Array.isArray(value)) return null;
+  if (proto === Object.prototype || proto === null) return null;
+  if (attempt(() => Array.isArray(value)) !== false) return null;
   const is = (unbox: () => unknown) => attempt(unbox) !== UNREADABLE;
   if (is(() => String.prototype.valueOf.call(value))) return 'string';
   if (is(() => Number.prototype.valueOf.call(value))) return 'number';
@@ -367,9 +380,9 @@ interface Walk extends Rendering {
 function render(value: unknown, key: string, depth: number, walk: Walk, top = false): unknown {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
   if (depth > MAX_DEPTH) return REDACTED;
-  if (value instanceof Error) walk.errors.push(value);
+  if (isError(value)) walk.errors.push(value);
   if (walk.open.has(value)) return CIRCULAR;
-  const asError = value instanceof Error && walk.errorsAsThemselves;
+  const asError = isError(value) && walk.errorsAsThemselves;
   // A toJSON read through a getter may answer otherwise when the serializer reads it again.
   let copy = false;
   const held = walk.withheld?.has(value) === true;
@@ -379,7 +392,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     copy = own !== undefined && field === undefined;
     if (held && (copy || typeof field?.value === 'function' || boxed(value))) return REDACTED;
     const toJSON = readOnce(value, 'toJSON', walk.reads, !held);
-    if (toJSON.error instanceof Error) walk.errors.push(toJSON.error);
+    if (isError(toJSON.error)) walk.errors.push(toJSON.error);
     if (toJSON.threw) return REDACTED;
     if (typeof toJSON.value === 'function') {
       const call = toJSON.value;
@@ -433,7 +446,7 @@ function collectHeld(value: object, walk: Walk, depth: number, seen = new Set<ob
   for (const own of Object.values(fields)) {
     const v = 'value' in own ? own.value : undefined;
     if (typeof v !== 'object' || v === null) continue;
-    if (v instanceof Error) walk.errors.push(v);
+    if (isError(v)) walk.errors.push(v);
     collectHeld(v, walk, depth + 1, seen);
   }
 }
@@ -445,7 +458,7 @@ function collectHeld(value: object, walk: Walk, depth: number, seen = new Set<ob
 function renderResult(rendered: unknown, depth: number, walk: Walk, source: object): unknown {
   if (typeof rendered === 'function') return undefined;
   if (rendered === null || typeof rendered !== 'object') return rendered;
-  if (rendered instanceof Error) walk.errors.push(rendered);
+  if (isError(rendered)) walk.errors.push(rendered);
   const box = unboxed(rendered, walk.errors);
   if (box) return box.value;
   if (rendered === source) return renderFields(rendered, depth, walk, true);
@@ -468,8 +481,10 @@ function renderFields(
   copy: boolean,
   separately = false,
 ): unknown {
-  const array = Array.isArray(value);
-  const length = array ? attempt(() => value.length, walk.errors) : 0;
+  // A revoked proxy throws even when asked whether it is an array.
+  const array = attempt(() => Array.isArray(value), walk.errors);
+  if (array === UNREADABLE) return REDACTED;
+  const length = array ? attempt(() => (value as unknown[]).length, walk.errors) : 0;
   const keys = array
     ? Array.from({ length: length === UNREADABLE ? 0 : length }, (_, i) => String(i))
     : attempt(() => Object.keys(value), walk.errors);
@@ -480,7 +495,7 @@ function renderFields(
   const items: unknown[] = [];
   for (const key of keys) {
     const field = readOnce(value, key, walk.reads, !held);
-    if (field.error instanceof Error) walk.errors.push(field.error);
+    if (isError(field.error)) walk.errors.push(field.error);
     if (field.called) changed = true;
     const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;
@@ -541,7 +556,7 @@ function redactValue(value: unknown, chain: ChainReading | null, depth: number):
   }
   // An Error left in a payload serializes as its enumerable properties, which for a failed query
   // are `query`, `params` and `cause`: it is walked as that, against its own chain as well.
-  const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
+  const own = isError(value) ? mergeChains(chain, readChain(value)) : chain;
   return redactRecord(value as Record<string, unknown>, own, depth) ?? value;
 }
 
@@ -552,7 +567,7 @@ export function errorsWithin(value: unknown): unknown[] {
   const walk = (v: unknown, depth: number): void => {
     if (typeof v !== 'object' || v === null || seen.has(v) || depth > MAX_DEPTH) return;
     seen.add(v);
-    if (v instanceof Error) found.push(v);
+    if (isError(v)) found.push(v);
     const children = attempt(() => Object.values(v));
     if (children === UNREADABLE) return;
     for (const child of children) walk(child, depth + 1);
@@ -584,7 +599,7 @@ export function redactQueryParams<T>(value: T, err?: unknown): T {
  * is still in hand: once it is a bare string, a value only the error could name cannot be found.
  */
 export function redactedMessage(err: unknown): string {
-  return redactQueryParams(err instanceof Error ? err.message : String(err), err);
+  return redactQueryParams(isError(err) ? err.message : String(err), err);
 }
 
 /** A field the driver defined for good: postgres-js's `parameters` and `args` under `debug`. */
@@ -716,7 +731,7 @@ function sealFrom(link: Error, chain: ChainReading, seen: Set<unknown>, depth: n
   if (seen.has(link) || depth >= MAX_CHAIN) return link;
   seen.add(link);
   const cause = (link as { cause?: unknown }).cause;
-  const sealedCause = cause instanceof Error ? sealFrom(cause, chain, seen, depth + 1) : cause;
+  const sealedCause = isError(cause) ? sealFrom(cause, chain, seen, depth + 1) : cause;
   return sealLink(link, chain, sealedCause !== cause ? (sealedCause as Error) : null);
 }
 
@@ -729,6 +744,6 @@ function sealFrom(link: Error, chain: ChainReading, seen: Set<unknown>, depth: n
  * Anything that is not an error is handed back untouched.
  */
 export function sealQueryError<T>(err: T): T {
-  if (!(err instanceof Error)) return err;
+  if (!(isError(err))) return err;
   return sealFrom(err, readChain(err), new Set(), 0) as T;
 }

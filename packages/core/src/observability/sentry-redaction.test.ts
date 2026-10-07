@@ -178,7 +178,9 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
         },
       },
     );
-    for (const data of [broken, unlisted]) {
+    const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+    revoke();
+    for (const data of [broken, unlisted, revoked]) {
       expect(() => scrubSentryEvent({ request: { data } })).not.toThrow();
       expect(scrubSentryEvent({ request: { data } })).toBeNull();
     }

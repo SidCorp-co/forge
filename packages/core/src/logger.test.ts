@@ -23,6 +23,24 @@ function failedInsert(): DrizzleQueryError {
   );
 }
 
+/** A proxy whose every read throws a failed query, its bound values in the message. */
+function hostile(): object {
+  const trap = () => {
+    throw failedInsert();
+  };
+  return new Proxy(
+    {},
+    { get: trap, getPrototypeOf: trap, getOwnPropertyDescriptor: trap, has: trap, ownKeys: trap },
+  );
+}
+
+/** A proxy that throws on any use at all, `Array.isArray` included. */
+function revoked(): object {
+  const { proxy, revoke } = Proxy.revocable({}, {});
+  revoke();
+  return proxy;
+}
+
 function capture(): { lines: string[]; log: Logger } {
   const lines: string[] = [];
   const log = createLogger({ level: 'debug' }, { write: (s: string) => lines.push(s) });
@@ -840,6 +858,56 @@ describe('the core logger, given a value whose text only a serializer renders', 
     const line = lines[0] ?? '';
     expect(line).not.toContain(HASH);
     expect(JSON.parse(line).reading).toBe('[Redacted]');
+  });
+
+  it('writes a line for fields that cannot be listed, throwing nothing itself', () => {
+    const { lines, log } = capture();
+    const unlisted = () =>
+      new Proxy(
+        { note: 'kept' },
+        {
+          ownKeys: () => {
+            throw failedInsert();
+          },
+        },
+      );
+    expect(() => log.warn(unlisted(), 'read')).not.toThrow();
+    expect(() => log.warn({ reading: unlisted() }, 'nested')).not.toThrow();
+    expect(() => log.child(unlisted()).warn('bound')).not.toThrow();
+    const rebound = log.child({ requestId: 'r1' });
+    expect(() => rebound.setBindings(unlisted())).not.toThrow();
+    rebound.warn('rebound');
+    log.warn('after');
+    expect(lines).toHaveLength(5);
+    for (const line of lines) {
+      JSON.parse(line);
+      expect(line).not.toContain(HASH);
+    }
+    expect(JSON.parse(lines[1] ?? '').reading).toBe('[Redacted]');
+  });
+
+  it.each([
+    ['every read of which throws', () => hostile()],
+    ['that is a revoked proxy', () => revoked()],
+  ])('writes a line for a value %s, throwing nothing itself', (_, make) => {
+    const { lines, log } = capture();
+    const calls: [string, () => void][] = [
+      ['merging object', () => log.warn(make(), 'read')],
+      ['field', () => log.warn({ reading: make(), err: make() }, 'read')],
+      ['%s', () => log.warn('read %s', make())],
+      ['%j', () => log.warn('read %j', make())],
+      ['first argument', () => log.warn(make() as never)],
+      ['child', () => log.child(make()).warn('bound')],
+      ['child field', () => log.child({ reading: make() }).warn('bound')],
+      ['prefixed', () => log.child({}, { msgPrefix: 'read: ' }).warn(make() as never)],
+      ['setBindings', () => log.child({ requestId: 'r1' }).setBindings(make())],
+    ];
+    for (const [name, call] of calls) expect(call, name).not.toThrow();
+    expect(lines).toHaveLength(8);
+    for (const line of lines) {
+      JSON.parse(line);
+      expect(line).not.toContain(HASH);
+    }
   });
 
   it('writes a text whose coercion throws as redacted, throwing nothing itself', () => {

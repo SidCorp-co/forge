@@ -467,6 +467,25 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     }
   });
 
+  it('writes a value it cannot read at all as redacted, throwing nothing itself', () => {
+    const trap = () => {
+      throw duplicate();
+    };
+    const hostile = new Proxy(
+      {},
+      { get: trap, getPrototypeOf: trap, getOwnPropertyDescriptor: trap, has: trap, ownKeys: trap },
+    );
+    const { proxy: revoked, revoke } = Proxy.revocable({}, {});
+    revoke();
+    for (const unreadable of [hostile, revoked]) {
+      expect(redactQueryParams(unreadable)).toBe(REDACTED);
+      const out = JSON.stringify(redactQueryParams({ reading: unreadable, reason: 'kept' }));
+      expect(out).toBe('{"reading":"[Redacted]","reason":"kept"}');
+    }
+    // What the unreadable value threw still names the values to find beside it.
+    expect(JSON.stringify(redactQueryParams({ reading: hostile, reason: HASH }))).not.toContain(HASH);
+  });
+
   it('reads an enumerable toJSON getter once, for the hook and for the fields alike', () => {
     let reads = 0;
     const reading = Object.defineProperty({ note: 'kept' }, 'toJSON', {

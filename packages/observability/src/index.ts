@@ -4,6 +4,7 @@ export {
   asSerialized,
   errorsWithin,
   type FieldReads,
+  isError,
   readOnce,
   mayCarryBoundValues,
   REDACTED,
