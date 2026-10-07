@@ -1,6 +1,7 @@
 import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastPaused, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import { rangeText } from "./clock";
 
-/** "40 min", "2.6 h", "3 d": a span read as a range bound, never as a promise. */
+/** "40 min", "2.6 h", "3 d": a span read as a range bound in a tooltip, never as a promise. */
 export function spanText(minutes: number): string {
   const m = Math.max(0, Math.round(minutes));
   if (m < 60) return `${Math.max(1, m)} min`;
@@ -14,24 +15,37 @@ const until = (iso: string, now: number) => (new Date(iso).getTime() - now) / 60
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 
+/** A range as clock times in the viewer's timezone: "14:10 – 18:50 today". */
+const when = (span: ForecastSpan, now: number) => rangeText(span.p50At, span.p85At, { lang: "en", now });
+
+/** The durations and the as-of a line no longer carries: "Within 2.4 h – 31 h · as of 11:48." */
+const within = (span: ForecastSpan, asOf: string, now: number) => {
+  const low = Math.max(0, until(span.p50At, now));
+  const high = Math.max(low, until(span.p85At, now));
+  return `Within ${spanText(low)} – ${spanText(high)} · as of ${clock(asOf)}.`;
+};
+
 export const pausedText = (p: ForecastPaused) => `Paused — waiting on ${p.who}${p.act ? ` to ${p.act}` : ""}`;
 
+/** Whether a tooltip opens on the durations and the as-of; the ETA column writes its own, in the content language. */
+export interface TextOpts {
+  within?: boolean;
+}
+
 /**
- * One line and its tooltip. A range is always two bounds and always says it is a forecast and as of
- * when; a pause names who owes the move instead of a date.
+ * One line and its tooltip. A range is always two clock times and always says it is a forecast, its
+ * durations and as-of in the tooltip; a pause names who owes the move instead of a date.
  */
-export function forecastText(f: Forecast, now: number = Date.now()): { line: string; detail: string } {
+export function forecastText(f: Forecast, now: number = Date.now(), opts: TextOpts = {}): { line: string; detail: string } {
   switch (f.kind) {
     case "forecast": {
-      const low = Math.max(0, until(f.p50At, now));
-      const high = Math.max(low, until(f.p85At, now));
       const b = f.basis;
       const ahead = f.ahead > 0 ? ` ${f.ahead} ahead of it${f.aheadKeys.length ? ` (${f.aheadKeys.join(", ")}${f.ahead > f.aheadKeys.length ? ", …" : ""})` : ""}.` : " Nothing ahead of it.";
       const waits = f.waitsOn.length ? ` Waits on ${f.waitsOn.join(", ")} to land first.` : "";
       return {
-        line: `Forecast ${spanText(low)} – ${spanText(high)} · as of ${clock(f.asOf)}`,
+        line: `Forecast ${when(f, now)}`,
         detail:
-          `A forecast, not a promise: half the simulated runs land it by ${new Date(f.p50At).toLocaleString()}, 85% by ${new Date(f.p85At).toLocaleString()}.` +
+          `${opts.within === false ? "" : `${within(f, f.asOf, now)} `}A forecast, not a promise: half the simulated runs land it by ${new Date(f.p50At).toLocaleString()}, 85% by ${new Date(f.p85At).toLocaleString()}.` +
           ahead +
           waits +
           ` Read from ${b.n} issues landed in the last ${b.windowDays} days${b.complexity ? ` at complexity ${b.complexity}` : ""} (p50 ${spanText(b.cycleP50Minutes)}, p85 ${spanText(b.cycleP85Minutes)}), ${b.concurrency} at a time: ${b.concurrencyBasis}.`,
@@ -65,27 +79,14 @@ export function scopeText(s: ScopeForecast, now: number = Date.now(), opts: { ne
       s.next && opts.next !== false
         ? ` · then ${pausedText(s.next).replace(/^Paused — w/, "w")}`
         : inHands
-          ? ` · forecast live in ${spanBetween(inHands, now)}`
+          ? ` · forecast live ${when(inHands, now)}`
           : "";
     const detail = s.next?.reason ?? (s.delivery ? deliveryText(s.delivery, now).detail : own.detail);
     return { line: `All ${s.total} landed${s.forecast.landedAt ? ` by ${day(s.forecast.landedAt)}` : ""}${next}`, detail };
   }
-  if (s.forecast.kind === "forecast") {
-    const low = Math.max(0, until(s.forecast.p50At, now));
-    const high = Math.max(low, until(s.forecast.p85At, now));
-    return {
-      line: `${head} · forecast all landed in ${spanText(low)} – ${spanText(high)} · as of ${clock(s.forecast.asOf)}`,
-      detail: own.detail,
-    };
-  }
+  if (s.forecast.kind === "forecast") return { line: `${head} · forecast all landed ${when(s.forecast, now)}`, detail: own.detail };
   return { line: `${head} · ${own.line}`, detail: own.detail };
 }
-
-const spanBetween = (span: ForecastSpan, now: number) => {
-  const low = Math.max(0, until(span.p50At, now));
-  const high = Math.max(low, until(span.p85At, now));
-  return `${spanText(low)} – ${spanText(high)}`;
-};
 
 const legDetail = (leg: ReleaseLeg): string => {
   switch (leg.kind) {
@@ -105,7 +106,7 @@ const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" }>) => `waits on 
  * version; a range to people's hands where production releases on its own; else the landing and the
  * person who owes the release, never a date for their act.
  */
-export function deliveryText(d: DeliveryForecast, now: number = Date.now()): { line: string; detail: string } {
+export function deliveryText(d: DeliveryForecast, now: number = Date.now(), opts: TextOpts = {}): { line: string; detail: string } {
   if (d.shipped) {
     const when = d.shipped.at ? ` · ${day(d.shipped.at)}` : "";
     return {
@@ -113,18 +114,19 @@ export function deliveryText(d: DeliveryForecast, now: number = Date.now()): { l
       detail: d.shipped.at ? `Shipped ${new Date(d.shipped.at).toLocaleString()}` : "Shipped, with no release run on record",
     };
   }
-  const landing = forecastText(d.landing, now);
+  const landing = forecastText(d.landing, now, opts);
   const leg = d.release;
   if (!leg || (d.landing.kind !== "forecast" && d.landing.kind !== "landed")) return landing;
   const lead = d.landing.kind === "landed" ? `${landing.detail}.` : landing.detail;
-  const detail = `${lead}${legDetail(leg)}`;
+  const hands = d.inHands && opts.within !== false ? `In people's hands ${within(d.inHands, d.asOf, now).replace(/^W/, "w")} ` : "";
+  const detail = `${hands}${lead}${legDetail(leg)}`;
   if (d.landing.kind === "landed") {
-    if (d.inHands) return { line: `Fixed · forecast live in ${spanBetween(d.inHands, now)} · as of ${clock(d.asOf)}`, detail };
+    if (d.inHands) return { line: `Fixed · forecast live ${when(d.inHands, now)}`, detail };
     if (leg.kind === "person") return { line: `Fixed · ${waitsOnText(leg)}`, detail };
     return { line: "Fixed · waits on the automatic release", detail };
   }
-  const lands = `Forecast lands in ${spanBetween(d.landing, now)}`;
-  if (d.inHands) return { line: `Forecast live in ${spanBetween(d.inHands, now)} · as of ${clock(d.asOf)}`, detail };
+  const lands = `Forecast lands ${when(d.landing, now)}`;
+  if (d.inHands) return { line: `Forecast live ${when(d.inHands, now)}`, detail };
   if (leg.kind === "person") return { line: `${lands} · then ${waitsOnText(leg)}`, detail };
   return { line: `${lands} · release time not known yet`, detail };
 }

@@ -3,8 +3,7 @@
  * durations (Magennis's cycle-time sampling, Vacanti's "when will it be done"), run through the
  * queue in the order the dispatcher takes it, with each `blocks` edge holding its dependent until
  * the blocker lands, on as many lanes as Little's law reads off the history and never more than the
- * project has had in progress at once lately. `read.ts` gathers
- * the facts; every honesty rule below is a unit test in `model.test.ts`.
+ * runs the project has had live at once lately. `read.ts` gathers the facts; every honesty rule below is a unit test in `model.test.ts`.
  */
 
 import {
@@ -31,7 +30,7 @@ export interface History {
   samples: readonly CycleSample[];
   /** Days the landings were counted over. */
   spanDays: number;
-  /** The most issues in progress at once over the recent days; null where none was read. */
+  /** The most declared runs live at once over the recent days; null where none was live. */
   peak: number | null;
 }
 
@@ -115,9 +114,10 @@ const ascending = (values: readonly number[]) => [...values].sort((a, b) => a - 
 
 /**
  * Little's law, L = λ·W: the issues the project has had in progress at once on average, read from
- * its landings per day and their mean duration, never above the most it has actually had in
- * progress at once lately. A burst of landings reads a λ no lane ever sustained, and the work a
- * master runs as a two-run wave is never worked six at a time (HOP ISS-71's next-day p85).
+ * its landings per day and their mean duration, never above the most runs it has actually had live
+ * at once lately. A burst of landings reads a λ no lane ever sustained, and the work a master runs
+ * as a two-run wave is never worked six at a time (HOP ISS-71's next-day p85), however many issues
+ * stand at `in_progress` meanwhile.
  */
 export function concurrencyOf(history: History): Concurrency | null {
   const n = history.samples.length;
@@ -127,11 +127,17 @@ export function concurrencyOf(history: History): Concurrency | null {
   const wip = (perDay * meanMinutes) / DAY_MINUTES;
   const little = Math.max(1, Math.round(wip));
   const read = `Little's law over the last ${FORECAST_WINDOW_DAYS} days: ${perDay.toFixed(1)} landings a day × ${Math.round(meanMinutes)} min mean in progress ≈ ${wip.toFixed(1)} at once`;
-  const cap = history.peak === null ? null : Math.max(1, history.peak);
-  if (cap === null || little <= cap) return { value: little, basis: read };
+  if (history.peak === null) {
+    return {
+      value: little,
+      basis: `${read}, not held to a run count: no run was live in the last ${FORECAST_PEAK_DAYS} days`,
+    };
+  }
+  const cap = Math.max(1, history.peak);
+  if (little <= cap) return { value: little, basis: read };
   return {
     value: cap,
-    basis: `${read}, held to ${cap}: the most issues in progress at once over the last ${FORECAST_PEAK_DAYS} days`,
+    basis: `${read}, held to ${cap}: the most runs live at once over the last ${FORECAST_PEAK_DAYS} days`,
   };
 }
 

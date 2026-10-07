@@ -29,8 +29,9 @@ import {
   WaitBanner,
   WaitingOn,
 } from "@/design";
-import { ForecastLine } from "@/features/forecast/components/forecast-line";
-import { forecastText } from "@/features/forecast/text";
+import { EtaCell, EtaInline } from "@/features/forecast/components/eta-cell";
+import { type Eta, type EtaClock, etaOfForecast } from "@/features/forecast/eta";
+import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
@@ -40,8 +41,8 @@ export const issueBadge = (r: Pick<IssueStandingRow, "status" | "standing">) => 
   <StatusBadge family="issue" value={r.status} step={r.standing.step} tone={r.standing.tone} />
 );
 
-/** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing, the forecast range. */
-function factsLine(r: IssueStandingRow, forecast: Forecast | undefined): string[] {
+/** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing. */
+function factsLine(r: IssueStandingRow): string[] {
   const s = r.standing;
   const parts: string[] = [];
   if (s.module) parts.push(s.module.path);
@@ -49,18 +50,20 @@ function factsLine(r: IssueStandingRow, forecast: Forecast | undefined): string[
   if (r.priority === "high" || r.priority === "critical") parts.push(`${r.priority === "critical" ? "Critical" : "High"} priority`);
   if (s.feedback[0]) parts.push(`From ${s.feedback[0]}`);
   if (s.criteria.total > 0) parts.push(`Passing ${s.criteria.passing}/${s.criteria.total}`);
-  // a paused row already says whom it waits on in its own column, so only a range is added here
-  if (forecast?.kind === "forecast") parts.push(forecastText(forecast).line);
   return parts;
 }
 
+/** An issue's ETA from the project forecast; null while the forecast has not answered for it. */
+export const issueEta = (forecast: Forecast | undefined, clock: EtaClock): Eta | null => (forecast ? etaOfForecast(forecast, clock) : null);
+
 export const issueRowView =
-  (slug: string, forecastOf: (key: string) => Forecast | undefined = () => undefined) =>
+  (slug: string, eta?: { of: (key: string) => Eta | null; clock: EtaClock }) =>
   (r: IssueStandingRow): ListRowView => ({
     key: r.key,
     href: issueHref(slug, r.key),
     title: r.title,
-    facts: factsLine(r, forecastOf(r.key)),
+    facts: factsLine(r),
+    ...(eta ? { eta: <EtaCell eta={eta.of(r.key)} clock={eta.clock} /> } : {}),
     state: issueBadge(r),
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
@@ -170,7 +173,17 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
 /** The peek's facts, each once and each beside where it comes from: whom it waits on, the
  *  requirement it serves, its module, its branch, its owner. State and whose turn are the head's
  *  and the banner's, so they are not repeated here. */
-export function IssuePeekFacts({ row, slug, forecast }: { row: IssueStandingRow; slug: string; forecast?: Forecast | undefined }) {
+export function IssuePeekFacts({
+  row,
+  slug,
+  forecast,
+  clock,
+}: {
+  row: IssueStandingRow;
+  slug: string;
+  forecast?: Forecast | undefined;
+  clock: EtaClock;
+}) {
   const s = row.standing;
   const sub = (t: ReactNode) => <span className="mt-0.5 block text-12 text-subtle">{t}</span>;
   return (
@@ -184,8 +197,8 @@ export function IssuePeekFacts({ row, slug, forecast }: { row: IssueStandingRow;
         </Fact>
       ) : null}
       {forecast && forecast.kind !== "landed" && forecast.kind !== "ended" ? (
-        <Fact label="Forecast" testId="issue-peek-forecast">
-          <ForecastLine forecast={forecast} />
+        <Fact label={ETA_COPY[clock.lang].header} testId="issue-peek-forecast">
+          <EtaInline eta={etaOfForecast(forecast, clock)} clock={clock} />
         </Fact>
       ) : null}
       {s.requirement ? (

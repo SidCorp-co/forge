@@ -81,7 +81,7 @@ export { ToneBadge, StatusBadge, EnumBadge } from "./primitives/enum-badge";
 export { LEGEND, statusReading, enumLabel, sentenceCase, type LegendTone, type StatusFamily } from "./vocabulary";
 export { WhoMark, PersonChip, ActorChip } from "./patterns/person-chip";
 export { WaitingOn, WaitBanner, type WaitingOnView, type BannerTone } from "./patterns/waiting-on";
-export { GroupedList, useGroupFold, visibleRows, standingGroups, type ListGroup, type ListRowView } from "./patterns/grouped-list";
+export { GroupedList, useGroupFold, visibleRows, standingGroups, sortGroupsBy, type ListGroup, type ListRowView } from "./patterns/grouped-list";
 export { ListSearch } from "./patterns/list-search";
 export { FilterChip } from "./patterns/filter-chip";
 export { SignalsStrip, Signal } from "./patterns/signals-strip";

@@ -149,9 +149,9 @@ describe('forecast arithmetic', () => {
     expect(read).toMatchObject({ kind: 'forecast', p50Minutes: 120, p85Minutes: 120 });
   });
 
-  it('never works more lanes than the project has had in progress at once lately', () => {
+  it('never works more lanes than the project has had runs live at once lately', () => {
     // a burst: 36 landings in one day, each six hours from start to landing, reads L ≈ 9 by
-    // Little's law; the box never had more than two in progress at once
+    // Little's law; the box never had more than two runs live at once
     const burst: History = {
       samples: Array.from({ length: 36 }, () => ({ minutes: 360, complexity: null })),
       spanDays: 1,
@@ -159,10 +159,11 @@ describe('forecast arithmetic', () => {
     };
     const c = concurrencyOf(burst);
     expect(c?.value).toBe(2);
-    expect(c?.basis).toMatch(
-      /held to 2: the most issues in progress at once over the last 14 days/,
-    );
-    expect(concurrencyOf({ ...burst, peak: null })?.value).toBe(9);
+    expect(c?.basis).toMatch(/held to 2: the most runs live at once over the last 14 days/);
+    expect(concurrencyOf({ ...burst, peak: null })).toMatchObject({
+      value: 9,
+      basis: expect.stringMatching(/not held to a run count: no run was live in the last 14 days$/),
+    });
     expect(concurrencyOf({ ...burst, peak: 0 })?.value).toBe(1);
     const queue = [item(), item(), item(), item()];
     const last = queue[3];

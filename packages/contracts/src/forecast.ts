@@ -12,7 +12,7 @@ export const FORECAST_HISTORY_FLOOR = 10;
 /** The days of landings the history is read from. */
 export const FORECAST_WINDOW_DAYS = 60;
 export const FORECAST_TRIALS = 1000;
-/** The recent days the most issues in progress at once is read over: the simulation never works more. */
+/** The recent days the most runs live at once is read over: the simulation never works more. */
 export const FORECAST_PEAK_DAYS = 14;
 export const FORECAST_LABEL = "forecast" as const;
 

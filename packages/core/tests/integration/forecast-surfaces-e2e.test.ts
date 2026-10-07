@@ -3,6 +3,7 @@ import type { Body } from '../helpers/api.js';
 import {
   ago,
   DAY,
+  declaredRun,
   feedback,
   issue,
   landHistory,
@@ -154,12 +155,13 @@ describe('requirements list and what comes next on Releases', () => {
   });
 });
 
-describe('concurrency is held to what the project has had in progress at once', () => {
-  it('works two lanes where bursty landings read more by Little’s law but never more than two ran', async () => {
+describe('concurrency is held to the runs the project has had live at once, not to issue status', () => {
+  it('works two lanes where seven issues stood in progress at once but never more than two runs were live', async () => {
     const w = await world();
     const t0 = Date.now() - 2 * DAY;
     for (let i = 0; i < HISTORY; i++) {
-      const started = new Date(t0 + Math.floor(i / 2) * 60 * MINUTE);
+      // a burst of status: seven issues at a time sit at in_progress for a whole afternoon
+      const started = new Date(t0 + Math.floor(i / 7) * 600 * MINUTE);
       const merged = new Date(started.getTime() + 600 * MINUTE);
       const { id } = await issue(w, {
         status: 'closed',
@@ -167,14 +169,34 @@ describe('concurrency is held to what the project has had in progress at once', 
         mergedAt: merged,
       });
       await moved(w, id, 'open', 'in_progress', started);
-      await moved(w, id, 'in_progress', 'developed', new Date(started.getTime() + 30 * MINUTE));
+      await moved(w, id, 'in_progress', 'developed', new Date(merged.getTime() - MINUTE));
     }
+    // the box works them two at a time; one run is still open now
+    for (let i = 0; i < 6; i++) {
+      const start = new Date(t0 + i * 240 * MINUTE);
+      await declaredRun(w, start, new Date(start.getTime() + 239 * MINUTE));
+      await declaredRun(
+        w,
+        new Date(start.getTime() + 60 * MINUTE),
+        new Date(start.getTime() + 200 * MINUTE),
+      );
+    }
+    await declaredRun(w, ago(1), null);
     const queue = [];
     for (let i = 0; i < 4; i++)
       queue.push(await issue(w, { status: 'open', createdAt: ago(4 - i) }));
     const f = (await read(w, `/issues/${queue[3]?.key}`)).forecast as Body;
     expect(f.kind, JSON.stringify(f)).toBe('forecast');
-    expect((f.basis as Body).concurrency).toBe(2);
-    expect((f.basis as Body).concurrencyBasis).toMatch(/held to 2/);
+    expect((f.basis as Body).concurrency, (f.basis as Body).concurrencyBasis as string).toBe(2);
+    expect((f.basis as Body).concurrencyBasis).toMatch(/held to 2: the most runs live at once/);
+  });
+
+  it('is not held to a run count where no run was live in the window, and says so', async () => {
+    const w = await world();
+    await landHistory(w, HISTORY);
+    const { key } = await issue(w, { status: 'open', createdAt: ago(1) });
+    const f = (await read(w, `/issues/${key}`)).forecast as Body;
+    expect(f.kind, JSON.stringify(f)).toBe('forecast');
+    expect((f.basis as Body).concurrencyBasis).toMatch(/no run was live in the last 14 days/);
   });
 });

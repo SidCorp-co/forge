@@ -370,6 +370,7 @@
       "context": "operations",
       "reads": [
         "activityLog",
+        "agentSessions",
         "feedback",
         "feedbackRouteIssues",
         "issues",
