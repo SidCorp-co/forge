@@ -34,7 +34,7 @@ function detail(statuses: string[], canSignOff = true): RequirementDetail {
       waitingOn:
         drafts === statuses.length
           ? { kind: canSignOff ? "you" : "person", who: "You", act: `promote ${drafts} draft issues`, rule: "", ref: null, dueAt: null }
-          : { kind: "issue", who: "Issues", act: `Done 0 of ${statuses.length}`, rule: "", ref: null, dueAt: null },
+          : { kind: "issue", who: "Issues", act: `Shipped 0 of ${statuses.length}`, rule: "", ref: null, dueAt: null },
       facts: { stalePins: [], staleContractPins: [], unapprovedDesigns: [] },
     },
   } as unknown as RequirementDetail;
