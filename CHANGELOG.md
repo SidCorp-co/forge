@@ -9,6 +9,54 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.116] - 2026-10-07
+
+Preview and editor buttons stop filing issues; category, attachments and decisions fixed
+
+### Fixed
+
+- **Pressing Preview no longer files a new issue.** Buttons submit only when marked submit; a comment takes every file chosen; an issue's category is set on its Properties rail; a decision survives the page closing mid-send.
+
+## [0.4.0-dev.115] - 2026-10-07
+
+Image builds stop corrupting the Next SWC binding through a shared pnpm store
+
+### Fixed
+
+- **The web and core image builds no longer install into one pnpm store at once, and the web build refuses a corrupt or missing native Next.js SWC binding at install.** Concurrent installs left a truncated `.node` file in dev.110.
+
+## [0.4.0-dev.114] - 2026-10-07
+
+Needs-you page reads each input once per project, opening large projects fast
+
+### Fixed
+
+- **Needs you answers far faster on a large project.** Design health, storefront drafts and dispatch-gate reasons are read once per project, not once per row: one request on HOP drops from 919 queries to 238.
+
+## [0.4.0-dev.113] - 2026-10-07
+
+A release that failed after deploying no longer strands its issues
+
+### Fixed
+
+- **An issue a failed release held is closed once a later release ships its commit.** A release that failed after deploying no longer leaves its issues waiting forever: the next shipped release holding their commit closes and lists them.
+
+## [0.4.0-dev.112] - 2026-10-07
+
+New issue forms close as soon as core saves; vendored archmap matches its manifest again
+
+### Fixed
+
+- **A filed issue, requirement or feedback closes its form when core answers.** Every write no longer waits for the waiting-on-you counts to be re-read, which held New issue spinning ~5 s past its 201; one tick sends one create.
+
+## [0.4.0-dev.111] - 2026-10-07
+
+The workspace shell and feedback forecast rows read in Vietnamese
+
+### Fixed
+
+- **The workspace shell reads in the interface language you chose.** Navigation, command palette, Ask Agent, notifications, account preferences, shared badges and release gates show Vietnamese; the feedback rail's two forecast rows read distinctly, and step-bar labels wrap instead of truncating.
+
 ## [0.4.0-dev.110] - 2026-10-07
 
 The feedback guide matches who may confirm a fix: any member or the reporter

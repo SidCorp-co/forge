@@ -5,7 +5,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeCore, renderWithQuery } from "@/test/render";
+import { createQueryClient } from "@/providers/query-provider";
+import { NeedsYouCounts } from "@/test/needs-you-counts";
+import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { FeedbackForm } from "./feedback-form";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -22,7 +24,7 @@ const lists = (c: { path: string }) =>
         : c.path === "/projects/p1/releases"
           ? { body: { releases: [{ version: "0.1.0" }] } }
           : undefined;
-const core = (reply: (c: { method: string; path: string; body?: unknown }) => { status?: number; body: unknown } | undefined) =>
+const core = (reply: (c: { method: string; path: string; body?: unknown }) => { status?: number; body: unknown } | typeof HANG | undefined) =>
   fakeCore((c) => reply(c) ?? lists(c));
 
 
@@ -144,5 +146,55 @@ describe("the feedback About picker", () => {
       path: "/projects/p1/feedback",
       body: { kind: "bug", severity: "medium", title: "Takes the graph only inline", endpoint: "save_backend_workflow" },
     });
+  });
+});
+
+// The filing form shares the New issue form's shape (HOP ISS-125): it is done when core answers, not
+// when the waiting-on-you counts have been read again, and two submits in one tick file one item.
+describe("filing feedback", () => {
+  function file(hold: boolean) {
+    let counts = 0;
+    const calls = core((c) =>
+      c.method === "POST"
+        ? hold
+          ? HANG
+          : { status: 201, body: { feedback: { key: "FB-9" } } }
+        : c.path === "/projects/p1/needs-you"
+          ? ++counts === 1
+            ? { body: { items: [] } }
+            : HANG
+          : undefined,
+    );
+    const onDone = vi.fn();
+    renderWithQuery(
+      <>
+        <NeedsYouCounts projectId="p1" />
+        <FeedbackForm projectId="p1" onDone={onDone} />
+      </>,
+      createQueryClient(),
+    );
+    return { calls, onDone };
+  }
+  async function fill() {
+    await screen.findByTestId("feedback-choices");
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
+    fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
+  }
+
+  it("is done with the filed key once core answers, while the counts are still being re-read", async () => {
+    const { onDone } = file(false);
+    await fill();
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith("FB-9"));
+  });
+
+  it("files one item for two submits in one tick", async () => {
+    const { calls } = file(true);
+    await fill();
+    const form = screen.getByTestId("feedback-create");
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Send feedback/ })).toBeDisabled());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 });

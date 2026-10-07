@@ -30,7 +30,7 @@ function finding(contract, parts) {
   };
 }
 
-// `relax` only ever removes a contract type from test files. Widening it to source files
+// cm:guard `relax` only ever removes a contract type from test files. Widening it to source files
 //   turns the test glob into a general exemption list, which is the escape route this design
 //   exists to close.
 function relaxed(manifest, contract, edge) {
@@ -152,7 +152,7 @@ function fanOut(contract, graph, manifest) {
       to: null,
       message: `reaches ${mods.size} modules (limit ${contract.max_modules}): ${[...mods].sort().join(', ')}`,
       edge: `${key} -> ${mods.size} modules`,
-      // the COUNT as its own field, not only inside `edge`. The baseline keys fan-out by
+      // cm:guard the COUNT as its own field, not only inside `edge`. The baseline keys fan-out by
       //   path and compares this number, because a key carrying the count would change when the
       //   file improves — 48 modules down to 47 is a different key, so a freeze at 48 would fail
       //   the build for making the blob smaller. Progress must never be a violation.
@@ -162,10 +162,10 @@ function fanOut(contract, graph, manifest) {
   return out.sort((a, b) => a.from.localeCompare(b.from));
 }
 
-// absence is module-level, like `independence` — the contract names modules, not files, so
+// cm:why absence is module-level, like `independence` — the contract names modules, not files, so
 //   the finding's from/to are module names. `fanOut` already emits a non-file `from`, so render()
 //   tolerates it.
-// a test-only edge does NOT satisfy an absence contract. The declared model is about the
+// cm:guard a test-only edge does NOT satisfy an absence contract. The declared model is about the
 //   production structure; counting a fixture's import would let a test satisfy an architectural
 //   expectation the shipped code does not meet. This is deliberately NOT routed through relaxed():
 //   `tests.relax` removes a GATING rule from test files, and absence never gates, so its meaning
@@ -185,7 +185,7 @@ function absence(contract, graph) {
 
 const EVALUATORS = { layers, forbidden, independence, boundary, 'fan-out': fanOut, absence };
 
-// lockstep -> src/manifest.mjs — CONTRACT_TYPES and this set must hold exactly the same
+// cm:edge lockstep -> src/manifest.mjs — CONTRACT_TYPES and this set must hold exactly the same
 //   members, asserted both ways by 'vocabulary: every contract type has an evaluator' in
 //   tests/run.mjs. A type in the vocabulary with no evaluator here is the ISS-2 fail-open.
 export const EVALUATED_TYPES = new Set(Object.keys(EVALUATORS));
@@ -202,7 +202,7 @@ export function evaluate(manifest, graph) {
   const absent = [];
   for (const contract of manifest.contracts) {
     const run = EVALUATORS[contract.type];
-    // never skip. A contract that cannot be evaluated stops the gate (exit 2); it does not
+    // cm:guard never skip. A contract that cannot be evaluated stops the gate (exit 2); it does not
     //   drop out of the count. That skip list was the ISS-2 fail-open — a manifest validated clean,
     //   nothing was checked, and the verdict read 0 blocking. Do not reintroduce it.
     if (!run) {

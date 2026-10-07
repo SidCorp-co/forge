@@ -58,3 +58,6 @@ export const ATTACHMENT_REFUSAL_STATUSES = {
 	UPLOAD_IN_PROGRESS: 409,
 	UPLOAD_OUTCOME_UNKNOWN: 409,
 } as const;
+
+/** The files an issue's create carries inline; a comment takes any number, one upload each. */
+export const ISSUE_CREATE_ATTACHMENTS_MAX = 10;

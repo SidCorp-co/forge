@@ -14,7 +14,7 @@ FROM base AS build
 WORKDIR /repo
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --filter @forge/core...
 # @forge/core and @forge/contracts declare each other, so turbo prints
 # `Circular package dependency detected` and there is NO topological order

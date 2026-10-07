@@ -50,7 +50,7 @@ import {
 } from './ecosystem/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
-import { getStorage, isEnoent, readStorefrontDraft } from './integrations/index.js';
+import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
 import { embedBatch } from './integrations/llm/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
@@ -133,6 +133,7 @@ import {
   assertDesignsApprovedForSeqs,
   buildsWorkflowOf,
   decisionNodeRefusal,
+  designHoldsOf,
   designUnapprovedSql,
   projectHealthAs,
   proposesWorkflowOf,
@@ -223,6 +224,7 @@ export function provideWorkPorts(): void {
     designUnapprovedSql,
     assertDesignsApprovedForSeqs,
     assertDesignApprovedForIssue,
+    designHoldsOf,
     buildsWorkflowOf,
     settlingContractVersion,
     proposesWorkflowOf,
@@ -241,7 +243,7 @@ export function provideWorkPorts(): void {
     resolveSourceHost,
     isSourceHostUnavailable: (err): err is SourceHostUnavailable =>
       err instanceof SourceHostUnavailable,
-    readStorefrontDraft,
+    readStorefrontDrafts,
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
     closeOpenRunForIssue,

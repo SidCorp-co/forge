@@ -1,15 +1,15 @@
 "use client";
 
 // Files staged on a comment or a new issue before they are sent: picked, dropped or pasted,
-// checked against the attachment allow-list (size/mime/count caps) so the server never rejects
-// what was accepted here.
+// checked against the attachment allow-list (size/mime caps, and an issue's create count) so the
+// server never rejects what was accepted here.
 
+import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { Banner, Icon, IconButton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-export const MAX_FILES = 10;
 const DOC_MIMES = [
   "image/png",
   "image/jpeg",
@@ -93,23 +93,24 @@ export function useStagedFiles({
         accepted.push(f);
       }
     }
-    setFiles((prev) => {
-      const room = MAX_FILES - prev.length;
-      if (accepted.length > room) errs.push(t(unit === "issue" ? "issues.files.tooManyIssue" : "issues.files.tooManyComment", { max: MAX_FILES }));
-      const staged = accepted.slice(0, Math.max(0, room));
-      if (!uniqueNames) return [...prev, ...staged];
-      const used = new Set(prev.map((f) => nameKey(f.name)));
-      return [
-        ...prev,
-        ...staged.map((f) => {
-          const unique = uniqueStagedName(f.name, used);
-          used.add(nameKey(unique));
-          if (unique === f.name) return f;
-          errs.push(t("issues.files.renamed", { from: f.name, to: unique }));
-          return new File([f], unique, { type: f.type });
-        }),
-      ];
-    });
+    const chosen = files.length + accepted.length;
+    if (unit === "issue" && chosen > ISSUE_CREATE_ATTACHMENTS_MAX) {
+      errs.push(t("issues.files.tooManyIssue", { max: ISSUE_CREATE_ATTACHMENTS_MAX, chosen }));
+      setWarnings(errs);
+      return;
+    }
+    let staged = accepted;
+    if (uniqueNames) {
+      const used = new Set(files.map((f) => nameKey(f.name)));
+      staged = accepted.map((f) => {
+        const unique = uniqueStagedName(f.name, used);
+        used.add(nameKey(unique));
+        if (unique === f.name) return f;
+        errs.push(t("issues.files.renamed", { from: f.name, to: unique }));
+        return new File([f], unique, { type: f.type });
+      });
+    }
+    setFiles([...files, ...staged]);
     setWarnings(errs);
   };
 

@@ -2,6 +2,7 @@ export {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,
   buildsWorkflowOf,
+  designHoldsOf,
   designUnapprovedSql,
 } from './build-gate.js';
 export { proposesWorkflowOf } from './design-issue.js';

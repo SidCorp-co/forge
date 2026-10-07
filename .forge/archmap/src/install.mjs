@@ -17,13 +17,13 @@ export const VENDOR_DIR = join('.forge', 'archmap');
  */
 export class InstallError extends Error {}
 
-// the hash manifest exists because a VERSION *string* cannot move when file *content*
+// cm:guard the hash manifest exists because a VERSION *string* cannot move when file *content*
 //   does, and nothing can force a human to bump a version when they edit src/. That is not a
 //   theory: forge's copy sat at an identical 0.1.2 stamp with 0 of 15 modules matching and six
 //   missing outright, and both `doctor` and `install` called it current (ISS-8).
 export const MANIFEST_NAME = 'MANIFEST.json';
 
-// this list IS the vendored surface — a module added to src/ and left out here makes the
+// cm:guard this list IS the vendored surface — a module added to src/ and left out here makes the
 //   committed copy crash on import, and only in the consuming repo where nobody is watching
 export const MODULES = [
   'cli.mjs',
@@ -38,7 +38,7 @@ export const MODULES = [
   join('providers', 'ts.mjs'),
   join('providers', 'tsconfig.mjs'),
   join('providers', 'go.mjs'),
-  // the hook modules are vendored too, even though the plugin ships its own copy: the
+  // cm:why the hook modules are vendored too, even though the plugin ships its own copy: the
   //   vendored one WINS (see SHIM below), so a repo that has run `archmap install` must be able to
   //   answer a pre-write question with the same code its CI gate uses.
   join('hook', 'pre-edit.mjs'),
@@ -46,7 +46,7 @@ export const MODULES = [
   join('hook', 'resolve.mjs'),
 ];
 
-// the shim BOOTSTRAPS the entry point rather than exec'ing it, because ENTRY's try/catch is
+// cm:guard the shim BOOTSTRAPS the entry point rather than exec'ing it, because ENTRY's try/catch is
 //   the one thing that cannot wrap ENTRY's own failure to LOAD. Existence is not loadability: a
 //   merge conflict left in .forge/archmap/entry.mjs — mode 100644, committable, so unlike a FIFO or
 //   a directory it travels through a clone — gave node's raw SyntaxError at exit 1, this tool's code
@@ -54,26 +54,26 @@ export const MODULES = [
 //   conflict in any of the other 21 artifacts is already exit 2 (ENTRY's catch below), so entry.mjs
 //   was the one hole (ISS-8 review round 6). `chmod 000 entry.mjs` is the same crash by a second
 //   route, which is why readability is not tested separately: the import decides it.
-// the bootstrap lives INSIDE the shim, as the -e argument, so there is no further .mjs for
+// cm:guard the bootstrap lives INSIDE the shim, as the -e argument, so there is no further .mjs for
 //   a conflict marker to land in, and it replaces the exec rather than preceding it: measured 87 ms
 //   per `--version` with it and 87 ms without, over 30 runs. `node --check` before the exec reports
 //   the same states and costs ~50 ms more per invocation — ~16x the manifest basis this copy already
 //   pays — so it is refused.
-// stat-then-import, and `isFile()` rather than existsSync: handing node a FIFO at entry.mjs
+// cm:guard stat-then-import, and `isFile()` rather than existsSync: handing node a FIFO at entry.mjs
 //   is how the gate HANGS instead of reporting, and a stat never opens it. A directory or a missing
 //   file lands here too, so the shell no longer needs its own `-f` test.
-// the entry point sets `__archmapEntry` as its first statement and the catch RETHROWS when
+// cm:guard the entry point sets `__archmapEntry` as its first statement and the catch RETHROWS when
 //   it is set, because "could not load" must not swallow a crash from INSIDE a copy that loaded
 //   fine: main() throwing is a bug in this tool and still owes its stack at exit 1, not a re-vendor
 //   instruction for a copy that is intact.
-// argv[1] is `$d/entry.mjs` and never `$d`. selfDirs() reads dirname(realOf(argv[1])), so
+// cm:guard argv[1] is `$d/entry.mjs` and never `$d`. selfDirs() reads dirname(realOf(argv[1])), so
 //   handing the bootstrap the DIRECTORY resolves the running copy to `.forge` — which is not a copy,
 //   so selfCopy() returns null, the self-drift warning stops firing and round 4's blocker is
 //   silently un-done. The guard beside the shim asserts that warning still prints.
-// the message sanitises before printing, like every other print site of an untrusted path
+// cm:guard the message sanitises before printing, like every other print site of an untrusted path
 //   (displayPath): the path and node's error text both reach stderr, and a vendor directory whose
 //   name carries a newline would otherwise forge lines inside this copy's own remedy.
-// LOADED IS NOT RAN, and this one fails SILENTLY. An import that throws nothing proves only
+// cm:guard LOADED IS NOT RAN, and this one fails SILENTLY. An import that throws nothing proves only
 //   that node parsed the file — an entry.mjs truncated to 0 bytes, or to a comment, or to any
 //   statement boundary before the main() call, imports fine, so nothing threw, main() was never
 //   called and the shim exited 0 with ZERO stdout and ZERO stderr over a repo with a locked
@@ -117,29 +117,29 @@ d=$(dirname "$(readlink -f "$0")")
 exec node --input-type=module -e '${BOOTSTRAP}' "$d/entry.mjs" "$@"
 `;
 
-// the shim must exec an entry that CALLS main, never src/cli.mjs itself — cli.mjs only
+// cm:guard the shim must exec an entry that CALLS main, never src/cli.mjs itself — cli.mjs only
 //   exports it, so running the module directly prints nothing and exits 0: a silent fail-open that
 //   reads as a clean repo. Verified once by shipping it (a 0.06s "pass" on a 5s scan).
-// the import is GUARDED because a copy missing a module cannot reach main() at all — it
+// cm:guard the import is GUARDED because a copy missing a module cannot reach main() at all — it
 //   dies at import, and node exits 1 on an unhandled import failure. 1 is this tool's code for
 //   "violations found", so the one failure mode a drifted copy is most likely to have was reporting
 //   itself as a repo with problems, under an ERR_MODULE_NOT_FOUND stack trace. The gate could not
 //   run, which is exit 2 and nothing else. Measured on copies missing 6 of 15 modules (ISS-8).
-// the remedy has to be runnable BY WHOEVER READS IT. This message only ever prints from
+// cm:guard the remedy has to be runnable BY WHOEVER READS IT. This message only ever prints from
 //   the vendored copy, which cannot re-vendor itself (exit 2), and README blesses repos whose only
 //   archmap IS this copy — `archmap install --force` there resolves to the very binary that just
 //   failed to load, and the package is not published, so `npx` is not a fallback either. A remedy
 //   that names the one command the reader cannot run is a dead end (ISS-8 review round 2).
-// the marker is set FIRST and unconditionally — it is what tells the shim's bootstrap that
+// cm:guard the marker is set FIRST and unconditionally — it is what tells the shim's bootstrap that
 //   this file loaded, so a later throw is a crash to report and not a corrupt copy to re-vendor.
-// the import is not the only way a module can fail to deliver main: an EMPTY src/cli.mjs, or
+// cm:guard the import is not the only way a module can fail to deliver main: an EMPTY src/cli.mjs, or
 //   one that exports no `main`, imports without throwing, so this catch never fired and the call
 //   below raised a raw `TypeError: main is not a function` at exit 1 — "violations found" per SPEC
 //   §10.1, no remedy, and no drift warning either, since main() is what emits it. A missing module
 //   dies at IMPORT; an emptied one dies at USE, and lands on exactly the misclassification the
 //   catch below exists to prevent. Asserting the export inside the try routes it to that one
 //   handler rather than adding a second (ISS-8 review round 7).
-// the SECOND marker is set after the call, not before it: it is the bootstrap's proof that
+// cm:guard the SECOND marker is set after the call, not before it: it is the bootstrap's proof that
 //   main() actually ran, so setting it earlier would vouch for a gate that never started.
 const ENTRY = `#!/usr/bin/env node
 globalThis.__archmapEntry = true;
@@ -159,31 +159,31 @@ process.exitCode = main(process.argv);
 globalThis.__archmapRan = true;
 `;
 
-// the vendored copy is COMMITTED in the consuming repo, so git owns its line endings there
+// cm:guard the vendored copy is COMMITTED in the consuming repo, so git owns its line endings there
 //   — and with core.autocrlf on (the Windows default) a clone rewrites every file in this directory
 //   to CRLF, after which not one sha256 in MANIFEST.json matches. The whole copy reads `modified` on
 //   a tree nobody touched, each side re-vendors the other's work, forever. Measured on one commit:
 //   SPEC.md hashes 730fd0b7 as LF and 50de32d8 as CRLF. `-text` tells git to keep these bytes.
-// contract -> src/install.mjs — the counterpart is lf() below, which normalises what we
+// cm:edge contract -> src/install.mjs — the counterpart is lf() below, which normalises what we
 //   WRITE; this file is what stops something else changing it afterwards.
 const GITATTRIBUTES = `# Written by archmap install. ${MANIFEST_NAME}'s hashes are over these exact bytes,
 # so git must not translate line endings anywhere in this directory.
 * -text
 `;
 
-// the vendored copy MUST carry a @generated marker. archmap's own source is annotated, and
-//   those edge targets are relative to archmap's repo — unmarked, a consuming repo's codemap
+// cm:guard the vendored copy MUST carry a @generated marker. archmap's own source is annotated, and
+//   those cm:edge targets are relative to archmap's repo — unmarked, a consuming repo's codemap
 //   scans them and reports CM102 dangling edges against paths that were never meant to exist there.
-// IDEMPOTENT — stamping already-stamped text must not add a second marker. This used to
+// cm:guard IDEMPOTENT — stamping already-stamped text must not add a second marker. This used to
 //   prepend unconditionally, which was invisible until a copy was installed from itself: the bytes
 //   grew a marker per run, the manifest was computed over the doubled bytes, and the copy then
 //   self-attested "verified" while a source checkout reported all 16 artifacts modified. The
 //   self-install is refused outright below; this stays because a stamper that is not idempotent is a
 //   trap for whatever reads a stamped file next.
-// contract -> src/providers/ts.mjs — the annotations being escaped are in that file
+// cm:edge contract -> src/providers/ts.mjs — the annotations being escaped are in that file
 const MARKER_PREFIX = '// @generated by archmap ';
 
-// the version string is interpolated into a line inside all 15 vendored modules, so
+// cm:guard the version string is interpolated into a line inside all 15 vendored modules, so
 //   whatever can appear in it can appear in their bytes. npm semver cannot carry a newline, which is
 //   why this is defence in depth and not a live hole — but a `version` field is JSON someone edits,
 //   and one newline there would inject a line into every module this writes. Semver's own alphabet
@@ -205,7 +205,7 @@ function stamp(text) {
   return `${shebang}${marker}${body}`;
 }
 
-// every artifact is text, and the hash is over LF. See GITATTRIBUTES above for the failure
+// cm:guard every artifact is text, and the hash is over LF. See GITATTRIBUTES above for the failure
 //   this closes: without it a CRLF source checkout produces different hashes than an LF one for the
 //   same commit, so the COMMITTED manifest is not platform-deterministic and the two platforms
 //   report each other's vendored tree as fully modified.
@@ -217,10 +217,10 @@ function root() {
   return join(dirname(fileURLToPath(import.meta.url)), '..');
 }
 
-// the vendored copy has no package.json — it ships a VERSION stamp instead. Reading only
+// cm:guard the vendored copy has no package.json — it ships a VERSION stamp instead. Reading only
 //   package.json makes every verb crash there, and the crash surfaces in the consuming repo where
 //   nobody is watching. Verified once by shipping it: `archmap install` from .forge/archmap threw ENOENT.
-// an unreadable or unparseable stamp yields 'unknown', never a throw. This is called from
+// cm:guard an unreadable or unparseable stamp yields 'unknown', never a throw. This is called from
 //   `doctor`, from `graph`'s export document and from stamp() — a label on every one of them, and
 //   never the integrity signal (that is MANIFEST.json). `mkdir .forge/archmap/VERSION` used to make
 //   the vendored copy's own verbs die on EISDIR at exit 1, this tool's code for "violations found",
@@ -240,12 +240,12 @@ export function version() {
   return 'unknown';
 }
 
-// readFileSync on a FIFO BLOCKS FOREVER. There is no exception for a try/catch to catch and
+// cm:guard readFileSync on a FIFO BLOCKS FOREVER. There is no exception for a try/catch to catch and
 //   no timeout: the gate simply never returns, which is worse than any wrong answer it could give.
 //   So every read of a file inside a copy this process does not trust goes through here — regular
 //   files only, size-capped — and a stamp that is a pipe, a device, a directory or a gigabyte reads
 //   as absent instead (ISS-8 review round 2, minor).
-// ONE helper for every whole-file text read, because the hole was a read that simply did
+// cm:guard ONE helper for every whole-file text read, because the hole was a read that simply did
 //   not go through the type gate: auditManifest slurped MANIFEST.json with a bare readFileSync while
 //   its two neighbours (readSmall for VERSION, hashFile for the artifacts) were both gated, so
 //   `mkfifo .forge/archmap/MANIFEST.json` hung vendored `check` AND `doctor` forever (measured: exit
@@ -269,7 +269,7 @@ function readSmall(path) {
   }
 }
 
-// derived from WHERE THIS MODULE IS, never from files inside the tree being audited. This
+// cm:guard derived from WHERE THIS MODULE IS, never from files inside the tree being audited. This
 //   used to be "no package.json and a VERSION present", both read from the audited copy — so the
 //   audited copy owned the switch, in both directions, and each direction was a fail-open reached by
 //   editing one file (ISS-8 review round 2, findings 2 and 3). Reproduced: `rm .forge/archmap/VERSION`
@@ -278,7 +278,7 @@ function readSmall(path) {
 //   package.json made it false the other way, so the copy audited ITSELF as "this source tree".
 //   install() writes the copy to VENDOR_DIR and nowhere else, so where the code runs from is the
 //   evidence — but only when that path is compared as an IDENTITY, per the guard below.
-// the comparison is RESOLVED IDENTITY against the path this repo vendors to, never a
+// cm:guard the comparison is RESOLVED IDENTITY against the path this repo vendors to, never a
 //   suffix on the running copy's real path. `endsWith('/.forge/archmap')` answers "looks like the
 //   vendor dir", and a committed symlink is all it takes for the vendored copy's real path to be
 //   something else: `.forge/archmap -> vendor/archmap` (a real directory in the same repo, git mode
@@ -288,7 +288,7 @@ function readSmall(path) {
 //   realpaths a module specifier — which is why the entry point counts as a second identity: the
 //   shim always execs `<vendor>/entry.mjs`, and entry.mjs is an artifact install() writes there.
 //   The entry point comes FIRST, because it is the one candidate the audited tree cannot move.
-// "am I an installed copy" is answered WITHOUT the repo, because the self-integrity
+// cm:guard "am I an installed copy" is answered WITHOUT the repo, because the self-integrity
 //   question does not need one: it asks whether these bytes are the bytes their own manifest
 //   records. Three rounds tried to answer it via the repo — readable-off-the-tree, then a path
 //   suffix, then resolved identity with `<findRoot()>/.forge/archmap` — and the third failed the
@@ -319,7 +319,7 @@ function isSelfDir(dir) {
  * The resolved directory of the INSTALLED copy running now, or null when this is a source checkout.
  * The only tree this process can vouch for, and the only one it audits against a manifest.
  */
-// the marker is an artifact install() WRITES — MANIFEST.json, or the entry.mjs the shim
+// cm:guard the marker is an artifact install() WRITES — MANIFEST.json, or the entry.mjs the shim
 //   execs — never a shape of the path they sit at. Both are checked because either one alone is a
 //   fail-open: `rm MANIFEST.json` would silence the self-check on the manifest alone (this issue's
 //   own headline symptom is a missing artifact), and entry.mjs alone would miss a copy invoked as
@@ -336,7 +336,7 @@ export function selfCopy() {
  * Where the code running now sits relative to the repo it was pointed at. A LABEL and a choice of
  * remedy wording — it gates no check, which is the whole lesson of rounds 2 through 4.
  */
-// containment is decided BEFORE identity, because the vendor PATH resolving to this copy
+// cm:guard containment is decided BEFORE identity, because the vendor PATH resolving to this copy
 //   makes it "this repo's copy" by name while the copy itself lives outside the checkout — a
 //   committed `.forge/archmap -> /elsewhere` link is all it takes, and CI would then be executing
 //   code no reviewer of this repo ever saw.
@@ -360,13 +360,13 @@ function at(dir, rel) {
  * The same resolution for a rel that came off DISK — a MANIFEST.json key — returning null unless it
  * lands strictly inside `dir`.
  */
-// manifest keys are attacker-controlled paths, and this file is committed in the consuming
+// cm:guard manifest keys are attacker-controlled paths, and this file is committed in the consuming
 //   repo where a key can be edited by anyone who can open a PR. Unchecked, `join(dir, ...'../../..')`
 //   read files from OUTSIDE the vendor dir and reported them clean when the hash matched, and echoed
 //   `missing ../../../etc/shadow` to stdout: a file-existence and content-confirmation oracle, plus
 //   an EISDIR crash vector. Reproduced. Refusing to resolve is the whole fix — the key is still
 //   NAMED in the report (it is drift), but it is never read and its existence is never confirmed.
-// the lexical half above is NOT containment — a string in bounds can name an inode outside.
+// cm:guard the lexical half above is NOT containment — a string in bounds can name an inode outside.
 //   `ln -s /etc/passwd .forge/archmap/probe` (git mode 120000, so it travels with a clone) plus a
 //   matching hash for that key made `doctor` report the copy fully clean at exit 0, and a wrong hash
 //   made it print `modified probe`: the read-oracle this function exists to close, restored through a
@@ -410,7 +410,7 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-// nothing in the vendored surface is large — the biggest artifact is SPEC.md at tens of
+// cm:guard nothing in the vendored surface is large — the biggest artifact is SPEC.md at tens of
 //   kilobytes — and this hashing is on `check`'s and `graph`'s hot path in every consuming repo. A
 //   listed 1.5 GB file cost ~1.6 GB RSS and 6.5 s per invocation when the audit slurped whole files;
 //   a FIFO in the vendor dir hung the gate forever. So: regular files only, size-capped, streamed.
@@ -421,7 +421,7 @@ const HASH_CHUNK = 64 * 1024;
  * `{ hash, size }` for a regular file, or `null` when there is nothing hashable there — a
  * directory, a FIFO, a device, something too large to be an artifact, or a read that failed.
  */
-// a per-file answer, never a throw. One manifest key naming a DIRECTORY used to abort the
+// cm:guard a per-file answer, never a throw. One manifest key naming a DIRECTORY used to abort the
 //   whole audit into basis 'error', which masks every other drift line in the report — the copy's
 //   real defect hidden behind the tamper that came with it (ISS-8 review round 2, minor).
 function hashFile(path) {
@@ -454,7 +454,7 @@ function hashFile(path) {
   }
 }
 
-// a path printed from a MANIFEST.json key is untrusted TEXT, not just an untrusted path.
+// cm:guard a path printed from a MANIFEST.json key is untrusted TEXT, not just an untrusted path.
 //   safeAt refuses `..`, absolute, backslash and NUL — none of which is a newline, and the key was
 //   echoed raw: a key of "a\n  CLEAN — the vendored copy matches: 0 drift." rendered a forged,
 //   correctly indented CLEAN line INSIDE doctor's own DRIFT block (ISS-8 review round 2, finding 7).
@@ -466,7 +466,7 @@ export function displayPath(rel) {
 }
 
 function isExecutable(path) {
-  // on win32 `mode & 0o111` is always 0, so this test would report the shim as permanently
+  // cm:guard on win32 `mode & 0o111` is always 0, so this test would report the shim as permanently
   //   `modified` there — a DRIFT line no re-vendor can clear, which teaches the operator that this
   //   verb's output is noise. There is no +x bit to check on that platform.
   if (process.platform === 'win32') return true;
@@ -486,14 +486,14 @@ function realOf(p) {
   }
 }
 
-// the vendor dir itself must be a REAL directory before anything walks or writes it.
+// cm:guard the vendor dir itself must be a REAL directory before anything walks or writes it.
 //   readdirSync follows a symlink AT the walked path, so a committed symlink (git mode 120000 — it
 //   travels with a clone) at .forge/archmap made the delete-extras pass rmSync files outside the
 //   repo entirely, with no --force, because a symlinked dir never audits ok. Reproduced: install
 //   deleted PRECIOUS/id_rsa. writeFileSync follows one the same way. Symlinks INSIDE are already
 //   safe — readdirSync withFileTypes reports a symlink-to-dir as isDirectory() === false, so the
 //   walk never descends and only the link is unlinked.
-// containment is decided on the RESOLVED path, never on the last component alone. lstat
+// cm:guard containment is decided on the RESOLVED path, never on the last component alone. lstat
 //   here refuses a symlink AT .forge/archmap and says nothing whatever about the path it is reached
 //   THROUGH: with `.forge` itself a symlink, a plain `install` — no --force — wrote all 22 artifacts
 //   outside the repo and rmSync'd the files it found there (reproduced: id_rsa and deep/nested.txt
@@ -512,7 +512,7 @@ function assertRealDir(target, dir) {
   try {
     st = lstatSync(dir);
   } catch (e) {
-    // an ABSENT dir is not an error here: install() calls this before creating it, on
+    // cm:guard an ABSENT dir is not an error here: install() calls this before creating it, on
     //   purpose, so the ancestor check above runs on the fresh-install path too.
     if (e.code !== 'ENOENT') throw new InstallError(`cannot inspect ${dir}: ${e.message}`);
     return;
@@ -526,13 +526,13 @@ function assertRealDir(target, dir) {
   if (!st.isDirectory()) throw new InstallError(`${dir} exists and is not a directory`);
 }
 
-// the expected bytes have to come from a tree that is NOT the tree being written. root() IS
+// cm:guard the expected bytes have to come from a tree that is NOT the tree being written. root() IS
 //   .forge/archmap when this copy is the vendored one, so an unguarded install read its "expected"
 //   bytes out of the very copy it was about to overwrite — making the copy its own reference, which
 //   no audit can then fault. Reproduced end to end (markers 1 -> 2 per run, doctor self-attesting
 //   "verified" at exit 0 while a source checkout reported 16 modified). Reachable WITHOUT --force,
 //   because the audit-based early return no longer stops at a matching VERSION.
-// the second half no longer DEPENDS on the first. isVendored() used to be readable off the
+// cm:guard the second half no longer DEPENDS on the first. isVendored() used to be readable off the
 //   audited tree, so planting a package.json in the vendor dir made it false, this function was
 //   reached with dir === undefined, and the copy then recomputed its own "expected" bytes from
 //   root() — which IS the vendor dir — while printing "checked against this source tree" (ISS-8
@@ -555,7 +555,7 @@ function assertNotSelfReferential(dir) {
   }
 }
 
-// this walk is what makes an unlisted file count as drift, in both audits. The vendor dir
+// cm:guard this walk is what makes an unlisted file count as drift, in both audits. The vendor dir
 //   is machine-written, so a file the current version does not write is a stale artifact from an
 //   older one — still importable and still executable. That is the ISS-6 legacy-`arch`-shim hazard
 //   generalised: a CI line invoking a path this version stopped writing would keep passing over
@@ -570,7 +570,7 @@ function walkFiles(dir, base = '') {
   return out;
 }
 
-// ONE definition of what a vendored copy consists of, shared by the writer, auditSource()
+// cm:guard ONE definition of what a vendored copy consists of, shared by the writer, auditSource()
 //   AND auditManifest(). Two copies of "the bytes install() would write" is precisely how the
 //   expected and the actual drift apart — the failure this whole manifest exists to catch,
 //   reintroduced one level up. Every entry here is also a MANIFEST.json entry, so nothing can be
@@ -603,12 +603,12 @@ function expectedArtifacts(against) {
     else {
       const path = join(root(), a.from);
       try {
-        // the shared type gate, for the same reason it exists: a FIFO here would block
+        // cm:guard the shared type gate, for the same reason it exists: a FIFO here would block
         //   `install` and `doctor` forever with no error to report. An artifact is a regular file of
         //   a sane size or it is not an artifact.
         text = readCapped(path, MAX_ARTIFACT_BYTES);
       } catch (e) {
-        // a source tree missing one of its own artifacts is a gate that COULD NOT RUN. This
+        // cm:guard a source tree missing one of its own artifacts is a gate that COULD NOT RUN. This
         //   used to escape as a raw ENOENT and exit node 1 — from `doctor`, on the very copy it had
         //   just told the operator to repair.
         throw new InstallError(`cannot read ${a.from}: ${e.message}`);
@@ -619,7 +619,7 @@ function expectedArtifacts(against) {
   });
 }
 
-// sorted keys and POSIX separators are both load-bearing, not tidiness. This file is
+// cm:guard sorted keys and POSIX separators are both load-bearing, not tidiness. This file is
 //   COMMITTED in the consuming repo, so an insertion-ordered or backslash-separated manifest is
 //   permanent diff noise that differs per machine — and a manifest that differs per machine is a
 //   drift signal nobody can trust. Same class as the MODULES-basename bug (tests/run.mjs).
@@ -631,7 +631,7 @@ function manifestBytes(artifacts) {
   return Buffer.from(`${JSON.stringify(doc, null, 2)}\n`);
 }
 
-// two vantage points, two comparators, and the verdict names which one it had. From a source
+// cm:why two vantage points, two comparators, and the verdict names which one it had. From a source
 //   checkout both trees are in hand, so the expected bytes can be recomputed and nothing is
 //   invisible. A vendored copy running alone has no second tree and can only check itself against
 //   the manifest — which cannot see whether the SOURCE has moved on. That limitation is reported
@@ -641,7 +641,7 @@ function auditSource(dir, ver) {
   const expected = [...artifacts, { rel: MANIFEST_NAME, bytes: manifestBytes(artifacts) }];
   const drift = [];
   for (const a of expected) {
-    // resolved, not merely joined, even though these rels are the tool's own constants: a
+    // cm:guard resolved, not merely joined, even though these rels are the tool's own constants: a
     //   symlink at an intermediate component INSIDE the copy (`src` -> /etc) would otherwise make
     //   the source basis read and confirm files outside it too — the same oracle as a `..` key, on
     //   the trusted side of the same walk.
@@ -656,7 +656,7 @@ function auditSource(dir, ver) {
       drift.push({ path: a.rel, kind: 'modified' });
       continue;
     }
-    // a shim that lost +x is a real CI break no content hash can see — the bytes are
+    // cm:guard a shim that lost +x is a real CI break no content hash can see — the bytes are
     //   perfect and `.forge/archmap/archmap` still fails to exec.
     if (a.exec && !isExecutable(path)) drift.push({ path: a.rel, kind: 'modified' });
   }
@@ -665,7 +665,7 @@ function auditSource(dir, ver) {
   return { present: true, version: ver, basis: 'source', drift, ok: drift.length === 0 };
 }
 
-// the manifest gets its OWN cap, not MAX_SMALL_BYTES: it is 2029 bytes for 19 artifacts
+// cm:guard the manifest gets its OWN cap, not MAX_SMALL_BYTES: it is 2029 bytes for 19 artifacts
 //   today and grows one line per module, so a 4 KB ceiling would make a legitimately larger copy read
 //   as corrupt — a false drift verdict nobody can clear. It is a JSON index either way, so it has no
 //   business being megabytes; the cap is generous and still bounds the read.
@@ -675,20 +675,20 @@ function auditManifest(dir, ver) {
   let doc = null;
   let unreadable = 'absent';
   try {
-    // type-gated and capped like every other read of this untrusted directory — see
+    // cm:guard type-gated and capped like every other read of this untrusted directory — see
     //   readCapped(). A FIFO or a directory here throws a plain Error with no `code`, so it lands on
     //   the `corrupt` diagnosis below, which is the true one: something that is not a readable JSON
     //   file is sitting where the record belongs.
     doc = JSON.parse(readCapped(join(dir, MANIFEST_NAME), MAX_MANIFEST_BYTES));
   } catch (e) {
-    // "absent" and "unparseable" are DIFFERENT diagnoses and only one of them is about an
+    // cm:guard "absent" and "unparseable" are DIFFERENT diagnoses and only one of them is about an
     //   old release. Reporting a corrupt manifest as "vendored by a release before it existed" sent
     //   the reader looking for a version problem — while the trigger SPEC §10.5 itself names is a
     //   merge conflict in that very file, which is the other one (ISS-8 review round 2, minor).
     unreadable = e.code === 'ENOENT' ? 'absent' : 'corrupt';
   }
   if (!doc || typeof doc.files !== 'object' || doc.files === null) {
-    // fail CLOSED. A copy with no readable manifest is UNVERIFIABLE, never clean: "cannot
+    // cm:guard fail CLOSED. A copy with no readable manifest is UNVERIFIABLE, never clean: "cannot
     //   check" reading as "fine" is the exact fail-open ISS-8 is about. The cost is that every
     //   install written by a pre-manifest release reports non-clean until it re-vendors once, which
     //   is why the message names the one command that fixes it.
@@ -699,7 +699,7 @@ function auditManifest(dir, ver) {
   const surface = expectedRels();
   const declared = new Map(surface.map((a) => [a.rel, a]));
   const listed = new Set(Object.keys(doc.files));
-  // the walk's known set is built from the DECLARED surface alone — never from the manifest
+  // cm:guard the walk's known set is built from the DECLARED surface alone — never from the manifest
   //   — so no manifest line can whitelist a file. `known = listed ∪ …` let any key the manifest named
   //   suppress its own file's `extra` entry, so `src/backdoor.mjs` plus its correct hash (a
   //   union-merged MANIFEST conflict) read fully clean at exit 0 from the vendored vantage, with no
@@ -708,12 +708,12 @@ function auditManifest(dir, ver) {
 
   for (const rel of [...listed].sort()) {
     seen.add(rel);
-    // `invalid` is decided FIRST and is the more precise answer: a key that does not resolve
+    // cm:guard `invalid` is decided FIRST and is the more precise answer: a key that does not resolve
     //   inside the vendor dir is never read and nothing about its target is confirmed, which is a
     //   different (and worse) fact than naming a path this version does not vendor.
     const path = safeAt(dir, rel);
     if (path === null) { drift.push({ path: rel, kind: 'invalid' }); continue; }
-    // the cross-check runs in BOTH directions. `declared \ listed` below catches a manifest
+    // cm:guard the cross-check runs in BOTH directions. `declared \ listed` below catches a manifest
     //   with lines dropped; without this direction, `listed \ declared` — a manifest that names a
     //   path this version does not vendor — was never checked at all, though expectedRels() needs no
     //   source tree to answer it. SPEC §10.5 states the check as bidirectional; now it is.
@@ -724,13 +724,13 @@ function auditManifest(dir, ver) {
       continue;
     }
     if (got.hash !== doc.files[rel]) { drift.push({ path: rel, kind: 'modified' }); continue; }
-    // the exec flag comes off the shared surface, never a hardcoded `rel === 'archmap'`
+    // cm:guard the exec flag comes off the shared surface, never a hardcoded `rel === 'archmap'`
     //   test. A second comparator that names the file itself is the two-copies drift this file's
     //   artifactPlan() comment warns about, at the granularity of one bit.
     if (declared.get(rel).exec && !isExecutable(path)) drift.push({ path: rel, kind: 'modified' });
   }
 
-  // the manifest cannot be its own definition of complete. Iterating doc.files and building
+  // cm:guard the manifest cannot be its own definition of complete. Iterating doc.files and building
   //   `known` from those same keys made an artifact absent from BOTH disk and manifest neither
   //   `missing` nor `extra` — so deleting src/hook/pre-edit.mjs (the write gate itself) and its
   //   manifest line read as "verified", exit 0, at the ONLY vantage a consuming repo's CI has. That
@@ -747,7 +747,7 @@ function auditManifest(dir, ver) {
   return { present: true, version: ver, basis: 'manifest', drift, ok: drift.length === 0 };
 }
 
-// the ONE reader of a vendored VERSION stamp, and it cannot throw. `doctor` used to keep a
+// cm:guard the ONE reader of a vendored VERSION stamp, and it cannot throw. `doctor` used to keep a
 //   second, incidental read of the same file outside every guard, so `mkdir .forge/archmap/VERSION`
 //   sent a raw EISDIR stack out of `doctor` at exit 1 — the code this tool reads as "violations
 //   found" — for a verb that had not finished looking (ISS-8 review round 2, finding 6). Wrapping the
@@ -764,7 +764,7 @@ function stampAt(dir) {
  */
 export function auditVendored(target) {
   const dir = join(target, VENDOR_DIR);
-  // containment is decided BEFORE the absent check, not after it. existsSync follows
+  // cm:guard containment is decided BEFORE the absent check, not after it. existsSync follows
   //   symlinks, so with `.forge` a link out of the repo and nothing behind it yet, the vendor path
   //   read as an ordinary "absent" — a clean exit 0 and the advice to run `install`, for a repo
   //   where install then (correctly) refuses. "This path leaves the repo" is a thing the check
@@ -774,7 +774,7 @@ export function auditVendored(target) {
   if (!existsSync(dir)) {
     return { present: false, version: null, basis: 'none', why: 'absent', drift: [], ok: false };
   }
-  // the vantage is decided by IDENTITY with the directory being audited — "am I this copy?"
+  // cm:guard the vantage is decided by IDENTITY with the directory being audited — "am I this copy?"
   //   — and not by what the running path looks like. A source checkout that happens to sit at a path
   //   ending in .forge/archmap would otherwise downgrade itself to the weaker manifest basis.
   return guarded(() => (
@@ -786,18 +786,18 @@ export function auditVendored(target) {
  * The running vendored copy checking ITS OWN directory against its own manifest. `check` is what a
  * consuming repo's CI runs, so this is the only vantage point that gate ever has.
  */
-// the directory audited is the running copy's OWN resolved directory, and NOTHING about
+// cm:guard the directory audited is the running copy's OWN resolved directory, and NOTHING about
 //   any repo enters the choice. Every earlier shape asked the tree being checked where the running
 //   copy lives — `root()` (moved by a symlink inside the copy, round 3), then
 //   `<findRoot()>/.forge/archmap` (the wrong tree entirely whenever findRoot() answers with a repo
 //   that did not vendor this copy, round 4). selfCopy() resolves the entry point the launcher
 //   supplied, so the audited tree is the tree whose code is already executing.
-// containment needs no second tree either: the walk and every hash are bounded to `dir`
+// cm:guard containment needs no second tree either: the walk and every hash are bounded to `dir`
 //   itself by safeAt(), which resolves each manifest key and refuses anything landing outside it
 //   (round 2, finding 5). Reading the directory we are RUNNING FROM is not an escalation — its code
 //   is already loaded — so a copy that lives outside the repo is audited honestly rather than
 //   refused; that it is outside is said separately, by selfVantage() at the print site.
-// null, not a clean verdict, when this is not an installed copy at all. `ok: true` there
+// cm:guard null, not a clean verdict, when this is not an installed copy at all. `ok: true` there
 //   would be a source checkout claiming a self-check it never made.
 export function auditSelf() {
   const dir = selfCopy();
@@ -805,7 +805,7 @@ export function auditSelf() {
   return guarded(() => auditManifest(dir, stampAt(dir)));
 }
 
-// the audit now READS every file in the copy, on a path `check` and `graph` take on every
+// cm:guard the audit now READS every file in the copy, on a path `check` and `graph` take on every
 //   invocation — so it introduced I/O errors onto the gate. Unwrapped, an ordinary EACCES (a
 //   root-owned file in CI) or EISDIR escaped main() and node exited 1 = "violations found" for a
 //   check that merely could not run, and blanked stdout on the way out, breaking `graph --json`'s
@@ -821,7 +821,7 @@ function guarded(fn) {
 
 /** `[{kind:'missing'},{kind:'extra'}]` → `"1 missing, 1 extra"`, in a fixed order. */
 export function driftSummary(drift) {
-  // every kind the audits can emit is listed, or a drift of that kind counts toward `ok`
+  // cm:guard every kind the audits can emit is listed, or a drift of that kind counts toward `ok`
   //   being false while summarising as the empty string — a DRIFT block with no reason in it.
   const order = ['missing', 'modified', 'extra', 'unlisted', 'invalid', 'unreadable'];
   return order
@@ -835,7 +835,7 @@ export function driftSummary(drift) {
  * What the repo has committed versus what is running now. Skew is silent otherwise: editing the
  * source leaves the vendored copy stale, and CI keeps passing on the stale one.
  */
-// the label distinguishes all four vantages, because two of them used to print as "a
+// cm:guard the label distinguishes all four vantages, because two of them used to print as "a
 //   source checkout" while running a vendored copy: one where the repo checked is not the repo that
 //   vendored this copy, and one where the copy resolves outside the checkout entirely. Both then
 //   printed a remedy that copy refuses (ISS-8 review round 4, finding 1).
@@ -846,7 +846,7 @@ const FROM = {
   outside: 'an installed copy from outside this repo',
 };
 
-// `self` exists because `audit` is about a PATH IN THE REPO and says nothing whatever about
+// cm:guard `self` exists because `audit` is about a PATH IN THE REPO and says nothing whatever about
 //   the code producing the report whenever those two are not the same copy. From a nested root — or
 //   a monorepo root above the sub-project that vendored — doctor printed a clean exit 0 over a
 //   tampered running copy, because the only tree it audited was one the copy does not live in
@@ -868,13 +868,13 @@ export function doctor(target) {
 /**
  * The repair instruction, as lines, for the vantage point this process actually has.
  */
-// a remedy has to be runnable BY THE READER. Every drift line, the self-drift warning and
+// cm:guard a remedy has to be runnable BY THE READER. Every drift line, the self-drift warning and
 //   the vendored entry point all printed `archmap install --force` — which from a vendored copy is
 //   the one command that is refused (it cannot re-vendor itself, exit 2), in a repo README blesses
 //   as having no other archmap, for a package that is not published so `npx` is not a fallback
 //   either. A dead end printed at exactly the vantage that needs the fix (ISS-8 review round 2,
 //   finding 8). Where the message is printed decides which instruction is true.
-// the question is "can the copy READING this repair itself", which is about the reader and
+// cm:guard the question is "can the copy READING this repair itself", which is about the reader and
 //   not about any repo — so it takes no target. Deciding it from the repo sent the short form to a
 //   vendored copy twice: under a committed symlink at the vendor path (round 3, finding 1) and
 //   whenever findRoot() answered with a tree that did not vendor this copy (round 4, finding 1).
@@ -895,10 +895,10 @@ export function revendorRemedy() {
  */
 export function peerStatus(target) {
   const out = [];
-  // a peer is only "still needed" when its LANGUAGE is here. Telling a Go-only repo that a
+  // cm:guard a peer is only "still needed" when its LANGUAGE is here. Telling a Go-only repo that a
   //   TypeScript resolver is missing sends someone to install a dependency the project will never
   //   use, and teaches them that this tool's warnings are noise.
-  // contract -> src/providers/ts.mjs — same absence test as the provider's, and it must stay
+  // cm:edge contract -> src/providers/ts.mjs — same absence test as the provider's, and it must stay
   //   the same one: a peer reported missing where the provider self-skips is a contradiction.
   const languages = [
     ['dependency-cruiser', 'the TypeScript/JavaScript provider', existsSync(join(target, 'package.json'))],
@@ -919,24 +919,24 @@ export function peerStatus(target) {
 
 export function install(target, { force = false } = {}) {
   const dir = join(target, VENDOR_DIR);
-  // checked BEFORE the early return, so a vendored copy asked to re-vendor itself always
+  // cm:guard checked BEFORE the early return, so a vendored copy asked to re-vendor itself always
   //   says why instead of answering "already at 0.1.2" when it happens to be clean — and, more to
   //   the point, cannot fall through to the rewrite when it is not.
   assertNotSelfReferential(dir);
   const exists = existsSync(dir);
-  // the audit runs on the --force path too, so `doInstall` can say what was repaired there
+  // cm:guard the audit runs on the --force path too, so `doInstall` can say what was repaired there
   //   as well. --force is the command every drift message recommends, and it was the one path that
   //   rewrote the copy without ever naming what had been wrong with it.
   const before = exists ? auditVendored(target) : null;
   if (before && !force) {
-    // the up-to-date test is a CONTENT audit, not a version-string compare. The string
+    // cm:guard the up-to-date test is a CONTENT audit, not a version-string compare. The string
     //   compare that used to live here is what made a plain `archmap install` answer "already at
     //   0.1.2 — pass --force to rewrite" to a copy missing six of its fifteen modules: the one verb
     //   that repairs, refusing to, on the exact tree that needed it (ISS-8).
-    // the explicit legacy-`arch` test stays. It is now largely subsumed by `extra`, but
+    // cm:guard the explicit legacy-`arch` test stays. It is now largely subsumed by `extra`, but
     //   tests/run.mjs pins it and the redundancy costs nothing.
     if (before.ok && before.version === version() && !existsSync(join(dir, 'arch'))) {
-      // an UNCHANGED copy must still early-return. Rewriting on every invocation would
+      // cm:guard an UNCHANGED copy must still early-return. Rewriting on every invocation would
       //   churn the consuming repo's git status on a tree that was already correct — the
       //   counter-failure of making the audit the gate, pinned by a guard in tests/run.mjs.
       return {
@@ -950,7 +950,7 @@ export function install(target, { force = false } = {}) {
   const files = [];
   const removed = [];
   try {
-    // checked whether or not the dir EXISTS. `existsSync` follows symlinks, so with `.forge`
+    // cm:guard checked whether or not the dir EXISTS. `existsSync` follows symlinks, so with `.forge`
     //   a link to somewhere outside the repo and no `archmap` inside it yet, `exists` was false, this
     //   assertion was skipped entirely, and `mkdir -p` happily created the copy out there — the
     //   fresh-install half of finding 1. The check is on the resolved path, so it covers every
@@ -959,11 +959,11 @@ export function install(target, { force = false } = {}) {
     mkdirSync(dir, { recursive: true });
     const baseReal = resolveDeep(dir);
 
-    // the removals run BEFORE the writes, and that order is load-bearing: a symlink where a
+    // cm:guard the removals run BEFORE the writes, and that order is load-bearing: a symlink where a
     //   directory should be (say `src` -> /etc) is `extra` to the walk, so unlinking it first is what
     //   stops the write loop below writing THROUGH it. writeArtifact() covers the same hazard at an
     //   artifact's own path, which the walk cannot see because that path is a known one.
-    // the shim used to be named `arch` and is now `archmap`. Deleting the old one is LOUD
+    // cm:guard the shim used to be named `arch` and is now `archmap`. Deleting the old one is LOUD
     //   (doInstall prints it) rather than silent, and it is deleted rather than left in place: a
     //   stale `arch` shim keeps working from a frozen copy of src/, so a CI line still invoking it
     //   would keep passing on code the repo no longer ships. A break at the moment someone
@@ -974,7 +974,7 @@ export function install(target, { force = false } = {}) {
       removed.push(join(VENDOR_DIR, 'arch'));
     }
 
-    // the one destructive step here, deliberately narrow: files only, strictly under a
+    // cm:guard the one destructive step here, deliberately narrow: files only, strictly under a
     //   vendor dir asserted real above, only during a rewrite, and every one of them announced
     //   through `removed[]`. The legacy-shim precedent is the reasoning — whoever re-vendors is the
     //   only person who can fix a CI line still calling a path this version stopped writing, and
@@ -986,12 +986,12 @@ export function install(target, { force = false } = {}) {
       removed.push(join(VENDOR_DIR, ...rel.split('/')));
     }
 
-    // pruned HERE, before the writes, not after them — so a directory left EMPTY by the
+    // cm:guard pruned HERE, before the writes, not after them — so a directory left EMPTY by the
     //   removals above is gone before anything tries to write at its path. A directory sitting at an
     //   artifact's own path is invisible to those removals (that path is a known one) and made every
     //   `install --force` — the command each drift message recommends — die EISDIR at exit 2, run
     //   after run, with a hand `rm` the only way out (ISS-8 review round 2, minor).
-    // this is ONE OF TWO mechanisms and is not on its own load-bearing: writeArtifact()
+    // cm:guard this is ONE OF TWO mechanisms and is not on its own load-bearing: writeArtifact()
     //   below replaces anything that is not a plain file, which covers the same empty-directory case
     //   and is the only thing that covers a NON-empty one (pruneEmptyDirs removes empty dirs only).
     //   Reverting either alone leaves the suite green; reverting both fails the repair guard. Said
@@ -1001,7 +1001,7 @@ export function install(target, { force = false } = {}) {
 
     for (const a of artifacts) {
       const to = at(dir, a.rel);
-      // the parent is resolved BEFORE mkdir -p walks it: an intermediate symlink inside the
+      // cm:guard the parent is resolved BEFORE mkdir -p walks it: an intermediate symlink inside the
       //   copy (`src` -> /etc) would otherwise take both the mkdir and the write outside. The
       //   removals above unlink such a link first — this is the assertion that says so out loud.
       assertWritable(baseReal, dirname(to));
@@ -1011,13 +1011,13 @@ export function install(target, { force = false } = {}) {
       files.push(join(VENDOR_DIR, ...a.rel.split('/')));
     }
 
-    // written LAST and hashing the bytes actually written above, never a second computation
+    // cm:guard written LAST and hashing the bytes actually written above, never a second computation
     //   of what they should have been — a manifest that describes a different write than the one that
     //   happened is worse than none, because it reads as verified.
     writeArtifact(join(dir, MANIFEST_NAME), manifestBytes(artifacts), false);
     files.push(join(VENDOR_DIR, MANIFEST_NAME));
   } catch (e) {
-    // a write that fails is a step that COULD NOT RUN (exit 2), not a repo with violations
+    // cm:guard a write that fails is a step that COULD NOT RUN (exit 2), not a repo with violations
     //   (exit 1) and not a stack trace. Same mapping as the audits above.
     throw e instanceof InstallError ? e : new InstallError(`could not write ${dir}: ${e.message}`);
   }
@@ -1039,7 +1039,7 @@ function assertWritable(baseReal, p) {
   }
 }
 
-// the rule is REPLACE ANYTHING THAT IS NOT A PLAIN FILE, not a list of the kinds seen so
+// cm:guard the rule is REPLACE ANYTHING THAT IS NOT A PLAIN FILE, not a list of the kinds seen so
 //   far — every entry on that list was a separate bug and the list was never finished. writeFileSync
 //   follows a symlink (so an artifact path that is a committed link is a write to wherever it
 //   points), exits 2 forever on a directory (the command every drift message recommends, unable to
@@ -1056,7 +1056,7 @@ function writeArtifact(to, bytes, exec) {
   if (exec) chmodSync(to, 0o755);
 }
 
-// removing an `extra` file leaves its directory behind, and nothing would ever remove it
+// cm:guard removing an `extra` file leaves its directory behind, and nothing would ever remove it
 //   again — a permanent empty dir in the consuming repo's tree. Pruned rather than announced: an
 //   empty directory holds no code, so there is no CI line for anyone to fix.
 function pruneEmptyDirs(dir) {

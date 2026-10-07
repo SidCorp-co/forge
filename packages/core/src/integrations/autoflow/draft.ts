@@ -22,28 +22,40 @@ interface DraftRow {
   draft?: unknown;
 }
 
-export async function autoflowStorefrontDraft(
-  args: StorefrontTargetArgs & { workflowId: string },
-): Promise<StorefrontDraftReading> {
+/** The draft Autoflow holds now of each workflow named, every one from a single read of the site. */
+export async function autoflowStorefrontDrafts(
+  args: StorefrontTargetArgs & { workflowIds: readonly string[] },
+): Promise<Map<string, StorefrontDraftReading>> {
   const config = args.config as AutoflowConfig;
   const read = await autoflowLiveRead(args, config, DRAFTS_QUERY);
   if (!read.ok) {
-    return {
+    const refused: StorefrontDraftReading = {
       kind: 'unreadable',
       detail: `Autoflow site \`${config.shop ?? 'unnamed'}\` answered no draft: ${read.reason}`,
     };
+    return new Map(args.workflowIds.map((id) => [id, refused]));
   }
   const rows = (read.data.backendWorkflows as DraftRow[] | null) ?? [];
-  const row = rows.find((w) => w.id === args.workflowId);
-  if (!row) {
-    return {
-      kind: 'missing',
-      detail: `Autoflow site \`${config.shop ?? 'unnamed'}\` holds no workflow with id \`${args.workflowId}\` (it holds ${rows.length})`,
-    };
-  }
-  return {
-    kind: 'read',
-    draftVersion: autoflowDraftVersion(row.draft),
-    workflowCode: row.code ?? '',
-  };
+  return new Map(
+    args.workflowIds.map((workflowId): [string, StorefrontDraftReading] => {
+      const row = rows.find((w) => w.id === workflowId);
+      if (!row) {
+        return [
+          workflowId,
+          {
+            kind: 'missing',
+            detail: `Autoflow site \`${config.shop ?? 'unnamed'}\` holds no workflow with id \`${workflowId}\` (it holds ${rows.length})`,
+          },
+        ];
+      }
+      return [
+        workflowId,
+        {
+          kind: 'read',
+          draftVersion: autoflowDraftVersion(row.draft),
+          workflowCode: row.code ?? '',
+        },
+      ];
+    }),
+  );
 }

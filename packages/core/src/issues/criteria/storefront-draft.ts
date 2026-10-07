@@ -2,7 +2,7 @@ import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts
 import {
   type IssueProjectDocument,
   readProjectDocument,
-  readStorefrontDraft,
+  readStorefrontDrafts,
   type StorefrontDraftReading,
 } from '../ports.js';
 import type { CriterionWithVerdict } from './store.js';
@@ -15,10 +15,11 @@ interface DraftCorroboration {
   readonly note: string | null;
 }
 
+/** The draft the project's storefront source holds now of each workflow named, read once for all. */
 export type DraftReader = (
   document: IssueProjectDocument | null,
-  workflowId: string,
-) => Promise<StorefrontDraftReading>;
+  workflowIds: readonly string[],
+) => Promise<Map<string, StorefrontDraftReading>>;
 
 export function environmentFault(
   criterion: number,
@@ -50,21 +51,24 @@ export function corroborationOf(
   };
 }
 
-export const readSourceDraft: DraftReader = async (document, workflowId) => {
+export const readSourceDrafts: DraftReader = async (document, workflowIds) => {
+  const every = (detail: string) =>
+    new Map(
+      workflowIds.map((id): [string, StorefrontDraftReading] => [
+        id,
+        { kind: 'unreadable', detail },
+      ]),
+    );
   if (!document) {
-    return {
-      kind: 'unreadable',
-      detail: 'this project declares no project document, so it names no storefront source',
-    };
+    return every('this project declares no project document, so it names no storefront source');
   }
   const storefront = document.source.type === 'storefront' ? document.source.storefront : undefined;
   if (!storefront) {
-    return {
-      kind: 'unreadable',
-      detail: `this project's source is \`${document.source.type}\`, not a storefront: no provider holds a draft of its work for core to read`,
-    };
+    return every(
+      `this project's source is \`${document.source.type}\`, not a storefront: no provider holds a draft of its work for core to read`,
+    );
   }
-  return readStorefrontDraft({ ...storefront, workflowId });
+  return readStorefrontDrafts({ ...storefront, workflowIds });
 };
 
 interface DraftReading {
@@ -93,19 +97,18 @@ function currentDraftReading(
 export type CurrentDrafts = (judged: { workflowId: string; draftVersion: string }) => DraftReading;
 
 // a stored corroboration is what the source held when the verdict was written; every
-// reader and every gate reads the draft the source holds now instead, once per workflow, so a
-// moved draft reads superseded and an unreadable one uncorroborated, never the word stored (FB-56)
+// reader and every gate reads the drafts the source holds now instead, in one read for every
+// workflow named, so a moved draft reads superseded and an unreadable one uncorroborated, never
+// the word stored (FB-56)
 export async function readCurrentDrafts(
   projectId: string,
   workflowIds: readonly string[],
-  readDraft: DraftReader = readSourceDraft,
+  readDraft: DraftReader = readSourceDrafts,
 ): Promise<CurrentDrafts> {
-  const readings = new Map<string, StorefrontDraftReading>();
+  let readings = new Map<string, StorefrontDraftReading>();
   if (workflowIds.length > 0) {
     const document = (await readProjectDocument(projectId))?.document ?? null;
-    for (const workflowId of new Set(workflowIds)) {
-      readings.set(workflowId, await readDraft(document, workflowId));
-    }
+    readings = await readDraft(document, [...new Set(workflowIds)]);
   }
   return (judged) =>
     currentDraftReading(
@@ -136,7 +139,7 @@ export const NO_DRAFTS_READ: CurrentDrafts = (judged) =>
 export async function withCurrentDrafts(
   projectId: string,
   criteria: readonly CriterionWithVerdict[],
-  readDraft: DraftReader = readSourceDraft,
+  readDraft: DraftReader = readSourceDrafts,
 ): Promise<CriterionWithVerdict[]> {
   const workflowIds = draftWorkflowIds(criteria);
   if (workflowIds.length === 0) return [...criteria];

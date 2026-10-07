@@ -7,8 +7,9 @@
 // to the related issue — ISS-331).
 
 import type { IssueMove } from "@forge/contracts/issue-machine";
+import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import { type ComponentProps, useId } from "react";
-import { Avatar, Button, EnumBadge, MonoTag, Stat, StatusBadge, StatusChip } from "@/design";
+import { Avatar, Button, enumLabel, MonoTag, type SelectOption, Stat, StatusBadge, StatusChip } from "@/design";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
 import { etaOfForecast } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
@@ -19,7 +20,7 @@ import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -32,6 +33,20 @@ import type {
   LandingShape,
   MergeMarkKind,
 } from "../types";
+
+// one option per word the category takes in practice: `documentation` and `tests` read as `docs` and `test`
+const CATEGORY_VALUES = Object.entries(ISSUE_CATEGORY_LABELS)
+  .filter(([, label], i, all) => all.findIndex(([, l]) => l === label) === i)
+  .map(([value]) => value);
+
+/** The categories offered, the issue's own first when it is a word outside the usual ones. */
+function categoryOptions(current: string | null, language: string, notSet: string): SelectOption[] {
+  const values = current && !CATEGORY_VALUES.includes(current) ? [current, ...CATEGORY_VALUES] : CATEGORY_VALUES;
+  return [
+    { value: "", label: notSet },
+    ...values.map((value) => ({ value, label: enumLabel("category", value, language) })),
+  ];
+}
 
 /** Total tokens an issue consumed across every session, compacted for the rail
  * (`2.4M`, `340K`). Sums input + output + cache (read/creation) — the full
@@ -191,7 +206,11 @@ interface PropertiesRailProps {
   pending: boolean;
   /** The reader holds no write on this project: the fields say so rather than grey out silently. */
   readOnly?: boolean | undefined;
-  onPatch: (body: { priority?: IssuePriority; complexity?: IssueComplexity | null }) => void;
+  onPatch: (body: {
+    priority?: IssuePriority;
+    complexity?: IssueComplexity | null;
+    category?: string | null;
+  }) => void;
   onTransition: (toStatus: IssueStatus) => void;
   /** Open the module picker. Absent for a reader who cannot write. */
   onEditModules?: (() => void) | undefined;
@@ -217,6 +236,7 @@ export function PropertiesRail({
   park,
   moves,
 }: PropertiesRailProps) {
+  const language = useInterfaceLanguage();
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const clock = useEtaClock();
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
@@ -300,6 +320,17 @@ export function PropertiesRail({
           className="w-36"
         />
       </Row>
+      <Row label={t("issues.category.label")}>
+        <InlineSelect
+          ariaLabel={t("issues.category.label")}
+          value={issue.category ?? ""}
+          options={categoryOptions(issue.category ?? null, language, t("issues.category.notSet"))}
+          disabled={pending}
+          refusal={refusal}
+          onCommit={(c) => onPatch({ category: c === "" ? null : c })}
+          className="w-36"
+        />
+      </Row>
       <Row label={t("issues.field.creator")}>
         <div className="flex items-center justify-end gap-2">
           <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
@@ -308,11 +339,6 @@ export function PropertiesRail({
           </span>
         </div>
       </Row>
-      {issue.category && (
-        <Row label={t("issues.field.category")}>
-          <EnumBadge family="category" value={issue.category} />
-        </Row>
-      )}
       {hasModule && (
         <Row label={t("issues.field.module")}>
           <div className="flex flex-wrap items-center justify-end gap-1.5">

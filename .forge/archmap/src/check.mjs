@@ -7,19 +7,19 @@ import { VENDOR_DIR } from './install.mjs';
 import * as ts from './providers/ts.mjs';
 import * as go from './providers/go.mjs';
 
-// the collect -> evaluate -> report pipeline lives HERE rather than in cli.mjs, where it
+// cm:why the collect -> evaluate -> report pipeline lives HERE rather than in cli.mjs, where it
 //   started: the pre-write hook has to reach the same verdict the CI gate would. A hook that
 //   denies on rules CI does not enforce (or misses ones it does) is worse than no hook, and two
 //   copies of this sequence is exactly how that drift happens.
-// lockstep -> src/install.mjs — every provider here must also be in MODULES, or the
+// cm:edge lockstep -> src/install.mjs — every provider here must also be in MODULES, or the
 //   vendored copy crashes on import and the gate cannot run at all.
 export const PROVIDERS = { ts, go };
 
-// excluded unconditionally, never through the manifest's own `exclude` — a repo onboarded
+// cm:guard excluded unconditionally, never through the manifest's own `exclude` — a repo onboarded
 //   by an older release carries that list frozen in its file, and would then scan the vendored copy
 export const VENDOR_GLOB = `**/${VENDOR_DIR.split('/').join('/')}/**`;
 
-// reads BOTH shapes and must keep doing so. `frozen` was an array of keys before counted
+// cm:guard reads BOTH shapes and must keep doing so. `frozen` was an array of keys before counted
 //   entries existed, and a repo onboarded by an older release still carries one; dropping array
 //   support would silently unfreeze every entry it holds and turn a locked contract's whole debt
 //   into fresh blocking violations on nothing but a tool upgrade.
@@ -38,10 +38,10 @@ export function loadBaseline(root) {
   }
 }
 
-// the baseline key is the normalised EDGE, never file:line or a text hash — renaming a file,
+// cm:why the baseline key is the normalised EDGE, never file:line or a text hash — renaming a file,
 //   moving code and reformatting must all be free. A line-keyed baseline unfreezes wholesale on
 //   the first reflow, which is the failure this key shape exists to avoid.
-// fan-out keys by PATH and carries its count separately, because its `edge` string embeds
+// cm:guard fan-out keys by PATH and carries its count separately, because its `edge` string embeds
 //   the module count — `index.ts -> 48 modules`. Keyed on that, splitting the blob down to 47
 //   produces a key the baseline does not hold and the build fails for the improvement. Every other
 //   contract type has a count-free edge and stores null.
@@ -54,7 +54,7 @@ export function baselineValue(f) {
   return typeof f.count === 'number' ? f.count : null;
 }
 
-// a frozen entry covers a finding only while it has not got WORSE. Present-with-null is
+// cm:guard a frozen entry covers a finding only while it has not got WORSE. Present-with-null is
 //   "this violation existed", which is all an edge-shaped contract can say; a counted one also has
 //   to stay at or below what was frozen, or `locked` would mean "no new files" rather than "no new
 //   violations" and a blob could grow without limit inside its own entry.
@@ -67,7 +67,7 @@ function isFrozen(baseline, f) {
   return now === null || now <= was;
 }
 
-// `timeoutMs` is a WALL-CLOCK budget for the whole collection, not a per-provider one. The
+// cm:guard `timeoutMs` is a WALL-CLOCK budget for the whole collection, not a per-provider one. The
 //   pre-write hook lives under a client-side timeout that kills it dead — no output at all, which is
 //   the one outcome the hook's cannot-run contract says must never happen. Handing the full budget
 //   to each provider in turn (and, inside the ts provider, to each cruise) is how N providers turn a
@@ -78,7 +78,7 @@ export function collectGraph(manifest, roots, { timeoutMs } = {}) {
   const remaining = () => (deadline === null ? undefined : Math.max(1, deadline - Date.now()));
   const results = [];
   const failures = [];
-  // a provider's notes are surfaced even when it FAILED — "the synthesized tsconfig produced
+  // cm:why a provider's notes are surfaced even when it FAILED — "the synthesized tsconfig produced
   //   no output" is exactly the line that explains an otherwise inexplicable graph, and dropping it
   //   on the failure path hides the diagnosis in the one case that needs it.
   const notes = [];
@@ -128,7 +128,7 @@ export function buildReport(manifest, graph, baseline, { failures = [], notes = 
     blocking,
     advisory,
     frozen,
-    // absent is separate from blocking/advisory and `ok` ignores it on purpose (SPEC §3),
+    // cm:why absent is separate from blocking/advisory and `ok` ignores it on purpose (SPEC §3),
     //   but it is COUNTED — an unevaluated-looking zero is what ISS-2 removed.
     absent,
     absentCount: absent.length,

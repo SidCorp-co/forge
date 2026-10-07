@@ -26,11 +26,16 @@
  * the issue's notice names that box-read evidence: the box, its checkout, origin and both shas. The
  * declaring-commits path stays host-only: it reads ranges of commit messages, which no box serves.
  *
+ * A row a release that ended unshipped still claims is read too: a run that failed after it
+ * deployed holds its roster at the release step for a person, and a later release holding the row's
+ * commit is that person's answer. It is closed against that later release; a row no shipped release
+ * holds stays claimed by the ended run, at its release step, exactly as it was.
+ *
  * Anything the repository cannot answer is a refusal by name and writes nothing: the issue takes
  * today's path, and a version is never inferred from a commit that could not be placed.
  */
 
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
@@ -39,7 +44,13 @@ import {
   type SourceHost,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
-import { accountActor, claimIssuesForRelease, mergeMarkKindOf } from '../issues/index.js';
+import {
+  accountActor,
+  claimIssuesForRelease,
+  heldByEndedRelease,
+  mergeMarkKindOf,
+  returnTakenClaims,
+} from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRoster } from './finish.js';
@@ -67,6 +78,8 @@ interface ClosedEarlier {
   evidence: string;
   /** Who read the ancestry that placed it; absent where the declaring commits placed it. */
   witness?: Witness;
+  /** The version of the release that claimed it and ended without shipping, where one held it. */
+  heldBy?: string;
 }
 
 /**
@@ -132,7 +145,13 @@ interface Candidate {
   sha: string | null;
 }
 
-/** The waiting, unclaimed rows an earlier release could have shipped: observed and asserted marks. */
+/**
+ * The waiting rows an earlier release could have shipped, observed and asserted marks: unclaimed,
+ * or still claimed by a release that ended without shipping (`heldByEndedRelease`). A run that
+ * failed after it deployed keeps its roster for a person because the code may be live; a later
+ * release verified serving a commit that holds the row's is what settles that, so the row is read
+ * here like any other. A row a release still at work holds is never read.
+ */
 async function candidatesOf(projectId: string, issueIds: readonly string[]): Promise<Candidate[]> {
   if (issueIds.length === 0) return [];
   const rows = await db
@@ -151,7 +170,7 @@ async function candidatesOf(projectId: string, issueIds: readonly string[]): Pro
         eq(issues.projectId, projectId),
         inArray(issues.id, [...issueIds]),
         eq(issues.status, RELEASE_GATE_STATUS),
-        isNull(issues.releaseBatchRunId),
+        or(isNull(issues.releaseBatchRunId), heldByEndedRelease(sql`${issues.releaseBatchRunId}`)),
       ),
     );
   return rows.flatMap((r): Candidate[] => {
@@ -230,8 +249,11 @@ async function claimedCommits(issueIds: readonly string[]): Promise<Map<string, 
 
 /** The comment the issue carries, naming what the record shows. */
 function noticeFor(found: ClosedEarlier): string {
+  const when = found.heldBy
+    ? `while release ${found.heldBy}, which claimed it, ended without shipping and held it for a person`
+    : 'before this issue reached `awaiting_release`';
   return (
-    `Shipped in ${found.version} before this issue reached \`awaiting_release\`: ${found.evidence}. ` +
+    `Shipped in ${found.version} ${when}: ${found.evidence}. ` +
     `It is closed against that release, which was verified serving \`${found.commit}\`, and no ` +
     `later release carries it. It adds no changelog fragment of its own: its notes belong to ${found.version}.`
   );
@@ -355,17 +377,18 @@ export async function closeShippedEarlier(
   const closed: ClosedEarlier[] = [];
   const actor = await actorFor(projectId, args.userId);
   for (const { release, rows } of byRelease.values()) {
-    const claimed = new Set(
-      (
-        await claimIssuesForRelease({
-          projectId,
-          issueIds: rows.map((r) => r.id),
-          gateStatus: RELEASE_GATE_STATUS,
-          runId: release.runId,
-        })
-      ).map((c) => c.id),
-    );
+    const took = await claimIssuesForRelease({
+      projectId,
+      issueIds: rows.map((r) => r.id),
+      gateStatus: RELEASE_GATE_STATUS,
+      runId: release.runId,
+      fromEndedRelease: true,
+    });
+    const claimed = new Set(took.map((c) => c.id));
+    const fromEnded = took.flatMap((c) => (c.heldBy ? [{ id: c.id, heldBy: c.heldBy }] : []));
     try {
+      const endedVersion = await versionsOf(fromEnded.map((c) => c.heldBy));
+      const heldBy = new Map(fromEnded.map((c) => [c.id, endedVersion.get(c.heldBy) ?? c.heldBy]));
       const outcome = await closeRoster(
         rows.filter((r) => claimed.has(r.id)).map((r) => ({ ...r, projectId })),
         release.runId,
@@ -374,6 +397,7 @@ export async function closeShippedEarlier(
       );
       for (const id of outcome.closed) {
         const placed = placement.get(id);
+        const ended = heldBy.get(id);
         const found: ClosedEarlier = {
           issueId: id,
           version: release.version,
@@ -381,6 +405,7 @@ export async function closeShippedEarlier(
           commit: release.commit,
           evidence: placed?.evidence ?? 'a release holds its commits',
           ...(placed?.witness ? { witness: placed.witness } : {}),
+          ...(ended ? { heldBy: ended } : {}),
         };
         closed.push(found);
         if (args.userId) {
@@ -410,8 +435,17 @@ export async function closeShippedEarlier(
         });
       }
     } finally {
-      // The claim was a lock for this write only: a row that did not close must not stay claimed.
-      await db.transaction((tx) => releaseClaims(tx, release.runId));
+      // The claim was a lock for this write only: a row that did not close must not stay claimed by
+      // this release. One taken from a release that ended unshipped goes back to it, held as before.
+      // Only what this pass took is let go: another pass may hold rows on the same release.
+      await db.transaction(async (tx) => {
+        await returnTakenClaims(tx, release.runId, fromEnded);
+        await releaseClaims(
+          tx,
+          release.runId,
+          took.map((c) => c.id),
+        );
+      });
     }
   }
 
@@ -427,6 +461,16 @@ export async function closeShippedEarlier(
     );
   }
   return { closed, unresolved };
+}
+
+/** The version each release run wears, by run id. */
+async function versionsOf(runIds: readonly string[]): Promise<Map<string, string>> {
+  if (runIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(inArray(pipelineRuns.id, [...new Set(runIds)]));
+  return new Map(rows.flatMap((r) => (r.version ? [[r.id, r.version] as const] : [])));
 }
 
 async function actorFor(projectId: string, userId: string | null) {

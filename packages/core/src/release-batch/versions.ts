@@ -29,10 +29,17 @@ export async function attemptsOf(runIds: readonly string[]): Promise<ReleaseAtte
     .orderBy(asc(releaseAttempts.startedAt), asc(releaseAttempts.id));
 }
 
-export const issueIdsOf = (meta: Record<string, unknown>): string[] =>
-  Array.isArray(meta.issueIds)
-    ? meta.issueIds.filter((x): x is string => typeof x === 'string')
-    : [];
+const idsIn = (list: unknown): string[] =>
+  Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
+
+/**
+ * The issues a release carries: the roster it was cut with, then each it closed afterwards
+ * (`metadata.rosterClosed`) — the row an earlier release's commit shipped, closed against it by
+ * `shipped-earlier.ts`, is that release's, though it was never on its roster.
+ */
+export const issueIdsOf = (meta: Record<string, unknown>): string[] => [
+  ...new Set([...idsIn(meta.issueIds), ...idsIn(meta.rosterClosed)]),
+];
 
 // a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run was aborted or failed
 // on a project that requires approval, an open run nobody has asked for approval yet waits on it too: no production act is taken before one

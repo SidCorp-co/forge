@@ -4,8 +4,8 @@
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { fakeCore, renderWithQuery } from "@/test/render";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 import type { CommentNode } from "../types";
 import { CommentThread } from "./comment-thread";
 
@@ -70,6 +70,36 @@ describe("recording a decision on an issue", () => {
     await user.click(within(box).getByRole("button", { name: "Record decision" }));
     expect(await within(box).findByRole("alert")).toHaveTextContent("only a person may record a decision");
     expect(within(box).getByRole("textbox", { name: "Decision" })).toHaveValue("ship it");
+  });
+});
+
+// HOP ISS-120 and ISS-67 (dev, 2026-10-07): a decision sent while dev answered slowly was lost when the
+// page closed three seconds later, before core had read the request. The request outlives the page,
+// and leaving while it is in flight asks first.
+describe("a decision still being recorded", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function sendHeld() {
+    fakeCore(() => HANG);
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    const { user, box } = await openDecisionMode();
+    await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship it");
+    await user.type(within(box).getByRole("textbox", { name: "Reason" }), "because");
+    await user.click(within(box).getByRole("button", { name: "Record decision" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+  }
+
+  it("is sent as a request that outlives the page", async () => {
+    await sendHeld();
+    const init = vi.mocked(fetch).mock.calls[0]?.[1];
+    expect(init?.keepalive).toBe(true);
+  });
+
+  it("asks before the page is left while it is in flight", async () => {
+    await sendHeld();
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    expect(leaving.defaultPrevented).toBe(true);
   });
 });
 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
 import { type PickableTarget, TargetPicker } from "./target-picker";
@@ -36,6 +37,7 @@ export function FeedbackForm({
   const create = useCreateFeedback(projectId);
   const promote = usePromoteFeedback(projectId);
   const write = agentReport ? promote : create;
+  const submitting = useSubmitGuard();
   const [kind, setKind] = useState<FeedbackKind>(draft.kind);
   const [severity, setSeverity] = useState<FeedbackSeverity>(draft.severity);
   const [targetType, setTargetType] = useState<PickableTarget>(draft.targetType);
@@ -55,8 +57,10 @@ export function FeedbackForm({
           ...(body.trim() ? { body } : {}),
           [targetType]: target.trim(),
         };
-        if (agentReport) promote.mutate({ ...request, agentReport }, { onSuccess: (r) => onDone(r.feedback.key) });
-        else create.mutate(request, { onSuccess: (r) => onDone(r.feedback.key) });
+        if (!submitting.claim()) return;
+        const settle = { onSuccess: (r: { feedback: { key: string } }) => onDone(r.feedback.key), onSettled: submitting.release };
+        if (agentReport) promote.mutate({ ...request, agentReport }, settle);
+        else create.mutate(request, settle);
       }}
     >
       <Field label={t("feedback.form.title")} required>
@@ -90,7 +94,7 @@ export function FeedbackForm({
         <Button type="submit" variant="primary" size="sm" loading={write.isPending} disabled={!title.trim() || !target.trim()}>
           {agentReport ? t("feedback.form.promote") : t("feedback.form.send")}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")} disabled={write.isPending}>
           {t("feedback.form.cancel")}
         </Button>
       </div>
