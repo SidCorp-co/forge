@@ -134,8 +134,14 @@ mod tests {
     #[test]
     fn sessions_are_read_under_any_locale() {
         if !cfg!(unix) || Command::new("tmux").arg("-V").output().is_err() {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "FORGE_TEST_REQUIRE_TMUX, whether this test run promised a tmux; test only"
+            )]
+            let promised =
+                std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty());
             assert!(
-                !std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty()),
+                !promised,
                 "tmux is not installed here, and FORGE_TEST_REQUIRE_TMUX promised this run one"
             );
             eprintln!("skipped: tmux is not installed here");
@@ -146,6 +152,10 @@ mod tests {
         let sock = dir.join("t.sock");
         let tmux = |locale: Option<&str>| {
             let mut c = Command::new("tmux");
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "the test hands its tmux this process's PATH"
+            )]
             c.env_clear()
                 .env("PATH", std::env::var_os("PATH").unwrap_or_default())
                 .env("HOME", dir)

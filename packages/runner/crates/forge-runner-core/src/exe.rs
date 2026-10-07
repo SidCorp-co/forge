@@ -77,6 +77,10 @@ pub fn is_runnable(path: &Path) -> bool {
 /// `PATH` may hold a relative or empty entry, which resolves against whoever is
 /// running rather than against the daemon that wrote it. A path that names one
 /// file here and another there is this issue over again (consult ae035c F1).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the PATH a binary is resolved on"
+)]
 pub fn on_path(name: &str) -> Option<PathBuf> {
     on_path_in(std::env::split_paths(&std::env::var_os("PATH")?), name)
 }

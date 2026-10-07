@@ -19,6 +19,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if let Some(kept) = forge_runner_core::update::probation::at_start() {
         use forge_runner_core::daemon::handover::{replace_image, LISTENER_ENV};
         let rest: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the listener a replaced image handed on, by its variable"
+        )]
         let listener = std::env::var(LISTENER_ENV)
             .ok()
             .and_then(|v| v.parse::<i64>().ok());

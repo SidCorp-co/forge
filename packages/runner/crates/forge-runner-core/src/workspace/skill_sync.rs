@@ -270,6 +270,10 @@ fn sync_one_skill_locked(
 /// is unavailable, we fall back to `None` (unknown status) rather than
 /// claiming `synced` falsely.
 fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "~/.claude/skills, read by detect_user_shadow"
+    )]
     let shadow = dirs_next::home_dir()?
         .join(".claude")
         .join("skills")

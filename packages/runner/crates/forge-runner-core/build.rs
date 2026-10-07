@@ -12,10 +12,18 @@
 // the truth about it: it is not a published build and core will not call it
 // current.
 fn main() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the target triple cargo hands this build script, stamped into the binary"
+    )]
     let target = std::env::var("TARGET").unwrap_or_default();
     println!("cargo:rustc-env=FORGE_RUNNER_TARGET={target}");
 
     println!("cargo:rerun-if-env-changed=FORGE_RUNNER_VERSION");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the package version cargo hands this build script, where no release stamped one"
+    )]
     let version = stamped("FORGE_RUNNER_VERSION")
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
     println!("cargo:rustc-env=FORGE_RUNNER_VERSION={version}");
@@ -25,6 +33,10 @@ fn main() {
     println!("cargo:rustc-env=FORGE_RUNNER_COMMIT={commit}");
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a FORGE_RUNNER_* stamp the release build sets, read by name"
+)]
 fn stamped(key: &str) -> Option<String> {
     std::env::var(key).ok().and_then(|v| {
         let v = v.trim().to_string();

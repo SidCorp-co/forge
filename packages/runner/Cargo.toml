@@ -2,6 +2,11 @@
 resolver = "2"
 members = ["crates/forge-runner-core", "crates/forge-runner"]
 
+# Every route to a directory the OS names for the user is refused outside an admission, by
+# clippy.toml's list (ISS-1344).
+[workspace.lints.clippy]
+disallowed_methods = "deny"
+
 [workspace.package]
 version = "0.17.0"
 edition = "2021"

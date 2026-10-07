@@ -50,6 +50,10 @@ pub fn default_device_name() -> String {
 /// resolves (e.g. macOS) — the server then keeps its legacy always-insert
 /// pairing behaviour.
 pub fn machine_id() -> Option<String> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "FORGE_RUNNER_MACHINE_ID, an operator override of the machine id"
+    )]
     if let Ok(v) = std::env::var("FORGE_RUNNER_MACHINE_ID") {
         let v = v.trim();
         if !v.is_empty() {

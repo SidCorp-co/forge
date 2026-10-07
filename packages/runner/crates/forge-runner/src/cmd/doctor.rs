@@ -36,6 +36,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     failed |= !check_bin("git", "git");
     failed |= !check_bin("tmux", "tmux (hosts the master session)");
 
+    #[expect(clippy::disallowed_methods, reason = "reads the config")]
     let cfg_path = Config::path()?;
     if cfg_path.exists() {
         println!("✔ config       {}", cfg_path.display());

@@ -67,6 +67,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         (None, d) => d,
     };
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "FORGE_PROJECT_SLUG, the project a pane runs for"
+    )]
     let env_slug = std::env::var("FORGE_PROJECT_SLUG").ok();
     let bindings: Vec<String> = cfg.bindings.keys().cloned().collect();
     let spec = RequestSpec {

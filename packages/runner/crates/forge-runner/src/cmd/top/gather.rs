@@ -109,6 +109,7 @@ pub struct Carry {
 /// (`spend::BUDGET_BYTES` on a live view); `None` reads every one.
 pub async fn frame(ctx: &Ctx, carry: &mut Carry, spend_budget: Option<u64>) -> Snapshot {
     let now_ms = forge_runner_core::daemon::agent_activity::now_ms();
+    #[expect(clippy::disallowed_methods, reason = "prints the config path")]
     let config_path = Config::path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|e| format!("a config path this box cannot resolve ({e})"));
@@ -139,6 +140,10 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry, spend_budget: Option<u64>) -> S
         .and_then(|p| ledger_ro::read(&p));
     let sessions = panes::list();
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "hands cli_config_dir home and this process's environment, a read of the forge CLI's own dir"
+    )]
     let cli_dir = cli_slug::cli_config_dir(|k| std::env::var(k).ok(), dirs_next::home_dir());
     for p in &mut projects {
         if let Some(repo) = &p.repo {
@@ -229,6 +234,10 @@ async fn read_spend(
     now_ms: i64,
     budget: Option<u64>,
 ) -> Spend {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "reads the transcripts under home's .claude/projects for SPEND (ISS-1375)"
+    )]
     let Some(home) = dirs_next::home_dir() else {
         return Spend::Unreadable(Unreadable::new(
             "~/.claude/projects",

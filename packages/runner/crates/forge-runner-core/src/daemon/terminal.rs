@@ -67,12 +67,20 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
     name
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the tmux socket's dir, a writer held by ISS-1265, which owes its move to config::base_dir"
+)]
 fn session_config_dir() -> Option<std::path::PathBuf> {
     crate::config::Config::path()
         .ok()
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the config dir with no XDG override, compared against the socket's to name the unit; a read"
+)]
 fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -890,6 +898,10 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> 
     vec!["sh".into(), "-c".into(), line]
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "MCP_TOOL_TIMEOUT, an operator value a pane keeps"
+)]
 pub fn pane_env() -> Vec<(String, String)> {
     match crate::runner::process::mcp_tool_timeout_default(
         std::env::var_os("MCP_TOOL_TIMEOUT").as_deref(),
@@ -1100,6 +1112,10 @@ pub(crate) mod testing {
     /// a failure naming `why`; anywhere else it is printed, and the caller
     /// returns.
     pub(crate) fn cannot_run(why: &str) {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "FORGE_TEST_REQUIRE_TMUX, whether this test run promised a tmux; test only"
+        )]
         if std::env::var_os(REQUIRE_TMUX).is_some_and(|v| !v.is_empty()) {
             panic!(
                 "{why} — and {REQUIRE_TMUX} is set, so this run promised tmux and a server of this test's own; returning here would pass the test without running it"
@@ -2247,6 +2263,10 @@ done
                 .expect("mode");
         }
         // Before anything resolves the binary: `resolve_claude_bin` caches in a `OnceLock`.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test puts its fake claude ahead of the PATH it read"
+        )]
         std::env::set_var(
             "PATH",
             format!(
@@ -2419,6 +2439,10 @@ done
         std::fs::write(bin.join("forge-runner"), "#!/bin/sh\nexit 0\n")
             .expect("the planted runner");
         testing::executable(&bin.join("forge-runner"));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads its own PATH to show it does not reach the planted HOME"
+        )]
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         assert!(
             which::which_in("forge-runner", Some(&inherited), "/")
@@ -2541,6 +2565,10 @@ done
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test reads whether an operator set MCP_TOOL_TIMEOUT"
+    )]
     fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
         let env = pane_env();
         match std::env::var_os("MCP_TOOL_TIMEOUT") {
@@ -3131,6 +3159,10 @@ done
     /// emptied it failed every `git` spawned by name beside it.
     #[test]
     fn a_fake_tmux_leaves_the_process_environment_as_it_found_it() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads the fake tmux's variables to see them put back"
+        )]
         let read = || {
             [
                 "PATH",

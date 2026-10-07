@@ -321,6 +321,10 @@ async fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
 /// Resolve the Claude config dir the CLI itself would use: an explicit
 /// `CLAUDE_CONFIG_DIR` (respecting an operator override, same rule as
 /// `process::build_command`'s `MCP_TOOL_TIMEOUT`), else `~/.claude`.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "CLAUDE_CONFIG_DIR or ~/.claude, Claude Code's own home, which is not the config dir"
+)]
 pub(crate) fn claude_config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         if !dir.is_empty() {

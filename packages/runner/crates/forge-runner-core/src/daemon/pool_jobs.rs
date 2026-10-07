@@ -4098,6 +4098,10 @@ mod own_exe_reporting_tests {
             at(&claude_dir).is_some() && at(&local_bin).is_some(),
             "the pane's PATH carries the claude directory and $HOME/.local/bin: {path}"
         );
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads the PATH the pane was built from"
+        )]
         let inherited_first = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
             .find(|d| d != &claude_dir && d != &local_bin);
         if let Some(first) = inherited_first {

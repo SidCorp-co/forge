@@ -122,6 +122,10 @@ fn exec_vectors(
         )?);
     }
     let mut envp = Vec::new();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the environment a handover passes whole to the daemon taking over"
+    )]
     for (k, v) in std::env::vars_os() {
         if k == LISTENER_ENV {
             continue;
@@ -162,6 +166,10 @@ pub enum Inherited {
 /// The listener a replaced image handed on, where it is one bound at `path`.
 #[cfg(unix)]
 pub fn inherited_listener(path: &Path) -> Inherited {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the listener a replaced image handed on, by its variable"
+    )]
     let Some(raw) = std::env::var_os(LISTENER_ENV) else {
         return Inherited::None;
     };

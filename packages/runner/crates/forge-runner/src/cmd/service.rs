@@ -143,6 +143,10 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
 const LAUNCHD_LABEL: &str = "co.sidcorp.forge-runner";
 
 #[cfg(target_os = "macos")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the launchd plist path, written by `service install`, which no test runs"
+)]
 fn plist_path() -> anyhow::Result<std::path::PathBuf> {
     let home = dirs_next::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     Ok(home
@@ -154,6 +158,10 @@ fn plist_path() -> anyhow::Result<std::path::PathBuf> {
 #[cfg(target_os = "macos")]
 fn install_launchd() -> anyhow::Result<()> {
     let exe = own_exe_text()?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the launchd log path, written by `service install`, which no test runs"
+    )]
     let home = dirs_next::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     let log = home.join("Library").join("Logs").join("forge-runner.log");
     let plist = format!(
@@ -249,6 +257,10 @@ extern "C" {
 
 #[cfg(target_os = "linux")]
 fn unit_path() -> anyhow::Result<std::path::PathBuf> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the systemd unit path, written by `service install`, which no test runs"
+    )]
     let dir = dirs_next::config_dir()
         .ok_or_else(|| anyhow::anyhow!("no config dir"))?
         .join("systemd")
@@ -300,6 +312,10 @@ fn uninstall_systemd() -> anyhow::Result<()> {
 /// (login shells set it; a bare `ssh host cmd` may not).
 #[cfg(target_os = "linux")]
 fn runtime_env() -> Option<(String, String)> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "XDG_RUNTIME_DIR, whether systemctl --user can reach the user manager"
+    )]
     if std::env::var_os("XDG_RUNTIME_DIR").is_some() {
         return None;
     }

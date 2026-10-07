@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 
 const TRUST_FIELD: &str = "hasTrustDialogAccepted";
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "CLAUDE_CONFIG_DIR or ~/.claude.json, Claude Code's trust file, which is not the config dir"
+)]
 fn claude_json_path() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         if !dir.is_empty() {
@@ -126,7 +130,12 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
     };
     let keys = keys_for(dir);
     if let Some(r) = refusal(&root, &keys) {
-        return Err(format!("{}: {} — to fix it, {}", json_path.display(), r.why, r.fix));
+        return Err(format!(
+            "{}: {} — to fix it, {}",
+            json_path.display(),
+            r.why,
+            r.fix
+        ));
     }
 
     let mut wrote = false;
@@ -172,7 +181,8 @@ fn refusal(root: &serde_json::Value, keys: &[String]) -> Option<Refusal> {
     if !projects.is_object() {
         return Some(Refusal {
             why: "`projects` is not an object",
-            fix: r#"make `projects` an object keyed by checkout path, such as "projects": {}"#.into(),
+            fix: r#"make `projects` an object keyed by checkout path, such as "projects": {}"#
+                .into(),
         });
     }
     let key = keys

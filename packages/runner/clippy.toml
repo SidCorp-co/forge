@@ -1,0 +1,36 @@
+# The routes to a directory the OS names for the user, and to the environment that steers them
+# (ISS-1344). Clippy resolves each through the compiler's own name resolution, so an alias, a
+# rename, a raw identifier, `Self`, a type alias or a macro reaches the same entry. A read that
+# stays is admitted where it stands with `#[expect(clippy::disallowed_methods, reason = "...")]`,
+# and `config::tests::every_other_resolution_of_the_config_dir_is_a_counted_reader` counts every
+# occurrence. A writer resolves through `config::base_dir`, `data_dir` or `home_dir` instead.
+disallowed-methods = [
+  { path = "std::env::var", reason = "a read of the environment: resolve a user directory through crate::config, or admit the read with what it does" },
+  { path = "std::env::var_os", reason = "a read of the environment: resolve a user directory through crate::config, or admit the read with what it does" },
+  { path = "std::env::vars", reason = "a read of every variable: admit it with what it does" },
+  { path = "std::env::vars_os", reason = "a read of every variable: admit it with what it does" },
+  { path = "std::env::home_dir", reason = "the user's home: resolve it through crate::config::home_dir" },
+  { path = "dirs_next::home_dir", reason = "the user's home: resolve it through crate::config::home_dir" },
+  { path = "dirs_next::cache_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::config_dir", reason = "the user's config dir: resolve it through crate::config::base_dir" },
+  { path = "dirs_next::data_dir", reason = "the user's data dir: resolve it through crate::config::data_dir" },
+  { path = "dirs_next::data_local_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::executable_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::runtime_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::audio_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::desktop_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::document_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::download_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::font_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::picture_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::public_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::template_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  { path = "dirs_next::video_dir", reason = "a directory the OS names for the user: resolve it through crate::config" },
+  # libc is not loaded on Windows, where these paths resolve to nothing.
+  { path = "libc::getenv", reason = "a read of the environment through FFI: admit it with what it does", allow-invalid = true },
+  { path = "libc::getpwuid", reason = "the user's home from the password database: resolve it through crate::config::home_dir", allow-invalid = true },
+  { path = "libc::getpwuid_r", reason = "the user's home from the password database: resolve it through crate::config::home_dir", allow-invalid = true },
+  { path = "libc::getpwnam", reason = "a home from the password database: resolve it through crate::config::home_dir", allow-invalid = true },
+  { path = "libc::getpwnam_r", reason = "a home from the password database: resolve it through crate::config::home_dir", allow-invalid = true },
+  { path = "forge_runner_core::config::Config::path", reason = "the config dir for reading: a writer resolves crate::config::base_dir, and a reader is admitted with what it does" },
+]

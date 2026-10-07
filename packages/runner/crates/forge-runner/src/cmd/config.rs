@@ -27,6 +27,7 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let cfg = Config::load()?;
             print!("{}", toml::to_string_pretty(&cfg)?);
         }
+        #[expect(clippy::disallowed_methods, reason = "prints the config path")]
         Action::Path => println!("{}", Config::path()?.display()),
         Action::Set { key, value } => {
             let mut cfg = Config::load()?;
@@ -74,7 +75,12 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 ),
             }
             cfg.save()?;
-            println!("✔ saved {}", Config::path()?.display());
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "prints the path Config::save wrote"
+            )]
+            let saved = Config::path()?;
+            println!("✔ saved {}", saved.display());
         }
     }
     Ok(())

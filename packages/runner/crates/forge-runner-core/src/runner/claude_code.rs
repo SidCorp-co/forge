@@ -858,6 +858,10 @@ impl Runner for ClaudeCodeRunner {
         // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
         // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
         // claude default is tight. Caller-set env wins (don't clobber an override).
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "MCP_TIMEOUT, an operator value the spawned claude keeps"
+        )]
         if std::env::var_os("MCP_TIMEOUT").is_none() {
             cmd.env("MCP_TIMEOUT", "15000");
         }

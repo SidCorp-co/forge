@@ -220,6 +220,10 @@ pub fn session_path(slug: &str) -> PathBuf {
 
 /// `~/.config/forge-runner/mcp/`, for a reader: resolved as [`crate::config::Config::path`]
 /// resolves, and created by nobody.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "where session_path, session_dir and session_matches read the MCP config"
+)]
 fn mcp_read_dir() -> PathBuf {
     crate::config::Config::path()
         .ok()

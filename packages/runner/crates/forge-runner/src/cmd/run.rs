@@ -165,6 +165,10 @@ fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
 }
 
 fn socket() -> anyhow::Result<std::path::PathBuf> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "connects to the daemon's socket beside the config"
+    )]
     let cfg = Config::path()?;
     let path = cfg.with_file_name("control.sock");
     if !path.exists() {

@@ -52,6 +52,10 @@ pub fn resolve_claude_bin() -> &'static str {
         if let Ok(p) = which::which("claude") {
             return p.to_string_lossy().into_owned();
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "$HOME for where the claude binary is installed, a read"
+        )]
         let home = std::env::var("HOME").unwrap_or_default();
         let mut candidates = vec![
             "/opt/homebrew/bin/claude".to_string(),
@@ -167,6 +171,10 @@ pub fn build_command(args: &[String], repo_path: &str) -> Command {
 
     // Bound every MCP tool call so a hung MCP server can't wedge the job forever
     // (see DEFAULT_MCP_TOOL_TIMEOUT_MS). Respect an operator-set value.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "MCP_TOOL_TIMEOUT, an operator value a job keeps"
+    )]
     if let Some(v) = mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
         cmd.env("MCP_TOOL_TIMEOUT", v);
     }

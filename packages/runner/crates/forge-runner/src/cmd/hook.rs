@@ -50,6 +50,10 @@ pub async fn run(args: Args) {
     let Ok(token) = session_tokens::token_from_env() else {
         return;
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "connects to the daemon's socket beside the config"
+    )]
     let Ok(cfg_path) = Config::path() else {
         return;
     };

@@ -476,8 +476,13 @@ fn a_dispatcher_in_an_operators_own_tmux_is_let_through_unmarked() {
 /// empty, as CI sets it on Linux; on the other runners CI sets it empty).
 fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Option<String> {
     let skip = |why: &str| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "FORGE_TEST_REQUIRE_TMUX, whether this test run promised a tmux"
+        )]
+        let promised = std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty());
         assert!(
-            !std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty()),
+            !promised,
             "{why}, and FORGE_TEST_REQUIRE_TMUX promised this run a tmux to drive"
         );
         eprintln!("skipped: {why}");

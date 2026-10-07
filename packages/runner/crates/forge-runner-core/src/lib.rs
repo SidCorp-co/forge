@@ -25,8 +25,6 @@ pub mod mcp;
 pub mod observability;
 #[cfg(test)]
 pub mod platform_scope;
-#[cfg(test)]
-pub(crate) mod route_scan;
 pub mod runner;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_scratch;

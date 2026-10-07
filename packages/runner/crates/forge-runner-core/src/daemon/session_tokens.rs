@@ -118,6 +118,10 @@ pub fn default_path() -> Option<PathBuf> {
 
 pub const TOKEN_ENV: &str = "FORGE_CONTROL_TOKEN";
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "FORGE_CONTROL_TOKEN, the token the daemon spawned this session with"
+)]
 pub fn token_from_env() -> std::io::Result<String> {
     match std::env::var(TOKEN_ENV) {
         Ok(t) if !t.trim().is_empty() => Ok(t),
