@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.88] - 2026-10-07
+
+Forecasts reach Feedback, Requirements and Releases; shipped-earlier closes without a source host
+
+### Added
+
+- **Feedback, Requirements and Releases now forecast when work is in people's hands.** Each line adds the project's sampled release lag, or names who cuts or approves the release, and the simulation never works more lanes than recently ran.
+
+### Fixed
+
+- **Waiting on you now means the agent is waiting on you.** It shows only when the agent marked its reply as needing your answer, or a batch awaits you, never because a reply merely ends on a question mark (ISS-277).
+- **Feedback can be about an API route or tool.** About offers "API route or tool", suggests what the project serves, and refuses a name it does not serve; release holds read times as 16:23 UTC on 2026-10-06 (ISS-279).
+- **An issue an earlier release already shipped now closes on a project with no source host.** Forge asks the box holding the project's bound checkout whether the commit is in that release, and the notice names the box-read evidence.
+- **A design approval no longer marks a build issue landed.** On an issue linked as a workflow's build the approved revision is posted as evidence, never its mark; migration 0435 clears such marks, and the forecast reads landed by status.
+
 ## [0.4.0-dev.87] - 2026-10-07
 
 Work-landing forecasts, priority-first dispatch, and releases that say what they change

@@ -1,1 +1,0 @@
-**A design approval no longer marks a build issue landed.** On an issue linked as a workflow's build the approved revision is posted as evidence, never its mark; migration 0435 clears such marks, and the forecast reads landed by status.
