@@ -42,6 +42,7 @@ beforeAll(async () => {
       .select({ limitReason: runners.limitReason, limitDetail: runners.limitDetail })
       .from(runners)
       .where(eq(runners.id, runnerId));
+    if (!row) throw new Error(`the bound runner ${runnerId} has no row`);
     return row;
   };
 }, 120_000);
