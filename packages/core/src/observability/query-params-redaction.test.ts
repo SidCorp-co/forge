@@ -368,6 +368,39 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     );
   });
 
+  it('reads an error that renders through its own toJSON for the values its siblings repeat', () => {
+    const pg = Object.assign(pgRefusal('relation "zq" does not exist', { code: '42P01' }, ['zq']), {
+      toJSON: () => 'ordinary',
+    });
+    const rendered = JSON.stringify(redactQueryParams({ error: pg, reading: pg.message }));
+    expect(rendered).not.toContain('zq');
+    expect(JSON.parse(rendered).error).toBe('ordinary');
+    const wrapped = { toJSON: () => ({ error: pg, reading: pg.message }) };
+    expect(JSON.stringify(redactQueryParams({ wrapped }))).not.toContain('zq');
+    const direct = {
+      toJSON: () => pgRefusal('relation "zq" does not exist', { code: '42P01' }, ['zq']),
+    };
+    expect(JSON.stringify(redactQueryParams({ direct, reading: pg.message }))).not.toContain('zq');
+  });
+
+  it('reads an array as JSON does: each index once, one that throws written redacted', () => {
+    let reads = 0;
+    const items: unknown[] = ['kept'];
+    Object.defineProperty(items, 1, {
+      get: () => (++reads === 1 ? 'ordinary' : duplicate().message),
+      enumerable: true,
+    });
+    Object.defineProperty(items, 2, {
+      get: () => {
+        throw new Error(duplicate().message);
+      },
+      enumerable: true,
+    });
+    const rendered = JSON.stringify(redactQueryParams({ items }));
+    expect(reads).toBe(1);
+    expect(rendered).toBe(`{"items":["kept","ordinary","${REDACTED}"]}`);
+  });
+
   it('redacts a payload that holds itself, writing [Circular] where it does', () => {
     const loop: Record<string, unknown> = { reason: duplicate().message };
     loop.again = loop;

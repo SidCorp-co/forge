@@ -134,10 +134,17 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
   const stringified = typeof template === 'string' ? stringifiedArgs(template) : new Set<number>();
   const found: Error[] = [];
   let [first, ...rest] = args.map((v, i) => {
-    if (i === templateAt && typeof msgPrefix === 'string' && rendersItself(v)) {
-      return (msgPrefix + (v as unknown as string)).slice(msgPrefix.length);
+    const joined = i === templateAt && typeof msgPrefix === 'string';
+    const stringify = i > templateAt && stringified.has(i - templateAt - 1);
+    if ((joined || stringify) && rendersItself(v)) {
+      // The error a text is rendered from still names the values to find in that text.
+      found.push(...(errorsWithin(v) as Error[]));
+      if (joined)
+        return ((msgPrefix as string) + (v as unknown as string)).slice(
+          (msgPrefix as string).length,
+        );
+      return String(v);
     }
-    if (i > templateAt && stringified.has(i - templateAt - 1) && rendersItself(v)) return String(v);
     const written = asSerialized(v, { fields: i === 0, errorsAsThemselves: true });
     found.push(...written.errors);
     return written.value;

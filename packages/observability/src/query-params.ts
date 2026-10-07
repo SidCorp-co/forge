@@ -304,6 +304,7 @@ interface Walk extends Rendering {
 function render(value: unknown, key: string, depth: number, walk: Walk, top = false): unknown {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
   if (depth > MAX_DEPTH) return REDACTED;
+  if (value instanceof Error) walk.errors.push(value);
   const asError = value instanceof Error && walk.errorsAsThemselves;
   if (!(top && walk.fields) && !asError) {
     const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
@@ -317,7 +318,6 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   const box = unboxed(value);
   if (box) return box.value;
   if (walk.open.has(value)) return CIRCULAR;
-  if (value instanceof Error) walk.errors.push(value);
   if (asError) return value;
   walk.open.add(value);
   const out = renderFields(value, depth, walk, false);
@@ -329,6 +329,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
 function renderResult(rendered: unknown, depth: number, walk: Walk): unknown {
   if (typeof rendered === 'function') return undefined;
   if (rendered === null || typeof rendered !== 'object') return rendered;
+  if (rendered instanceof Error) walk.errors.push(rendered);
   const box = unboxed(rendered);
   if (box) return box.value;
   if (walk.open.has(rendered)) return CIRCULAR;
@@ -338,30 +339,37 @@ function renderResult(rendered: unknown, depth: number, walk: Walk): unknown {
   return out;
 }
 
+/** One field of `value` as JSON reads it: a data value as it stands, a getter called once. */
+function readField(value: object, key: string): { value: unknown; called: boolean } {
+  const own = attempt(() => Object.getOwnPropertyDescriptor(value, key));
+  if (own !== UNREADABLE && (own === undefined || 'value' in own)) {
+    return { value: own?.value, called: false };
+  }
+  const read = attempt(() => (value as Record<string, unknown>)[key]);
+  return { value: read === UNREADABLE ? REDACTED : read, called: true };
+}
+
 /** `value`'s own enumerable fields rendered, as JSON reads them: a copy where any changed. */
 function renderFields(value: object, depth: number, walk: Walk, copy: boolean): unknown {
-  if (Array.isArray(value)) {
-    const next = value.map((v, i) => render(v, String(i), depth + 1, walk));
-    return copy || next.some((v, i) => v !== value[i]) ? next : value;
-  }
-  const keys = attempt(() => Object.keys(value));
-  if (keys === UNREADABLE) return REDACTED;
+  const array = Array.isArray(value);
+  const length = array ? attempt(() => value.length) : 0;
+  const keys = array
+    ? Array.from({ length: length === UNREADABLE ? 0 : length }, (_, i) => String(i))
+    : attempt(() => Object.keys(value));
+  if (keys === UNREADABLE || length === UNREADABLE) return REDACTED;
   let changed = copy;
   const next: Record<string, unknown> = {};
+  const items: unknown[] = [];
   for (const key of keys) {
-    const own = attempt(() => Object.getOwnPropertyDescriptor(value, key));
-    let v: unknown;
-    if (own !== UNREADABLE && own && 'value' in own) v = own.value;
-    else {
-      changed = true;
-      const read = attempt(() => (value as Record<string, unknown>)[key]);
-      v = read === UNREADABLE ? REDACTED : read;
-    }
-    const out = render(v, key, depth + 1, walk);
-    if (out !== v) changed = true;
-    if (typeof out !== 'function') next[key] = out;
+    const field = readField(value, key);
+    if (field.called) changed = true;
+    const out = render(field.value, key, depth + 1, walk);
+    if (out !== field.value) changed = true;
+    if (array) items.push(out);
+    else if (typeof out !== 'function') next[key] = out;
   }
-  return changed ? next : value;
+  if (!changed) return value;
+  return array ? items : next;
 }
 
 /**

@@ -489,6 +489,15 @@ describe('the core logger, given a value whose text only a serializer renders', 
     }
   });
 
+  it('withholds a driver message rendered from its own error, as a format argument or a prefixed message', () => {
+    const { lines, log } = capture();
+    log.warn('read %s', relationRefusal());
+    log.warn({ requestId: 'r1' }, 'read %s', relationRefusal());
+    log.child({}, { msgPrefix: 'read: ' }).warn({ requestId: 'r2' }, relationRefusal() as never);
+    expect(lines).toHaveLength(3);
+    for (const line of lines) expect(line).not.toContain('zq');
+  });
+
   it('keeps what a format argument renders when it carries nothing to redact', () => {
     const { lines, log } = capture();
     log.warn('read %s and %s', { toString: () => 'a reading' }, new URL('https://example.test/x'));
