@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { flushReports, isErrorTrackingEnabled, reportCondition } from '../lib/error-tracking.js';
+import { RefusalError } from '../lib/refusal.js';
 import {
   describeUnrecorded,
   type JournalEntry,
@@ -226,8 +227,15 @@ export async function migrateAtBoot(
     const seeded = await sql<{ type: string }[]>`SELECT type FROM outbox_event_types`;
     const unseeded = outboxTypesUnseeded(seeded.map((r) => r.type));
     if (unseeded.length > 0) {
-      throw new Error(
-        `OUTBOX_TYPE_UNSEEDED: outbox_event_types holds no row for ${unseeded.join(', ')}, which OUTBOX_EVENT_TYPES emits, so every such emit would fail its foreign key. Add a migration inserting each (INSERT INTO "outbox_event_types" ("type") VALUES ('<type>')), then deploy again.`,
+      throw new RefusalError(
+        [
+          {
+            code: 'OUTBOX_TYPE_UNSEEDED',
+            path: '',
+            detail: `outbox_event_types holds no row for ${unseeded.join(', ')}, which OUTBOX_EVENT_TYPES emits, so every such emit would fail its foreign key. Add a migration inserting each (INSERT INTO "outbox_event_types" ("type") VALUES ('<type>')), then deploy again.`,
+          },
+        ],
+        'OUTBOX_TYPE_UNSEEDED',
       );
     }
 
