@@ -1,1 +1,0 @@
-**Core now judges a master's account limit and whether its pane is outdated; the runner box only reports.** The box posts its newest account record to `/api/devices/me/limit/record` and a pane's inputs as `placement`. Deploy core first.
