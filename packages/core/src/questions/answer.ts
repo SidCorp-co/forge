@@ -13,6 +13,7 @@ import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
+import { recordOnRequirement } from './answer-decision.js';
 import { recordAnswerOnIssue } from './answer-record.js';
 import { decideChannelGate } from './ports.js';
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
@@ -235,6 +236,7 @@ export async function answerQuestion(args: AnswerInput) {
       agency: args.agency,
       hold,
     });
+    await recordOnRequirement(tx, row, answered, args);
     await emitEvent(tx, 'question.answered', {
       questionId: args.questionId,
       projectId: row.projectId,

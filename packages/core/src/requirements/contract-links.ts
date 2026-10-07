@@ -139,3 +139,13 @@ export async function staleOnContract(input: {
     ).map((s) => ({ requirement: requirementKey(r.reqSeq), id: r.id, ...s })),
   );
 }
+
+/** Why a question cannot name `contract` as what it is about; null when the project builds against it. */
+export async function contractAboutRefusal(
+  projectId: string,
+  contract: string,
+): Promise<string | null> {
+  return (
+    contractLinkRefusal({ contract, ...(await contractsOfProject(projectId)) })?.detail ?? null
+  );
+}

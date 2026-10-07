@@ -4,7 +4,7 @@
 // labels, so one value keeps one badge on every screen.
 
 import { z } from "zod";
-import { REASON_TEXT_MAX } from "./comments.js";
+import { type EntityCommentView, REASON_TEXT_MAX } from "./comments.js";
 import type {
 	FeedbackKind,
 	FeedbackPhase,
@@ -576,6 +576,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NO_DRAFT_ISSUES",
 	"REQUIREMENT_ISSUE_NOT_LINKED",
 	"REQUIREMENT_ISSUE_NOT_DRAFT",
+	"REQUIREMENT_OPEN_QUESTIONS",
+	"REQUIREMENT_OPEN_QUESTION_UNKNOWN",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
 	"REVISION_REASON_REQUIRED",
@@ -621,11 +623,70 @@ export interface ChangedTrace {
 // The list and detail responses of /requirements, as core builds them (`requirements/read.ts`) and
 // web-v2 reads them.
 
+export interface RequirementOpenQuestion {
+	question: string;
+	whoAnswers: string;
+	blocking: boolean;
+	/** The question it is asked as on the requirement; core fills it when the revision is written. */
+	questionId?: string | undefined;
+}
+
+export interface RequirementAssumption {
+	text: string;
+	/** Who holds it: the person or role that answers for it being true. */
+	owner: string;
+	/** How it will be confirmed, and by when if that is known. */
+	confirmBy: string;
+}
+
 export interface RequirementSpec {
 	goal?: string | undefined;
 	personas?: string[] | undefined;
 	scopeIn?: string[] | undefined;
 	scopeOut?: string[] | undefined;
+	openQuestions?: RequirementOpenQuestion[] | undefined;
+	assumptions?: RequirementAssumption[] | undefined;
+}
+
+/** Where a question on a requirement was asked: of the requirement itself, on one of its issues, or by a run on no issue. */
+export type RequirementQuestionPlace =
+	| { kind: "requirement" }
+	| { kind: "issue"; key: string; title: string }
+	| { kind: "run" };
+
+/**
+ * A question standing on a requirement, read in core (`requirements/read.ts`): asked of it (a BA
+ * clarification, or an open question of a revision's spec), or about it from one of its issues or
+ * a run. `whoAnswers` and `blocking` are the head revision's spec entry naming it; a question no
+ * entry names blocks nothing.
+ */
+export interface RequirementQuestionView {
+	id: string;
+	prompt: string;
+	status: "open" | "answered" | "void" | "expired" | "needs_info";
+	place: RequirementQuestionPlace;
+	whoAnswers: string | null;
+	blocking: boolean;
+	/** The round an answer names; a question asked of the requirement takes its answer in words. */
+	round: number;
+	askedAt: string;
+	answer: { text: string; at: string; by: string | null } | null;
+}
+
+/** An answered question the requirement's Decisions tab rolls up beside its decisions. */
+export interface RequirementAnswerView {
+	questionId: string;
+	prompt: string;
+	answer: string;
+	answeredAt: string;
+	answeredBy: string | null;
+	place: RequirementQuestionPlace;
+}
+
+/** GET /projects/:id/requirements/:req/decisions — newest first, each list on its own. */
+export interface RequirementDecisionsResponse {
+	decisions: EntityCommentView[];
+	answers: RequirementAnswerView[];
 }
 
 export interface RequirementSummary {
@@ -757,6 +818,10 @@ export interface RequirementDetail extends RequirementSummary {
 	request: RequirementContractRequest | null;
 	/** The screen bindings inside the designs its latest baseline pins (`pins`). */
 	bindings: RequirementScreenBinding[];
+	/** The questions standing on it, open first, then newest first. */
+	questions: RequirementQuestionView[];
+	/** How many of `questions` are open: what is still unclear. */
+	unclear: number;
 }
 
 export interface RequirementContractRequest {

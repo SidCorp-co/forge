@@ -3,6 +3,7 @@
 // A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { questionAboutRequestSchema } from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -68,6 +69,7 @@ const askSchema = z
     maxRounds: z.number().int().min(1).max(10).optional(),
     parkDeadlineAt: z.iso.datetime().optional(),
     sensitive: z.boolean().optional(),
+    about: questionAboutRequestSchema.optional(),
   })
   .strict();
 

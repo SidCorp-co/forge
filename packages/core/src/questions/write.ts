@@ -6,7 +6,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import type { QuestionRefusalCode } from '@forge/contracts/questions';
+import type {
+  QuestionAbout,
+  QuestionAboutRequest,
+  QuestionRefusalCode,
+} from '@forge/contracts/questions';
 import { scrubSecretsDeep } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -36,6 +40,7 @@ import {
   voidSupersededDesignQuestions,
 } from './design-wait.js';
 import { resolveAskOrigin } from './origin.js';
+import { contractAboutRefusal, requirementIdIn } from './ports.js';
 import { screenRound } from './screen.js';
 
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
@@ -49,10 +54,12 @@ export type AskInput = {
   id: string;
   projectId: string;
   issueId?: string;
-  /** A BA clarification's requirement: at most one open question per requirement (Q5). */
+  /** The requirement it is asked of: a BA clarification, or an open question of a revision's spec. */
   requirementId?: string;
-  /** A BA clarification's feedback item: at most one open question per item (Q5). */
+  /** A BA clarification's feedback item: at most one open question per item. */
   feedbackId?: string;
+  /** What the asker names it as about, resolved and stored as `about`; never read from the prompt. */
+  about?: QuestionAboutRequest;
   agentSessionId?: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
@@ -194,7 +201,53 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   checkAnswer(input.answer);
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
-  return insertQuestion(executor, input);
+  const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
+  return insertQuestion(executor, input, about);
+}
+
+/**
+ * The stored `about` an ask names, or a refusal naming what it could not resolve: a requirement of
+ * another project or none, `requirement: null` on a question no delivering issue carries, or a
+ * contract the project neither publishes nor consumes.
+ */
+export async function resolveAbout(
+  executor: QuestionExecutor,
+  input: { projectId: string; issueId?: string | undefined },
+  about: QuestionAboutRequest,
+): Promise<QuestionAbout> {
+  if ('contract' in about) {
+    const refusal = await contractAboutRefusal(input.projectId, about.contract);
+    if (refusal) throw refuseQuestion('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');
+    return { kind: 'contract', contract: about.contract };
+  }
+  if (about.requirement !== null) {
+    const requirementId = await requirementIdIn(executor as Tx, input.projectId, about.requirement);
+    if (!requirementId) {
+      throw refuseQuestion(
+        'QUESTION_ABOUT_UNKNOWN',
+        `\`about.requirement\` is \`${about.requirement}\`, which names no requirement of this project — name one by its key (REQ-n) or id`,
+        '/about/requirement',
+      );
+    }
+    return { kind: 'requirement', requirementId };
+  }
+  const [issue] = input.issueId
+    ? await executor
+        .select({ requirementId: issues.requirementId })
+        .from(issues)
+        .where(eq(issues.id, input.issueId))
+        .limit(1)
+    : [];
+  if (!issue?.requirementId) {
+    throw refuseQuestion(
+      'QUESTION_ABOUT_NO_REQUIREMENT',
+      input.issueId
+        ? `\`about.requirement\` is null, which names the requirement issue ${input.issueId} delivers, and it delivers none — name the requirement by its key (REQ-n), or link the issue to it first`
+        : '`about.requirement` is null, which names the requirement of the issue asked on, and this question is asked on no issue — name the requirement by its key (REQ-n)',
+      '/about/requirement',
+    );
+  }
+  return { kind: 'requirement', requirementId: issue.requirementId };
 }
 
 export async function askQuestion(input: AskInput) {
@@ -292,7 +345,7 @@ export async function reaskSupersededDesignQuestions(
   }
 }
 
-async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
+async function insertQuestion(executor: QuestionExecutor, input: AskInput, about?: QuestionAbout) {
   if (input.origin && (input.agentSessionId || input.issueId)) {
     throw new Error(
       'questions: a channel gate question belongs to no session and no issue, and this one names one',
@@ -319,6 +372,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       parkDeadlineAt: input.parkDeadlineAt,
       awaitsWorkflowId: input.awaitsDesign?.workflowId,
       awaitsRevision: input.awaitsDesign?.revision,
+      about: about ?? null,
     })
     .returning();
   if (!row) throw new Error('the question was not written');

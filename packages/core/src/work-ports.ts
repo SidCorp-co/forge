@@ -120,8 +120,10 @@ import {
 import { approvalRequired } from './release-batch/index.js';
 import {
   changedTracedOf,
+  contractAboutRefusal,
   planDriftOf,
   plannedRevisionFor,
+  requirementIdIn,
   requirementOfIssue,
   rowIn as requirementRowIn,
   requirementStatesOf,
@@ -337,6 +339,8 @@ export function provideWorkPorts(): void {
         ? null
         : { meta: readConversationAgentMeta(metadata) };
     },
+    requirementIdIn,
+    contractAboutRefusal,
   });
 
   provideUploadPorts({ persistConversationAttachment });

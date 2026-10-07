@@ -24,6 +24,7 @@ import { criteriaRestText } from "@/features/forecast/text";
 import { useEtaClock, useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementState } from "@forge/contracts/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
+import { LinkIssueControl } from "./link-issue";
 import { PromoteDraftRow } from "./promote-drafts";
 import { agreedTitle, CoverageSummary, Stepper } from "./standing-bits";
 
@@ -260,6 +261,7 @@ export function RequirementFacts({
             ))}
           </ul>
         )}
+        {s.attentionGroup !== "done" ? <LinkIssueControl projectId={projectId} reqKey={d.key} /> : null}
       </FactsGroup>
 
       <FeedbackFacts items={d.feedback} slug={slug} />

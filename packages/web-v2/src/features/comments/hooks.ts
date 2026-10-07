@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commentsApi } from "./api";
-import type { CreateEntityCommentRequest, EntityCommentScope } from "./types";
+import type { CreateEntityCommentRequest, DecisionFilters, EntityCommentScope } from "./types";
 
 const decisionsKey = (projectId: string, scope: EntityCommentScope, ref: string) => ["entity-decisions", projectId, scope, ref];
 
@@ -22,6 +22,17 @@ export function usePostEntityComment(projectId: string, scope: EntityCommentScop
     onSettled: () => {
       qc.invalidateQueries({ queryKey: decisionsKey(projectId, scope, ref) });
       qc.invalidateQueries({ queryKey: ["project-decisions", projectId] });
+      qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId] });
     },
+  });
+}
+
+/** The project's decisions under `filters`, keyed so a recorded decision refreshes every filtered read. */
+export function useProjectDecisions(projectId: string | undefined, filters: DecisionFilters) {
+  return useQuery({
+    queryKey: ["project-decisions", projectId ?? "", filters],
+    queryFn: () => commentsApi.decisions(projectId as string, filters),
+    enabled: Boolean(projectId),
+    staleTime: 15_000,
   });
 }

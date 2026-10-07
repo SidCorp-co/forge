@@ -1,0 +1,1 @@
+**A requirement says what is still unclear**: revisions carry open questions and assumptions; a blocking open question refuses the agree; business answers become requirement decisions; a project Decisions log and a Roadmap page; issues link to requirements from either page.

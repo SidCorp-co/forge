@@ -19,6 +19,7 @@ import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
+import { IssueRequirementProperty } from "./requirement-property";
 import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -222,6 +223,8 @@ interface PropertiesRailProps {
   park?: ComponentProps<typeof StatusEdit>["park"];
   /** Core's moves from the issue's status (`IssueStanding.moves`). */
   moves: readonly IssueMove[];
+  /** The requirement the issue delivers (`IssueStanding.requirement.key`), null while none; undefined until the standing is read. */
+  requirementKey?: string | null | undefined;
 }
 
 export function PropertiesRail({
@@ -237,6 +240,7 @@ export function PropertiesRail({
   canMarkMerged,
   park,
   moves,
+  requirementKey,
 }: PropertiesRailProps) {
   const language = useInterfaceLanguage();
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
@@ -309,6 +313,11 @@ export function PropertiesRail({
           <StatusChip status={runChip} size="sm" domain="session" />
         </Row>
       )}
+      {requirementKey !== undefined ? (
+        <Row label={t("issues.facts.requirement")}>
+          <IssueRequirementProperty projectId={issue.projectId} slug={slug} issueKey={issue.displayId} current={requirementKey} disabled={readOnly} />
+        </Row>
+      ) : null}
       <Row label={t("issues.field.priority")}>
         <InlineSelect
           ariaLabel={t("issues.field.priority")}

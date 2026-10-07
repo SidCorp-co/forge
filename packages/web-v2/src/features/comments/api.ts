@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api/client";
 import type {
   CreateEntityCommentRequest,
+  DecisionFilters,
   DecisionListResponse,
   EntityCommentListResponse,
   EntityCommentResponse,
@@ -21,5 +22,11 @@ export const commentsApi = {
     apiClient<EntityCommentListResponse>(`${commentsOf(projectId, scope, ref)}${intent ? `?intent=${intent}` : ""}`),
   post: (projectId: string, scope: EntityCommentScope, ref: string, body: CreateEntityCommentRequest) =>
     apiClient<EntityCommentResponse>(commentsOf(projectId, scope, ref), { method: "POST", body: JSON.stringify(body) }),
-  decisions: (projectId: string) => apiClient<DecisionListResponse>(`/projects/${projectId}/decisions`),
+  /** The project's decisions, newest first, narrowed by what each names (`ListDecisionsQuery`). */
+  decisions: (projectId: string, query: DecisionFilters = {}) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (v) params.set(k, String(v));
+    const qs = params.toString();
+    return apiClient<DecisionListResponse>(`/projects/${projectId}/decisions${qs ? `?${qs}` : ""}`);
+  },
 };

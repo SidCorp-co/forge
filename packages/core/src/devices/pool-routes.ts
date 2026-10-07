@@ -8,6 +8,7 @@
 
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { masterLimitRecordSchema } from '@forge/contracts/master-verdict';
+import { questionAboutRequestSchema } from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -61,6 +62,7 @@ const askBodySchema = z.object({
     })
     .optional(),
   sensitive: z.boolean().optional(),
+  about: questionAboutRequestSchema.optional(),
 });
 
 type AskBody = z.infer<typeof askBodySchema>;

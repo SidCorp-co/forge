@@ -40,6 +40,13 @@ it lives in numbered revisions, and each revision carries business criteria unde
    trace to BC-3 mean the same thing next month. Naming a code the base does not hold is
    \`CRITERION_CODE_UNKNOWN\`; naming one twice \`CRITERION_CODE_DUPLICATE\`. A \`scenario\` criterion
    must read Given / When / Then, each starting a line (\`CRITERION_SCENARIO_UNPARSEABLE\`).
+   What the input leaves unsettled goes in \`spec.openQuestions\` (\`{ question, whoAnswers, blocking }\`):
+   each is asked as a question on the requirement and keeps its \`questionId\`, which a later revision
+   sends back to keep the same question (one naming a question the requirement does not list is
+   \`REQUIREMENT_OPEN_QUESTION_UNKNOWN\`). What it takes as true without proof goes in
+   \`spec.assumptions\` (\`{ text, owner, confirmBy }\`). The read lists the questions standing on the
+   requirement under \`questions\` (asked of it, or named as about it from an issue or a run through an
+   ask's \`about\`), and \`unclear\` counts the open ones; an answer reaches it as a decision.
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
    draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`.
@@ -49,13 +56,14 @@ it lives in numbered revisions, and each revision carries business criteria unde
 5. A holder of \`requirements.approve\` **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
    pins each linked design at its approved revision. Refused by name: \`REQUIREMENT_REVISION_NOT_CURRENT\`
    (no current head, or the head is not current), \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked
-   design with no approved revision, \`REQUIREMENT_ALREADY_AGREED\`. When the project document sets
+   design with no approved revision, \`REQUIREMENT_ALREADY_AGREED\`, and \`REQUIREMENT_OPEN_QUESTIONS\`
+   naming each blocking open question the head still leaves unanswered. When the project document sets
    \`requirements.readinessGate\` to \`block\`, the agree also needs an accepted readiness suggestion at
    the head with every check passing (\`REQUIREMENT_NOT_READY\`); at \`warn\` the baseline records the
    readiness result without refusing.
 6. **After the agree, a change is a new revision.** Accepting it re-baselines: the requirement stays
    (or goes back to) \`agreed\`, a new baseline is written, and the accept's \`reason\` is that
-   re-baseline's sign-off. The agree's design and readiness guards apply to it.
+   re-baseline's sign-off. The agree's design, open-question and readiness guards apply to it.
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
    past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.

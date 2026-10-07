@@ -44,13 +44,15 @@ function eta(d: RoadmapItem["delivery"], clock: EtaClock) {
   return d ? <span className="text-12-5 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
 }
 
-function Roadmap({ s, slug, clock }: { s: ProjectStatus; slug: string; clock: EtaClock }) {
+/** Now, Next and Later from core's roadmap read; `rules` says under each how it is filled and ordered. */
+export function Roadmap({ s, slug, clock, rules = false }: { s: Pick<ProjectStatus, "roadmap">; slug: string; clock: EtaClock; rules?: boolean }) {
   const t = useCopy();
   return (
     <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-3">
       {ROADMAP_HORIZONS.map((h) => (
         <div key={h} data-testid="status-horizon" data-horizon={h}>
           <h3 className="mb-1.5 text-13 font-semibold text-fg">{t(`status.horizon.${h}`)}</h3>
+          {rules ? <p className="mb-2 text-12 text-muted" data-testid="roadmap-rule">{t(`roadmap.rule.${h}`)}</p> : null}
           {s.roadmap[h].length === 0 ? (
             <Quiet>{t("status.horizonEmpty")}</Quiet>
           ) : (

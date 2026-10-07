@@ -59,7 +59,7 @@ const revision = (n: number, state: string, over: Record<string, unknown> = {}) 
   revision: n,
   state,
   baseRevision: n > 1 ? n - 1 : null,
-  spec: { goal: `Muc tieu ${n}`, personas: ["Ke toan"], scopeIn: [`Pham vi ${n}`], scopeOut: ["Ngoai le"] },
+  spec: { goal: `Muc tieu ${n}`, personas: ["Ke toan"], scopeIn: [`Pham vi ${n}`], scopeOut: ["Ngoai le"], assumptions: [{ text: "Gia dinh mot", owner: "Lan", confirmBy: "Dem so lieu" }] },
   tldr: `Tom tat ${n}`,
   changeSummary: `Thay doi ${n}`,
   reason: `Ly do ${n}`,
@@ -136,6 +136,12 @@ export const reqDetail: RequirementDetail = {
     { id: "f3", key: "FB-3", title: "Phan hoi ba", kind: "idea", severity: "low", phase: "verified", open: false, via: { type: "release", key: "0.1.0" }, route: null },
   ],
   request: { projectId: "p2", project: "Kho", contract: "kho/api" },
+  questions: [
+    { id: "q1", prompt: "Cau hoi mot", status: "open", place: { kind: "requirement" }, whoAnswers: "Chu phong kham", blocking: true, round: 1, askedAt: at, answer: null },
+    { id: "q2", prompt: "Cau hoi hai", status: "open", place: { kind: "issue", key: "ISS-2", title: "Viec hai" }, whoAnswers: null, blocking: false, round: 1, askedAt: at, answer: null },
+    { id: "q3", prompt: "Cau hoi ba", status: "answered", place: { kind: "run" }, whoAnswers: null, blocking: false, round: 1, askedAt: at, answer: { text: "Tra loi ba", at, by: "Lan" } },
+  ],
+  unclear: 2,
   bindings: [
     {
       workflowId: "w1",

@@ -28,12 +28,14 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
+import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
+import { questionViewsOf } from './clarity.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
@@ -70,6 +72,23 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
     );
   if (!row) throw notFound(`project ${projectId} holds no requirement ${ref}`);
   return row;
+}
+
+/** The requirement `ref` (REQ-n or uuid) names in the project, or null when it names none. */
+export async function requirementIdIn(tx: Tx, projectId: string, ref: string) {
+  const seq = /^(?:REQ-)?(\d{1,9})$/i.exec(ref.trim())?.[1];
+  const uuid = /^[0-9a-f-]{36}$/i.test(ref) ? ref : null;
+  if (!seq && !uuid) return null;
+  const [row] = await tx
+    .select({ id: requirements.id })
+    .from(requirements)
+    .where(
+      and(
+        eq(requirements.projectId, projectId),
+        seq ? eq(requirements.reqSeq, Number(seq)) : eq(requirements.id, uuid as string),
+      ),
+    );
+  return row?.id ?? null;
 }
 
 /** `row` is the requirement being signed, when there is one: a contract request is signed only here. */
@@ -356,11 +375,23 @@ export async function detailOf(
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
-  const [bindings, request] = await Promise.all([
+  const [bindings, request, questions] = await Promise.all([
     latestBaselineBindingsOf(db, baselines, pins).then((b) =>
       withBuildingIssues(db, row.id, b, prefix),
     ),
     requestViewOf(row),
+    dataPolicyOf(row.projectId).then((level) =>
+      questionViewsOf(
+        db,
+        row.id,
+        revisions.map((r) => r.spec as RequirementSpec),
+        egressReading(
+          level,
+          { agency: viewer?.agency ?? 'agent', providerBound: door.providerBound },
+          'requirement.clarification',
+        ).withhold,
+      ),
+    ),
   ]);
   const [people, standings, changedTraced, shipped] = await Promise.all([
     peopleOf([
@@ -411,6 +442,8 @@ export async function detailOf(
     feedback,
     request,
     bindings,
+    questions,
+    unclear: questions.filter((q) => q.status === 'open').length,
   };
 }
 

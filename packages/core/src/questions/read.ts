@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -76,6 +77,7 @@ type AskAsInput = {
   maxRounds?: number | undefined;
   parkDeadlineAt?: Date | undefined;
   sensitive?: boolean | undefined;
+  about?: QuestionAboutRequest | undefined;
 };
 
 export async function askAs(args: AskAsInput) {
@@ -95,6 +97,7 @@ export async function askAs(args: AskAsInput) {
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
     ...(args.sensitive ? { sensitive: true } : {}),
+    ...(args.about ? { about: args.about } : {}),
   };
   return askQuestion(ask);
 }
