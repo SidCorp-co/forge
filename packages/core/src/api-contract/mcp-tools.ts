@@ -1,4 +1,4 @@
-import { byCodeUnits } from './canonical.js';
+import { byCodeUnits } from '../lib/canonical-json.js';
 
 export type ListedTool = {
   name: string;

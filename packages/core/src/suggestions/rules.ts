@@ -19,6 +19,7 @@ import {
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
+import { stableStringify } from '../lib/canonical-json.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 // Kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
@@ -46,22 +47,10 @@ export function payloadRefusal(
   };
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value as Record<string, unknown>)
-        .sort()
-        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
-    );
-  }
-  return value;
-}
-
 /** What two suggestions saying the same thing share, whatever order their keys came in. */
 export function fingerprintOf(kind: SuggestionKind, payload: unknown): string {
   return createHash('sha256')
-    .update(`${kind}\u0000${JSON.stringify(canonical(payload))}`)
+    .update(`${kind}\u0000${stableStringify(payload)}`)
     .digest('hex')
     .slice(0, 32);
 }

@@ -1,0 +1,1 @@
+**One canonical JSON writer, and fewer leftovers in core.** Four hand-copied key-sorters now share `lib/canonical-json.ts` with stored fingerprints and draft versions pinned unchanged; the release path names one promotion, three empty module faces and the empty test-signal baseline are gone.

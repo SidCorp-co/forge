@@ -1,6 +1,7 @@
 // Writing what the idle-issues pass found onto the row, and raising it to a person when it needs one.
 
 import { leaseHolderOf, writeIssueStrand } from '../issues/index.js';
+import { stableStringify } from '../lib/canonical-json.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import type { CandidateRow, StrandRecord } from './idle-issues.js';
@@ -22,18 +23,7 @@ export function unchangedStrand(held: unknown, next: StrandRecord): boolean {
   if (held === null || typeof held !== 'object') return false;
   const { at: _next, ...rest } = next;
   const { at: _held, ...heldRest } = held as StrandRecord;
-  return canonical(heldRest) === canonical(rest);
-}
-
-/** Key order, which `jsonb` normalises on the way in and an object literal does not. */
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, v) =>
-    v !== null && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(
-          Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : v,
-  );
+  return stableStringify(heldRest) === stableStringify(rest);
 }
 
 /**

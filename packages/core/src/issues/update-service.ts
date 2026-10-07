@@ -2,6 +2,7 @@ import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
+import { stableStringify } from '../lib/canonical-json.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -198,19 +199,7 @@ function leaseIn(context: unknown): unknown {
 
 /** JSON equality as `jsonb` compares it: key order is not part of the value. */
 function sameJson(a: unknown, b: unknown): boolean {
-  return JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null));
-}
-
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value as Record<string, unknown>)
-        .sort()
-        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
-    );
-  }
-  return value;
+  return stableStringify(a ?? null) === stableStringify(b ?? null);
 }
 
 /**
