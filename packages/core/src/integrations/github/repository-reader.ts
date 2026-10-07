@@ -199,7 +199,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     async contains(sha: string, branch: string): Promise<Containment> {
       try {
         const cmp = await client.get<CompareRead>(
-          `/repos/${repository}/compare/${sha}...${encodeURIComponent(branch)}`,
+          `/repos/${repository}/compare/${encodeURIComponent(sha)}...${encodeURIComponent(branch)}`,
         );
         return { contains: !!cmp.status && DESCENDS.has(cmp.status) };
       } catch (err) {
