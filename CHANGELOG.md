@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.123] - 2026-10-07
+
+Project assistant answers truthfully, files once, stays out of group talk, keeps chat logs
+
+### Fixed
+
+- **The chat assistant no longer refuses right figures, files twice, or talks over a group.** Product counts and 1.061 pass the progress screen; a rewrite reuses its filing; tagged-person messages and stop requests quiet a room; promotion archives chat_logs.
+
 ## [0.4.0-dev.122] - 2026-10-07
 
 Storefront releases finish by checking what the provider publishes
