@@ -27,16 +27,24 @@ import {
 import { currentReleaseVersion, highestSpentVersion, releaseLineOf } from './version-store.js';
 import { attemptsOf, issueIdsOf, versionRuns, versionStatus } from './versions.js';
 
+/** The number the next cut takes: one past the highest any batch spent, on the project's line. */
+export async function nextDraftVersion(projectId: string): Promise<string> {
+  const [highest, line] = await Promise.all([
+    highestSpentVersion(db, projectId),
+    releaseLineOf(projectId),
+  ]);
+  return formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, line));
+}
+
 async function draftPart(projectId: string): Promise<Part | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
-  const [highest, line, report] = await Promise.all([
-    highestSpentVersion(db, projectId),
-    releaseLineOf(projectId),
+  const [version, report] = await Promise.all([
+    nextDraftVersion(projectId),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
   ]);
   return {
-    version: formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, line)),
+    version,
     runId: null,
     state: 'draft',
     issueIds: ids,

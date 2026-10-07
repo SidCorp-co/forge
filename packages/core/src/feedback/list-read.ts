@@ -11,7 +11,6 @@ import {
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { releaseApprovalRequired } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, desc, eq, ilike, inArray } from 'drizzle-orm';
@@ -27,7 +26,7 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
-import { productionOf, readProjectDocument } from '../project-config/index.js';
+import { readReleaseMode } from '../project-config/index.js';
 import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
@@ -92,15 +91,6 @@ export async function viewerCanIn(userId: string, projectId: string): Promise<Vi
 }
 
 const AT_RELEASE_GATE = 'awaiting_release';
-
-async function releaseOf(projectId: string): Promise<CarrierRelease> {
-  const document = (await readProjectDocument(projectId))?.document;
-  const production = document ? productionOf(document) : null;
-  if (!production) return 'none';
-  if (releaseApprovalRequired(document)) return 'approval';
-  const deployment = production.declaration.deployment;
-  return 'trigger' in deployment && deployment.trigger === 'on-land' ? 'automatic' : 'manual';
-}
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
 
@@ -207,7 +197,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     rows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
-    atGate ? releaseOf(projectId) : null,
+    atGate ? readReleaseMode(projectId) : null,
   ]);
   return {
     masterOwed: new Set(owed.map((o) => o.feedbackId)),

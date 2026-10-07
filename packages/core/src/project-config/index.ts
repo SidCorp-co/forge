@@ -28,7 +28,9 @@ export {
   type ReleasePath,
   readDeployMap,
   readLandingBranches,
+  readReleaseMode,
   readReleasePath,
+  releaseModeOf,
   releasePathOf,
 } from './release-path.js';
 export {

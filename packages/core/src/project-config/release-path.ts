@@ -1,3 +1,4 @@
+import type { ReleaseMode } from '@forge/contracts/forecast';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import {
   defaultBranchOf,
@@ -115,4 +116,21 @@ export async function readDeployMap(projectId: string): Promise<DeployMap> {
 /** `release.approval.required` of the project document; a project with no document requires none. */
 export async function approvalRequired(projectId: string): Promise<boolean> {
   return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
+}
+
+/**
+ * How a landed change reaches people: no production environment (`none`), a release approval
+ * required (`approval`), production deploying on land (`automatic`), or a release a person cuts
+ * (`manual`). A project with no document declares no production.
+ */
+export function releaseModeOf(document: ProjectDocument | undefined): ReleaseMode {
+  const production = document ? productionOf(document) : null;
+  if (!production) return 'none';
+  if (releaseApprovalRequired(document)) return 'approval';
+  const deployment = production.declaration.deployment;
+  return 'trigger' in deployment && deployment.trigger === 'on-land' ? 'automatic' : 'manual';
+}
+
+export async function readReleaseMode(projectId: string): Promise<ReleaseMode> {
+  return releaseModeOf((await readProjectDocument(projectId))?.document);
 }

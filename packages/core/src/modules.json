@@ -368,7 +368,14 @@
     "forecast": {
       "kind": "read-model",
       "context": "operations",
-      "reads": ["activityLog", "issues", "requirements"],
+      "reads": [
+        "activityLog",
+        "feedback",
+        "feedbackRouteIssues",
+        "issues",
+        "pipelineRuns",
+        "requirements"
+      ],
       "serves": ["REQ-11"]
     },
     "guides": {

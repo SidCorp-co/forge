@@ -37,6 +37,9 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
+import type { FeedbackForecast } from "@forge/contracts/forecast";
+import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { feedbackForecastText } from "@/features/forecast/text";
 import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackSummary } from "../types";
@@ -106,18 +109,22 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSumm
 }
 
 const rowOf =
-  (slug: string) =>
-  (r: FeedbackSummary): ListRowView => ({
+  (slug: string, forecastOf: (key: string) => FeedbackForecast | undefined = () => undefined) =>
+  (r: FeedbackSummary): ListRowView => {
+    const forecast = forecastOf(r.key);
+    const line = forecast ? feedbackForecastText(forecast)?.line : undefined;
+    return {
     key: r.key,
     href: feedbackHref(slug, r.key),
     title: r.title,
-    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
+    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`, ...(line ? [line] : [])],
     state: <StatusBadge family="feedbackPhase" value={r.phase} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: <ActorChip name={r.reporter.name ?? "Unknown reporter"} kind={r.reporter.agency} size={20} />,
     age: { text: formatAge(r.updatedAt), title: `Sent ${formatStamp(r.createdAt)} · last changed ${formatStamp(r.updatedAt)}` },
     dim: r.attentionGroup === "done",
-  });
+    };
+  };
 
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useFeedbackList(projectId);
@@ -137,7 +144,9 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug), [slug]);
+  const forecastQ = useFeedbackForecasts(projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
+  const row = useMemo(() => rowOf(slug, (k) => forecasts.get(k)), [slug, forecasts]);
 
   const openFull = useCallback(
     (key: string) => {

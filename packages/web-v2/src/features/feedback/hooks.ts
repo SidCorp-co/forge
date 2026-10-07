@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { feedbackForecastKey } from "@/features/forecast/hooks";
 import { feedbackApi } from "./api";
 import type { CreateFeedbackRequest, FeedbackAction, FeedbackResponse, PromoteAgentReportRequest } from "./types";
 
@@ -38,6 +39,7 @@ function useInvalidate(projectId: string) {
     qc.invalidateQueries({ queryKey: ["feedback", projectId] });
     qc.invalidateQueries({ queryKey: ["feedback-item", projectId] });
     qc.invalidateQueries({ queryKey: ["suggestions", projectId] });
+    qc.invalidateQueries({ queryKey: feedbackForecastKey(projectId) });
   };
 }
 

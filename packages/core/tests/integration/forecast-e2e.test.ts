@@ -1,101 +1,15 @@
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { api, type Body, userToken } from '../helpers/api.js';
-import {
-  addProjectMember,
-  createTestDevice,
-  createTestProject,
-  createTestUser,
-} from '../helpers/factories.js';
+import { api, type Body } from '../helpers/api.js';
+import { ago, issue, landHistory, read, type World, world } from '../helpers/forecast-world.js';
 
 // A forecast is a range read off the project's own history, through its queue at its own
 // concurrency, and never a date where a person or an outage holds the work.
 
-const MINUTE = 60_000;
-const DAY = 86_400_000;
 const HISTORY = 20;
 
-interface World {
-  projectId: string;
-  userId: string;
-  token: string;
-  runnerId: string;
-  deviceId: string;
-  seq: number;
-}
-
-async function world(): Promise<World> {
-  const user = await createTestUser({ verified: true });
-  const project = await createTestProject(user.id);
-  await addProjectMember(project.id, user.id, 'admin');
-  const device = await createTestDevice(user.id);
-  const runnerId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, repo_path)
-    VALUES (${runnerId}, ${project.id}, 'claude-code', ${device}, 'box', 'online', now(), '/srv/checkout')
-  `);
-  return {
-    projectId: project.id,
-    userId: user.id,
-    token: await userToken(user.id),
-    runnerId,
-    deviceId: device,
-    seq: 0,
-  };
-}
-
-async function issue(
-  w: World,
-  over: {
-    status: string;
-    createdAt: Date;
-    mergedAt?: Date | null;
-    waitingKind?: string;
-    priority?: string;
-  },
-): Promise<{ id: string; key: string }> {
-  const id = randomUUID();
-  w.seq += 1;
-  await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, waiting_kind, priority)
-    VALUES (${id}, ${w.projectId}, ${w.seq}, ${`issue ${w.seq}`}, ${over.status}, ${w.userId},
-            ${over.createdAt.toISOString()}, ${over.mergedAt?.toISOString() ?? null},
-            ${over.waitingKind ?? null}, ${over.priority ?? 'medium'})
-  `);
-  return { id, key: `ISS-${w.seq}` };
-}
-
-/** `n` issues landed one a day, each `45..75` minutes from in_progress to merge (p50 59). */
-async function landHistory(w: World, n: number): Promise<number[]> {
-  const minutes: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const took = 45 + Math.round((30 * i) / Math.max(1, n - 1));
-    minutes.push(took);
-    const merged = new Date(Date.now() - (n - i) * DAY);
-    const started = new Date(merged.getTime() - took * MINUTE);
-    const { id } = await issue(w, {
-      status: 'closed',
-      createdAt: new Date(started.getTime() - MINUTE),
-      mergedAt: merged,
-    });
-    await db.execute(sql`
-      INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
-      VALUES (${id}, 'user', ${w.userId}, 'human', 'issue.statusChanged',
-              ${JSON.stringify({ from: 'open', to: 'in_progress' })}::jsonb, ${started.toISOString()})
-    `);
-  }
-  return minutes.sort((a, b) => a - b);
-}
-
-const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000);
-
-async function read(w: World, path: string): Promise<Body> {
-  const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/forecast${path}`);
-  expect(res.status, JSON.stringify(res.body)).toBe(200);
-  return res.body;
-}
+const sortedMinutes = (h: { minutes: number }[]) => h.map((x) => x.minutes).sort((a, b) => a - b);
 
 describe('forecast read', () => {
   let w: World;
@@ -104,7 +18,7 @@ describe('forecast read', () => {
 
   beforeAll(async () => {
     w = await world();
-    const minutes = await landHistory(w, HISTORY);
+    const minutes = sortedMinutes(await landHistory(w, HISTORY));
     p50 = minutes[Math.ceil(0.5 * minutes.length) - 1] ?? 0;
     keys.q1 = (await issue(w, { status: 'open', createdAt: ago(4) })).key;
     keys.q2 = (await issue(w, { status: 'open', createdAt: ago(3) })).key;

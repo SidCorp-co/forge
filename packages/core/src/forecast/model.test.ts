@@ -19,7 +19,7 @@ function history(n: number, span = n): History {
     minutes: 45 + Math.round((30 * i) / Math.max(1, n - 1)),
     complexity: null,
   }));
-  return { samples, spanDays: span };
+  return { samples, spanDays: span, peak: null };
 }
 
 let seq = 0;
@@ -139,6 +139,7 @@ describe('forecast arithmetic', () => {
     const h: History = {
       samples: Array.from({ length: 48 }, () => ({ minutes: 60, complexity: null })),
       spanDays: 1,
+      peak: null,
     };
     expect(concurrencyOf(h)?.value).toBe(2);
     const queue = [item(), item(), item(), item()];
@@ -146,6 +147,35 @@ describe('forecast arithmetic', () => {
     if (!last) throw new Error('no last');
     const read = run(queue, h).forecasts.get(last.key);
     expect(read).toMatchObject({ kind: 'forecast', p50Minutes: 120, p85Minutes: 120 });
+  });
+
+  it('never works more lanes than the project has had in progress at once lately', () => {
+    // a burst: 36 landings in one day, each six hours from start to landing, reads L ≈ 9 by
+    // Little's law; the box never had more than two in progress at once
+    const burst: History = {
+      samples: Array.from({ length: 36 }, () => ({ minutes: 360, complexity: null })),
+      spanDays: 1,
+      peak: 2,
+    };
+    const c = concurrencyOf(burst);
+    expect(c?.value).toBe(2);
+    expect(c?.basis).toMatch(
+      /held to 2: the most issues in progress at once over the last 14 days/,
+    );
+    expect(concurrencyOf({ ...burst, peak: null })?.value).toBe(9);
+    expect(concurrencyOf({ ...burst, peak: 0 })?.value).toBe(1);
+    const queue = [item(), item(), item(), item()];
+    const last = queue[3];
+    if (!last) throw new Error('no last');
+    expect(run(queue, burst).forecasts.get(last.key)).toMatchObject({
+      kind: 'forecast',
+      p50Minutes: 720,
+      basis: { concurrency: 2 },
+    });
+  });
+
+  it('keeps the lanes the history reads where the peak is higher', () => {
+    expect(concurrencyOf({ ...history(20), peak: 5 })?.value).toBe(1);
   });
 
   it('starts a dependent only once its blocker lands', () => {
@@ -177,7 +207,7 @@ describe('forecast arithmetic', () => {
     const read = runForecast({
       now: NOW,
       items: [big, tiny],
-      history: { samples, spanDays: 60 },
+      history: { samples, spanDays: 60, peak: null },
       projectWait: null,
       seed: 1,
     });

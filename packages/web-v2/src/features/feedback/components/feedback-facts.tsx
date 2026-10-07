@@ -12,6 +12,8 @@ import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_LABELS } from "@forge/contracts/feedback";
+import type { FeedbackForecast } from "@forge/contracts/forecast";
+import { feedbackForecastText } from "@/features/forecast/text";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
@@ -68,7 +70,20 @@ const CARRIER_FAMILY = {
   answer: null,
 } as const satisfies Record<FeedbackRoute, StatusFamily | null>;
 
-export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
+/** The item's line as its reporter means "done": who triages it, or when the fix is in people's hands. */
+function ForecastFact({ forecast }: { forecast: FeedbackForecast | undefined }) {
+  const read = forecast ? feedbackForecastText(forecast) : null;
+  if (!read) return null;
+  return (
+    <Fact label="Forecast" testId="facts-feedback-forecast">
+      <span className="fg-body-sm text-muted" title={read.detail} data-testid="feedback-forecast-line">
+        {read.line}
+      </span>
+    </Fact>
+  );
+}
+
+export function FeedbackFacts({ f, slug, forecast }: { f: FeedbackView; slug: string; forecast?: FeedbackForecast | undefined }) {
   const t = f.target;
   const r = f.route;
   const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
@@ -83,6 +98,7 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
             <WaitingOn w={f.waitingOn} />
           </Fact>
         ) : null}
+        <ForecastFact forecast={forecast} />
         <Fact label="Severity">
           <StatusBadge family="severity" value={f.severity} />
         </Fact>

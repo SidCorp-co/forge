@@ -40,3 +40,33 @@ export function useDraftReleaseForecast(projectId: string | undefined, enabled: 
     staleTime: 10_000,
   });
 }
+
+export function useRequirementForecasts(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, "requirements", projectId ?? ""],
+    queryFn: () => forecastApi.requirements(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}
+
+/** A triage moves an item's line though no issue moved, so the feedback acts invalidate it by this key. */
+export const feedbackForecastKey = (projectId: string) => [...KEY, "feedback", projectId] as const;
+
+export function useFeedbackForecasts(projectId: string | undefined) {
+  return useQuery({
+    queryKey: feedbackForecastKey(projectId ?? ""),
+    queryFn: () => forecastApi.feedback(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}
+
+export function useComingNext(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, "coming-next", projectId ?? ""],
+    queryFn: () => forecastApi.comingNext(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}

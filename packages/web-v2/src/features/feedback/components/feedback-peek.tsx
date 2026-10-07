@@ -5,6 +5,7 @@
 
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
@@ -23,6 +24,7 @@ export function FeedbackPeek({
   onOpenFull: () => void;
 }) {
   const q = useFeedbackItem(projectId, fbKey);
+  const forecasts = useFeedbackForecasts(projectId);
   return (
     <PeekPanel peek={peek} listLabel="Feedback" noun="Feedback" onOpenFull={onOpenFull} testId="feedback-peek">
       <QueryBoundary query={q} loadingLabel="loading feedback…">
@@ -39,7 +41,7 @@ export function FeedbackPeek({
               />
               <FeedbackBanner f={f} className="px-[18px]" />
               <div className="px-[18px] pb-4 pt-4">
-                <FeedbackFacts f={f} slug={slug} />
+                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} />
               </div>
             </>
           );

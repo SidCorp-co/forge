@@ -1,46 +1,56 @@
 /**
- * A requirement's issues, or the draft release's, forecast as one: when the last of them lands.
+ * A requirement's issues, or the draft release's, forecast as one: when the last of them lands,
+ * and when the last of them is in people's hands (`delivery.ts`).
  */
 
-import type { Forecast, ScopeForecast } from '@forge/contracts/forecast';
-import { approvalRequired } from '../project-config/index.js';
+import type {
+  ComingNextForecast,
+  Forecast,
+  RequirementForecasts,
+  ScopeForecast,
+} from '@forge/contracts/forecast';
 import { draftReleaseIssueIds } from '../release-batch/index.js';
-import { type IssueRow, issueRowsByIds, requirementIssueRows } from './facts.js';
-import { scopeForecast } from './model.js';
+import { deliveryOf, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
+import {
+  type IssueRow,
+  issueRowsByIds,
+  issueRowsOfRequirements,
+  liveRequirements,
+  type RequirementRow,
+  requirementBySeq,
+} from './facts.js';
+import { scopeForecast, scopeLandings, seedOf } from './model.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
+import { readReleaseFacts, readShipped } from './release.js';
 
-function scopeOf(
-  f: Facts,
+/** One simulation, the release that follows it, and who shipped the closed issues in view. */
+export interface Reads {
+  f: Facts;
+  release: ReleaseFacts;
+  shipped: Map<string, Shipped>;
+}
+
+export async function readsFor(
+  projectId: string,
+  now: Date,
   rows: readonly IssueRow[],
-  scope: ScopeForecast['scope'],
-  key: string,
-): ScopeForecast {
-  const members = rows.filter((r) => r.status !== 'dropped');
-  const read = members.map((r) => ({ row: r, forecast: forecastOf(f, r) }));
-  const landed = read.flatMap((m) => (m.forecast.kind === 'landed' ? [m.forecast.landedAt] : []));
-  const open = read.filter((m) => m.forecast.kind !== 'landed' && m.forecast.kind !== 'ended');
-  const forecast =
-    members.length === 0
-      ? null
-      : open.length === 0
-        ? latestLanding(f.run.asOf, landed)
-        : scopeForecast(
-            f.run,
-            open.flatMap((m) => {
-              const k = f.keyOf.get(m.row.id);
-              return k ? [k] : [];
-            }),
-            f.now,
-          );
-  return {
-    ...stamp(f.run.asOf),
-    scope,
-    key,
-    total: members.length,
-    landed: landed.length,
-    forecast,
-    next: null,
-  };
+): Promise<Reads> {
+  const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
+  const [f, release, shipped] = await Promise.all([
+    simulate(projectId, now),
+    readReleaseFacts(projectId, now),
+    readShipped(projectId, closed),
+  ]);
+  return { f, release, shipped };
+}
+
+function latestShipped(members: readonly IssueRow[], shipped: Map<string, Shipped>): Shipped {
+  const known = members.flatMap((m) => {
+    const s = shipped.get(m.id);
+    return s?.at ? [s] : [];
+  });
+  known.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
+  return known[known.length - 1] ?? { version: null, at: null };
 }
 
 function latestLanding(asOf: string, times: readonly (string | null)[]): Forecast {
@@ -49,44 +59,158 @@ function latestLanding(asOf: string, times: readonly (string | null)[]): Forecas
   return { ...stamp(asOf), kind: 'landed', landedAt: known[known.length - 1] ?? null };
 }
 
+export function scopeOf(
+  r: Reads,
+  rows: readonly IssueRow[],
+  scope: ScopeForecast['scope'],
+  key: string,
+  title: string | null,
+): ScopeForecast {
+  const { f } = r;
+  const members = rows.filter((m) => m.status !== 'dropped');
+  const read = members.map((m) => ({ row: m, forecast: forecastOf(f, m) }));
+  const landed = read.flatMap((m) => (m.forecast.kind === 'landed' ? [m.forecast.landedAt] : []));
+  const open = read.filter((m) => m.forecast.kind !== 'landed' && m.forecast.kind !== 'ended');
+  const openKeys = open.flatMap((m) => {
+    const k = f.keyOf.get(m.row.id);
+    return k ? [k] : [];
+  });
+  const forecast =
+    members.length === 0
+      ? null
+      : open.length === 0
+        ? latestLanding(f.run.asOf, landed)
+        : scopeForecast(f.run, openKeys, f.now);
+  const unshipped = members.filter((m) => m.status !== 'closed');
+  const lastLanding = latestLanding(
+    f.run.asOf,
+    unshipped.map((m) => m.merged_at),
+  );
+  const delivery = forecast
+    ? deliveryOf({
+        asOf: f.run.asOf,
+        now: f.now,
+        landing: forecast,
+        trials: forecast.kind === 'forecast' ? scopeLandings(f.run, openKeys) : null,
+        landedAt:
+          lastLanding.kind === 'landed' && lastLanding.landedAt
+            ? new Date(lastLanding.landedAt)
+            : null,
+        shipped: unshipped.length === 0 ? latestShipped(members, r.shipped) : null,
+        release: r.release,
+        seed: seedOf(`${key}:release`),
+      })
+    : null;
+  return {
+    ...stamp(f.run.asOf),
+    scope,
+    key,
+    title,
+    total: members.length,
+    landed: landed.length,
+    forecast,
+    next: null,
+    delivery,
+  };
+}
+
+const requirementScope = (r: Reads, req: RequirementRow, rows: readonly IssueRow[]) =>
+  scopeOf(r, rows, 'requirement', `REQ-${req.req_seq}`, req.title);
+
 export async function readRequirementForecast(
   projectId: string,
   reqSeq: number,
   now: Date = new Date(),
 ): Promise<ScopeForecast | null> {
-  const [rows, f] = await Promise.all([
-    requirementIssueRows(projectId, reqSeq),
-    simulate(projectId, now),
-  ]);
-  if (!rows) return null;
-  return scopeOf(f, rows, 'requirement', `REQ-${reqSeq}`);
+  const req = await requirementBySeq(projectId, reqSeq);
+  if (!req) return null;
+  const rows = (await issueRowsOfRequirements(projectId, [req.id])).get(req.id) ?? [];
+  return requirementScope(await readsFor(projectId, now, rows), req, rows);
+}
+
+async function allRequirementScopes(
+  projectId: string,
+  now: Date,
+  extra: readonly IssueRow[] = [],
+): Promise<{ reads: Reads; scopes: ScopeForecast[] }> {
+  const reqs = await liveRequirements(projectId);
+  const byReq = await issueRowsOfRequirements(
+    projectId,
+    reqs.map((q) => q.id),
+  );
+  const reads = await readsFor(projectId, now, [...[...byReq.values()].flat(), ...extra]);
+  return {
+    reads,
+    scopes: reqs.map((q) => requirementScope(reads, q, byReq.get(q.id) ?? [])),
+  };
+}
+
+/** Every live requirement's end-to-end forecast from one simulation, for the list rows. */
+export async function readRequirementForecasts(
+  projectId: string,
+  now: Date = new Date(),
+): Promise<RequirementForecasts> {
+  const { reads, scopes } = await allRequirementScopes(projectId, now);
+  return { ...stamp(reads.f.run.asOf), projectId, requirements: scopes };
 }
 
 /**
- * The draft release: the issues waiting at the release gate that no version holds yet. They have
- * landed by the time they reach it, so what follows is the cut, which `next` names as a person's
- * wait wherever the project requires an approval.
+ * The draft: the landed issues waiting at the release gate that no version holds yet. What follows
+ * is the release, which `next` names as a person's act wherever a person makes it.
  */
+function draftScope(r: Reads, rows: readonly IssueRow[]): ScopeForecast {
+  const read = scopeOf(r, rows, 'release', 'draft', null);
+  const leg = releaseLegOf(r.release);
+  if (read.forecast?.kind !== 'landed' || leg.kind !== 'person') return read;
+  return {
+    ...read,
+    next: pausedOf(r.f.run.asOf, {
+      who: leg.who,
+      act: leg.act,
+      reason: `every included issue has landed; ${leg.reason}`,
+      ref: null,
+    }),
+  };
+}
+
 export async function readDraftReleaseForecast(
   projectId: string,
   now: Date = new Date(),
 ): Promise<ScopeForecast> {
-  const ids = await draftReleaseIssueIds(projectId);
-  const [rows, f, required] = await Promise.all([
-    issueRowsByIds(projectId, ids),
-    simulate(projectId, now),
-    approvalRequired(projectId),
-  ]);
-  const read = scopeOf(f, rows, 'release', 'draft');
-  if (read.forecast?.kind !== 'landed' || !required) return read;
+  const rows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
+  return draftScope(await readsFor(projectId, now, rows), rows);
+}
+
+const SOONEST: Record<Forecast['kind'], number> = {
+  forecast: 0,
+  paused: 1,
+  not_enough_history: 2,
+  landed: 3,
+  ended: 4,
+};
+
+/** Each requirement with work still to land, soonest landing first, then the draft release. */
+export async function readComingNext(
+  projectId: string,
+  now: Date = new Date(),
+): Promise<ComingNextForecast> {
+  const draftRows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
+  const { reads, scopes } = await allRequirementScopes(projectId, now, draftRows);
+  const open = scopes.filter(
+    (s) => s.forecast && s.forecast.kind !== 'landed' && s.forecast.kind !== 'ended',
+  );
+  const p50 = (s: ScopeForecast) =>
+    s.forecast?.kind === 'forecast' ? s.forecast.p50Minutes : Number.POSITIVE_INFINITY;
+  open.sort(
+    (a, b) =>
+      SOONEST[a.forecast?.kind ?? 'ended'] - SOONEST[b.forecast?.kind ?? 'ended'] ||
+      p50(a) - p50(b) ||
+      a.key.localeCompare(b.key, undefined, { numeric: true }),
+  );
   return {
-    ...read,
-    next: pausedOf(f.run.asOf, {
-      who: 'A release approver',
-      act: 'cut the version, then approve the release',
-      reason:
-        'every included issue has landed; this project requires a person to approve each release on Releases',
-      ref: null,
-    }),
+    ...stamp(reads.f.run.asOf),
+    projectId,
+    requirements: open,
+    draft: draftScope(reads, draftRows),
   };
 }

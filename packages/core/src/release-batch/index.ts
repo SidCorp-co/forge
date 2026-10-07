@@ -31,5 +31,6 @@ export {
   waitingIssueIds as draftReleaseIssueIds,
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
+export { nextDraftVersion } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

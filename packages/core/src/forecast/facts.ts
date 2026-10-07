@@ -4,7 +4,12 @@
  * work off the runners' dispatch liveness and its master's standing.
  */
 
-import { FORECAST_LABEL, FORECAST_WINDOW_DAYS, type Forecast } from '@forge/contracts/forecast';
+import {
+  FORECAST_LABEL,
+  FORECAST_PEAK_DAYS,
+  FORECAST_WINDOW_DAYS,
+  type Forecast,
+} from '@forge/contracts/forecast';
 import { ISSUE_RESOLVED_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import { type SQL, sql } from 'drizzle-orm';
@@ -12,7 +17,7 @@ import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { readMasterStanding } from '../masters/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
-import type { CycleSample, History, Wait } from './model.js';
+import { type CycleSample, type History, peakOf, type Wait } from './model.js';
 
 const DAY_MS = 86_400_000;
 export const LANDED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
@@ -24,7 +29,26 @@ interface SampleRow {
 }
 
 export async function readHistory(projectId: string, now: Date): Promise<History> {
-  const rows = rowsOf<SampleRow>(
+  const [rows, peak] = await Promise.all([
+    landedRows(projectId, now),
+    readPeakInProgress(projectId, now),
+  ]);
+  const samples: CycleSample[] = rows.map((r) => ({
+    minutes: Number(r.minutes),
+    complexity: r.complexity,
+  }));
+  const first = rows.reduce(
+    (t, r) => Math.min(t, new Date(r.landed_at).getTime()),
+    Number.POSITIVE_INFINITY,
+  );
+  const spanDays = Number.isFinite(first)
+    ? Math.min(FORECAST_WINDOW_DAYS, Math.max(1, (now.getTime() - first) / DAY_MS))
+    : 0;
+  return { samples, spanDays, peak };
+}
+
+async function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
+  return rowsOf<SampleRow>(
     await db.execute(sql`
       SELECT i.complexity, i.merged_at AS landed_at,
              EXTRACT(EPOCH FROM (i.merged_at - s.started_at)) / 60 AS minutes
@@ -45,18 +69,41 @@ export async function readHistory(projectId: string, now: Date): Promise<History
          AND i.merged_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
          AND i.merged_at <= ${now.toISOString()}::timestamptz`),
   );
-  const samples: CycleSample[] = rows.map((r) => ({
-    minutes: Number(r.minutes),
-    complexity: r.complexity,
-  }));
-  const first = rows.reduce(
-    (t, r) => Math.min(t, new Date(r.landed_at).getTime()),
-    Number.POSITIVE_INFINITY,
+}
+
+interface SpellRow {
+  started_at: string;
+  ended_at: string;
+}
+
+/**
+ * The most of the project's issues that stood at `in_progress` at once over the last
+ * FORECAST_PEAK_DAYS days: each spell runs from a move into `in_progress` to the issue's next move,
+ * or to now where it is still there. Null where no spell touched the window.
+ */
+export async function readPeakInProgress(projectId: string, now: Date): Promise<number | null> {
+  const from = new Date(now.getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
+  const spells = rowsOf<SpellRow>(
+    await db.execute(sql`
+      SELECT greatest(m.at, ${from}::timestamptz) AS started_at,
+             least(coalesce(m.next_at, ${now.toISOString()}::timestamptz), ${now.toISOString()}::timestamptz) AS ended_at
+        FROM (
+          SELECT al.created_at AS at, al.payload ->> 'to' AS to_status, i.status,
+                 lead(al.created_at) OVER (PARTITION BY al.issue_id ORDER BY al.created_at, al.id) AS next_at
+            FROM activity_log al
+            JOIN issues i ON i.id = al.issue_id
+           WHERE i.project_id = ${projectId}
+             AND al.action = 'issue.statusChanged'
+             AND al.created_at <= ${now.toISOString()}::timestamptz
+        ) m
+       WHERE m.to_status = 'in_progress'
+         AND (m.next_at IS NOT NULL OR m.status = 'in_progress')
+         AND coalesce(m.next_at, ${now.toISOString()}::timestamptz) > ${from}::timestamptz`),
   );
-  const spanDays = Number.isFinite(first)
-    ? Math.min(FORECAST_WINDOW_DAYS, Math.max(1, (now.getTime() - first) / DAY_MS))
-    : 0;
-  return { samples, spanDays };
+  if (spells.length === 0) return null;
+  return peakOf(
+    spells.map((s) => [new Date(s.started_at).getTime(), new Date(s.ended_at).getTime()]),
+  );
 }
 
 interface WorkRow {
@@ -177,6 +224,7 @@ export interface IssueRow {
   iss_seq: number;
   status: IssueStatus;
   merged_at: string | null;
+  requirement_id: string | null;
 }
 
 /** An issue outside the open set: landed by its status, or ended without landing whatever mark it carries. */
@@ -191,7 +239,7 @@ export function settledForecast(asOf: string, row: IssueRow): Forecast {
 async function issueRowsWhere(projectId: string, where: SQL): Promise<IssueRow[]> {
   return rowsOf<IssueRow>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.status, i.merged_at
+      SELECT i.id, i.iss_seq, i.status, i.merged_at, i.requirement_id
         FROM issues i
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),
@@ -204,14 +252,45 @@ export const issueRowsBySeq = (projectId: string, issSeq: number) =>
 export const issueRowsByIds = (projectId: string, ids: readonly string[]) =>
   ids.length === 0 ? Promise.resolve([]) : issueRowsWhere(projectId, sql`i.id IN (${idList(ids)})`);
 
-/** A requirement's issues by its REQ number; null where the project holds no such requirement. */
-export async function requirementIssueRows(
+export interface RequirementRow {
+  id: string;
+  req_seq: number;
+  title: string;
+}
+
+/** A requirement by its REQ number; null where the project holds no such requirement. */
+export async function requirementBySeq(
   projectId: string,
   reqSeq: number,
-): Promise<IssueRow[] | null> {
-  const [req] = rowsOf<{ id: string }>(
+): Promise<RequirementRow | null> {
+  const [req] = rowsOf<RequirementRow>(
     await db.execute(sql`
-      SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${reqSeq}`),
+      SELECT id, req_seq, title FROM requirements WHERE project_id = ${projectId} AND req_seq = ${reqSeq}`),
   );
-  return req ? issueRowsWhere(projectId, sql`i.requirement_id = ${req.id}`) : null;
+  return req ?? null;
+}
+
+/** Every requirement of the project not dropped, by REQ number. */
+export async function liveRequirements(projectId: string): Promise<RequirementRow[]> {
+  return rowsOf<RequirementRow>(
+    await db.execute(sql`
+      SELECT id, req_seq, title FROM requirements
+       WHERE project_id = ${projectId} AND status <> 'dropped'
+       ORDER BY req_seq`),
+  );
+}
+
+/** The issues of each of `requirementIds`, keyed by requirement id. */
+export async function issueRowsOfRequirements(
+  projectId: string,
+  requirementIds: readonly string[],
+): Promise<Map<string, IssueRow[]>> {
+  const out = new Map<string, IssueRow[]>(requirementIds.map((id) => [id, []]));
+  if (requirementIds.length === 0) return out;
+  const rows = await issueRowsWhere(
+    projectId,
+    sql`i.requirement_id IN (${idList(requirementIds)})`,
+  );
+  for (const r of rows) if (r.requirement_id) out.get(r.requirement_id)?.push(r);
+  return out;
 }

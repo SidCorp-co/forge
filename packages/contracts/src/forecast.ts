@@ -12,6 +12,8 @@ export const FORECAST_HISTORY_FLOOR = 10;
 /** The days of landings the history is read from. */
 export const FORECAST_WINDOW_DAYS = 60;
 export const FORECAST_TRIALS = 1000;
+/** The recent days the most issues in progress at once is read over: the simulation never works more. */
+export const FORECAST_PEAK_DAYS = 14;
 export const FORECAST_LABEL = "forecast" as const;
 
 /** What the numbers were read from, so a reader can judge the range for themselves. */
@@ -115,4 +117,92 @@ export interface ScopeForecast extends ForecastStamp {
 	forecast: Forecast | null;
 	/** What follows once every issue has landed, such as a release a person cuts. */
 	next: ForecastPaused | null;
+	/** The requirement's title; null on a release. */
+	title: string | null;
+	/** When the last of them is in people's hands; null where the scope holds no issue. */
+	delivery: DeliveryForecast | null;
+}
+
+/**
+ * How a landed change reaches people, read off the project document: a release nobody acts on
+ * (`automatic`: production deploys on land and no approval is required), one a holder of
+ * releases.approve approves (`approval`), one an admin cuts (`manual`), or none at all (`none`: no
+ * production environment, so a person releases it by hand).
+ */
+export const RELEASE_MODES = [
+	"automatic",
+	"approval",
+	"manual",
+	"none",
+] as const;
+export type ReleaseMode = (typeof RELEASE_MODES)[number];
+
+/** The project's own landed→released durations the release lag was sampled from. */
+export interface ReleaseLagBasis {
+	n: number;
+	floor: number;
+	windowDays: number;
+	lagP50Minutes: number;
+	lagP85Minutes: number;
+}
+
+/** What follows a landing before the change is in people's hands. */
+export type ReleaseLeg =
+	| { kind: "automatic"; basis: ReleaseLagBasis }
+	| { kind: "not_enough_history"; n: number; floor: number }
+	| {
+			kind: "person";
+			mode: Exclude<ReleaseMode, "automatic">;
+			who: string;
+			act: string;
+			reason: string;
+	  };
+
+/** A p50–p85 span from now, with no basis of its own: the parts it adds carry theirs. */
+export interface ForecastSpan {
+	p50At: string;
+	p85At: string;
+	p50Minutes: number;
+	p85Minutes: number;
+}
+
+/**
+ * Done as a person means it: in their hands, not merged. The landing, then what the release adds:
+ * a span only where no person acts and both halves have history, else the person and the act
+ * named with no date (VISION: state-never-lies).
+ */
+export interface DeliveryForecast extends ForecastStamp {
+	landing: Forecast;
+	/** Null once shipped, or where the landing holds no date to follow. */
+	release: ReleaseLeg | null;
+	/** Landing plus release lag, trial by trial; null wherever a person, a wait or a short history holds it. */
+	inHands: ForecastSpan | null;
+	/** The version that shipped it and when; null until every issue has shipped. */
+	shipped: { version: string | null; at: string | null } | null;
+}
+
+/** One feedback item: who triages it while untriaged, else its linked work's delivery. */
+export interface FeedbackForecast {
+	key: string;
+	triage: ForecastPaused | null;
+	/** Null where the item carries no work that ships: answered, declined, revision-routed. */
+	delivery: DeliveryForecast | null;
+}
+
+export interface FeedbackForecasts extends ForecastStamp {
+	projectId: string;
+	items: FeedbackForecast[];
+}
+
+/** Every live requirement's scope forecast, from one simulation, for the list rows. */
+export interface RequirementForecasts extends ForecastStamp {
+	projectId: string;
+	requirements: ScopeForecast[];
+}
+
+/** What comes next on Releases: each requirement with open work, soonest first, and the draft. */
+export interface ComingNextForecast extends ForecastStamp {
+	projectId: string;
+	requirements: ScopeForecast[];
+	draft: ScopeForecast;
 }
