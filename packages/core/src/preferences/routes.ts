@@ -85,7 +85,8 @@ preferenceRoutes.patch('/preferences', zValidator('json', patchBodySchema), asyn
 const preferencesSchema = z
   .object({
     theme: z.enum(PREF_THEMES).optional(),
-    language: z.enum(PREF_LANGUAGES).optional(),
+    // `null` clears the choice back to the project's content language.
+    language: z.enum(PREF_LANGUAGES).nullable().optional(),
     notifyOnMention: z.boolean().optional(),
     // The org the user is currently "working in" (ISS-469). `null` clears it
     // back to "no explicit choice" (the client resolves that to the personal

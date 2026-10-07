@@ -213,7 +213,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   }, [all, text]);
   const forecastQ = useRequirementForecasts(projectId);
   const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => etaOfScope(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {

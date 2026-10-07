@@ -33,8 +33,10 @@ import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export default function ProjectOverviewPage() {
+  const t = useCopy();
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const slug = params?.slug;
@@ -58,12 +60,12 @@ export default function ProjectOverviewPage() {
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
 
   if (projectsQ.isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading project…" />
+        <ProjectLoader label={t("dash.loading")} />
       </div>
     );
   }
@@ -71,7 +73,7 @@ export default function ProjectOverviewPage() {
   if (projectsQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState title="Couldn't load project" message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+        <ErrorState title={t("dash.loadFailed")} message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
       </div>
     );
   }
@@ -79,7 +81,7 @@ export default function ProjectOverviewPage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <EmptyState title="Project not found" message="This project doesn't exist or you don't have access to it." mascot />
+        <EmptyState title={t("dash.notFound")} message={t("dash.notFoundMessage")} mascot />
       </div>
     );
   }
@@ -109,16 +111,16 @@ export default function ProjectOverviewPage() {
           <PageTitle className="fg-h2">{project.name}</PageTitle>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
-            <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{project.role ?? "org"}</Badge>
+            <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{t(project.role === "admin" ? "common.role.admin" : project.role === "member" ? "common.role.member" : project.role === "viewer" ? "common.role.viewer" : "common.role.org")}</Badge>
             {attention.length > 0 && (
               <span className="fg-caption inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent-text)" }}>
                 <Icon name="inbox" size={13} />
-                needs attention {attention.length}
+                {t("dash.needsAttention", { count: attention.length })}
               </span>
             )}
           </div>
         </div>
-        <IconButton icon="settings" aria-label="Project settings" onClick={() => router.push(`/projects/${slug}/settings`)} />
+        <IconButton icon="settings" aria-label={t("dash.projectSettings")} onClick={() => router.push(`/projects/${slug}/settings`)} />
       </header>
 
       <div className="space-y-6">
@@ -134,7 +136,7 @@ export default function ProjectOverviewPage() {
 
         <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
           <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
-          <LateItems rows={lateRows(rows)} />
+          <LateItems rows={lateRows(rows)} clock={clock} />
         </div>
 
         {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (

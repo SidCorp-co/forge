@@ -143,7 +143,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   }, [all, text]);
   const forecastQ = useFeedbackForecasts(projectId);
   const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => etaOfFeedback(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {

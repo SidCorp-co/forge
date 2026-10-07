@@ -218,7 +218,7 @@ export function PropertiesRail({
   moves,
 }: PropertiesRailProps) {
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
-  const clock = useEtaClock(issue.projectId);
+  const clock = useEtaClock();
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);

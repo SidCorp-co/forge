@@ -26,7 +26,7 @@ export function FeedbackPeek({
 }) {
   const q = useFeedbackItem(projectId, fbKey);
   const forecasts = useFeedbackForecasts(projectId);
-  const clock = useEtaClock(projectId);
+  const clock = useEtaClock();
   return (
     <PeekPanel peek={peek} listLabel="Feedback" noun="Feedback" onOpenFull={onOpenFull} testId="feedback-peek">
       <QueryBoundary query={q} loadingLabel="loading feedback…">

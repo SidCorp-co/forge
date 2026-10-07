@@ -2621,11 +2621,18 @@
                     ]
                   },
                   "language": {
-                    "enum": [
-                      "en",
-                      "vi"
-                    ],
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "en",
+                          "vi"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "notifyOnMention": {
                     "type": "boolean"

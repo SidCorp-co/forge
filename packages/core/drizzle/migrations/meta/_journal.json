@@ -2857,6 +2857,13 @@
       "when": 1821052800000,
       "tag": "0441_a_triager_snoozes_accepts_and_messages_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 442,
+      "version": "7",
+      "when": 1821139200000,
+      "tag": "0442_each_person_picks_the_interface_language",
+      "breakpoints": true
     }
   ]
 }

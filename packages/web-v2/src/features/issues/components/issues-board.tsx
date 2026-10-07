@@ -356,7 +356,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   const rows = useMemo(() => narrow(q.data?.issues ?? [], n), [q.data, key]);
   const forecastQ = useProjectForecast(project.projectId);
   const forecasts = useMemo(() => new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast])), [forecastQ.data]);
-  const clock = useEtaClock(project.projectId);
+  const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => issueEta(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {

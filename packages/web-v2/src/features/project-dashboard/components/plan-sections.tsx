@@ -11,26 +11,30 @@ import type { EtaClock } from "@/features/forecast/eta";
 import { spanText } from "@/features/forecast/text";
 import { releaseHref } from "@/lib/routes/releases";
 import type { PlanRow } from "../ba-derive";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { standingWho } from "@/lib/i18n/standing-copy";
 
 const GRID = "grid grid-cols-[84px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-3.5 max-md:grid-cols-[auto_minmax(0,1fr)]";
 const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
-const KIND_LABEL = { requirement: "Requirement", feedback: "Feedback", release: "Release" } as const;
+const KIND_KEY = { requirement: "dash.kind.requirement", feedback: "dash.kind.feedback", release: "dash.kind.release" } as const;
 
 function Key({ row }: { row: PlanRow }) {
+  const t = useCopy();
   return (
-    <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={row.href} title={KIND_LABEL[row.kind]}>
+    <Link className="font-mono text-12-5 font-semibold text-link hover:underline" href={row.href} title={t(KIND_KEY[row.kind])}>
       {row.key}
     </Link>
   );
 }
 
-function lateText(row: PlanRow): string {
+function lateText(row: PlanRow, t: Copy, lang: EtaClock["lang"]): string {
   const l = row.late;
   if (!l) return "";
-  const by = spanText(l.byMinutes);
-  if (l.reason === "p85_passed") return `${by} past the latest similar work took`;
-  const who = row.eta?.kind === "waits" ? row.eta.who : "a person";
-  return `Waiting on ${who} · ${by} over a day`;
+  const by = spanText(l.byMinutes, lang);
+  if (l.reason === "p85_passed") return t("dash.latePast", { by });
+  const who = row.eta?.kind === "waits" ? standingWho(row.eta.who, lang) : t("dash.aPerson");
+  return t("dash.lateWaiting", { who, by });
 }
 
 type Block = { kind: "row"; row: PlanRow } | { kind: "cut"; version: string; who: string; rows: PlanRow[] };
@@ -63,11 +67,12 @@ function PlanItem({ r, clock }: { r: PlanRow; clock: EtaClock }) {
 }
 
 export function LandsThisWeek({ rows, clock, slug }: { rows: PlanRow[]; clock: EtaClock; slug: string }) {
+  const t = useCopy();
   return (
-    <section aria-label="Lands this week" data-testid="lands-this-week">
-      <SectionTitle className="fg-h3 mb-2">Lands this week{rows.length > 0 ? ` ${rows.length}` : ""}</SectionTitle>
+    <section aria-label={t("dash.landsThisWeek")} data-testid="lands-this-week">
+      <SectionTitle className="fg-h3 mb-2">{t("dash.landsThisWeek")}{rows.length > 0 ? ` ${rows.length}` : ""}</SectionTitle>
       {rows.length === 0 ? (
-        <p className="text-13 text-muted">Nothing is forecast to land this week.</p>
+        <p className="text-13 text-muted">{t("dash.landsEmpty")}</p>
       ) : (
         <ul className="m-0 list-none border-t border-line-subtle p-0">
           {landBlocks(rows).map((b) =>
@@ -77,11 +82,11 @@ export function LandsThisWeek({ rows, clock, slug }: { rows: PlanRow[]; clock: E
               <li key={`cut:${b.version}`} data-testid="lands-when-cut">
                 <details className="border-b border-line-subtle">
                   <summary className="cursor-pointer select-none py-2.5 text-13 font-semibold text-fg">
-                    {b.rows.length} land when{" "}
+                    {t("dash.landWhenA", { count: b.rows.length })}{" "}
                     <Link className="text-link hover:underline" href={releaseHref(slug, b.version)} onClick={(e) => e.stopPropagation()}>
                       {b.version}
                     </Link>{" "}
-                    is cut — waits on {b.who}
+                    {t("dash.landWhenB", { who: standingWho(b.who, clock.lang) })}
                   </summary>
                   <ul className="m-0 list-none p-0">
                     {b.rows.map((r) => (
@@ -98,12 +103,13 @@ export function LandsThisWeek({ rows, clock, slug }: { rows: PlanRow[]; clock: E
   );
 }
 
-export function LateItems({ rows }: { rows: PlanRow[] }) {
+export function LateItems({ rows, clock }: { rows: PlanRow[]; clock: EtaClock }) {
+  const t = useCopy();
   return (
-    <section aria-label="Late" data-testid="late-items">
-      <SectionTitle className="fg-h3 mb-2">Late{rows.length > 0 ? ` ${rows.length}` : ""}</SectionTitle>
+    <section aria-label={t("dash.late")} data-testid="late-items">
+      <SectionTitle className="fg-h3 mb-2">{t("dash.late")}{rows.length > 0 ? ` ${rows.length}` : ""}</SectionTitle>
       {rows.length === 0 ? (
-        <p className="text-13 text-muted">Nothing is running past its estimate or waiting on a person for over a day.</p>
+        <p className="text-13 text-muted">{t("dash.lateEmpty")}</p>
       ) : (
         <ul className="m-0 list-none border-t border-line-subtle p-0">
           {rows.map((r) => (
@@ -111,7 +117,7 @@ export function LateItems({ rows }: { rows: PlanRow[] }) {
               <Key row={r} />
               <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title}</span>
               <span className="text-right text-12-5 text-[var(--accent-text)] max-md:col-start-2 max-md:text-left" data-testid="late-by">
-                {lateText(r)}
+                {lateText(r, t, clock.lang)}
               </span>
             </li>
           ))}

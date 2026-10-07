@@ -10,6 +10,7 @@ describe("the dashboard's plan sections", () => {
   it("shows a late item by how much, and a paused one by who it waits on", () => {
     render(
       <LateItems
+        clock={clock}
         rows={[
           row({ late: { reason: "p85_passed", since: "x", byMinutes: 150 } }),
           row({ key: "FB-2", kind: "feedback", late: { reason: "waiting_over_day", since: "x", byMinutes: 360 }, eta: { kind: "waits", who: "A holder of feedback.approve", act: "triage it", detail: "d" } }),
@@ -36,7 +37,7 @@ describe("the dashboard's plan sections", () => {
     render(
       <>
         <LandsThisWeek slug="hop" rows={[]} clock={clock} />
-        <LateItems rows={[]} />
+        <LateItems rows={[]} clock={clock} />
       </>,
     );
     expect(within(screen.getByTestId("lands-this-week")).getByText(/Nothing is forecast to land this week/)).toBeTruthy();

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useMarkWhatsNewSeen, useWhatsNew } from "../hooks";
 import type { WhatsNewFeed } from "../types";
@@ -19,7 +19,7 @@ export function WhatsNewButton({ compact = false, entryAction }: { compact?: boo
   const [shown, setShown] = useState<WhatsNewFeed | undefined>(undefined);
   const feed = query.data;
   const unread = feed?.unread ?? 0;
-  const t = productCopy();
+  const t = useCopy();
   const failure = query.error ? "failed" : null;
 
   function openPanel() {

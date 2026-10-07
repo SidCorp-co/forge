@@ -20,6 +20,7 @@ import { type EtaClock, etaOfFeedback } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { feedbackForecastText } from "@/features/forecast/text";
 import { releaseHref } from "@/lib/routes/releases";
+import { useEtaClock } from "@/features/forecast/hooks";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
@@ -116,7 +117,8 @@ const CARRIER_FAMILY = {
 
 /** The item's line as its reporter means "done": who triages it, or when the fix is in people's hands. */
 function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | undefined; slug: string; clock?: EtaClock | undefined }) {
-  const read = forecast ? feedbackForecastText(forecast) : null;
+  const fallbackClock = useEtaClock();
+  const read = forecast ? feedbackForecastText(forecast, clock ?? fallbackClock) : null;
   if (!read) return null;
   const eta = clock ? etaOfFeedback(forecast, clock) : null;
   return (

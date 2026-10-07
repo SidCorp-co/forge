@@ -6,6 +6,8 @@
 
 import { WAITING_KIND_MARKS, type WaitingKind } from "@forge/contracts/standing";
 import type { ReactNode } from "react";
+import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { localizeWaiting } from "@/lib/i18n/standing-copy";
 import { cn } from "@/lib/utils/cn";
 import { AGENT_TINT } from "../status";
 import { LEGEND, type LegendTone } from "../vocabulary";
@@ -29,7 +31,8 @@ export interface WaitingOnProps {
 
 const fullText = (w: WaitingOnView) => [w.act ? `${w.who} · ${w.act}` : w.who, w.rule].filter(Boolean).join(" — ");
 
-export function WaitingOn({ w, whoNode }: WaitingOnProps) {
+export function WaitingOn({ w: core, whoNode }: WaitingOnProps) {
+  const w = localizeWaiting(core, useInterfaceLanguage());
   const mark = WAITING_KIND_MARKS[w.kind];
   if (mark === "none") {
     return (

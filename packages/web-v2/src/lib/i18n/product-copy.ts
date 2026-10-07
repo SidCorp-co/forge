@@ -31,3 +31,8 @@ export function productCopy(language?: string | null): Copy {
 export function copyLocale(language?: string | null): string {
   return baseOf(language) === "vi" ? "vi-VN" : "en-GB";
 }
+
+/** A key the type does not name (an enum value's label): the language's text, else `fallback`. */
+export function copyOr(language: string | null | undefined, key: string, fallback: string): string {
+  return LANGUAGES[baseOf(language)]?.[key as ProductCopyKey] ?? fallback;
+}

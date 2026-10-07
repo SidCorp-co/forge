@@ -4,7 +4,6 @@
 // feedback open and aging, the next release and when it is in people's hands. Every figure links to
 // the list it counts. Development's figures (runs, runners, spend, open issues) are not here.
 
-import { REQUIREMENT_STATE_LABELS } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
 import type { Eta, EtaClock } from "@/features/forecast/eta";
@@ -12,6 +11,7 @@ import { feedbackListHref } from "@/lib/routes/feedback";
 import { releaseHref, releasesListHref } from "@/lib/routes/releases";
 import { requirementsHref } from "@/lib/routes/requirements";
 import type { FeedbackFigures, requirementsByState } from "../ba-derive";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 
 const LINK = "rounded-sm hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
 
@@ -40,23 +40,25 @@ export interface BaFiguresProps {
 }
 
 export function BaFigures({ slug, requirements, feedback, release, clock }: BaFiguresProps) {
+  const t = useCopy();
+  const label = useLabel();
   return (
     <section
-      aria-label="Progress"
+      aria-label={t("dash.progress")}
       data-testid="ba-figures"
       className="grid grid-cols-1 gap-x-10 gap-y-4 border-y border-line-subtle py-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)]"
     >
-      <Group label="Requirements">
+      <Group label={t("dash.requirements")}>
         {requirements.map((r) => (
-          <Figure key={r.state} href={`${requirementsHref(slug)}?group=status`} label={REQUIREMENT_STATE_LABELS[r.state]} value={r.count} />
+          <Figure key={r.state} href={`${requirementsHref(slug)}?group=status`} label={label("requirementState", r.state)} value={r.count} />
         ))}
       </Group>
-      <Group label="Feedback">
-        <Figure href={feedbackListHref(slug)} label="open" value={feedback.open} />
-        <Figure href={feedbackListHref(slug)} label="untriaged" value={feedback.untriaged} accent={feedback.untriaged > 0} />
-        <Figure href={feedbackListHref(slug)} label="waiting over a week" value={feedback.aging} accent={feedback.aging > 0} />
+      <Group label={t("dash.feedback")}>
+        <Figure href={feedbackListHref(slug)} label={t("dash.fbOpen")} value={feedback.open} />
+        <Figure href={feedbackListHref(slug)} label={t("dash.fbUntriaged")} value={feedback.untriaged} accent={feedback.untriaged > 0} />
+        <Figure href={feedbackListHref(slug)} label={t("dash.fbAging")} value={feedback.aging} accent={feedback.aging > 0} />
       </Group>
-      <Group label="Next release">
+      <Group label={t("dash.nextRelease")}>
         {release ? (
           <>
             <Link href={releaseHref(slug, release.version)} className={`font-mono text-16 font-semibold text-link ${LINK}`}>
@@ -66,7 +68,7 @@ export function BaFigures({ slug, requirements, feedback, release, clock }: BaFi
           </>
         ) : (
           <Link href={releasesListHref(slug)} className={`text-13 text-muted ${LINK}`}>
-            Nothing is in preparation
+            {t("dash.nothingInPreparation")}
           </Link>
         )}
       </Group>
