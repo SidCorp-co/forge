@@ -5,6 +5,5 @@ export {
 } from './nav-model';
 export { buildWorkspaceCommands } from './commands';
 export { useProjectOrgScopeSync } from './use-project-org-scope-sync';
-export { CurrentProjectProvider, useCurrentProject } from './current-project';
 export { useRailProjectData } from './use-rail-project-data';
 export { MobileNavDrawer } from './components/mobile-nav-drawer';

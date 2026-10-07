@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { ProjectListItem } from "@/features/projects/types";
+import type { ProjectListItem } from "./types";
 
 // The rail's resolved project: on a screen with no slug in its URL (Settings) it is
 // the only answer to "which project is this person working in". Null when there is none.

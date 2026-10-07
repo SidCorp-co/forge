@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
-import { useCurrentProject } from "@/features/shell/current-project";
+import { useCurrentProject } from "@/features/projects/current-project";
 import { useSaveTourState, useStartTour, useTourCopy, useTourStates } from "../hooks";
 import { inAudience, tourById } from "../registry";
 import { offersHint } from "../state";

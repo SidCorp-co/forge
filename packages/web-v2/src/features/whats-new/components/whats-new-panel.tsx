@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { FilterChip, SlideOver } from "@/design";
 import { type Copy, copyLocale, productCopy } from "@/lib/i18n/product-copy";
-import { tourHref } from "@/features/tours/links";
-import { tourById } from "@/features/tours/registry";
 import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 import { entriesByKey, sectionsOf, type WhatsNewSection } from "../group";
@@ -18,9 +16,16 @@ function shortDate(at: string | Date, locale: string): string {
   return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit" }).format(new Date(at));
 }
 
+/**
+ * What an entry offers beside its version, handed in by whoever composes the panel: a feature
+ * that acts on entries (a tour's "Show me") sits above this one and may not be imported here.
+ */
+export type WhatsNewEntryAction = (entry: WhatsNewEntry, slug: string | null) => ReactNode;
+
+const EntryActionContext = createContext<WhatsNewEntryAction | null>(null);
+
 function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: string | null }) {
-  const tour = tourById(entry.tour?.id);
-  const tourLink = tour ? tourHref(tour, slug, { version: entry.version }) : null;
+  const action = useContext(EntryActionContext);
   return (
     <li className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 gap-y-1 border-b border-line py-2.5" data-testid="whats-new-entry">
       <span
@@ -33,11 +38,7 @@ function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: str
       </span>
       <span className="text-13-5 text-fg">{entry.text}</span>
       <span className="col-start-2 flex items-center gap-2.5 text-12 text-subtle">
-        {tour && tourLink && (
-          <Link href={tourLink} className="text-13 font-semibold text-accent-text hover:underline" data-testid="whats-new-tour-link">
-            {t("tours.showMe", { count: tour.steps.length })}
-          </Link>
-        )}
+        {action?.(entry, slug)}
         {slug ? (
           <Link href={releaseHref(slug, entry.version)} className="font-mono hover:text-fg">
             {entry.version}
@@ -148,11 +149,12 @@ export interface WhatsNewPanelProps {
   /** The feed as it stood when the panel opened, so the since-line still counts what was unread. */
   feed: WhatsNewFeed | undefined;
   failure: "unavailable" | "failed" | null;
+  entryAction?: WhatsNewEntryAction;
   now?: Date;
 }
 
 /** What's new: Forge's changes since the reader last looked, by day, version as trailing meta. */
-export function WhatsNewPanel({ open, onClose, feed, failure, now = new Date() }: WhatsNewPanelProps) {
+export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now = new Date() }: WhatsNewPanelProps) {
   const [kind, setKind] = useState<WhatsNewKind | null>(null);
   const [showRest, setShowRest] = useState(false);
   const t = productCopy(feed?.contentLanguage);
@@ -165,6 +167,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, now = new Date() }
 
   return (
     <SlideOver open={open} onClose={onClose} title={t("whatsNew.title")} width={440}>
+      <EntryActionContext.Provider value={entryAction ?? null}>
       <div className="-mt-3" data-testid="whats-new-panel">
         {failure && <p className="pt-3 text-13 text-muted">{t(failure === "unavailable" ? "whatsNew.unavailable" : "whatsNew.failed")}</p>}
         {feed && (
@@ -194,6 +197,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, now = new Date() }
           </>
         )}
       </div>
+      </EntryActionContext.Provider>
     </SlideOver>
   );
 }

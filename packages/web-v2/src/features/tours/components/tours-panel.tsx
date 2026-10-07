@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { Button, SlideOver } from "@/design";
-import { useCurrentProject } from "@/features/shell/current-project";
+import { useCurrentProject } from "@/features/projects/current-project";
 import { useWhatsNew } from "@/features/whats-new/hooks";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStartTour, useTourCopy, useTourStates } from "../hooks";

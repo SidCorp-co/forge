@@ -7,13 +7,13 @@ import { productCopy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useMarkWhatsNewSeen, useWhatsNew } from "../hooks";
 import type { WhatsNewFeed } from "../types";
-import { WhatsNewPanel } from "./whats-new-panel";
+import { type WhatsNewEntryAction, WhatsNewPanel } from "./whats-new-panel";
 
 /**
  * The rail's What's new entry: a dot while anything shipped after the reader's seen mark, never a
  * count. Opening it shows the feed as it stood and moves the mark to now, which clears the dot.
  */
-export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
+export function WhatsNewButton({ compact = false, entryAction }: { compact?: boolean; entryAction?: WhatsNewEntryAction }) {
   const query = useWhatsNew();
   const markSeen = useMarkWhatsNewSeen();
   const [open, setOpen] = useState(false);
@@ -56,7 +56,7 @@ export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
           />
         )}
       </button>
-      <WhatsNewPanel open={open} onClose={() => setOpen(false)} feed={shown ?? feed} failure={failure} />
+      <WhatsNewPanel open={open} onClose={() => setOpen(false)} feed={shown ?? feed} failure={failure} entryAction={entryAction} />
     </>
   );
 }

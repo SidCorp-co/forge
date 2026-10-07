@@ -35,8 +35,8 @@ import {
   resolveRailSlug,
   useProjectOrgScopeSync,
   useRailProjectData,
-  CurrentProjectProvider,
 } from "@/features/shell";
+import { CurrentProjectProvider } from "@/features/projects/current-project";
 import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
@@ -53,6 +53,7 @@ import { DrawerAccount } from "@/features/shell/components/drawer-account";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { HelpToursButton } from "@/features/tours/components/help-tours-button";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
+import { tourShowMe } from "@/features/tours/components/tour-show-me";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -255,7 +256,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onViewAllProjects={() => router.push("/projects")}
         version={
           <>
-            <WhatsNewButton />
+            <WhatsNewButton entryAction={tourShowMe} />
             <HelpToursButton />
             <SidebarVersion
               onDocs={() => router.push("/docs")}

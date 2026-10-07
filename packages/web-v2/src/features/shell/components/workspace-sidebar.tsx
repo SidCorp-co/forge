@@ -6,6 +6,7 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useMyEcosystems } from "@/features/ecosystem/hooks";
 import { ProjectSwitcher } from "./project-switcher";
 import { HelpToursButton } from "@/features/tours/components/help-tours-button";
+import { tourShowMe } from "@/features/tours/components/tour-show-me";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { SidebarVersion } from "./sidebar-version";
 import { type ProjectBadges, projectMenu, workspaceNavItems } from "../nav-model";
@@ -63,7 +64,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       bell={props.bell}
       version={
         <>
-          <WhatsNewButton compact={collapsed} />
+          <WhatsNewButton compact={collapsed} entryAction={tourShowMe} />
           <HelpToursButton compact={collapsed} />
           <SidebarVersion onDocs={() => onRoute("/docs")} activeKey={activeKey} compact={collapsed} />
         </>

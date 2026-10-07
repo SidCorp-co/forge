@@ -1,5 +1,7 @@
 // Every step of every tour points at a `data-tour` anchor its page draws. A page that loses an anchor
 // fails here naming the tour and the step, before a person meets a popover pointing at nothing.
+// It sits with the routes because it composes them: the pages of three features beside the tour
+// registry, which those features themselves import, so no one feature can hold it.
 
 import type { ReleaseChanges } from "@forge/contracts/releases";
 import type { TourId } from "@forge/contracts/tours";
@@ -10,7 +12,7 @@ import type { StatusCard } from "@/features/integrations/types";
 import { IntegrationsTab } from "@/features/project-settings/components/integrations-tab";
 import { WhatChanges } from "@/features/releases/components/release-changes";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { TOURS } from "./registry";
+import { TOURS } from "@/features/tours/registry";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),

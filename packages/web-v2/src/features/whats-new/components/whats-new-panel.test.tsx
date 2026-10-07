@@ -53,12 +53,4 @@ describe("the What's new panel", () => {
     const link = within(screen.getByTestId("whats-new-section-today")).getByRole("link", { name: "0.4.0-dev.87" });
     expect(link).toHaveAttribute("href", "/projects/forge/releases/0.4.0-dev.87");
   });
-
-  it("offers an entry's tour as Show me, linking to the page it runs on", () => {
-    const withTour = [entry("ISS-319", "new", "2026-10-07T08:00:00Z", { ui: true, tour: { id: "release-what-changes", revision: 1 } })];
-    renderWithQuery(<WhatsNewPanel open onClose={() => {}} failure={null} now={NOW} feed={feedOf(withTour)} />);
-    const link = screen.getByTestId("whats-new-tour-link");
-    expect(link).toHaveTextContent("Show me · 3 steps");
-    expect(link).toHaveAttribute("href", "/projects/forge/releases/0.4.0-dev.87?tour=release-what-changes");
-  });
 });

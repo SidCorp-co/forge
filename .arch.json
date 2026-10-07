@@ -329,6 +329,9 @@
     "web-feature-suggestions": [
       "packages/web-v2/src/features/suggestions/**"
     ],
+    "web-feature-tours": [
+      "packages/web-v2/src/features/tours/**"
+    ],
     "web-feature-version": [
       "packages/web-v2/src/features/version/**"
     ],
@@ -482,6 +485,7 @@
         "web-feature-project-config",
         "web-feature-run-control",
         "web-feature-agent-accounts",
+        "web-feature-tours",
         "web-feature-projects",
         "web-feature-onboarding",
         "web-feature-chat-dock",
