@@ -953,7 +953,8 @@
         "requirement-to-delivery#stalled",
         "requirement-to-delivery#pins",
         "requirement-to-delivery#ready",
-        "requirement-to-delivery#impact"
+        "requirement-to-delivery#impact",
+        "requirement-to-delivery#turn"
       ]
     },
     "runners": {

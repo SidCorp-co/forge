@@ -6,6 +6,8 @@ import {
   DROP_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
   dropRequirementRequestSchema,
+  PROMOTE_REQUIREMENT_DRAFTS_SHAPE,
+  promoteRequirementDraftsRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
   repinRequirementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
@@ -23,6 +25,7 @@ import { requestContract } from './contract-request.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
+import { promoteDraftIssues } from './promote-drafts.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
 import { repinRequirement } from './repin.js';
 import { revisionRoutes } from './revision-routes.js';
@@ -166,6 +169,25 @@ requirementRoutes.post(
         reason: body.reason,
       }),
     );
+  },
+);
+
+// FB-93: the act that answers "promote N draft issues"; one moved answers 200 naming any refused
+requirementRoutes.post(
+  '/:id/requirements/:req/promote',
+  reqParam,
+  strictBody(promoteRequirementDraftsRequestSchema, PROMOTE_REQUIREMENT_DRAFTS_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const outcome = await promoteDraftIssues({
+      projectId: id,
+      ref: req,
+      actor: actorOf(c),
+      issues: c.req.valid('json').issues,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'REQUIREMENT_REFUSED');
+    const { requirement, promoted, refused: notMoved } = outcome;
+    return c.json({ requirement, promoted, refused: notMoved });
   },
 );
 

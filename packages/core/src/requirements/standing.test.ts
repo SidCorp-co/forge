@@ -184,3 +184,33 @@ describe('a draft requirement whose linked designs are not all approved', () => 
     });
   });
 });
+
+// FB-93: the "promote N draft issues" line counts what the promote act moves (`draftIssuesToPromote`)
+describe('an agreed requirement whose live issues are drafts', () => {
+  it('asks the signer to promote every draft, a dropped one not counted', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'draft', false), issue(2, 'draft', false), issue(3, 'dropped', false)]),
+      viewer: { userId: 'u1', canSignOff: true },
+    });
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'promote 2 draft issues' });
+  });
+
+  it('names the signer to a viewer who cannot sign', () => {
+    const s = deriveStanding(input([issue(1, 'draft', false)]));
+    expect(s.waitingOn).toMatchObject({
+      kind: 'person',
+      who: 'BA or owner',
+      act: 'promote 1 draft issue',
+    });
+  });
+
+  it('asks nothing once one of them is promoted', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'open', false), issue(2, 'draft', false)]),
+      viewer: { userId: 'u1', canSignOff: true },
+    });
+    expect(s.waitingOn.act).not.toContain('promote');
+    expect(s.attentionGroup).toBe('moving');
+  });
+});

@@ -12,6 +12,7 @@ import {
   CHECK_SLA_WORKING_DAYS,
   type CoverageIssue,
   type DeliveryPhase,
+  draftIssuesToPromote,
   type RequirementAttentionGroup,
   type RequirementCoverage,
   type RequirementDelivery,
@@ -286,10 +287,11 @@ function turnOf(
       },
     };
   }
-  if (live.every((i) => i.status === 'draft')) {
+  const drafts = draftIssuesToPromote(status, live);
+  if (drafts.length === live.length) {
     return signerWait(
       viewer,
-      `promote ${live.length} draft issue${live.length === 1 ? '' : 's'}`,
+      `promote ${drafts.length} draft issue${drafts.length === 1 ? '' : 's'}`,
       'its only live issues are drafts, which nothing works until a person promotes them',
     );
   }

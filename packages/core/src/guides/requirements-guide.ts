@@ -7,7 +7,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 2,
+  version: 3,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -15,7 +15,7 @@ it lives in numbered revisions, and each revision carries business criteria unde
 (BC-1, BC-2, …) that issues trace their own criteria to. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
-\`accept\`, \`drop\`, \`issues\`, \`workflows\`, \`contracts\`).
+\`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`).
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
@@ -76,6 +76,16 @@ it lives in numbered revisions, and each revision carries business criteria unde
 - A plan written before the link reads changed-since-plan, unless a holder of \`requirements.approve\`
   passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
+- A breakdown accept files its issues at \`draft\`, and while every live issue is a draft the standing
+  waits on a holder of \`requirements.approve\` to "promote N draft issues". **promote** \`{ issues? }\`
+  moves them \`draft → open\`: the named ones (key or uuid), or every linked draft when none is named.
+  Each moves through its own status move, so the move's own guards hold (\`issues.admit\`, an archived
+  issue). The answer is \`{ requirement, promoted, refused }\`: a draft whose move was refused is named
+  in \`refused\` with its own code while the rest still move, and when none moves the act is refused
+  with nothing written, each issue's code at \`/issues/<key>\`. Refused whole by name:
+  \`REQUIREMENT_NO_DRAFT_ISSUES\`, \`REQUIREMENT_ISSUE_NOT_LINKED\` or \`REQUIREMENT_ISSUE_NOT_DRAFT\` at
+  the named issue's place in \`issues\`, \`REQUIREMENT_DEFERRED\`, and \`REQUIREMENT_NOT_AGREED\` for a
+  draft or dropped requirement.
 - **link_workflow** names a design the next agree or repin pins.
 - **link_contract** \`{ contract: "<project>/<contract>" }\` names a contract this project publishes or
   consumes (\`REQUIREMENT_CONTRACT_UNKNOWN\` otherwise). The next agree or repin pins its current
@@ -104,7 +114,7 @@ reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
-return, agree, repin, defer, undefer, accept, drop, linking an issue and \`adoptPlan\` take \`requirements.approve\`
+return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`
 on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent

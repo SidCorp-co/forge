@@ -18,6 +18,7 @@ import type { ScopeForecast } from "@forge/contracts/forecast";
 import { criteriaRestText } from "@/features/forecast/text";
 import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
+import { PromoteDraftRow } from "./promote-drafts";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
@@ -183,6 +184,7 @@ export function RequirementFacts({
                   <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
+                <PromoteDraftRow projectId={projectId} d={d} issue={i} />
               </li>
             ))}
           </ul>

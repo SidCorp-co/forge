@@ -11,10 +11,12 @@ import { Button, Input, showToast, Tooltip } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
+import { draftIssuesToPromote } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementDetail } from "../types";
+import { PromoteDrafts } from "./promote-drafts";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
 export function useAssistantDoor(projectId: string, reqKey: string): DockDoor {
@@ -137,6 +139,8 @@ export function PrimaryActions({
         </Button>
       </Tooltip>
     );
+  } else if (d.canSignOff && draftIssuesToPromote(d.status, d.issues).length > 0) {
+    primary = <PromoteDrafts projectId={projectId} d={d} />;
   }
   const deferrable = d.canSignOff && (d.status === "draft" || d.status === "agreed");
   const droppable = d.canSignOff && (d.status === "draft" || d.status === "agreed" || d.status === "deferred");

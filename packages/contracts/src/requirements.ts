@@ -458,6 +458,48 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
+/** Each named issue by key or uuid; left out, every draft issue linked to the requirement. */
+export const promoteRequirementDraftsRequestSchema = z.strictObject({
+	issues: z.array(z.string().trim().min(1).max(200)).min(1).max(200).optional(),
+});
+export const PROMOTE_REQUIREMENT_DRAFTS_SHAPE =
+	"{ issues? } — the draft issues to promote to open, each by key or uuid; left out, every draft issue linked to the requirement";
+
+/**
+ * A requirement's linked issues still at `draft`, which a holder of requirements.approve promotes to
+ * `open`. The standing's "promote N draft issues" line counts these, the promote act moves these, and
+ * the web draws the act from these, so the ask and its act never disagree. Only an agreed or
+ * accepted requirement has issues to promote: those are the statuses an issue is linked under.
+ */
+export function draftIssuesToPromote<T extends { status: string }>(
+	requirementStatus: string,
+	issues: readonly T[],
+): T[] {
+	if (requirementStatus !== "agreed" && requirementStatus !== "accepted") return [];
+	return issues.filter((i) => i.status === "draft");
+}
+
+export interface PromotedDraftIssue {
+	issueId: string;
+	displayId: string;
+}
+
+/** A draft the promote could not move, under its own move's refusal code. */
+export interface RefusedDraftIssue extends PromotedDraftIssue {
+	code: string;
+	detail: string;
+}
+
+/**
+ * What a promote answers when at least one draft moved: each draft moves on its own status move, so
+ * one refused is named here while the rest still moved. When none moved the act is refused whole.
+ */
+export interface PromoteDraftsAnswer {
+	requirement: RequirementDetail;
+	promoted: PromotedDraftIssue[];
+	refused: RefusedDraftIssue[];
+}
+
 const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 export const linkRequirementContractRequestSchema = z.strictObject({
@@ -517,6 +559,9 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_REQUEST_OWN_PROJECT",
 	"REQUIREMENT_BINDING_NOT_INDEXED",
 	"REQUIREMENT_DESIGN_UNLINKED",
+	"REQUIREMENT_NO_DRAFT_ISSUES",
+	"REQUIREMENT_ISSUE_NOT_LINKED",
+	"REQUIREMENT_ISSUE_NOT_DRAFT",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
 	"REVISION_REASON_REQUIRED",

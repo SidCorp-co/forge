@@ -42,3 +42,16 @@ export function useRequirementAction(projectId: string, req: string) {
     },
   });
 }
+
+/** Promotes drafts to open; the detail it answers with is the one the screen shows next, and the drafts core refused stay on `data`. */
+export function usePromoteDrafts(projectId: string, req: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (issues: string[] | undefined) => requirementsApi.promoteDrafts(projectId, req, issues),
+    onSuccess: (answer) => qc.setQueryData(["requirement", projectId, req], answer.requirement),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+    },
+  });
+}
