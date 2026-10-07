@@ -1,3 +1,4 @@
+import { registerWebConversationAdapter } from '../../src/assistant/index.js';
 import { signUserToken } from '../../src/credentials/jwt.js';
 import { mintPat } from '../../src/credentials/pat.js';
 import { app } from '../../src/index.js';
@@ -11,6 +12,11 @@ export interface ApiResponse {
   body: Body;
   headers: Headers;
 }
+
+// the web conversation transport is registered at boot (`src/index.ts`), and it is what lets a web
+// room's shape follow who is in it: without it a two-person web room stays `direct`, a shape
+// production never gives one, and every per-viewer test ran on that (ISS-277)
+registerWebConversationAdapter();
 
 /** A request through the process's own app, its middleware and error handler included. */
 export async function api(

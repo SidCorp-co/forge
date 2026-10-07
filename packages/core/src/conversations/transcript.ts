@@ -34,6 +34,11 @@ interface DeliveredReply {
    * Which decision this delivery WAS, where it was not an ordinary answer.
    */
   decision?: string | undefined;
+  /**
+   * The turn that wrote `text` called `await_reply`: the reply waits on the person's answer.
+   * Only the model's own screened text carries it, never a code-authored line (ISS-277).
+   */
+  awaitsReply?: boolean | undefined;
 }
 
 /**
@@ -47,6 +52,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       content: reply.text,
       ...(reply.messageId ? { id: reply.messageId } : {}),
       ...(reply.blocks && reply.blocks.length > 0 ? { blocks: reply.blocks } : {}),
+      awaitsReply: reply.awaitsReply === true,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       externalId: reply.receipt.messageId,
       deliveryProof: reply.deliveryKey

@@ -12,6 +12,7 @@ import {
   runExternalChatTurn,
 } from './external-chat.js';
 import { declinedTail, declinedTurn, screenedTurnReply } from './screened-reply.js';
+import { type AwaitReplyCapture, awaitReplyCapture } from './tools/await-reply-tool.js';
 import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 import { type RoomSendCapture, roomSendCapture } from './tools/room-send-tool.js';
 import type {
@@ -63,8 +64,19 @@ const said = (text: string): TurnReply => ({
   screenReplaced: false,
 });
 
-const withCapture = (capture: RoomSendCapture | null, tools: ChatToolset | undefined) =>
-  capture ? mergeToolsets(capture.toolset, ...(tools ? [tools] : [])) : tools;
+/** The attempt's toolset: the transport's tools, with this attempt's captures merged in front. */
+function withCaptures(
+  captures: readonly (RoomSendCapture | AwaitReplyCapture | null)[],
+  tools: ChatToolset | undefined,
+): ChatToolset | undefined {
+  const own = captures.flatMap((c) => (c ? [c.toolset] : []));
+  if (own.length === 0) return tools;
+  return mergeToolsets(...own, ...(tools ? [tools] : []));
+}
+
+/** One `await_reply` capture per attempt, where the venue records asks; none elsewhere. */
+const asksCapture = (req: ConversationTurnRequest): AwaitReplyCapture | null =>
+  req.recordsAsks ? awaitReplyCapture() : null;
 
 function hookOf(ctx: TurnContext): TurnHookContext {
   const { req } = ctx;
@@ -116,6 +128,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const inputs = await prepareInputs(ctx, hook);
   if ('send' in inputs) return inputs;
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
+  const asks = asksCapture(req);
 
   ctx.setPhase('turn');
   const turn: ExternalChatTurnArgs = {
@@ -130,7 +143,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
     pageContext: inputs.pageContext ?? null,
-    tools: withCapture(capture, inputs.tools),
+    tools: withCaptures([capture, asks], inputs.tools),
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,
     message: req.message,
@@ -151,13 +164,15 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
 
   const settled = await settleFirst(ctx, first, capture);
   if ('send' in settled) return settled;
-  return screenReply(ctx, settled, (instruction) => {
+  return screenReply(ctx, settled, asks?.declared() ?? false, (instruction) => {
     const again = capture ? roomSendCapture() : null;
+    const asksAgain = asksCapture(req);
     return {
       again,
+      asks: asksAgain,
       run: runExternalChatTurn({
         ...turn,
-        tools: withCapture(again, inputs.tools),
+        tools: withCaptures([again, asksAgain], inputs.tools),
         record: 'nothing',
         message: instruction,
       }),
@@ -198,16 +213,24 @@ async function settleFirst(
 
 type Retry = (instruction: string) => {
   again: RoomSendCapture | null;
+  asks: AwaitReplyCapture | null;
   run: Promise<ExternalChatTurnResult>;
 };
 
+/**
+ * Screen the reply, retrying where the door asks for it. `firstAsked` is whether the first attempt
+ * called `await_reply`; a retry's own call replaces it, because the delivered text is the last
+ * attempt's, and a code-authored line never awaits anything.
+ */
 async function screenReply(
   ctx: TurnContext,
   result: ExternalChatTurnResult,
+  firstAsked: boolean,
   retry: Retry,
 ): Promise<TurnReply> {
   const { req } = ctx;
   let declinedInRetry = false;
+  let asked = firstAsked;
   const screened = await screenedTurnReply({
     door: req.door,
     projectId: req.venue.projectId,
@@ -218,8 +241,9 @@ async function screenReply(
     ...(req.log ? { log: req.log } : {}),
     fallback: req.sendMode === 'tool' || req.fallbacks === 'silence' ? 'none' : 'code-authored',
     retry: async (instruction) => {
-      const { again, run } = retry(instruction);
+      const { again, asks, run } = retry(instruction);
       const retried = await run;
+      asked = asks?.declared() ?? false;
       const reply = again ? (again.captured() ?? '') : retried.reply;
       const text = correctFalseClaims(reply, [...result.toolCalls, ...retried.toolCalls]).text;
       if (req.mayDecline && declinedTurn(text)) {
@@ -235,5 +259,6 @@ async function screenReply(
     send: true,
     message: screened,
     screenReplaced: screened.text.trim() !== result.reply.trim(),
+    awaitsReply: asked && screened.proof !== null,
   };
 }

@@ -200,6 +200,7 @@ async function deliverReply(
       text: receipt.deliveredText ?? reply.message.text,
       receipt,
       deliveryKey: req.deliveryKey,
+      awaitsReply: reply.awaitsReply === true,
       ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
     });
   } catch (err) {
