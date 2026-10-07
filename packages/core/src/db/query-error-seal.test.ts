@@ -166,6 +166,33 @@ describe('sealQueryError', () => {
     expect(driver.message).toBe('refused');
   });
 
+  it('rewrites in place a field the driver made permanent but left writable', () => {
+    const pg = pgRefusal('refused', { code: '23514', constraint_name: 'notes_check' }, []);
+    Object.defineProperty(pg, 'detail', {
+      value: 'zq9-secret',
+      writable: true,
+      configurable: false,
+      enumerable: true,
+    });
+    expect(sealQueryError(pg)).toBe(pg);
+    expect(JSON.stringify(pg)).not.toContain('zq9');
+    expect((pg as unknown as Record<string, unknown>).code).toBe('23514');
+  });
+
+  it('copies every link above a copied driver error that cannot take the copy as its cause', () => {
+    const pg = pgRefusal('refused', { code: '23514', constraint_name: 'notes_check' }, []);
+    Object.defineProperty(pg, 'detail', { value: 'zq9-secret', enumerable: true });
+    const failed = new DrizzleQueryError('select $1', ['zq9-secret'], new Error('placeholder'));
+    delete (failed as { cause?: unknown }).cause;
+    Object.defineProperty(failed, 'cause', { value: pg, enumerable: true });
+    const sealed = sealQueryError(failed);
+    expect(sealed).not.toBe(failed);
+    expect(sealed).toBeInstanceOf(DrizzleQueryError);
+    expect(JSON.stringify(sealed)).not.toContain('zq9');
+    expect(`${sealed.message} ${sealed.stack}`).not.toContain('zq9');
+    expect((sealed.cause as unknown as Record<string, unknown>).code).toBe('23514');
+  });
+
   it('reads no redaction it made as a value, however often a transaction seals it', () => {
     const err = new DrizzleQueryError(
       'select $1::uuid',

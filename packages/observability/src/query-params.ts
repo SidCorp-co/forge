@@ -340,23 +340,24 @@ function fixedForGood(target: object, key: string): boolean {
   return own !== undefined && !own.configurable && !own.writable;
 }
 
-function rewrite(target: object, key: string, value: unknown, enumerable?: boolean): void {
-  if (fixedForGood(target, key)) return;
-  const own = Object.getOwnPropertyDescriptor(target, key);
-  Object.defineProperty(target, key, {
-    value,
-    writable: true,
-    configurable: true,
-    enumerable: enumerable ?? own?.enumerable ?? false,
-  });
-}
+/** Sets a field where its descriptor allows it; false where only a copy can drop the old value. */
+type Key = string | symbol;
 
-/** An error's message and its stack, which opens with the message, so it is swapped there too. */
-function rewriteMessage(link: Error, message: string): void {
-  const before = link.message;
-  const stack = link.stack;
-  rewrite(link, 'message', message);
-  if (typeof stack === 'string') rewrite(link, 'stack', stack.split(before).join(message));
+function rewrite(target: object, key: Key, value: unknown, enumerable?: boolean): boolean {
+  const own = Object.getOwnPropertyDescriptor(target, key);
+  const wanted = enumerable ?? own?.enumerable ?? false;
+  try {
+    if (!own || own.configurable) {
+      const opts = { value, writable: true, configurable: true, enumerable: wanted };
+      Object.defineProperty(target, key, opts);
+      return true;
+    }
+    if (!('value' in own) || !own.writable || own.enumerable !== wanted) return false;
+    (target as Record<Key, unknown>)[key] = value;
+    return (target as Record<Key, unknown>)[key] === value;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -382,66 +383,89 @@ function sealedDriverMessage(text: string, values: string[]): string {
   return values.some((v) => left.includes(v)) ? REDACTED : out.split(held).join(REDACTED);
 }
 
+type Change = { value: unknown; enumerable?: boolean };
+
 function markSealed(link: Error, chain: ChainReading): Error {
   sealedErrors.add(link);
   sealedValues.set(link, chain.values);
   return link;
 }
 
-/**
- * A driver error rebuilt from the fields that name where it failed, for one whose input sits in a
- * field it fixed for good, which no rewrite can reach: the database's failure stands, the input goes.
- */
-function sealedCopy(link: Error & Record<string, unknown>, chain: ChainReading): Error {
-  const message = sealedDriverMessage(link.message, chain.values);
-  const copy = new Error(message) as Error & Record<string, unknown>;
-  for (const key of DRIVER_FIELDS_KEPT) if (key in link) rewrite(copy, key, link[key], true);
-  rewrite(copy, 'stack', `${link.stack ?? ''}`.split(link.message).join(message));
-  if (link.cause !== undefined) rewrite(copy, 'cause', link.cause);
-  return markSealed(copy, chain);
+/** `link` rebuilt on its own prototype, `changes` laid over its fields, each one read as data. */
+function copyOf(link: Error, changes: Map<string, Change>): Error {
+  const copy = Object.create(Object.getPrototypeOf(link)) as Error;
+  for (const key of Reflect.ownKeys(link)) {
+    const own = Object.getOwnPropertyDescriptor(link, key);
+    const value = (link as unknown as Record<Key, unknown>)[key];
+    rewrite(copy, key, value, own?.enumerable ?? false);
+  }
+  for (const [key, { value, enumerable }] of changes) rewrite(copy, key, value, enumerable);
+  return copy;
 }
 
-/** The link sealed in place, or a sealed copy where the driver fixed an input-bearing field. */
-function sealLink(link: Error & Record<string, unknown>, chain: ChainReading): Error {
+/** What sealing `link` changes: its message and stack, and the fields that may hold its input. */
+type Fields = Error & Record<string, unknown>;
+
+function sealChanges(link: Fields, chain: ChainReading): Map<string, Change> {
+  const changes = new Map<string, Change>();
+  let message: string | null = null;
   if (typeof link.query === 'string' && Array.isArray(link.params)) {
-    rewriteMessage(link, redactText(link.message, chain));
-    rewrite(link, 'params', link.params, false);
-    return markSealed(link, chain);
+    message = redactText(link.message, chain);
+    changes.set('params', { value: link.params, enumerable: false });
+  } else if (isDriverError(link)) {
+    message = sealedDriverMessage(link.message, chain.values);
+    for (const [key, v] of Object.entries(link)) {
+      if (!driverFieldWithheld(key, v)) continue;
+      if (fixedForGood(link, key) && Array.isArray(v)) v.splice(0, v.length);
+      else changes.set(key, { value: REDACTED });
+    }
   }
-  if (!isDriverError(link)) return link;
-  if (fixedForGood(link, 'message') || fixedForGood(link, 'stack')) return sealedCopy(link, chain);
-  for (const [key, v] of Object.entries(link)) {
-    if (!driverFieldWithheld(key, v)) continue;
-    if (!fixedForGood(link, key)) rewrite(link, key, REDACTED);
-    else if (Array.isArray(v)) v.splice(0, v.length);
-    else return sealedCopy(link, chain);
+  if (message !== null) {
+    changes.set('message', { value: message });
+    const stack = link.stack;
+    if (typeof stack === 'string') {
+      changes.set('stack', { value: stack.split(link.message).join(message) });
+    }
   }
-  rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
-  return markSealed(link, chain);
+  return changes;
+}
+
+/** `link` sealed in place, or a sealed copy where a field it fixed for good keeps the old value. */
+function sealLink(link: Error, chain: ChainReading, cause: Error | null): Error {
+  const fields = link as Fields;
+  const query =
+    !sealedErrors.has(link) &&
+    ((typeof fields.query === 'string' && Array.isArray(fields.params)) || isDriverError(fields));
+  const changes = query ? sealChanges(fields, chain) : new Map<string, Change>();
+  if (cause) changes.set('cause', { value: cause });
+  if (changes.size === 0) return link;
+  let sealed = link;
+  for (const [key, { value, enumerable }] of changes) {
+    if (!rewrite(link, key, value, enumerable)) {
+      sealed = copyOf(link, changes);
+      break;
+    }
+  }
+  return query || sealedErrors.has(link) ? markSealed(sealed, chain) : sealed;
+}
+
+function sealFrom(link: Error, chain: ChainReading, seen: Set<unknown>, depth: number): Error {
+  if (seen.has(link) || depth >= MAX_CHAIN) return link;
+  seen.add(link);
+  const cause = (link as { cause?: unknown }).cause;
+  const sealedCause = cause instanceof Error ? sealFrom(cause, chain, seen, depth + 1) : cause;
+  return sealLink(link, chain, sealedCause !== cause ? (sealedCause as Error) : null);
 }
 
 /**
  * `err` with no bound value of a failed statement left in its message, its stack or any
- * enumerable field of it or of a driver error on its chain, sealed in place (a link the driver
- * fixed is swapped for a sealed copy) and handed back, so a caller that copies it copies nothing.
- * The values stay where `redactQueryParams` reads them, to find what a caller repeats beside it.
+ * enumerable field of it or of a driver error on its chain, sealed in place (a link holding a
+ * field it fixed for good is swapped for a sealed copy, and so is every link above it that cannot
+ * take the copy as its cause) and handed back, so a caller that copies it copies nothing. The
+ * values stay where `redactQueryParams` reads them, to find what a caller repeats beside it.
  * Anything that is not an error is handed back untouched.
  */
 export function sealQueryError<T>(err: T): T {
   if (!(err instanceof Error)) return err;
-  const chain = readChain(err);
-  const seen = new Set<unknown>();
-  let head: unknown = err;
-  let parent: Error | null = null;
-  for (let cur: unknown = err, i = 0; cur instanceof Error && i < MAX_CHAIN; i++) {
-    if (seen.has(cur)) break;
-    seen.add(cur);
-    const link = cur as Error & Record<string, unknown>;
-    const sealed = sealedErrors.has(link) ? link : sealLink(link, chain);
-    if (sealed !== link && parent) rewrite(parent, 'cause', sealed);
-    else if (sealed !== link) head = sealed;
-    parent = sealed;
-    cur = sealed.cause;
-  }
-  return head as T;
+  return sealFrom(err, readChain(err), new Set(), 0) as T;
 }
