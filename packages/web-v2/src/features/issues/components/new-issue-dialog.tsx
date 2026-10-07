@@ -143,8 +143,13 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     }
   }
 
+  // a drawer dismissed mid-create reopens with its guard released, and a second submit would file a duplicate
+  const dismiss = () => {
+    if (!create.isPending) onClose();
+  };
+
   return (
-    <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
+    <SlideOver open={open} onClose={dismiss} title="New issue" width={480}>
       <form
         onSubmit={onSubmit}
         // Quick capture sends no attachments — never stage invisible files there.

@@ -1,0 +1,1 @@
+**A filed issue, requirement or feedback closes its form when core answers.** Every write no longer waits for the waiting-on-you counts to be re-read, which held New issue spinning ~5 s past its 201; one tick sends one create.
