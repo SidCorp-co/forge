@@ -2,6 +2,7 @@ import { sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { TransitionError } from '../issues/apply-transition.js';
+import { transitions } from '../pipeline/state-machine.js';
 import { closeFailureText, closeRefusalOf, refusedCloseComment } from './releasing-recovery.js';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
@@ -33,7 +34,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('shipped as version 1.4.0');
   });
 
-  it('names a person’s acts for open questions and for the close, and no API route (ISS-1381 r2)', () => {
+  it('names only acts the issue page offers at the release gate, and no API route (ISS-1381 r3)', () => {
     const said = refusedCloseComment({
       refusal: closeRefusalOf(
         new TransitionError('OPEN_QUESTIONS', 'send this move again with `voidQuestions`', {
@@ -45,13 +46,19 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       destination: 'awaiting_release',
     });
 
-    expect(said).toContain('Decisions panel');
-    expect(said).toContain('move it to Closed from its status menu');
+    expect(said).toContain(
+      'What clears it: answer each open question in its "Decision waiting" card',
+    );
+    expect(said).toContain('back at Awaiting release');
+    expect(said).toContain('Release now');
     expect(said).toContain('next release');
+    // No status menu offers Closed from the gate, and no surface there withdraws a question.
+    expect(transitions.awaiting_release).not.toContain('closed');
+    expect(said).not.toMatch(/Closed|withdraw|Decisions panel|`awaiting_release`/);
     expect(said).not.toMatch(/\/api\/|voidQuestions|POST /);
   });
 
-  it('says a failure reached no decision, and that the close is sent again once it is gone', () => {
+  it('says a failure reached no decision and is the operator’s to clear, not the person’s', () => {
     const refusal = closeRefusalOf(new Error('connection reset'));
 
     expect(refusal).toEqual({ kind: 'failed', message: 'connection reset' });
@@ -62,8 +69,11 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       destination: 'awaiting_release',
     });
     expect(said).toContain('failed before it reached a decision: connection reset');
-    expect(said).toContain('the close can be made again once that is gone');
+    expect(said).toContain('nothing here is yours to clear');
+    expect(said).toContain('whoever operates this Forge');
+    expect(said).toContain('Once that is fixed');
     expect(said).toContain('shipped with this batch');
+    expect(said).not.toMatch(/Closed|the close can be made again/);
   });
 
   it('says so where a refusal names no blocking object', () => {
@@ -243,5 +253,69 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
     const text = closeFailureText(closeRefusalOf(failed));
 
     expect(text).toBe('a database query failed without saying why');
+  });
+});
+
+describe('a database reason a person reads, with the seal’s cuts put back where they took no value (ISS-1381 r3)', () => {
+  const ISSUE = '9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f';
+  const CLOSE_SQL =
+    'update "issues" set "status" = $1 where ("issues"."id" = $2 and "issues"."status" = $3)';
+
+  function sealedClose(message: string, fields: Record<string, unknown>) {
+    return sealQueryError(
+      new DrizzleQueryError(
+        CLOSE_SQL,
+        ['closed', ISSUE, 'releasing'],
+        Object.assign(new Error(message), { severity: 'ERROR', ...fields }),
+      ),
+    );
+  }
+
+  it('names a rule whole where the seal cut a bound value out of its name (ISS-1381 r3)', () => {
+    const failed = sealedClose(
+      'new row for relation "issues" violates check constraint "gj_closed_needs_ledger"',
+      { code: '23514', constraint_name: 'gj_closed_needs_ledger', table_name: 'issues' },
+    );
+    const refusal = closeRefusalOf(failed);
+    const said = refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    for (const text of [said, closeFailureText(refusal)]) {
+      expect(text).toContain('violates check constraint "gj_closed_needs_ledger"');
+      expect(text).toContain('23514');
+      for (const leaked of ['[Redacted]', ISSUE, 'releasing', 'update "issues"', 'Failed query']) {
+        expect(text).not.toContain(leaked);
+      }
+    }
+  });
+
+  it('keeps a rule withheld whose whole name is a bound value', () => {
+    const failed = sealedClose(
+      'new row for relation "issues" violates check constraint "releasing"',
+      {
+        code: '23514',
+        constraint_name: 'releasing',
+        table_name: 'issues',
+      },
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toContain('23514');
+    expect(text).not.toContain('releasing');
+  });
+
+  it('says in words, never as a marker, where a reason repeats a value of the write', () => {
+    const failed = sealedClose('refund hook is still releasing funds', { code: 'P0001' });
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toContain('refund hook is still (a value of this write, withheld) funds');
+    expect(text).not.toContain('[Redacted]');
+    expect(text).not.toContain('releasing');
   });
 });

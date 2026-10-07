@@ -143,12 +143,15 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
 - that the release it was in has shipped, with its version;
 - the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
   each id under a `*Ids` key of its details, labelled (`open question <id>`);
-- what clears it, as the act a person takes in the product — for `OPEN_QUESTIONS`, answer them in the
-  issue's Decisions panel or withdraw them with a reason when moving it to Closed; for
-  `CLOSE_REQUIRES_SHIPPED`, mark it merged on its Properties rail; a code with no such act keeps the
-  refusal's own detail (`packages/core/src/release-batch/releasing-recovery.ts:personClears`);
-- how it closes once cleared: move it to Closed from its status menu, or leave it at the release
-  gate for the next release. It names no API route.
+- what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
+  answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged on its
+  Properties rail; a code with no such act keeps the refusal's own detail
+  (`packages/core/src/release-batch/releasing-recovery.ts:personClears`);
+- how it closes once cleared: the issue page's release banner offers Release now, which starts a
+  release that closes it, or it waits at Awaiting release for the next release. It names no move
+  to Closed — the status menu draws `packages/core/src/pipeline/state-machine.ts:transitions`, whose
+  `awaiting_release` row holds none — no withdrawal of a question, which no surface there offers,
+  and no API route (`docs/proposals/a-shipped-issue-at-the-gate-closes-only-by-another-release.md`).
 
 Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
 `releasing`, still claimed, because the code may be on production. Its comment names the same
@@ -158,8 +161,12 @@ issue by hand (`docs/proposals/a-promoted-roster-is-settled-only-through-the-api
 
 A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
-passed through `@forge/observability`'s redaction; where a bound value would survive in it, the
-SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
+passed through `@forge/observability`'s redaction, and says that reason is for whoever operates
+Forge, not an act on the issue. A schema object's name the driver error carries
+(`packages/core/src/lib/db-errors.ts:pgObjectNames`) is kept whole where the query-error seal cut a
+bound value out of it, unless the whole name is a bound value; any other cut reads "(a value of
+this write, withheld)". Where a bound value would survive outside those names, the SQLSTATE's class
+description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
 The SQL statement and its bound values reach neither the comment nor the finish answer's
 `failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.

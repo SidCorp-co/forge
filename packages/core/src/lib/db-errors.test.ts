@@ -7,6 +7,7 @@ import {
   pgDriverError,
   pgErrorClassDescription,
   pgErrorCode,
+  pgObjectNames,
 } from './db-errors.js';
 
 describe('isUniqueViolation', () => {
@@ -147,5 +148,27 @@ describe('pgBoundValues', () => {
     );
     expect(pgBoundValues(wrapped)).toEqual(['abc', '7']);
     expect(pgBoundValues(new Error('plain'))).toEqual([]);
+  });
+});
+
+describe('pgObjectNames', () => {
+  it('reads every schema object name off the driver error, longest first, and none off a wrapper', () => {
+    const driver = Object.assign(new Error('violates check constraint'), {
+      code: '23514',
+      constraint_name: 'gj_closed_needs_ledger',
+      table_name: 'issues',
+      schema_name: 'public',
+    });
+    const wrapped = Object.assign(new Error('Failed query', { cause: driver }), {
+      table: 'not-a-driver-field',
+    });
+
+    expect(pgObjectNames(wrapped)).toEqual(['gj_closed_needs_ledger', 'issues', 'public']);
+  });
+
+  it('reads node-postgres spellings, and nothing where the driver named no object', () => {
+    const named = Object.assign(new Error('x'), { code: '23503', constraint: 'fk_a', table: 't' });
+    expect(pgObjectNames(named)).toEqual(['fk_a', 't']);
+    expect(pgObjectNames(Object.assign(new Error('raised'), { code: 'P0001' }))).toEqual([]);
   });
 });

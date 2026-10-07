@@ -5,10 +5,16 @@ import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { pgBoundValues, pgDriverError, pgErrorClassDescription } from '../lib/db-errors.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import {
+  pgBoundValues,
+  pgDriverError,
+  pgErrorClassDescription,
+  pgObjectNames,
+} from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 
 export interface RecoverStrandedReleasingResult {
   /** Issues whose claim was cleared, closed ones included: the claim is a lock, not a status. */
@@ -90,23 +96,39 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
 
 /**
  * A close that failed short of a decision, in words that never carry the statement or a value bound
- * to it (ISS-1381 r2). The database's own reason is kept where it can be read without a bound value
- * in it; where it cannot, its SQLSTATE and what that class means stand in for it.
+ * to it (ISS-1381 r2).
  */
 function failureMessage(err: unknown): string {
   const driver = pgDriverError(err);
   if (driver) {
-    // Quoted values go first; any bound value left, or a message the seal withheld whole, falls
-    // back to the SQLSTATE's class.
-    const unquoted = redactQueryParams(driver.message);
-    const leaks = pgBoundValues(err).some((v) => unquoted.includes(v));
-    const withheld = unquoted.trim() === REDACTED;
-    const reason = leaks || withheld ? pgErrorClassDescription(driver.code) : unquoted;
-    return `the database refused the write (${driver.code}): ${reason}`;
+    return `the database refused the write (${driver.code}): ${databaseReason(err, driver)}`;
   }
   const message = err instanceof Error ? err.message : String(err);
   if (message.startsWith('Failed query:')) return 'a database query failed without saying why';
   return redactedMessage(err);
+}
+
+/** What stands in a reason where a value of the write was cut out of it. */
+const WITHHELD_VALUE = '(a value of this write, withheld)';
+
+/**
+ * The database's own reason, read with no bound value in it. A schema object's name is the schema's
+ * text, so where the query-error seal cut a bound value out of one (`gj_[Redacted]_needs_ledger`)
+ * it is put back whole, unless the whole name is a bound value. A bound value left outside those
+ * names, or a reason withheld whole, falls back to what the SQLSTATE's class means (ISS-1381 r3).
+ */
+function databaseReason(err: unknown, driver: { code: string; message: string }): string {
+  const values = pgBoundValues(err);
+  const names = pgObjectNames(err).filter((name) => !values.includes(name));
+  let reason = redactQueryParams(driver.message);
+  for (const name of names) {
+    const cut = redactQueryParams(`"${name}"`, err);
+    if (cut !== `"${name}"`) reason = reason.split(cut).join(`"${name}"`);
+  }
+  const outsideNames = names.reduce((text, name) => text.split(`"${name}"`).join('""'), reason);
+  const leaks = values.some((v) => outsideNames.includes(v));
+  if (leaks || outsideNames.trim() === REDACTED) return pgErrorClassDescription(driver.code);
+  return reason.split(REDACTED).join(WITHHELD_VALUE);
 }
 
 /** What a finish reports for one issue it could not close, on its answer and its record. */
@@ -114,13 +136,14 @@ export function closeFailureText(refusal: CloseRefusal): string {
   return refusal.kind === 'refused' ? `${refusal.code}: ${refusal.detail}` : refusal.message;
 }
 
-/** What clears a refusal, as an act a person takes in the product; a code with none keeps its own detail. */
-function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>, held: boolean): string {
+/**
+ * What clears a refusal, as an act the issue's page offers at the release gate; a code with none
+ * keeps its own detail. No act there moves the issue to Closed or withdraws a question (ISS-1381 r3).
+ */
+function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>): string {
   switch (refusal.code) {
     case 'OPEN_QUESTIONS':
-      // A held issue stays claimed at `releasing`, so no move of it is the person's to make.
-      if (held) return 'answer each open question in the Decisions panel on this issue.';
-      return 'answer each open question in the Decisions panel on this issue, or withdraw them with a reason when you move it to Closed — the move asks for one.';
+      return 'answer each open question in its "Decision waiting" card on this issue\'s page.';
     case 'CLOSE_REQUIRES_SHIPPED':
       return 'mark the issue merged on its Properties rail, naming where its work landed.';
     case 'STALE_TRANSITION':
@@ -128,6 +151,19 @@ function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>, held:
     default:
       return refusal.detail;
   }
+}
+
+/** Where a returned issue stands and how it closes, in the words its page uses. */
+function howItCloses(destination: IssueStatus, once: string): string {
+  const label = ISSUE_STATUS_LABELS[destination];
+  if (destination !== RELEASE_GATE_STATUS) {
+    return `The issue is at ${label}, and a person decides whether it goes back to work or into another release.`;
+  }
+  return (
+    `The issue is back at ${label} and its code is live with that release. ${once}, the release ` +
+    'banner on this page offers Release now, which starts a release that closes it; or leave it ' +
+    'there and the next release closes it.'
+  );
 }
 
 /** What a finish that shipped tells an issue it could not close, and how that issue closes later. */
@@ -147,16 +183,16 @@ export function refusedCloseComment(args: {
           refusal.blocking.length > 0
             ? `Blocking it: ${refusal.blocking.join(', ')}.`
             : 'The refusal named no blocking object.'
-        } What clears it: ${personClears(refusal, held !== undefined)}`
-      : `The close failed before it reached a decision: ${refusal.message}. Nothing refused it and no object blocks it; the close can be made again once that is gone.`;
+        } What clears it: ${personClears(refusal)}`
+      : `The close failed before it reached a decision: ${refusal.message}. Nothing on this issue refused it, so nothing here is yours to clear: that reason is for whoever operates this Forge to fix.`;
   const opening = `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n`;
-  if (held)
-    return `${opening}${held} Clear the reason above first, or that close is refused again.`;
-  return (
-    opening +
-    `The issue is at \`${destination}\` and its code is live with that release. Once the reason above ` +
-    'is cleared, move it to Closed from its status menu, or leave it at the release gate for the next release.'
-  );
+  if (held) {
+    const again = refusal.kind === 'refused' ? 'refused' : 'failed';
+    return `${opening}${held} Clear the reason above first, or that close is ${again} again.`;
+  }
+  const once =
+    refusal.kind === 'refused' ? 'Once the reason above is cleared' : 'Once that is fixed';
+  return opening + howItCloses(destination, once);
 }
 
 export interface RecoverStrandedReleasingOptions {

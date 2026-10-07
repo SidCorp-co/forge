@@ -5,7 +5,7 @@
 // stays `environment: 'node'`.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseRoster } from "../api";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
@@ -13,9 +13,10 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 expect.extend(matchers);
 
 const roster = vi.fn();
+const release = vi.fn();
 vi.mock("../hooks", () => ({
   useReleaseRoster: () => roster(),
-  useBatchRelease: () => ({ mutate: vi.fn(), isPending: false }),
+  useBatchRelease: () => ({ mutate: release, isPending: false }),
 }));
 
 const NOW = new Date("2026-08-26T12:00:00.000Z");
@@ -100,7 +101,7 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
   const REFUSAL = {
     code: "OPEN_QUESTIONS",
     reason: "holds 1 open question",
-    clears: "Answer it, or void it with the reason it died with the work.",
+    clears: 'Answer it in its "Decision waiting" card on the issue\'s page.',
   };
 
   it("offers no Release now and says what the close is refused for and what clears it", () => {
@@ -108,7 +109,20 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
     renderBanner();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
     expect(screen.getByText(/A release could not close this issue yet/)).toBeInTheDocument();
-    expect(screen.getByText(/holds 1 open question\. Answer it, or void it/)).toBeInTheDocument();
+    expect(screen.getByText(/holds 1 open question\. Answer it in its "Decision waiting" card/)).toBeInTheDocument();
+  });
+
+  // ISS-1381 r3: the comment a finish leaves says answer, then Release now on this page.
+  it("offers Release now once the answer clears the refusal, and it releases this issue alone", () => {
+    state({}, null, [REFUSAL]);
+    const { rerender } = renderBanner();
+    expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+
+    state({}, null, []);
+    rerender(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", { name: /release now/i }));
+
+    expect(release).toHaveBeenCalledWith({ issueIds: ["iss-1"] });
   });
 
   it("still offers Release now on an issue whose close stands", () => {

@@ -54,6 +54,36 @@ export function pgDriverError(err: unknown): { code: string; message: string } |
   return found;
 }
 
+/** The fields a driver error names a schema object in, as postgres-js and node-postgres spell them. */
+const OBJECT_NAME_FIELDS = [
+  'constraint_name',
+  'constraint',
+  'table_name',
+  'table',
+  'column_name',
+  'column',
+  'schema_name',
+  'schema',
+  'data_type_name',
+  'dataType',
+] as const;
+
+/**
+ * The names of the schema objects the driver's error names — constraint, table, column, schema,
+ * type — longest first. They are the schema's own text, never a value of the statement.
+ */
+export function pgObjectNames(err: unknown): string[] {
+  const names = new Set<string>();
+  for (const link of causeChain(err)) {
+    if (typeof link.code !== 'string' || !SQLSTATE.test(link.code)) continue;
+    for (const field of OBJECT_NAME_FIELDS) {
+      const name = link[field];
+      if (typeof name === 'string' && name !== '') names.add(name);
+    }
+  }
+  return [...names].sort((a, b) => b.length - a.length);
+}
+
 /** Every value bound to a failed statement on the chain, as text, empty ones left out. */
 export function pgBoundValues(err: unknown): string[] {
   const values: string[] = [];

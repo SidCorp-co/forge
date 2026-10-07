@@ -66,7 +66,7 @@ const COPY: Record<DialogMode, CopySpec> = {
     title: "Questions are still open on this issue",
     confirm: "Withdraw them and continue",
     blurb:
-      "An agent asked a person something on this issue and nobody has answered. Finishing the work withdraws those questions — say why they no longer matter, and that sentence is recorded on each one. To answer them instead, cancel and use the Decisions panel on the issue.",
+      "An agent asked a person something on this issue and nobody has answered. Finishing the work withdraws those questions — say why they no longer matter, and that sentence is recorded on each one. To answer them instead, cancel and use their \"Decision waiting\" cards on the issue.",
     placeholder: "e.g. the fix shipped without needing the tenant — the question is moot",
   },
 };
