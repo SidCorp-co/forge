@@ -203,7 +203,7 @@ mod tests {
             req.body,
             Some(Body::Json(r#"{"body":"It's \"done\"\nnext"}"#.into()))
         );
-        let form = vec!["file=@shot.png".to_string()];
+        let form = ["file=@shot.png".to_string()];
         for (data, form) in [(Some("{}"), &[][..]), (None, &form[..])] {
             let why = build(
                 &RequestSpec {
