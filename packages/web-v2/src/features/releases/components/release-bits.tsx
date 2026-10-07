@@ -15,6 +15,7 @@ const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
   needs_you: "you",
   moving: "run",
   waiting: "calm",
+  queued: "calm",
   stuck: "err",
   done: "calm",
   stopped: "calm",

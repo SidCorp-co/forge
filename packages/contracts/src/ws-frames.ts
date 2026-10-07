@@ -134,6 +134,13 @@ export interface WsFramePayloads extends JobFrames {
 	"pat.created": TokenFrame;
 	"pat.revoked": TokenFrame;
 	"pat.used": TokenFrame;
+	/**
+	 * Sent once to the one socket whose subscribe asked for a replay: the room's frames it missed were
+	 * just sent ahead of this. `complete` is false where the server no longer held all of that span.
+	 */
+	"replay.done": { room: string; frames: number; complete: boolean };
+	/** Sent to the one socket whose subscribe was refused. */
+	"subscribe.denied": { room: string };
 }
 
 export type WsFrameName = keyof WsFramePayloads;

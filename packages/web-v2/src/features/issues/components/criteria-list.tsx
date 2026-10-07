@@ -7,7 +7,8 @@ import { PageSectionTitle, EmptyPanelLine, StatusBadge, statusReading, Tooltip }
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { criterionStandingOf, identityPhraseOf } from "@forge/contracts/verdict-identity";
+import { criterionStandingOf } from "@forge/contracts/verdict-identity";
+import { identityPhrase } from "../identity-phrase";
 import { type CriterionRow, useCriteria } from "../criteria";
 
 function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string): string {
@@ -15,7 +16,7 @@ function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: strin
   if (!v) return t("issues.verdict.none");
   const by = v.authorAgency === "agent" ? t("issues.verdict.byAgent") : t("issues.verdict.byPerson");
   const parts = [
-    `${v.verdict === "short" ? t("issues.verdict.short") : statusReading("criterion", v.verdict, language).label} · ${identityPhraseOf(v)}`,
+    `${v.verdict === "short" ? t("issues.verdict.short") : statusReading("criterion", v.verdict, language).label} · ${identityPhrase(v, t)}`,
     v.reason ? t("issues.verdict.reason", { reason: v.reason }) : null,
     t("issues.verdict.by", { by, at: at(v.createdAt) }),
   ];

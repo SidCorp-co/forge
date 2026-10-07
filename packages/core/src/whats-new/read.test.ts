@@ -7,8 +7,8 @@ vi.mock('../preferences/index.js', () => ({
   readProductState: async () => ({ value: seen.at ? { at: seen.at } : null }),
 }));
 
-import type { ChangelogRelease } from './changelog.js';
-import { readWhatsNew } from './read.js';
+import { type ChangelogRelease, loadChangelog } from './changelog.js';
+import { readWhatsNew, readWhatsNewSummary } from './read.js';
 
 const NOW = new Date('2026-10-07T12:00:00Z');
 const entry = (title: string, section: 'Added' | 'Fixed' = 'Added') =>
@@ -67,5 +67,34 @@ describe('where the feed starts', () => {
     seen.at = '2026-09-01T00:00:00Z';
     const feed = await read();
     expect(Date.parse(feed.since)).toBe(Date.parse('2026-09-01T00:00:00Z'));
+  });
+});
+
+describe('what a page loads on every view', () => {
+  it.each([
+    ['a first look', null],
+    ['a recent mark', '2026-10-06T00:00:00Z'],
+    ['a long absence', '2026-09-01T00:00:00Z'],
+  ])('counts the unread the feed would list, for %s', async (_, at) => {
+    seen.at = at;
+    const feed = await read();
+    const summary = await readWhatsNewSummary({ userId: 'u', now: NOW, releases });
+    expect(summary).toEqual({
+      version: feed.version,
+      seenAt: feed.seenAt,
+      unread: feed.unread,
+      counts: feed.counts,
+    });
+  });
+
+  it("stays a few hundred bytes on this build's whole changelog, whatever the feed weighs", async () => {
+    seen.at = '2026-01-01T00:00:00Z';
+    const now = new Date();
+    const summary = await readWhatsNewSummary({ userId: 'u', now });
+    const feed = await readWhatsNew({ userId: 'u', since: undefined, timeZone: 'UTC', now });
+    const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
+    expect(loadChangelog().length).toBeGreaterThan(0);
+    expect(bytes(summary)).toBeLessThanOrEqual(512);
+    expect(bytes(feed)).toBeGreaterThan(bytes(summary));
   });
 });

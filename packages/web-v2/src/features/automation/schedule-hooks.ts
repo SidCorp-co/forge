@@ -3,6 +3,8 @@
 // web-v2 feature module: schedules — React Query hooks. Keyed
 // `['schedules', projectId]`; mutations invalidate the subtree on success.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
 import { automationKey } from "@/features/automation/hooks";
@@ -20,19 +22,20 @@ export function useSchedules(projectId: string | undefined) {
 function useScheduleMutation<TArgs>(
   fn: (args: TArgs) => Promise<unknown>,
   projectId: string | undefined,
-  successMessage: string,
+  successMessage: ProductCopyKey,
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["schedules", projectId] });
       qc.invalidateQueries({ queryKey: automationKey(projectId) });
-      toast({ title: successMessage, tone: "success" });
+      toast({ title: t(successMessage), tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Refused", description: formatRefusal(err), tone: "error" });
+      toast({ title: t("schedules.toast.refused"), description: formatRefusal(err), tone: "error" });
     },
   });
 }
@@ -41,12 +44,12 @@ export function useCreateSchedule(projectId: string | undefined) {
   return useScheduleMutation(
     (input: ScheduleInput) => schedulesApi.create(projectId as string, input),
     projectId,
-    "Schedule created",
+    "schedules.toast.created",
   );
 }
 
 /** Pause, resume, edit or take over: one PUT, which an owner may send for their own and an admin for any. */
-export function useUpdateSchedule(projectId: string | undefined, successMessage = "Schedule updated") {
+export function useUpdateSchedule(projectId: string | undefined, successMessage: ProductCopyKey = "schedules.toast.updated") {
   return useScheduleMutation(
     ({ id, patch }: { id: string; patch: Partial<ScheduleInput> }) => schedulesApi.update(id, patch),
     projectId,
@@ -55,13 +58,13 @@ export function useUpdateSchedule(projectId: string | undefined, successMessage 
 }
 
 export function useDeleteSchedule(projectId: string | undefined) {
-  return useScheduleMutation((id: string) => schedulesApi.remove(id), projectId, "Schedule deleted");
+  return useScheduleMutation((id: string) => schedulesApi.remove(id), projectId, "schedules.toast.deleted");
 }
 
 export function useRunSchedule(projectId: string | undefined) {
   return useScheduleMutation(
     (id: string) => schedulesApi.run(id),
     projectId,
-    "Schedule triggered",
+    "schedules.toast.triggered",
   );
 }

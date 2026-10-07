@@ -22,6 +22,7 @@ use crate::composer;
 pub mod deny;
 mod launch;
 mod pane_env;
+mod submit;
 pub use launch::*;
 pub use pane_env::{missing_binaries, pane_env, pane_env_read};
 use runner_platform::error::{Error, Result};
@@ -113,8 +114,7 @@ fn socket_args() -> Vec<String> {
 
 /// The one place a tmux process is built, so a test build can hand the
 /// transport a tmux of its own without moving the process's `PATH`, which
-/// every other test's spawn by bare name resolves through (ISS-1312). The test
-/// build's twin is `testing::tmux_command`.
+/// every other test's spawn by bare name resolves through (ISS-1312).
 fn tmux_command() -> Command {
     Command::new("tmux")
 }
@@ -568,8 +568,8 @@ pub enum Prompt {
     Unread,
 }
 
-/// Why `send_line` typed nothing, for a caller whose answer to the world turns
-/// on which of these it was.
+/// Why `send_line` did not deliver, for a caller whose answer to the world
+/// turns on which of these it was.
 ///
 /// Every one of these used to be an `Error::Other(String)`, and
 /// `daemon/inbox.rs` folded all of them into one bit and told core `gone` —
@@ -580,7 +580,7 @@ pub enum Prompt {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum NotTyped {
     /// tmux answered, in its own words, that it holds no session by this name.
-    /// The only one of the three that is a session having ended.
+    /// The only one of these that is a session having ended.
     #[error("no session named {0}")]
     Gone(String),
     /// The pane answered alive and was read, and what is drawn on it refuses
@@ -591,6 +591,11 @@ pub enum NotTyped {
     /// calls that type the message broke. Neither establishes an ending.
     #[error("{0}")]
     Failed(String),
+    /// The message was typed and every Enter was taken, and the composer read
+    /// back still holds it: it sits at the prompt unsent. Not a delivery, and
+    /// not an ending — the pane is alive and holding the text.
+    #[error("{0}")]
+    Unsubmitted(String),
 }
 
 impl From<NotTyped> for Error {
@@ -637,7 +642,9 @@ pub async fn pane_dialog(name: &str) -> Option<String> {
 /// is a decision on the highlighted option and the pasted text is dropped, so
 /// a message that cannot be delivered is said not to have been (ISS-1266).
 /// The read comes a few milliseconds before the paste, and tmux has no lock
-/// over a pane's input, so a keystroke landing in between is not seen.
+/// over a pane's input, so a keystroke landing in between is not seen. After
+/// the paste the composer is read back, and a message it still holds is
+/// pressed again and, failing that, answered `Unsubmitted` rather than typed.
 pub async fn send_line(name: &str, text: &str) -> std::result::Result<Prompt, NotTyped> {
     match has_session(name).await {
         Presence::Present => {}
@@ -717,15 +724,7 @@ nothing confirmed its prompt was empty before typing"
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    let out = tmux(&["send-keys", "-t", &target, "Enter"])
-        .await
-        .map_err(|e| NotTyped::Failed(e.to_string()))?;
-    if !out.status.success() {
-        return Err(NotTyped::Failed(format!(
-            "tmux send-keys {name}: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
-    }
+    submit::after_paste(name, &target, prompt).await?;
     Ok(prompt)
 }
 

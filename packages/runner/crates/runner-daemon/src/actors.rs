@@ -561,11 +561,12 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
             });
         }
         "session.send" => {
-            let (client, runner, masters) = (client.clone(), runner.clone(), masters.clone());
+            let (client, runner, masters, pool) =
+                (client.clone(), runner.clone(), masters.clone(), pool.clone());
             let guard = InflightGuard::enter(inflight);
             tokio::spawn(async move {
                 let _guard = guard;
-                inbox::handle_session_send(&client, runner, masters, frame.data).await;
+                inbox::handle_session_send(&client, runner, masters, &pool, frame.data).await;
             });
         }
         "agent:close" => match session_id_of(&frame.data) {

@@ -12,6 +12,8 @@ import type { IssueStatus } from "@/features/issues/types";
 import type { StageKey } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners/types";
 import { formatElapsed } from "@/lib/utils/format";
+import { formatElapsed as formatElapsedIn } from "@/lib/i18n/format";
+import { copyLocale, productCopy } from "@/lib/i18n/product-copy";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow, type PipelineRunListItem, type PipelineRunStatus, type RunGate } from "./types";
 
 export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
@@ -41,29 +43,31 @@ export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey 
 }
 
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
-export function formatUsd(usd: number | null | undefined): string {
+export function formatUsd(usd: number | null | undefined, language = "en"): string {
   if (usd == null) return "—";
   if (usd === 0) return "$0";
-  if (usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
+  const digits = (n: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  if (usd < 0.01) return `<$${digits(0.01)}`;
+  return `$${digits(usd)}`;
 }
 
 /** Human duration from milliseconds: `820ms` · `4.2s` · `3m 12s` · `1h 04m`. */
-export function formatDurationMs(ms: number | null | undefined): string {
+export function formatDurationMs(ms: number | null | undefined, language = "en"): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;
+  const t = productCopy(language);
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
+  if (s < 60) return t("common.age.seconds", { n: new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(s) });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${String(Math.floor(s % 60)).padStart(2, "0")}s`;
+  if (m < 60) return t("common.elapsed.minutes", { m, s: String(Math.floor(s % 60)).padStart(2, "0") });
   const h = Math.floor(m / 60);
-  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
 }
 
 /** Human duration from seconds (step-durations view). */
-export function formatDurationSec(sec: number | null | undefined): string {
+export function formatDurationSec(sec: number | null | undefined, language = "en"): string {
   if (sec == null) return "—";
-  return formatDurationMs(sec * 1000);
+  return formatDurationMs(sec * 1000, language);
 }
 
 /**
@@ -188,53 +192,36 @@ export interface RunGateNote {
 }
 
 /** The run could not be fetched: the condition is unknown, which is not "none". */
-export function runGateUnfetched(message: string): RunGateNote {
+export function runGateUnfetched(message: string, language = "en"): RunGateNote {
   return {
     verdict: "unreadable",
-    headline: "This run's record could not be read, so its gate condition is unknown",
+    headline: productCopy(language)("sessions.gate.unfetched"),
     detail: message,
     reason: null,
   };
 }
 
 /** `undefined` is a response that did not carry the field, and says nothing. */
-export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
+export function runGateNote(gate: RunGate | null | undefined, language = "en"): RunGateNote | null {
   if (gate === undefined) return null;
+  const t = productCopy(language);
   if (gate === null) {
-    return {
-      verdict: "none",
-      headline: "The box reported no gate condition when this run opened",
-      detail: "Its runner sent none, so this record cannot say whether the gate was deciding.",
-      reason: null,
-    };
+    return { verdict: "none", headline: t("sessions.gate.noneHead"), detail: t("sessions.gate.noneDetail"), reason: null };
   }
   if (gate.read === "unreadable") {
-    return {
-      verdict: "unreadable",
-      headline: "This run recorded a gate condition that cannot be read",
-      detail: `${gate.reason} — the run was not opened with no condition, so this is not "the gate was deciding".`,
-      reason: null,
-    };
+    return { verdict: "unreadable", headline: t("sessions.gate.unreadHead"), detail: t("sessions.gate.unreadDetail", { reason: gate.reason }), reason: null };
   }
   const c = gate.condition;
   if (c.verdict === "clear") {
-    return {
-      verdict: "clear",
-      headline: "This box's gate was deciding when this run opened",
-      detail: "No dispatch on record had gone through without a decision.",
-      reason: null,
-    };
+    return { verdict: "clear", headline: t("sessions.gate.clearHead"), detail: t("sessions.gate.clearDetail"), reason: null };
   }
-  const rate = c.perDay === null ? "at an unstated rate" : `${Math.round(c.perDay)}/day`;
-  const window = c.windowMs === null ? "an unknown span" : formatDurationMs(c.windowMs);
+  const rate = c.perDay === null ? t("runners.gate.rateUnstated") : t("runners.gate.perDay", { n: Math.round(c.perDay) });
+  const window = c.windowMs === null ? t("runners.span.unknown") : formatElapsedIn(c.windowMs, language);
   return {
     verdict: c.verdict,
-    headline:
-      c.verdict === "failing_open"
-        ? "This box's gate was failing open when this run opened"
-        : "This box's gate had admitted undecided dispatches when this run opened",
-    detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
-    reason: gateReasonLine(c.byReason, c.count, "en"),
+    headline: c.verdict === "failing_open" ? t("sessions.gate.failingHead") : t("sessions.gate.markedHead"),
+    detail: t("sessions.gate.detail", { count: c.count, rate, window }),
+    reason: gateReasonLine(c.byReason, c.count, language),
   };
 }
 

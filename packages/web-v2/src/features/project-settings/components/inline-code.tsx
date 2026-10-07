@@ -11,7 +11,7 @@ export function inlineCode(text: string): ReactNode[] {
 		const paired = i % 2 === 1 && i < parts.length - 1;
 		out.push(
 			paired ? (
-				<code key={`c${i}`} className="fg-code">
+				<code key={`c${i}`} className="fg-code" translate="no">
 					{part}
 				</code>
 			) : (

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { timeZoneOf } from './guards.js';
-import { readWhatsNew } from './read.js';
+import { readWhatsNew, readWhatsNewSummary } from './read.js';
 
 const feedQuery = zValidator(
   'query',
@@ -18,6 +18,12 @@ const feedQuery = zValidator(
 export const whatsNewRoutes = new Hono<{ Variables: AuthVars }>();
 
 whatsNewRoutes.use('/whats-new', requireAuth());
+whatsNewRoutes.use('/whats-new/summary', requireAuth());
+
+/** The rail's dot on every page load: the unread count, never the entries (the feed is read on open). */
+whatsNewRoutes.get('/whats-new/summary', zValidator('query', z.strictObject({})), async (c) =>
+  c.json(await readWhatsNewSummary({ userId: c.get('userId'), now: new Date() })),
+);
 
 whatsNewRoutes.get('/whats-new', feedQuery, async (c) => {
   const { since, tz } = c.req.valid('query');

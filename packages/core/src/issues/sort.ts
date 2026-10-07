@@ -22,19 +22,20 @@ const priorityRank = sql`CASE ${issues.priority}
   WHEN 'none' THEN 5
   ELSE 6 END`;
 
-export function buildIssueOrderBy(sort: IssueSort): SQL {
-  switch (sort) {
-    case 'createdAt:asc':
-      return asc(issues.createdAt);
-    case 'updatedAt:desc':
-      return desc(issues.updatedAt);
-    case 'updatedAt:asc':
-      return asc(issues.updatedAt);
-    case 'priority:asc':
-      return sql`${priorityRank} ASC`;
-    case 'priority:desc':
-      return sql`${priorityRank} DESC`;
-    default:
-      return desc(issues.createdAt);
-  }
+// Many rows share a created_at (a breakdown files its issues in one statement), so every order ends
+// on the issue key and then the id: a total order, so a page read at an offset never skips or
+// repeats a row between reads, and ties resolve in key order.
+const TIEBREAK = [asc(issues.issSeq), asc(issues.id)];
+
+const leadingOrder: Record<IssueSort, SQL> = {
+  'createdAt:desc': desc(issues.createdAt),
+  'createdAt:asc': asc(issues.createdAt),
+  'updatedAt:desc': desc(issues.updatedAt),
+  'updatedAt:asc': asc(issues.updatedAt),
+  'priority:asc': sql`${priorityRank} ASC`,
+  'priority:desc': sql`${priorityRank} DESC`,
+};
+
+export function buildIssueOrderBy(sort: IssueSort): SQL[] {
+  return [leadingOrder[sort], ...TIEBREAK];
 }

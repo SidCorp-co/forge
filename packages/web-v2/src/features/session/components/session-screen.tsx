@@ -27,6 +27,7 @@ import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useRouter } from "next/navigation";
+import { useCopy } from "@/lib/i18n/interface-language";
 // Run-conversation orchestrator (ISS-292). Header (id/title/status + Stop /
 // Rerun / Fork), two-pane body (thread + context rail), sticky composer.
 // Subscribes to the project WS room so persisted-turn invalidations stream the
@@ -62,6 +63,7 @@ interface SessionScreenProps {
 
 export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
   const router = useRouter();
+  const t = useCopy();
   const { push: pushRecent } = useRecents();
   const sessionQ = useSession(sessionId);
   const { turnsQ, loadMoreTurns } = useSessionTurnPages(sessionId);
@@ -80,11 +82,11 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     pushRecent({
       kind: "session",
       id: loadedId,
-      label: sessionTitle ?? `Session ${loadedId.slice(0, 8)}`,
+      label: sessionTitle ?? t("sessions.detail.sessionShort", { id: loadedId.slice(0, 8) }),
       href: `/projects/${projectSlug}/agents/${loadedId}`,
       icon: "agent",
     });
-  }, [loadedId, sessionTitle, projectSlug, pushRecent]);
+  }, [loadedId, sessionTitle, projectSlug, pushRecent, t]);
 
   // Subscribe to the project room once we know the project — the event-router
   // invalidates ['agent-session', id, 'turns'] on turn.* events.
@@ -150,7 +152,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
     return (
       <div className={`flex flex-col min-h-dvh`}>
         <div className="grid flex-1 place-items-center">
-          <ProjectLoader label="loading session…" />
+          <ProjectLoader label={t("sessions.detail.loading")} />
         </div>
       </div>
     );
@@ -161,7 +163,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       <div className={`flex flex-col min-h-dvh`}>
         <div className="grid flex-1 place-items-center">
           <ErrorState
-            title="Couldn't load session"
+            title={t("sessions.detail.loadFailed")}
             message={formatRefusal(sessionQ.error)}
             onRetry={() => sessionQ.refetch()}
           />
@@ -172,7 +174,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   const turnsError = turnsQ.isError ? (
     <ErrorState
-      title={items.length ? "Couldn't refresh this session's turns" : "Couldn't load this session's turns"}
+      title={items.length ? t("sessions.detail.turnsRefreshFailed") : t("sessions.detail.turnsLoadFailed")}
       message={formatRefusal(turnsQ.error)}
       onRetry={() => turnsQ.refetch()}
       mascot={items.length === 0}
@@ -227,12 +229,12 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 xl:max-w-5xl">
               {turnsQ.isLoading ? (
-                <ProjectLoader label="loading turns…" size={110} />
+                <ProjectLoader label={t("sessions.detail.loadingTurns")} size={110} />
               ) : items.length === 0 && turnsError ? (
                 turnsError
               ) : items.length === 0 ? (
                 live ? null : (
-                  <EmptyState title="No messages yet" message="This session has no turns." />
+                  <EmptyState title={t("sessions.detail.noMessages")} message={t("sessions.detail.noTurns")} />
                 )
               ) : (
                 <Conversation
@@ -292,7 +294,7 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
       <SlideOver
         open={railOpen}
         onClose={() => setRailOpen(false)}
-        title="Context"
+        title={t("sessions.detail.context")}
         width={360}
       >
         <div className="px-4 py-4">
@@ -331,6 +333,7 @@ function SessionHeader({
   onOpenRail: () => void;
 }) {
   const router = useRouter();
+  const t = useCopy();
   const copyShareLink = useCopyShareLink();
   const cancel = useCancelSession();
   const rerun = useRerunSession();
@@ -347,7 +350,7 @@ function SessionHeader({
     ...(lastTurnId
       ? [
           {
-            label: "Branch this conversation",
+            label: t("sessions.detail.branch"),
             icon: "fork" as const,
             onSelect: () => onFork(lastTurnId),
           },
@@ -356,14 +359,14 @@ function SessionHeader({
     ...(session.deviceId
       ? [
           {
-            label: "View runner machine",
+            label: t("sessions.detail.viewRunner"),
             icon: "server" as const,
             onSelect: () => router.push("/runners"),
           },
         ]
       : []),
     {
-      label: "Copy link",
+      label: t("sessions.detail.copyLink"),
       icon: "link" as const,
       onSelect: copyLink,
     },
@@ -372,7 +375,7 @@ function SessionHeader({
   const railToggle = (
     <IconButton
       icon={railCollapsed ? "chevronLeft" : "panelLeft"}
-      aria-label={railCollapsed ? "Show context rail" : "Hide context rail"}
+      aria-label={railCollapsed ? t("sessions.detail.showRail") : t("sessions.detail.hideRail")}
       aria-pressed={railCollapsed}
       className="hidden min-h-11 min-w-11 lg:inline-flex"
       onClick={onToggleRail}
@@ -388,13 +391,13 @@ function SessionHeader({
             size="sm"
             icon="arrowRight"
             className="min-h-11 rotate-180"
-            aria-label="Back to sessions"
+            aria-label={t("sessions.detail.backToSessions")}
             onClick={goBack}
           />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
+            <PageTitle className="fg-h3 truncate">{session.title ?? t("sessions.detail.session")}</PageTitle>
             <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
           </div>
           <div className="mt-1 flex items-center gap-2">
@@ -406,7 +409,7 @@ function SessionHeader({
             />
             {taskCount > 0 && (
               <Badge tone="neutral">
-                {taskCount} {taskCount === 1 ? "task" : "tasks"}
+                {taskCount === 1 ? t("sessions.detail.taskOne") : t("sessions.detail.taskMany", { n: taskCount })}
               </Badge>
             )}
           </div>
@@ -421,7 +424,7 @@ function SessionHeader({
               loading={cancel.isPending}
               onClick={() => cancel.mutate(session.id)}
             >
-              Stop
+              {t("sessions.detail.stop")}
             </Button>
           ) : (
             <Button
@@ -436,7 +439,7 @@ function SessionHeader({
                 })
               }
             >
-              Rerun
+              {t("sessions.detail.rerun")}
             </Button>
           )}
           {issueId && projectSlug && (
@@ -449,7 +452,7 @@ function SessionHeader({
                 router.push(`/projects/${projectSlug}/issues/${issueId}`)
               }
             >
-              Open issue
+              {t("sessions.detail.openIssue")}
             </Button>
           )}
           <Menu
@@ -458,14 +461,14 @@ function SessionHeader({
             trigger={
               <IconButton
                 icon="more"
-                aria-label="Session actions"
+                aria-label={t("sessions.detail.actions")}
                 className="min-h-11 min-w-11"
               />
             }
           />
           <IconButton
             icon="rows"
-            aria-label="Show context"
+            aria-label={t("sessions.detail.showContext")}
             className="min-h-11 min-w-11 lg:hidden"
             onClick={onOpenRail}
           />

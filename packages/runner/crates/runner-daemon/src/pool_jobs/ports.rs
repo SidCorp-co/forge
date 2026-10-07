@@ -67,6 +67,13 @@ pub trait Panes: Send + Sync {
     async fn kill(&self, name: &str) -> Result<()>;
     /// Every job pane on this box right now, by name.
     async fn names(&self) -> Vec<String>;
+    /// Type a message core sent the job's session into its pane and submit it, answering in
+    /// `terminal::send_line`'s shapes: only `Gone` is the pane having ended.
+    async fn send_line(
+        &self,
+        name: &str,
+        text: &str,
+    ) -> std::result::Result<terminal::Prompt, terminal::NotTyped>;
 }
 
 /// The production halves, over a real core and a real tmux.
@@ -377,5 +384,13 @@ impl Panes for TmuxPanes {
 
     async fn names(&self) -> Vec<String> {
         terminal::names_with_prefix(terminal::JOB_PREFIX).await
+    }
+
+    async fn send_line(
+        &self,
+        name: &str,
+        text: &str,
+    ) -> std::result::Result<terminal::Prompt, terminal::NotTyped> {
+        terminal::send_line(name, text).await
     }
 }

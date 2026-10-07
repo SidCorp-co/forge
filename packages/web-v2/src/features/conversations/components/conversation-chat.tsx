@@ -24,7 +24,7 @@ import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import {
   useConversation,
   useDraftAgentMode,
@@ -65,6 +65,8 @@ export function ConversationChat({
   headerActions?: React.ReactNode;
   scopeChip?: React.ReactNode;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
   const [membersOpen, setMembersOpen] = useState(false);
   const resolvedId = conversationId ?? activeId;
@@ -77,7 +79,6 @@ export function ConversationChat({
   const withdrawn = useWithdrawnDrafts(resolvedId);
   const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
   const stop = useStopConversation();
-  const t = useCopy();
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
@@ -140,9 +141,9 @@ export function ConversationChat({
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
   const agentOffer =
     roomQ.data?.agentMode ??
-    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
+    draftOfferQ.data ?? { available: false, reason: t("conversations.agentOfferChecking") };
 
-  const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
+  const refusal = roomQ.data ? composerRefusal(roomQ.data, t) : null;
 
   const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
@@ -248,7 +249,7 @@ export function ConversationChat({
               onboarding={onboardingRoom}
               mode={{ value: pick, onChange: setPick, offer: agentOffer, settled: settledMode, disabled: busy }}
               scopeChip={scopeChip}
-              sees={page.sees ? { label: page.sees, detail: seesDetail(page.snapshot, { project: projectRow?.name ?? null, scope: ecosystemId ? "ecosystem" : "project" }) } : null}
+              sees={page.sees ? { label: page.sees, detail: seesDetail(page.snapshot, { project: projectRow?.name ?? null, scope: ecosystemId ? "ecosystem" : "project" }, t, language) } : null}
             />
           }
         />

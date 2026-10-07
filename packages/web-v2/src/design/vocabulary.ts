@@ -210,10 +210,28 @@ const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: Lab
   thread: { label: "threadStatus", hint: "hintThreadStatus" },
   onboarding: { label: "threadStatus" },
   mockup: { label: "mockupStatus", hint: "hintMockupStatus" },
+  lease: { label: "leaseVerdict" },
 };
 
 /** A state family with no label group of its own, read from the shared words under `common.state.<family>.*`. */
-export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>(["pipelineRun", "device", "session", "connection", "delivery", "deployment", "probe"]);
+export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>([
+  "pipelineRun",
+  "device",
+  "session",
+  "connection",
+  "delivery",
+  "runStanding",
+  "masterState",
+  "job",
+  "scheduleRun",
+  "scheduleStanding",
+  "reportTriage",
+  "question",
+  "stewardAction",
+  "runStep",
+  "deployment",
+  "probe",
+]);
 
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,
  *  so a new core value shows as words, never as a raw token. */
@@ -273,10 +291,20 @@ export const ENUM_COMMON: Partial<Record<EnumFamily, string>> = {
   jobType: "common.jobType",
   failureCause: "common.failureCause",
   direction: "common.direction",
-  environmentEvidence: "common.environmentEvidence",
-  environmentCause: "common.environmentCause",
-  artifactKind: "common.artifactKind",
-  bindingRole: "common.bindingRole",
+  runLane: "common.runLane",
+  runGate: "common.runGate",
+  runStuckRule: "common.runStuckRule",
+  runActorType: "common.runActorType",
+  runEventEntity: "common.runEventEntity",
+  runHandbackClose: "common.runHandbackClose",
+  runExpirySource: "common.runExpirySource",
+  masterVerb: "common.masterVerb",
+  masterPassClose: "common.masterPassClose",
+  masterPassRefusal: "common.masterPassRefusal",
+  scheduleKind: "common.scheduleKind",
+  fireTrigger: "common.fireTrigger",
+  fireSkipReason: "common.fireSkipReason",
+  blockerKind: "common.blockerKind",
 };
 
 export function enumLabel(family: EnumFamily, value: string, language?: string): string {

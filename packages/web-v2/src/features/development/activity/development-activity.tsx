@@ -10,7 +10,7 @@ import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { AwaitingReleaseCard } from "./awaiting-release-card";
-import { activeRuns, activeSpend, awaitingReleaseRuns, idleRuns, runnersSummary, spendByStage, statusDonut } from "./derive";
+import { activeRuns, activeSpend, idleRuns, runnersSummary, spendByStage, statusDonut } from "./derive";
 import { KpiBand } from "./kpi-band";
 import { LiveRunsCard } from "./live-runs-card";
 import { RunnersCard } from "./runners-card";
@@ -51,7 +51,7 @@ export function DevelopmentActivity({ projectId, slug }: { projectId: string; sl
       />
       <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2 xl:grid-cols-3">
         <LiveRunsCard runs={live} slug={slug} idle={idleRuns(runItems)} />
-        <AwaitingReleaseCard runs={awaitingReleaseRuns(runItems)} slug={slug} projectId={projectId} />
+        <AwaitingReleaseCard slug={slug} projectId={projectId} />
         <StatusDonut data={donut} />
         <SpendCard data={spendByStage(durationsQ.data)} inFlightUsd={inFlight} />
         <RunnersCard summary={runners} slug={slug} />

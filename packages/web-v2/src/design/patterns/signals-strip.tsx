@@ -4,11 +4,13 @@
 // under them, never a row of cards. Each value names its source on hover.
 
 import type { ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 
-export function SignalsStrip({ children, label = "Signals", testId }: { children: ReactNode; label?: string; testId?: string }) {
+export function SignalsStrip({ children, label, testId }: { children: ReactNode; label?: string; testId?: string }) {
+  const t = useCopy();
   return (
     <div className="border-b border-line-subtle bg-surface" data-testid={testId ?? "signals-strip"}>
-      <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 px-5 py-2.5 max-md:px-3" aria-label={label}>
+      <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 px-5 py-2.5 max-md:px-3" aria-label={label ?? t("overview.signal.signals")}>
         {children}
       </dl>
     </div>

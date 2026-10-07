@@ -7,15 +7,16 @@
 // `thinkingCount`, which is the only producer of that form. Kit-only: imports
 // from @/design, semantic tokens, no hex.
 import { Icon } from "@/design";
+import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
+import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import { useDisclosure } from "../disclosure";
 
-/** *4s* · *0.4s* · *840ms* — short enough to sit inside a label. */
-function spent(ms: number): string {
+/** *4s* · *0.4s* · *840ms* — short enough to sit inside a label; the decimal mark is the locale's. */
+function spent(ms: number, locale: string): string {
   if (ms < 1_000) return `${Math.round(ms)}ms`;
   const s = ms / 1_000;
   if (s >= 10) return `${Math.round(s)}s`;
-  const one = s.toFixed(1);
-  return `${one.endsWith(".0") ? one.slice(0, -2) : one}s`;
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Number(s.toFixed(1)))}s`;
 }
 
 /**
@@ -26,13 +27,13 @@ export function thinkingLabel(b: {
   durationMs?: number | undefined;
   count?: number | undefined;
   streaming?: boolean | undefined;
-}): string {
-  if (b.streaming === true && b.durationMs === undefined) return "Thinking…";
-  if (b.durationMs !== undefined) return `Thought for ${spent(b.durationMs)}`;
+}, t: Copy = productCopy(), locale = "en-GB"): string {
+  if (b.streaming === true && b.durationMs === undefined) return t("sessions.think.streaming");
+  if (b.durationMs !== undefined) return t("sessions.think.for", { d: spent(b.durationMs, locale) });
   if (b.count !== undefined && b.count > 0) {
-    return b.count === 1 ? "Thought once" : `Thought ${b.count} times`;
+    return b.count === 1 ? t("sessions.think.once") : t("sessions.think.times", { n: b.count });
   }
-  return "Thought";
+  return t("sessions.think.plain");
 }
 
 /**
@@ -53,7 +54,9 @@ export function ThinkingLine({
   blockKey?: string | undefined;
 }) {
   const [open, toggle] = useDisclosure(blockKey);
-  const label = thinkingLabel({ text, durationMs, count, streaming });
+  const t = useCopy();
+  const locale = useCopyLocale();
+  const label = thinkingLabel({ text, durationMs, count, streaming }, t, locale);
   const expandable = typeof text === "string" && text.length > 0;
 
   if (!expandable) {

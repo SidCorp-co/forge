@@ -10,9 +10,11 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
+import { isUuid } from "@/lib/api/ref-bridge";
 
 const issueQuestionsKey = (issueId: string) => ["questions", issueId];
 export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
@@ -25,10 +27,11 @@ export const gateQuestionKey = (projectId: string, documentId: string) => [
 
 const FOLLOW_UP_POLL_MS = 30_000;
 
-export function useIssueQuestions(issueId: string) {
+/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
+export function useIssueQuestions(issueId: string, projectId?: string) {
   return useQuery({
-    queryKey: issueQuestionsKey(issueId),
-    queryFn: () => questionsApi.listForIssue(issueId),
+    queryKey: issueId && !isUuid(issueId) ? ["questions", { issue: issueId, project: projectId ?? null }] : issueQuestionsKey(issueId),
+    queryFn: () => questionsApi.listForIssue(issueId, projectId),
     enabled: Boolean(issueId),
     refetchInterval: (query) =>
       (query.state.data?.questions.length ?? 0) > 0 ? FOLLOW_UP_POLL_MS : false,
@@ -38,6 +41,7 @@ export function useIssueQuestions(issueId: string) {
 export function useAnswerQuestion(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
@@ -45,14 +49,14 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
-        title: "Decision recorded",
-        description: "Your answer is on the question. Whoever asked reads it there.",
+        title: t("agents.question.recorded"),
+        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
 }
@@ -112,20 +116,21 @@ export function useLinkedQuestion(questionId: string | undefined, enabled: boole
 export function useAnswerProjectQuestion(projectId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
-        title: "Decision recorded",
-        description: "Your answer is on the question. Whoever asked reads it there.",
+        title: t("agents.question.recorded"),
+        description: t("agents.question.recordedBody"),
         tone: "success",
       });
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast({ title: t("agents.question.notRecorded"), description: formatApiError(err), tone: "error" });
     },
   });
 }

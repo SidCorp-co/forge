@@ -11,7 +11,7 @@ const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const stamp = { label: "forecast" as const, asOf: at(0) };
 const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
 const approval = { kind: "person" as const, mode: "approval" as const, who: "Dana Lee", act: "cut 0.1.0, then approve it", reason: "r", version: "0.1.0", holders: [] };
-const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", total: 2, landed: 2, forecast: landed, next: null, delivery: { ...stamp, landing: landed, release: approval, inHands: null, shipped: null } };
+const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: { ...stamp, landing: landed, release: approval, inHands: null, shipped: null } };
 
 describe("what a requirement's act changes", () => {
   it("says under the banner what pressing the act does", () => {

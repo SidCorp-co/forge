@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { PageContainer, PageTitle } from "@/design";
 import { ProjectGate } from "@/features/projects/components/project-gate";
 import type { ProjectListItem } from "@/features/projects/types";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemRoutes } from "../routes";
 
@@ -31,8 +32,9 @@ export function EcosystemPage({
   actions?: (project: ProjectListItem) => ReactNode;
   children: (project: ProjectListItem) => ReactNode;
 }) {
+  const t = useCopy();
   return (
-    <ProjectGate label="loading…">
+    <ProjectGate label={t("common.gate.loading")}>
       {(project) => (
         <PageContainer className="min-w-0 space-y-4">
           <header className="flex min-w-0 flex-wrap items-center justify-between gap-2">

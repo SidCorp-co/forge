@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type AgentSessionKind,
@@ -253,7 +253,7 @@ export async function listAgentSessionsPage(f: AgentSessionListFilter) {
     .select(agentSessionListColumns)
     .from(agentSessions)
     .where(where)
-    .orderBy(desc(agentSessions.updatedAt))
+    .orderBy(desc(agentSessions.updatedAt), asc(agentSessions.id))
     .limit(f.pageSize)
     .offset((f.page - 1) * f.pageSize);
 

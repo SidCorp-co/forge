@@ -40,6 +40,7 @@ const input = (issues: StandingIssue[]) => ({
   staleContractPins: [],
   unapprovedDesigns: [] as { flow: string; title: string; designStatus: string | null }[],
   feedback: { open: 0, untriaged: [] },
+  judge: 'self' as 'self' | 'independent' | null,
   agreedAt: at('2026-09-01T00:00:00Z'),
   updatedAt: at('2026-09-26T00:00:00Z'),
   now: at('2026-09-28T00:00:00Z'),
@@ -218,5 +219,90 @@ describe('an agreed requirement whose live issues are drafts', () => {
     });
     expect(s.waitingOn.act).not.toContain('promote');
     expect(s.attentionGroup).toBe('moving');
+  });
+});
+
+// JU-9: every issue shipped and a BC unproven used to wait on 'Master · prove BC-…' whatever the BC
+// lacked; the turn now names who owes the proof and the act, by what each BC lacks
+describe('a requirement whose every issue shipped and whose criteria are unproven', () => {
+  const bc = (n: number) => ({
+    id: `c${n}`,
+    code: `BC-${n}`,
+    body: `rule ${n}`,
+    sinceRevision: 1,
+    retiredRevision: null,
+  });
+  const traced = (issue: number, bcN: number, verdict: 'pass' | 'fail' | null) => ({
+    issueId: `i${issue}`,
+    n: bcN,
+    requirementCriterionId: `c${bcN}`,
+    verdict,
+    verdictAt: verdict ? at('2026-09-22T00:00:00Z') : null,
+  });
+  const shipped = (
+    issueCriteria: ReturnType<typeof traced>[],
+    judge: 'self' | 'independent' | null,
+  ) =>
+    deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+      criteria: [bc(1), bc(3), bc(5)],
+      issueCriteria,
+      judge,
+    });
+
+  it('waits on the independent judge to judge both unjudged BCs on the issues that carry them', () => {
+    const s = shipped(
+      [traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, null)],
+      'independent',
+    );
+    expect(s.state).toBe('in_delivery');
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: 'Independent judge',
+      act: 'judge BC-3, BC-5 on ISS-1, ISS-2',
+    });
+    expect(s.waitingOn.rule).toBe(
+      'every linked issue has shipped, but BC-3, BC-5 hold no passing verdict yet, so it is not delivered',
+    );
+  });
+
+  it("waits on the master where the project's runs judge their own work", () => {
+    const s = shipped([traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, null)], 'self');
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'judge BC-3, BC-5 on ISS-1, ISS-2' });
+  });
+
+  it('says the master judges where no policy names a judge', () => {
+    const s = shipped([traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, 'pass')], null);
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'judge BC-3 on ISS-1' });
+    expect(s.waitingOn.rule).toMatch(/no policy names a judge, so the master judges$/);
+  });
+
+  it('asks the master to fix a failing BC, naming the issue it fails on', () => {
+    const s = shipped(
+      [traced(1, 1, 'pass'), traced(2, 3, 'fail'), traced(2, 5, 'pass')],
+      'independent',
+    );
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });
+  });
+
+  it('asks the master to trace a BC no issue criterion traces to, and the rule names every gap', () => {
+    const s = shipped([traced(1, 1, 'pass'), traced(2, 3, 'fail')], 'independent');
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });
+    expect(s.waitingOn.rule).toContain('no issue criterion traces to BC-5');
+    const gapOnly = shipped([traced(1, 1, 'pass'), traced(2, 3, 'pass')], 'independent');
+    expect(gapOnly.waitingOn).toMatchObject({
+      who: 'Master',
+      act: 'trace BC-5 to an issue criterion',
+    });
+  });
+
+  it('reads delivered, waiting on the BA check, once every BC passes', () => {
+    const s = shipped(
+      [traced(1, 1, 'pass'), traced(1, 3, 'pass'), traced(2, 5, 'pass')],
+      'independent',
+    );
+    expect(s.state).toBe('delivered');
+    expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
   });
 });

@@ -76,6 +76,14 @@ impl pool_jobs::Panes for ScratchPanes {
     async fn names(&self) -> Vec<String> {
         Vec::new()
     }
+    async fn send_line(
+        &self,
+        _name: &str,
+        _text: &str,
+    ) -> std::result::Result<runner_workspace::terminal::Prompt, runner_workspace::terminal::NotTyped>
+    {
+        unreachable!("a cancel types nothing")
+    }
 }
 
 /// One named way a box without tmux skips this test; any other absence fails it naming tmux, so

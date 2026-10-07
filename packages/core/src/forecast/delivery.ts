@@ -30,6 +30,8 @@ export interface ReleaseFacts {
   holders?: readonly ReleaseHolder[];
   /** Landed→released minutes of the project's issues shipped in the window. */
   lags: readonly number[];
+  /** The reader is one who owes the act a person takes here, so the leg names them as "You". */
+  viewerOwes?: boolean;
   floor?: number;
 }
 
@@ -76,7 +78,9 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
       return {
         kind: 'person',
         mode: 'approval',
-        who: holdersPhrase(r.holders ?? [], 'A release approver', 'release approvers'),
+        who: r.viewerOwes
+          ? 'You'
+          : holdersPhrase(r.holders ?? [], 'A release approver', 'release approvers'),
         act: `cut ${version}, then approve it`,
         reason: `this project requires a holder of releases.approve to approve each release${(r.holders ?? []).length > 0 ? ` (${(r.holders ?? []).map((h) => h.name).join(', ')})` : ''}, so no date is forecast for it`,
         version: r.nextVersion,
@@ -86,7 +90,7 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
       return {
         kind: 'person',
         mode: 'manual',
-        who: 'A project admin',
+        who: r.viewerOwes ? 'You' : 'A project admin',
         act: `cut ${version}`,
         reason:
           "this project's production does not deploy on land, so an admin cuts each release and no date is forecast for it",
@@ -97,7 +101,7 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
       return {
         kind: 'person',
         mode: 'none',
-        who: 'A project writer',
+        who: r.viewerOwes ? 'You' : 'A project writer',
         act: 'release it by hand and close it',
         reason:
           'this project declares no production environment, so no release carries a landed change',

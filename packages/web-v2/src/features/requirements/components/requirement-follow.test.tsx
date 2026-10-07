@@ -20,7 +20,7 @@ const approval = {
 };
 const delivery = { ...stamp, landing: landed, release: approval, inHands: null, shipped: null };
 
-const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", total: 2, landed: 2, forecast: landed, next: null, delivery };
+const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery };
 
 describe("a requirement follows its work to the release", () => {
   it("links the release its progress line names and names who owes the cut", () => {

@@ -197,3 +197,42 @@ describe("a requirement's acts in Vietnamese", () => {
     expect(screen.getByRole("button", { name: vi("requirements.act.returnR", { r: 2 }) })).toBeInTheDocument();
   });
 });
+
+// An undefer is a person's act with a reason, as the defer it undoes is: the Undefer button asked
+// none and recorded none, while Defer did.
+describe("Undefer on a deferred requirement", () => {
+  const deferred = () =>
+    ({
+      ...detail([]),
+      status: "deferred",
+      deferral: { from: "agreed", reason: "out of v1", targetPhase: "v2", deferredBy: "u1", deferredAt: "2026-10-06T10:00:00Z" },
+    }) as unknown as RequirementDetail;
+
+  it("asks why it comes back, sends nothing until it is said, and sends the reason", async () => {
+    const calls = fakeCore(() => ({ body: detail([]) }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={deferred()} />);
+    await user.click(screen.getByRole("button", { name: "Undefer" }));
+    expect(calls).toEqual([]);
+    const submit = screen.getByRole("button", { name: "Undefer" });
+    expect(submit).toBeDisabled();
+    await user.type(screen.getByLabelText("Why it comes back into the release"), "  planned into v1 after all ");
+    await user.click(submit);
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "POST", path: "/projects/p1/requirements/REQ-2/undefer", body: { reason: "planned into v1 after all" } }),
+    );
+  });
+
+  it("asks it in the viewer's language", async () => {
+    fakeCore(() => undefined);
+    const user = userEvent.setup();
+    const vi = productCopy("vi");
+    renderWithQuery(
+      <InterfaceLanguageScope language="vi">
+        <PrimaryActions projectId="p1" slug="epod" d={deferred()} />
+      </InterfaceLanguageScope>,
+    );
+    await user.click(screen.getByRole("button", { name: vi("requirements.act.undefer") }));
+    expect(screen.getByLabelText(vi("requirements.act.undeferWhyLabel"))).toBeInTheDocument();
+  });
+});

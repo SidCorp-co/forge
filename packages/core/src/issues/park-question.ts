@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
-import type { IssueStatus } from '../db/schema.js';
+import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
-import { askParkQuestion, personOwesAnAnswer } from './ports.js';
+import { askParkQuestion, pendingDesignOfPark, personOwesAnAnswer } from './ports.js';
+
+const DECISION_KIND: WaitingKind = 'needs_decision';
 
 const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';
@@ -17,6 +19,7 @@ interface MintParkQuestionInput {
     awaitsDesign?: { workflowId: string; revision: number } | undefined;
     transitionReason?: string | undefined;
     reason?: string | undefined;
+    waitingKind?: WaitingKind | undefined;
   };
 }
 
@@ -32,9 +35,10 @@ function mintsAt(toStatus: IssueStatus): boolean {
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   const needs = input.options.needs?.trim();
-  const { awaitsDesign } = input.options;
   if (!mintsAt(input.toStatus)) return;
   if (actorAgency(input.actor) !== 'agent') return;
+  const linked = input.options.awaitsDesign ? null : await designDrawnHere(input, tx);
+  const awaitsDesign = input.options.awaitsDesign ?? linked ?? undefined;
   if (!needs && !awaitsDesign && (await personOwesAnAnswer(tx, input.issue.id))) return;
   await askParkQuestion(tx, {
     id: randomUUID(),
@@ -43,8 +47,21 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
     prompt: input.options.transitionReason?.trim() || input.options.reason?.trim() || '',
     // a park on a design revision says what settles it by naming the revision
     needed: needs || (awaitsDesign ? undefined : NEED_NOT_STATED),
-    ...(awaitsDesign ? { awaitsDesign } : {}),
+    ...(awaitsDesign
+      ? { awaitsDesign: { workflowId: awaitsDesign.workflowId, revision: awaitsDesign.revision } }
+      : {}),
+    ...(linked ? { linkedUnderIssue: true } : {}),
   });
+}
+
+/**
+ * The revision a decision park that names none waits on: the one proposed under the parking issue
+ * and still awaiting its approver. Only a `needs_decision` park is linked — a park for an answer or a
+ * resource waits on something a design decision does not supply.
+ */
+async function designDrawnHere(input: MintParkQuestionInput, tx: DrizzleTx) {
+  if (input.options.waitingKind !== DECISION_KIND) return null;
+  return pendingDesignOfPark(tx, input.issue.projectId, input.issue.id);
 }
 
 /** Why `needs` or `awaitsDesign` cannot be taken on this move: each shapes the question an agent's park mints. */
