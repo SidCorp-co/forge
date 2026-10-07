@@ -1,0 +1,1 @@
+**Memory upkeep records are no longer decisions.** Reconcile and consolidation records become bookkeeping (0458), a possibly-stale flag carries its reason or is not made, another project's key is never checked here, and cited sources link.

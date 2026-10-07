@@ -5585,7 +5585,7 @@
     "memory.why.archived": "archived",
     "memory.why.missing.issue": "no such issue",
     "memory.why.missing.requirement": "no such requirement",
-    "memory.flagged": "A model guessed a later release ({by}) may have outdated it, on {date}. Check it, then correct or retire it.",
+    "memory.flagged": "A model guessed a later release ({by}) may have outdated it on {date}: {reason}. Check it, then correct or retire it.",
     "memory.corrected": "Corrected by {name} on {date}: {reason}",
     "memory.retiredBy": "Retired by {name} on {date}: {reason}",
     "memory.archivedBy": "Archived on {date}: {why}",
@@ -5599,14 +5599,15 @@
     "memory.saveCorrection": "Save correction",
     "memory.retireConfirm": "Retire this memory",
     "memory.cancel": "Cancel",
-    "memory.cites": "Cites {refs}",
+    "memory.cites": "Cites",
     "memory.source.note": "Note",
     "memory.source.knowledge": "Knowledge",
     "memory.source.policy": "Policy",
     "memory.source.decision": "Decision",
     "memory.source.issue": "Issue",
     "memory.source.comment": "Comment",
-    "memory.source.job": "Job"
+    "memory.source.job": "Job",
+    "memory.citeElsewhere": "{ref} (another project, not checked)"
   },
   "vi": {
     "whatsNew.nav": "Có gì mới",
@@ -11920,7 +11921,7 @@
     "memory.why.archived": "đã lưu trữ",
     "memory.why.missing.issue": "không có issue này",
     "memory.why.missing.requirement": "không có yêu cầu này",
-    "memory.flagged": "Mô hình đoán một bản phát hành sau ({by}) có thể đã làm nó cũ, ngày {date}. Hãy kiểm tra rồi sửa hoặc gỡ.",
+    "memory.flagged": "Mô hình đoán một bản phát hành sau ({by}) có thể đã làm nó cũ, ngày {date}: {reason}. Hãy kiểm tra rồi sửa hoặc gỡ.",
     "memory.corrected": "{name} đã sửa ngày {date}: {reason}",
     "memory.retiredBy": "{name} đã gỡ ngày {date}: {reason}",
     "memory.archivedBy": "Lưu trữ ngày {date}: {why}",
@@ -11934,13 +11935,14 @@
     "memory.saveCorrection": "Lưu bản sửa",
     "memory.retireConfirm": "Gỡ ghi nhớ này",
     "memory.cancel": "Hủy",
-    "memory.cites": "Trích dẫn {refs}",
+    "memory.cites": "Trích dẫn",
     "memory.source.note": "Ghi chú",
     "memory.source.knowledge": "Kiến thức",
     "memory.source.policy": "Quy định",
     "memory.source.decision": "Quyết định",
     "memory.source.issue": "Issue",
     "memory.source.comment": "Bình luận",
-    "memory.source.job": "Job"
+    "memory.source.job": "Job",
+    "memory.citeElsewhere": "{ref} (dự án khác, chưa kiểm tra)"
   }
 }

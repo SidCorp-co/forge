@@ -17,9 +17,17 @@ export const memorySources = [
   'knowledge',
   'decision',
   'policy',
+  // What memory's own upkeep did (a release's reconcile, a consolidation sweep): a record of a job,
+  // never a decision. Core writes it; no caller may, and no search returns it unless asked by name.
+  'bookkeeping',
 ] as const;
 
 export type MemorySource = (typeof memorySources)[number];
+
+/** The sources a caller may write or delete: every one but core's own bookkeeping. */
+export const memoryWritableSources = memorySources.filter(
+  (s): s is Exclude<MemorySource, 'bookkeeping'> => s !== 'bookkeeping',
+);
 
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
 

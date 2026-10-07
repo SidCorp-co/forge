@@ -21,6 +21,12 @@ import { type Citations, resolveCitations } from './stale-refs.js';
 
 const NO_CITATIONS: Citations = { cites: [], staleRefs: [] };
 
+/**
+ * A flag standing without a reason. The reconcile no longer makes one and 0458 dropped those it
+ * had made, so this reads only a row written by hand; it says so rather than passing as a reason.
+ */
+const NO_FLAG_REASON = 'no reason was recorded for this flag';
+
 export const memoryEntriesInputSchema = z.object({
   projectId: z.uuid(),
   /** Words to find in the text or the ref, any order; empty lists everything. */
@@ -174,6 +180,7 @@ export async function readMemoryEntries(
           ? {
               since: m.staleSince,
               by: typeof m.supersededBy === 'string' ? m.supersededBy : null,
+              reason: typeof m.staleReason === 'string' ? m.staleReason : NO_FLAG_REASON,
             }
           : null,
       corrections: storedActs(m.corrections).map(act),

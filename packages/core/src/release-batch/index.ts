@@ -29,6 +29,7 @@ export {
 export {
   loadReleaseRoster,
   owedReleaseNotes,
+  releaseVersionsAmong,
   waitingIssueIds as draftReleaseIssueIds,
   warnedReleaseNotes,
 } from './queries.js';
