@@ -5,6 +5,7 @@ import { GroupedList, type ListGroup, sortGroupsBy } from "@/design";
 import { EtaCell, EtaInline } from "./components/eta-cell";
 import { type EtaClock, etaInline, etaLines, etaOfDelivery, etaOfFeedback, etaOfForecast, etaSortValue } from "./eta";
 import { ETA_COPY, etaLangOf } from "./eta-copy";
+import { forecastWait, RULE, say } from "@/test/said";
 
 // The ETA column reads a forecast as the clock and the day in the viewer's timezone. These read it in
 // Ho Chi Minh City (UTC+7), where NOW is Wednesday 7 October 2026 at 12:00.
@@ -87,12 +88,12 @@ describe("the ETA cell reads a clock, not a duration", () => {
 
 describe("the ETA cell where there is no date", () => {
   it("paused: who it waits on, short and muted, the full act in the tooltip", () => {
-    const f: Forecast = { ...stamp, kind: "paused", who: "Ana", act: "answer a question", reason: "parked at needs_info", ref: null, since: null, late: null };
+    const f: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.named", { name: "Ana" }), say("issues.standing.act.answer"), say("issues.rule.needsInfo")), ref: null, since: null, late: null };
     const eta = etaOfForecast(f, vi);
     expect(eta.kind).toBe("waits");
     expect(etaLines(eta, vi)).toEqual({ line: "Chờ Ana", sub: null }); // i18n-allow: asserts the vi ETA copy
     expect(etaLines(eta, en).line).toBe("Waits on Ana");
-    expect(eta.detail).toBe("Ana — trả lời một câu hỏi. parked at needs_info"); // i18n-allow: asserts the vi ETA copy; the act reads through the issue standing patterns, the reason stays as core wrote it
+    expect(eta.detail).toBe("Ana — trả lời một câu hỏi. dừng ở needs_info: một người cần trả lời; câu trả lời sẽ đánh thức Master"); // i18n-allow: asserts the vi ETA copy; act and reason read from what core said
   });
 
   it("not enough history: a dash, the sample size in the tooltip", () => {
@@ -117,7 +118,7 @@ describe("the ETA cell where there is no date", () => {
 });
 
 describe("a release a person still cuts", () => {
-  const manual = { kind: "person" as const, mode: "manual" as const, who: "Ada", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
+  const manual = { kind: "person" as const, mode: "manual" as const, ...forecastWait(say("standing.who.named", { name: "Ada" }), say("standing.act.cut", { v: "0.2.0", more: null }), say("forecast.reason.manual")), version: "0.2.0", holders: [] };
 
   it("reads the landing, then who cuts it as the second line", () => {
     const d: DeliveryForecast = { ...stamp, landing: TODAY, release: manual, inHands: null, shipped: null };
@@ -137,7 +138,7 @@ describe("a release a person still cuts", () => {
   });
 
   it("names the viewer as you where the release act is theirs, never their own account name", () => {
-    const mine = { ...manual, who: "You" };
+    const mine = { ...manual, ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.2.0", more: null }), say("forecast.reason.manual")) };
     const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-30) }, release: mine, inHands: null, shipped: null };
     expect(etaLines(etaOfDelivery(d, vi), vi).sub).toBe("rồi bạn cắt"); // i18n-allow: asserts the vi ETA copy
     expect(etaInline(etaOfDelivery(d, en), en)).toBe("Landed, awaiting release · then you cut it");
@@ -150,9 +151,9 @@ describe("a release a person still cuts", () => {
   });
 
   it("names who triages an untriaged feedback item, with no date", () => {
-    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, vi);
+    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, vi);
     expect(eta && etaLines(eta, vi).line).toBe("Chờ Người có quyền feedback…"); // i18n-allow: asserts the vi ETA copy
-    expect(eta?.detail).toBe("Người có quyền feedback.approve — phân loại. new"); // i18n-allow: asserts the vi ETA copy
+    expect(eta?.detail).toBe("Người có quyền feedback.approve — phân loại. new: người có quyền feedback.approve phân loại nó"); // i18n-allow: asserts the vi ETA copy
   });
 });
 
@@ -177,7 +178,7 @@ describe("the ETA column's language and order", () => {
 
   it("sorts by the p50 within each group, every row without a time last in its own order", () => {
     type R = { key: string; f: Forecast };
-    const paused: Forecast = { ...stamp, kind: "paused", who: "Ana", act: "answer", reason: "r", ref: null, since: null, late: null };
+    const paused: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.named", { name: "Ana" }), say("issues.standing.act.answer"), RULE), ref: null, since: null, late: null };
     const rows: R[] = [
       { key: "ISS-1", f: paused },
       { key: "ISS-2", f: range(1850, 1900) },

@@ -1,4 +1,5 @@
 import type { Forecast, ForecastBasis } from '@forge/contracts/forecast';
+import { say, verbatim } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { deliveryOf, type ReleaseFacts, releaseLegOf } from './delivery.js';
 
@@ -161,6 +162,11 @@ describe('delivery: in people’s hands, not merged', () => {
       who: 'A project writer',
       act: 'answer a question',
       reason: 'r',
+      says: {
+        who: say('standing.who.named', { name: 'A project writer' }),
+        act: say('issues.standing.act.answer'),
+        reason: verbatim('r'),
+      },
       ref: null,
       since: null,
       late: null,

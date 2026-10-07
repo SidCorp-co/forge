@@ -12,7 +12,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { standingEffect } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -199,9 +199,9 @@ export function RequirementFacts({
             <WaitingOn w={s.waitingOn} />
           </Fact>
         ) : null}
-        {s.attentionGroup !== "done" && s.waitingOn.effect ? (
+        {s.attentionGroup !== "done" && s.waitingOn.says.effect ? (
           <p className="pb-1 pl-[96px] text-12 text-muted max-sm:pl-0" data-testid="facts-effect">
-            {standingEffect(s.waitingOn.effect, lang)}
+            {said(s.waitingOn.says.effect, lang)}
           </p>
         ) : null}
         <Fact label={t("requirements.facts.owner")}>

@@ -3,6 +3,7 @@
 
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { ProjectPermission } from "./permissions.js";
+import { type Said, say, sayEn } from "./said.js";
 
 /** Every party a row can wait on, across every read model. A slice declares the subset it serves. */
 export const WAITING_KINDS = [
@@ -72,6 +73,35 @@ export interface WaitingOn<K extends WaitingKind = WaitingKind> {
 	ref: string | null;
 	/** When what they owe has a deadline (an SLA, a gate that resumes by itself); else null. */
 	dueAt: string | null;
+	/** `who`, `act`, `rule` and `effect` as registry keys and values (`said.ts`), which a reader in
+	 *  another language renders instead of re-reading the English. */
+	says: WaitingSays;
+}
+
+/** A wait's sentences as said: the English fields are built from these. */
+export interface WaitingSays {
+	who: Said;
+	act: Said;
+	rule: Said;
+	effect?: Said;
+}
+
+/** A wait from what it says: its English `who`, `act`, `rule` and `effect` rendered from `says`, never written beside it. */
+export function waitingOn<K extends WaitingKind>(
+	kind: K,
+	says: WaitingSays,
+	at: { ref?: string | null; dueAt?: string | null } = {},
+): WaitingOn<K> {
+	return {
+		kind,
+		who: sayEn(says.who),
+		act: sayEn(says.act),
+		rule: sayEn(says.rule),
+		...(says.effect ? { effect: sayEn(says.effect) } : {}),
+		ref: at.ref ?? null,
+		dueAt: at.dueAt ?? null,
+		says,
+	};
 }
 
 /** Every group a list draws rows under, across every read model, Needs you first. A slice declares
@@ -125,26 +155,23 @@ export interface Standing<
 export const needsViewer = (s: Pick<Standing, "attentionGroup">): boolean =>
 	s.attentionGroup === "needs_you";
 
-export const nobodyWaits = (rule: string): WaitingOn<"none"> => ({
-	kind: "none",
-	who: "Nobody",
-	act: "",
-	rule,
-	ref: null,
-	dueAt: null,
-});
+export const nobodyWaits = (rule: Said): WaitingOn<"none"> =>
+	waitingOn("none", {
+		who: say("standing.who.nobody"),
+		act: say("standing.act.none"),
+		rule,
+	});
 
 /** A permission's holders as one `who`: a few by name and the count of the rest ("Ana", "Ana, Bo", "Ana, Bo, Chi +2"), `Nobody` for none. */
-export function holdersWho(names: readonly string[]): string {
-	if (names.length === 0) return "Nobody";
+export function holdersWho(names: readonly string[]): Said {
+	if (names.length === 0) return say("standing.who.nobody");
 	const shown = names.slice(0, 3).join(", ");
-	return names.length > 3 ? `${shown} +${names.length - 3}` : shown;
+	return names.length > 3
+		? say("standing.who.namesMore", { names: shown, n: names.length - 3 })
+		: say("standing.who.named", { name: shown });
 }
 
 /** The act a wait names when nobody holds the permission it needs: the act, then where it is granted. */
-export function nobodyHoldsAct(
-	act: string,
-	permission: ProjectPermission,
-): string {
-	return `${act}: no person on this project holds ${permission} until it is granted under Settings → Members`;
+export function nobodyHoldsAct(act: Said, permission: ProjectPermission): Said {
+	return say("standing.act.noHolder", { act, perm: permission });
 }

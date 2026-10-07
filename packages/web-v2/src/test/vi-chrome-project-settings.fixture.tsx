@@ -10,7 +10,7 @@ import { ModulesTab } from "@/features/project-settings/components/modules-tab";
 import { ProjectSettingsScreen } from "@/features/project-settings/components/project-settings-screen";
 import type { ProjectDetail } from "@/features/projects/types";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
-import { GATE_SENTENCES } from "./vi-chrome-shared";
+import { GATE_SENTENCES, gateOf } from "./vi-chrome-shared";
 import { Seeded } from "./vi-chrome-requirements";
 
 // Project settings for the vi walking test: each section with values in every field, a release state
@@ -72,7 +72,7 @@ const BINDING = {
 const gate = (code: string) => {
   const g = GATE_SENTENCES.find((s) => s.code === code);
   if (!g) throw new Error(`no gate sentence for ${code}`);
-  return { code, kind: g.kind, title: g.title, sentence: g.sentence, detail: "x", issues: [], owner: { kind: "person", who: g.who, act: g.act } };
+  return gateOf(g, "person");
 };
 
 const READINESS = {

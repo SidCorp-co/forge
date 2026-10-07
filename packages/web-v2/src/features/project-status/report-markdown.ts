@@ -5,7 +5,6 @@
 
 import type { ProjectStatus, RoadmapItem, StatusWait } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
-import type { WaitingOn } from "@forge/contracts/standing";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
 import { progressText } from "@/features/forecast/progress";
 import { needsYouKeyLabel } from "@/features/needs-you/routes";
@@ -14,7 +13,8 @@ import { spanText } from "@/features/forecast/text";
 import { formatDateTime } from "@/lib/i18n/format";
 import type { labelCopy } from "@/lib/i18n/labels";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
+import type { Said } from "@forge/contracts/said";
 
 type Label = ReturnType<typeof labelCopy>;
 
@@ -24,10 +24,11 @@ export interface ReportWords {
   clock: EtaClock;
 }
 
-/** Whom a row waits on and the act, in the interface language; `you` names the viewer when `viewerName` is given. */
-export function waitText(w: WaitingOn, lang: string, viewerName?: string | null): string {
-  const who = w.kind === "you" && viewerName ? viewerName : standingWho(w.who, lang);
-  return w.act ? `${who} — ${standingAct(w.act, lang)}` : who;
+/** Whom a row waits on and the act, read from what core said in the interface language; `you` names the viewer when `viewerName` is given. */
+export function waitText(w: { kind: string; says: { who: Said; act: Said } }, lang: string, viewerName?: string | null): string {
+  const who = w.kind === "you" && viewerName ? viewerName : said(w.says.who, lang);
+  const act = said(w.says.act, lang);
+  return act ? `${who} — ${act}` : who;
 }
 
 const etaText = (d: RoadmapItem["delivery"], c: EtaClock): string | null => (d ? etaInline(etaOfDelivery(d, c), c) : null);
@@ -108,7 +109,7 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
         n.state && n.state !== "draft" ? label("releaseState", n.state) : null,
         progressText(n.progress, t),
         n.forecast?.delivery ? etaInline(etaOfDelivery(n.forecast.delivery, clock), clock) : null,
-        n.turn ? waitText({ kind: "person", who: n.turn.who, act: n.turn.act, rule: "", ref: null, dueAt: null }, clock.lang) : null,
+        n.turn ? waitText({ kind: "person", says: n.turn.says }, clock.lang) : null,
         n.behind ? t("status.behind", { version: n.behind.version, n: n.behind.issueCount }) : null,
       ])}`,
     );

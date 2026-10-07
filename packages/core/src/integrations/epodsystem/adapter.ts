@@ -1,3 +1,4 @@
+import { say } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
 import {
   declareIntegration,
@@ -289,7 +290,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
   presentation: {
     label: 'Epodsystem',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail: 'never test-connected',
+    neverCheckedDetail: say('integrations.detail.neverTested'),
     cardMeta: (config) => {
       const cfg = config as { storeSlug?: string; storeName?: string };
       return { storeSlug: cfg.storeSlug ?? null, storeName: cfg.storeName ?? null };

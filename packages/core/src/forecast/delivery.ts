@@ -19,6 +19,7 @@ import {
   type ReleaseLeg,
   type ReleaseMode,
 } from '@forge/contracts/forecast';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { percentile, seeded } from './model.js';
 
@@ -48,16 +49,22 @@ const ascending = (values: readonly number[]) => [...values].sort((a, b) => a - 
 function personLeg(
   r: ReleaseFacts,
   mode: Exclude<ReleaseMode, 'automatic'>,
-  said: { act: string; reason: string; version: string | null },
+  said: { act: Said; reason: Said; version: string | null },
 ): ReleaseLeg {
   const holders = [...(r.holders ?? [])];
   const nobody = holders.length === 0 && !r.viewerOwes;
+  const says = {
+    who: r.viewerOwes ? say('standing.who.you') : holdersWho(holders.map((h) => h.name)),
+    act: nobody ? nobodyHoldsAct(said.act, RELEASE_ACT_PERMISSION[mode]) : said.act,
+    reason: said.reason,
+  };
   return {
     kind: 'person',
     mode,
-    who: r.viewerOwes ? 'You' : holdersWho(holders.map((h) => h.name)),
-    act: nobody ? nobodyHoldsAct(said.act, RELEASE_ACT_PERMISSION[mode]) : said.act,
-    reason: said.reason,
+    who: sayEn(says.who),
+    act: sayEn(says.act),
+    reason: sayEn(says.reason),
+    says,
     version: said.version,
     holders,
   };
@@ -65,7 +72,7 @@ function personLeg(
 
 export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
   const floor = r.floor ?? FORECAST_HISTORY_FLOOR;
-  const version = r.nextVersion ?? 'the next version';
+  const v = r.nextVersion;
   switch (r.mode) {
     case 'automatic': {
       if (r.lags.length < floor) return { kind: 'not_enough_history', n: r.lags.length, floor };
@@ -81,24 +88,26 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
         },
       };
     }
-    case 'approval':
+    case 'approval': {
+      const names = (r.holders ?? []).map((h) => h.name).join(', ');
       return personLeg(r, 'approval', {
-        act: `cut ${version}, then approve it`,
-        reason: `this project requires a holder of releases.approve to approve each release${(r.holders ?? []).length > 0 ? ` (${(r.holders ?? []).map((h) => h.name).join(', ')})` : ''}, so no date is forecast for it`,
+        act: v ? say('standing.act.cutThenApprove', { v }) : say('forecast.act.cutNextThenApprove'),
+        reason: say('forecast.reason.approval', {
+          holders: names ? say('runs.rule.paren', { text: names }) : null,
+        }),
         version: r.nextVersion,
       });
+    }
     case 'manual':
       return personLeg(r, 'manual', {
-        act: `cut ${version}`,
-        reason:
-          "this project's production does not deploy on land, so a holder of project.admin cuts each release and no date is forecast for it",
+        act: v ? say('standing.act.cut', { v, more: null }) : say('forecast.act.cutNext'),
+        reason: say('forecast.reason.manual'),
         version: r.nextVersion,
       });
     case 'none':
       return personLeg(r, 'none', {
-        act: 'release it by hand and close it',
-        reason:
-          'this project declares no production environment, so no release carries a landed change',
+        act: say('standing.act.releaseItByHand'),
+        reason: say('forecast.reason.noProduction'),
         version: null,
       });
   }

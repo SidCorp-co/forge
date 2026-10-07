@@ -19,6 +19,7 @@ import {
   type ReleaseSummary,
   releaseVerifiedLevel,
 } from '@forge/contracts/releases';
+import { say } from '@forge/contracts/said';
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
@@ -35,7 +36,7 @@ import {
   type ViewerFacts,
 } from './release-view.js';
 
-const NOBODY = nobodyWaits('the issue has shipped');
+const NOBODY = nobodyWaits(say('releases.rule.issueShipped'));
 const CHANGELOG_SECTIONS = releaseNotesSections.filter((s) => s !== 'Skip');
 
 export interface Part {

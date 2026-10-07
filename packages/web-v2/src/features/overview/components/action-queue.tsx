@@ -7,7 +7,8 @@ import {
   SectionTitle,
 } from "@/design";
 import type { PulseActionKey } from "@forge/contracts/needs-you";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import { ageText } from "../derive";
 import type { PulseResponse } from "../types";
 import { RecordPanel } from "./record-panel";
@@ -21,6 +22,7 @@ export function ActionQueue({ pulse }: ActionQueueProps) {
   const [open, setOpen] = useState<PulseActionKey | null>(null);
   const rows = pulse.actions;
   const t = useCopy();
+  const language = useInterfaceLanguage();
 
   return (
     <PageSection>
@@ -62,7 +64,7 @@ export function ActionQueue({ pulse }: ActionQueueProps) {
                   <RecordPanel
                     title={label}
                     total={row.count}
-                    records={row.records}
+                    records={row.records.map((r) => ({ ...r, detail: said(r.says.detail, language) }))}
                     onClose={() => setOpen(null)}
                   />
                 ) : null}

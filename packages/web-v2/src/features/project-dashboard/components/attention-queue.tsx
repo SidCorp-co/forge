@@ -5,13 +5,13 @@
 // Identical acts — a requirement following a design that has a newer approved revision — fold into one
 // line that opens the list, each row keeping its own act.
 
-import { FOLLOW_NEWER_DESIGN_ACT } from "@forge/contracts/requirements";
 import { NeedsYouList, needsYouGroups } from "@/features/needs-you/components/needs-you-list";
 import type { NeedsYouItem } from "@/features/needs-you/types";
 import { SectionTitle } from "@/design/primitives/heading";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { saysKey } from "@/lib/i18n/said";
 
-const followsNewerDesign = (n: NeedsYouItem) => n.entity === "requirement" && n.waitingOn.act.startsWith(FOLLOW_NEWER_DESIGN_ACT);
+const followsNewerDesign = (n: NeedsYouItem) => n.entity === "requirement" && saysKey(n.waitingOn.says.act, "standing.act.updateToDesign");
 
 export function AttentionQueue({ items, slug }: { items: NeedsYouItem[]; slug: string }) {
   const t = useCopy();

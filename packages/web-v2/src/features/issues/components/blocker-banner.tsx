@@ -3,7 +3,7 @@
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import { Banner, Button } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { blockerText } from "@/lib/i18n/standing-copy";
+import { said, saidOrNull } from "@/lib/i18n/said";
 import type { IssueStatus } from "../types";
 import { IssueRefBadge } from "./issue-ref-badge";
 
@@ -28,7 +28,8 @@ export function BlockerBanner({
   const { act: cta, runId, resumeAt } = blocker;
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const read = (text: string) => blockerText(text, language);
+  const label = said(blocker.says.act, language);
+  const detail = saidOrNull(blocker.says.detail, language);
 
   let action: React.ReactNode = null;
   if (cta.kind === "resume_park" && resumeAt) {
@@ -40,13 +41,13 @@ export function BlockerBanner({
         loading={pending}
         onClick={() => onResumePark(resumeAt)}
       >
-        {read(cta.label)}
+        {label}
       </Button>
     );
   } else if (cta.kind === "provide_info") {
     action = (
       <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
-        {read(cta.label)}
+        {label}
       </Button>
     );
   } else if (cta.kind === "resume_run" && runId) {
@@ -58,7 +59,7 @@ export function BlockerBanner({
         loading={pending}
         onClick={() => onResumeRun(runId)}
       >
-        {read(cta.label)}
+        {label}
       </Button>
     );
   }
@@ -66,9 +67,9 @@ export function BlockerBanner({
   return (
     <Banner tone={blocker.tone} action={action ?? undefined}>
       <div className="space-y-1">
-        <p className="font-medium">{read(blocker.reason)}</p>
-        <p className="opacity-90">{read(blocker.whoMustAct)}</p>
-        {blocker.detail && <p className="opacity-80">{read(blocker.detail)}</p>}
+        <p className="font-medium">{said(blocker.says.reason, language)}</p>
+        <p className="opacity-90">{said(blocker.says.whoMustAct, language)}</p>
+        {detail && <p className="opacity-80">{detail}</p>}
         {blocker.blockingRefs.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="opacity-80">{t("issues.blocker.blockedBy")}</span>

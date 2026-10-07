@@ -10,6 +10,7 @@ import {
   type PulseActionRecord,
   type PulseActionRow,
 } from '@forge/contracts/needs-you';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import type {
   PulseIssueIdentity,
   PulseLiveness,
@@ -18,10 +19,13 @@ import type {
   PulseWork,
 } from './pulse-types.js';
 
+/** A record's detail: its English beside what it said. */
+const detailOf = (detail: Said) => ({ detail: sayEn(detail), says: { detail } });
+
 const issueRecord = (i: PulseIssueIdentity): PulseActionRecord => ({
   key: i.documentId,
   label: i.issueRef,
-  detail: i.title,
+  ...detailOf(verbatim(i.title)),
   href: `/projects/${i.projectSlug}/issues/${i.documentId}`,
   ageSeconds: i.ageSeconds,
 });
@@ -30,14 +34,24 @@ const notOnLiveRecord = (i: PulseNotOnLiveIdentity): PulseActionRecord => {
   const first = i.evidence[0];
   return {
     ...issueRecord(i),
-    detail: first ? `${i.title} · ${first.sha.slice(0, 8)} not on ${i.deploysFrom}` : i.title,
+    ...detailOf(
+      first
+        ? say('overview.record.notOnLive', {
+            title: i.title,
+            sha: first.sha.slice(0, 8),
+            branch: i.deploysFrom,
+          })
+        : verbatim(i.title),
+    ),
   };
 };
 
 const projectRecord = (p: PulseProjectIdentity, now: Date): PulseActionRecord => ({
   key: p.id,
   label: p.name,
-  detail: `${p.backlog} ${p.backlog === 1 ? 'issue' : 'issues'} waiting`,
+  ...detailOf(
+    say('overview.record.waiting', { n: p.backlog, issues: p.backlog === 1 ? 'issue' : 'issues' }),
+  ),
   href: `/projects/${p.slug}`,
   ageSeconds: p.lastIssueRunAt
     ? Math.max(0, Math.floor((now.getTime() - new Date(p.lastIssueRunAt).getTime()) / 1000))
@@ -55,7 +69,7 @@ export function pulseActionsOf(
       records: liveness.stuckRuns.shown.map((r) => ({
         key: r.runId,
         label: r.issueRef ?? 'Run',
-        detail: r.projectSlug,
+        ...detailOf(verbatim(r.projectSlug)),
         href: r.issueDocId
           ? `/projects/${r.projectSlug}/issues/${r.issueDocId}`
           : `/ops?run=${r.runId}`,
@@ -76,7 +90,7 @@ export function pulseActionsOf(
       records: work.liveUnmeasured.shown.map((p) => ({
         key: p.id,
         label: p.name,
-        detail: p.reason,
+        ...detailOf(verbatim(p.reason)),
         href: `/projects/${p.slug}`,
         ageSeconds: null,
       })),

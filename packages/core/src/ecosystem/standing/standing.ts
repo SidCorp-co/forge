@@ -8,7 +8,8 @@ import type {
   ContractWaitingKind,
   ContractWindow,
 } from '@forge/contracts/contract-standing';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { say } from '@forge/contracts/said';
+import { type WaitingOn, type WaitingSays, waitingOn } from '@forge/contracts/standing';
 
 type ContractWaitingOn = WaitingOn<ContractWaitingKind>;
 
@@ -130,6 +131,16 @@ interface Turn {
   waitingOn: ContractWaitingOn;
 }
 
+const turn = (
+  group: ContractAttentionGroup,
+  kind: ContractWaitingOn['kind'],
+  says: WaitingSays,
+  at: { ref?: string | null; dueAt?: string | null } = {},
+): Turn => ({ group, waitingOn: waitingOn(kind, says, at) });
+
+const YOU = say('standing.who.you');
+const NOBODY = say('standing.who.nobody');
+
 function providedTurn(
   f: ContractFacts,
   v: StandingViewer,
@@ -139,109 +150,70 @@ function providedTurn(
   adoption: readonly ContractAdoption[],
 ): Turn {
   if (pending) {
-    const act = `approve or return ${pending.version} · measured ${pending.classification}`;
-    const rule =
-      'providedTurn: a recorded version is proposed until its approver decides it (contract/approval.ts:approverRefusal)';
+    const act = say('contracts.act.approveOrReturn', {
+      v: pending.version,
+      measured: pending.classification,
+    });
+    const rule = say('contracts.rule.proposed');
     return v.decides(pending.classification)
-      ? {
-          group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: pending.version, dueAt: null },
-        }
-      : {
-          group: 'waiting',
-          waitingOn: {
-            kind: 'person',
-            who: 'An org admin',
-            act,
-            rule,
-            ref: pending.version,
-            dueAt: null,
-          },
-        };
+      ? turn('needs_you', 'you', { who: YOU, act, rule }, { ref: pending.version })
+      : turn(
+          'waiting',
+          'person',
+          { who: say('contracts.who.orgAdmin'), act, rule },
+          { ref: pending.version },
+        );
   }
   const owing = f.consumers.filter((_, i) => adoption[i] === 'owes');
   if (window?.open && owing.length > 0) {
     const who =
-      owing.length === 1 ? (owing[0] as ConsumerFact).project.slug : `${owing.length} consumers`;
-    return {
-      group: 'waiting',
-      waitingOn: {
-        kind: 'project',
+      owing.length === 1
+        ? say('standing.who.named', { name: (owing[0] as ConsumerFact).project.slug })
+        : say('contracts.who.consumers', { n: owing.length });
+    return turn(
+      'waiting',
+      'project',
+      {
         who,
-        act: `adopt ${window.version} by ${window.dueAt.slice(0, 10)}`,
-        rule: 'providedTurn: a breaking version is approved and a consumer is still built against an older one inside the window',
-        ref: window.version,
-        dueAt: window.dueAt,
+        act: say('contracts.act.adoptBy', { v: window.version, date: window.dueAt.slice(0, 10) }),
+        rule: say('contracts.rule.window'),
       },
-    };
+      { ref: window.version, dueAt: window.dueAt },
+    );
   }
   const behind = adoption.filter((a) => a !== 'current').length;
   const act =
     f.consumers.length === 0
-      ? 'no consumer yet'
+      ? say('contracts.act.noConsumer')
       : behind === 0 && current
-        ? `every consumer is on ${current.version}`
-        : `${behind} of ${f.consumers.length} ${plural(f.consumers.length, 'consumer', 'consumers')} behind, no window open`;
-  return {
-    group: 'steady',
-    waitingOn: {
-      kind: 'none',
-      who: 'Nobody',
-      act,
-      rule: 'providedTurn: nothing is proposed or owed inside a window',
-      ref: null,
-      dueAt: null,
-    },
-  };
+        ? say('contracts.act.everyConsumerOn', { v: current.version })
+        : say('contracts.act.behind', {
+            n: behind,
+            total: f.consumers.length,
+            consumers: plural(f.consumers.length, 'consumer', 'consumers'),
+          });
+  return turn('steady', 'none', { who: NOBODY, act, rule: say('contracts.rule.providedSteady') });
 }
 
 function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact | null): Turn {
   const change = f.change;
   if (change?.open) {
-    const act = `adapt to ${change.version} by ${day(change.dueAt)}`;
-    const rule =
-      'consumedTurn: the provider approved a breaking version; core filed one item per consumer, open until it is verified or declined';
+    const act = say('contracts.act.adaptBy', { v: change.version, date: day(change.dueAt) });
+    const rule = say('contracts.rule.breaking');
+    const at = { ref: change.feedback, dueAt: change.dueAt.toISOString() };
     return v.acts
-      ? {
-          group: 'needs_you',
-          waitingOn: {
-            kind: 'you',
-            who: 'You',
-            act,
-            rule,
-            ref: change.feedback,
-            dueAt: change.dueAt.toISOString(),
-          },
-        }
-      : {
-          group: 'waiting',
-          waitingOn: {
-            kind: 'person',
-            who: 'A project member',
-            act,
-            rule,
-            ref: change.feedback,
-            dueAt: change.dueAt.toISOString(),
-          },
-        };
+      ? turn('needs_you', 'you', { who: YOU, act, rule }, at)
+      : turn('waiting', 'person', { who: say('contracts.who.projectMember'), act, rule }, at);
   }
 
   const act = !current
-    ? 'the provider has published no version'
+    ? say('contracts.act.noVersion')
     : f.ours === current.version
-      ? `on the latest, ${current.version}`
-      : `built against ${f.ours ?? 'no version'}; ${current.version} is current`;
-  return {
-    group: 'steady',
-    waitingOn: {
-      kind: 'none',
-      who: 'Nobody',
-      act,
-      rule: 'consumedTurn: no breaking item is open',
-      ref: null,
-      dueAt: null,
-    },
-  };
+      ? say('contracts.act.onLatest', { v: current.version })
+      : f.ours
+        ? say('contracts.act.builtAgainst', { ours: f.ours, v: current.version })
+        : say('contracts.act.builtAgainstNone', { v: current.version });
+  return turn('steady', 'none', { who: NOBODY, act, rule: say('contracts.rule.consumedSteady') });
 }
 
 export function standingOf(f: ContractFacts, viewer: StandingViewer, now: Date): Standing {

@@ -4,26 +4,23 @@ import type {
   RequirementCoverage,
   RequirementWaitingKind,
 } from '@forge/contracts/requirements';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { type Said, say } from '@forge/contracts/said';
+import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 
 interface Turn {
   group: RequirementAttentionGroup;
   waitingOn: WaitingOn<RequirementWaitingKind>;
 }
 
-const wait = (who: string, act: string, rule: string): WaitingOn<RequirementWaitingKind> => ({
-  kind: 'agent',
-  who,
-  act,
-  rule,
-  ref: null,
-  dueAt: null,
-});
+const wait = (who: Said, act: Said, rule: Said): WaitingOn<RequirementWaitingKind> =>
+  waitingOn('agent', { who, act, rule });
 
-const JUDGE_WHO: Record<PolicyQaMode, string> = {
-  self: 'Master',
-  independent: 'Independent judge',
+const JUDGE_WHO: Record<PolicyQaMode, Said> = {
+  self: say('standing.who.master'),
+  independent: say('standing.who.independentJudge'),
 };
+
+const MASTER = say('standing.who.master');
 
 const keysOf = (rows: readonly RequirementCoverage[]) =>
   [
@@ -56,18 +53,20 @@ export function proofTurn(
   const failing = unproven.filter((c) => c.verdict === 'failing');
   const gaps = unproven.filter((c) => c.verdict === 'gap');
   const parts = [
-    unjudged.length > 0 ? `${codesOf(unjudged)} hold no passing verdict yet` : null,
-    failing.length > 0 ? `${codesOf(failing)} failed` : null,
-    gaps.length > 0 ? `no issue criterion traces to ${codesOf(gaps)}` : null,
-  ].filter((p): p is string => p !== null);
-  const undeclared = judge === null ? '; no policy names a judge, so the master judges' : '';
-  const rule = `every linked issue has shipped, but ${parts.join('; ')}, so it is not delivered${undeclared}`;
+    unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
+    failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
+    gaps.length > 0 ? say('requirements.rule.untraced', { codes: codesOf(gaps) }) : null,
+  ].filter((p): p is Said => p !== null);
+  const rule = say('requirements.rule.notDelivered', {
+    parts,
+    undeclared: judge === null ? say('requirements.rule.noJudge') : null,
+  });
   if (unjudged.length > 0) {
     return {
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
-        `judge ${codesOf(unjudged)} on ${keysOf(unjudged)}`,
+        say('standing.act.judgeOn', { codes: codesOf(unjudged), keys: keysOf(unjudged) }),
         rule,
       ),
     };
@@ -75,11 +74,15 @@ export function proofTurn(
   if (failing.length > 0) {
     return {
       group: 'waiting',
-      waitingOn: wait('Master', `fix ${codesOf(failing)}, failing on ${keysOf(failing)}`, rule),
+      waitingOn: wait(
+        MASTER,
+        say('standing.act.fixFailing', { codes: codesOf(failing), keys: keysOf(failing) }),
+        rule,
+      ),
     };
   }
   return {
     group: 'waiting',
-    waitingOn: wait('Master', `trace ${codesOf(gaps)} to an issue criterion`, rule),
+    waitingOn: wait(MASTER, say('standing.act.trace', { codes: codesOf(gaps) }), rule),
   };
 }

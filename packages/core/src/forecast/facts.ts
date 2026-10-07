@@ -14,13 +14,14 @@ import {
 } from '@forge/contracts/forecast';
 import { ISSUE_RESOLVED_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
+import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
-import { type CycleSample, type History, holdersWait, peakOf, type Wait } from './model.js';
+import { type CycleSample, type History, holdersWait, peakOf, type Wait, waitOn } from './model.js';
 
 const DAY_MS = 86_400_000;
 export const LANDED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
@@ -137,17 +138,17 @@ export async function readWork(projectId: string, ids: readonly string[]): Promi
   );
 }
 
-const HOLD_ACT: Record<string, string> = {
-  'device-disabled': 'turn the box back on',
-  retired: 'return the runner to service',
-  'never-connected': 'start the runner',
-  disconnected: 'bring the runner back online',
-  stale: 'bring the runner back online',
-  auth: 'sign the box in again',
-  'rate-limited': 'wait for the usage limit to reset',
-  quarantined: 'wait out the quarantine or clear it',
-  provisioning: 'finish provisioning the checkout',
-  'below-floor': 'update the runner',
+const HOLD_ACT: Record<string, Said> = {
+  'device-disabled': say('forecast.act.turnBoxOn'),
+  retired: say('forecast.act.unretire'),
+  'never-connected': say('forecast.act.startRunner'),
+  disconnected: say('forecast.act.runnerOnline'),
+  stale: say('forecast.act.runnerOnline'),
+  auth: say('forecast.act.signIn'),
+  'rate-limited': say('forecast.act.waitUsage'),
+  quarantined: say('forecast.act.quarantine'),
+  provisioning: say('forecast.act.provision'),
+  'below-floor': say('forecast.act.updateRunner'),
 };
 
 /** A wait that holds every issue: nothing can take work, or the master that takes it cannot. */
@@ -160,56 +161,69 @@ export async function projectWaitOf(projectId: string): Promise<Wait | null> {
       return holdersWait(
         await holderNames('project.admin', projectId),
         'project.admin',
-        'pair a runner',
-        'no runner is registered for this project, so nothing can take its work',
+        say('standing.act.pairRunner'),
+        say('forecast.reason.noRunner'),
         null,
       );
     }
-    const said = held
-      .map((h) => `${h.deviceName} is ${h.reason}${h.detail ? ` (${h.detail})` : ''}`)
-      .join('; ');
-    return {
-      who: `Whoever can reach ${first.deviceName}`,
-      act: HOLD_ACT[first.reason] ?? 'bring a runner back',
-      reason: `no runner can take this project's work: ${said}`,
-      ref: first.deviceName,
-    };
+    const held_ = held.map((h) =>
+      say('forecast.reason.heldDevice', {
+        device: h.deviceName,
+        reason: h.reason,
+        detail: h.detail ? say('runs.rule.paren', { text: h.detail }) : null,
+      }),
+    );
+    return waitOn(
+      {
+        who: say('forecast.who.whoeverReaches', { device: first.deviceName }),
+        act: HOLD_ACT[first.reason] ?? say('forecast.act.bringRunnerBack'),
+        reason: say('forecast.reason.runnersHeld', { held: held_ }),
+      },
+      first.deviceName,
+    );
   }
   const master = await readMasterStanding(projectId);
   if (master.state === 'silent') {
-    const reason = `the project's master has been silent since ${master.lastBeatAt ?? 'it started'}, so nothing is dispatched`;
+    const reason = master.lastBeatAt
+      ? say('forecast.reason.masterSilent', { at: master.lastBeatAt })
+      : say('forecast.reason.masterSilentFromStart');
+    const act = say('forecast.act.restartMaster');
     if (!master.device) {
       return holdersWait(
         await holderNames('project.admin', projectId),
         'project.admin',
-        'restart the master',
+        act,
         reason,
         null,
       );
     }
-    return {
-      who: `Whoever can reach ${master.device.name}`,
-      act: 'restart the master',
-      reason,
-      ref: master.device.name,
-    };
+    return waitOn(
+      { who: say('forecast.who.whoeverReaches', { device: master.device.name }), act, reason },
+      master.device.name,
+    );
   }
   if (master.state === 'waiting_person' && master.waitingOn) {
-    return {
-      who: master.waitingOn.who,
-      act: master.waitingOn.act,
-      reason: `the project's master is stopped on a dialog (${master.waitingOn.rule})`,
-      ref: master.device?.name ?? null,
-    };
+    return waitOn(
+      {
+        ...master.waitingOn.says,
+        reason: say('forecast.reason.masterDialog', { rule: master.waitingOn.rule }),
+      },
+      master.device?.name ?? null,
+    );
   }
   const refused = master.state !== 'none' ? master.lastPass?.refused : null;
   if (refused) {
-    return {
-      who: 'Nobody',
-      act: `wait out the ${refused.reason.replace('_', ' ')}`,
-      reason: `the master's last pass was refused (${refused.reason}): ${refused.detail}`,
-      ref: master.device?.name ?? null,
-    };
+    return waitOn(
+      {
+        who: say('standing.who.nobody'),
+        act: say('forecast.act.waitOut', { reason: refused.reason.replace('_', ' ') }),
+        reason: say('forecast.reason.passRefused', {
+          reason: refused.reason,
+          detail: refused.detail,
+        }),
+      },
+      master.device?.name ?? null,
+    );
   }
   return null;
 }
@@ -219,13 +233,11 @@ export function waitOf(row: IssueStandingRow): Wait | null {
   const { attentionGroup, waitingOn } = row.standing;
   const person = waitingOn.kind === 'you' || waitingOn.kind === 'person';
   if (attentionGroup === 'needs_you' || attentionGroup === 'paused' || person) {
-    return {
-      who: waitingOn.who,
-      act: waitingOn.act,
-      reason: waitingOn.rule,
-      ref: waitingOn.ref,
-      since: row.standing.touchedAt,
-    };
+    return waitOn(
+      { who: waitingOn.says.who, act: waitingOn.says.act, reason: waitingOn.says.rule },
+      waitingOn.ref,
+      row.standing.touchedAt,
+    );
   }
   return null;
 }
@@ -235,8 +247,8 @@ export function intakeWaitOf(writers: readonly string[]): Wait {
   return holdersWait(
     writers,
     'project.write',
-    'release it to the master',
-    "the project's intake is manual: an open issue reaches a master only once a person releases it",
+    say('forecast.act.releaseToMaster'),
+    say('forecast.reason.manualIntake'),
     null,
   );
 }

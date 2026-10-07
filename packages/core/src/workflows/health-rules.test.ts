@@ -1,9 +1,19 @@
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
+import { waitingOn as waitOn } from '@forge/contracts/standing';
 import { rewriteThresholdOf } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designDiff } from './design-diff.js';
-import { deriveHealth, type HealthFacts } from './health-rules.js';
+import { deriveHealth as deriveHealth_, type HealthFacts } from './health-rules.js';
 import type { ObservationDocument } from './observation-schema.js';
 import type { WorkflowWrite } from './schema.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const deriveHealth = ((...a: Parameters<typeof deriveHealth_>) =>
+  checked(deriveHealth_(...a))) as typeof deriveHealth_;
 
 const T0 = new Date('2026-10-01T00:00:00Z');
 const T1 = new Date('2026-10-02T00:00:00Z');
@@ -324,14 +334,11 @@ describe('evidence markers', () => {
   });
 
   it('places feedback naming no step on the workflow, never on a guessed step', () => {
-    const waitingOn = {
-      kind: 'person' as const,
-      who: 'Triage',
-      act: 'triage',
-      rule: 'r',
-      ref: null,
-      dueAt: null,
-    };
+    const waitingOn = waitOn('person', {
+      who: say('standing.who.named', { name: 'Triage' }),
+      act: verbatim('triage'),
+      rule: verbatim('r'),
+    });
     const h = deriveHealth(
       facts({
         feedback: [
@@ -360,14 +367,11 @@ describe('evidence markers', () => {
       [step('intake'), step('check', ['intake'], { does: 'check, reworded' })],
       [{ from: 'intake', to: 'check' }],
     );
-    const waitingOn = {
-      kind: 'person' as const,
-      who: 'Approver',
-      act: 'approve',
-      rule: 'r',
-      ref: null,
-      dueAt: null,
-    };
+    const waitingOn = waitOn('person', {
+      who: say('standing.who.named', { name: 'Approver' }),
+      act: verbatim('approve'),
+      rule: verbatim('r'),
+    });
     const h = deriveHealth(
       facts({
         head: { revision: 3, document: proposedDoc },
@@ -408,14 +412,11 @@ describe('evidence markers', () => {
   });
 
   it('serves the same source once per kind and target', () => {
-    const waitingOn = {
-      kind: 'agent' as const,
-      who: 'Master',
-      act: '',
-      rule: 'r',
-      ref: null,
-      dueAt: null,
-    };
+    const waitingOn = waitOn('agent', {
+      who: say('standing.who.named', { name: 'Master' }),
+      act: say('standing.act.none'),
+      rule: verbatim('r'),
+    });
     const twice = {
       key: 'FB-1',
       title: 't',

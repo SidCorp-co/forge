@@ -8,6 +8,7 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
+import { type Said, saidSchema } from "./said.js";
 import { REASON_LINE_MAX } from "./reason-text.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
@@ -402,6 +403,8 @@ export const feedbackDedupSchema = z.strictObject({
 	nearest: z.string().nullable(),
 	similarity: z.number().min(-1).max(1).optional(),
 	why: z.string().max(REASON_LINE_MAX).optional(),
+	/** `why` as said (`said.ts`); absent on a payload stamped before core said it. */
+	says: z.strictObject({ why: saidSchema }).optional(),
 });
 export type FeedbackDedup = z.infer<typeof feedbackDedupSchema>;
 
@@ -554,6 +557,8 @@ export interface FeedbackDecisionView {
 	/** The person's reason on the accept of the suggestion that wrote this decision (ISS-281); null
 	 *  when it came from no suggestion, the accept gave none, or the item's text is withheld. */
 	acceptReason: string | null;
+	/** `reason` as said: a person's words carried as written, Forge's own by its key. */
+	says: { reason: Said | null };
 }
 
 /** One person who reported the item, itself or by a duplicate merged into it (`from` names that duplicate). */
@@ -659,6 +664,7 @@ export type FeedbackShipNotice =
 	| {
 			state: "not_told";
 			reason: string;
+			says: { reason: Said };
 			/** What the record says about the ship itself: when, and in which release (null when no release carries it). */
 			shipped: { at: string | null; release: string | null };
 			/** The work shipped before Forge told reporters at all, so no release owed this reporter a notice. */
@@ -675,6 +681,7 @@ export interface FeedbackVerifiedView {
 	/** The reporter, when they are the one who confirmed it. */
 	byReporter: boolean;
 	reason: string | null;
+	says: { reason: Said | null };
 }
 
 export interface FeedbackView extends FeedbackSummary {

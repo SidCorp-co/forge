@@ -1,3 +1,4 @@
+import { sayEn } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { carriersPhrase, feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
 
@@ -48,10 +49,18 @@ describe('an issue route carried by several issues reads every one of them (ISS-
 
 describe('a planned item waits on every carrier still owed, each named', () => {
   it('names each key in one phrase', () => {
-    expect(carriersPhrase([])).toBeNull();
-    expect(carriersPhrase(['ISS-1'])).toBe('ISS-1');
-    expect(carriersPhrase(['ISS-1', 'ISS-2'])).toBe('ISS-1 and ISS-2');
-    expect(carriersPhrase(['ISS-1', 'ISS-2', 'ISS-3'])).toBe('ISS-1, ISS-2 and ISS-3');
+    const phrase = (keys: string[]) => {
+      const said = carriersPhrase(keys);
+      return said ? sayEn(said) : null;
+    };
+    expect(phrase([])).toBeNull();
+    expect(phrase(['ISS-1'])).toBe('ISS-1');
+    expect(phrase(['ISS-1', 'ISS-2'])).toBe('ISS-1 and ISS-2');
+    expect(phrase(['ISS-1', 'ISS-2', 'ISS-3'])).toBe('ISS-1, ISS-2 and ISS-3');
+    expect(carriersPhrase(['ISS-1', 'ISS-2'])).toEqual({
+      key: 'standing.keysAnd',
+      vars: { keys: 'ISS-1', last: 'ISS-2' },
+    });
   });
 
   it('waits on the open carriers to ship, naming every one', () => {

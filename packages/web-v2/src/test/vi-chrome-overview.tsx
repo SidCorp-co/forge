@@ -1,3 +1,6 @@
+import type { Said } from "@forge/contracts/said";
+import { forecastWait, RULE, say, sentence, verbatim, waitingOn } from "./said";
+
 import type { QueryKey } from "@tanstack/react-query";
 import type { DevelopmentOverview } from "@forge/contracts/development-overview";
 import type { PulseResponse } from "@forge/contracts/pulse";
@@ -22,20 +25,25 @@ import { Seeded } from "./vi-chrome-requirements";
 
 // The Development overview and the workspace Overview for the vi walking test. Content is
 // placeholder words; core's sentences (a signal it cannot read, a turn's rule, a record's detail)
-// are the real ones core writes.
+// are said by their registry keys, as core says them.
+
+const unavailable = (reason: Said) => ({ available: false as const, reason: sentence(reason), says: { reason } });
+const detail = (s: Said) => ({ detail: sentence(s), says: { detail: s } });
 
 const P = "p1";
 const AT = "2026-10-07T08:00:00.000Z";
 const NOW = "2026-10-07T12:00:00.000Z";
-const waitRun = { kind: "run", who: "Run", act: "Build · 12 min", rule: "lease held by box-1", ref: null, dueAt: null } as const;
+const RUN = say("issues.standing.who.run");
+const LEASE = say("issues.rule.leaseHeld", { holder: "box-1" });
+const waitRun = waitingOn("run", { who: RUN, act: say("issues.standing.act.stepFor", { step: "build", n: 12 }), rule: LEASE });
 
 const DEV: DevelopmentOverview = {
   generatedAt: NOW,
   signals: {
-    ci: { available: false, reason: "Core stores check runs for pull requests only, never for a branch head, so it holds no reading of dev itself." },
-    postMerge: { available: false, reason: "A push to a gated branch carries its post-merge jobs on GitHub; core receives no event for them and stores none." },
+    ci: unavailable(say("overview.signal.ciNote")),
+    postMerge: unavailable(say("overview.signal.postMergeNote")),
     contracts: { windows: [{ contract: "don-hang", version: "2.0.0", dueAt: "2026-10-09T08:00:00.000Z", feedback: "FB-3" }], openWindows: 4, awaitingApproval: 1 },
-    master: { masters: 0, state: "none", slots: null, slotsNote: "No live master serves this project, so no box has declared slots for it." },
+    master: { masters: 0, state: "none", slots: null, slotsNote: sentence(say("overview.signal.noSlotsNote")), says: { slotsNote: say("overview.signal.noSlotsNote") } },
   },
   flow: {
     windowDays: 14,
@@ -65,7 +73,7 @@ const DEV: DevelopmentOverview = {
         lease: { verdict: "live", expiresAt: "2026-10-07T12:40:00.000Z" },
         waitingOn: waitRun,
       },
-      { key: "ISS-2", title: "Muc hai", status: "in_progress", step: null, holder: null, box: null, branch: null, segments: [], heldSince: "2026-10-07T11:00:00.000Z", lease: null, waitingOn: { ...waitRun, act: "working" } },
+      { key: "ISS-2", title: "Muc hai", status: "in_progress", step: null, holder: null, box: null, branch: null, segments: [], heldSince: "2026-10-07T11:00:00.000Z", lease: null, waitingOn: waitingOn("run", { who: RUN, act: say("issues.standing.act.working"), rule: LEASE }) },
     ],
   },
   stuck: {
@@ -75,7 +83,7 @@ const DEV: DevelopmentOverview = {
         id: "ISS-3",
         held: 1,
         levels: [
-          [{ kind: "issue", key: "ISS-3", title: "Muc ba", status: "in_progress", step: "test", tone: "blocked", waitingOn: { kind: "none", who: "No holder", act: "in progress with no live run", rule: "in_progress, but no lease is live and no job or run is in flight", ref: null, dueAt: null }, held: false }],
+          [{ kind: "issue", key: "ISS-3", title: "Muc ba", status: "in_progress", step: "test", tone: "blocked", waitingOn: waitingOn("none", { who: say("issues.standing.who.noHolder"), act: say("issues.standing.act.noLiveRun"), rule: say("issues.rule.noHolder") }), held: false }],
           [{ kind: "issue", key: "ISS-4", title: "Muc bon", status: "open", step: null, tone: null, waitingOn: null, held: true }],
         ],
       },
@@ -161,9 +169,9 @@ const PULSE: PulseResponse = {
     pipelineFlow: [{ type: "plan", count: 5, medianSeconds: 600 }, { type: "code", count: 4, medianSeconds: 3000 }, { type: "fix", count: 2, medianSeconds: null }],
   },
   actions: [
-    { key: "stuckRuns", label: "Runs claimed but empty", hint: "", owner: "machine", count: 2, oldestSeconds: 7200, records: [{ key: "r2", label: "Run", detail: "hop", href: "/ops?run=r2", ageSeconds: 7200 }] },
-    { key: "neverRanProjects", label: "Projects holding a backlog with no pipeline", hint: "", owner: "person", count: 3, oldestSeconds: Number.MAX_SAFE_INTEGER, records: [{ key: "p2", label: "Kho", detail: "1 issue waiting", href: "/projects/kho", ageSeconds: Number.MAX_SAFE_INTEGER }] },
-    { key: "notOnLive", label: "Closed, not on production", hint: "", owner: "person", count: 1, oldestSeconds: null, records: [{ key: "i5", label: "ISS-5", detail: "Muc nam · abcdef12 not on prod", href: "/projects/hop/issues/i5", ageSeconds: 60 }] },
+    { key: "stuckRuns", label: "Runs claimed but empty", hint: "", owner: "machine", count: 2, oldestSeconds: 7200, records: [{ key: "r2", label: "Run", ...detail(verbatim("hop")), href: "/ops?run=r2", ageSeconds: 7200 }] },
+    { key: "neverRanProjects", label: "Projects holding a backlog with no pipeline", hint: "", owner: "person", count: 3, oldestSeconds: Number.MAX_SAFE_INTEGER, records: [{ key: "p2", label: "Kho", ...detail(say("overview.record.waiting", { n: 1, issues: "issue" })), href: "/projects/kho", ageSeconds: Number.MAX_SAFE_INTEGER }] },
+    { key: "notOnLive", label: "Closed, not on production", hint: "", owner: "person", count: 1, oldestSeconds: null, records: [{ key: "i5", label: "ISS-5", ...detail(say("overview.record.notOnLive", { title: "Muc nam", sha: "abcdef12", branch: "prod" })), href: "/projects/hop/issues/i5", ageSeconds: 60 }] },
   ],
 };
 
@@ -189,7 +197,7 @@ const AWAITING_SEED: [QueryKey, unknown][] = [
       progress: { total: 6, shipped: 0, awaitingRelease: 6, toDo: 0 },
       forecast: null,
       delivery: null,
-      next: { label: "forecast", asOf: AT, kind: "paused", who: "You", act: "cut 0.3.0", reason: "r", ref: null, since: AT, late: { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } },
+      next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } },
     },
   ],
 ];

@@ -1,15 +1,26 @@
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
-import { designRowOf } from './needs-you-design.js';
+import { designRowOf as designRowOf_ } from './needs-you-design.js';
 
-const wait = (kind: 'you' | 'person') => ({
-  kind,
-  who: kind === 'you' ? 'You' : 'A holder of workflow-designs.approve',
-  act: 'approve or return revision 3',
-  rule: 'r',
-  ref: null,
-  dueAt: null,
-});
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const designRowOf = ((...a: Parameters<typeof designRowOf_>) =>
+  checked(designRowOf_(...a))) as typeof designRowOf_;
+
+const wait = (kind: 'you' | 'person') =>
+  waitingOn(kind, {
+    who:
+      kind === 'you'
+        ? say('standing.who.you')
+        : say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
+    act: say('designs.act.approveOrReturn', { r: 3 }),
+    rule: verbatim('r'),
+  });
 
 const health = (over: Partial<WorkflowHealth>): WorkflowHealth =>
   ({

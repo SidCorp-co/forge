@@ -5,6 +5,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
+import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
@@ -22,7 +23,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     phase: "new",
     status: "new",
     attentionGroup: "needs_you",
-    waitingOn: { kind: "you", who: "You", act: "triage it", rule: "r", ref: null, dueAt: null },
+    waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.triageIt"), rule: RULE }),
     target: { type: "screen", key: "The board", title: null },
     route: null,
     reporter: { id: "u9", name: "Ana", agency: "human" },
@@ -187,12 +188,12 @@ describe("messages to reporters", () => {
 
 describe("the confirmation of the fix", () => {
   it("names who verified it and when, or that Forge did after the window", () => {
-    const { unmount } = renderWithQuery(<FeedbackFacts f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "person", by: "u5", byName: "Chi", byReporter: false, reason: null } })} slug="hop" />);
+    const { unmount } = renderWithQuery(<FeedbackFacts f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "person", by: "u5", byName: "Chi", byReporter: false, reason: null, says: { reason: null } } })} slug="hop" />);
     expect(screen.getByTestId("verified-line")).toHaveTextContent("Verified by Chi");
     unmount();
     renderWithQuery(
       <FeedbackFacts
-        f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "automatic", by: null, byName: null, byReporter: false, reason: "Verified automatically after 7 days with no reply" } })}
+        f={view({ phase: "verified", status: "verified", attentionGroup: "done", verified: { at: "2026-10-07T01:00:00.000Z", how: "automatic", by: null, byName: null, byReporter: false, reason: sentence(say("feedback.notice.autoVerified", { n: 7 })), says: { reason: say("feedback.notice.autoVerified", { n: 7 }) } } })}
         slug="hop"
       />,
     );

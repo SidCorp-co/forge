@@ -4,6 +4,7 @@ import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import type { pipelineRuns } from '../db/schema.js';
 
 type RunRow = typeof pipelineRuns.$inferSelect;
@@ -24,7 +25,7 @@ export interface ResidentMaster {
 export type PipelineRunStep =
   | { source: 'run_column'; step: string; detail: null }
   | { source: 'phase_journal'; step: string; detail: null }
-  | { source: 'none'; step: null; detail: string };
+  | { source: 'none'; step: null; detail: string; says: { detail: Said } };
 
 /** ISS-1273 — the issues a run was opened over, and where that answer came from: `[]` with no
  *  source cannot tell a run with no group from a group the response lost. */
@@ -83,14 +84,11 @@ export function laneOf(row: Pick<RunRow, 'issueId' | 'metadata'>): PipelineRunLa
 }
 
 /** ISS-1335 — never from the lane alone: `closeMasterSession` leaves the run `running`. */
-function masterDetail(master: ResidentMaster | null | undefined): string {
-  if (!master) {
-    return 'this run was opened for a resident master and no master session on it is live, so nothing holds it';
-  }
-  const who = master.name
-    ? `resident master \`${master.name}\``
-    : `resident master session ${master.sessionId}`;
-  return `this is the ${who}'s own run: a master dispatches issues rather than taking steps, so it holds no step, and residentMaster.lastHeartbeatAt is its heartbeat`;
+function masterDetail(master: ResidentMaster | null | undefined): Said {
+  if (!master) return say('runs.step.masterGone');
+  return master.name
+    ? say('runs.step.masterNamed', { name: master.name })
+    : say('runs.step.masterSession', { id: master.sessionId });
 }
 
 /** ISS-1273 — what to say when no step is held. Each sentence is about THIS ROW: naming a group
@@ -99,20 +97,23 @@ function noStepDetail(
   lane: PipelineRunLane,
   group?: PipelineRunGroup,
   master?: ResidentMaster | null,
-): string {
+): Said {
   if (lane === 'master') return masterDetail(master);
   if (lane === 'run_session') {
-    const named =
-      group && group.issues.length > 0
-        ? `over ${group.issues.join(', ')}`
-        : 'over a group this row no longer names';
-    return `a box drives this run ${named} and its driver has no phase open, so core holds no step for it`;
+    return group && group.issues.length > 0
+      ? say('runs.step.boxOver', { keys: group.issues.join(', ') })
+      : say('runs.step.boxOverUnnamed');
   }
-  if (lane === 'job') {
-    return 'no pipeline step has been stamped on this run yet';
-  }
-  return 'nothing has stamped a step on this run, and it is on neither the job nor the run-session lane, so neither of their step writers ever runs for it';
+  if (lane === 'job') return say('runs.step.jobNone');
+  return say('runs.step.noLane');
 }
+
+const noStep = (detail: Said): PipelineRunStep => ({
+  source: 'none',
+  step: null,
+  detail: sayEn(detail),
+  says: { detail },
+});
 
 /** The column is refused on `run_session`: `runs.ts:setCurrentStep` never runs there, so a value
  *  in it would credit a writer that lane does not have. The journal is its only source. */
@@ -125,9 +126,9 @@ export function stepOf(
 ): PipelineRunStep {
   if (lane === 'run_session') {
     return openPhase === undefined
-      ? { source: 'none', step: null, detail: noStepDetail(lane, group) }
+      ? noStep(noStepDetail(lane, group))
       : { source: 'phase_journal', step: openPhase, detail: null };
   }
   if (currentStep !== null) return { source: 'run_column', step: currentStep, detail: null };
-  return { source: 'none', step: null, detail: noStepDetail(lane, group, master) };
+  return noStep(noStepDetail(lane, group, master));
 }

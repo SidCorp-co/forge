@@ -19,7 +19,7 @@ import {
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { localizeWaiting } from "@/lib/i18n/standing-copy";
+import { saidView } from "@/lib/i18n/said";
 import { readCanvas, titleOf } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { type DesignDiff, diffOf, stepsWithRemoved } from "../design-diff";
@@ -47,7 +47,7 @@ const BANNER_TONE: Record<WorkflowDesign["waitingOn"]["kind"], BannerTone> = {
 function DesignBanner({ d, children, className }: { d: WorkflowDesign; children?: ReactNode; className?: string }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const w = localizeWaiting(d.waitingOn, useInterfaceLanguage());
+  const w = saidView(d.waitingOn, useInterfaceLanguage());
   if (w.kind === "none") return null;
   const head = w.kind === "you" ? t("workflows.waitingOnYou") : t("workflows.waitingOn", { who: w.who });
   const latest = d.revisions[0];

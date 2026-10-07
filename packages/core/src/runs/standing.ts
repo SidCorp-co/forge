@@ -12,10 +12,11 @@ import type {
   RunState,
   RunStep,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { stepOf } from '../pipeline/index.js';
 import { finalOf } from './standing-final.js';
 import { holderOf } from './standing-holder.js';
-import { liveOf } from './standing-live.js';
+import { liveOf, masterWho } from './standing-live.js';
 import { type StuckReading, stuckField, stuckOf } from './standing-stuck.js';
 import {
   type Derived,
@@ -30,27 +31,32 @@ import {
 
 export type { KernelFlip, RunFacts, StandingContext } from './standing-types.js';
 
+const noStep = (detail: Said): RunStep => ({
+  source: 'none',
+  step: null,
+  detail: sayEn(detail),
+  says: { detail },
+});
+
 function stepFor(f: RunFacts, live: boolean): RunStep {
   const stepAt = f.workState?.stepStartedAt ?? null;
   if (live && f.workState?.step && stepAt && stepAt.getTime() < f.run.startedAt.getTime()) {
-    return {
-      source: 'none',
-      step: null,
-      detail: `issue_work_state.step reads ${f.workState.step} since ${stepAt.toISOString()}, before this run started at ${f.run.startedAt.toISOString()}: an earlier run or a park left it, and this run has reported no step of its own`,
-    };
+    return noStep(
+      say('runs.step.earlier', {
+        step: f.workState.step,
+        since: stepAt.toISOString(),
+        started: f.run.startedAt.toISOString(),
+      }),
+    );
   }
   if (live && f.workState?.step) {
     return { source: 'work_state', step: f.workState.step, since: iso(stepAt) };
   }
   const read = stepOf(f.run.rawLane, f.run.currentStep, f.run.openPhase);
   if (read.source === 'none') {
-    return {
-      source: 'none',
-      step: null,
-      detail: live
-        ? read.detail
-        : `${read.detail}; a finished run keeps no step of its own, as issue_work_state.step belongs to whichever run holds the issue now`,
-    };
+    return noStep(
+      live ? read.says.detail : say('runs.step.finished', { detail: read.says.detail }),
+    );
   }
   return { source: read.source, step: read.step, since: null };
 }
@@ -62,25 +68,28 @@ function laneOfRun(f: Pick<RunFacts, 'run' | 'issue' | 'job' | 'deployLocks'>): 
   return 'job';
 }
 
-function titleOf(f: RunFacts, lane: RunLane): string {
-  if (f.issue) return f.issue.title;
-  if (lane === 'release') return `Release ${f.run.releaseVersion ?? 'batch'}`;
-  if (f.deployLocks[0])
-    return `Deploy ${f.deployLocks[0].subject} to ${f.deployLocks[0].environment}`;
-  if (f.session?.name) return f.session.name;
-  if (f.job) return `${f.job.type} job`;
-  return 'Run';
+function titleOf(f: RunFacts, lane: RunLane): Said {
+  if (f.issue) return verbatim(f.issue.title);
+  if (lane === 'release') {
+    return f.run.releaseVersion
+      ? say('runs.title.release', { v: f.run.releaseVersion })
+      : say('runs.title.releaseBatch');
+  }
+  const lock = f.deployLocks[0];
+  if (lock)
+    return say('runs.title.deploy', { subject: lock.subject, environment: lock.environment });
+  if (f.session?.name) return verbatim(f.session.name);
+  if (f.job) return say('runs.holder.job', { type: f.job.type });
+  return say('runs.title.run');
 }
 
 function attemptOf(f: RunFacts): RunAttempt {
-  if (!f.attempt)
-    return none('this run carries no issue, so no earlier run over the same work is counted');
+  if (!f.attempt) return none(say('runs.attempt.noIssue'));
   return { source: 'runs', n: f.attempt.n, retryOf: f.attempt.retryOf, of: f.attempt.of };
 }
 
 function masterOf(f: RunFacts): RunMasterRef {
-  if (!f.master)
-    return none('no master owns this run: no parent master session and no master hold');
+  if (!f.master) return none(say('runs.master.none'));
   return {
     source: 'session',
     sessionId: f.master.sessionId,
@@ -107,11 +116,12 @@ function asStuck(f: RunFacts, base: Derived, reading: StuckReading): Derived {
     outcome: null,
     waitingOn: runWait(
       'master',
-      f.master?.name ?? 'Master',
-      'acts next',
-      `stuck (${reading.rule}): the project master acts next, and a person may cancel the run or revoke its lease${
-        base.outcome ? `; its root already ended: ${base.rule}` : ''
-      }`,
+      masterWho(f),
+      say('runs.act.actsNext'),
+      say('runs.rule.stuck', {
+        rule: reading.rule,
+        ended: base.outcome ? say('runs.rule.rootEnded', { rule: base.rule }) : null,
+      }),
     ),
   };
 }
@@ -136,8 +146,12 @@ const runGroupOf = (state: RunState, waitingOn: RunWaitingOn): RunGroup =>
 function atWork(derived: Derived, holder: RunHolder, step: RunStep): RunWaitingOn {
   if (derived.waitingOn.kind !== 'none' || derived.outcome !== null || holder.source !== 'held')
     return derived.waitingOn;
-  const word = step.step ? `${step.step.charAt(0).toUpperCase()}${step.step.slice(1)}` : 'working';
-  return runWait('run', holder.name, word, derived.waitingOn.rule, { dueAt: holder.expiresAt });
+  const act = step.step
+    ? say('issues.standing.act.step', { step: step.step })
+    : say('issues.standing.act.working');
+  return runWait('run', holder.says.name, act, derived.waitingOn.says.rule, {
+    dueAt: holder.expiresAt,
+  });
 }
 
 function rootSessionOf(f: RunFacts): string | null {
@@ -153,14 +167,16 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
   const holder = holderOf(f, ctx, derived.state);
   const step = stepFor(f, live);
   const waitingOn = atWork(derived, holder, step);
+  const title = titleOf(f, lane);
   return {
     id: f.run.id,
     projectId: f.run.projectId,
     lane,
     state: derived.state,
     since: iso(derived.since),
-    rule: derived.rule,
-    title: titleOf(f, lane),
+    rule: sayEn(derived.rule),
+    title: sayEn(title),
+    says: { rule: derived.rule, title },
     issue: f.issue ? { key: f.issue.key, title: f.issue.title, status: f.issue.status } : null,
     issues: f.issues,
     sessionId: rootSessionOf(f),

@@ -10,6 +10,7 @@ import type {
   RunStuckEvidence,
   RunStuckRule,
 } from '@forge/contracts/run-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { classifyLease } from '../issues/index.js';
 import { lockAheadOf } from './standing-live.js';
 import {
@@ -28,7 +29,7 @@ export interface StuckReading {
   disagreement: RunDisagreement | null;
   since: Date;
   evidence: RunStuckEvidence;
-  detail: string;
+  detail: Said;
 }
 
 const BOX_LIVE = ['live', 'starting'];
@@ -41,7 +42,7 @@ const evidence = (
   at: Date | null,
 ): RunStuckEvidence => ({ table, id, column, value, at: iso(at) });
 
-const mins = (ms: number) => `${ms / 60_000} min`;
+const mins = (ms: number) => ms / 60_000;
 
 function endedRootOf(f: RunFacts, derived: Derived): StuckReading | null {
   const s = f.session;
@@ -62,7 +63,11 @@ function endedRootOf(f: RunFacts, derived: Derived): StuckReading | null {
         f.ledger.incarnation,
         f.ledger.observedAt,
       ),
-      detail: `the box reports the run ${f.ledger.incarnation} while core ended its session ${s.status}, and pipeline_runs.status is still ${f.run.status}`,
+      detail: say('runs.stuck.boxLive', {
+        incarnation: f.ledger.incarnation,
+        session: s.status,
+        status: f.run.status,
+      }),
     };
   }
   return {
@@ -70,7 +75,7 @@ function endedRootOf(f: RunFacts, derived: Derived): StuckReading | null {
     disagreement: 'run-live-root-ended',
     since: derived.since ?? f.run.updatedAt,
     evidence: evidence('pipeline_runs', f.run.id, 'status', f.run.status, f.run.updatedAt),
-    detail: `pipeline_runs.status is still ${f.run.status} while its root ended (${derived.rule})`,
+    detail: say('runs.stuck.rootEnded', { status: f.run.status, rule: derived.rule }),
   };
 }
 
@@ -82,7 +87,7 @@ function boxExitedOf(f: RunFacts): StuckReading | null {
     disagreement: 'box-exited-core-running',
     since: f.ledger.observedAt,
     evidence: evidence('device_run_ledger', s.id, 'incarnation', 'exited', f.ledger.observedAt),
-    detail: 'the box reports the process gone while core still has the run session running',
+    detail: say('runs.stuck.boxExited'),
   };
 }
 
@@ -102,7 +107,7 @@ function leaseOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
       disagreement: null,
       since,
       evidence: evidence('issue_work_state', f.issue.key, 'lease', `abandoned by ${holder}`, since),
-      detail: `the claim on ${f.issue.key} by ${holder} stopped beating past its tolerance, while the run is still live`,
+      detail: say('runs.stuck.abandoned', { key: f.issue.key, holder }),
     };
   }
   return {
@@ -116,7 +121,11 @@ function leaseOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
       `expired${read.stopped ? ' (stopped)' : ''}, held by ${holder}`,
       read.expiresAt,
     ),
-    detail: `the claim on ${f.issue.key} by ${holder} ${read.stopped ? 'was stopped' : 'lapsed'} at ${read.expiresAt.toISOString()}, while the run is still live`,
+    detail: say(read.stopped ? 'runs.stuck.claimStopped' : 'runs.stuck.claimLapsed', {
+      key: f.issue.key,
+      holder,
+      at: read.expiresAt.toISOString(),
+    }),
   };
 }
 
@@ -174,7 +183,11 @@ function silentOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
     disagreement: null,
     since,
     evidence: evidence(sign.table, sign.id, sign.column, null, sign.at),
-    detail: `no live job, and the last sign of life (${sign.table}.${sign.column} at ${sign.at.toISOString()}) is older than ${mins(ctx.stuckAfterMs)}`,
+    detail: say('runs.stuck.silent', {
+      column: `${sign.table}.${sign.column}`,
+      at: sign.at.toISOString(),
+      mins: mins(ctx.stuckAfterMs),
+    }),
   };
 }
 
@@ -186,7 +199,11 @@ function strandedOf(f: RunFacts): StuckReading | null {
     disagreement: null,
     since: strand.at,
     evidence: evidence('issues', f.issue.key, 'session_context.strand', strand.reason, strand.at),
-    detail: `the idle-issues sweep found ${f.issue.key} stranded at ${strand.status} (${strand.reason}), while the run is still live`,
+    detail: say('runs.stuck.stranded', {
+      key: f.issue.key,
+      status: strand.status,
+      reason: strand.reason,
+    }),
   };
 }
 
@@ -206,7 +223,11 @@ function lockOverdueOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
       lock.subject,
       lock.expiresAt,
     ),
-    detail: `the deploy lock on ${lock.environment} expired at ${lock.expiresAt.toISOString()} and nobody reclaimed it in ${mins(ctx.stuckAfterMs)}`,
+    detail: say('runs.stuck.lockOverdue', {
+      environment: lock.environment,
+      at: lock.expiresAt.toISOString(),
+      mins: mins(ctx.stuckAfterMs),
+    }),
   };
 }
 
@@ -230,7 +251,12 @@ function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): Stu
         refusal.holderRunId,
         refusal.refusedUntil,
       ),
-      detail: `this release's deploy was refused the ${refusal.environment} environment until ${refusal.refusedUntil.toISOString()}, held by pipeline run ${refusal.holderRunId}, and nothing took it in ${mins(ctx.stuckAfterMs)} after`,
+      detail: say('runs.stuck.refusalOverdue', {
+        environment: refusal.environment,
+        at: refusal.refusedUntil.toISOString(),
+        run: String(refusal.holderRunId),
+        mins: mins(ctx.stuckAfterMs),
+      }),
     };
   }
   const j = f.job;
@@ -247,7 +273,11 @@ function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): Stu
           resumesAt,
         )
       : evidence('pipeline_runs', f.run.id, 'metadata', gate, resumesAt),
-    detail: `the ${gate} gate was due to resume at ${resumesAt.toISOString()} and no new attempt came in ${mins(ctx.stuckAfterMs)}`,
+    detail: say('runs.stuck.gateOverdue', {
+      gate,
+      at: resumesAt.toISOString(),
+      mins: mins(ctx.stuckAfterMs),
+    }),
   };
 }
 
@@ -269,11 +299,11 @@ export function stuckOf(f: RunFacts, ctx: StandingContext, derived: Derived): St
   return null;
 }
 
-const CLEAR: Record<string, string> = {
-  queued: 'queued: nothing has taken it yet, and the stuck rules read a run that started',
-  claimed: 'claimed: its holder has not started it, and the start reapers own that window',
-  waiting_person: 'waiting on a person is never stuck: a named person owes the next act',
-  waiting_gate: 'the gate has not passed its own deadline by the stuck threshold',
+const CLEAR: Record<string, Said> = {
+  queued: say('runs.stuck.clearQueued'),
+  claimed: say('runs.stuck.clearClaimed'),
+  waiting_person: say('runs.stuck.clearPerson'),
+  waiting_gate: say('runs.stuck.clearGate'),
 };
 
 export function stuckField(
@@ -283,16 +313,15 @@ export function stuckField(
   ctx: StandingContext,
 ): RunStuck {
   if (!reading) {
-    if (derived.outcome !== null) return none('a finished run is never stuck');
-    return {
-      source: 'clear',
-      detail:
-        CLEAR[derived.state] ??
-        `the root moved inside ${mins(ctx.stuckAfterMs)}, no claim lapsed, the box and core agree, and no stranded finding stands`,
-    };
+    if (derived.outcome !== null) return none(say('runs.stuck.finished'));
+    const detail =
+      CLEAR[derived.state] ?? say('runs.stuck.clearMoved', { mins: mins(ctx.stuckAfterMs) });
+    return { source: 'clear', detail: sayEn(detail), says: { detail } };
   }
   const reap =
     holder.source === 'held' ? holder.expiries.find((e) => e.source === 'silence_reap') : undefined;
+  const failsBy = reap ? reap.says.rule : say('runs.stuck.noReaper');
+  const detail = say('runs.stuck.after', { mins: mins(ctx.stuckAfterMs), detail: reading.detail });
   return {
     source: 'stuck',
     rule: reading.rule,
@@ -300,9 +329,8 @@ export function stuckField(
     since: reading.since.toISOString(),
     evidence: reading.evidence,
     failsAt: reap?.at ?? null,
-    failsBy: reap
-      ? reap.rule
-      : 'no silence reaper times this run out: it has no live session or job to time, so the project master or a person ends it',
-    detail: `stuck after ${mins(ctx.stuckAfterMs)}: ${reading.detail}`,
+    failsBy: sayEn(failsBy),
+    detail: sayEn(detail),
+    says: { failsBy, detail },
   };
 }

@@ -1,7 +1,19 @@
 import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { saidDisagreements } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
-import { deriveIssueStanding, type IssueStandingInput } from './standing.js';
+import {
+  deriveIssueStanding as deriveIssueStanding_,
+  type IssueStandingInput,
+} from './standing.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const deriveIssueStanding = ((...a: Parameters<typeof deriveIssueStanding_>) =>
+  checked(deriveIssueStanding_(...a))) as typeof deriveIssueStanding_;
 
 const now = new Date('2026-10-06T14:20:00Z');
 

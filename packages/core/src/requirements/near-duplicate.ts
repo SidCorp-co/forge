@@ -14,6 +14,7 @@ import {
   type RequirementDedupCheck,
   requirementKey,
 } from '@forge/contracts/requirements';
+import { say, sayEn } from '@forge/contracts/said';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -109,10 +110,10 @@ type StoredVector = Awaited<ReturnType<typeof itemEmbeddingOf>>;
 
 function checkOf(own: StoredVector): RequirementDedupCheck {
   if (own?.status === 'embedded' && own.embedding && own.model) return { ran: true };
-  return {
-    ran: false,
-    why: `dedup was not checked: the head revision's vector is ${own ? own.status : 'not written yet'}`,
-  };
+  const why = own
+    ? say('requirements.dedup.notChecked', { status: own.status })
+    : say('requirements.dedup.notWritten');
+  return { ran: false, why: sayEn(why), says: { why } };
 }
 
 /** Whether `requirementId`'s head holds a vector an agree can compare. */

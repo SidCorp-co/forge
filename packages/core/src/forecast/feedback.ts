@@ -13,6 +13,7 @@ import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.js';
+import { waitOn } from './model.js';
 import { pausedOf, stamp } from './read.js';
 import type { ForecastViewer } from './release.js';
 import { readsFor, scopeOf } from './scope.js';
@@ -91,13 +92,10 @@ export async function readFeedbackForecasts(
       const w = s.waitingOn;
       own.set(s.id, {
         key: s.key,
-        triage: pausedOf(reads.f.run.asOf, {
-          who: w.who,
-          act: w.act,
-          reason: w.rule,
-          ref: null,
-          since: s.updatedAt,
-        }),
+        triage: pausedOf(
+          reads.f.run.asOf,
+          waitOn({ who: w.says.who, act: w.says.act, reason: w.says.rule }, null, s.updatedAt),
+        ),
         delivery: null,
       });
       continue;

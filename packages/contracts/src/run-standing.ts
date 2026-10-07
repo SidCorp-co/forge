@@ -6,6 +6,7 @@
 // stuck is computed in core and nowhere else (ISS-109, decision 7 on the design): a live run nothing
 // moves reads `stuck` with its rule, since and evidence row, so every screen reads one rule
 
+import type { Said } from "./said.js";
 import type { FailureCause } from "./failure-causes.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
@@ -128,6 +129,8 @@ export interface RunGateWait {
 	gate: string;
 	resumesAt: string | null;
 	rule: string;
+	/** `rule` as said (`said.ts`). */
+	says: { rule: Said };
 }
 
 export type RunWaitingOn =
@@ -219,6 +222,7 @@ export const RUN_STANDING_LIST_MAX = 200;
 export interface RunNone {
 	source: "none";
 	detail: string;
+	says: { detail: Said };
 }
 
 export interface RunDevice {
@@ -237,6 +241,7 @@ export interface RunExpiry {
 	at: string;
 	verdict: IssueLeaseVerdict;
 	rule: string;
+	says: { rule: Said };
 }
 
 export type RunDispatchedBy =
@@ -252,6 +257,7 @@ export type RunDispatchedBy =
 			masterSessionId: string;
 			passId: null;
 			detail: string;
+			says: { detail: Said };
 	  }
 	| RunNone;
 
@@ -268,6 +274,8 @@ export interface RunHeld {
 	expiryDetail: string | null;
 	expiries: RunExpiry[];
 	dispatchedBy: RunDispatchedBy;
+	/** `name` and `expiryDetail` as said (`said.ts`). */
+	says: { name: Said; expiryDetail: Said | null };
 }
 
 export type RunHolder = RunHeld | RunNone;
@@ -306,13 +314,14 @@ export type RunOutcome =
 			close: RunHandbackClose | null;
 			returnedTo: RunReturned[];
 			detail: string;
+			says: { detail: Said };
 	  };
 
 export type RunStep =
 	| { source: "work_state"; step: WorkStep; since: string | null }
 	| { source: "run_column"; step: string; since: null }
 	| { source: "phase_journal"; step: string; since: null }
-	| { source: "none"; step: null; detail: string };
+	| { source: "none"; step: null; detail: string; says: { detail: Said } };
 
 export type RunAttempt =
 	| { source: "runs"; n: number; retryOf: string | null; of: string }
@@ -344,11 +353,13 @@ export interface RunStuckOn {
 	failsAt: string | null;
 	failsBy: string;
 	detail: string;
+	says: { failsBy: Said; detail: Said };
 }
 
 export interface RunStuckClear {
 	source: "clear";
 	detail: string;
+	says: { detail: Said };
 }
 
 export type RunStuck = RunStuckOn | RunStuckClear | RunNone;
@@ -403,12 +414,15 @@ export interface RunStanding
 	job: RunJob | null;
 	startedAt: string;
 	finishedAt: string | null;
+	/** `rule` and `title` as said (`said.ts`). */
+	says: { rule: Said; title: Said };
 }
 
 export interface RunExcluded {
 	what: string;
 	count: number;
 	rule: string;
+	says: { rule: Said };
 }
 
 export interface RunStandingList {
@@ -416,6 +430,8 @@ export interface RunStandingList {
 	projectId: string;
 	scope: RunStandingScope;
 	scopeRule: string;
+	/** `scopeRule` as said (`said.ts`). */
+	says: { scopeRule: Said };
 	items: RunStanding[];
 	total: number;
 	limit: number;

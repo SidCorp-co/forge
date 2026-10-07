@@ -1,3 +1,4 @@
+import { blockerView, RULE, say, waitingOn } from "./said";
 import type { IssueStandingDetail, IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -53,7 +54,7 @@ const standing = (over: Partial<IssueStandingRow["standing"]> = {}): IssueStandi
     moves: [{ to: "on_hold", kind: "bounce", needsReason: true, startsGroup: false }],
     tone: "run",
     attentionGroup: "moving",
-    waitingOn: { kind: "run", who: "Run", act: "Build · 12 min", rule: "lease held by box-1", ref: null, dueAt: null },
+    waitingOn: waitingOn("run", { who: say("issues.standing.who.run"), act: say("issues.standing.act.stepFor", { step: "build", n: 12 }), rule: say("issues.rule.leaseHeld", { holder: "box-1" }) }),
     criteria: { total: 4, passing: 2, failing: 1, skipped: 0 },
     requirement: { key: "REQ-1", title: "Dang nhap", criteria: ["BC-1"], plannedRevision: 1, currentRevision: 2, changedSincePlan: true },
     module: { id: "m1", path: "kho/don", name: "Don" },
@@ -89,11 +90,11 @@ const srow = (n: number, over: Partial<IssueStandingRow["standing"]> = {}, statu
 
 const STANDING_ROWS: IssueStandingRow[] = [
   srow(1),
-  srow(2, { attentionGroup: "needs_you", tone: "you", waitingOn: { kind: "you", who: "You", act: "answer a question", rule: "r", ref: null, dueAt: null }, wave: 1, blockedBy: [{ key: "ISS-1", title: "Muc", status: "in_progress", group: "moving", landed: false, designHold: null }] }, "needs_info"),
-  srow(3, { attentionGroup: "stuck", tone: "blocked", waitingOn: { kind: "issue", who: "ISS-1", act: "landed, waits on a judge", rule: "r", ref: "ISS-1", dueAt: null }, wave: 2, module: null }, "open"),
-  srow(4, { attentionGroup: "queued", tone: "ready", waitingOn: { kind: "master", who: "Master", act: "dispatch a run", rule: "r", ref: null, dueAt: null }, wave: null }, "open"),
-  srow(5, { attentionGroup: "paused", tone: "neutral", waitingOn: { kind: "person", who: "A project writer", act: "resume it", rule: "r", ref: null, dueAt: null } }, "on_hold"),
-  srow(6, { attentionGroup: "done", tone: "done", waitingOn: { kind: "none", who: "Nobody", act: "shipped", rule: "r", ref: null, dueAt: null }, wave: null }, "closed"),
+  srow(2, { attentionGroup: "needs_you", tone: "you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }), wave: 1, blockedBy: [{ key: "ISS-1", title: "Muc", status: "in_progress", group: "moving", landed: false, designHold: null }] }, "needs_info"),
+  srow(3, { attentionGroup: "stuck", tone: "blocked", waitingOn: waitingOn("issue", { who: say("standing.who.named", { name: "ISS-1" }), act: say("issues.standing.act.landedWaitsJudge"), rule: RULE }, { ref: "ISS-1" }), wave: 2, module: null }, "open"),
+  srow(4, { attentionGroup: "queued", tone: "ready", waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("issues.standing.act.dispatch"), rule: RULE }), wave: null }, "open"),
+  srow(5, { attentionGroup: "paused", tone: "neutral", waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "project.write" }), act: say("issues.standing.act.resume"), rule: RULE }) }, "on_hold"),
+  srow(6, { attentionGroup: "done", tone: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("issues.standing.act.shipped"), rule: RULE }), wave: null }, "closed"),
 ];
 
 const STANDING_LIST = {
@@ -193,19 +194,20 @@ const RUNS = [
 ] as never;
 
 const DETAIL: IssueStandingDetail = {
-  ...srow(1, { attentionGroup: "needs_you", tone: "you", waitingOn: { kind: "you", who: "You", act: "answer a question", rule: "r", ref: null, dueAt: null } }, "needs_info"),
+  ...srow(1, { attentionGroup: "needs_you", tone: "you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }) }, "needs_info"),
   steps: [],
   releaseApproval: true,
-  blocker: {
+  blocker: blockerView({
     tone: "attention",
-    reason: "This issue is waiting for information — an answer to a question.",
-    whoMustAct: "Anyone on the project can answer it; the question is below.",
-    act: { label: "Answer it", kind: "provide_info" },
+    reason: say("issues.blocker.owesInformation"),
+    whoMustAct: say("issues.blocker.whoInformation"),
+    label: say("issues.blocker.actAnswer"),
+    kind: "provide_info",
     runId: null,
     resumeAt: null,
     blockingRefs: [{ key: "ISS-9", title: "Muc chin", status: "open", group: "queued", landed: false, designHold: null }],
-    detail: "Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.",
-  },
+    detail: say("issues.blocker.noResumeAt"),
+  }),
   stepOutcomes: [
     { step: "plan", state: "done", outcomeLabel: null, durationSeconds: 3725, costUsd: 0.42, handoff: null, ranAt: AT },
     { step: "build", state: "failed", outcomeLabel: null, durationSeconds: 75, costUsd: null, handoff: null, ranAt: AT },
@@ -276,9 +278,9 @@ function Dialogs() {
 
 const BLOCKERS = [
   DETAIL.blocker,
-  { tone: "info", reason: "Blocked by ISS-4, ISS-5, which have landed and wait on a judge.", whoMustAct: "A judge records a verdict on each criterion of ISS-4, ISS-5; this issue is released once they pass.", act: { label: "Open blocking issue", kind: "open_blocker" }, runId: null, resumeAt: null, blockingRefs: [], detail: null },
-  { tone: "attention", reason: "The issue is paused.", whoMustAct: "An operator can resume it when the work is wanted again.", act: { label: "Resume at In progress", kind: "resume_park" }, runId: null, resumeAt: "in_progress", blockingRefs: [], detail: null },
-  { tone: "attention", reason: "The pipeline run for this issue is paused. No step will dispatch while it is, whatever this issue's status says. An operator paused it.", whoMustAct: "Resume the run — nothing else will. Cancel it instead if the work should not continue.", act: { label: "Resume run", kind: "resume_run" }, runId: "r1", resumeAt: null, blockingRefs: [], detail: null },
+  blockerView({ tone: "info", reason: say("issues.blocker.landedMany", { keys: "ISS-4, ISS-5" }), whoMustAct: say("issues.blocker.whoLandedMany", { keys: "ISS-4, ISS-5" }), label: say("issues.blocker.actOpenBlocker"), kind: "open_blocker", runId: null, resumeAt: null, blockingRefs: [], detail: null }),
+  blockerView({ tone: "attention", reason: say("issues.blocker.paused"), whoMustAct: say("issues.blocker.whoPaused"), label: say("issues.blocker.actResumeAt", { status: "in_progress" }), kind: "resume_park", runId: null, resumeAt: "in_progress", blockingRefs: [], detail: null }),
+  blockerView({ tone: "attention", reason: say("issues.pause.byOperator", { base: say("issues.pause.operator.detail") }), whoMustAct: say("issues.pause.operator.who"), label: say("issues.blocker.actResumeRun"), kind: "resume_run", runId: "r1", resumeAt: null, blockingRefs: [], detail: null }),
 ] as NonNullable<IssueStandingDetail["blocker"]>[];
 
 export const ISSUE_SCREENS = [

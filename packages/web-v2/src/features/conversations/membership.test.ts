@@ -1,4 +1,5 @@
 import { FAILURE_CAUSES } from "@forge/contracts/failure-causes";
+import { SAID_ENTRIES } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
 import strings from "@/lib/i18n/product-copy.json";
 import { productCopy } from "@/lib/i18n/product-copy";
@@ -43,7 +44,8 @@ describe("the locale file", () => {
     const en = Object.keys(strings.en);
     const vi = Object.keys(strings.vi);
     expect(en.filter((k) => !(k in strings.vi))).toEqual([]);
-    expect(vi.filter((k) => !(k in strings.en))).toEqual([]);
+    // What core says keeps its English in `@forge/contracts/said`, beside the code that says it.
+    expect(vi.filter((k) => !(k in strings.en) && !(k in SAID_ENTRIES))).toEqual([]);
   });
 
   it("has a reason word in both languages for every failure cause", () => {

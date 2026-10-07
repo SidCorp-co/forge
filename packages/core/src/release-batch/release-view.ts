@@ -11,8 +11,16 @@ import type {
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
 import type { BcVerdict } from '@forge/contracts/requirements';
-import { holdersWho, nobodyHoldsAct, nobodyWaits, type Standing } from '@forge/contracts/standing';
-import { agrees, counted } from '../lib/plural.js';
+import { type Said, say } from '@forge/contracts/said';
+import {
+  holdersWho,
+  nobodyHoldsAct,
+  nobodyWaits,
+  type Standing,
+  type WaitingSays,
+  waitingOn,
+} from '@forge/contracts/standing';
+import { agrees } from '../lib/plural.js';
 
 export interface ViewerFacts {
   userId: string;
@@ -41,12 +49,22 @@ interface TurnFacts {
 
 type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
 
-const NOBODY = nobodyWaits('the release has ended');
+const NOBODY = nobodyWaits(say('releases.rule.ended'));
 
-const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
-  deploy: 'deploying',
-  verify: 'verifying',
+const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, Said> = {
+  deploy: say('standing.act.deploying'),
+  verify: say('standing.act.verifying'),
 };
+
+const YOU = say('standing.who.you');
+const MASTER = say('standing.who.master');
+const RELEASE_RUN = say('standing.who.releaseRun');
+
+const turn = (
+  attentionGroup: ReleaseAttentionGroup,
+  kind: ReleaseWaitingKind,
+  says: WaitingSays,
+): Turn => ({ attentionGroup, waitingOn: waitingOn(kind, says) });
 
 /**
  * A draft a gate holds waits on whoever owes the first act someone can take: the master for an act
@@ -58,39 +76,33 @@ function gatedTurn(f: TurnFacts): Turn {
   if (queued) return queued;
   const owed = f.gates.find((g) => g.owner.kind !== 'system') ?? f.gates[0];
   const owner = (owed as { owner: ReleaseGateOwner }).owner;
-  const more = f.gates.length > 1 ? ` and ${f.gates.length - 1} more` : '';
-  const rule = `${counted(f.gates.length, 'reason')} ${agrees(f.gates.length, 'stands', 'stand')} against cutting ${f.version}`;
-  const act = `${owner.act}${more}`;
-  const effect = owner.effect ? { effect: owner.effect } : {};
-  if (owner.kind === 'agent') {
-    return {
-      attentionGroup: 'waiting',
-      waitingOn: { kind: 'agent', who: owner.who, act, rule, ...effect, ref: null, dueAt: null },
-    };
-  }
+  const n = f.gates.length;
+  const rule = say('releases.rule.gated', {
+    n,
+    reasons: agrees(n, 'reason', 'reasons'),
+    verb: agrees(n, 'stands', 'stand'),
+    v: f.version,
+  });
+  const act =
+    n > 1
+      ? say('standing.act.andMore', {
+          act: owner.says.act,
+          more: say('standing.more', { n: n - 1 }),
+        })
+      : owner.says.act;
+  const says: WaitingSays = {
+    who: owner.says.who,
+    act,
+    rule,
+    ...(owner.says.effect ? { effect: owner.says.effect } : {}),
+  };
+  if (owner.kind === 'agent') return turn('waiting', 'agent', says);
   if (owner.kind === 'person') {
     return f.viewer?.isAdmin
-      ? {
-          attentionGroup: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ...effect, ref: null, dueAt: null },
-        }
-      : {
-          attentionGroup: 'waiting',
-          waitingOn: {
-            kind: 'person',
-            who: owner.who,
-            act,
-            rule,
-            ...effect,
-            ref: null,
-            dueAt: null,
-          },
-        };
+      ? turn('needs_you', 'you', { ...says, who: YOU })
+      : turn('waiting', 'person', says);
   }
-  return {
-    attentionGroup: 'stuck',
-    waitingOn: { kind: 'system', who: owner.who, act, rule, ...effect, ref: null, dueAt: null },
-  };
+  return turn('stuck', 'system', says);
 }
 
 /**
@@ -100,103 +112,58 @@ function gatedTurn(f: TurnFacts): Turn {
 function queuedTurn(f: TurnFacts): Turn | null {
   const [only] = f.gates;
   if (f.gates.length !== 1 || only?.code !== 'BATCH_IN_FLIGHT') return null;
-  return {
-    attentionGroup: 'queued',
-    waitingOn: {
-      kind: 'system',
-      who: 'Release run',
-      act: only.owner.act,
-      rule: `the release already running finishes before ${f.version} can be cut`,
-      ref: null,
-      dueAt: null,
-    },
-  };
+  return turn('queued', 'system', {
+    who: RELEASE_RUN,
+    act: only.owner.says.act,
+    rule: say('releases.rule.queuedBehindRun', { v: f.version }),
+  });
 }
 
 function draftTurn(f: TurnFacts): Turn {
   if (f.gates.length > 0) return gatedTurn(f);
-  const rule =
-    'merged issues wait at the release gate, no gate holds them, and an admin cuts the version';
-  if (f.viewer?.isAdmin) {
-    return {
-      attentionGroup: 'needs_you',
-      waitingOn: { kind: 'you', who: 'You', act: `cut ${f.version}`, rule, ref: null, dueAt: null },
-    };
-  }
-  const act = `cut ${f.version}`;
+  const rule = say('releases.rule.adminCuts');
+  const act = say('standing.act.cut', { v: f.version, more: null });
+  if (f.viewer?.isAdmin) return turn('needs_you', 'you', { who: YOU, act, rule });
   if (f.admins.length === 0) {
-    return {
-      attentionGroup: 'stuck',
-      waitingOn: {
-        kind: 'none',
-        who: holdersWho(f.admins),
-        act: nobodyHoldsAct(act, 'project.admin'),
-        rule,
-        ref: null,
-        dueAt: null,
-      },
-    };
+    return turn('stuck', 'none', {
+      who: holdersWho(f.admins),
+      act: nobodyHoldsAct(act, 'project.admin'),
+      rule,
+    });
   }
-  return {
-    attentionGroup: 'waiting',
-    waitingOn: { kind: 'person', who: holdersWho(f.admins), act, rule, ref: null, dueAt: null },
-  };
+  return turn('waiting', 'person', { who: holdersWho(f.admins), act, rule });
 }
 
 function approvalTurn(f: TurnFacts): Turn {
   const a = f.approval;
   if (!a) {
-    return {
-      attentionGroup: 'waiting',
-      waitingOn: {
-        kind: 'agent',
-        who: 'Master',
-        act: 'ask for approval',
-        rule: 'the project requires approval before production and no request is open',
-        ref: null,
-        dueAt: null,
-      },
-    };
+    return turn('waiting', 'agent', {
+      who: MASTER,
+      act: say('standing.act.askApproval'),
+      rule: say('releases.rule.noRequest'),
+    });
   }
-  const rule = `${a.requestedBy.name} asked; a holder of releases.approve approves or returns it`;
+  const rule = say('releases.rule.asked', { name: a.requestedBy.name });
   if (f.viewer?.mayApprove && a.decision === null) {
-    return {
-      attentionGroup: 'needs_you',
-      waitingOn: {
-        kind: 'you',
-        who: 'You',
-        act: `approve or return ${f.version}`,
-        rule,
-        ref: null,
-        dueAt: null,
-      },
-    };
+    return turn('needs_you', 'you', {
+      who: YOU,
+      act: say('standing.act.approveOrReturn', { v: f.version }),
+      rule,
+    });
   }
   const approvers = f.approvers.map((a) => a.name);
   if (approvers.length === 0) {
-    return {
-      attentionGroup: 'stuck',
-      waitingOn: {
-        kind: 'none',
-        who: holdersWho(approvers),
-        act: nobodyHoldsAct('approve', 'releases.approve'),
-        rule: `${rule}, and none is left`,
-        ref: null,
-        dueAt: null,
-      },
-    };
-  }
-  return {
-    attentionGroup: 'waiting',
-    waitingOn: {
-      kind: 'person',
+    return turn('stuck', 'none', {
       who: holdersWho(approvers),
-      act: 'approve',
-      rule,
-      ref: null,
-      dueAt: null,
-    },
-  };
+      act: nobodyHoldsAct(say('standing.act.approve'), 'releases.approve'),
+      rule: say('releases.rule.noneLeft', { rule }),
+    });
+  }
+  return turn('waiting', 'person', {
+    who: holdersWho(approvers),
+    act: say('standing.act.approve'),
+    rule,
+  });
 }
 
 export function turnOf(f: TurnFacts): Turn {
@@ -206,29 +173,19 @@ export function turnOf(f: TurnFacts): Turn {
     case 'awaiting_approval':
       return approvalTurn(f);
     case 'returned':
-      return {
-        attentionGroup: 'waiting',
-        waitingOn: {
-          kind: 'agent',
-          who: 'Master',
-          act: 'answer the return',
-          rule: `an admin returned it${f.approval?.reason ? `: ${f.approval.reason}` : ''}; the master answers before it asks again`,
-          ref: null,
-          dueAt: null,
-        },
-      };
+      return turn('waiting', 'agent', {
+        who: MASTER,
+        act: say('standing.act.answerReturn'),
+        rule: f.approval?.reason
+          ? say('releases.rule.returnedWhy', { why: f.approval.reason })
+          : say('releases.rule.returned'),
+      });
     case 'in_progress':
-      return {
-        attentionGroup: 'moving',
-        waitingOn: {
-          kind: 'agent',
-          who: 'Release run',
-          act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : 'starting',
-          rule: 'the release run is working on production',
-          ref: null,
-          dueAt: null,
-        },
-      };
+      return turn('moving', 'agent', {
+        who: RELEASE_RUN,
+        act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : say('standing.act.starting'),
+        rule: say('releases.rule.inProgress'),
+      });
     case 'shipped':
       return { attentionGroup: 'done', waitingOn: NOBODY };
     case 'failed':

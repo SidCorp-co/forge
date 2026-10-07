@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { StatusCard } from "../types";
 import { ProjectIntegrationsPanel } from "./project-integrations-panel";
+import { cardDetail, say } from "@/test/said";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/" }));
 
@@ -16,8 +17,7 @@ const UNREACHED_REPOSITORY: StatusCard = {
   key: "repository",
   label: "Repository",
   status: "not_configured",
-  detail:
-    "no source host binding reaches github.com: Forge cannot read its commits, merge into it or compare branches, so a release cannot tell what already shipped. Connect GitHub to fix it",
+  ...cardDetail(say("integrations.detail.unreachedConnect", { host: "github.com", provider: "GitHub" })),
   lastSyncAt: null,
   configured: true,
   meta: {
@@ -33,7 +33,7 @@ const GITHUB_OPEN: StatusCard = {
   key: "github",
   label: "GitHub",
   status: "not_configured",
-  detail: "no GitHub integration configured",
+  ...cardDetail(say("integrations.detail.noneConfigured", { provider: "GitHub" })),
   lastSyncAt: null,
   configured: false,
   meta: caps,
@@ -44,7 +44,7 @@ function coolify(key: string, bindingId: string, name: string, environment: stri
     key,
     label: `Coolify (${name})`,
     status: "connected",
-    detail: "last health: ok",
+    ...cardDetail(say("integrations.detail.lastHealth", { status: "ok" })),
     lastSyncAt: null,
     configured: true,
     meta: { ...caps, bindingId, role: "deploy", environment, name, lastHealthStatus: "ok" },

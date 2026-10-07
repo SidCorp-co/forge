@@ -33,7 +33,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { localizeWaiting, standingRule } from "@/lib/i18n/standing-copy";
+import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 
 const sentenceStart = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -101,7 +101,7 @@ const BANNER: Record<IssueStanding["attentionGroup"], BannerTone> = {
 /** The peek's one line: whom the issue waits on and for what, the rule on hover. */
 export function IssueBanner({ standing, className }: { standing: IssueStanding; className?: string }) {
   const t = useCopy();
-  const w = localizeWaiting(standing.waitingOn, useInterfaceLanguage());
+  const w = saidView(standing.waitingOn, useInterfaceLanguage());
   const g = standing.attentionGroup;
   return (
     <WaitBanner
@@ -212,7 +212,7 @@ export function IssuePeekFacts({
         <Fact label={t("issues.facts.waitsOn")}>
           <span className="min-w-0">
             <WaitingOn w={s.waitingOn} />
-            {s.waitingOn.rule ? sub(sentenceStart(standingRule(s.waitingOn.rule, language))) : null}
+            {s.waitingOn.rule ? sub(sentenceStart(said(s.waitingOn.says.rule, language))) : null}
           </span>
         </Fact>
       ) : null}

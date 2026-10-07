@@ -1,3 +1,5 @@
+import type { Said } from "@forge/contracts/said";
+import { RULE, say, waitingOn } from "./said";
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent } from "@testing-library/react";
 import { AutomationScreen } from "@/features/automation/components/automation-screen";
@@ -12,15 +14,17 @@ import { Seeded } from "./vi-chrome-requirements";
 
 // The Automation screens of the Development space for the vi walking test: the three tabs, a
 // schedule's page and peek, a fire's, a report's with its triage forms. Names and summaries are
-// placeholder words; core's own rule sentences are left as the placeholder "r".
+// placeholder words; core's own rule sentences are the placeholder "r", and whom a row waits on and
+// what for are said by their registry keys, as core says them.
 
 const P = "p-auto";
 const AT = "2026-10-07T08:00:00.000Z";
 const noop = () => {};
 const access = { projectId: P, slug: "hop", canWrite: true, canManage: true };
 const peek = { open: "x", position: { at: 1, of: 3 }, set: noop, move: noop };
-const wait = (kind: "you" | "person" | "issue" | "none", who: string, act: string) => ({ kind, who, act, rule: "r", ref: null, dueAt: null });
-const none = wait("none", "", "");
+const wait = (kind: "you" | "person" | "issue" | "none", who: Said, act: Said) => waitingOn(kind, { who, act, rule: RULE });
+const none = wait("none", say("standing.who.nobody"), say("standing.act.none"));
+const YOU = say("standing.who.you");
 
 const schedule = (id: string, over: Partial<ScheduleStanding> = {}): ScheduleStanding =>
   ({
@@ -33,6 +37,7 @@ const schedule = (id: string, over: Partial<ScheduleStanding> = {}): ScheduleSta
     targetProjectSlug: null,
     state: "failing",
     rule: "r",
+    says: { rule: RULE },
     nextFireAt: AT,
     owner: { id: "u1", name: "Lan" },
     streak: 2,
@@ -40,14 +45,14 @@ const schedule = (id: string, over: Partial<ScheduleStanding> = {}): ScheduleSta
     viewerMay: { edit: true, takeOver: true },
     createdAt: AT,
     attentionGroup: "needs_you",
-    waitingOn: wait("you", "You", "fix a failing schedule"),
+    waitingOn: wait("you", YOU, say("standing.act.fixSchedule")),
     ...over,
   }) as unknown as ScheduleStanding;
 
 const SCHEDULES = [
   schedule("s1"),
   schedule("s2", { state: "on", attentionGroup: "on", waitingOn: none, targetProjectSlug: "kho", lastFire: null, owner: null, kind: "script" }),
-  schedule("s3", { state: "off", enabled: false, nextFireAt: null, attentionGroup: "off", waitingOn: wait("person", "The schedule owner", "take over a schedule whose owner is gone"), viewerMay: { edit: true, takeOver: false } }),
+  schedule("s3", { state: "off", enabled: false, nextFireAt: null, attentionGroup: "off", waitingOn: wait("person", say("standing.who.scheduleOwner"), say("standing.act.takeOverSchedule")), viewerMay: { edit: true, takeOver: false } }),
 ];
 
 const produced = { reports: 2, newReports: 1, proposals: 1, issues: 0, runs: 1, notifications: 1 };
@@ -69,7 +74,7 @@ const fire = (id: string, over: Partial<FireStanding> = {}): FireStanding =>
     durationSeconds: 125,
     produced,
     attentionGroup: "needs_you",
-    waitingOn: wait("you", "You", "triage a report"),
+    waitingOn: wait("you", YOU, say("standing.act.triageReport")),
     ...over,
   }) as unknown as FireStanding;
 
@@ -108,13 +113,13 @@ const report = (id: string, over: Partial<ReportStanding> = {}): ReportStanding 
     createdAt: AT,
     fire: { id: "a-fire-0001", scheduleId: "s1", scheduleName: "lich-s1" },
     attentionGroup: "needs_you",
-    waitingOn: wait("you", "You", "triage a report"),
+    waitingOn: wait("you", YOU, say("standing.act.triageReport")),
     ...over,
   }) as unknown as ReportStanding;
 
 const REPORTS = [
   report("a"),
-  report("b", { triage: "filed", attentionGroup: "filed", linkedIssueId: "i1", waitingOn: wait("issue", "ISS-4", ""), triagedBy: { id: "u1", name: "Lan" }, triagedAt: AT, fire: null, stage: "build" }),
+  report("b", { triage: "filed", attentionGroup: "filed", linkedIssueId: "i1", waitingOn: wait("issue", say("standing.who.named", { name: "ISS-4" }), say("standing.act.none")), triagedBy: { id: "u1", name: "Lan" }, triagedAt: AT, fire: null, stage: "build" }),
   report("c", { triage: "duplicate", attentionGroup: "closed", duplicateOf: "a-report-0001", triageReason: "Trung", triagedBy: { id: "u1", name: "Lan" }, triagedAt: AT, waitingOn: none }),
 ];
 

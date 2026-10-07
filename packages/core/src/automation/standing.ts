@@ -3,25 +3,31 @@
 // needs_you and wait_triage; ISS-114): pure, so every rule is a unit test, and no screen derives one
 
 import type { AgentReportView } from '@forge/contracts/agent-reports';
-import {
-  AUTOMATION_ACT_LABELS,
-  type AutomationAct,
-  type AutomationPerson,
-  type AutomationWaitingKind,
-  type FireGroup,
-  type FireProduced,
-  type FireProposal,
-  type FireStanding,
-  type ReportFireRef,
-  type ReportGroup,
-  type ReportStanding,
-  type ScheduleGroup,
-  type ScheduleLastFire,
-  type ScheduleStanding,
-  type ScheduleState,
+import type {
+  AutomationAct,
+  AutomationPerson,
+  AutomationWaitingKind,
+  FireGroup,
+  FireProduced,
+  FireProposal,
+  FireStanding,
+  ReportFireRef,
+  ReportGroup,
+  ReportStanding,
+  ScheduleGroup,
+  ScheduleLastFire,
+  ScheduleStanding,
+  ScheduleState,
 } from '@forge/contracts/automation-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { scheduleWritePermission } from '@forge/contracts/schedules';
-import { holdersWho, nobodyHoldsAct, nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
+import {
+  holdersWho,
+  nobodyHoldsAct,
+  nobodyWaits,
+  type WaitingOn,
+  waitingOn,
+} from '@forge/contracts/standing';
 import { type LastFire, type ScheduleStreak, streakFails } from './ports.js';
 
 export interface AutomationViewer {
@@ -80,38 +86,43 @@ type AutomationWaitingOn = WaitingOn<AutomationWaitingKind>;
 
 const NOBODY = nobodyWaits;
 
+/** What each owed act says (`AutomationAct`). */
+const ACT_SAID: Record<AutomationAct, Said> = {
+  triage_report: say('standing.act.triageReport'),
+  fix_schedule: say('standing.act.fixSchedule'),
+  reassign_owner: say('standing.act.takeOverSchedule'),
+};
+
+const YOU = say('standing.who.you');
+
 const owed = (
   kind: AutomationWaitingKind,
-  who: string,
+  who: Said,
   act: AutomationAct,
-  rule: string,
-): AutomationWaitingOn => ({
-  kind,
-  who,
-  act: AUTOMATION_ACT_LABELS[act],
-  rule,
-  ref: null,
-  dueAt: null,
-});
+  rule: Said,
+): AutomationWaitingOn => waitingOn(kind, { who, act: ACT_SAID[act], rule });
 
 function personWait(
   person: AutomationPerson,
   viewer: AutomationViewer,
   act: AutomationAct,
-  rule: string,
+  rule: Said,
 ): AutomationWaitingOn {
-  if (person.id === viewer.userId) return owed('you', 'You', act, rule);
-  return owed('person', person.name ?? 'The schedule owner', act, rule);
+  if (person.id === viewer.userId) return owed('you', YOU, act, rule);
+  const who = person.name
+    ? say('standing.who.named', { name: person.name })
+    : say('standing.who.scheduleOwner');
+  return owed('person', who, act, rule);
 }
 
 function groupWait(
   kind: 'admins' | 'writers',
   viewer: AutomationViewer,
   act: AutomationAct,
-  rule: string,
+  rule: Said,
 ): AutomationWaitingOn {
   const mine = kind === 'admins' ? viewer.isAdmin : viewer.canWrite;
-  if (mine) return owed('you', 'You', act, rule);
+  if (mine) return owed('you', YOU, act, rule);
   const holders = viewer.holders[kind];
   if (holders.length === 0) {
     const permission = kind === 'admins' ? 'project.admin' : 'project.write';
@@ -126,28 +137,28 @@ function scheduleStateOf(
   lastFire: Pick<LastFireFacts, 'status'> | null,
   failStreak: number,
   now: Date,
-): { state: ScheduleState; rule: string } {
-  if (!s.enabled) return { state: 'off', rule: 'paused: an off schedule is never claimed' };
+): { state: ScheduleState; rule: Said } {
+  if (!s.enabled) return { state: 'off', rule: say('automation.state.off') };
   if (!s.owner) {
     return {
       state: 'owner_gone',
-      rule: 'ownerId is null: the account it ran as is gone, so a prompt fire is refused SCHEDULE_OWNER_GONE until an admin saves it and takes it over',
+      rule: say('automation.state.ownerGone'),
     };
   }
   if (streak && streakFails(streak, s, failStreak, now)) {
     return {
       state: 'failing',
-      rule: `its last ${streak.streak} fires failed, at or above scheduleFailStreak ${failStreak} (a no-device or project-not-found skip counts, nothing-to-do and gate-refused do not); it clears on the next successful fire, not on an edit`,
+      rule: say('automation.state.failing', { n: streak.streak, limit: failStreak }),
     };
   }
   if (lastFire?.status === 'running')
-    return { state: 'firing', rule: 'its newest fire is running' };
+    return { state: 'firing', rule: say('automation.state.firing') };
   return {
     state: 'on',
     rule:
       streak && streak.streak > 0
-        ? `${streak.streak} failed in a row, under scheduleFailStreak ${failStreak} or outside the active window`
-        : 'enabled, and its newest fire did not fail',
+        ? say('automation.state.underStreak', { n: streak.streak, limit: failStreak })
+        : say('automation.state.on'),
   };
 }
 
@@ -157,23 +168,17 @@ function scheduleWaitOf(
   viewer: AutomationViewer,
 ): AutomationWaitingOn {
   if (state === 'failing' && s.owner) {
-    return personWait(
-      s.owner,
-      viewer,
-      'fix_schedule',
-      'failing: its owner fixes it, pauses it or takes it over',
-    );
+    return personWait(s.owner, viewer, 'fix_schedule', say('automation.rule.failing'));
   }
   if (state === 'owner_gone') {
-    return groupWait(
-      'admins',
-      viewer,
-      'reassign_owner',
-      'owner gone: an admin saves it to take it over, and runs it as themselves from then on',
-    );
+    return groupWait('admins', viewer, 'reassign_owner', say('automation.rule.ownerGone'));
   }
-  if (state === 'off') return NOBODY('off: nothing fires until it is turned on');
-  return NOBODY(s.nextRunAt ? `next fire at ${s.nextRunAt.toISOString()}` : 'no next fire set');
+  if (state === 'off') return NOBODY(say('automation.rule.off'));
+  return NOBODY(
+    s.nextRunAt
+      ? say('automation.rule.nextFire', { at: s.nextRunAt.toISOString() })
+      : say('automation.rule.noNextFire'),
+  );
 }
 
 function scheduleGroupOf(state: ScheduleState, wait: AutomationWaitingOn): ScheduleGroup {
@@ -213,7 +218,8 @@ export function scheduleStandingOf(
     enabled: s.enabled,
     targetProjectSlug: s.targetProjectSlug,
     state,
-    rule,
+    rule: sayEn(rule),
+    says: { rule },
     nextFireAt: s.enabled ? iso(s.nextRunAt) : null,
     owner: s.owner,
     streak: streak?.streak ?? 0,
@@ -237,27 +243,17 @@ function triageWaitOf(
   viewer: AutomationViewer,
 ): AutomationWaitingOn {
   if (fire?.owner) {
-    return personWait(
-      fire.owner,
-      viewer,
-      'triage_report',
-      'a report a fire filed goes to its schedule owner first',
-    );
+    return personWait(fire.owner, viewer, 'triage_report', say('automation.rule.toOwner'));
   }
-  return groupWait(
-    'writers',
-    viewer,
-    'triage_report',
-    'its schedule has no owner, so any member with write access triages it',
-  );
+  return groupWait('writers', viewer, 'triage_report', say('automation.rule.toWriters'));
 }
 
 const harnessTriage = (): AutomationWaitingOn =>
   owed(
     'writers',
-    'Harness triage',
+    say('automation.who.harnessTriage'),
     'triage_report',
-    'no fire filed it: an issue run reported the harness it worked under, which is triaged on Automation, Reports and is not a project member’s to-do',
+    say('automation.rule.harness'),
   );
 
 /** The steward actions a fire's session proposed or applied; feedback and skipped are not proposals. */
@@ -308,7 +304,14 @@ function fireWaitOf(
 ): AutomationWaitingOn {
   if (f.newReports > 0) {
     const wait = triageWaitOf(schedule ? { owner: schedule.facts.owner } : null, viewer);
-    return { ...wait, rule: `${f.newReports} of its reports wait for triage: ${wait.rule}` };
+    return waitingOn(
+      wait.kind,
+      {
+        ...wait.says,
+        rule: say('automation.rule.reportsWait', { n: f.newReports, rule: wait.says.rule }),
+      },
+      { ref: wait.ref, dueAt: wait.dueAt },
+    );
   }
   const newest = schedule?.lastFire?.id === f.id;
   if (
@@ -319,7 +322,9 @@ function fireWaitOf(
   ) {
     return schedule.waitingOn;
   }
-  return NOBODY(f.status === 'running' ? 'running' : 'nothing about this fire waits on a person');
+  return NOBODY(
+    say(f.status === 'running' ? 'automation.rule.running' : 'automation.rule.fireWaitsOnNobody'),
+  );
 }
 
 function fireGroupOf(f: FireFacts, produced: FireProduced, wait: AutomationWaitingOn): FireGroup {
@@ -364,26 +369,30 @@ function reportWaitOf(r: ReportFacts, viewer: AutomationViewer): AutomationWaiti
   const v = r.view;
   if (v.triage === 'new') return r.fire ? triageWaitOf(r.fire, viewer) : harnessTriage();
   if (v.triage === 'filed' && v.feedback) {
-    return {
-      kind: 'feedback',
-      who: v.feedback.key,
-      act: '',
-      rule: `filed as ${v.feedback.key}, at ${v.feedback.phase}`,
-      ref: v.feedback.key,
-      dueAt: null,
-    };
+    const key = v.feedback.key;
+    return waitingOn(
+      'feedback',
+      {
+        who: say('standing.who.named', { name: key }),
+        act: say('standing.act.none'),
+        rule: say('automation.rule.filedFeedback', { key, phase: v.feedback.phase }),
+      },
+      { ref: key },
+    );
   }
   if (v.triage === 'filed' && r.issue) {
-    return {
-      kind: 'issue',
-      who: r.issue.key,
-      act: '',
-      rule: `filed as ${r.issue.key}, at ${r.issue.status}`,
-      ref: r.issue.key,
-      dueAt: null,
-    };
+    const key = r.issue.key;
+    return waitingOn(
+      'issue',
+      {
+        who: say('standing.who.named', { name: key }),
+        act: say('standing.act.none'),
+        rule: say('automation.rule.filedIssue', { key, status: r.issue.status }),
+      },
+      { ref: key },
+    );
   }
-  return NOBODY(`triaged ${v.triage}`);
+  return NOBODY(say('automation.rule.triaged', { triage: v.triage }));
 }
 
 function reportGroupOf(r: AgentReportView, wait: AutomationWaitingOn): ReportGroup {
