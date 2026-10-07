@@ -5,6 +5,7 @@ import { StatusBadge, ToneBadge, ViewHeading } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../types";
+import { AttemptsSection } from "./release-attempts";
 import { DisclosureToggle, shortSha } from "./release-bits";
 
 const STAGE_LABEL: Record<ReleaseAttemptView["stage"], ProductCopyKey> = {
@@ -87,13 +88,14 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
-export function ChecksPane({ r }: { r: ReleaseDetail }) {
+export function ChecksPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
-  if (r.attempts.length === 0 && r.approvals.length === 0) {
+  if (r.attempts.length === 0 && r.approvals.length === 0 && r.cuts.length === 0) {
     return <p className="text-13 text-subtle">{t("releases.checksEmpty")}</p>;
   }
   return (
     <div className="grid gap-8" data-testid="view-checks">
+      <AttemptsSection r={r} slug={slug} />
       {r.approvals.length > 0 ? (
         <section aria-label={t("releases.approvals")}>
           <ViewHeading>{t("releases.approval")}</ViewHeading>

@@ -1,5 +1,5 @@
-// Which run wears a release version. Since a number an ended batch never spent is worn again by the
-// next batch (`release-batch/version-store.ts:highestSpentVersion`), several runs can carry one
+// Which run wears a release version. Since a re-cut of a roster wears the version its earlier attempt
+// wore (`release-batch/version-rule.ts:decideVersion`), several runs can carry one
 // `release_version`; every reader resolves it here, so a version names one run everywhere.
 
 import { and, eq, sql } from 'drizzle-orm';

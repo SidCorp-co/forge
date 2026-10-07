@@ -1,6 +1,6 @@
 # 0010 — A release number is spent when it leaves Forge, not when a batch opens
 
-**Status:** accepted · **Date:** 2026-10-06 · **Supersedes:** the burn rule of [0001](0001-a-release-version-is-a-counter.md) and "failed ones included" in [0005](0005-a-project-may-number-releases-as-prereleases.md)
+**Status:** superseded by [0011](0011-a-release-keeps-its-version-across-attempts.md) · **Date:** 2026-10-06 · **Supersedes:** the burn rule of [0001](0001-a-release-version-is-a-counter.md) and "failed ones included" in [0005](0005-a-project-may-number-releases-as-prereleases.md)
 
 ## Context
 
@@ -18,6 +18,7 @@ anything.
 
 ## Decision
 
+<!-- doc-citation: unchecked `packages/core/src/release-batch/version-store.ts:highestSpentVersion` — this ADR is superseded by 0011, which removed the allocator; the citation records the tree this decision was taken against -->
 **A cut number is spent when it may exist outside Forge**, and only then. The allocator,
 `packages/core/src/release-batch/version-store.ts:highestSpentVersion`, counts a release row's
 number when the run shipped, is still in flight, or recorded a promotion or a finish. Any other

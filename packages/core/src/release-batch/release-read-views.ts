@@ -8,6 +8,8 @@ import {
   type ReleaseApprovalView,
   type ReleaseAttemptView,
   type ReleaseContentGroup,
+  type ReleaseContinuation,
+  type ReleaseCutView,
   type ReleaseDetail,
   type ReleaseFeedbackView,
   type ReleaseGateView,
@@ -53,6 +55,10 @@ export interface Part {
   verification: RecordedVerification | null;
   /** The commit a finished release's probes verified live (`metadata.finish.commit`); null before. */
   commit: string | null;
+  /** Every attempt at this release, first first (`release-cuts.ts`); a draft lists those before it. */
+  cuts: ReleaseCutView[];
+  /** Where this version's roster went on under another version; null where it is its release's own. */
+  continuedAs: ReleaseContinuation | null;
 }
 
 export interface Shared {
@@ -220,6 +226,8 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     openedAt: iso(p.openedAt),
     releasedAt: iso(p.releasedAt),
     at: lastChange(p, s),
+    cutCount: p.cuts.length,
+    continuedAs: p.continuedAs,
   };
 }
 
@@ -364,6 +372,7 @@ export function detailOf(
     approvers: s.approvers,
     approvalRequired: s.required,
     attempts: p.attempts.map(attemptView),
+    cuts: p.cuts,
     production,
     verifiedBy,
     head:
