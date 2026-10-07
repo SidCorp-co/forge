@@ -318,7 +318,8 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
-  if (typeof value === 'function') return value;
+  // A function a serializer writes as nothing, unless its toJSON getter may answer otherwise later.
+  if (typeof value === 'function') return copy ? undefined : value;
   const box = unboxed(value);
   if (box) return box.value;
   if (walk.open.has(value)) return CIRCULAR;

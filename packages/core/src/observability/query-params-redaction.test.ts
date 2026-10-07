@@ -395,6 +395,16 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     const rendered = JSON.stringify(redactQueryParams({ reading }));
     expect(reads).toBe(1);
     expect(rendered).toBe('{"reading":{"note":"kept"}}');
+    for (const wrap of [(f: unknown) => f, (f: unknown) => [f]]) {
+      let asked = 0;
+      const fn = Object.defineProperty(() => 'ordinary', 'toJSON', {
+        get: () => (++asked === 1 ? undefined : () => duplicate().message),
+      });
+      const out = JSON.stringify(redactQueryParams(wrap(fn)));
+      expect(asked).toBe(1);
+      expect(out ?? '').not.toContain(HASH);
+      expect(out ?? '').not.toContain('Failed query');
+    }
   });
 
   it('reads an array as JSON does: each index once, one that throws written redacted', () => {

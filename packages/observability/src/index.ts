@@ -203,7 +203,7 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
 ): E | null {
   if (!scrubInPlace(event)) return null;
   const out = redactQueryParams(event, hint?.originalException);
-  if (out !== event) scrubInPlace(out);
+  if (out !== event && !scrubInPlace(out)) return null;
   return out;
 }
 
