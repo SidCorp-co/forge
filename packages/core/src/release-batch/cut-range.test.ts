@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GitHubClientError, type GitHubRepoClient } from '../integrations/github/client.js';
+import { resolveLiveSource } from '../projects/live-source.js';
 import type { ReleaseChain } from '../projects/release-chain.js';
 import { readRangeTo } from './cut-range.js';
 
@@ -16,6 +17,15 @@ function client(answer: (path: string) => unknown, asked: string[] = []): GitHub
   } as unknown as GitHubRepoClient;
 }
 
+/** The source the project resolves to, as `resolveLiveSource` decides it, with no deploy key held. */
+const via = (githubClient: (projectId: string) => Promise<GitHubRepoClient>) => ({
+  source: (projectId: string) =>
+    resolveLiveSource(projectId, {
+      githubClient,
+      deployKey: async () => ({ repoUrl: null, privateKeyEnc: null }),
+    }),
+});
+
 const page = (n: number, total: number, from = 0) => ({
   total_commits: total,
   commits: Array.from({ length: n }, (_, i) => ({
@@ -28,13 +38,17 @@ const page = (n: number, total: number, from = 0) => ({
 describe('readRangeTo (ISS-1386)', () => {
   it('pins the start branch to its head sha and reads live...head across pages', async () => {
     const asked: string[] = [];
-    const range = await readRangeTo('p', PROMOTE, null, {
-      client: async () =>
+    const range = await readRangeTo(
+      'p',
+      PROMOTE,
+      null,
+      via(async () =>
         client((path) => {
           if (path.endsWith('/commits/main')) return { sha: HEAD };
           return path.endsWith('&page=1') ? page(100, 150) : page(50, 150, 100);
         }, asked),
-    });
+      ),
+    );
 
     expect(range).toMatchObject({ kind: 'read', live: 'production', start: 'main', cut: HEAD });
     expect(range.kind === 'read' && range.commits).toHaveLength(150);
@@ -44,9 +58,12 @@ describe('readRangeTo (ISS-1386)', () => {
   it('reads to a cut it is given without asking for the branch head', async () => {
     const asked: string[] = [];
     const cut = 'c'.repeat(40);
-    const range = await readRangeTo('p', PROMOTE, cut, {
-      client: async () => client(() => page(0, 0), asked),
-    });
+    const range = await readRangeTo(
+      'p',
+      PROMOTE,
+      cut,
+      via(async () => client(() => page(0, 0), asked)),
+    );
 
     expect(range).toMatchObject({ kind: 'read', cut, commits: [] });
     expect(asked).toHaveLength(1);
@@ -56,12 +73,12 @@ describe('readRangeTo (ISS-1386)', () => {
     const never = async () => {
       throw new Error('asked');
     };
-    const publish = await readRangeTo('p', [{ branch: 'main' }], null, { client: never });
+    const publish = await readRangeTo('p', [{ branch: 'main' }], null, via(never));
     const picked = await readRangeTo(
       'p',
       [{ branch: 'main' }, { branch: 'production', from: 'cherry-pick' }],
       null,
-      { client: never },
+      via(never),
     );
 
     expect(publish.kind).toBe('not-read');
@@ -69,37 +86,53 @@ describe('readRangeTo (ISS-1386)', () => {
   });
 
   it('tells a project with no binding from a binding that failed', async () => {
-    const unbound = await readRangeTo('p', PROMOTE, null, {
-      client: async () => {
+    const unbound = await readRangeTo(
+      'p',
+      PROMOTE,
+      null,
+      via(async () => {
         throw new GitHubClientError('no_binding', 'bind a repository');
-      },
-    });
-    const failed = await readRangeTo('p', PROMOTE, null, {
-      client: async () =>
+      }),
+    );
+    const failed = await readRangeTo(
+      'p',
+      PROMOTE,
+      null,
+      via(async () =>
         client(() => {
           throw new Error('502 from GitHub');
         }),
-    });
+      ),
+    );
 
-    expect(unbound).toEqual({ kind: 'unbound', why: 'bind a repository' });
+    expect(unbound.kind).toBe('unbound');
+    expect(unbound.kind === 'unbound' && unbound.why).toContain(
+      'set an SSH clone URL and a deploy key',
+    );
+    expect(unbound.kind === 'unbound' && unbound.why).not.toContain('bind a repository');
     expect(failed.kind).toBe('unread');
     expect(failed.kind === 'unread' && failed.why).toContain('502 from GitHub');
   });
 
   it('answers unread where a page comes back empty before the reported total is read', async () => {
-    const range = await readRangeTo('p', PROMOTE, HEAD, {
-      client: async () =>
-        client((path) => (path.endsWith('&page=1') ? page(100, 150) : page(0, 150))),
-    });
+    const range = await readRangeTo(
+      'p',
+      PROMOTE,
+      HEAD,
+      via(async () => client((path) => (path.endsWith('&page=1') ? page(100, 150) : page(0, 150)))),
+    );
 
     expect(range.kind).toBe('unread');
     expect(range.kind === 'unread' && range.why).toMatch(/100 of the 150 commits/);
   });
 
   it('refuses to read a range longer than it pages through, rather than read part of it', async () => {
-    const range = await readRangeTo('p', PROMOTE, HEAD, {
-      client: async () => client(() => page(100, 5000)),
-    });
+    const range = await readRangeTo(
+      'p',
+      PROMOTE,
+      HEAD,
+      via(async () => client(() => page(100, 5000))),
+    );
 
     expect(range.kind).toBe('unread');
     expect(range.kind === 'unread' && range.why).toMatch(/more than 1000 commits/);

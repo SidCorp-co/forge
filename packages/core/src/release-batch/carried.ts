@@ -15,8 +15,9 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
+import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
-import { type CutRangeDeps, type RangeCommit, type ReadRange, readRangeTo } from './cut-range.js';
+import { type CutRangeDeps, type ReadRange, readRangeTo } from './cut-range.js';
 
 export const CARRIED_DECISIONS = ['ship-unverified', 'revert', 'cut-below'] as const;
 export type CarriedDecisionKind = (typeof CARRIED_DECISIONS)[number];

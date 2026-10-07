@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
+import { GIT_ACCESS } from '../git/bounded-fetch.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
+import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
 import {
   GitHubClientError,
   type GitHubRepoClient,
@@ -10,12 +11,20 @@ import {
 } from '../integrations/github/client.js';
 import { type LiveDivergence, readLiveDivergence } from '../integrations/github/live-divergence.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import type { RepositoryRoute } from './repository-reader.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =
   | { kind: 'binding'; client: GitHubRepoClient }
   | { kind: 'deploy_key'; repoUrl: string; privateKey: string }
-  | { kind: 'refused'; reason: string };
+  | {
+      kind: 'refused';
+      reason: string;
+      /** No route was declared: neither a GitHub binding nor a deploy key beside a repository URL. */
+      unbound: boolean;
+      /** The route the reason is about, so a sentence around it names the one to repair. */
+      route: RepositoryRoute;
+    };
 
 export interface DeployKeyRow {
   repoUrl: string | null;
@@ -76,32 +85,38 @@ export async function resolveLiveSource(
     return { kind: 'binding', client: await deps.githubClient(projectId) };
   } catch (err) {
     if (!(err instanceof GitHubClientError)) throw err;
-    if (err.reason !== 'no_binding') return { kind: 'refused', reason: err.message };
+    if (err.reason !== 'no_binding') {
+      return { kind: 'refused', reason: err.message, unbound: false, route: 'github' };
+    }
   }
   const row = await deps.deployKey(projectId);
   const repoUrl = row.repoUrl?.trim() ?? '';
-  if (!row.privateKeyEnc || !repoUrl) return { kind: 'refused', reason: noCredential(repoUrl) };
+  if (!row.privateKeyEnc || !repoUrl) {
+    return { kind: 'refused', reason: noCredential(repoUrl), unbound: true, route: 'deploy_key' };
+  }
+  const keyRefused = (reason: string): LiveSource => ({
+    kind: 'refused',
+    reason,
+    unbound: false,
+    route: 'deploy_key',
+  });
   if (classifyGitRemote(repoUrl) !== 'ssh') {
-    return {
-      kind: 'refused',
-      reason: `this project's repository URL ${repoUrl} is not an SSH remote, so its deploy key cannot read it — set an SSH clone URL (git@host:org/repo.git) under ${GIT_ACCESS}`,
-    };
+    return keyRefused(
+      `this project's repository URL ${repoUrl} is not an SSH remote, so its deploy key cannot read it — set an SSH clone URL (git@host:org/repo.git) under ${GIT_ACCESS}`,
+    );
   }
   if (!isVaultConfigured()) {
-    return {
-      kind: 'refused',
-      reason:
-        "this Forge has no secret vault configured (INTEGRATION_MASTER_KEY), so the project's deploy key cannot be read",
-    };
+    return keyRefused(
+      "this Forge has no secret vault configured (INTEGRATION_MASTER_KEY), so the project's deploy key cannot be read",
+    );
   }
   let privateKey: string;
   try {
     privateKey = decryptSecret(row.privateKeyEnc);
   } catch {
-    return {
-      kind: 'refused',
-      reason: `the deploy key attached to this project could not be decrypted (the vault master key may have rotated) — attach it again under ${GIT_ACCESS}`,
-    };
+    return keyRefused(
+      `the deploy key attached to this project could not be decrypted (the vault master key may have rotated) — attach it again under ${GIT_ACCESS}`,
+    );
   }
   return { kind: 'deploy_key', repoUrl, privateKey };
 }

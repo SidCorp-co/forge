@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { RANGE_COMMIT_LIMIT } from '../projects/repository-reader.js';
 import { resolveReleaseChannels } from './channel.js';
-import { RANGE_COMMIT_LIMIT } from './cut-range.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import {
   attemptReading,
