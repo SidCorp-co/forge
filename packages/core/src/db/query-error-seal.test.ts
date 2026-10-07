@@ -110,20 +110,22 @@ describe('sealQueryError', () => {
     expect(`${cause.stack}`).not.toContain('abc');
   });
 
-  it("leaves a field the driver fixed for good to the sinks, and the database's failure stands", () => {
-    const pg = Object.assign(new Error('invalid input syntax for type uuid: "zq9"'), {
+  it("empties a field the driver fixed for good, and the database's failure stands", () => {
+    const value = 'zq9-debug-bound-value';
+    const pg = Object.assign(new Error(`invalid input syntax for type uuid: "${value}"`), {
       severity: 'ERROR',
       code: '22P02',
     });
     Object.defineProperties(pg, {
       query: { value: 'select $1::uuid', enumerable: true },
-      parameters: { value: ['zq9'], enumerable: true },
-      args: { value: ['zq9'], enumerable: true },
+      parameters: { value: [value], enumerable: true },
+      args: { value: [value], enumerable: true },
     });
     expect(sealQueryError(pg)).toBe(pg);
     expect(pg.message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
     expect((pg as unknown as Record<string, unknown>).code).toBe('22P02');
-    expect(JSON.stringify(redactQueryParams(stdSerializers.err(pg), pg))).not.toContain('zq9');
+    expect(JSON.stringify(pg)).not.toContain('zq9');
+    expect(redactQueryParams({ copied: `saw ${value}` }, pg).copied).toBe(`saw ${REDACTED}`);
   });
 
   it('reads no redaction it made as a value, however often a transaction seals it', () => {

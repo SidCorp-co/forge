@@ -20,6 +20,8 @@ function markerAbsentFrom(text: string, unit = PRIVATE_USE): string {
 
 /** Errors `sealQueryError` has sealed: their own text holds no bound value and is kept as it is. */
 const sealedErrors = new WeakSet<object>();
+/** A sealed link's bound values, kept for the sinks where the driver's own array was emptied. */
+const sealedValues = new WeakMap<object, string[]>();
 
 /** Drizzle's `Failed query: <sql>\nparams: <values>`, the values running to the end of the text. */
 function failedQueryParams(held: string): RegExp {
@@ -94,6 +96,7 @@ function readChain(err: unknown): ChainReading {
     if (sealedErrors.has(link) && typeof link.message === 'string' && link.message !== REDACTED) {
       reading.sealed.push(link.message);
     }
+    reading.values.push(...(sealedValues.get(link) ?? []));
     const bound = boundValuesOf(link);
     if (bound) {
       reading.renderings.push(`${bound}`);
@@ -310,10 +313,15 @@ export function redactedMessage(err: unknown): string {
   return redactQueryParams(err instanceof Error ? err.message : String(err), err);
 }
 
-/** Leaves a field the driver fixed for good (postgres-js under `debug`) to the sinks' redaction. */
-function rewrite(target: object, key: string, value: unknown, enumerable?: boolean): void {
+/** A field the driver defined for good: postgres-js's `parameters` and `args` under `debug`. */
+function fixedForGood(target: object, key: string): boolean {
   const own = Object.getOwnPropertyDescriptor(target, key);
-  if (own && !own.configurable && !own.writable) return;
+  return own !== undefined && !own.configurable && !own.writable;
+}
+
+function rewrite(target: object, key: string, value: unknown, enumerable?: boolean): void {
+  if (fixedForGood(target, key)) return;
+  const own = Object.getOwnPropertyDescriptor(target, key);
   Object.defineProperty(target, key, {
     value,
     writable: true,
@@ -359,11 +367,14 @@ function sealLink(link: Error & Record<string, unknown>, chain: ChainReading): v
     rewrite(link, 'params', link.params, false);
   } else if (isDriverError(link)) {
     for (const [key, v] of Object.entries(link)) {
-      if (driverFieldWithheld(key, v)) rewrite(link, key, REDACTED);
+      if (!driverFieldWithheld(key, v)) continue;
+      if (fixedForGood(link, key) && Array.isArray(v)) v.splice(0, v.length);
+      else rewrite(link, key, REDACTED);
     }
     rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
   } else return;
   sealedErrors.add(link);
+  sealedValues.set(link, chain.values);
 }
 
 /**
