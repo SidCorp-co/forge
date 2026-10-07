@@ -12,6 +12,7 @@ import {
   listBindingsForProject,
   listIntegrations,
   notFound,
+  reportedBindingIdentities,
   toIso,
 } from '../integrations/index.js';
 import { hostOfRepository } from '../integrations/source-host/index.js';
@@ -242,10 +243,10 @@ function repositoryCard(
  * One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every
  * provider that declares a presentation, in registry order (ISS-1071).
  */
-function providerCards(
+async function providerCards(
   pairs: readonly BindingWithConnection[],
   deployMap: Awaited<ReturnType<typeof readDeployMap>>,
-): StatusCard[] {
+): Promise<StatusCard[]> {
   const named = pairs.map((pair) => ({
     id: pair.binding.id,
     provider: pair.binding.provider,
@@ -254,7 +255,10 @@ function providerCards(
     label: pair.binding.label ?? '',
     config: effectiveConfig(pair),
   }));
-  const names = bindingNames(named);
+  const reported = await reportedBindingIdentities(
+    named.map((row, i) => ({ ...row, connection: (pairs[i] as BindingWithConnection).connection })),
+  );
+  const names = bindingNames(named, reported);
   const rows: ProviderRow[] = pairs.map((pair, i) => ({
     ...(named[i] as (typeof named)[number]),
     name: names.get(pair.binding.id) ?? '',
@@ -298,5 +302,5 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     readDeployMap(projectId),
     readDeclaredSource(projectId),
   ]);
-  return [repositoryCard(pairs, source), ...providerCards(pairs, deployMap)];
+  return [repositoryCard(pairs, source), ...(await providerCards(pairs, deployMap))];
 }

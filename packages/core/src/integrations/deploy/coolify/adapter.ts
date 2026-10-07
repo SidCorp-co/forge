@@ -13,6 +13,7 @@ import {
   updateConnection,
   updateDelivery,
 } from '../../index.js';
+import { coolifyApplicationNames } from './app-names.js';
 import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
@@ -374,6 +375,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
       );
       return apps.length > 0 ? `app ${apps.join(', ')}` : null;
     },
+    reportedIdentities: coolifyApplicationNames,
   },
   adapter: coolifyAdapterMethods,
 });

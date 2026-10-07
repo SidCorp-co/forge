@@ -55,16 +55,21 @@ const answered: AgentQuestion = {
 };
 
 describe("answering a question on an issue", () => {
-  it("sends what the issue still waits on, and the blocking issue key, with the answer", async () => {
+  it("sends what the issue still waits on, and the blocking issue picked by its title, with the answer", async () => {
     const calls = fakeCore((call) =>
-      call.method === "GET" ? { body: { questions: [asked] } } : { body: { ...answered } },
+      call.path.includes("/issues/search")
+        ? { body: { items: [{ id: "i12", displayId: "ISS-12", title: "Intake design" }], total: 1 } }
+        : call.method === "GET"
+          ? { body: { questions: [asked] } }
+          : { body: { ...answered } },
     );
     renderWithQuery(<DecisionPanel issueId="i1" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "The issue still waits after this answer" }));
     await user.type(screen.getByRole("textbox", { name: /Your answer/ }), "intake");
     await user.type(screen.getByRole("textbox", { name: /What it still waits on/ }), " the intake design lands first ");
-    await user.type(screen.getByRole("textbox", { name: /Blocked by issue/ }), "ISS-12");
+    await user.type(screen.getByRole("combobox", { name: "Blocked by issue" }), "intake");
+    await user.click(await screen.findByRole("option", { name: /ISS-12/ }));
     await user.click(screen.getByRole("button", { name: "Send answer" }));
     await waitFor(() =>
       expect(calls).toContainEqual({

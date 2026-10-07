@@ -3,6 +3,7 @@
 // tool", suggests what the project serves, and sends the name as `endpoint` for core to check.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { FeedbackForm } from "./feedback-form";
@@ -69,6 +70,29 @@ describe("the feedback About picker", () => {
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ requirement: "REQ-3" }));
+  });
+
+  it("names an Issue About by picking it from the project's issues by key or title, never by a typed key", async () => {
+    const calls = core((c) =>
+      c.method === "POST"
+        ? { status: 201, body: { feedback: { key: "FB-4" } } }
+        : c.path.startsWith("/projects/p1/issues/search")
+          ? { body: { items: [{ id: "i52", displayId: "ISS-52", title: "Snooze by the item's owner" }], total: 1 } }
+          : undefined,
+    );
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    await waitFor(() =>
+      expect([...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.value)).toContain("issue"),
+    );
+    fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "issue" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Snooze ends early" } });
+    expect(screen.queryByPlaceholderText("ISS-12")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
+    const picker = screen.getByRole("combobox", { name: "Target" });
+    await userEvent.type(picker, "ISS-52");
+    await userEvent.click(await screen.findByRole("option", { name: /ISS-52/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ issue: "ISS-52" }));
   });
 
   it("reads what the project serves only once a route or tool is picked, and suggests it", async () => {

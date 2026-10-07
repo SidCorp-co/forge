@@ -1,4 +1,6 @@
-import { getIntegration } from './registry.js';
+import { logger } from '../lib/logger.js';
+import { getIntegration, listIntegrations } from './registry.js';
+import type { ReportedIdentityBinding } from './types.js';
 
 /** What a binding offers to be told apart by, one project's bindings at a time. */
 export interface NameableBinding {
@@ -18,8 +20,15 @@ function roleWord(role: string): string {
   return 'Deploy';
 }
 
-function identityOf(row: NameableBinding): string | null {
-  return getIntegration(row.provider)?.presentation?.bindingIdentity?.(row.config) ?? null;
+function identityOf(
+  row: NameableBinding,
+  reported: ReadonlyMap<string, string> | undefined,
+): string | null {
+  return (
+    reported?.get(row.id) ??
+    getIntegration(row.provider)?.presentation?.bindingIdentity?.(row.config) ??
+    null
+  );
 }
 
 function join(...parts: Array<string | null>): string | null {
@@ -43,10 +52,14 @@ function collisions(names: ReadonlyMap<string, string | null>): Set<string> {
  *
  * A binding alone in its role reads as its environment or label, else the role itself. Two sharing a
  * role cannot be told apart by it, so each reads as its environment or label, and one still unnamed
- * or colliding takes what its provider says it points at (a Coolify application) and, failing that,
- * its id. No two bindings of a provider and role come back with the same text.
+ * or colliding takes what its provider says it points at: the name the provider reports for it (a
+ * Coolify application's own name, `reported`), else what its config holds, and failing both its id.
+ * No two bindings of a provider and role come back with the same text.
  */
-export function bindingNames(rows: readonly NameableBinding[]): Map<string, string> {
+export function bindingNames(
+  rows: readonly NameableBinding[],
+  reported?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const out = new Map<string, string>();
   const groups = new Map<string, NameableBinding[]>();
   for (const row of rows) {
@@ -63,12 +76,43 @@ export function bindingNames(rows: readonly NameableBinding[]): Map<string, stri
     const names = new Map(group.map((row) => [row.id, own(row)] as const));
     for (const id of collisions(names)) {
       const row = group.find((r) => r.id === id) as NameableBinding;
-      names.set(id, join(own(row), identityOf(row)));
+      names.set(id, join(own(row), identityOf(row, reported)));
     }
     for (const id of collisions(names)) {
       names.set(id, join(names.get(id) ?? null, `binding ${id.slice(0, 8)}`));
     }
     for (const [id, name] of names) out.set(id, name ?? roleWord(group[0]?.role ?? 'deploy'));
   }
+  return out;
+}
+
+/** One binding with the provider that serves it, as `reportedBindingIdentities` reads it. */
+export interface ReportableBinding extends ReportedIdentityBinding {
+  provider: string;
+}
+
+/**
+ * What each provider that can be asked reports for its bindings, one answer per binding. A provider
+ * that fails to answer is logged and leaves its bindings to their config's identity.
+ */
+export async function reportedBindingIdentities(
+  bindings: readonly ReportableBinding[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  await Promise.all(
+    listIntegrations().map(async (decl) => {
+      const ask = decl.presentation?.reportedIdentities;
+      const own = bindings.filter((b) => b.provider === decl.provider);
+      if (!ask || own.length === 0) return;
+      try {
+        for (const [id, name] of await ask(own)) out.set(id, name);
+      } catch (err) {
+        logger.warn(
+          { provider: decl.provider, err: err instanceof Error ? err.message : String(err) },
+          'a provider could not report what its bindings point at; their config names them',
+        );
+      }
+    }),
+  );
   return out;
 }

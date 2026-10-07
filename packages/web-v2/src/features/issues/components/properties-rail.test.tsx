@@ -1,0 +1,90 @@
+// A field the reader cannot change says why beside it: an agent's live run holds it, or the reader
+// holds no write on the project. A greyed control with no reason is the defect this guards.
+
+import { screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fakeCore, renderWithQuery } from "@/test/render";
+import { AGENT_HOLDS_EDIT } from "../edit-lock";
+import type { IssueDetail } from "../types";
+import { IssueQuickActions } from "./issue-quick-actions";
+import { PropertiesRail } from "./properties-rail";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+const READ_ONLY = "You can read this project but not change it: a project admin can give you write access";
+
+function issue(over: Partial<IssueDetail>): IssueDetail {
+  return {
+    id: "i-52",
+    projectId: "p1",
+    displayId: "ISS-52",
+    title: "Snooze by the item's owner",
+    status: "awaiting_release",
+    priority: "medium",
+    complexity: "s",
+    agentStatus: "completed",
+    labels: [],
+    ...over,
+  } as IssueDetail;
+}
+
+function rail(detail: IssueDetail, readOnly = false) {
+  fakeCore(() => ({ body: {} }));
+  renderWithQuery(
+    <PropertiesRail
+      issue={detail}
+      slug="hop"
+      cost={undefined}
+      deps={undefined}
+      pending={false}
+      readOnly={readOnly}
+      onPatch={() => {}}
+      onTransition={() => {}}
+      moves={[]}
+    />,
+  );
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("the issue's editable fields name the refusal that disables them", () => {
+  it("says an agent's live run holds Priority and Complexity, on the controls themselves", () => {
+    rail(issue({ status: "in_progress", agentStatus: "running" }));
+    for (const name of ["Priority", "Complexity"]) {
+      const control = screen.getByRole("combobox", { name });
+      expect(control).toBeDisabled();
+      expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
+    }
+    expect(screen.getByRole("status")).toHaveTextContent(AGENT_HOLDS_EDIT);
+  });
+
+  it("says a reader without write on the project cannot change them, rather than greying them silently", () => {
+    rail(issue({}), true);
+    const control = screen.getByRole("combobox", { name: "Priority" });
+    expect(control).toBeDisabled();
+    expect(control).toHaveAccessibleDescription(READ_ONLY);
+    expect(screen.getByRole("status")).toHaveTextContent(READ_ONLY);
+  });
+
+  it("leaves the fields of a writable issue no run holds enabled, with nothing to explain", () => {
+    rail(issue({}));
+    const control = screen.getByRole("combobox", { name: "Priority" });
+    expect(control).toBeEnabled();
+    expect(control).not.toHaveAccessibleDescription();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("holds the peek's Priority under the same rule, naming it", () => {
+    fakeCore(() => ({ body: {} }));
+    renderWithQuery(
+      <IssueQuickActions issueId="i-52" status="in_progress" moves={[]} agentStatus="running" priority="medium" />,
+    );
+    const control = screen.getByRole("combobox", { name: "Priority" });
+    expect(control).toBeDisabled();
+    expect(control).toHaveAccessibleDescription(AGENT_HOLDS_EDIT);
+  });
+});
