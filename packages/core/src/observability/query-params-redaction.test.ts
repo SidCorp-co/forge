@@ -269,6 +269,10 @@ const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
         reason = text;
       })(),
   ],
+  [
+    'a toJSON inside a tagged object',
+    (text) => ({ [Symbol.toStringTag]: 'Reading', reason: { toJSON: () => text } }),
+  ],
 ];
 
 /** Whether `value` is a primitive's box, which a serializer renders through its toPrimitive. */

@@ -290,7 +290,7 @@ export interface Rendering {
 
 interface Walk extends Rendering {
   errors: Error[];
-  done: Map<object, unknown>;
+  /** The objects the walk is inside, so one that holds itself is told from one met twice. */
   open: Set<object>;
 }
 
@@ -316,14 +316,12 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (typeof value === 'function') return value;
   const box = unboxed(value);
   if (box) return box.value;
-  if (walk.done.has(value)) return walk.done.get(value);
   if (walk.open.has(value)) return CIRCULAR;
   if (value instanceof Error) walk.errors.push(value);
   if (asError) return value;
   walk.open.add(value);
   const out = renderFields(value, depth, walk, false);
   walk.open.delete(value);
-  walk.done.set(value, out);
   return out;
 }
 
@@ -375,7 +373,7 @@ export function asSerialized(
   value: unknown,
   how: Rendering = {},
 ): { value: unknown; errors: Error[] } {
-  const walk: Walk = { ...how, errors: [], done: new Map(), open: new Set() };
+  const walk: Walk = { ...how, errors: [], open: new Set() };
   return { value: render(value, '', 0, walk, true), errors: walk.errors };
 }
 
@@ -387,7 +385,6 @@ function redactRecord(
   value: Record<string, unknown>,
   chain: ChainReading | null,
   depth: number,
-  memo: Map<object, unknown>,
 ): Record<string, unknown> | null {
   const failedQuery = typeof value.query === 'string';
   const driverError = isDriverError(value);
@@ -398,44 +395,30 @@ function redactRecord(
     if (failedQuery && (key === 'params' || key === 'parameters') && Array.isArray(v))
       out = REDACTED;
     else if (driverError && driverFieldWithheld(key, v)) out = REDACTED;
-    else out = redactValue(v, chain, depth + 1, memo);
+    else out = redactValue(v, chain, depth + 1);
     if (out !== v) changed = true;
     next[key] = out;
   }
   return changed ? next : null;
 }
 
-/** A rendered `value` redacted; each object once, one that holds itself written `[Circular]`. */
-function redactValue(
-  value: unknown,
-  chain: ChainReading | null,
-  depth: number,
-  memo: Map<object, unknown>,
-): unknown {
+/** A rendered `value` redacted, which holds no hook and no value that holds itself. */
+function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
   if (typeof value === 'string') return redactText(value, chain);
   if (value === null || typeof value !== 'object') return value;
   // Past the bound nothing was read, so nothing is vouched for: the subtree goes, not through.
   if (depth > MAX_DEPTH) return REDACTED;
-  if (memo.has(value)) return memo.get(value) ?? CIRCULAR;
-  memo.set(value, undefined);
-  let out: unknown;
   if (Array.isArray(value)) {
-    const next = value.map((v) => redactValue(v, chain, depth + 1, memo));
-    out = next.some((v, i) => v !== value[i]) ? next : value;
-  } else {
-    // An Error left in a payload serializes as its enumerable properties, which for a failed
-    // query are `query`, `params` and `cause`: it is walked as that, against its own chain too.
-    const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
-    out = redactRecord(value as Record<string, unknown>, own, depth, memo) ?? value;
+    const next = value.map((v) => redactValue(v, chain, depth + 1));
+    return next.some((v, i) => v !== value[i]) ? next : value;
   }
-  memo.set(value, out);
-  return out;
+  // An Error left in a payload serializes as its enumerable properties, which for a failed query
+  // are `query`, `params` and `cause`: it is walked as that, against its own chain as well.
+  const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
+  return redactRecord(value as Record<string, unknown>, own, depth) ?? value;
 }
 
-/**
- * Every `Error` inside `value`, read from its data alone, so a sibling repeating one of its bound
- * values is read against it.
- */
+/** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */
 export function errorsWithin(value: unknown): unknown[] {
   const found: unknown[] = [];
   const seen = new Set<unknown>();
@@ -443,11 +426,7 @@ export function errorsWithin(value: unknown): unknown[] {
     if (typeof v !== 'object' || v === null || seen.has(v) || depth > MAX_DEPTH) return;
     seen.add(v);
     if (v instanceof Error) found.push(v);
-    const fields = attempt(() => Object.getOwnPropertyDescriptors(v));
-    if (fields === UNREADABLE) return;
-    for (const own of Object.values(fields)) {
-      if (own.enumerable && 'value' in own) walk(own.value, depth + 1);
-    }
+    for (const child of Object.values(v)) walk(child, depth + 1);
   };
   walk(value, 0);
   return found;
@@ -468,7 +447,7 @@ export function redactQueryParams<T>(value: T, err?: unknown): T {
   const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
   errs.push(...written.errors);
   const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
-  return redactValue(written.value, chain, 0, new Map()) as T;
+  return redactValue(written.value, chain, 0) as T;
 }
 
 /**
