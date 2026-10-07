@@ -15,6 +15,75 @@ use serde::{Deserialize, Serialize};
 
 pub const FILE: &str = "serving.json";
 
+/// One thing a handover waits on, with when it began where it is one piece of
+/// work rather than a count, so `status` reads how long it has run when it
+/// runs rather than when the daemon last reported (ISS-1223, judge j2b F5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", from = "HolderOnDisk")]
+pub struct Holder {
+    pub what: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since_ms: Option<i64>,
+}
+
+/// A holder as either build wrote it: a daemon before this one wrote a bare
+/// sentence, its running time frozen at the report that wrote it.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum HolderOnDisk {
+    Sentence(String),
+    #[serde(rename_all = "camelCase")]
+    Held {
+        what: String,
+        #[serde(default)]
+        since_ms: Option<i64>,
+    },
+}
+
+impl From<HolderOnDisk> for Holder {
+    fn from(d: HolderOnDisk) -> Self {
+        match d {
+            HolderOnDisk::Sentence(what) => Self {
+                what,
+                since_ms: None,
+            },
+            HolderOnDisk::Held { what, since_ms } => Self { what, since_ms },
+        }
+    }
+}
+
+impl From<&str> for Holder {
+    fn from(what: &str) -> Self {
+        Self {
+            what: what.to_string(),
+            since_ms: None,
+        }
+    }
+}
+
+impl Holder {
+    /// While the handover waits: how long it has run by `now_ms`.
+    fn running(&self, now_ms: i64) -> String {
+        match self.since_ms {
+            Some(since) => format!("{}, running {}", self.what, ago(now_ms, since)),
+            None => self.what.clone(),
+        }
+    }
+
+    /// After a give-up at `gave_up_ms`: how long it had run then, and nothing
+    /// about whether it still does.
+    fn as_of_give_up(&self, gave_up_ms: i64) -> String {
+        match self.since_ms {
+            Some(since) => format!(
+                "{}, which had run {} when it gave up",
+                self.what,
+                ago(gave_up_ms, since)
+            ),
+            None => self.what.clone(),
+        }
+    }
+}
+
 /// The handover the record carries, where one is under way or has given up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
@@ -26,7 +95,7 @@ pub enum DrainState {
         cause: String,
         since_ms: i64,
         bound_secs: u64,
-        outstanding: Vec<String>,
+        outstanding: Vec<Holder>,
     },
     /// The closing window of a handover: admission is refused for the seconds
     /// it takes the requests in flight to be answered.
@@ -35,7 +104,7 @@ pub enum DrainState {
         cause: String,
         since_ms: i64,
         bound_secs: u64,
-        outstanding: Vec<String>,
+        outstanding: Vec<Holder>,
     },
     /// The bound passed with work outstanding, or the new build could not be
     /// started; admission is open.
@@ -43,7 +112,7 @@ pub enum DrainState {
     Deferred {
         cause: String,
         gave_up_at_ms: i64,
-        outstanding: Vec<String>,
+        outstanding: Vec<Holder>,
         next_attempt: String,
         next_attempt_at_ms: i64,
         /// Why the exec did not happen, where that and not the bound is what
@@ -679,7 +748,7 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             "{INDENT}handing over for {cause} once its in-process work ends: {} waited, {} outstanding{}; it gives up at its first look past {}. Admission is open meanwhile, and the runs in the ledger hold nothing — they live in their panes",
             ago(now_ms, *since_ms),
             outstanding.len(),
-            listed(outstanding),
+            listed(outstanding.iter().map(|h| h.running(now_ms))),
             span_secs(*bound_secs)
         )],
         DrainState::Draining {
@@ -692,7 +761,7 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             ago(now_ms, *since_ms),
             span_secs(*bound_secs),
             outstanding.len(),
-            listed(outstanding)
+            listed(outstanding.iter().map(|h| h.running(now_ms)))
         )],
         DrainState::Deferred {
             cause,
@@ -717,17 +786,39 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
                 "{INDENT}the handover for {cause} was deferred {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
                 ago(now_ms, *gave_up_at_ms),
                 outstanding.len(),
-                listed(outstanding)
+                listed(outstanding.iter().map(|h| h.as_of_give_up(*gave_up_at_ms)))
             )]
         }
     }
 }
 
-fn listed(names: &[String]) -> String {
+fn listed(names: impl Iterator<Item = String>) -> String {
+    let names: Vec<String> = names.collect();
     if names.is_empty() {
         String::new()
     } else {
         format!(" — {}", names.join("; "))
+    }
+}
+
+/// Which of two builds is the newer, by their versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Newer {
+    /// The daemon's: this binary is not what a restart would bring it up to.
+    Daemon,
+    /// This binary's: a restart onto it turns the daemon over.
+    ThisBinary,
+    /// The versions are equal and the commits differ, so neither is.
+    Unordered,
+}
+
+fn newer(record: &Record, this_version: &str) -> Newer {
+    if crate::update::is_newer(&record.version, this_version) {
+        Newer::Daemon
+    } else if crate::update::is_newer(this_version, &record.version) {
+        Newer::ThisBinary
+    } else {
+        Newer::Unordered
     }
 }
 
@@ -780,22 +871,34 @@ pub fn lines(
         Liveness::Same => String::new(),
     };
     let same = record.version == this_version && record.commit == this_commit;
-    let mut out = vec![if same {
-        format!(
+    let order = (!same).then(|| newer(record, this_version));
+    let mut out = vec![match order {
+        None => format!(
             "daemon     pid {} serving {}, the build of this binary{unverified}",
             record.pid,
             record.build()
-        )
-    } else {
-        format!(
+        ),
+        Some(Newer::ThisBinary) => format!(
             "daemon     pid {} serving {} — NOT the build of this binary, {this_version} ({this_commit}); it has not restarted onto the file on disk{unverified}",
             record.pid,
             record.build()
-        )
+        ),
+        // A binary older than the daemon is not what a restart would bring it
+        // up to, so nothing here says it lags (ISS-1223, judge j2b F4).
+        Some(Newer::Daemon) => format!(
+            "daemon     pid {} serving {} — a NEWER build than this binary, {this_version} ({this_commit}); this binary is not the build it would restart onto{unverified}",
+            record.pid,
+            record.build()
+        ),
+        Some(Newer::Unordered) => format!(
+            "daemon     pid {} serving {} — NOT the build of this binary, {this_version} ({this_commit}), and which of the two is newer cannot be told from their versions{unverified}",
+            record.pid,
+            record.build()
+        ),
     }];
     match &record.drain {
         Some(d) => out.extend(drain_lines(d, now_ms)),
-        None if !same => out.push(format!(
+        None if order == Some(Newer::ThisBinary) => out.push(format!(
             "{INDENT}no restart is under way — `forge-runner update --restart`, or restarting the service, turns it over"
         )),
         None => {}
@@ -904,10 +1007,11 @@ pub fn turnover(
         },
     ) = &record.drain
     {
+        let now_ms = crate::daemon::agent_activity::now_ms();
         return Turnover::Draining {
             pid: record.pid,
             cause: cause.clone(),
-            outstanding: outstanding.clone(),
+            outstanding: outstanding.iter().map(|h| h.running(now_ms)).collect(),
             unverified,
         };
     }
@@ -981,11 +1085,23 @@ pub fn version_note(
     if record.version == this_version && record.commit == this_commit {
         return None;
     }
-    Some(format!(
-        "forge-runner: the daemon on this box (pid {}) is serving {}, not this build — it has not restarted onto the file on disk; `forge-runner status` says why",
-        record.pid,
-        record.build()
-    ))
+    Some(match newer(record, this_version) {
+        Newer::ThisBinary => format!(
+            "forge-runner: the daemon on this box (pid {}) is serving {}, not this build — it has not restarted onto the file on disk; `forge-runner status` says why",
+            record.pid,
+            record.build()
+        ),
+        Newer::Daemon => format!(
+            "forge-runner: the daemon on this box (pid {}) is serving {}, a newer build than this one; `forge-runner status` says more",
+            record.pid,
+            record.build()
+        ),
+        Newer::Unordered => format!(
+            "forge-runner: the daemon on this box (pid {}) is serving {}, not this build, and which of the two is newer cannot be told from their versions; `forge-runner status` says more",
+            record.pid,
+            record.build()
+        ),
+    })
 }
 
 #[cfg(test)]
@@ -1108,6 +1224,85 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("no restart is under way"), "{out}");
+    }
+
+    /// ISS-1223 criteria 31 and 32 (judge j2b F4): a binary older than the
+    /// daemon is not the build a restart would move it onto, so `status` says
+    /// the daemon serves the newer build and advises no restart. 0.17.10 is
+    /// the newer of the two: versions order by number, not by text.
+    #[test]
+    fn a_binary_older_than_the_daemon_says_the_daemon_is_newer_and_advises_no_restart() {
+        let out = joined(Ok(Some(rec("0.17.10", None))), &live_same());
+        assert!(
+            out.contains(
+                "serving 0.17.10 (abc1234) — a NEWER build than this binary, 0.17.9 (abc1234)"
+            ),
+            "{out}"
+        );
+        assert!(
+            !out.contains("has not restarted onto the file on disk"),
+            "{out}"
+        );
+        assert!(!out.contains("update --restart"), "{out}");
+        assert!(!out.contains("no restart is under way"), "{out}");
+    }
+
+    /// The same version from another commit cannot be ordered, so neither
+    /// build is called the newer and no restart is advised.
+    #[test]
+    fn a_build_that_cannot_be_ordered_advises_no_restart() {
+        let mut r = rec("0.17.9", None);
+        r.commit = "def5678".into();
+        let out = joined(Ok(Some(r)), &live_same());
+        assert!(
+            out.contains(
+                "serving 0.17.9 (def5678) — NOT the build of this binary, 0.17.9 (abc1234)"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains("which of the two is newer cannot be told from their versions"),
+            "{out}"
+        );
+        assert!(!out.contains("update --restart"), "{out}");
+    }
+
+    /// ISS-1223 criterion 34 (judge j2b F5): a waiting holder's running time
+    /// is read off its start when `status` runs, not off the daemon's last
+    /// report — 112s into the turn reads 2m, whatever the record last said.
+    #[test]
+    fn a_waiting_holders_running_time_is_read_when_status_runs() {
+        let json = format!(
+            r#"{{"state":"waiting","cause":"update 0.17.8 → 0.17.9","sinceMs":{},"boundSecs":7200,"outstanding":[{{"what":"a chat turn in session s1","sinceMs":{}}}]}}"#,
+            NOW - 90_000,
+            NOW - 112_000
+        );
+        let drain: DrainState = serde_json::from_str(&json).expect("reads");
+        let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
+        assert!(
+            out.contains("2m waited, 1 outstanding — a chat turn in session s1, running 2m;"),
+            "{out}"
+        );
+    }
+
+    /// ISS-1223 criterion 35: a handover that gave up gives each holder's
+    /// running time as it stood at the give-up, and does not say it is still
+    /// running.
+    #[test]
+    fn a_deferred_holders_running_time_is_as_of_the_give_up() {
+        let gave_up = NOW - 30 * 60_000;
+        let json = format!(
+            r#"{{"state":"deferred","cause":"c","gaveUpAtMs":{gave_up},"outstanding":[{{"what":"a chat turn in session s1","sinceMs":{}}}],"nextAttempt":"n","nextAttemptAtMs":{}}}"#,
+            gave_up - 2 * 3_600_000,
+            NOW + 60_000
+        );
+        let drain: DrainState = serde_json::from_str(&json).expect("reads");
+        let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
+        assert!(
+            out.contains("— a chat turn in session s1, which had run 2h when it gave up;"),
+            "{out}"
+        );
+        assert!(!out.contains("running"), "{out}");
     }
 
     /// ISS-1223 criterion 24: a span is rounded once, to the nearest minute,
@@ -1791,13 +1986,13 @@ mod tests {
                 cause: "update 0.17.8 → 0.17.9".into(),
                 since_ms: NOW - 7 * 60_000,
                 bound_secs: 7200,
-                outstanding: holding.clone(),
+                outstanding: vec![Holder::from(holding[0].as_str())],
             },
             DrainState::Draining {
                 cause: "update 0.17.8 → 0.17.9".into(),
                 since_ms: NOW - 3_000,
                 bound_secs: 10,
-                outstanding: holding.clone(),
+                outstanding: vec![Holder::from(holding[0].as_str())],
             },
         ] {
             assert_eq!(
@@ -2184,6 +2379,28 @@ mod tests {
         assert_eq!(
             version_note(&Ok(None), &live_same(), "0.17.9", "abc1234"),
             None
+        );
+    }
+
+    /// ISS-1223 criterion 33 (judge j2b F4): `--version` run from a binary
+    /// older than the daemon says the daemon serves a newer build, not that it
+    /// has failed to restart onto this one.
+    #[test]
+    fn the_version_note_for_a_binary_older_than_the_daemon_says_the_daemon_is_newer() {
+        let note = version_note(
+            &Ok(Some(rec("0.17.10", None))),
+            &live_same(),
+            "0.17.9",
+            "abc1234",
+        )
+        .expect("a live daemon on another build is said");
+        assert!(
+            note.contains("serving 0.17.10 (abc1234), a newer build than this one"),
+            "{note}"
+        );
+        assert!(
+            !note.contains("has not restarted onto the file on disk"),
+            "{note}"
         );
     }
 

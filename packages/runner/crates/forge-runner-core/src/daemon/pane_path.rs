@@ -85,18 +85,30 @@ pub struct Unresolved {
 impl std::fmt::Display for Unresolved {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let named: Vec<String> = self.missing.iter().map(|b| format!("`{b}`")).collect();
-        let claude_dir = match self.claude.as_deref().map(Path::new).and_then(Path::parent) {
+        let claude_dir = self.claude.as_deref().map(Path::new).and_then(Path::parent);
+        let claude_missing = self.missing.iter().any(|b| b == "claude");
+        // A person is told first what is wrong with `claude` where it is
+        // missing and resolved nowhere (ISS-1223, judge j2b F7).
+        if claude_dir.is_none() && claude_missing {
+            write!(
+                f,
+                "`claude` is not installed on this box, or not on the PATH the runner service starts with: it resolved to no absolute path. "
+            )?;
+        }
+        let claude_clause = match claude_dir {
             Some(dir) => format!(
-                "the directory of the `claude` it resolved ({})",
+                " the directory of the `claude` it resolved ({}),",
                 dir.display()
             ),
-            None => {
-                "no directory for `claude`, which this box resolved to no absolute path".to_string()
-            }
+            None if claude_missing => String::new(),
+            None => " no directory for `claude`, which resolved to no absolute path,".to_string(),
         };
+        let dirs = format!(
+            "this runner's own directory,{claude_clause} `$HOME/.local/bin` and the runner service's own PATH"
+        );
         write!(
             f,
-            "{} resolve{} in none of the directories on the PATH this box builds for a pane ({}), so no pane is placed rather than one whose hooks and commands fail. That PATH is this runner's own directory, {claude_dir}, `$HOME/.local/bin` and the runner service's own PATH: put each one in one of them",
+            "{} resolve{} in none of the directories on the PATH this box builds for a pane ({}), so no pane is placed rather than one whose hooks and commands fail. That PATH is {dirs}: put each one in one of them",
             named.join(", "),
             if self.missing.len() == 1 { "s" } else { "" },
             self.path
@@ -294,6 +306,23 @@ mod tests {
         }
     }
 
+    /// ISS-1223 criterion 36 (judge j2b F7): where the missing `claude`
+    /// resolved nowhere, the refusal opens by saying so in a person's terms,
+    /// before any list of directories.
+    #[test]
+    fn a_missing_claude_that_resolved_nowhere_is_said_first() {
+        let said = Unresolved {
+            missing: vec!["claude".into(), "node".into()],
+            path: "/a:/b".into(),
+            claude: None,
+        }
+        .to_string();
+        assert!(
+            said.starts_with("`claude` is not installed on this box, or not on the PATH the runner service starts with: it resolved to no absolute path."),
+            "{said}"
+        );
+    }
+
     /// ISS-1223 criterion 26: where `claude` resolved to no absolute path,
     /// no directory of it is on the PATH, and the refusal says so rather than
     /// naming the directory of a `claude` it resolved.
@@ -306,9 +335,6 @@ mod tests {
         }
         .to_string();
         assert!(!said.contains("the `claude` it resolved"), "{said}");
-        assert!(
-            said.contains("no directory for `claude`, which this box resolved to no absolute path"),
-            "{said}"
-        );
+        assert!(said.contains("it resolved to no absolute path"), "{said}");
     }
 }

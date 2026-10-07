@@ -3144,6 +3144,9 @@
 
 ### Fixed
 
+- **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while
+  chats close, says how often it paused new work, leaves new chats open, and never advises
+  restarting onto an older binary (ISS-1223).
 - **`forge-runner top` reads master panes under any locale.** A detail opened with Enter stays on its first page for a whole refresh, and where no model has a rate the cost reads as unread, never `$0.00` (ISS-1341, ISS-1375).
 - **A release run's page reads plainly.** Times are in your clock, a release aborted before it
   started says who aborted it and why, the roster is the run's own, and the page is one flat

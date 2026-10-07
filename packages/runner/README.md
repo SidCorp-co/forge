@@ -214,8 +214,10 @@ update applied ─▶ wait, admission OPEN ────────────�
                     checkpointed and closed            · requests in flight      (FORGE_RUNNER_CONTROL_FD)
                   · runs in the ledger hold nothing      are answered first    · connections waiting in its
                   │                                                              backlog are answered by
-                  └─ 2h and still held ─▶ deferred: never closed, nothing          the new build
-                                          stopped; next update check / re-login
+                  └─ 2h and still held ─▶ deferred: admission open again,          the new build
+                                          closed only for the closing windows
+                                          it opened; nothing stopped; next
+                                          update check / re-login
 download refused ─▶ nothing installed: the file the kernel will not run, the one that exits before
                     saying what it is, the one naming another version or commit, are refused before
                     the rename, and the path keeps the build every hook and command runs
@@ -243,7 +245,9 @@ not unix            ─▶ exit 0 for the service manager to start the new build
 - **What it waits on is this process's own work**: chat turns and messages
   into master panes running inside the daemon, each named by its session or
   pane, and parked chat sessions, which are checkpointed and closed once per
-  attempt (bounded by their 120s checkpoint budget). Runs in the ledger, bound or not,
+  attempt (bounded by their 120s checkpoint budget). Only a session parked when
+  that close began is closed: one started after it began, or sent a message
+  after it began, is left open and not counted. Runs in the ledger, bound or not,
   are not holders: they live in their panes, which the new image adopts, and
   their masters bind, answer for and close them across the handover.
 - **Admission stays open while it waits.** Runs are declared, pool jobs taken,
@@ -251,16 +255,20 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   most 10s per attempt — with a reason that says the box is handing over and
   that nothing was recorded.
 - **It speaks while it waits**: a line at the start and every 10 minutes naming
-  each turn it waits on and how long it has run. `forge-runner status` says a
-  waiting handover keeps admission open.
+  each turn it waits on and how long it has run, in whichever step it is —
+  between looks, while the parked sessions close, or inside a closing window,
+  whose line says admission is closed for it. `forge-runner status` says a
+  waiting handover keeps admission open, and gives each turn's running time as
+  of the moment it is run.
 - **It is bounded at 2h of clock time** from the moment it began. A step under
   way when the bound passes — a closing window, or the close of parked
   sessions, followed where it leaves the box idle by the one closing window
   that would hand over — runs to its end, and the give-up comes at the look
   after it, so `status` says a waiting handover gives up at its first look
   past 2h rather than that it waits at most 2h. In-process work that outlasts that defers the
-  handover — admission was never closed, and the give-up line says so and how
-  long it really waited — and no handover is attempted again for 2h. The next
+  handover — admission is open again, and the give-up line says how many
+  closing windows closed it on the way, or that none did, and how long it
+  really waited — and no handover is attempted again for 2h. The next
   attempt is the next update check, or the next re-login.
 - **Nothing is announced before it begins.** The update loop's line says the
   new release stands on disk and which build this process serves; the
@@ -297,7 +305,10 @@ Until the handover, the daemon serves the build it started on while the newer
 file stands on disk. `forge-runner status` prints both — `binary` for the file,
 `daemon` for what the running daemon recorded it serves, with its handover — and
 `forge-runner --version` adds a line on stderr when the two differ, leaving its
-stdout unchanged.
+stdout unchanged. Both compare the two versions: only where this binary's is the
+higher does either say the daemon has not restarted onto it and advise a
+restart. A daemon on a higher version than the binary run is named as the newer
+build, and two builds of one version cannot be ordered, so neither advises one.
 
 **Both lines speak about one configuration: the one this command resolves.** A
 box runs more than one daemon whenever somebody starts a second under its own
