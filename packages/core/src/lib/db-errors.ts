@@ -54,15 +54,13 @@ export function pgDriverError(err: unknown): { code: string; message: string } |
   return found;
 }
 
-/** A schema object the driver's error names, by the word Postgres puts before it in a message. */
+/** A schema object the driver's error names, and the words a Postgres message quotes it after. */
 export interface PgObjectName {
-  /** `constraint "…"`, `relation "…"` or `table "…"`, `column "…"`, `schema "…"`, `type "…"`. */
   words: readonly string[];
   name: string;
 }
 
-/** The fields a driver error names a schema object in, as postgres-js and node-postgres spell
- *  them, with the words a Postgres message quotes that object after. */
+/** Each field naming a schema object, as postgres-js and node-postgres spell it. */
 const OBJECT_NAME_FIELDS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['constraint_name', ['constraint']],
   ['constraint', ['constraint']],
@@ -76,10 +74,7 @@ const OBJECT_NAME_FIELDS: ReadonlyArray<readonly [string, readonly string[]]> = 
   ['dataType', ['type']],
 ];
 
-/**
- * The schema objects the driver's error names — constraint, table, column, schema, type — longest
- * name first. A name is the schema's own text, never a value of the statement.
- */
+/** Longest name first; a name is the schema's own text, never a value of the statement. */
 export function pgObjectNames(err: unknown): PgObjectName[] {
   const found = new Map<string, PgObjectName>();
   for (const link of causeChain(err)) {

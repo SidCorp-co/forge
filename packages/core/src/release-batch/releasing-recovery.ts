@@ -94,10 +94,7 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
   return { kind: 'failed', message: failureMessage(err) };
 }
 
-/**
- * A close that failed short of a decision, in words that never carry the statement or a value bound
- * to it (ISS-1381 r2).
- */
+/** A close that failed short of a decision, without its statement or a bound value (ISS-1381 r2). */
 function failureMessage(err: unknown): string {
   const driver = pgDriverError(err);
   if (driver) {
