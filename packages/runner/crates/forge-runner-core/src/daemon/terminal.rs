@@ -393,17 +393,18 @@ async fn ensure_server() -> bool {
 /// `exit-empty` takes the server with the last of them, and a master that
 /// exited reads as a tmux nobody could ask rather than as gone, so its exit is
 /// never recorded and the next sweep places another on its name (ISS-1344 r4,
-/// from ISS-1382's judge). `tail -f /dev/null`, because BSD `sleep` takes no
-/// `infinity`.
+/// from ISS-1382's judge). A shell sleeping in a loop, because BSD `sleep`
+/// takes no `infinity`, and `tail -f /dev/null` gives up on a character device
+/// the first time another process writes to it, which a loaded box does at once.
 async fn hold_the_keepalive_here() {
     let started = tmux(&[
         "new-session",
         "-d",
         "-s",
         KEEPALIVE,
-        "tail",
-        "-f",
-        "/dev/null",
+        "sh",
+        "-c",
+        "while :; do sleep 86400; done",
     ])
     .await;
     let refused = match &started {
@@ -2339,15 +2340,17 @@ done
             .await
             .expect("the master is placed");
         let held = names_with_prefix("").await.contains(&KEEPALIVE.to_string());
+        // Read as the sweep reads, until the master's exit is read as one: a tmux slow to answer
+        // under a loaded test run reads `Unanswered` for a moment, and only a server that is
+        // gone reads it for the whole wait.
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
-        while pane_pid(&name).await.is_some() {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "the master never exited"
-            );
+        let read = loop {
+            let read = crate::daemon::recovery_ports::pane_presence(&name).await;
+            if read == MasterPresence::Gone || std::time::Instant::now() >= deadline {
+                break read;
+            }
             tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        let read = crate::daemon::recovery_ports::pane_presence(&name).await;
+        };
         assert!(
             held && read == MasterPresence::Gone,
             "the keepalive is held: {held}; a master that exited reads {read:?}, not Gone"
