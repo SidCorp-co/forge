@@ -360,6 +360,8 @@ export interface ReleaseGateOwner {
 	who: string;
 	/** Lower-case after the name: "write the release note on ISS-6, ISS-11". */
 	act: string;
+	/** What doing the act changes, where the act's own words leave that open. */
+	effect?: string;
 }
 
 export interface ReleaseGateView {

@@ -14,7 +14,7 @@ import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease, useReleases } from "../hooks";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
-import { ReleaseFacts } from "./release-facts";
+import { ReleaseFacts, ReleasePhoneStanding } from "./release-facts";
 import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
 
 const LABEL: Record<ReleaseTab, string> = {
@@ -53,6 +53,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
           >
             <DetailMobileTitle title={`Release ${r.version}`} badge={<StatusBadge family="releaseState" value={r.state} />} />
             <ReleaseBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <ReleasePhoneStanding r={r} forecast={forecastQ.data} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="release-tabs" />
             {tab === "issues" ? (
               <IssuesPane r={r} slug={slug} />

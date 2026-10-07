@@ -78,6 +78,7 @@ export function RequirementBanner({ standing, children, className }: { standing:
       head={done ? (standing.state === "accepted" ? "Accepted." : "Dropped.") : stuck ? "Stuck:" : `Waiting on ${w.kind === "you" ? "you" : w.who}:`}
       body={done ? "Nothing is owed on it." : stuck ? "no owner; someone has to take it." : w.act}
       rule={w.rule}
+      effect={w.effect}
       className={className}
     >
       {children}

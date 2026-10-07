@@ -133,7 +133,7 @@ export default function ProjectOverviewPage() {
         <AttentionQueue items={attention} slug={project.slug} />
 
         <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
-          <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} />
+          <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
           <LateItems rows={lateRows(rows)} />
         </div>
 

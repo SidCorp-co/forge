@@ -9,6 +9,7 @@ import { SectionTitle } from "@/design/primitives/heading";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import type { EtaClock } from "@/features/forecast/eta";
 import { spanText } from "@/features/forecast/text";
+import { releaseHref } from "@/lib/routes/releases";
 import type { PlanRow } from "../ba-derive";
 
 const GRID = "grid grid-cols-[84px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-3.5 max-md:grid-cols-[auto_minmax(0,1fr)]";
@@ -32,7 +33,36 @@ function lateText(row: PlanRow): string {
   return `Waiting on ${who} · ${by} over a day`;
 }
 
-export function LandsThisWeek({ rows, clock }: { rows: PlanRow[]; clock: EtaClock }) {
+type Block = { kind: "row"; row: PlanRow } | { kind: "cut"; version: string; who: string; rows: PlanRow[] };
+
+/** Rows waiting on the same release cut sit under one line naming the release and who cuts it; a lone one stays a row. */
+export function landBlocks(rows: readonly PlanRow[]): Block[] {
+  const byVersion = new Map<string, PlanRow[]>();
+  for (const r of rows) if (r.release) byVersion.set(r.release.version, [...(byVersion.get(r.release.version) ?? []), r]);
+  const blocks: Block[] = [];
+  const placed = new Set<string>();
+  for (const r of rows) {
+    const same = r.release ? (byVersion.get(r.release.version) ?? []) : [];
+    if (!r.release || same.length < 2) blocks.push({ kind: "row", row: r });
+    else if (!placed.has(r.release.version)) {
+      placed.add(r.release.version);
+      blocks.push({ kind: "cut", version: r.release.version, who: r.release.who, rows: same });
+    }
+  }
+  return blocks;
+}
+
+function PlanItem({ r, clock }: { r: PlanRow; clock: EtaClock }) {
+  return (
+    <li className={ROW} data-testid="plan-row" data-key={r.key}>
+      <Key row={r} />
+      <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title}</span>
+      <EtaCell eta={r.eta} clock={clock} />
+    </li>
+  );
+}
+
+export function LandsThisWeek({ rows, clock, slug }: { rows: PlanRow[]; clock: EtaClock; slug: string }) {
   return (
     <section aria-label="Lands this week" data-testid="lands-this-week">
       <SectionTitle className="fg-h3 mb-2">Lands this week{rows.length > 0 ? ` ${rows.length}` : ""}</SectionTitle>
@@ -40,13 +70,28 @@ export function LandsThisWeek({ rows, clock }: { rows: PlanRow[]; clock: EtaCloc
         <p className="text-13 text-muted">Nothing is forecast to land this week.</p>
       ) : (
         <ul className="m-0 list-none border-t border-line-subtle p-0">
-          {rows.map((r) => (
-            <li key={`${r.kind}:${r.key}`} className={ROW} data-testid="plan-row" data-key={r.key}>
-              <Key row={r} />
-              <span className="min-w-0 truncate text-13 text-fg max-md:col-span-2 max-md:row-start-2">{r.title}</span>
-              <EtaCell eta={r.eta} clock={clock} />
-            </li>
-          ))}
+          {landBlocks(rows).map((b) =>
+            b.kind === "row" ? (
+              <PlanItem key={`${b.row.kind}:${b.row.key}`} r={b.row} clock={clock} />
+            ) : (
+              <li key={`cut:${b.version}`} data-testid="lands-when-cut">
+                <details className="border-b border-line-subtle">
+                  <summary className="cursor-pointer select-none py-2.5 text-13 font-semibold text-fg">
+                    {b.rows.length} land when{" "}
+                    <Link className="text-link hover:underline" href={releaseHref(slug, b.version)} onClick={(e) => e.stopPropagation()}>
+                      {b.version}
+                    </Link>{" "}
+                    is cut — waits on {b.who}
+                  </summary>
+                  <ul className="m-0 list-none p-0">
+                    {b.rows.map((r) => (
+                      <PlanItem key={`${r.kind}:${r.key}`} r={r} clock={clock} />
+                    ))}
+                  </ul>
+                </details>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </section>

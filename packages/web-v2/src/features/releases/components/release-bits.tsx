@@ -120,7 +120,7 @@ export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: 
     : stuck
       ? `${w.who}: ${w.act}`
       : w.act;
-  return <WaitBanner tone={BANNER_TONE[r.attentionGroup]} head={head} body={body} rule={w.rule || undefined} className={className} />;
+  return <WaitBanner tone={BANNER_TONE[r.attentionGroup]} head={head} body={body} rule={w.rule || undefined} effect={w.effect} className={className} />;
 }
 
 export function RefusalText({ error }: { error: unknown }) {

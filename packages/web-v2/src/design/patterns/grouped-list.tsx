@@ -52,6 +52,8 @@ export interface ListRowView {
   dim?: boolean;
   /** The ETA cell, drawn where the list declares an ETA column. */
   eta?: ReactNode;
+  /** A sentence under the facts line that wraps instead of being cut: what the row's act changes. */
+  note?: ReactNode;
 }
 
 /** One grid template for the header and every row, so the columns line up without a table. */
@@ -170,6 +172,11 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
                 {p}
               </span>
             ))}
+          </span>
+        ) : null}
+        {v.note ? (
+          <span className="mt-0.5 block text-12 text-muted" data-testid="row-note">
+            {v.note}
           </span>
         ) : null}
       </span>

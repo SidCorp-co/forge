@@ -17,6 +17,8 @@ export interface WaitingOnView {
   who: string;
   act: string;
   rule?: string;
+  /** What doing the act changes, in one sentence. */
+  effect?: string;
 }
 
 export interface WaitingOnProps {
@@ -67,19 +69,26 @@ export interface WaitBannerProps {
   head: string;
   body: ReactNode;
   rule?: string;
+  /** What doing the act changes: one quieter line under the body. */
+  effect?: string | undefined;
   children?: ReactNode;
   className?: string;
   testId?: string;
 }
 
 /** A single tinted line, never a box: whom it waits on and for what. */
-export function WaitBanner({ tone, head, body, rule, children, className, testId }: WaitBannerProps) {
+export function WaitBanner({ tone, head, body, rule, effect, children, className, testId }: WaitBannerProps) {
   const c = bannerColours(tone);
   return (
     <div className={cn("flex items-start gap-2.5 px-3 py-[9px] text-13", className)} style={{ background: c.bg }} data-testid={testId ?? "wait-banner"} title={rule}>
       <span aria-hidden className="mt-1.5 size-2 flex-none rounded-full" style={{ background: c.dot }} />
       <div className="min-w-0 flex-1">
         <span className="font-bold">{head}</span> {body}
+        {effect ? (
+          <span className="mt-0.5 block text-12-5 text-muted" data-testid="wait-effect">
+            {effect}
+          </span>
+        ) : null}
         {children ? <span className="mt-1 block">{children}</span> : null}
       </div>
     </div>

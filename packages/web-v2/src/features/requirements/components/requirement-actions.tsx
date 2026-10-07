@@ -115,8 +115,8 @@ export function PrimaryActions({
         projectId={projectId}
         reqKey={d.key}
         label="Update to the approved design"
-        tip={`Follows ${moved.join(", ")} from now on; its criteria are re-checked against it`}
-        consequence={`The requirement will follow ${moved.join(", ")}, and its criteria are re-checked against it.`}
+        tip={s.waitingOn.effect ?? `Records that it follows ${moved.join(", ")} from now on`}
+        consequence={`Records that this requirement follows ${moved.join(", ")} from now on. Its wording and criteria do not change.`}
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
