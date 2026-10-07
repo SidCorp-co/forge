@@ -18,8 +18,11 @@ import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import {
+  contractWaitUnsettledSql,
+  designUnapprovedSql,
   heldReleaseWait,
   holderFanout,
+  holdingBlockerSeqsSql,
   type LeaseReading,
   landedWait,
   leaseIsReleasable,
@@ -29,8 +32,10 @@ import {
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
+  type StrandWithheld,
   strandReason,
   strandRuleFor,
+  withheldWait,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
@@ -69,7 +74,14 @@ export interface StrandRecord {
   owes: string;
   reason: string;
   lease: string;
-  evidence: { merged: boolean; everRan: boolean; poolHasRunner: boolean; leaseFanout: number };
+  evidence: {
+    merged: boolean;
+    everRan: boolean;
+    poolHasRunner: boolean;
+    leaseFanout: number;
+    /** What withholds it from dispatch, where anything does. */
+    withheld?: StrandWithheld;
+  };
 }
 
 export interface CandidateRow {
@@ -89,6 +101,10 @@ export interface CandidateRow {
   /** The standing `release_holds` row, built from its NOT NULL columns. */
   release_hold: ReleaseHold | null;
   ever_ran: boolean;
+  /** `iss_seq` of each blocker whose live `blocks` edge holds the row. */
+  held_by: number[];
+  design_unapproved: boolean;
+  contract_unsettled: boolean;
   cursor_ts: string;
 }
 
@@ -138,7 +154,11 @@ export async function reconcileIdleIssues(
     const rewrite = release || !unchangedStrand(row.strand, judged.record);
     const stands = rewrite ? await writeStrand({ row, record: judged.record, release, now }) : true;
     if (stands && release) result.leasesReleased += 1;
-    if (stands) result.reported += await surface({ row, record: judged.record, admins });
+    // a withheld row waits on what withholds it, which the sweep reads on its own row: nobody is
+    // told this one is stranded, while the finding on it still names what it waits on
+    if (stands && judged.record.owes !== 'blocker') {
+      result.reported += await surface({ row, record: judged.record, admins });
+    }
   }
 
   result.cleared = await clearRecovered(now, scope);
@@ -175,6 +195,7 @@ function judge(
     return null;
   }
 
+  const withheld = withheldOf(row);
   const evidence: StrandEvidence = {
     merged: row.merged_at !== null,
     everRan: row.ever_ran,
@@ -182,11 +203,13 @@ function judge(
     lease,
     releaseHold: row.release_hold,
     step: row.step,
+    withheld,
   };
   const { reason, owes } = strandReason({ status: row.status, rule, evidence });
   const waitingFor =
     heldReleaseWait(row.status, evidence.releaseHold)?.waitingFor ??
     landedWait(row.status, evidence)?.waitingFor ??
+    (owes === 'blocker' ? withheldWait(row.status, withheld)?.waitingFor : undefined) ??
     rule.waitingFor;
   return {
     lease,
@@ -204,9 +227,17 @@ function judge(
         everRan: evidence.everRan,
         poolHasRunner: evidence.poolHasRunner,
         leaseFanout: lease.fanout,
+        ...(withheld ? { withheld } : {}),
       },
     },
   };
+}
+
+/** What withholds the row from dispatch, as the candidate read took it; null where nothing does. */
+function withheldOf(row: CandidateRow): StrandWithheld | null {
+  const blockers = (row.held_by ?? []).map((seq) => formatIssueRef(row.issue_prefix, seq));
+  if (blockers.length === 0 && !row.design_unapproved && !row.contract_unsettled) return null;
+  return { blockers, design: row.design_unapproved, contract: row.contract_unsettled };
 }
 
 function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): StrandRecord {
@@ -255,7 +286,12 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
               FROM release_holds h
              WHERE h.issue_id = i.id AND h.cleared_at IS NULL) AS release_hold,
            i.updated_at::text AS cursor_ts,
-           EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
+           EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran,
+           -- the admissible list's own withholding predicates (devices/admissible.ts), so the
+           -- finding never says a dispatch is missing on a row no dispatch would be handed
+           ${holdingBlockerSeqsSql({ issueId: sql`i.id`, projectId: sql`i.project_id` })} AS held_by,
+           ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
+           ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})

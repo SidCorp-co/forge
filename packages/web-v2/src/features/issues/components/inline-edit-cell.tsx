@@ -8,8 +8,9 @@ import type { IssueMove } from "@forge/contracts/issue-machine";
 
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Menu, NativeSelect, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
-import { statusLabel, transitionLabels } from "../derive";
-import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { agentHoldsMove, heldByAgent } from "../edit-lock";
 import { useStatusTone } from "../release-approval";
 import type { ParkReading } from "../derive";
 import { type ParkMenuActions, parkMenuItems } from "../park";
@@ -88,14 +89,15 @@ function ordinaryItems(args: {
   status: IssueStatus;
   grouped: readonly IssueMove[];
   onTransition: (toStatus: IssueStatus) => void;
+  t: Copy;
+  statusWord: (s: IssueStatus) => string;
 }): MenuItem[] {
-  const { status, grouped, onTransition } = args;
+  const { status, grouped, onTransition, t, statusWord } = args;
   if (grouped.length === 0) {
-    return [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
+    return [{ label: t("issues.status.noMove", { status: statusWord(status) }), disabled: true }];
   }
-  const names = transitionLabels(grouped.map((g) => g.to));
-  return grouped.map((g, i) => ({
-    label: names[i],
+  return grouped.map((g) => ({
+    label: statusWord(g.to),
     danger: g.kind === "discard",
     separatorBefore: g.startsGroup,
     onSelect: () => onTransition(g.to),
@@ -132,13 +134,16 @@ export function StatusEdit({
   park,
 }: StatusEditProps) {
   const tone = useStatusTone(status);
+  const t = useCopy();
+  const L = useLabel();
+  const statusWord = (s: IssueStatus) => L("issueStatus", s);
   const grouped = moves;
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
   if (held) {
-    items = [{ label: AGENT_HOLDS_MOVE, disabled: true }];
+    items = [{ label: agentHoldsMove(t), disabled: true }];
   } else {
-    items = ordinaryItems({ status, grouped, onTransition });
+    items = ordinaryItems({ status, grouped, onTransition, t, statusWord });
     const parkItems = park
       ? parkMenuItems({
           status,
@@ -146,6 +151,7 @@ export function StatusEdit({
           reading: park.reading,
           ordinary: items,
           actions: park.actions,
+          words: { t, status: statusWord },
         })
       : null;
     if (parkItems) items = parkItems;
@@ -159,7 +165,7 @@ export function StatusEdit({
       trigger={
         <button
           type="button"
-          aria-label={`Change status (currently ${statusLabel(status)})`}
+          aria-label={t("issues.status.change", { status: statusWord(status) })}
           className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           {chip}

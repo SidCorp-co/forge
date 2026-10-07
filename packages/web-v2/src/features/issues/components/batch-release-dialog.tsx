@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner, Button, SlideOver } from "@/design";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useBatchRelease } from "../hooks";
 
 /** Minimal issue shape required by the dialog — avoids coupling to the full IssueRow. */
@@ -31,6 +32,7 @@ export function BatchReleaseDialog({
   openRef.current = open;
   const showsRefusal = useCallback(() => openRef.current, []);
   const batch = useBatchRelease(projectId, { showsRefusal });
+  const t = useCopy();
   const { reset, isPending } = batch;
   const [refusal, setRefusal] = useState<{ message: string; tries: number } | null>(null);
 
@@ -64,13 +66,12 @@ export function BatchReleaseDialog({
     <SlideOver
       open={open}
       onClose={onClose}
-      title="Batch release"
+      title={t("issues.bulk.batchRelease")}
       width={400}
     >
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-fg">
-          The following {selectedIssues.length === 1 ? "issue" : `${selectedIssues.length} issues`} will
-          be merged, deployed, and closed in one batch release. This cannot be undone.
+          {selectedIssues.length === 1 ? t("issues.batch.leadOne") : t("issues.batch.leadMany", { n: selectedIssues.length })}
         </p>
 
         <ul className="flex flex-col gap-1.5 rounded-lg border border-line bg-canvas p-3">
@@ -87,9 +88,9 @@ export function BatchReleaseDialog({
           <div role="alert">
             <Banner tone="danger">
               {isPending ? (
-                <p className="font-medium">Sending try {refusal.tries + 1}…</p>
+                <p className="font-medium">{t("issues.batch.sendingTry", { n: refusal.tries + 1 })}</p>
               ) : refusal.tries > 1 ? (
-                <p className="font-medium">Try {refusal.tries} failed as well.</p>
+                <p className="font-medium">{t("issues.batch.tryFailed", { n: refusal.tries })}</p>
               ) : null}
               <p>{inlineCode(refusal.message)}</p>
             </Banner>
@@ -103,7 +104,7 @@ export function BatchReleaseDialog({
             onClick={onClose}
             disabled={batch.isPending}
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             variant="primary"
@@ -112,7 +113,7 @@ export function BatchReleaseDialog({
             loading={batch.isPending}
             onClick={handleConfirm}
           >
-            Release {selectedIssues.length > 0 ? `${selectedIssues.length} ` : ""}now
+            {selectedIssues.length > 0 ? t("issues.batch.releaseN", { n: selectedIssues.length }) : t("issues.batch.releaseNow")}
           </Button>
         </div>
       </div>

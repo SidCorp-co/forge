@@ -1,3 +1,6 @@
+"use client";
+
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface WaffleCategory {
@@ -21,6 +24,7 @@ export interface WaffleProps {
  */
 export function Waffle({ categories, perCell, className }: WaffleProps) {
   const total = categories.reduce((n, c) => n + c.count, 0);
+  const t = useCopy();
   if (total === 0) return null;
 
   const per = perCell ?? Math.max(1, Math.ceil(total / 240));
@@ -47,7 +51,7 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
       </div>
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
         {categories.map((c) => {
-          const name = `${c.label}: ${c.count} ${c.count === 1 ? "issue" : "issues"}`;
+          const name = t(c.count === 1 ? "common.waffle.one" : "common.waffle.many", { label: c.label, n: c.count });
           const swatch = (
             <span
               aria-hidden
@@ -68,7 +72,7 @@ export function Waffle({ categories, perCell, className }: WaffleProps) {
                 <button
                   type="button"
                   onClick={c.onOpen}
-                  aria-label={`${name} — open the list`}
+                  aria-label={t("common.openTheList", { what: name })}
                   className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
                   {body}

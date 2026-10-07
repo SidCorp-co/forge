@@ -6,6 +6,7 @@
 
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from "@forge/contracts/attachments";
 import { Banner, Icon, IconButton } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -79,6 +80,7 @@ export function useStagedFiles({
   maxFiles?: number;
 }) {
   const [files, setFiles] = useState<File[]>([]);
+  const t = useCopy();
   const [warnings, setWarnings] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,25 +92,23 @@ export function useStagedFiles({
     const errs: string[] = [];
     for (const f of Array.from(picked)) {
       if (f.size <= 0) {
-        errs.push(`Empty file skipped: ${f.name || "(unnamed)"}`);
+        errs.push(t("issues.files.empty", { name: f.name || t("issues.files.unnamed") }));
       } else if (f.size > maxBytes) {
-        errs.push(`Too large (max ${+(maxBytes / 1024 / 1024).toFixed(1)} MB): ${f.name || "(unnamed)"}`);
+        errs.push(t("issues.files.tooLarge", { mb: +(maxBytes / 1024 / 1024).toFixed(1), name: f.name || t("issues.files.unnamed") }));
       } else if (!(allowed.has(f.type) || f.type === "" || f.type.startsWith("text/"))) {
-        errs.push(`File type not allowed: ${f.name || f.type}`);
+        errs.push(t("issues.files.typeNotAllowed", { name: f.name || f.type }));
       } else {
         accepted.push(f);
       }
     }
     const chosen = files.length + accepted.length;
     if (unit === "issue" && chosen > ISSUE_CREATE_ATTACHMENTS_MAX) {
-      errs.push(
-        `An issue takes at most ${ISSUE_CREATE_ATTACHMENTS_MAX} files; ${chosen} chosen. Remove some, or attach the rest to a comment once it is filed.`,
-      );
+      errs.push(t("issues.files.tooManyIssue", { max: ISSUE_CREATE_ATTACHMENTS_MAX, chosen }));
       setWarnings(errs);
       return;
     }
     if (maxFiles !== undefined && chosen > maxFiles) {
-      errs.push(`This item takes ${Math.max(maxFiles, 0)} more file${maxFiles === 1 ? "" : "s"}; ${chosen} chosen. Remove some.`);
+      errs.push(t("issues.files.tooManyItem", { room: Math.max(maxFiles, 0), chosen }));
       setWarnings(errs);
       return;
     }
@@ -119,7 +119,7 @@ export function useStagedFiles({
         const unique = uniqueStagedName(f.name, used);
         used.add(nameKey(unique));
         if (unique === f.name) return f;
-        errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
+        errs.push(t("issues.files.renamed", { from: f.name, to: unique }));
         return new File([f], unique, { type: f.type });
       });
     }
@@ -204,6 +204,7 @@ export function StagedFileList({
   remove: (index: number) => void;
   spaced?: boolean;
 }) {
+  const t = useCopy();
   const banner = warnings.length > 0 && (
     <Banner tone="attention">
       <ul className="space-y-0.5">
@@ -236,7 +237,7 @@ export function StagedFileList({
                 type="button"
                 icon="x"
                 size="sm"
-                aria-label={`Remove ${f.name}`}
+                aria-label={t("issues.toolbar.removeChip", { label: f.name })}
                 onClick={() => remove(i)}
               />
             </li>

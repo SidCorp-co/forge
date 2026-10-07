@@ -15,16 +15,15 @@ import { EtaInline } from "@/features/forecast/components/eta-cell";
 import { etaOfForecast } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { useEtaClock, useIssueForecast } from "@/features/forecast/hooks";
-import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
+import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
-import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { releaseHref } from "@/lib/routes/releases";
-import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
   IssueCostSummary,
@@ -49,12 +48,6 @@ function categoryOptions(current: string | null, language: string, notSet: strin
     { value: "", label: notSet },
     ...values.map((value) => ({ value, label: enumLabel("category", value, language) })),
   ];
-}
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toISOString().slice(0, 10);
 }
 
 /** Total tokens an issue consumed across every session, compacted for the rail
@@ -103,6 +96,7 @@ function MergeMarkBadge({
   landing?: string | null;
   landingShape?: LandingShape | null;
 }) {
+  const t = useCopy();
   if (mark === "landed") {
     // ISS-1327 — the landing is the evidence, so it is shown as text rather than kept on a hover
     // that keyboard, touch and screen-reader users never reach.
@@ -119,7 +113,7 @@ function MergeMarkBadge({
   }
   if (mark === "observed") {
     return (
-      <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
+      <span title={t("issues.merge.observed", { sha: commitSha ?? t("issues.merge.aCommit") })}>
         <StatusBadge family="mergeMark" value="observed" />
       </span>
     );
@@ -130,8 +124,8 @@ function MergeMarkBadge({
         title={
           // Outside git no change request is the normal record; what the mark lacks is a landing.
           landingShape === "outside_git"
-            ? "This mark names no landing — it says the work shipped, not where it landed"
-            : "Forge holds no merged change request for this issue — this mark is a claim it recorded, not a merge it witnessed"
+            ? t("issues.merge.noLanding")
+            : t("issues.merge.asserted")
         }
       >
         <StatusBadge family="mergeMark" value="asserted" />
@@ -194,12 +188,13 @@ function DepList({
 }
 
 function ExpiredEdge({ edge, self }: { edge: IssueDependencyEdge; self: string }) {
+  const t = useCopy();
   const isFromSelf = edge.fromIssueId === self;
   const other = isFromSelf ? edge.toIssueId : edge.fromIssueId;
   const otherDisplayId = (isFromSelf ? edge.toDisplayId : edge.fromDisplayId) ?? other.slice(0, 8);
   return (
     <span className="fg-caption text-muted line-through decoration-1">
-      {edge.kind} {otherDisplayId} · expired
+      {t(`issues.relation.${edge.kind}`)} {otherDisplayId} · {t("issues.relation.expired")}
     </span>
   );
 }
@@ -243,7 +238,6 @@ export function PropertiesRail({
   park,
   moves,
 }: PropertiesRailProps) {
-  const copy = useCopy();
   const language = useInterfaceLanguage();
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const clock = useEtaClock();
@@ -262,10 +256,15 @@ export function PropertiesRail({
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
   const refusalId = useId();
+  const t = useCopy();
+  const time = useTimeFormat();
+  const priorityOptions = usePriorityOptions();
+  const complexityOptions = useComplexityOptions();
+  const day = (iso: string) => (Number.isNaN(new Date(iso).getTime()) ? "—" : time.date(iso));
   const refusal: EditRefusal | null = held
-    ? { id: refusalId, text: AGENT_HOLDS_EDIT }
+    ? { id: refusalId, text: agentHoldsEdit(t) }
     : readOnly
-      ? { id: refusalId, text: productCopy()("issues.edit.readOnly") }
+      ? { id: refusalId, text: t("issues.edit.readOnly") }
       : null;
   const runChip = runStatusChip(issue);
   const tokens = totalTokens(cost);
@@ -280,7 +279,7 @@ export function PropertiesRail({
           {refusal.text}
         </p>
       )}
-      <Row label="Status">
+      <Row label={t("issues.field.status")}>
         <StatusEdit
           status={issue.status}
           step={issue.workState?.step ?? null}
@@ -298,7 +297,7 @@ export function PropertiesRail({
       )}
       {issue.shippedIn ? (
         <div data-testid="rail-shipped-in">
-          <Row label={copy("issues.shippedIn")}>
+          <Row label={t("issues.shippedIn")}>
             <Link href={releaseHref(slug, issue.shippedIn.version)} className="font-mono text-12 text-link hover:underline">
               {issue.shippedIn.version}
             </Link>
@@ -306,44 +305,44 @@ export function PropertiesRail({
         </div>
       ) : null}
       {runChip && (
-        <Row label="Run">
+        <Row label={t("issues.rail.run")}>
           <StatusChip status={runChip} size="sm" domain="session" />
         </Row>
       )}
-      <Row label="Priority">
+      <Row label={t("issues.field.priority")}>
         <InlineSelect
-          ariaLabel="Priority"
+          ariaLabel={t("issues.field.priority")}
           value={issue.priority}
-          options={PRIORITY_OPTIONS}
+          options={priorityOptions}
           disabled={pending}
           refusal={refusal}
           onCommit={(p) => onPatch({ priority: p as IssuePriority })}
           className="w-36"
         />
       </Row>
-      <Row label="Complexity">
+      <Row label={t("issues.field.complexity")}>
         <InlineSelect
-          ariaLabel="Complexity"
+          ariaLabel={t("issues.field.complexity")}
           value={issue.complexity ?? ""}
-          options={COMPLEXITY_OPTIONS}
+          options={complexityOptions}
           disabled={pending}
           refusal={refusal}
           onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
           className="w-36"
         />
       </Row>
-      <Row label={copy("issues.category.label")}>
+      <Row label={t("issues.category.label")}>
         <InlineSelect
-          ariaLabel={copy("issues.category.label")}
+          ariaLabel={t("issues.category.label")}
           value={issue.category ?? ""}
-          options={categoryOptions(issue.category ?? null, language, copy("issues.category.notSet"))}
+          options={categoryOptions(issue.category ?? null, language, t("issues.category.notSet"))}
           disabled={pending}
           refusal={refusal}
           onCommit={(c) => onPatch({ category: c === "" ? null : c })}
           className="w-36"
         />
       </Row>
-      <Row label="Creator">
+      <Row label={t("issues.field.creator")}>
         <div className="flex items-center justify-end gap-2">
           <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
           <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue)}>
@@ -352,7 +351,7 @@ export function PropertiesRail({
         </div>
       </Row>
       {hasModule && (
-        <Row label="Module">
+        <Row label={t("issues.field.module")}>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {primaryModule && <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>}
             {secondaryModules.map((m) => (
@@ -360,14 +359,14 @@ export function PropertiesRail({
             ))}
             {onEditModules && (
               <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
-                Edit
+                {t("issues.rail.edit")}
               </Button>
             )}
           </div>
         </Row>
       )}
       {plainLabels.length > 0 && (
-        <Row label="Labels">
+        <Row label={t("issues.rail.labels")}>
           <div className="flex flex-wrap justify-end gap-1.5">
             {plainLabels.map((l) => (
               <MonoTag key={l.id}>{l.name}</MonoTag>
@@ -375,13 +374,13 @@ export function PropertiesRail({
           </div>
         </Row>
       )}
-      <Row label="Branch">
+      <Row label={t("issues.rail.branch")}>
         <MonoTag>{issue.displayId}</MonoTag>
       </Row>
       {issue.mergedAt && (
-        <Row label="Merged">
+        <Row label={t("issues.rail.merged")}>
           <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.mergedAt)}</span>
             <MergeMarkBadge
               mark={issue.mergeMark}
               commitSha={issue.mergedCommitSha}
@@ -400,34 +399,34 @@ export function PropertiesRail({
         </Row>
       )}
       {issue.liveReach && (
-        <Row label="Production">
+        <Row label={t("issues.rail.production")}>
           <LiveReachValue reach={issue.liveReach} />
         </Row>
       )}
       {cost && cost.estimatedCost > 0 && (
-        <Row label="Cost">
+        <Row label={t("issues.rail.cost")}>
           <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
         </Row>
       )}
       {tokens > 0 && (
-        <Row label="Tokens">
+        <Row label={t("issues.rail.tokens")}>
           <Stat icon="cpu">
-            <span title={`${tokens.toLocaleString()} tokens`}>{fmtTokens(tokens)}</span>
+            <span title={t("issues.rail.tokensExact", { n: time.number(tokens) })}>{fmtTokens(tokens)}</span>
           </Stat>
         </Row>
       )}
-      <Row label="Created">
-        <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.createdAt)}</span>
+      <Row label={t("issues.rail.created")}>
+        <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.createdAt)}</span>
       </Row>
-      <Row label="Reopens">
+      <Row label={t("issues.rail.reopens")}>
         <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
       </Row>
       {(offerModule || offerMerge) && (
-        <Row label="Not set">
+        <Row label={t("issues.rail.notSet")}>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {offerModule && (
               <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
-                Set module
+                {t("issues.rail.setModule")}
               </Button>
             )}
             {offerMerge && (
@@ -441,13 +440,13 @@ export function PropertiesRail({
           </div>
         </Row>
       )}
-      <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
-      <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
-      <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
-      <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />
-      <DepList edges={duplicates} self={issue.id} slug={slug} label="Duplicates" />
-      <DepList edges={related} self={issue.id} slug={slug} label="Related" />
-      <DepList edges={expired} self={issue.id} slug={slug} label="Expired" expired />
+      <DepList edges={blockedBy} self={issue.id} slug={slug} label={t("issues.rail.blockedBy")} />
+      <DepList edges={blocks} self={issue.id} slug={slug} label={t("issues.rail.blocks")} />
+      <DepList edges={parents} self={issue.id} slug={slug} label={t("issues.rail.parent")} />
+      <DepList edges={subtasks} self={issue.id} slug={slug} label={t("issues.rail.subtasks")} />
+      <DepList edges={duplicates} self={issue.id} slug={slug} label={t("issues.rail.duplicates")} />
+      <DepList edges={related} self={issue.id} slug={slug} label={t("issues.rail.related")} />
+      <DepList edges={expired} self={issue.id} slug={slug} label={t("issues.rail.expired")} expired />
     </div>
   );
 }

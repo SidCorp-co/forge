@@ -12,7 +12,7 @@ import {
 } from "@/design";
 import type { IssueStepOutcome } from "@forge/contracts/issue-standing";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
@@ -38,6 +38,7 @@ export function OverviewTab({
   attachmentsQ: ReturnType<typeof useAttachments>;
   canWrite: boolean;
 }) {
+  const t = useCopy();
   return (
     <div className="grid gap-8" data-testid="view-overview">
       <ReleaseNoteCard issue={issue} />
@@ -48,12 +49,12 @@ export function OverviewTab({
         attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
         canWrite={canWrite}
       />
-      <section aria-label="Plan">
-        <ViewHeading>Plan</ViewHeading>
+      <section aria-label={t("issues.plan.title")}>
+        <ViewHeading>{t("issues.plan.title")}</ViewHeading>
         {issue.plan ? (
           <Markdown>{issue.plan}</Markdown>
         ) : (
-          <p className="text-13 text-subtle">Not written yet; the plan step writes it once a master takes the issue.</p>
+          <p className="text-13 text-subtle">{t("issues.plan.empty")}</p>
         )}
       </section>
     </div>
@@ -70,13 +71,14 @@ export function CriteriaTab({
   hasCriteriaRows: boolean;
   checklist: { key: string; text: string; checked: boolean }[];
 }) {
+  const t = useCopy();
   return (
     <div data-testid="view-criteria">
       {hasCriteriaRows ? (
         <CriteriaList issueId={issueId} />
       ) : checklist.length > 0 ? (
-        <section aria-label="Acceptance criteria">
-          <ViewHeading>Acceptance criteria</ViewHeading>
+        <section aria-label={t("issues.criteria.acceptance")}>
+          <ViewHeading>{t("issues.criteria.acceptance")}</ViewHeading>
           <ul className="space-y-2">
             {checklist.map((item) => (
               <li key={item.key}>
@@ -86,7 +88,7 @@ export function CriteriaTab({
           </ul>
         </section>
       ) : (
-        <p className="text-13 text-subtle">No criteria yet; the plan step writes them.</p>
+        <p className="text-13 text-subtle">{t("issues.criteria.empty")}</p>
       )}
     </div>
   );
@@ -102,11 +104,12 @@ export function runsTabCount(sessions: readonly IssueAgentSession[], stepOutcome
 
 /** Each run on the issue, newest first, linked to where it is read. */
 function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession[] }) {
+  const t = useCopy();
   const time = useTimeFormat();
   const rows = [...sessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
-    <section aria-label="Runs">
-      <ViewHeading>Runs</ViewHeading>
+    <section aria-label={t("issues.tab.runs")}>
+      <ViewHeading>{t("issues.tab.runs")}</ViewHeading>
       <ul className="divide-y divide-line-subtle border-y border-line-subtle">
         {rows.map((s) => (
           <li key={s.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-13" data-testid="issue-run">
@@ -143,20 +146,21 @@ export function RunsTab({
   expandedStep: string | null;
   onToggleStep: (step: string) => void;
 }) {
+  const t = useCopy();
   return (
     <div className="grid gap-6" data-testid="view-runs">
       {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
       <SessionGroupTimeline sessions={sessions} />
       {sessions.length > 0 ? <RunList slug={slug} sessions={sessions} /> : null}
       {standingQ.isLoading ? (
-        <EmptyPanelLine title="Steps" status="Loading…" />
+        <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.loading")} />
       ) : standingQ.isError ? (
-        <EmptyPanelLine title="Steps" status="Couldn't load" detail={formatApiError(standingQ.error)} />
+        <EmptyPanelLine title={t("issues.steps.title")} status={t("common.couldNotLoad")} detail={formatApiError(standingQ.error)} />
       ) : stepOutcomes.length === 0 ? (
-        sessions.length > 0 ? null : <EmptyPanelLine title="Steps" status="None yet" detail="Steps appear here as agents record them." />
+        sessions.length > 0 ? null : <EmptyPanelLine title={t("issues.steps.title")} status={t("issues.steps.none")} detail={t("issues.steps.noneHint")} />
       ) : (
-        <section aria-label="Steps">
-          <ViewHeading>Steps</ViewHeading>
+        <section aria-label={t("issues.steps.title")}>
+          <ViewHeading>{t("issues.steps.title")}</ViewHeading>
           <div className="space-y-2">
             {stepOutcomes.map((outcome) => (
               <StepArtifactCard
@@ -190,12 +194,13 @@ export function ActivityTab({
   members: ReturnType<typeof useProjectMembers>["data"];
   canWrite: boolean;
 }) {
+  const t = useCopy();
   return (
-    <section id="issue-comments" aria-label="Activity" data-testid="view-activity">
+    <section id="issue-comments" aria-label={t("issues.tab.activity")} data-testid="view-activity">
       <SegmentedControl
         options={[
-          { value: "comments", label: "Comments", count: commentsQ.data?.totalCount },
-          { value: "activity", label: "History", count: activityQ.data?.items.length },
+          { value: "comments", label: t("issues.activity.comments"), count: commentsQ.data?.totalCount },
+          { value: "activity", label: t("issues.activity.history"), count: activityQ.data?.items.length },
         ]}
         value={thread}
         onChange={onThread}
@@ -205,7 +210,7 @@ export function ActivityTab({
           (commentsQ.isLoading ? (
             <TabLoading />
           ) : commentsQ.isError ? (
-            <TabError query={commentsQ} what="comments" />
+            <TabError query={commentsQ} title={t("issues.activity.commentsFailed")} />
           ) : (
             <CommentThread issueId={issueId} comments={commentsQ.data?.items ?? []} members={members} readOnly={!canWrite} />
           ))}
@@ -213,7 +218,7 @@ export function ActivityTab({
           (activityQ.isLoading ? (
             <TabLoading />
           ) : activityQ.isError ? (
-            <TabError query={activityQ} what="history" />
+            <TabError query={activityQ} title={t("issues.activity.historyFailed")} />
           ) : (
             <ActivityFeed items={activityQ.data?.items ?? []} />
           ))}
@@ -245,14 +250,14 @@ function TabLoading() {
  *  will meet again gets no dead Retry button. */
 function TabError({
   query,
-  what,
+  title,
 }: {
   query: { error: unknown; refetch: () => unknown };
-  what: string;
+  title: string;
 }) {
   return (
     <ErrorState
-      title={`Couldn't load ${what}`}
+      title={title}
       message={formatApiError(query.error)}
       onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
     />

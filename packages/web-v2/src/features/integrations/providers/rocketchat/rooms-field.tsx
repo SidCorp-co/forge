@@ -2,6 +2,7 @@
 
 import { Button, Field, Input } from "@/design";
 import { useMemo, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRocketchatRooms } from "../../hooks";
 import { RoomSelect } from "./room-select";
 
@@ -22,6 +23,7 @@ export function RoomsField({
   const roomsQ = useRocketchatRooms(projectId, bindingId);
   const rooms = useMemo(() => roomsQ.data?.rooms ?? [], [roomsQ.data]);
   const [newRid, setNewRid] = useState("");
+  const t = useCopy();
 
   async function save(next: string[]) {
     if (await onSave(next)) setNewRid("");
@@ -29,14 +31,14 @@ export function RoomsField({
 
   return (
     <Field
-      label="Rooms"
-      hint="The rooms this project listens on. The picker lists every room the bot is a member of — invite the bot to a room to make it appear here."
+      label={t("integrations.rocket.rooms")}
+      hint={t("integrations.rocket.roomsHint")}
     >
       <div className="flex flex-col gap-2">
         {savedRids.map((r) => (
           <div key={r} className="flex items-center gap-2">
             <span className="fg-body-sm flex-1 truncate">
-              {rooms.find((room) => room.rid === r)?.name ?? "unknown room"}{" "}
+              {rooms.find((room) => room.rid === r)?.name ?? t("integrations.rocket.unknownRoom")}{" "}
               <span className="text-muted font-mono">{r}</span>
             </span>
             <Button
@@ -47,7 +49,7 @@ export function RoomsField({
               disabled={savedRids.length === 1}
               onClick={() => save(savedRids.filter((x) => x !== r))}
             >
-              Remove
+              {t("integrations.provider.remove")}
             </Button>
           </div>
         ))}
@@ -58,7 +60,7 @@ export function RoomsField({
             onChange={setNewRid}
             fallback={
               <Input
-                placeholder={roomsQ.isLoading ? "loading rooms…" : "room id (rid)…"}
+                placeholder={roomsQ.isLoading ? t("integrations.rocket.loadingRooms") : t("integrations.rocket.ridPlaceholder")}
                 value={newRid}
                 onChange={(e) => setNewRid(e.target.value)}
               />
@@ -71,7 +73,7 @@ export function RoomsField({
             disabled={!newRid.trim() || savedRids.includes(newRid.trim())}
             onClick={() => save([...savedRids, newRid.trim()])}
           >
-            Add room
+            {t("integrations.rocket.addRoom")}
           </Button>
         </div>
       </div>

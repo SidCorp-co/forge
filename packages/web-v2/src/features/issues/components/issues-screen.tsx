@@ -5,6 +5,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectModules } from "../hooks";
 import { IssuesBoard } from "./issues-board";
 import { IssuesListView } from "./issues-list-view";
@@ -24,19 +25,20 @@ type Mode = "attention" | "module" | "waves" | "table";
 function useModes(projectId: string): ViewMode<Mode>[] {
   const modules = useProjectModules(projectId);
   const none = modules.data !== undefined && modules.modules.length === 0;
+  const t = useCopy();
   return useMemo(
     () => [
-      { value: "attention", label: "Attention", title: "Grouped by whose turn it is" },
+      { value: "attention", label: t("issues.mode.attention"), title: t("issues.mode.attentionHint") },
       {
         value: "module",
-        label: "Module",
-        title: none ? "No module is defined on this project yet" : "Grouped by primary module",
+        label: t("issues.mode.module"),
+        title: none ? t("issues.mode.moduleNone") : t("issues.mode.moduleHint"),
         disabled: none,
       },
-      { value: "waves", label: "Waves", title: "Columns by layers of open blockers" },
-      { value: "table", label: "Table", title: "Every issue, paged, with bulk actions" },
+      { value: "waves", label: t("issues.mode.waves"), title: t("issues.mode.wavesHint") },
+      { value: "table", label: t("issues.mode.table"), title: t("issues.mode.tableHint") },
     ],
-    [none],
+    [none, t],
   );
 }
 
@@ -44,6 +46,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const projectsQ = useProjects();
   const canWrite = canWriteProject(projectsQ.data?.find((p) => p.id === scope.projectId)?.role);
   const modes = useModes(scope.projectId);
+  const t = useCopy();
   const [mode, setMode] = useViewMode(modes);
   // New-issue dialog — opened locally or by `?new=1`, which ⌘K pushes onto this
   // route. On this route Next keeps the screen mounted, so the query is followed, not read once.
@@ -75,15 +78,15 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const header = (
     <>
       <PageTitle
-        hint="Every issue on this project, and what each one is waiting on."
+        hint={t("issues.screen.hint")}
         after={<ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="header" />}
       >
-        Issues
+        {t("issues.screen.title")}
       </PageTitle>
       {canWrite && (
         <TopBarActions>
           <Button variant="primary" size="sm" icon="plus" onClick={() => setNewOpen(true)}>
-            New issue
+            {t("issues.newIssue")}
           </Button>
         </TopBarActions>
       )}

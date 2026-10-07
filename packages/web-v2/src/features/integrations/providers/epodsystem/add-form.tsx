@@ -3,14 +3,11 @@
 import { Banner, Field, Input, Select, type SelectOption } from "@/design";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { BindingRole } from "../../types";
 import { AddBindingForm, LabelField, labelError, useAddBinding } from "../add-binding";
 import { epodsystem } from "./index";
 
-const ROLE_SELECT_OPTIONS: SelectOption[] = [
-  { value: "service", label: "Service — a project-wide facility" },
-  { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
-];
 
 export function AddEpodsystemForm({
   projectId,
@@ -26,10 +23,12 @@ export function AddEpodsystemForm({
   const [apiKey, setApiKey] = useState("");
   const [role, setRole] = useState<BindingRole>("service");
   const canDeploy = providerCanDeploy("epodsystem");
-  const badLabel = labelError(
-    label,
-    "Label must be kebab-case (lowercase letters, numbers, dashes; e.g. partner-a)",
-  );
+  const t = useCopy();
+  const roleOptions: SelectOption[] = [
+    { value: "service", label: t("integrations.form.roleService") },
+    { value: "deploy", label: t("integrations.form.roleDeploy") },
+  ];
+  const badLabel = labelError(label, t("integrations.epod.labelKebab"));
   const canSubmit =
     apiKey.trim().length >= 8 && (!hasDefault || (label.trim().length > 0 && !badLabel)) && !add.pending;
 
@@ -48,22 +47,22 @@ export function AddEpodsystemForm({
   return (
     <AddBindingForm
       add={add}
-      title="Add storefront"
-      submitLabel="Add storefront"
+      title={t("integrations.epod.add")}
+      submitLabel={t("integrations.epod.add")}
       canSubmit={canSubmit}
       onSubmit={handleCreate}
       onCancel={onDone}
     >
       {hasDefault && (
         <LabelField
-          hint="Unique kebab-case name for this storefront (e.g. partner-a). Required for extra connections."
+          hint={t("integrations.epod.labelHint")}
           placeholder="partner-a"
           value={label}
           onChange={setLabel}
           error={badLabel}
         />
       )}
-      <Field label="API key" hint="Epodsystem API key (crmk_…). Stored encrypted; never shown again." required>
+      <Field label={t("integrations.edit.apiKey")} hint={t("integrations.epod.keyHint")} required>
         <Input
           type="password"
           autoComplete="new-password"
@@ -73,12 +72,12 @@ export function AddEpodsystemForm({
         />
       </Field>
       <Field
-        label="What is it for"
-        hint="A storefront this project publishes to is a deploy target. One it only borrows (an MCP, a product feed) is a service."
+        label={t("integrations.form.role")}
+        hint={t("integrations.epod.roleHint")}
         required
       >
         <Select
-          options={ROLE_SELECT_OPTIONS}
+          options={roleOptions}
           value={role}
           onChange={(v) => {
             setRole(v as BindingRole);
@@ -94,15 +93,13 @@ export function AddEpodsystemForm({
 
 /** Where a deploy-role storefront's environment is named, or why it cannot be one. */
 function DeployRoleNote({ canDeploy }: { canDeploy: boolean }) {
+  const t = useCopy();
   return canDeploy ? (
     <p className="fg-body-sm text-muted">
-      Which environment this storefront deploys is the project document&apos;s: name the binding in{" "}
-      <code>environments.&lt;name&gt;.deployment.binding</code> of the project document, on the
-      Configuration tab of project settings.
+      {t("integrations.epod.deployWhere.lead")} <code>environments.&lt;name&gt;.deployment.binding</code>{" "}
+      {t("integrations.epod.deployWhere.tail")}
     </p>
   ) : (
-    <Banner tone="attention">
-      Forge cannot deploy to Epodsystem — it has no deploy adapter. Add it as a service instead.
-    </Banner>
+    <Banner tone="attention">{t("integrations.epod.cannotDeploy")}</Banner>
   );
 }

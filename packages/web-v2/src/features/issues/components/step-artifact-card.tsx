@@ -4,6 +4,8 @@
 import { useState } from "react";
 import { enumLabel, Icon } from "@/design";
 import { stageColor } from "@/design/stages";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueStepOutcome as StepOutcome, IssueStepState as StepState } from "@forge/contracts/issue-standing";
 
 interface StepArtifactCardProps {
@@ -12,21 +14,21 @@ interface StepArtifactCardProps {
   onToggle: () => void;
 }
 
-const STATE_META: Record<StepState, { dot: string; label: string }> = {
-  done: { dot: "var(--green-500)", label: "Done" },
-  running: { dot: "var(--pipeline-active)", label: "Running" },
-  failed: { dot: "var(--red-500)", label: "Failed" },
+const STATE_DOT: Record<StepState, string> = {
+  done: "var(--green-500)",
+  running: "var(--pipeline-active)",
+  failed: "var(--red-500)",
 };
 
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
-function fmtDuration(seconds: number): string {
+function fmtDuration(seconds: number, t: Copy): string {
   const s = Math.max(0, Math.round(seconds));
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
+  if (h > 0) return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
+  if (m > 0) return t("common.elapsed.minutes", { m, s: String(s % 60).padStart(2, "0") });
+  return t("common.age.seconds", { n: s });
 }
 
 const ARRAY_TEXT_KEYS = ["path", "file", "title", "name", "test", "what", "step"];
@@ -64,7 +66,9 @@ function toListItems(value: unknown): ArtifactListItem[] {
 
 export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardProps) {
   const [showRaw, setShowRaw] = useState(false);
-  const meta = STATE_META[outcome.state];
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const meta = { dot: STATE_DOT[outcome.state], label: t(`common.statusKey.${outcome.state === "running" ? "running" : outcome.state === "failed" ? "failed" : "done"}`) };
   const payload = outcome.handoff?.payload ?? null;
 
   // Partition payload into string paragraphs vs string-array lists for the body.
@@ -106,15 +110,15 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
           className="inline-block h-3 w-0.5 flex-none rounded-pill"
           style={{ background: stageColor(outcome.step) }}
         />
-        <span className="fg-label min-w-0 truncate" title={`step: ${outcome.step}`}>
-          {enumLabel("jobType", outcome.step)}
+        <span className="fg-label min-w-0 truncate" title={outcome.step} data-value={outcome.step}>
+          {enumLabel("step", outcome.step, language)}
         </span>
         <span className="fg-caption text-muted">{meta.label}</span>
         <span className="ml-auto flex flex-none items-center gap-3">
           {outcome.durationSeconds != null && (
             <span className="fg-caption inline-flex items-center gap-1 text-muted">
               <Icon name="clock" size={12} />
-              {fmtDuration(outcome.durationSeconds)}
+              {fmtDuration(outcome.durationSeconds, t)}
             </span>
           )}
           <span className="fg-caption inline-flex items-center gap-0.5 text-muted">
@@ -127,7 +131,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
       {open && (
         <div className="forge-fade space-y-3 border-t border-line-subtle px-3 py-3">
           {!outcome.handoff && !hasBody && (
-            <p className="fg-body-sm text-muted">This step recorded no handoff.</p>
+            <p className="fg-body-sm text-muted">{t("issues.step.noHandoff")}</p>
           )}
           {paragraphs.map((p) => (
             <div key={p.key}>
@@ -157,7 +161,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
                 aria-expanded={showRaw}
               >
                 <Icon name={showRaw ? "chevronDown" : "chevronRight"} size={12} />
-                Operator details
+                {t("issues.live.operatorDetails")}
               </button>
               {showRaw && (
                 <div className="mt-2 space-y-2">

@@ -17,6 +17,7 @@ export { issueArchiveSide } from './archive.js';
 export {
   blockedByUnsettledSql,
   heldTakeRefusal,
+  holdingBlockerSeqsSql,
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
@@ -164,8 +165,10 @@ export {
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
+  type StrandWithheld,
   strandReason,
   strandRuleFor,
+  withheldWait,
 } from './strand-rules.js';
 export { clearIssueStrand, writeIssueStrand } from './strand-write.js';
 export { emitIssueFieldUpdate } from './update-hook.js';

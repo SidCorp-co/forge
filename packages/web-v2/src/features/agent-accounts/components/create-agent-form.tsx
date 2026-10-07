@@ -24,6 +24,8 @@ import {
 } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useCreateAgent } from "../hooks";
 
@@ -32,13 +34,11 @@ const HANDLE_RULE = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
 /**
  * Whether this handle is one the server will take, and what is wrong when it is not.
  */
-function handleProblem(handle: string): string | null {
+function handleProblem(handle: string): ProductCopyKey | null {
   const v = handle.trim();
-  if (!v) return "An agent needs a handle — it is the address typed after @.";
-  if (v !== v.toLowerCase()) return "A handle is lowercase.";
-  if (!HANDLE_RULE.test(v)) {
-    return "3–40 characters: lowercase letters, digits or hyphens, starting and ending on a letter or digit.";
-  }
+  if (!v) return "settings.agents.handleMissing";
+  if (v !== v.toLowerCase()) return "settings.agents.handleLower";
+  if (!HANDLE_RULE.test(v)) return "settings.agents.handleShape";
   return null;
 }
 
@@ -50,6 +50,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [minted, setMinted] = useState<{ handle: string; plaintext: string } | null>(null);
   const [touched, setTouched] = useState(false);
+  const t = useCopy();
 
   const problem = handleProblem(handle);
   const noProjects = picked.length === 0;
@@ -78,18 +79,15 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   return (
     <PageSection>
       <PageSectionBody>
-        <PageSectionTitle className="mb-1">New agent</PageSectionTitle>
-        <p className="fg-body-sm mb-4">
-          An agent is a principal of its own: work it files is filed as the agent, not as whoever
-          set it up. Its credential reaches exactly the projects picked here and nothing else.
-        </p>
+        <PageSectionTitle className="mb-1">{t("settings.agents.new")}</PageSectionTitle>
+        <p className="fg-body-sm mb-4">{t("settings.agents.newIntro")}</p>
 
         {minted && (
           <div className="mb-4">
             <Banner tone="success">
               <div className="flex flex-col gap-2">
                 <span>
-                  @{minted.handle} exists and holds a credential. Copy it now — it is shown once.
+                  {t("settings.agents.minted", { handle: `@${minted.handle}` })}
                 </span>
                 <MonoTag>{minted.plaintext}</MonoTag>
               </div>
@@ -99,9 +97,9 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
 
         <div className="flex flex-col gap-4">
           <Field
-            label="Handle"
-            hint="The address typed after @. Lowercase, one per organization."
-            error={touched && problem ? problem : undefined}
+            label={t("settings.agents.handle")}
+            hint={t("settings.agents.handleHint")}
+            error={touched && problem ? t(problem) : undefined}
           >
             <Input
               value={handle}
@@ -112,15 +110,15 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
           </Field>
 
           <Field
-            label="Projects"
-            hint="Every project this agent works on. A box paired as it reaches these and no others."
-            error={touched && noProjects ? "Pick at least one project." : undefined}
+            label={t("settings.orgs.projects")}
+            hint={t("settings.agents.projectsHint")}
+            error={touched && noProjects ? t("settings.agents.pickProject") : undefined}
           >
             {isLoading ? (
-              <p className="fg-body-sm">Loading projects…</p>
+              <p className="fg-body-sm">{t("settings.agents.loadingProjects")}</p>
             ) : projects.length === 0 ? (
               <p className="fg-body-sm">
-                This organization has no projects yet. An agent needs one to act on.
+                {t("settings.agents.orgNoProjects")}
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -140,7 +138,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
 
           <div className="flex justify-end">
             <Button variant="primary" loading={create.isPending} onClick={submit}>
-              Create agent
+              {t("settings.agents.create")}
             </Button>
           </div>
         </div>

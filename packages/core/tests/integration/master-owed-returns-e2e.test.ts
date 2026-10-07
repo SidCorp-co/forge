@@ -283,6 +283,27 @@ describe('a returned requirement revision an agent wrote is owed to the project 
     expect(await wakes('requirement')).toEqual([]);
     expect(await owedLine()).not.toContain(`${key} r1`);
   });
+
+  // hop REQ-3..20: returned "out of v1; re-proposed when planned" and deferred, then named as owing
+  // a revise on every pass with no admissible act
+  it('is not owed while its requirement is deferred, and is owed again once undeferred', async () => {
+    const key = await proposedRequirement('master', 'Out of this release');
+    ok(
+      await say('owner', 'POST', at(`/requirements/${key}/revisions/1/return`), {
+        reason: 'out of v1; the author re-proposes when planned',
+      }),
+    );
+    ok(
+      await say('owner', 'POST', at(`/requirements/${key}/defer`), {
+        reason: 'out of v1',
+        targetPhase: 'v2',
+      }),
+    );
+    expect(await owedLine()).not.toContain(`${key} r1`);
+
+    ok(await say('owner', 'POST', at(`/requirements/${key}/undefer`), {}));
+    expect(await owedLine()).toContain(`(${key} r1)`);
+  });
 });
 
 async function masterSession(): Promise<string> {

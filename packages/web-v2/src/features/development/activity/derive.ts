@@ -193,6 +193,7 @@ export interface RunnersSummary {
 export function runnersSummary(
   projectRunners: ProjectRunner[] | undefined,
   queue: QueueStats | undefined,
+  language: string,
   now: number = Date.now(),
   active?: ActiveRunner[] | undefined,
 ): RunnersSummary {
@@ -220,7 +221,7 @@ export function runnersSummary(
         busy,
         running: q.running,
         queued: q.queued,
-        limit: runnerLimitDisplay(r, now),
+        limit: runnerLimitDisplay(r, language, now),
         activeIssueRef: act?.current?.issueRef ?? null,
         activeStage: act?.current?.stage ?? null,
       };

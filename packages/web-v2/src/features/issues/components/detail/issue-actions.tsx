@@ -1,5 +1,6 @@
 import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
 import { AskAboutThis } from "@/features/chat-dock/ask-about-this";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useCopyShareLink } from "@/lib/navigation/use-copy-share-link";
 import { useRouter } from "next/navigation";
 import type { IssueDetail, IssueStatus } from "../../types";
@@ -34,6 +35,7 @@ export function IssueActions({
 }) {
   const router = useRouter();
   const copyShareLink = useCopyShareLink();
+  const t = useCopy();
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const openSessions = () => router.push(issueSessionsHref(slug, issue.id));
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
@@ -43,13 +45,13 @@ export function IssueActions({
   }
 
   const moreItems: MenuItem[] = [
-    { label: "Open session", icon: "agent", onSelect: openSessions },
-    { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
+    { label: t("issues.actions.openSession"), icon: "agent", onSelect: openSessions },
+    { label: t("issues.actions.openPipeline"), icon: "pipeline", onSelect: openPipeline },
     ...(!exitsHere.includes("on_hold") || !canWrite
       ? []
       : [
           {
-            label: "Pause (hold)",
+            label: t("issues.actions.pauseHold"),
             icon: "stop",
             onSelect: () => onTransition("on_hold"),
           } as MenuItem,
@@ -58,12 +60,12 @@ export function IssueActions({
       ? []
       : [
           {
-            label: "Reopen",
+            label: t("issues.reason.reopen.confirm"),
             icon: "rerun",
             onSelect: () => onTransition("reopen"),
           } as MenuItem,
         ]),
-    { label: "Copy link", icon: "link", onSelect: copyLink },
+    { label: t("issues.actions.copyLink"), icon: "link", onSelect: copyLink },
   ];
 
   const primary =
@@ -72,20 +74,20 @@ export function IssueActions({
     ) : !canWrite || isTerminal ? (
       canWrite ? (
         <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
-          Reopen
+          {t("issues.reason.reopen.confirm")}
         </Button>
       ) : (
         <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-          View pipeline
+          {t("issues.actions.viewPipeline")}
         </Button>
       )
     ) : isRunActive ? (
       <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
-        Pause
+        {t("issues.actions.pause")}
       </Button>
     ) : (
       <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-        Run pipeline
+        {t("issues.actions.runPipeline")}
       </Button>
     );
 
@@ -96,16 +98,12 @@ export function IssueActions({
       <span className="contents max-md:hidden">
         <AskAboutThis kind="issue" refId={issue.displayId} />
         <HelpButton
-        summary="The full record for one issue: whose turn it is, then Overview, Criteria, Runs and Activity as tabs beside its facts."
-        actions={[
-          "Edit properties (status, priority, complexity) in the rail",
-          "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
-          "Jump to related sessions, pipeline, and runs from the actions menu",
-        ]}
-        shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+        summary={t("issues.help.summary")}
+        actions={[t("issues.help.action1"), t("issues.help.action2"), t("issues.help.action3")]}
+        shortcuts={[{ keys: "⌘K", desc: t("issues.help.palette") }]}
         />
       </span>
-      <Menu align="right" items={moreItems} trigger={<IconButton icon="more" aria-label="Issue actions" />} />
+      <Menu align="right" items={moreItems} trigger={<IconButton icon="more" aria-label={t("issues.actions.menu")} />} />
     </span>
   );
 }

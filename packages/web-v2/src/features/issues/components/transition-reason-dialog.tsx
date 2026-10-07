@@ -6,12 +6,12 @@
 
 "use client";
 
-import { NEEDS_INFO_KIND_LABELS } from "@forge/contracts/issue-vocabulary";
 import type { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { useEffect, useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
-import { statusLabel } from "../derive";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueStatus, WaitingCause } from "../types";
 
 export type ReasonStatus = (typeof REASON_REQUIRED_STATUSES)[number];
@@ -28,66 +28,16 @@ interface CopySpec {
   placeholder: string;
 }
 
-const COPY: Record<DialogMode, CopySpec> = {
-  reopen: {
-    title: "Reopen this issue",
-    confirm: "Reopen",
-    blurb:
-      "Posted as a comment before the status flips, where whoever picks the work back up reads it — say what regressed or what is still wrong.",
-    placeholder: "e.g. the login redirect still 500s on a fresh session — trace in the last comment",
-  },
-  needs_info: {
-    title: "Stop this issue on a person",
-    confirm: "Request info",
-    blurb:
-      "The work stops until a person acts, so say what they are being asked for — posted as a comment before the status flips. Nobody can answer a question that was never written down.",
-    placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
-  },
-  on_hold: {
-    title: "Put this issue on hold",
-    confirm: "Hold",
-    blurb:
-      "A hold pauses the work deliberately until someone resumes it where it stopped. Say why, so whoever picks it up knows whether the reason still stands.",
-    placeholder: "e.g. paused until the billing migration lands next sprint",
-  },
-  dropped: {
-    title: "Drop this issue",
-    confirm: "Drop",
-    blurb:
-      "Dropping says this work will not be done. The reason is posted on the thread, where anyone who finds the issue later reads why.",
-    placeholder: "e.g. superseded by ISS-412, which covers the same flow",
-  },
-  move_anyway: {
-    title: "Move this issue anyway",
-    confirm: "Move",
-    blurb:
-      "This moves the issue on without what it is waiting for. Say why in one line: it is posted on the thread, where the next run reads it before it stops the issue again.",
-    placeholder: "e.g. settled on the call — the build can go on without the tenant",
-  },
-  not_needed: {
-    title: "The question is not needed any more",
-    confirm: "Withdraw it and resume",
-    blurb:
-      "Withdraws the open question with your reason and resumes the issue where its work stopped, in one move. The reason is posted on the thread and kept on the question.",
-    placeholder: "e.g. the owner decided in standup — ship the smaller reading",
-  },
-  void_questions: {
-    title: "Questions are still open on this issue",
-    confirm: "Withdraw them and continue",
-    blurb:
-      "An agent asked a person something on this issue and nobody has answered. Finishing the work withdraws those questions — say why they no longer matter, and that sentence is recorded on each one. To answer them instead, cancel and use the Decisions panel on the issue.",
-    placeholder: "e.g. the fix shipped without needing the tenant — the question is moot",
-  },
-};
+const copyOf = (t: Copy, mode: DialogMode): CopySpec => ({
+  title: t(`issues.reason.${mode}.title`),
+  confirm: t(`issues.reason.${mode}.confirm`),
+  blurb: t(`issues.reason.${mode}.blurb`),
+  placeholder: t(`issues.reason.${mode}.placeholder`),
+});
 
-/** What each kind asks of the person, after the legend's own word for it. */
-const KIND_ASKS: Record<WaitingCause, string> = {
-  needs_answer: "someone has to answer it",
-  needs_decision: "someone has to choose",
-  needs_resource: "someone has to supply what I cannot create",
-};
 const KIND_ORDER: WaitingCause[] = ["needs_answer", "needs_decision", "needs_resource"];
-const kindLabel = (k: WaitingCause): string => `${NEEDS_INFO_KIND_LABELS[k]} — ${KIND_ASKS[k]}`;
+/** What each kind asks of the person, after the legend's own word for it. */
+const kindLabel = (t: Copy, k: WaitingCause): string => `${t(`issues.waitingKind.${k}`)} — ${t(`issues.waitingKind.${k}.asks`)}`;
 
 interface TransitionReasonDialogProps {
   status: DialogMode | null;
@@ -113,6 +63,8 @@ export function TransitionReasonDialog({
   const [target, setTarget] = useState<IssueStatus | null>(null);
   /** Set on the first confirm, so a second click before `loading` arrives sends no second move. */
   const [sent, setSent] = useState(false);
+  const t = useCopy();
+  const L = useLabel();
 
   useEffect(() => {
     if (status) {
@@ -127,7 +79,7 @@ export function TransitionReasonDialog({
   }, [loading]);
 
   if (!status) return null;
-  const copy = COPY[status];
+  const copy = copyOf(t, status);
   const trimmed = reason.trim();
   const picking = status === "move_anyway";
   const asksKind = status === "needs_info" || (picking && target === "needs_info");
@@ -139,36 +91,36 @@ export function TransitionReasonDialog({
         <p className="fg-body-sm text-muted">{copy.blurb}</p>
         {status === "void_questions" && openQuestions !== undefined && (
           <p className="fg-body-sm text-fg">
-            {openQuestions === 1 ? "1 question is" : `${openQuestions} questions are`} open.
+            {openQuestions === 1 ? t("issues.reason.openOne") : t("issues.reason.openMany", { n: openQuestions })}
           </p>
         )}
         {picking && (
-          <Field label="Move to" required>
+          <Field label={t("issues.reason.moveTo")} required>
             <RadioGroup
               name="moveAnywayTarget"
               value={target ?? ""}
               onChange={(v) => setTarget(v as IssueStatus)}
             >
               {(targets ?? []).map((to) => (
-                <Radio key={to} value={to} label={statusLabel(to)} />
+                <Radio key={to} value={to} label={L("issueStatus", to)} />
               ))}
             </RadioGroup>
           </Field>
         )}
         {asksKind && (
-          <Field label="What is needed" required>
+          <Field label={t("issues.reason.whatNeeded")} required>
             <RadioGroup
               name="waitingKind"
               value={kind}
               onChange={(v) => setKind(v as WaitingCause)}
             >
               {KIND_ORDER.map((k) => (
-                <Radio key={k} value={k} label={kindLabel(k)} />
+                <Radio key={k} value={k} label={kindLabel(t, k)} />
               ))}
             </RadioGroup>
           </Field>
         )}
-        <Field label="Reason" required>
+        <Field label={t("issues.reason.reason")} required>
           <Textarea
             rows={6}
             value={reason}
@@ -178,7 +130,7 @@ export function TransitionReasonDialog({
         </Field>
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             type="button"

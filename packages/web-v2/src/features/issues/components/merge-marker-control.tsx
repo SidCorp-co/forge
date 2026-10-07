@@ -11,26 +11,16 @@ import { useEffect, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
 
 /** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
 const LANDING_MAX = 2000;
 
-const BLURB =
-  "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
-  "field: it is what lets the issue close, because `closed` means the work shipped and a close " +
-  "without it is refused. It does not release the issues blocked on this one — a status does " +
-  "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
-  "reopen it first, because a closed issue with no claim is a state nothing here can hold.";
-
 // ISS-1327 — on a project whose work lands outside git there is no branch to name: what landed is
-// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
-const LANDING_BLURB =
-  "This project's work lands outside git, so say where it landed: the live URL, the CMS entry or " +
-  "the storefront resource the work now is. That is what lets the issue close — a mark naming no " +
-  "landing is not accepted here. It does not release the issues blocked on this one — a status " +
-  "does that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed.";
+// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so
+// (`issues.merge.landingBlurb`, beside the git reading `issues.merge.blurb`).
 
 interface MergeMarkerControlProps {
   issueId: string;
@@ -54,6 +44,7 @@ export function MergeMarkerControl({
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
+  const t = useCopy();
 
   useEffect(() => {
     if (open) {
@@ -71,7 +62,7 @@ export function MergeMarkerControl({
         disabled={marker.isPending}
         onClick={() => marker.unmark()}
       >
-        Unmark
+        {t("issues.merge.unmark")}
       </Button>
     );
   }
@@ -82,18 +73,18 @@ export function MergeMarkerControl({
   return (
     <>
       <Button variant="ghost" size="sm" icon="check" onClick={() => setOpen(true)}>
-        Mark merged
+        {t("issues.merge.mark")}
       </Button>
       {open && (
-        <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
+        <SlideOver open onClose={() => setOpen(false)} title={t("issues.merge.title")} width={480}>
           <div className="flex h-full flex-col gap-4">
-            <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
+            <p className="fg-body-sm text-muted">{outsideGit ? t("issues.merge.landingBlurb") : t("issues.merge.blurb")}</p>
             <Field
-              label="Where it landed"
+              label={t("issues.merge.where")}
               required
               error={
                 overLimit
-                  ? `At most ${LANDING_MAX} characters — this is ${trimmedTarget.length}. Nothing was cut; shorten it to send it.`
+                  ? t("issues.merge.tooLong", { max: LANDING_MAX, n: trimmedTarget.length })
                   : undefined
               }
             >
@@ -101,8 +92,8 @@ export function MergeMarkerControl({
                 value={target}
                 placeholder={
                   outsideGit
-                    ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
-                    : "e.g. ISS-791, or the branch or change request it merged through"
+                    ? t("issues.merge.landingPlaceholder")
+                    : t("issues.merge.targetPlaceholder")
                 }
                 onChange={(e) => {
                   setTarget(e.target.value);
@@ -110,11 +101,11 @@ export function MergeMarkerControl({
                 }}
               />
             </Field>
-            <Field label="Note">
+            <Field label={t("issues.merge.note")}>
               <Textarea
                 rows={4}
                 value={note}
-                placeholder="e.g. driven by hand on 2026-09-06, CI green, merged by the repo owner"
+                placeholder={t("issues.merge.notePlaceholder")}
                 onChange={(e) => setNote(e.target.value)}
               />
             </Field>
@@ -134,7 +125,7 @@ export function MergeMarkerControl({
                 onClick={() => setOpen(false)}
                 disabled={marker.isPending}
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 type="button"
@@ -154,7 +145,7 @@ export function MergeMarkerControl({
                   );
                 }}
               >
-                Mark merged
+                {t("issues.merge.mark")}
               </Button>
             </div>
           </div>

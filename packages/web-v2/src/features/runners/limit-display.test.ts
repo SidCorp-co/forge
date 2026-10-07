@@ -17,7 +17,7 @@ const refused: LimitFields = {
 
 describe("runnerLimitDisplay", () => {
 	it("reads refused when and next try when, and never a reset countdown to the printed time", () => {
-		const limit = runnerLimitDisplay(refused, now);
+		const limit = runnerLimitDisplay(refused, "en", now);
 		expect(limit).toMatchObject({ active: true, refusedText: "refused 18m ago", nextTryText: "next try in 3m" });
 		const line = limit ? runnerLimitLine(limit) : "";
 		expect(line).toBe("Usage limit · refused 18m ago · next try in 3m");
@@ -25,22 +25,30 @@ describe("runnerLimitDisplay", () => {
 	});
 
 	it("names the printed time as what the account said, not as when work resumes", () => {
-		expect(runnerLimitDisplay(refused, now)?.printedText).toMatch(/^The account said it resets at .+: its claim, not when work resumes\.$/);
-		expect(runnerLimitDisplay({ ...refused, limitPrintedResetAt: null }, now)?.printedText).toBeNull();
+		expect(runnerLimitDisplay(refused, "en", now)?.printedText).toMatch(/^The account said it resets at .+: its claim, not when work resumes\.$/);
+		expect(runnerLimitDisplay({ ...refused, limitPrintedResetAt: null }, "en", now)?.printedText).toBeNull();
 	});
 
 	it("says the next try is due once it has come, and the runner is no longer held", () => {
-		const due = runnerLimitDisplay(refused, Date.parse("2026-10-06T16:24:00Z"));
+		const due = runnerLimitDisplay(refused, "en", Date.parse("2026-10-06T16:24:00Z"));
 		expect(due).toMatchObject({ active: false, nextTryText: "next try due" });
 	});
 
 	it("holds an auth failure with no next try", () => {
-		const auth = runnerLimitDisplay({ ...refused, limitReason: "auth", rateLimitedUntil: null, limitPrintedResetAt: null }, now);
+		const auth = runnerLimitDisplay({ ...refused, limitReason: "auth", rateLimitedUntil: null, limitPrintedResetAt: null }, "en", now);
 		expect(auth).toMatchObject({ active: true, nextTryText: null, health: "down" });
 	});
 
 	it("reads a limit stamped before core kept the refusal time without inventing one", () => {
-		const old = runnerLimitDisplay({ ...refused, limitRefusedAt: undefined, limitPrintedResetAt: undefined }, now);
+		const old = runnerLimitDisplay({ ...refused, limitRefusedAt: undefined, limitPrintedResetAt: undefined }, "en", now);
 		expect(old).toMatchObject({ refusedText: null, printedText: null, nextTryText: "next try in 3m" });
+	});
+
+	it("reads in the interface language, never in English under vi", () => {
+		const vi = runnerLimitDisplay(refused, "vi", now);
+		const line = vi ? runnerLimitLine(vi) : "";
+		expect(line).not.toMatch(/Usage limit|refused|next try/);
+		expect(vi?.printedText).not.toMatch(/The account said/);
+		expect(vi?.detail).toBe(refused.limitDetail);
 	});
 });

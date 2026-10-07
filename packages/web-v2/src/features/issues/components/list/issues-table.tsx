@@ -14,28 +14,30 @@ import {
   type SortingState,
 } from "@/design";
 import { Fragment, useMemo } from "react";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { groupRows } from "../../derive";
 import { hasLiveAgentSession } from "../../waiting";
 import type { GroupBy, IssueRow, IssueSort } from "../../types";
 import { IssueTableRow, type RowAssignee } from "../issue-row-actions";
 import type { RowActions } from "../issue-table-row";
 
-const ISSUE_COLUMNS: ColumnDef<IssueRow, unknown>[] = [
-  { id: "createdAt", header: "ID", enableSorting: true, sortDescFirst: true },
-  { id: "title", header: "Title", enableSorting: false },
-  { id: "status", header: "Status", enableSorting: false },
-  { id: "priority", header: "Priority", enableSorting: true, sortDescFirst: true },
-  { id: "assignee", header: "Assignee", enableSorting: false },
-  { id: "updatedAt", header: "Updated", enableSorting: true, sortDescFirst: true },
+const columnsOf = (t: Copy): ColumnDef<IssueRow, unknown>[] => [
+  { id: "createdAt", header: t("issues.col.id"), enableSorting: true, sortDescFirst: true },
+  { id: "title", header: t("issues.col.title"), enableSorting: false },
+  { id: "status", header: t("issues.field.status"), enableSorting: false },
+  { id: "priority", header: t("issues.field.priority"), enableSorting: true, sortDescFirst: true },
+  { id: "assignee", header: t("issues.field.assignee"), enableSorting: false },
+  { id: "updatedAt", header: t("issues.col.updated"), enableSorting: true, sortDescFirst: true },
 ];
 
 /** The person an issue is assigned to, else the agent working it, named by the device its run is on. */
-function assigneeOf(row: IssueRow, names: Map<string, RowAssignee>): RowAssignee | null {
+function assigneeOf(row: IssueRow, names: Map<string, RowAssignee>, t: Copy): RowAssignee | null {
   const person = row.assigneeId ? names.get(row.assigneeId) : undefined;
   if (person) return person;
   if (!hasLiveAgentSession(row.agentStatus)) return null;
   const live = row.agentSessions?.find((s) => hasLiveAgentSession(s.status));
-  return { label: live?.deviceName ? `Agent · ${live.deviceName}` : "Agent", agent: true };
+  return { label: live?.deviceName ? t("issues.assignee.agentOn", { device: live.deviceName }) : t("issues.assignee.agent"), agent: true };
 }
 
 function sortToState(sort: IssueSort): SortingState {
@@ -80,10 +82,15 @@ export function IssuesTable({
   /** Absent when the reader cannot act on rows in bulk. */
   selection?: TableSelection;
 }) {
+  const t = useCopy();
+  const L = useLabel();
+  const columns = useMemo(() => columnsOf(t), [t]);
   const sorting = useMemo(() => sortToState(sort), [sort]);
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  const groupLabel = (g: { key: string; label: string }) =>
+    groupBy === "status" ? L("issueStatus", g.key) : groupBy === "priority" ? L("issuePriority", g.key) : g.label;
   const sortTable = useReactTable<IssueRow>({
-    columns: ISSUE_COLUMNS,
+    columns,
     data: rows,
     manualSorting: true,
     enableSortingRemoval: true,
@@ -97,7 +104,7 @@ export function IssuesTable({
 
   return (
     // One table runs edge to edge from the sidebar, scrolling sideways inside itself at phone width; a grouping is a header row in it, not a box per group (ISS-49)
-    <Table aria-label="Issues" className="min-w-[860px]">
+    <Table aria-label={t("issues.screen.title")} className="min-w-[860px]">
       <THead>
         <TR>
           {selection && (
@@ -106,7 +113,7 @@ export function IssuesTable({
                 checked={selection.allOnPageSelected}
                 indeterminate={selection.someOnPageSelected}
                 onChange={selection.toggleAllOnPage}
-                ariaLabel="Select all issues on this page"
+                ariaLabel={t("issues.table.selectAll")}
               />
             </TH>
           )}
@@ -117,7 +124,7 @@ export function IssuesTable({
               className={header.id === "createdAt" ? "w-px whitespace-nowrap" : undefined}
             />
           ))}
-          <TH className="sr-only">Actions</TH>
+          <TH className="sr-only">{t("issues.table.actions")}</TH>
         </TR>
       </THead>
       <TBody>
@@ -130,7 +137,7 @@ export function IssuesTable({
                   colSpan={headers.length + (selection ? 2 : 1)}
                   className="text-left"
                 >
-                  {g.label} · {g.rows.length}
+                  {groupLabel(g)} · {g.rows.length}
                 </TH>
               </TR>
             )}
@@ -141,7 +148,7 @@ export function IssuesTable({
                 slug={slug}
                 actions={actions}
                 now={now}
-                assignee={assigneeOf(row, memberNames)}
+                assignee={assigneeOf(row, memberNames, t)}
                 selection={
                   selection
                     ? {

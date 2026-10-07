@@ -1,8 +1,8 @@
 "use client";
 
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
 import { useMemo } from "react";
-import { ANY_AGENT_LABEL } from "../../derive";
 import { useProjectLabels, useProjectMembers, useProjectModules } from "../../hooks";
 import type { ToolbarOption } from "../issues-toolbar";
 import type { RowAssignee } from "../issue-row-actions";
@@ -18,29 +18,30 @@ export function useIssueFilterOptions(projectId: string, moduleId: string) {
   // "any agent" stays as a KIND filter above them, which is a different
   // question from "which writer" and is why it is not one of the names.
   const { user } = useAuth();
+  const t = useCopy();
   const creatorOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Anyone" },
-      ...(user ? [{ value: user.id, label: "Me" }] : []),
-      { value: "agent", label: ANY_AGENT_LABEL },
+      { value: "", label: t("issues.filter.anyone") },
+      ...(user ? [{ value: user.id, label: t("issues.filter.me") }] : []),
+      { value: "agent", label: t("issues.filter.anyAgent") },
       ...(membersQ.data ?? [])
         .filter((m) => m.userId !== user?.id)
         .map((m) => ({
           value: m.userId,
-          label: m.kind === "agent" ? `${m.displayName ?? m.email} (agent)` : (m.displayName ?? m.email),
+          label: m.kind === "agent" ? t("issues.filter.agentMember", { name: m.displayName ?? m.email }) : (m.displayName ?? m.email),
         })),
     ],
-    [membersQ.data, user],
+    [membersQ.data, user, t],
   );
   const assigneeOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Anyone" },
-      ...(user ? [{ value: user.id, label: "Me" }] : []),
+      { value: "", label: t("issues.filter.anyone") },
+      ...(user ? [{ value: user.id, label: t("issues.filter.me") }] : []),
       ...(membersQ.data ?? [])
         .filter((m) => m.userId !== user?.id)
         .map((m) => ({ value: m.userId, label: m.displayName ?? m.email })),
     ],
-    [membersQ.data, user],
+    [membersQ.data, user, t],
   );
 
   const memberNames = useMemo(
@@ -56,19 +57,19 @@ export function useIssueFilterOptions(projectId: string, moduleId: string) {
 
   const labelOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Any" },
+      { value: "", label: t("issues.filter.any") },
       ...(labelsQ.data ?? [])
         .filter((l) => l.kind !== "module")
         .map((l) => ({ value: l.id, label: l.name })),
     ],
-    [labelsQ.data],
+    [labelsQ.data, t],
   );
   const moduleOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Any" },
+      { value: "", label: t("issues.filter.any") },
       ...modulesQ.modules.map((m) => ({ value: m.id, label: m.name })),
     ],
-    [modulesQ.modules],
+    [modulesQ.modules, t],
   );
   const activeModuleName = useMemo(
     () => modulesQ.modules.find((m) => m.id === moduleId)?.name ?? null,

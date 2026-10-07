@@ -261,6 +261,39 @@ fn text_field(v: &Value, field: &str, path: &str) -> Result<String, String> {
         .ok_or_else(|| format!("GET {path} carries no `{field}`"))
 }
 
+/// Why a project answers no `baseBranch`, and who may give it one. Core reads it from the project
+/// document's `source.git.defaultBranch`, so only a git source carries one: a storefront project's
+/// work lives on its provider and no branch holds it (hop, an Autoflow project, refused 2026-10-07
+/// with a sentence that named neither the setting nor who writes it).
+pub fn no_base_branch(project_id: &str, config: Option<&Value>) -> String {
+    let lead = format!(
+        "GET /api/projects/{project_id} carries no `baseBranch`, which `run brief` reads held trees against (origin/<baseBranch>, never origin/HEAD)"
+    );
+    let set_it = format!(
+        "a holder of `project.admin` on the project declares it as `source.git.defaultBranch` in the project document: read `forge-runner api projects/{project_id}/config`, then send it back with `-X PUT` as {{ baseRevision, document }} (the web app's Configuration tab writes the same document)"
+    );
+    let source = config.and_then(|c| c.pointer("/document/source"));
+    match source.and_then(|s| s.get("type")).and_then(Value::as_str) {
+        Some("storefront") => {
+            let provider = source
+                .and_then(|s| s.pointer("/storefront/provider"))
+                .and_then(Value::as_str)
+                .unwrap_or("its provider");
+            format!(
+                "{lead}: the project's source is a storefront on {provider}, whose work lives on {provider} and in no branch, so it has no base branch to declare. Write this run's brief by hand; a git source cannot be declared beside a {provider} binding (GITLESS_BINDING_ON_GIT_SOURCE)"
+            )
+        }
+        Some("none") => format!(
+            "{lead}: the project document declares no source (`source.type` \"none\"); {set_it}, with `source.type` \"git\" and the repository"
+        ),
+        Some(other) => format!("{lead}: the project document's source is `{other}`, which names no branch; {set_it}"),
+        None if config.is_none() => format!(
+            "{lead}, and its project document could not be read to say why; {set_it}"
+        ),
+        None => format!("{lead}: the project holds no project document; {set_it}"),
+    }
+}
+
 /// The refusal for a run this box cannot brief, or the run with its project and issue keys.
 pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<(PathBuf, String, Vec<String>)> {
     let Some(run) = led.run(run_id)? else {
@@ -294,7 +327,13 @@ pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> 
     let project = get_json(client, &project_path)
         .await
         .map_err(anyhow::Error::msg)?;
-    let base = text_field(&project, "baseBranch", &project_path).map_err(anyhow::Error::msg)?;
+    let base = match text_field(&project, "baseBranch", &project_path) {
+        Ok(base) => base,
+        Err(_) => {
+            let config = get_json(client, &format!("/api/projects/{project_id}/config")).await;
+            anyhow::bail!("{}", no_base_branch(&project_id, config.as_ref().ok()));
+        }
+    };
     let project_slug = text_field(&project, "slug", &project_path).map_err(anyhow::Error::msg)?;
 
     let mut issues = Vec::new();
@@ -404,6 +443,48 @@ mod tests {
         ] {
             assert!(text.contains(want), "missing `{want}` in:\n{text}");
         }
+    }
+
+    #[test]
+    fn a_missing_base_branch_names_the_setting_and_who_writes_it() {
+        let none = no_base_branch(
+            "p1",
+            Some(&serde_json::json!({ "document": { "source": { "type": "none" } } })),
+        );
+        for want in [
+            "carries no `baseBranch`",
+            "`project.admin`",
+            "`source.git.defaultBranch`",
+            "forge-runner api projects/p1/config",
+            "-X PUT",
+        ] {
+            assert!(none.contains(want), "missing `{want}` in: {none}");
+        }
+        let undocumented = no_base_branch("p1", Some(&serde_json::json!({ "document": null })));
+        assert!(
+            undocumented.contains("holds no project document"),
+            "{undocumented}"
+        );
+        let unread = no_base_branch("p1", None);
+        assert!(unread.contains("could not be read"), "{unread}");
+    }
+
+    #[test]
+    fn a_storefront_project_is_told_it_has_no_branch_to_declare() {
+        let text = no_base_branch(
+            "p1",
+            Some(&serde_json::json!({ "document": { "source": {
+                "type": "storefront",
+                "storefront": { "provider": "autoflow", "binding": "b" }
+            } } })),
+        );
+        assert!(text.contains("storefront on autoflow"), "{text}");
+        assert!(text.contains("no base branch to declare"), "{text}");
+        assert!(text.contains("GITLESS_BINDING_ON_GIT_SOURCE"), "{text}");
+        assert!(
+            !text.contains("-X PUT"),
+            "a storefront has no branch to write: {text}"
+        );
     }
 
     /// A scratch repository whose base branch (`dev`) is ahead of the remote's default (`main`), with

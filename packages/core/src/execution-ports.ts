@@ -47,6 +47,7 @@ import {
   resolveSessionMcpServers,
   scrubJobOutput,
 } from './jobs/index.js';
+import { formatIssueRef } from './lib/issue-ref.js';
 import { provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
@@ -70,6 +71,7 @@ import {
 } from './prompt/index.js';
 import {
   type AskInput,
+  answeredOnIssuesSince,
   answerOf,
   askQuestion,
   registerWaiter,
@@ -208,6 +210,12 @@ export function provideExecutionPorts(): void {
     designsOwed: owedDesignRevisions,
     releaseNotesOwed: owedReleaseNotes,
     releaseNotesWarned: warnedReleaseNotes,
+    answersSince: async (projectId, after) =>
+      (await answeredOnIssuesSince(projectId, after)).map((a) => ({
+        issueKey: formatIssueRef(a.issuePrefix, a.issSeq),
+        questionId: a.questionId,
+        outcome: a.resume,
+      })),
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
   });
 

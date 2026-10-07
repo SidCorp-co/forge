@@ -6,6 +6,7 @@ import {
   SectionTitle,
   StreamBand,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { PulseFlowWeek } from "../types";
 
 export interface FlowSectionProps {
@@ -14,12 +15,13 @@ export interface FlowSectionProps {
 
 /** Section 4 — which way is the flow going? */
 export function FlowSection({ flow }: FlowSectionProps) {
+  const t = useCopy();
   if (flow.length === 0) {
     return (
       <PageSection>
         <PageSectionBody className="flex flex-col gap-2">
-          <SectionTitle className="fg-h3">Which way the flow is going</SectionTitle>
-          <p className="fg-body-sm text-muted">No weekly series in this response.</p>
+          <SectionTitle className="fg-h3">{t("overview.flowWeeks.title")}</SectionTitle>
+          <p className="fg-body-sm text-muted">{t("overview.flowWeeks.empty")}</p>
         </PageSectionBody>
       </PageSection>
     );
@@ -34,10 +36,9 @@ export function FlowSection({ flow }: FlowSectionProps) {
     <PageSection>
       <PageSectionBody className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <SectionTitle className="fg-h3">Which way the flow is going</SectionTitle>
+          <SectionTitle className="fg-h3">{t("overview.flowWeeks.title")}</SectionTitle>
           <p className="fg-body-sm text-muted">
-            Backlog {drift === 0 ? "unchanged" : drift > 0 ? `up ${drift}` : `down ${-drift}`} over{" "}
-            {flow.length} weeks — {startBacklog} to {last.backlog}
+            {t(drift === 0 ? "overview.flowWeeks.unchanged" : drift > 0 ? "overview.flowWeeks.up" : "overview.flowWeeks.down", { n: Math.abs(drift), weeks: flow.length, from: startBacklog, to: last.backlog })}
           </p>
         </div>
         <StreamBand
@@ -47,10 +48,10 @@ export function FlowSection({ flow }: FlowSectionProps) {
             outbound: w.closed,
             line: w.backlog,
           }))}
-          inboundLabel="Created"
-          outboundLabel="Finished"
-          lineLabel="Backlog left behind"
-          label={`${flow.length} weeks of issues created against issues finished. Backlog went from ${startBacklog} to ${last.backlog}.`}
+          inboundLabel={t("overview.flowWeeks.created")}
+          outboundLabel={t("overview.flowWeeks.finished")}
+          lineLabel={t("overview.flowWeeks.backlog")}
+          label={t("overview.flowWeeks.aria", { weeks: flow.length, from: startBacklog, to: last.backlog })}
         />
       </PageSectionBody>
     </PageSection>

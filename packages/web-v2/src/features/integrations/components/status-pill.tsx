@@ -3,12 +3,14 @@
 
 import { Icon, type IconName } from "@/design";
 import { DIRECTORY_STATUS_META, type DirectoryStatus, deriveDirectoryStatus } from "../derive";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { BindingRole, StatusCard } from "../types";
 /** A deploy binding reads as the project-document environment that names it, where one does. */
-export function scopeLabel(role: BindingRole, environment?: string | null): string {
-  if (role === "service") return "Service";
-  if (role === "source") return "Source";
-  return environment ?? "Deploy";
+export function scopeLabel(role: BindingRole, t: Copy, environment?: string | null): string {
+  if (role === "service") return t("integrations.role.service");
+  if (role === "source") return t("integrations.role.source");
+  return environment ?? t("integrations.role.deploy");
 }
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */
@@ -25,7 +27,8 @@ export function Pill({ icon, label, fg, bg }: { icon: IconName; label: string; f
 }
 
 export function DirectoryStatusPill({ status }: { status: DirectoryStatus }) {
-  return <Pill {...DIRECTORY_STATUS_META[status]} />;
+  const t = useCopy();
+  return <Pill {...DIRECTORY_STATUS_META[status]} label={t(`integrations.status.${status}`)} />;
 }
 
 /** Pill for a composed status card (directory state derived from the card). */

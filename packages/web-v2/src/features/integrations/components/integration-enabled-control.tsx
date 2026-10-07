@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Toggle } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import {
   useOrgConnectionLocked,
   useUpdateConnection,
@@ -21,13 +22,14 @@ export function IntegrationEnabledControl({
 
   const optedIn = binding.bindingActive;
   const credentialDisabled = !binding.connectionActive;
+  const t = useCopy();
 
   return (
     <div className="flex items-center gap-3">
       <span className="flex items-center gap-2">
-        <span className="fg-body-sm text-muted">Enabled</span>
+        <span className="fg-body-sm text-muted">{t("integrations.enabled")}</span>
         <Toggle
-          aria-label="Enabled for this project"
+          aria-label={t("integrations.enabled.label")}
           checked={optedIn}
           onChange={(active) =>
             update.mutate({ id: binding.id, body: { active } })
@@ -38,7 +40,7 @@ export function IntegrationEnabledControl({
       {credentialDisabled && (
         <div className="flex items-center gap-2">
           <span className="fg-body-sm text-amber">
-            Shared credential is disabled — no project can use it.
+            {t("integrations.enabled.credentialOff")}
           </span>
           <Button
             variant="secondary"
@@ -52,7 +54,7 @@ export function IntegrationEnabledControl({
               })
             }
           >
-            Enable credential
+            {t("integrations.enabled.enableCredential")}
           </Button>
         </div>
       )}

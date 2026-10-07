@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { MonoTag } from "@/design";
 import { STATUS_META } from "@/design/status";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { statusToChip } from "../derive";
 import type { IssueStatus } from "../types";
 
@@ -29,12 +30,13 @@ export function IssueRefBadge({
   status,
   showTitle = false,
 }: IssueRefBadgeProps) {
+  const t = useCopy();
   const dot = status ? STATUS_META[statusToChip(status)].dot : null;
   const withTitle = showTitle && !!title;
   return (
     <Link
       href={`/projects/${slug}/issues/${id}`}
-      title={title ?? displayId ?? "Open issue"}
+      title={title ?? displayId ?? t("issues.row.open")}
       className={`${withTitle ? "flex w-full" : "inline-flex"} max-w-full items-center gap-1 transition-opacity hover:opacity-80 focus-visible:outline-none`}
     >
       {dot && (
@@ -45,7 +47,7 @@ export function IssueRefBadge({
         />
       )}
       <span className="flex-none">
-        <MonoTag hue="cobalt">{displayId ?? "Issue"}</MonoTag>
+        <MonoTag hue="cobalt">{displayId ?? t("issues.noun")}</MonoTag>
       </span>
       {withTitle && (
         <span className="fg-caption min-w-0 flex-1 truncate text-left text-xs">{title}</span>

@@ -1,5 +1,6 @@
 import type { HealthKey } from "@/design";
-import { formatElapsed as formatSpan, formatStamp } from "@/lib/utils/format";
+import { formatDateTime, formatElapsed as formatSpan, formatNumber } from "@/lib/i18n/format";
+import { productCopy } from "@/lib/i18n/product-copy";
 
 export type RunnerBuildState = "current" | "behind" | "unknown";
 
@@ -170,22 +171,20 @@ export interface RunnerPoolRead {
 	receivedAt: string;
 }
 
-/** What every surface says for a version nobody reported. Blank would read as a
- *  device with nothing to say, and the newest published version would be a guess
- *  presented as a fact. */
-export const VERSION_NOT_REPORTED = "version not reported";
-
 /** The version chip on a project runner row, labelled as the runner's so it is
- *  never taken for Forge's own. */
-export function runnerVersionLabel(agentVersion: string | null | undefined): string {
+ *  never taken for Forge's own. A version nobody reported says so: blank would read
+ *  as a device with nothing to say, and the newest published version would be a
+ *  guess presented as a fact. */
+export function runnerVersionLabel(agentVersion: string | null | undefined, language: string): string {
+	const t = productCopy(language);
 	const reported = agentVersion?.trim();
-	return reported ? `Runner v${reported}` : VERSION_NOT_REPORTED;
+	return reported ? t("runners.version.runner", { v: reported }) : t("runners.version.notReported");
 }
 
 /** The version line under a device's name in the fleet list. */
-export function deviceVersionLabel(agentVersion: string | null | undefined): string {
+export function deviceVersionLabel(agentVersion: string | null | undefined, language: string): string {
 	const reported = agentVersion?.trim();
-	return reported ? `v${reported}` : VERSION_NOT_REPORTED;
+	return reported ? `v${reported}` : productCopy(language)("runners.version.notReported");
 }
 
 /** The chip beside a device's version, or null where there is nothing to say. */
@@ -200,17 +199,21 @@ export interface DeviceBuildChip {
  * health endpoint refuses such a box, and a row that says nothing about it reads
  * as a box with nothing wrong (ISS-1165).
  */
-export function deviceBuildChip(device: {
-	agentOutdated: boolean;
-	agentBuildState: RunnerBuildState;
-	agentBuildDetail: string;
-}): DeviceBuildChip | null {
+export function deviceBuildChip(
+	device: {
+		agentOutdated: boolean;
+		agentBuildState: RunnerBuildState;
+		agentBuildDetail: string;
+	},
+	language: string,
+): DeviceBuildChip | null {
+	const t = productCopy(language);
 	const title = device.agentBuildDetail || "";
 	if (device.agentOutdated) {
-		return { label: "update pending", title: title || "Update pending", tone: "warning" };
+		return { label: t("runners.chip.updatePending"), title: title || t("runners.chip.updatePendingTitle"), tone: "warning" };
 	}
 	if (device.agentBuildState === "unknown") {
-		return { label: "build unknown", title: title || "This build could not be compared", tone: "muted" };
+		return { label: t("runners.chip.buildUnknown"), title: title || t("runners.chip.buildUnknownTitle"), tone: "muted" };
 	}
 	return null;
 }
@@ -244,14 +247,17 @@ export interface DeviceGateBanner {
  */
 const REPORT_FRESH_FOR_MS = 10 * 60 * 1000;
 
-function asSpan(ms: number | null): string {
-	if (ms === null) return "an unknown span";
+function asSpan(ms: number | null, language: string): string {
+	const t = productCopy(language);
+	if (ms === null) return t("runners.span.unknown");
 	const mins = Math.round(ms / 60_000);
-	if (mins < 60) return `${mins}m`;
+	if (mins < 60) return t("common.age.minutes", { n: mins });
 	const hours = Math.round(mins / 60);
-	if (hours < 48) return `${hours}h`;
-	return `${Math.round(hours / 24)}d`;
+	if (hours < 48) return t("common.age.hours", { n: hours });
+	return t("common.age.days", { n: Math.round(hours / 24) });
 }
+
+const staleLine = (age: number, language: string) => productCopy(language)("runners.stale", { age: asSpan(age, language) });
 
 type ReasonCount = DeviceGate["byReason"][number];
 
@@ -272,29 +278,29 @@ function commonestReason(by: ReasonCount[]): ReasonCount | undefined {
  * The commonest reason with its share of the count. Bare, a reason standing for
  * 141 of 149 reads as the reason for all of them (ISS-1192).
  */
-export function gateReasonLine(by: ReasonCount[], count: number): string | null {
+export function gateReasonLine(by: ReasonCount[], count: number, language: string): string | null {
+	const t = productCopy(language);
 	const top = commonestReason(by);
 	if (top === undefined) return null;
-	if (top.count === count) return `every one of them: ${top.reason}`;
-	return `${top.count} of ${count}: ${top.reason}`;
+	if (top.count === count) return t("runners.gate.reasonAll", { reason: top.reason });
+	return t("runners.gate.reasonSome", { n: top.count, count, reason: top.reason });
 }
 
 /** The banner, or `null` for a box whose gate is deciding. */
 export function deviceGateBanner(
 	gate: DeviceGate | null,
+	language: string,
 	now: number = Date.now(),
 ): DeviceGateBanner | null {
 	if (gate?.verdict !== "failing_open") return null;
+	const t = productCopy(language);
 	const age = now - Date.parse(gate.receivedAt);
 	return {
 		count: gate.count,
-		rate: gate.perDay === null ? "at an unstated rate" : `${Math.round(gate.perDay)}/day`,
-		window: asSpan(gate.windowMs),
-		reason: gateReasonLine(gate.byReason, gate.count),
-		stale:
-			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
-				? null
-				: `last reported ${asSpan(age)} ago, so this may no longer be true`,
+		rate: gate.perDay === null ? t("runners.gate.rateUnstated") : t("runners.gate.perDay", { n: Math.round(gate.perDay) }),
+		window: asSpan(gate.windowMs, language),
+		reason: gateReasonLine(gate.byReason, gate.count, language),
+		stale: Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS ? null : staleLine(age, language),
 	};
 }
 
@@ -316,6 +322,7 @@ export interface DeviceBinariesRead {
 
 export function deviceBinariesRead(
 	binaries: DeviceBinaries | null,
+	language: string,
 	now: number = Date.now(),
 ): DeviceBinariesRead {
 	if (binaries === null) return { state: "unreported", missing: [], stale: null };
@@ -323,10 +330,7 @@ export function deviceBinariesRead(
 	return {
 		state: binaries.missing.length > 0 ? "missing" : "resolved",
 		missing: binaries.missing,
-		stale:
-			Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
-				? null
-				: `last reported ${asSpan(age)} ago, so this may no longer be true`,
+		stale: Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS ? null : staleLine(age, language),
 	};
 }
 
@@ -355,16 +359,17 @@ export interface DeviceDisk {
 }
 
 /** One root as a line: both axes, so the one that did not cross is read beside the one that did. */
-export function diskRootLine(r: DiskRootRead): string {
-	if (r.refused !== undefined) return `no reading: ${r.refused}`;
+export function diskRootLine(r: DiskRootRead, language: string): string {
+	const t = productCopy(language);
+	if (r.refused !== undefined) return t("runners.disk.noReading", { why: r.refused });
 	const bytes =
 		r.bytesFreePercent === null
-			? "bytes: no total stated"
-			: `${r.bytesFreePercent}% bytes free (${binarySize(r.bytesFree ?? 0)} of ${binarySize(r.bytesTotal ?? 0)})`;
+			? t("runners.disk.bytesNoTotal")
+			: t("runners.disk.bytes", { pct: r.bytesFreePercent, free: binarySize(r.bytesFree ?? 0), total: binarySize(r.bytesTotal ?? 0) });
 	const inodes =
 		r.inodesFreePercent === null
-			? "inodes: no total stated"
-			: `${r.inodesFreePercent}% inodes free (${(r.inodesFree ?? 0).toLocaleString()} of ${(r.inodesTotal ?? 0).toLocaleString()})`;
+			? t("runners.disk.inodesNoTotal")
+			: t("runners.disk.inodes", { pct: r.inodesFreePercent, free: formatNumber(r.inodesFree ?? 0, language), total: formatNumber(r.inodesTotal ?? 0, language) });
 	return `${bytes} · ${inodes}`;
 }
 
@@ -378,11 +383,9 @@ function binarySize(bytes: number): string {
 }
 
 /** Where the disk report is old enough that it may no longer be the box's present condition. */
-export function deviceDiskStale(disk: DeviceDisk, now: number = Date.now()): string | null {
+export function deviceDiskStale(disk: DeviceDisk, language: string, now: number = Date.now()): string | null {
 	const age = now - Date.parse(disk.receivedAt);
-	return Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS
-		? null
-		: `last reported ${asSpan(age)} ago, so this may no longer be true`;
+	return Number.isNaN(age) || age <= REPORT_FRESH_FOR_MS ? null : staleLine(age, language);
 }
 
 /** One `runner_events` status transition (from `GET /api/runners/:id/activity`). */
@@ -443,16 +446,17 @@ export interface ActiveRunnersSnapshot {
 	total: number;
 }
 
-export function formatElapsed(startedAt: string | null, now: number = Date.now()): string | null {
+export function formatElapsed(startedAt: string | null, language: string, now: number = Date.now()): string | null {
 	if (!startedAt) return null;
 	const start = Date.parse(startedAt);
 	if (!Number.isFinite(start)) return null;
+	const t = productCopy(language);
 	const sec = Math.max(0, Math.floor((now - start) / 1000));
-	if (sec < 60) return `${sec}s`;
+	if (sec < 60) return t("common.age.seconds", { n: sec });
 	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}m ${sec % 60}s`;
+	if (min < 60) return t("common.elapsed.minutes", { m: min, s: sec % 60 });
 	const hr = Math.floor(min / 60);
-	return `${hr}h ${min % 60}m`;
+	return t("common.elapsed.hours", { h: hr, m: min % 60 });
 }
 
 export const PROVISION_STEPS: ProvisionStatus[] = [
@@ -463,15 +467,6 @@ export const PROVISION_STEPS: ProvisionStatus[] = [
 	"ready",
 ];
 
-export const PROVISION_LABEL: Record<ProvisionStatus, string> = {
-	queued: "Queued",
-	cloning: "Cloning repo",
-	syncing_skills: "Syncing skills",
-	writing_mcp: "Writing MCP config",
-	ready: "Ready",
-	needs_manual_setup: "Needs manual setup",
-	failed: "Failed",
-};
 
 export function provisionHealth(status: ProvisionStatus | null): HealthKey {
 	switch (status) {
@@ -504,12 +499,6 @@ export function runnerHealth(status: string): HealthKey {
 /** Why a runner is limited — mirrors `runnerLimitReasons` on the core schema. */
 export type RunnerLimitReason = "usage_limit" | "rate_limit" | "auth";
 
-const LIMIT_LABEL: Record<RunnerLimitReason, string> = {
-	usage_limit: "Usage limit",
-	rate_limit: "Rate limited",
-	auth: "Auth error",
-};
-
 export interface RunnerLimitDisplay {
 	reason: RunnerLimitReason;
 	label: string;
@@ -530,22 +519,23 @@ export interface RunnerLimitDisplay {
 // its claim and is said as one; the time shown as when work is tried again is core's next try.
 export function runnerLimitDisplay(
 	runner: Pick<ProjectRunner, "limitReason" | "rateLimitedUntil" | "limitDetail" | "limitRefusedAt" | "limitPrintedResetAt">,
+	language: string,
 	now: number = Date.now(),
 ): RunnerLimitDisplay | null {
 	if (!runner.limitReason) return null;
+	const t = productCopy(language);
 	const reason = runner.limitReason;
 	const nextTryMs = runner.rateLimitedUntil ? Date.parse(runner.rateLimitedUntil) : null;
 	const refusedMs = runner.limitRefusedAt ? Date.parse(runner.limitRefusedAt) : null;
 	return {
 		reason,
-		label: LIMIT_LABEL[reason],
+		label: t(`runners.limit.${reason}`),
 		health: reason === "auth" ? "down" : "attention",
 		active: nextTryMs !== null ? nextTryMs > now : reason === "auth",
-		refusedText: refusedMs === null ? null : `refused ${formatSpan(now - refusedMs)} ago`,
-		nextTryText: nextTryMs === null ? null : nextTryMs > now ? `next try in ${formatSpan(nextTryMs - now)}` : "next try due",
-		printedText: runner.limitPrintedResetAt
-			? `The account said it resets at ${formatStamp(runner.limitPrintedResetAt)}: its claim, not when work resumes.`
-			: null,
+		refusedText: refusedMs === null ? null : t("runners.limit.refused", { age: formatSpan(now - refusedMs, language) }),
+		nextTryText:
+			nextTryMs === null ? null : nextTryMs > now ? t("runners.limit.nextTry", { age: formatSpan(nextTryMs - now, language) }) : t("runners.limit.nextTryDue"),
+		printedText: runner.limitPrintedResetAt ? t("runners.limit.printed", { at: formatDateTime(runner.limitPrintedResetAt, language) }) : null,
 		detail: runner.limitDetail,
 	};
 }

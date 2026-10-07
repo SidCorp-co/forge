@@ -10,10 +10,3 @@ export const PULSE_BUCKET_STATUSES: Record<keyof PulseWorkBuckets, readonly stri
   awaitingRelease: ["awaiting_release"],
   humanBlocked: ["needs_info", "on_hold"],
 };
-
-export const PULSE_BUCKET_LABELS: Record<keyof PulseWorkBuckets, string> = {
-  open: "Open, not picked up",
-  inProgress: "In flight",
-  awaitingRelease: "Awaiting release",
-  humanBlocked: "Blocked on a person",
-};

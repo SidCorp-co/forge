@@ -16,17 +16,19 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { useAgentSelf, useUpdateAgentSelf } from "../hooks";
 
-const ANSWER_IN_GROUP: SelectOption[] = [
-  { value: "window", label: "Every settled window — answer whatever is said" },
-  { value: "mention", label: "Only when named — @handle in the window" },
-  { value: "tool", label: "Only when it chooses — nothing posts unless it calls room_send" },
+const answerInGroup = (t: Copy): SelectOption[] => [
+  { value: "window", label: t("settings.agents.self.window") },
+  { value: "mention", label: t("settings.agents.self.mention") },
+  { value: "tool", label: t("settings.agents.self.tool") },
 ];
-const ON_OFF: SelectOption[] = [
-  { value: "off", label: "Off" },
-  { value: "on", label: "On" },
+const onOff = (t: Copy): SelectOption[] => [
+  { value: "off", label: t("settings.agents.self.off") },
+  { value: "on", label: t("settings.agents.self.on") },
 ];
 const MINUTE = 60_000;
 
@@ -96,6 +98,7 @@ export function AgentSelfEditor({
   const save = useUpdateAgentSelf(orgId);
   const { toast } = useToast();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const t = useCopy();
   useEffect(() => {
     if (selfQ.data) setDraft(draftOf(selfQ.data));
   }, [selfQ.data]);
@@ -105,7 +108,7 @@ export function AgentSelfEditor({
       <div className="flex items-center gap-3" data-testid={`agent-self-error-${agentUserId}`}>
         <p className="fg-body-sm text-danger">{formatApiError(selfQ.error)}</p>
         <Button variant="secondary" onClick={() => void selfQ.refetch()}>
-          Try again
+          {t("settings.agents.self.tryAgain")}
         </Button>
       </div>
     );
@@ -118,18 +121,18 @@ export function AgentSelfEditor({
     if (!draft) return;
     try {
       await save.mutateAsync({ agentUserId, patch: patchOf(draft) });
-      toast({ title: `Saved @${handle}'s self`, tone: "success" });
+      toast({ title: t("settings.agents.self.saved", { handle }), tone: "success" });
     } catch (err) {
-      toast({ title: "Could not save", description: formatApiError(err), tone: "error" });
+      toast({ title: t("settings.agents.self.saveFailed"), description: formatApiError(err), tone: "error" });
     }
   }
 
   return (
     <div className="space-y-4" data-testid={`agent-self-${agentUserId}`}>
-      <Field label="Soul" hint="Who this agent is, in its own voice. Rendered at the top of every turn.">
+      <Field label={t("settings.agents.self.soul")} hint={t("settings.agents.self.soulHint")}>
         <Textarea value={draft.soul} rows={5} maxLength={8000} onChange={(e) => set("soul", e.target.value)} />
       </Field>
-      <Field label="Standing instructions" hint="What it always does, whatever the room.">
+      <Field label={t("settings.agents.self.instructions")} hint={t("settings.agents.self.instructionsHint")}>
         <Textarea
           value={draft.instructions}
           rows={4}
@@ -138,44 +141,44 @@ export function AgentSelfEditor({
         />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Greeting" hint="How it opens a first reply.">
+        <Field label={t("settings.agents.self.greeting")} hint={t("settings.agents.self.greetingHint")}>
           <Input value={draft.greeting} maxLength={500} onChange={(e) => set("greeting", e.target.value)} />
         </Field>
-        <Field label="Glyph" hint="An emoji it signs with.">
+        <Field label={t("settings.agents.self.glyph")} hint={t("settings.agents.self.glyphHint")}>
           <Input value={draft.emoji} maxLength={16} onChange={(e) => set("emoji", e.target.value)} />
         </Field>
       </div>
-      <PageSectionTitle className="fg-label mt-2">When it speaks</PageSectionTitle>
+      <PageSectionTitle className="fg-label mt-2">{t("settings.agents.self.whenSpeaks")}</PageSectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="In a group room">
+        <Field label={t("settings.agents.self.group")}>
           <Select
-            options={ANSWER_IN_GROUP}
+            options={answerInGroup(t)}
             value={draft.answerInGroup}
             onChange={(v) => set("answerInGroup", v as AnswerInGroupMode)}
           />
         </Field>
-        <Field label="Back off after quiet windows" hint="Empty = default (3). 1–20.">
+        <Field label={t("settings.agents.self.backoff")} hint={t("settings.agents.self.backoffHint")}>
           <Input
             inputMode="numeric"
             value={draft.backoffAfter}
             onChange={(e) => set("backoffAfter", e.target.value)}
           />
         </Field>
-        <Field label="Heartbeat">
+        <Field label={t("settings.agents.self.heartbeat")}>
           <Select
-            options={ON_OFF}
+            options={onOff(t)}
             value={draft.heartbeat ? "on" : "off"}
             onChange={(v) => set("heartbeat", v === "on")}
           />
         </Field>
-        <Field label="Heartbeat interval (minutes)" hint="Empty = default (60). 5–10080.">
+        <Field label={t("settings.agents.self.interval")} hint={t("settings.agents.self.intervalHint")}>
           <Input
             inputMode="numeric"
             value={draft.heartbeatMinutes}
             onChange={(e) => set("heartbeatMinutes", e.target.value)}
           />
         </Field>
-        <Field label="Dormant after (hours)" hint="Empty = default (24).">
+        <Field label={t("settings.agents.self.dormant")} hint={t("settings.agents.self.dormantHint")}>
           <Input
             inputMode="numeric"
             value={draft.dormantHours}
@@ -185,7 +188,7 @@ export function AgentSelfEditor({
       </div>
       <div>
         <Button variant="primary" loading={save.isPending} onClick={onSave} className="min-h-11">
-          Save self
+          {t("settings.agents.self.save")}
         </Button>
       </div>
     </div>

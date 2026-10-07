@@ -8,6 +8,7 @@ import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth } from "@/features/projects/hooks";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { AwaitingReleaseCard } from "./awaiting-release-card";
 import { activeRuns, activeSpend, awaitingReleaseRuns, idleRuns, runnersSummary, spendByStage, statusDonut } from "./derive";
 import { KpiBand } from "./kpi-band";
@@ -28,16 +29,18 @@ export function DevelopmentActivity({ projectId, slug }: { projectId: string; sl
   // (the next try, never the reset its account printed: ISS-276).
   const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
   const tick = useNow(1000, anyLimited);
+  const language = useInterfaceLanguage();
 
   const health = healthQ.data?.find((h) => h.projectSlug === slug);
   const runItems = runsQ.data?.items;
   const live = activeRuns(runItems);
   const inFlight = activeSpend(runItems);
-  const runners = runnersSummary(projectRunnersQ.data, queueQ.data, anyLimited ? tick : Date.now(), activeRunnersQ.data?.runners);
+  const runners = runnersSummary(projectRunnersQ.data, queueQ.data, language, anyLimited ? tick : Date.now(), activeRunnersQ.data?.runners);
   const donut = statusDonut(health?.statusDistribution);
+  const t = useCopy();
 
   return (
-    <section aria-label="Runs, runners and spend" className="space-y-4 px-5 pb-6 max-md:px-3" data-testid="development-activity">
+    <section aria-label={t("overview.activity.aria")} className="space-y-4 px-5 pb-6 max-md:px-3" data-testid="development-activity">
       <KpiBand
         liveRuns={live.length}
         busyRunners={runners.busyCount}

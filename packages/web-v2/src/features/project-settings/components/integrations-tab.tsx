@@ -16,6 +16,8 @@ import {
 } from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { TourHint } from "@/features/tours/components/tour-hint";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { bindingRefusalText } from "@/features/integrations/bind-actions";
@@ -32,24 +34,26 @@ import type {
 // What the binding is FOR — DECLARED by the person, never derived from the
 // provider: the same epodsystem connection is a deploy target on a storefront
 // project and a plain service on one that only borrows its MCP.
-const ROLE_SELECT_OPTIONS: SelectOption[] = [
-  { value: "service", label: "Service — a project-wide facility" },
-  { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
-];
+function roleOptions(t: Copy): SelectOption[] {
+  return [
+    { value: "service", label: t("integrations.form.roleService") },
+    { value: "deploy", label: t("integrations.form.roleDeploy") },
+  ];
+}
 
-function connectionLabel(c: ConnectionSummary): string {
-  const provider = providerLabel(c.provider);
+function connectionLabel(c: ConnectionSummary, language: string): string {
+  const provider = providerLabel(c.provider, language);
   return c.displayName ? `${c.displayName} · ${provider}` : provider;
 }
 
 const NO_APPLICATION: CoolifyTargetInput = { label: "", resourceUuid: "" };
 
-function applicationsRefusal(targets: CoolifyTargetInput[]): string | null {
-  const incomplete = targets.findIndex((t) => !t.label.trim() || !t.resourceUuid.trim());
+function applicationsRefusal(targets: CoolifyTargetInput[], t: Copy): string | null {
+  const incomplete = targets.findIndex((row) => !row.label.trim() || !row.resourceUuid.trim());
   if (incomplete === -1) return null;
   return targets.length === 1 && !targets[0]?.label.trim() && !targets[0]?.resourceUuid.trim()
-    ? "Choose at least one Coolify application before sharing: a Coolify binding names the applications it deploys."
-    : `Application ${incomplete + 1} needs both a label and a Coolify application before sharing.`;
+    ? t("integrations.share.needApp")
+    : t("integrations.share.appIncomplete", { n: incomplete + 1 });
 }
 
 function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
@@ -70,21 +74,16 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     () => (connectionsQ.data?.items ?? []).filter((c) => c.active && c.hasSecrets),
     [connectionsQ.data],
   );
+  const t = useCopy();
   return (
     <PageSection data-tour="int-share">
       <PageSectionBody style={{ paddingTop: 0 }}>
-        <PageSectionTitle className="mb-1">Share an existing connection</PageSectionTitle>
-        <p className="fg-body-sm mb-4 max-w-[72ch] text-muted">
-          Bind one of your connections to this project without re-entering the credential. The
-          connection&apos;s owner keeps it; this project gets a webhook secret of its own.
-        </p>
+        <PageSectionTitle className="mb-1">{t("integrations.share.title")}</PageSectionTitle>
+        <p className="fg-body-sm mb-4 max-w-[72ch] text-muted">{t("integrations.share.intro")}</p>
         {!canEdit ? (
-          <Banner tone="info">Only the project owner can share a connection with this project.</Banner>
+          <Banner tone="info">{t("integrations.share.ownerOnly")}</Banner>
         ) : !connectionsQ.isLoading && eligible.length === 0 ? (
-          <Banner tone="info">
-            You don&apos;t have any connections to share yet. Connecting a provider in the list above
-            creates one, which other projects can then share.
-          </Banner>
+          <Banner tone="info">{t("integrations.share.none")}</Banner>
         ) : (
           <ShareForm projectId={projectId} eligible={eligible} loading={connectionsQ.isLoading} />
         )}
@@ -109,12 +108,14 @@ function ShareForm({
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [applications, setApplications] = useState<CoolifyTargetInput[]>([NO_APPLICATION]);
   const [formError, setFormError] = useState<string | null>(null);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   const selected = eligible.find((c) => c.id === connectionId);
   const provider = selected?.provider;
   const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
   const namesApplications = provider === coolify.provider;
-  const providerName = provider ? providerLabel(provider) : "this provider";
+  const providerName = provider ? providerLabel(provider, language) : t("integrations.share.thisProvider");
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
@@ -122,13 +123,11 @@ function ShareForm({
   function submit() {
     if (!connectionId) return;
     if (role === "deploy" && !canDeploy) {
-      setFormError(
-        `Forge cannot deploy to ${providerName} — it has no deploy adapter. Share it as a service, or pick a connection Forge can deploy to.`,
-      );
+      setFormError(t("integrations.share.cannotDeployPick", { provider: providerName }));
       return;
     }
     if (!selected) return;
-    const missing = namesApplications ? applicationsRefusal(applications) : null;
+    const missing = namesApplications ? applicationsRefusal(applications, t) : null;
     setFormError(missing);
     if (missing) return;
     bind.mutate(
@@ -152,22 +151,22 @@ function ShareForm({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <Field label="Connection" required>
+      <Field label={t("integrations.share.connection")} required>
         <Select
-          options={eligible.map((c) => ({ value: c.id, label: connectionLabel(c) }))}
+          options={eligible.map((c) => ({ value: c.id, label: connectionLabel(c, language) }))}
           value={connectionId}
           onChange={(v) => {
             setConnectionId(v);
             setApplications([NO_APPLICATION]);
             setFormError(null);
           }}
-          placeholder={loading ? "Loading…" : "Select a connection…"}
+          placeholder={loading ? t("integrations.provider.loading") : t("integrations.share.select")}
           disabled={loading || bind.isPending}
         />
       </Field>
-      <Field label="What is it for" required>
+      <Field label={t("integrations.form.role")} required>
         <Select
-          options={ROLE_SELECT_OPTIONS}
+          options={roleOptions(t)}
           value={role}
           onChange={(v) => {
             setRole(v as BindingRole);
@@ -178,14 +177,13 @@ function ShareForm({
       </Field>
       {role === "deploy" && !canDeploy && (
         <Banner tone="attention">
-          Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a service instead.
+          {t("integrations.share.cannotDeploy", { provider: providerName })}
         </Banner>
       )}
       {role === "deploy" && canDeploy && (
         <p className="fg-body-sm text-muted">
-          Which environment this binding deploys is the project document&apos;s: name the binding in{" "}
-          <code>environments.&lt;name&gt;.deployment.binding</code> and write the document on the Configuration
-          tab.
+          {t("integrations.share.deployWhere.lead")} <code>environments.&lt;name&gt;.deployment.binding</code>{" "}
+          {t("integrations.share.deployWhere.tail")}
         </p>
       )}
       {namesApplications && (
@@ -213,7 +211,7 @@ function ShareForm({
       {bind.isError && <Banner tone="danger">{bindingRefusalText(bind.error)}</Banner>}
       <div>
         <Button variant="primary" onClick={submit} loading={bind.isPending} disabled={!connectionId || bind.isPending}>
-          Share with this project
+          {t("integrations.share.submit")}
         </Button>
       </div>
     </div>

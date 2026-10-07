@@ -9,10 +9,11 @@
 import { useState } from "react";
 import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { BodyEditor } from "./body-editor";
-import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";
 
 interface IssueDescriptionProps {
@@ -35,6 +36,7 @@ export function IssueDescription({
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
   const held = heldByAgent(issue.status, issue.agentStatus);
+  const t = useCopy();
 
   const renderArtifact = (id: string) => {
     const row = attachments.find((a) => a.id === id);
@@ -42,32 +44,32 @@ export function IssueDescription({
   };
 
   return (
-    <section aria-label="Description" data-testid="issue-description">
+    <section aria-label={t("issues.description.title")} data-testid="issue-description">
       <ViewHeading
         right={
           canWrite && !editing ? (
             held ? (
               <span role="status" className="fg-body-sm text-subtle">
-                {AGENT_HOLDS_EDIT}
+                {agentHoldsEdit(t)}
               </span>
             ) : (
               <Button variant="ghost" size="sm" onClick={() => setDraft(issue.description ?? "")}>
-                Edit
+                {t("issues.rail.edit")}
               </Button>
             )
           ) : undefined
         }
       >
-        Description
+        {t("issues.description.title")}
       </ViewHeading>
       <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
       {editing ? (
         <BodyEditor
-          label="Issue description"
+          label={t("issues.description.label")}
           value={draft}
           onChange={setDraft}
           disabled={save.isPending}
-          placeholder="What is the problem, and what does done look like?"
+          placeholder={t("issues.description.placeholder")}
           actions={
             <div className="flex gap-2">
               <Button
@@ -76,7 +78,7 @@ export function IssueDescription({
                 disabled={save.isPending}
                 onClick={() => setDraft(null)}
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="primary"
@@ -89,7 +91,7 @@ export function IssueDescription({
                   )
                 }
               >
-                Save
+                {t("issues.description.save")}
               </Button>
             </div>
           }
@@ -103,7 +105,7 @@ export function IssueDescription({
         />
       ) : (
         <p className="fg-body-sm text-muted">
-          {canWrite ? "No description yet — Edit adds one." : "No description."}
+          {canWrite ? t("issues.description.emptyWritable") : t("issues.description.empty")}
         </p>
       )}
     </section>
@@ -120,6 +122,7 @@ function IssueAttachments({
   loading: boolean;
   error: unknown;
 }) {
+  const t = useCopy();
   if (loading) {
     return (
       <div className="mb-4" aria-busy>
@@ -130,13 +133,13 @@ function IssueAttachments({
   if (error) {
     return (
       <p role="alert" className="fg-body-sm mb-4 text-muted">
-        Couldn't load attachments — {formatApiError(error)}
+        {t("issues.attachments.loadFailed", { error: formatApiError(error) })}
       </p>
     );
   }
   if (rows.length === 0) return null;
   return (
-    <section aria-label="Attachments" className="mb-4">
+    <section aria-label={t("issues.attachments.title")} className="mb-4">
       <AttachmentList rows={rows} />
     </section>
   );

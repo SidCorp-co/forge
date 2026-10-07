@@ -1,6 +1,7 @@
 "use client";
 
 import { Toggle } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useSetRunnerAdmission } from "../hooks";
 
 /**
@@ -24,6 +25,7 @@ export function PoolAdmission({
 }) {
 	const set = useSetRunnerAdmission(projectId);
 	const withdrawn = status === "draining" || status === "disabled";
+	const t = useCopy();
 
 	return (
 		<div className="flex items-start gap-3 border-line border-t pt-3">
@@ -31,22 +33,14 @@ export function PoolAdmission({
 				checked={!withdrawn}
 				onChange={(next) => set.mutate({ runnerId, admit: next })}
 				disabled={!canEdit || set.isPending}
-				aria-label="Take jobs from the pool"
+				aria-label={t("runners.pool.toggle")}
 			/>
 			<div className="min-w-0">
-				<div className="fg-body-sm text-fg">Takes jobs from the pool</div>
+				<div className="fg-body-sm text-fg">{t("runners.pool.takes")}</div>
 				<p className="fg-caption text-muted">
-					{status === "disabled"
-						? "Retired by an operator. Switch this back on to return it to the pool."
-						: withdrawn
-							? "Drained: work already running finishes, nothing new is offered or claimed."
-							: "Offered work whenever this box is bound to the project."}
+					{status === "disabled" ? t("runners.pool.retired") : withdrawn ? t("runners.pool.drained") : t("runners.pool.offered")}
 				</p>
-				<p className="fg-caption text-muted">
-					Switching this off does not end a resident master session already
-					running on the box — it decides what work is offered, not what is
-					still running.
-				</p>
+				<p className="fg-caption text-muted">{t("runners.pool.notMaster")}</p>
 			</div>
 		</div>
 	);

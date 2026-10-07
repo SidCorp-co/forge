@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { StatusBadge } from "@/design";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { standingRule } from "@/lib/i18n/standing-copy";
 import { issueHref } from "@/lib/routes/issues";
 import type { OverviewChain, OverviewChainNode, OverviewStuck } from "../types";
 
 function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
   const href = issueHref(slug, node.key);
+  const language = useInterfaceLanguage();
   return (
     <div className="min-w-0" data-testid="chain-node" data-key={node.key} data-held={node.held}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -18,7 +21,7 @@ function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
           <StatusBadge family="issue" value={node.status} step={node.step} {...(node.tone ? { tone: node.tone } : {})} />
         ) : null}
       </div>
-      <span className="block truncate text-12-5 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${node.waitingOn.rule}` : node.title}>
+      <span className="block truncate text-12-5 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${standingRule(node.waitingOn.rule, language)}` : node.title}>
         {node.title}
       </span>
     </div>
@@ -49,9 +52,10 @@ function Chain({ chain, slug }: { chain: OverviewChain; slug: string }) {
 }
 
 export function StuckChains({ stuck, slug }: { stuck: OverviewStuck; slug: string }) {
-  if (stuck.chains.length === 0) return <p className="text-13 text-muted">Nothing is stuck.</p>;
+  const t = useCopy();
+  if (stuck.chains.length === 0) return <p className="text-13 text-muted">{t("overview.dev.stuckEmpty")}</p>;
   return (
-    <ul data-testid="stuck-chains" aria-label="Stuck chains">
+    <ul data-testid="stuck-chains" aria-label={t("overview.dev.stuckChains")}>
       {stuck.chains.map((c) => (
         <Chain key={c.id} chain={c} slug={slug} />
       ))}

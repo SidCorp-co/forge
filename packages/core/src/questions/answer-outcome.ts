@@ -84,3 +84,38 @@ export function answeredSinceSql(issueId: SQLWrapper, after: SQLWrapper): SQL {
                  AND (${after} IS NULL OR (q.steps -> -1 ->> 'answeredAt')::timestamptz > ${after})
                ORDER BY q.steps -> -1 ->> 'answeredAt' DESC, q.id DESC LIMIT 1)`;
 }
+
+/** A question on an issue answered after a moment, as the pass nudge names it. */
+export interface AnsweredOnIssue {
+  questionId: string;
+  issueId: string;
+  issSeq: number;
+  issuePrefix: string | null;
+  answeredAt: string;
+  resume: AnswerResume | null;
+}
+
+/** Every question on an issue of this project answered after `after`, oldest answer first. */
+export async function answeredOnIssuesSince(
+  projectId: string,
+  after: Date,
+): Promise<AnsweredOnIssue[]> {
+  const rows = (await db.execute(sql`
+    SELECT q.id AS question_id, i.id AS issue_id, i.iss_seq, p.issue_prefix,
+           q.steps -> -1 ->> 'answeredAt' AS answered_at, q.steps -> -1 -> 'resume' AS resume
+      FROM agent_questions q
+      JOIN issues i ON i.id = q.issue_id
+      JOIN projects p ON p.id = i.project_id
+     WHERE q.project_id = ${projectId} AND q.status = 'answered'
+       AND (q.steps -> -1 ->> 'answeredAt')::timestamptz > ${after.toISOString()}::timestamptz
+     ORDER BY (q.steps -> -1 ->> 'answeredAt')::timestamptz, q.id
+  `)) as unknown as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    questionId: String(r.question_id),
+    issueId: String(r.issue_id),
+    issSeq: Number(r.iss_seq),
+    issuePrefix: (r.issue_prefix as string | null) ?? null,
+    answeredAt: String(r.answered_at),
+    resume: (r.resume as AnswerResume | null) ?? null,
+  }));
+}

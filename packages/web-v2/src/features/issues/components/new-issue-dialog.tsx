@@ -6,13 +6,15 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banner, Button, Field, Icon, Input, Select, SlideOver, Tabs, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { CreatedIssue, IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
 import { StagedFileList, useStagedFiles } from "@/features/attachments/components/staged-files";
-import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
+import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -33,20 +35,17 @@ interface NewIssueDialogProps {
 
 type DialogMode = "standard" | "quick";
 
-const MODE_TABS = [
-  { value: "standard", label: "Standard" },
-  { value: "quick", label: "Quick capture" },
-];
-
-const ATTACHMENT_ERROR_COPY: Record<string, string> = {
-  ATTACHMENT_NAME_TAKEN: "this issue already has a file with that name",
-  MIME_NOT_ALLOWED: "that file type isn't accepted",
-  FILE_TOO_LARGE: "too large",
-  EMPTY_FILE: "the file is empty",
-  INVALID_NAME: "the name is too long",
+// core's code for a file it would not attach, read in the interface language; a code it adds later shows its own message
+const ATTACHMENT_ERROR_COPY: Record<string, ProductCopyKey> = {
+  ATTACHMENT_NAME_TAKEN: "issues.newIssue.dropped.nameTaken",
+  MIME_NOT_ALLOWED: "issues.newIssue.dropped.mime",
+  FILE_TOO_LARGE: "issues.newIssue.dropped.tooLarge",
+  EMPTY_FILE: "issues.newIssue.dropped.empty",
+  INVALID_NAME: "issues.newIssue.dropped.name",
 };
-function attachmentErrorCopy(dropped: { code?: string; message: string }): string {
-  return (dropped.code && ATTACHMENT_ERROR_COPY[dropped.code]) || dropped.message;
+function attachmentErrorCopy(dropped: { code?: string; message: string }, t: (key: ProductCopyKey) => string): string {
+  const key = dropped.code ? ATTACHMENT_ERROR_COPY[dropped.code] : undefined;
+  return key ? t(key) : dropped.message;
 }
 
 export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
@@ -54,6 +53,13 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const { toast } = useToast();
   const create = useCreateIssue(scope.projectId);
   const submitting = useSubmitGuard();
+  const t = useCopy();
+  const priorityOptions = usePriorityOptions();
+  const complexityOptions = useComplexityOptions();
+  const modeTabs = [
+    { value: "standard", label: t("issues.newIssue.mode.standard") },
+    { value: "quick", label: t("issues.newIssue.mode.quick") },
+  ];
 
   const [mode, setMode] = useState<DialogMode>("standard");
   const [title, setTitle] = useState("");
@@ -89,11 +95,11 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     e.preventDefault();
     const trimmedTitle = title.trim();
     if (trimmedTitle.length < 1) {
-      setErrors({ title: "Title is required." });
+      setErrors({ title: t("issues.newIssue.titleRequired") });
       return;
     }
     if (trimmedTitle.length > 500) {
-      setErrors({ title: "Title must be 500 characters or fewer." });
+      setErrors({ title: t("issues.newIssue.titleTooLong", { max: 500 }) });
       return;
     }
     setErrors({});
@@ -128,13 +134,16 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       }
       const dropped = created.attachmentErrors ?? [];
       if (dropped.length > 0) {
+        const one = dropped.length === 1;
         toast({
-          title: `Issue created, but ${dropped.length === 1 ? "1 file was" : `${dropped.length} files were`} not attached`,
-          description: `${dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e)}`).join("; ")}. Open the issue and attach ${dropped.length === 1 ? "it" : "them"} again.`,
+          title: one ? t("issues.newIssue.droppedOne") : t("issues.newIssue.droppedMany", { n: dropped.length }),
+          description: t(one ? "issues.newIssue.droppedHintOne" : "issues.newIssue.droppedHintMany", {
+            files: dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e, t)}`).join("; "),
+          }),
           tone: "error",
         });
       } else {
-        toast({ title: "Issue created", description: created.displayId, tone: "success" });
+        toast({ title: t("issues.activity.created"), description: created.displayId, tone: "success" });
       }
       onClose();
       router.push(`/projects/${scope.slug}/issues/${created.id}`);
@@ -150,14 +159,14 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   };
 
   return (
-    <SlideOver open={open} onClose={dismiss} title="New issue" width={480}>
+    <SlideOver open={open} onClose={dismiss} title={t("issues.newIssue")} width={480}>
       <form
         onSubmit={onSubmit}
         // Quick capture sends no attachments — never stage invisible files there.
         onPaste={mode === "quick" ? undefined : staged.onPaste}
         className="flex h-full flex-col gap-4">
         <Tabs
-          tabs={MODE_TABS}
+          tabs={modeTabs}
           value={mode}
           onChange={(v) => {
             setMode(v as DialogMode);
@@ -168,25 +177,24 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         {errors.form && <Banner tone="danger">{errors.form}</Banner>}
 
         <p className="fg-caption">
-          An issue is <strong>work</strong> with a deliverable someone else can verify. A note,
-          a question, or a record of something already done is not an issue —{" "}
+          {t("issues.newIssue.isWorkLead")} <strong>{t("issues.newIssue.isWorkWord")}</strong> {t("issues.newIssue.isWorkRest")}{" "}
           <a
             href="/docs?path=file-a-request"
             target="_blank"
             rel="noreferrer"
             className="underline"
           >
-            what to write, and what counts as an issue
+            {t("issues.newIssue.guide")}
           </a>
           .
         </p>
 
-        <Field label="Title" required error={errors.title}>
+        <Field label={t("issues.newIssue.title")} required error={errors.title}>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={
-              mode === "quick" ? "One-line request…" : "Short summary of the issue"
+              mode === "quick" ? t("issues.newIssue.quickPlaceholder") : t("issues.newIssue.titlePlaceholder")
             }
             autoFocus
             maxLength={500}
@@ -195,13 +203,13 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
         {mode === "quick" && (
           <Field
-            label="Context"
-            hint="Optional — anything triage needs to act without asking back. Saved as the description and AI summary."
+            label={t("issues.newIssue.context")}
+            hint={t("issues.newIssue.contextHint")}
           >
             <Textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              placeholder="Why this matters, where it happens, links…"
+              placeholder={t("issues.newIssue.contextPlaceholder")}
               maxLength={100_000}
               rows={5}
             />
@@ -210,91 +218,106 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
         {mode === "standard" && (
           <>
-            <Field label="Description" hint="Optional — context, repro steps, or links.">
+            <Field label={t("issues.newIssue.description")} hint={t("issues.newIssue.descriptionHint")}>
               <BodyEditor
-                label="Description"
+                label={t("issues.newIssue.description")}
                 value={description}
                 onChange={setDescription}
-                placeholder="What needs to happen and why…"
+                placeholder={t("issues.newIssue.descriptionPlaceholder")}
                 rows={5}
               />
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Priority">
+              <Field label={t("issues.field.priority")}>
                 <Select
-                  aria-label="Priority"
+                  aria-label={t("issues.field.priority")}
                   value={priority}
-                  options={PRIORITY_OPTIONS}
+                  options={priorityOptions}
                   onChange={(v) => setPriority(v as IssuePriority)}
                 />
               </Field>
-              <Field label="Complexity" hint="Optional.">
+              <Field label={t("issues.field.complexity")} hint={t("issues.newIssue.optional")}>
                 <Select
-                  aria-label="Complexity"
+                  aria-label={t("issues.field.complexity")}
                   value={complexity}
-                  options={COMPLEXITY_OPTIONS}
+                  options={complexityOptions}
                   onChange={setComplexity}
                 />
               </Field>
             </div>
 
-            <Field label="Category" hint="Optional — e.g. bug, feature, chore.">
+            <Field
+              label={t("issues.category.label")}
+              hint={
+                <>
+                  {t("issues.newIssue.categoryHint")}{" "}
+                  <span translate="no" className="font-mono">
+                    bug, feature, chore
+                  </span>
+                </>
+              }>
               <Input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="bug"
+                translate="no"
                 maxLength={100}
               />
             </Field>
 
-            <Field
-              label="Attachments"
-              hint="Optional — drop files, choose them, or paste a screenshot (⌘/Ctrl+V)."
-            >
-              <div
-                {...staged.dropZone}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
-                  staged.dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
-                }`}
-              >
-                <Icon name="plus" size={18} className="text-subtle" />
-                <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
-                <p className="fg-caption">
-                  Max 10 MB each · up to {ISSUE_CREATE_ATTACHMENTS_MAX} · images, video, PDF, Word, Excel, and any
-                  plain-text file whatever its extension — .log and .sql included.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="mt-1"
-                  onClick={staged.choose}
-                >
-                  Choose files
-                </Button>
-                {staged.input}
-              </div>
-
-              <StagedFileList
-                files={staged.files}
-                warnings={staged.warnings}
-                remove={staged.remove}
-                spaced
-              />
-            </Field>
+            <AttachmentsField staged={staged} />
           </>
         )}
 
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" variant="primary" icon="plus" loading={create.isPending}>
-            {mode === "quick" ? "Capture issue" : "Create issue"}
+            {mode === "quick" ? t("issues.newIssue.capture") : t("issues.newIssue.create")}
           </Button>
         </div>
       </form>
     </SlideOver>
+  );
+}
+
+/** The files a new issue is filed with: dropped, chosen or pasted, checked before they are sent. */
+function AttachmentsField({ staged }: { staged: ReturnType<typeof useStagedFiles> }) {
+  const t = useCopy();
+  return (
+    <Field
+      label={t("issues.attachments.title")}
+      hint={t("issues.newIssue.attachHint")}
+    >
+      <div
+        {...staged.dropZone}
+        className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
+          staged.dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
+        }`}
+      >
+        <Icon name="plus" size={18} className="text-subtle" />
+        <p className="fg-body-sm text-fg">{t("issues.newIssue.dropLead")}</p>
+        <p className="fg-caption">{t("issues.newIssue.dropLimits", { max: ISSUE_CREATE_ATTACHMENTS_MAX })}</p>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="mt-1"
+          onClick={staged.choose}
+        >
+          {t("issues.newIssue.choose")}
+        </Button>
+        {staged.input}
+      </div>
+
+      <StagedFileList
+        files={staged.files}
+        warnings={staged.warnings}
+        remove={staged.remove}
+        spaced
+      />
+    </Field>
   );
 }

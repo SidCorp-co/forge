@@ -1,6 +1,6 @@
 
 import { ISSUE_TERMINAL_STATUSES } from "@forge/contracts/issue-machine";
-import { formatCountdown, formatElapsed } from "@/lib/utils/format";
+import { formatCountdown } from "@/lib/utils/format";
 import type { IssueStatus, PipelineHealth, PipelineReading, WaitingReason } from "./types";
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
@@ -16,12 +16,12 @@ const SETTLED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(ISSUE_TERMINAL_ST
 export function sinceLastWrite(
 	row: { status: IssueStatus; updatedAt: string },
 	now: number,
-): { label: string; stale: boolean } | null {
+): { ms: number; stale: boolean } | null {
 	if (SETTLED.has(row.status)) return null;
 	const since = new Date(row.updatedAt).getTime();
 	if (Number.isNaN(since)) return null;
 	const ms = Math.max(0, now - since);
-	return { label: formatElapsed(ms), stale: ms >= STALE_AFTER_MS };
+	return { ms, stale: ms >= STALE_AFTER_MS };
 }
 
 /** A queued step's gate: core's reason and its reading (`issues/pipeline-health-reasons.ts`). */
@@ -38,6 +38,8 @@ export interface QueuedStepView {
 	queuedAt: string;
 	/** `formatCountdown` of the next attempt, or "" when none is known. */
 	nextAttempt: string;
+	/** When the next attempt is due, for a surface that writes the countdown in its own language. */
+	retryAfterAt: string | null;
 	gate: QueuedStepGate | null;
 }
 
@@ -66,6 +68,7 @@ export function deriveQueuedStep(
 		jobType: step.jobType,
 		queuedAt: step.queuedAt,
 		nextAttempt: formatCountdown(step.retryAfterAt),
+		retryAfterAt: step.retryAfterAt ?? null,
 		gate: pipelineHealth?.waitingOn
 			? { reason: pipelineHealth.waitingOn.reason, ...pipelineHealth.waitingOn.reading }
 			: null,

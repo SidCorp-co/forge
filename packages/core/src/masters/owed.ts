@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { contentLanguageName } from '@forge/contracts/content-language';
 import type { MasterWork } from '@forge/contracts/master-verdict';
+import type { AnswerResume } from '@forge/contracts/questions';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { mastersPorts } from './ports.js';
 
@@ -24,6 +27,8 @@ interface Owed {
   releaseNotes: { issueId: string; key: string }[];
   /** Notes written but not in the content language, or carrying an engineer's reference. */
   warnedNotes: { issueId: string; key: string; problems: string[] }[];
+  /** Park questions answered since the master's last finished pass began, with what each did. */
+  answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -44,9 +49,40 @@ function returnedLine(owed: Owed): string {
   return line;
 }
 
+/** What an answer did to the park it stopped, as the nudge says it. */
+function outcomeOf(outcome: AnswerResume | null): string {
+  if (!outcome) return 'not acted on yet';
+  switch (outcome.kind) {
+    case 'resumed':
+      return `moved back to \`${outcome.to}\``;
+    case 'sent_to_run':
+      return 'sent to the run that asked';
+    case 'box_reads':
+      return 'read back by the box that asked';
+    case 'other_question':
+      return `still parked: another question is open (${outcome.questionIds.join(', ')})`;
+    case 'held':
+      return 'still parked: the answer says the issue still waits';
+    case 'no_left_status':
+      return 'still parked: the park recorded no status to return to, so it is moved by hand';
+    case 'staged':
+      return 'still parked: this project stages answers, so it is moved by hand';
+    case 'refused':
+      return `still parked: the move back was refused ${outcome.code}`;
+  }
+}
+
+function answersLine(answers: Owed['answers']): string {
+  if (answers.length === 0) return '';
+  const keys = answers.map(
+    (a) => `${a.issueKey} question ${a.questionId}: ${outcomeOf(a.outcome)}`,
+  );
+  return ` ${answers.length} park question${plural(answers.length, ' was', 's were')} answered since your last pass (${keys.join('; ')}): an answered question is no longer owed by a person, so read each answer (\`forge-runner api questions/<questionId>\`, or the \`answer\` record on \`forge-runner api issues/<id>/events\`) and act on what it says.`;
+}
+
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
-  let line = returnedLine(owed);
+  let line = returnedLine(owed) + answersLine(owed.answers);
   const {
     breakdowns,
     triages,
@@ -108,6 +144,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.breakdowns.map((b) => `breakdown:${b.key}`),
     ...owed.triages.map((t) => `triage:${t.key}`),
     ...owed.comments.map((c) => `comment:${c.commentId}`),
+    ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -168,6 +205,8 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.contentLanguageOf(projectId),
   ]);
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
+  const lastPass = await lastFinishedPassStart(projectId);
+  const answers = lastPass ? await ports.answersSince(projectId, lastPass) : [];
   return masterWork(admissible.items, {
     designs,
     revisions,
@@ -178,6 +217,21 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     builderRuns: channel.builderRuns,
     releaseNotes,
     warnedNotes,
+    answers,
     contentLanguage,
   });
+}
+
+/**
+ * When the project's last finished master pass began: an answer after it was not in front of that
+ * pass, and is named until a pass that began after it has ended. A project whose master never
+ * finished a pass has nothing to measure "since" against, so its first pass reads the board whole.
+ */
+async function lastFinishedPassStart(projectId: string): Promise<Date | null> {
+  const rows = (await db.execute(sql`
+    SELECT max(started_at) AS started_at FROM master_passes
+     WHERE project_id = ${projectId} AND ended_at IS NOT NULL
+  `)) as unknown as Array<{ started_at: string | Date | null }>;
+  const at = rows[0]?.started_at;
+  return at ? new Date(at) : null;
 }

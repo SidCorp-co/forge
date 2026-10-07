@@ -62,12 +62,14 @@ async function answeredTarget(issueId: string): Promise<IssueStatus | null> {
 async function resumeUnasked(
   issue: ParkedIssue,
   target: IssueStatus | null,
-  answeredBy: string,
+  answer: { questionId: string; answeredBy: string },
 ): Promise<AnswerOutcome> {
   if (target === null) return { kind: 'no_left_status' };
   try {
-    await transitionIssueStatus(issue, target, await accountActor(answeredBy), {
+    // the move names the answer that made it, on its `kernel_transitions` row and outbox event
+    await transitionIssueStatus(issue, target, await accountActor(answer.answeredBy), {
       requireNoOpenQuestions: true,
+      reason: `answered: question ${answer.questionId} was answered, so the park returns to \`${target}\``,
     });
     return { kind: 'resumed', to: target };
   } catch (err) {
@@ -151,12 +153,12 @@ async function answerThePark(
   if (hold) {
     const edgeHolds =
       hold.blockedBy !== undefined && target !== null && TAKEABLE_STATUSES.includes(target);
-    return edgeHolds ? resumeUnasked(issue, target, p.answeredBy) : { kind: 'held' };
+    return edgeHolds ? resumeUnasked(issue, target, p) : { kind: 'held' };
   }
   const sessionId = await deliverToPark(issue.id, p.questionId, p.body);
   if (sessionId) return { kind: 'sent_to_run', sessionId };
   if (await aBoxWillReadThisAnswer(p.questionId)) return { kind: 'box_reads' };
-  return resumeUnasked(issue, target, p.answeredBy);
+  return resumeUnasked(issue, target, p);
 }
 
 /**
@@ -254,7 +256,10 @@ export async function resumeLapsedAnswers(
     if (outcome === 'undelivered') await sayAnswerUndelivered(inbox, issueId, authorId);
     const issue = await parkedIssue(issueId);
     if (!issue || !(await isAutonomousProject(issue.projectId))) continue;
-    const resume = await resumeUnasked(issue, await answeredTarget(issue.id), authorId);
+    const resume = await resumeUnasked(issue, await answeredTarget(issue.id), {
+      questionId: inbox.intentId,
+      answeredBy: authorId,
+    });
     await recordAnswerResume(inbox.intentId, { ...resume, at: now.toISOString() });
     if (resume.kind !== 'resumed') continue;
     resumed += 1;

@@ -21,6 +21,7 @@ import {
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 const COLLAPSED_LIMIT = 5;
 
@@ -40,6 +41,7 @@ export function AwaitingReleaseCard({
   projectId: string;
 }) {
   const router = useRouter();
+  const t = useCopy();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -91,13 +93,13 @@ export function AwaitingReleaseCard({
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="check" size={16} className="text-subtle" />
-          <PageSectionTitle>Awaiting release</PageSectionTitle>
+          <PageSectionTitle>{t("overview.flow.awaiting_release")}</PageSectionTitle>
         </div>
         {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
       </div>
       <PageSectionBody className="flex-1">
         {runs.length === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">Nothing waiting on a release decision.</p>
+          <p className="fg-body-sm py-6 text-center text-muted">{t("overview.awaiting.empty")}</p>
         ) : (
           <>
             {selectableVisible.length > 0 && (
@@ -106,8 +108,8 @@ export function AwaitingReleaseCard({
                   checked={allVisibleSelected}
                   indeterminate={selectedCount > 0 && !allVisibleSelected}
                   onChange={toggleAllVisible}
-                  ariaLabel={allVisibleSelected ? "Clear selection" : "Select all"}
-                  label={allVisibleSelected ? "Clear" : "Select all"}
+                  ariaLabel={allVisibleSelected ? t("issues.bulk.clearSelection") : t("overview.awaiting.selectAll")}
+                  label={allVisibleSelected ? t("overview.awaiting.clear") : t("overview.awaiting.selectAll")}
                 />
                 <Button
                   variant="primary"
@@ -116,7 +118,7 @@ export function AwaitingReleaseCard({
                   disabled={selectedCount === 0}
                   onClick={() => setBatchDialogOpen(true)}
                 >
-                  {selectedCount > 0 ? `Release ${selectedCount}` : "Release"}
+                  {selectedCount > 0 ? t("overview.awaiting.releaseN", { n: selectedCount }) : t("overview.awaiting.release")}
                 </Button>
               </div>
             )}
@@ -130,7 +132,7 @@ export function AwaitingReleaseCard({
                     <Checkbox
                       checked={selected.has(run.issueId)}
                       onChange={(checked) => toggle(run.issueId as string, checked)}
-                      ariaLabel={`Select ${run.issueRef ?? "run"}`}
+                      ariaLabel={t("overview.awaiting.select", { what: run.issueRef ?? t("overview.awaiting.run") })}
                     />
                   )}
                   <button
@@ -146,7 +148,7 @@ export function AwaitingReleaseCard({
                           {run.issueTitle ? ` ${run.issueTitle}` : ""}
                         </>
                       ) : (
-                        "Run"
+                        t("overview.awaiting.runTitle")
                       )}
                     </span>
                     <span className="font-mono text-sm font-semibold tabular-nums text-fg">
@@ -163,7 +165,7 @@ export function AwaitingReleaseCard({
                 onClick={() => setExpanded(true)}
                 className="fg-body-sm mt-2 w-full rounded-md py-1.5 text-center text-subtle transition-colors hover:bg-hover hover:text-fg"
               >
-                Show {hiddenCount} more
+                {t("overview.awaiting.showMore", { n: hiddenCount })}
               </button>
             )}
           </>
