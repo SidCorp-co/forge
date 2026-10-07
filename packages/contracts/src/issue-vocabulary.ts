@@ -93,3 +93,12 @@ export const ISSUE_STATUS_LABELS: Record<KernelIssueStatus, string> = {
   draft: 'Draft',
   dropped: 'Dropped',
 };
+
+/** Why the issues search refused a term it read as a key, rather than answering with text matches. */
+export const ISSUE_KEY_REFUSAL_CODES = [
+  'ISSUE_KEY_NOT_HELD',
+  'ISSUE_KEY_FOREIGN_PREFIX',
+  'ISSUE_KEY_OUT_OF_RANGE',
+] as const;
+
+export type IssueKeyRefusalCode = (typeof ISSUE_KEY_REFUSAL_CODES)[number];

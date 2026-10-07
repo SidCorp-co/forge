@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import { useLocationSearch } from './use-location-search';
+import { replaceLocationSearch, useLocationSearch } from './use-location-search';
 
 export function useTabParam<T extends string>(valid: readonly T[], fallback: T): [T, (t: T) => void] {
   const pathname = usePathname() || '';
@@ -18,7 +18,7 @@ export function useTabParam<T extends string>(valid: readonly T[], fallback: T):
       if (next === fallback) sp.delete('tab');
       else sp.set('tab', next);
       const qs = sp.toString();
-      window.history.replaceState(window.history.state, '', `${pathname}${qs ? `?${qs}` : ''}`);
+      replaceLocationSearch(`${pathname}${qs ? `?${qs}` : ''}`);
     },
     [pathname, fallback],
   );

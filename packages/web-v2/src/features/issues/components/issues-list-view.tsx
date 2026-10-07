@@ -29,7 +29,7 @@ import {
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
-import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { usePathname } from "next/navigation";
@@ -64,6 +64,7 @@ import {
   type IssuePriority,
   type IssueSort,
 } from "../types";
+import { issueKeyRefusalOf } from "../key-refusal";
 import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
@@ -174,11 +175,7 @@ export function IssuesListView({
         else next.delete(key);
       }
       const qs = next.toString();
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${pathname}${qs ? `?${qs}` : ""}`,
-      );
+      replaceLocationSearch(`${pathname}${qs ? `?${qs}` : ""}`);
     },
     [pathname],
   );
@@ -300,6 +297,7 @@ export function IssuesListView({
     [modulesQ.modules, moduleId],
   );
 
+  const keyRefusal = issueKeyRefusalOf(issuesQ.error);
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
@@ -588,7 +586,16 @@ export function IssuesListView({
         </div>
       )}
 
-      {issuesQ.isError && (
+      {issuesQ.isError && keyRefusal !== null && (
+        <EmptyState
+          title="No issue by that key here"
+          message={keyRefusal}
+          mascot={false}
+          action={{ label: "Clear search", onClick: () => setParams({ q: "", page: "" }) }}
+        />
+      )}
+
+      {issuesQ.isError && keyRefusal === null && (
         <ErrorState
           title="Couldn't load issues"
           message={formatApiError(issuesQ.error)}

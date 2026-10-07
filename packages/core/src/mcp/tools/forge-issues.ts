@@ -42,6 +42,7 @@ import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issue
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { IssueSearchKeyRefused } from '../../issues/search-term.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
@@ -481,6 +482,16 @@ async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
   return row;
 }
 
+/** A key the project cannot answer reaches the caller as the tool's own refusal text, by name. */
+async function listIssueRowsOrRefuse(...args: Parameters<typeof listIssueRows>) {
+  try {
+    return await listIssueRows(...args);
+  } catch (err) {
+    if (!(err instanceof IssueSearchKeyRefused)) throw err;
+    throw new Error(`${err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST'}: ${err.message}`);
+  }
+}
+
 async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
   return resolveEffectiveProjectId(ctx, input.projectId);
 }
@@ -539,7 +550,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             );
           }
         }
-        const rows = await listIssueRows(
+        const rows = await listIssueRowsOrRefuse(
           projectId,
           {
             status: f?.status,

@@ -35,3 +35,9 @@ const getServerSnapshot = () => '';
 export function useLocationSearch(): string {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
+/** Replaces the current entry's query and tells every reader itself, since a later history patcher can drop the patch above. */
+export function replaceLocationSearch(url: string): void {
+  window.history.replaceState(window.history.state, '', url);
+  window.dispatchEvent(new Event(EVENT));
+}
