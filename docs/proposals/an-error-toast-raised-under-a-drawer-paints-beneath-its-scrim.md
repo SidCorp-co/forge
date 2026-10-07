@@ -41,11 +41,15 @@ Not one: `features/issues/components/new-issue-dialog.tsx` puts a failure in its
 `errors.form` banner and closes before it toasts. `features/issues/components/batch-release-dialog.tsx`
 now says its refusal inline and raises no toast while open (ISS-1322).
 
-Not walked: every other file that renders a `SlideOver`, and every caller of
-`design/primitives/confirm-dialog.tsx`, which renders one too. The list is
-`grep -rlE '<SlideOver|ConfirmDialog' packages/web-v2/src`, read at the time it is wanted rather than
-copied here, where it went stale: it missed `confirm-dialog.tsx` and its callers and
-`app/kit/page.tsx`, and named `new-project-dialog.tsx`, which the choice below cites as a model.
+Not walked: every other drawer, and everything rendered inside one. A drawer is a component that
+renders `<SlideOver` itself, and `grep -rlE '<SlideOver' packages/web-v2/src --include='*.tsx'`,
+test files aside, lists those, read at the time it is wanted rather than copied here.
+`design/primitives/confirm-dialog.tsx` is one of them, so every caller of `ConfirmDialog` opens a
+drawer too. No grep lists the rest of what is at risk: a toast raised anywhere in a drawer's subtree
+is beneath its scrim, and the subtree is reached through components that never name `SlideOver` —
+`session-screen.tsx` above is reached only through `session-reply-panel.tsx`, and the callers of
+`BatchReleaseDialog`, `TransitionReasonDialog` or `NewIssueDialog` render a drawer without matching
+the grep. An audit of one drawer reads every component it renders, not the file the grep named.
 
 ## The choice nobody has made
 
