@@ -87,9 +87,11 @@ export {
 } from './issue-prefix-read.js';
 export { claimIssuePrefix } from './issue-prefix-service.js';
 export {
+  issueIdOfKey,
   issueRouteIdParamSchema,
   isUuid,
   projectScopeQuerySchema,
+  refuseUnresolvedIssueKey,
   resolveIssueKeyInProject,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';

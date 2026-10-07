@@ -2,6 +2,7 @@
 // display key (`ISS-1097`), key scoped by `?projectId=` since `issSeq` is
 // unique per project, not globally (ISS-992).
 
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
@@ -103,4 +104,24 @@ export async function resolveIssueKeyInProject(rawId: string, projectId: string)
   const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
   return issue.id;
+}
+
+/** The uuid a display key names in a project, or `null` where it names none or is not a key it answers to. */
+export async function issueIdOfKey(rawId: string, projectId: string): Promise<string | null> {
+  try {
+    return await resolveIssueKeyInProject(rawId, projectId);
+  } catch (err) {
+    if (err instanceof HTTPException) return null;
+    throw err;
+  }
+}
+
+/** Why a display key named no issue, said only to a caller shown to read the project. */
+export async function refuseUnresolvedIssueKey(
+  rawId: string,
+  projectId: string,
+  userId: string | undefined,
+): Promise<void> {
+  requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
+  await resolveIssueKeyInProject(rawId, projectId);
 }

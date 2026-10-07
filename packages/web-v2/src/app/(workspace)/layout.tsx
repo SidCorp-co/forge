@@ -13,6 +13,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { inActiveOrg } from "@/features/projects/derive";
 import { useProjects } from "@/features/projects/hooks";
+import { useProjectRef } from "@/features/projects/project-ref";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { useAttention } from "@/features/attention/hooks";
@@ -105,7 +106,8 @@ function useShellProject(pathname: string) {
     () => (railSlug ? (projects?.find((p) => p.slug === railSlug) ?? null) : null),
     [projects, railSlug],
   );
-  return { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject };
+  const { ref: railRef } = useProjectRef(railSlug);
+  return { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef };
 }
 
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
@@ -124,12 +126,12 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     if (!isLoading && !user) router.replace("/login");
   }, [isLoading, user, router]);
 
-  const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject } =
+  const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef } =
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
-  const releases = useReleases(railProject?.id).data?.releases;
+  const releases = useReleases(railRef).data?.releases;
   const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
-  const needsYou = useNeedsYou(railProject?.id).data;
+  const needsYou = useNeedsYou(railRef).data;
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -197,7 +199,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
   return (
-    <CurrentProjectProvider project={railProject}>
+    <CurrentProjectProvider project={railProject} projectRef={railRef}>
     <WorkspaceInterfaceLanguage>
     <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>

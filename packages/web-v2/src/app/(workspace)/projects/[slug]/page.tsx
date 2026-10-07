@@ -24,7 +24,8 @@ import { useReleases } from "@/features/releases/hooks";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYou } from "@/features/needs-you/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
-import { useProjects } from "@/features/projects/hooks";
+import { useProjectRef } from "@/features/projects/project-ref";
+import { useOnboardingState } from "@/features/onboarding/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { canManageProject } from "@/features/projects/write-access";
 import { useProjectDocument } from "@/features/project-config/hooks";
@@ -41,9 +42,8 @@ export default function ProjectOverviewPage() {
   const router = useRouter();
   const slug = params?.slug;
 
-  const projectsQ = useProjects();
-  const project = projectsQ.data?.find((p) => p.slug === slug);
-  const projectId = project?.id;
+  const { ref: projectId, row, projectsQ } = useProjectRef(slug);
+  const project = row && row.id === projectId ? row : undefined;
 
   // The page subscribes to THIS project's room so the reads below refresh as work moves (ISS-379).
   useRoom(projectId ? projectRoom(projectId) : null);
@@ -60,9 +60,10 @@ export default function ProjectOverviewPage() {
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
+  useOnboardingState(projectId);
   const clock = useEtaClock();
 
-  if (projectsQ.isLoading) {
+  if (projectsQ.isLoading || (row && !project)) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ProjectLoader label={t("dash.loading")} />

@@ -1,14 +1,19 @@
 import type { MiddlewareHandler } from 'hono';
 import { newQueryTiming, type QueryTiming, withQueryTiming } from '../db/query-timing.js';
+import { routeRefMs } from './route-refs.js';
 
 export const SERVER_TIMING_HEADER = 'Server-Timing';
 
 const ms = (n: number) => n.toFixed(1);
 
-/** `db;dur=…;desc="N queries", app;dur=…, total;dur=…` — what the origin spent, readable in any browser. */
-export function serverTimingValue(timing: QueryTiming, totalMs: number): string {
+/**
+ * `db;dur=…;desc="N queries", app;dur=…, total;dur=…` — what the origin spent, readable in any
+ * browser; `ref;dur=…` ahead of them when a slug or display key was resolved before routing.
+ */
+export function serverTimingValue(timing: QueryTiming, totalMs: number, refMs?: number): string {
   const db = Math.min(timing.dbMs, totalMs);
   return [
+    ...(refMs === undefined ? [] : [`ref;dur=${ms(refMs)};desc="slug and key lookups"`]),
     `db;dur=${ms(db)};desc="${timing.queries} ${timing.queries === 1 ? 'query' : 'queries'}"`,
     `app;dur=${ms(totalMs - db)}`,
     `total;dur=${ms(totalMs)}`,
@@ -26,7 +31,7 @@ export const serverTiming = (allowOrigin: (origin: string) => boolean): Middlewa
     const timing = newQueryTiming();
     await withQueryTiming(timing, next);
     if (c.res.status === 101) return;
-    const value = serverTimingValue(timing, performance.now() - started);
+    const value = serverTimingValue(timing, performance.now() - started, routeRefMs(c));
     const origin = c.req.header('origin');
     try {
       c.res.headers.append(SERVER_TIMING_HEADER, value);

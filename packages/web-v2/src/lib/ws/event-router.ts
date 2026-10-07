@@ -181,6 +181,8 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			return;
 		}
 		case "issue.unblockCascade":
+		case "replay.done":
+		case "subscribe.denied":
 			return;
 		case "integration.changed": {
 			// ISS-401/C — a binding mutation (create/update/delete/rotate-secret/
@@ -347,10 +349,7 @@ function routeConversation(env: ConversationFrame, qc: QueryClient): void {
 	}
 }
 
-/**
- * The prefixes a dropped or freshly-opened connection has to repair. One list,
- * read by both replays, so the two cannot drift apart.
- */
+/** The prefixes a connection whose replay left a gap has to repair. */
 const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["issues"],
 	["projects"],
@@ -372,31 +371,10 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["settings", "tokens"],
 ];
 
-const QUESTIONS_PREFIX = "questions";
-
-function underAReplayPrefix(queryKey: readonly unknown[]): boolean {
-	return REPLAY_PREFIXES.some((prefix) =>
-		prefix.every((segment, i) => Object.is(queryKey[i], segment)),
-	);
-}
-
 /**
- * On reconnect, replay dropped events for any job whose detail page is
- * still mounted. Project-room events don't have a seq; we just invalidate
- * the high-level caches so React Query refetches anything visible.
+ * The broad repair, for a connection whose replay could not cover what it missed (the server
+ * restarted, or the span outran what it keeps, or it did not answer): every replay prefix refetches.
  */
-export function replayOnReconnect(qc: QueryClient): void {
+export function replayEverything(qc: QueryClient): void {
 	for (const prefix of REPLAY_PREFIXES) invalidateThroughInFlight(qc, { queryKey: prefix });
-}
-
-export function replayOnFirstOpen(qc: QueryClient, openedAt: number): void {
-	invalidateThroughInFlight(qc, {
-		predicate: (query) => {
-			const key = query.queryKey as readonly unknown[];
-			if (key[0] === QUESTIONS_PREFIX) return true;
-			if (!underAReplayPrefix(key)) return false;
-			const { dataUpdatedAt } = query.state;
-			return dataUpdatedAt > 0 && dataUpdatedAt <= openedAt;
-		},
-	});
 }

@@ -139,12 +139,14 @@ interface WhatsNewPanelProps {
   /** The feed as it stood when the panel opened, so the since-line still counts what was unread. */
   feed: WhatsNewFeed | undefined;
   failure: "failed" | null;
+  /** The feed is being read: it is read when the panel opens, never with the page. */
+  loading?: boolean;
   entryAction?: WhatsNewEntryAction;
   now?: Date;
 }
 
 /** What's new: Forge's changes since the reader last looked, by day, version as trailing meta. */
-export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now = new Date() }: WhatsNewPanelProps) {
+export function WhatsNewPanel({ open, onClose, feed, failure, loading = false, entryAction, now = new Date() }: WhatsNewPanelProps) {
   const [kind, setKind] = useState<WhatsNewKind | null>(null);
   const [showRest, setShowRest] = useState(false);
   const t = useCopy();
@@ -160,6 +162,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now =
       <EntryActionContext.Provider value={entryAction ?? null}>
       <div className="-mt-3" data-testid="whats-new-panel">
         {failure && <p className="pt-3 text-13 text-muted">{t("whatsNew.failed")}</p>}
+        {loading && <p className="pt-3 text-13 text-muted" data-testid="whats-new-loading">{t("whatsNew.loading")}</p>}
         {feed && (
           <>
             {away ? <AwaySummary feed={feed} t={t} locale={locale} /> : <SinceLine feed={feed} t={t} locale={locale} now={now} />}
