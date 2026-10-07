@@ -337,7 +337,8 @@ function routeConversation(env: ConversationFrame, qc: QueryClient): void {
 		case "conversation.message": {
 			if (data?.conversationId) {
 				scheduleInvalidation(qc, ["conversations", data.conversationId]);
-				if (event === "conversation.settled") {
+				// a window that closed on a partial reply keeps the live entry the rest streams into
+				if (event === "conversation.settled" && !("continuing" in data && data.continuing)) {
 					qc.setQueryData(["conversations", data.conversationId, "progress"], null);
 				}
 			}

@@ -4,7 +4,12 @@
 // listed only while web routes it.
 
 import type { StateOf } from "./machines.js";
-import type { JobChange, JobFrameName, OutboxEventPayload, RunnerChange } from "./outbox-events.js";
+import type {
+	JobChange,
+	JobFrameName,
+	OutboxEventPayload,
+	RunnerChange,
+} from "./outbox-events.js";
 
 interface IssueRef {
 	issueId: string;
@@ -82,7 +87,7 @@ export interface WsFramePayloads extends JobFrames {
 		seq: number;
 		clientToken: string | null;
 	};
-	"conversation.settled": { conversationId: string };
+	"conversation.settled": { conversationId: string; continuing?: boolean };
 	"conversation.message": { conversationId: string };
 	"agent-session.created": SessionFrame;
 	"agent-session.updated": SessionFrame;
@@ -119,7 +124,11 @@ export interface WsFramePayloads extends JobFrames {
 	"notification.created": Omit<
 		OutboxEventPayload<"notification.created">,
 		"announce" | "body" | "secondaryIssueId" | "resolutionKey"
-	> & { announce: boolean; body: string | null; secondaryIssueId: string | null };
+	> & {
+		announce: boolean;
+		body: string | null;
+		secondaryIssueId: string | null;
+	};
 	"notification.read": OutboxEventPayload<"notification.read">;
 	"integration.changed": OutboxEventPayload<"integration.changed">;
 	"pat.created": TokenFrame;

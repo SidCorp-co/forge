@@ -3,6 +3,7 @@ import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
 import type { ProgressFacts } from './facts.js';
 import { gatherFacts } from './gather.js';
+import { withGrounding } from './grounding-rule.js';
 import { screenMessage } from './screen.js';
 
 interface ReplyScreenInput {
@@ -19,6 +20,11 @@ interface ReplyScreenInput {
   readonly progress: ProgressFacts | null;
   /** A caller inside a transaction MUST pass its own handle. */
   readonly executor?: Tx;
+  /**
+   * What the writer's own turn read, where the caller has it: a date or status the reply states
+   * about the tracker is then held to these (`grounding-rule.ts`).
+   */
+  readonly toolResults?: readonly string[];
 }
 
 export async function screenReplyAtDoor(
@@ -35,5 +41,8 @@ export async function screenReplyAtDoor(
     progress: input.progress,
     ...(input.executor ? { executor: input.executor } : {}),
   });
-  return screenMessage({ audience, intent, segments: input.segments, facts });
+  const verdict = screenMessage({ audience, intent, segments: input.segments, facts });
+  return input.toolResults
+    ? withGrounding(verdict, input.segments, input.toolResults, facts)
+    : verdict;
 }

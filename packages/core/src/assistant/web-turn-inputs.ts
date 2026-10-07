@@ -9,13 +9,17 @@ import {
   type ConversationWindowRow,
   codeAuthored,
   getConversation,
+  type ReplyLanguage,
   readMessages,
+  replyLanguageOf,
+  replyLanguageOfTag,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import type { ConversationMode } from '../db/schema-conversations.js';
 import { requirements } from '../db/schema-requirements.js';
 import { firstRequirementsOnboardingOf } from '../onboarding/index.js';
+import { readContentLanguage } from '../project-config/index.js';
 import { makeConversationImageResolver } from './conversation-images.js';
 import type { ConversationProgress } from './conversation-progress.js';
 import {
@@ -28,6 +32,7 @@ import type { WindowTurnInputs } from './route-window.js';
 import { buildBaFirstRequirementsToolset } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
+import { buildOfferActToolset } from './tools/offer-act-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
@@ -83,6 +88,19 @@ export function webConversationTurn(args: WebTurnArgs): WindowTurnInputs {
       blocks: args.progress.blocksForRecord(deliveredText),
     }),
 
+    continueEntry: () => {
+      const rest = args.progress.next();
+      return {
+        onTurnEvent: rest.onTurnEvent,
+        onSettled: rest.onSettled,
+        replyEntry: (deliveredText) => ({
+          id: rest.entryId,
+          blocks: rest.blocksForRecord(deliveredText),
+        }),
+        close: () => rest.close(),
+      };
+    },
+
     divertBeforeTurn: ({ setPhase, authority }) => divertToAgent(args, setPhase, authority),
     prepare: (ctx) => prepareWebTurn(args, ctx),
   };
@@ -98,17 +116,45 @@ async function requirementKeyOf(requirementId: string): Promise<string> {
 }
 
 /**
- * What the thread is shown when an Agent turn has no answer to give it.
+ * What the thread is shown when an Agent turn has no answer to give it, in the asker's language.
  */
 const WEB_AGENT_REPLIES = {
-  dedup:
-    'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
-  noDevice:
-    'No paired device is free to take this turn right now. Try again in a few minutes, or open a new conversation in Assistant mode for anything that does not need the repository.',
-  failed:
-    'The Agent session ended without an answer. Ask again — a new turn starts a fresh session — or open a conversation in Assistant mode if the question does not need the repository.',
-  ack: null,
+  en: {
+    dedup:
+      'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
+    noDevice:
+      'No paired device is free to take this turn right now. Try again in a few minutes, or open a new conversation in Assistant mode for anything that does not need the repository.',
+    failed:
+      'The Agent session ended without an answer. Ask again — a new turn starts a fresh session — or open a conversation in Assistant mode if the question does not need the repository.',
+    ack: null,
+  },
+  vi: {
+    dedup:
+      'Cuộc trò chuyện này đang có một lượt Agent chạy. Bạn chờ nó trả lời, hoặc mở cuộc trò chuyện khác để hỏi song song việc khác.', // i18n-allow: user-facing channel reply
+    noDevice:
+      'Hiện không có máy đã ghép nào rảnh để nhận lượt này. Bạn thử lại sau ít phút, hoặc mở cuộc trò chuyện mới ở chế độ Assistant cho những gì không cần đến mã nguồn.', // i18n-allow: user-facing channel reply
+    failed:
+      'Phiên Agent đã kết thúc mà chưa có câu trả lời. Bạn hỏi lại — lượt mới sẽ mở phiên mới — hoặc mở cuộc trò chuyện ở chế độ Assistant nếu câu hỏi không cần đến mã nguồn.', // i18n-allow: user-facing channel reply
+    ack: null,
+  },
 } as const;
+
+const ATTACHMENT_UNREADABLE = {
+  en: (file: string) =>
+    `I could not send ${file} to the box that answers in Agent mode, so I have not answered rather than answering without it. Attach it again, or ask in Assistant mode, where I read it here.`,
+  vi: (file: string) =>
+    `Mình không gửi được ${file} tới máy trả lời ở chế độ Agent, nên chưa trả lời thay vì trả lời khi thiếu nó. Bạn đính kèm lại, hoặc hỏi ở chế độ Assistant, nơi mình đọc được tệp ngay tại đây.`, // i18n-allow: user-facing channel reply
+} as const;
+
+const ATTACHMENT_NAMELESS = { en: 'the file you attached', vi: 'tệp bạn đính kèm' } as const; // i18n-allow: user-facing channel reply
+
+/** The language an Agent-mode line answers in: the question's, else the project's content language. */
+async function agentLineLanguage(args: WebTurnArgs): Promise<ReplyLanguage> {
+  return (
+    replyLanguageOf(args.window.question) ??
+    replyLanguageOfTag((await readContentLanguage(args.project.id)).contentLanguage)
+  );
+}
 
 /** Agent mode: the turn is dispatched to a paired device, or the thread is told why it was not. */
 async function divertToAgent(
@@ -118,6 +164,8 @@ async function divertToAgent(
 ): Promise<TurnReply | null> {
   if (args.window.mode !== 'agent' || authority.origin === 'onboarding_handoff') return null;
   setPhase('agent-turn');
+  const language = await agentLineLanguage(args);
+  const replies = WEB_AGENT_REPLIES[language];
   if (!(await args.window.reserve()))
     return { send: false, reason: 'superseded-before-agent-turn', ended: 'superseded' };
   const { startConversationAgentTurn } = await import('../conversations/index.js');
@@ -135,19 +183,19 @@ async function divertToAgent(
     ...(args.window.images.length ? { images: args.window.images } : {}),
     persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
     door: 'web-agent-completion',
-    replies: WEB_AGENT_REPLIES,
+    replies,
     ackAfterMs: null,
   });
   if (started.started) return { send: false, reason: 'agent-turn-dispatched' };
   const text =
     started.reason === 'deduped'
-      ? WEB_AGENT_REPLIES.dedup
+      ? replies.dedup
       : started.reason === 'no-device'
-        ? WEB_AGENT_REPLIES.noDevice
+        ? replies.noDevice
         : started.reason === 'runner-outdated' || started.reason === 'authority-refused'
-          ? agentRefusalText(started)
+          ? agentRefusalText(started, language)
           : started.reason === 'attachment-unreadable'
-            ? `I could not send ${started.file ?? 'the file you attached'} to the box that answers in Agent mode, so I have not answered rather than answering without it. Attach it again, or ask in Assistant mode, where I read it here.`
+            ? ATTACHMENT_UNREADABLE[language](started.file ?? ATTACHMENT_NAMELESS[language])
             : null;
   if (text === null)
     return { send: false, reason: 'agent-turn-dispatch-failed', ended: 'not-dispatched' };
@@ -159,13 +207,16 @@ async function prepareWebTurn(
   args: WebTurnArgs,
   { credential, speakerUserId, conversationId, handleUserId, authority }: TurnHookContext,
 ): Promise<TurnInputs> {
+  // the token is minted while the room is read; a venue refusal still wins over what minting says
+  const minting = credential();
+  minting.catch(() => undefined);
   const room = await getConversation(conversationId);
   // a hand-off turn acts only in its first-requirements room; anywhere else it is refused
   const venueRefusal =
     authority.origin === 'onboarding_handoff' ? handoffVenueRefusal(room?.externalId) : null;
   if (venueRefusal) throw turnOriginRefused(venueRefusal);
   const ctx = buildChatToolContext({
-    credential: await credential(),
+    credential: await minting,
     projectSlug: args.project.slug,
     turn: { conversationId, speakerUserId, handleUserId, ecosystemId: room?.ecosystemId ?? null },
   });
@@ -194,7 +245,11 @@ async function prepareWebTurn(
     persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
     resolveImage: makeConversationImageResolver(conversationId),
     pageContext: uiSnapshotPageContext(conversationId),
-    tools: mergeToolsets(buildProjectToolset(ctx), buildUiActionToolset()),
+    tools: mergeToolsets(
+      buildProjectToolset(ctx),
+      buildUiActionToolset(),
+      buildOfferActToolset({ projectId: args.project.id, userId: authority.userId }),
+    ),
   };
 }
 

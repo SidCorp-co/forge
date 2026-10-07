@@ -131,15 +131,20 @@ export async function revokeSessionCredential(sessionId: string): Promise<void> 
 }
 
 /** What a room is told when the only free boxes run a runner that cannot carry the asker's token. */
-const RUNNER_OUTDATED_REPLY =
-  "The paired boxes free to answer this run a forge-runner too old to act as the person asking — it would act with its own owner's access instead, so I have not dispatched it. Update forge-runner on the box (`forge-runner update`) and ask again.";
+const RUNNER_OUTDATED_REPLY: Record<'en' | 'vi', string> = {
+  en: "The paired boxes free to answer this run a forge-runner too old to act as the person asking — it would act with its own owner's access instead, so I have not dispatched it. Update forge-runner on the box (`forge-runner update`) and ask again.",
+  vi: 'Các máy đã ghép đang rảnh chạy forge-runner quá cũ, không thể hành động với quyền của người hỏi — nó sẽ dùng quyền của chủ máy, nên mình chưa gửi đi. Hãy cập nhật forge-runner trên máy (`forge-runner update`) rồi hỏi lại.', // i18n-allow: user-facing channel reply
+};
 
-/** What a room is told when an Agent turn was refused before a box took it. */
-export function agentRefusalText(started: {
-  reason: string;
-  message?: string | undefined;
-}): string {
-  if (started.reason === 'runner-outdated') return RUNNER_OUTDATED_REPLY;
+/** What a room is told when an Agent turn was refused before a box took it, in the asker's language. */
+export function agentRefusalText(
+  started: {
+    reason: string;
+    message?: string | undefined;
+  },
+  language: 'en' | 'vi' = 'en',
+): string {
+  if (started.reason === 'runner-outdated') return RUNNER_OUTDATED_REPLY[language];
   if (!started.message) {
     throw new Error(
       `conversation-agent: an Agent turn was refused (${started.reason}) with no sentence to tell the room`,

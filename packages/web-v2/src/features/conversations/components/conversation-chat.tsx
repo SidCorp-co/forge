@@ -24,6 +24,7 @@ import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import {
   useConversation,
   useDraftAgentMode,
@@ -42,6 +43,8 @@ import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
 import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
+import { useActOffers } from "../act-offers";
+import { turnDoing } from "../turn-doing";
 
 export function ConversationChat({
   projectId,
@@ -74,6 +77,7 @@ export function ConversationChat({
   const withdrawn = useWithdrawnDrafts(resolvedId);
   const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
   const stop = useStopConversation();
+  const t = useCopy();
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
@@ -110,11 +114,27 @@ export function ConversationChat({
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const streaming = busy || progress != null;
 
+  const liveBlocks = progress ? parseMessages([progress.entry])[0]?.blocks : undefined;
   const stage = turnStageOf({
     // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
     live: streaming && !progress?.replaced,
-    ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
+    ...(progress ? { blocks: liveBlocks } : {}),
   });
+  const doing = stage === "working" ? turnDoing(liveBlocks, t) : null;
+  const acts = useActOffers({ messages, progress });
+  const afterEntry = useCallback(
+    (entryId: string) => {
+      const cards = ui.cardsFor(entryId);
+      const offers = acts.offersFor(entryId);
+      return cards || offers ? (
+        <>
+          {cards}
+          {offers}
+        </>
+      ) : null;
+    },
+    [ui.cardsFor, acts.offersFor],
+  );
 
   const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
@@ -192,13 +212,13 @@ export function ConversationChat({
               withdrawn={withdrawn}
               agentTurns={agentTurns}
               onRetry={retry}
-              afterEntry={ui.cardsFor}
+              afterEntry={afterEntry}
             />
             </ThreadDataProvider>
           )}
           {stage && (
             <div className="mt-4">
-              <TurnStage stage={stage} />
+              <TurnStage stage={stage} detail={doing} />
             </div>
           )}
           {newOutput && <NewOutput onGo={toBottom} />}
