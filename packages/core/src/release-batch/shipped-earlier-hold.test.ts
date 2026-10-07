@@ -45,6 +45,19 @@ describe('the shipped-earlier clause on a hold', () => {
     expect(swapped.reason.split('could not settle')).toHaveLength(2);
   });
 
+  it('names a source host or a mark naming its commit for a row with no commit lead, never a box', () => {
+    const none = {
+      code: 'SHIPPED_EARLIER_NO_COMMIT' as const,
+      detail: 'a mark that claimed no commit is placed by the commits declaring it.',
+    };
+    const held = withShippedEarlier(ABORT, none);
+
+    expect(held.waitingFor).toContain('source host binding');
+    expect(held.waitingFor).toContain('commit=<sha>');
+    expect(`${held.reason} ${held.waitingFor}`).not.toContain('box');
+    expect(withShippedEarlier(held, none)).toEqual(held);
+  });
+
   it('gives back the hold exactly as its writer worded it where nothing is unsettled', () => {
     expect(withShippedEarlier(ABORT, undefined)).toEqual(ABORT);
     expect(withShippedEarlier(withShippedEarlier(ABORT, UNREAD), undefined)).toEqual(ABORT);

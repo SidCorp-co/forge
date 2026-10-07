@@ -256,7 +256,39 @@ describe("with no box answering, today's refusal stands by name", () => {
     const result = await closeShippedEarlier({ projectId, issueIds: [id], userId: ownerId }, deps);
 
     expect(asked).toEqual([]);
-    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_HOST_UNAVAILABLE']);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_NO_COMMIT']);
     expect(result.unresolved[0]?.detail).toContain('which only a source host reads');
+  });
+
+  it('offers no box on the hold of a row no box can place, and a way out that can happen', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const bare = await asserted();
+    const claimed = await asserted();
+    await claim(claimed, N);
+
+    await sweepAutomaticReleases(new Date(), box('history').deps);
+
+    const held = await fx.holdOf(bare);
+    expect(held?.reason).toContain('(SHIPPED_EARLIER_NO_COMMIT)');
+    expect(held?.waitingFor).toContain('source host binding');
+    expect(held?.waitingFor).toContain('naming the commit that landed it');
+    expect(held?.waitingFor).not.toContain('box');
+    expect(held?.reason).not.toContain('connected box holding');
+    expect((await fx.holdOf(claimed))?.reason ?? '').not.toContain('SHIPPED_EARLIER_NO_COMMIT');
+  });
+
+  it('keeps the box as a way out for rows that name a commit, where no box is connected', async () => {
+    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const bare = await asserted();
+    const claimed = await asserted();
+    await claim(claimed, A);
+
+    await sweepAutomaticReleases(new Date(), box('history', (d) => d !== ours).deps);
+
+    for (const id of [bare, claimed]) {
+      const held = await fx.holdOf(id);
+      expect(held?.reason).toContain('(SHIPPED_EARLIER_HOST_UNAVAILABLE)');
+      expect(held?.waitingFor).toContain('a connected box holding a bound checkout');
+    }
   });
 });

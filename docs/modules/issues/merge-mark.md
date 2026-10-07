@@ -204,6 +204,7 @@ evidence stays host-only, since it reads ranges of commit messages no box serves
 and cannot serve is not stood in for by a box. No box answering (none bound, none connected, or one
 that let a read lapse, which is not asked again for ten minutes) is `SHIPPED_EARLIER_HOST_UNAVAILABLE`
 naming both reasons; a box that answered it could not read a commit is `SHIPPED_EARLIER_UNREAD`.
+A row whose mark names no commit (no `merged_commit_sha`, no claimed `commit=`) is never offered a box: only the declaring-commits evidence could place it, so a connected box is not a way out. That row is `SHIPPED_EARLIER_NO_COMMIT`, and its hold names the two ways out: a source host binding, or its mark naming the landing commit (`unmark`, then mark again with `commit=<sha>`).
 
 The issue is closed through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto
 that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a

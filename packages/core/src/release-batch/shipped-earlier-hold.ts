@@ -15,6 +15,7 @@ import type { ReleaseHold } from './hold.js';
 export interface ShippedEarlierUnsettled {
   readonly code:
     | 'SHIPPED_EARLIER_HOST_UNAVAILABLE'
+    | 'SHIPPED_EARLIER_NO_COMMIT'
     | 'SHIPPED_EARLIER_UNREAD'
     | 'SHIPPED_EARLIER_NOT_CLOSED';
   readonly detail: string;
@@ -35,6 +36,12 @@ const SETTLES: Readonly<
       'release with nobody acting.',
     waitingFor:
       "a source host binding this project's repository can be read through, or (with none bound) a connected box holding a bound checkout of it",
+  },
+  SHIPPED_EARLIER_NO_COMMIT: {
+    reason:
+      "Its mark names no commit, and a connected box can only place a named commit, so no box settles it. Once this project's repository can be read through a source host binding, the next sweep places it by the commits declaring it; or, once its mark names the commit that landed it (`unmark`, then `forge_issues` `action=mark` with `commit=<sha>`), the next sweep asks which release holds that commit and, where one does, closes it against that release with nobody acting.",
+    waitingFor:
+      "a source host binding this project's repository can be read through, or its mark naming the commit that landed it (`unmark`, then mark again with `commit=<sha>`)",
   },
   SHIPPED_EARLIER_UNREAD: {
     reason:
