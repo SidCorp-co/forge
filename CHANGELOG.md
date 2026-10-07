@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.76] - 2026-10-07
+
+Design approvals leave shipped marks intact; refused run stops give working hints
+
+### Fixed
+
+- **A design revision saved after an earlier one lost its issue no longer slips through with none.** If the most recent revision that named an issue names a closed one, the save is refused until it names the drawing issue.
+- **Approving a design no longer rewrites a closed issue's merged mark.** Released in dev.74, an approval re-pointed a shipped issue's landing and posted a false next step; it now leaves the mark as it shipped and says so.
+- **A refused run stop now suggests commands that work as written.** Its comment sends a JSON body, and its commit carries a message and runs without a terminal, after deleting scratch files.
+
 ## [0.4.0-dev.75] - 2026-10-07
 
 Read-only tokens cannot write through /mcp; outbox events no longer wait the poll
