@@ -51,15 +51,17 @@ export interface CommentRefusal {
 
 const COMMENT_BODY_MAX = 64_000;
 
-const DECISION_TEXT_MAX = 4_000;
+/** The one bound on a reason or decision text: a design's approve or return, a decision comment, a
+ *  requirement's accept, defer, drop or repin (ISS-263). */
+export const REASON_TEXT_MAX = 4_000;
 
 const DECISIONS_LIST_MAX = 200;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
 export const decisionFieldsSchema = z.strictObject({
-	decision: text(DECISION_TEXT_MAX),
-	reason: text(DECISION_TEXT_MAX),
+	decision: text(REASON_TEXT_MAX),
+	reason: text(REASON_TEXT_MAX),
 	options: z.array(text(1_000)).max(20).optional(),
 	authority: text(1_000).optional(),
 	reversedWhen: text(2_000).optional(),

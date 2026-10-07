@@ -184,6 +184,74 @@ export async function recordIssueMerge(
   return { wrote: false, ...held };
 }
 
+/**
+ * The landing the approval of a design revision records on the issue that drew it (ISS-262). On a
+ * shape that names landings (`landing` given) it is written over an unmarked row or a mark resting on
+ * somebody's word, and the mark then names the approved revision rather than the one proposed; a
+ * merge Forge observed is never written over. Where no landing is named (git) it stamps only a row
+ * that carries none. Called in the decision's transaction: docs/modules/issues/merge-mark.md.
+ */
+export async function recordDesignLanding(
+  executor: Tx,
+  args: { issueId: string; landing: string | null; actor: OutboxActor },
+): Promise<MergeRecord & { before: MergeMarkColumns }> {
+  const { issueId, landing } = args;
+  const [prior] = await executor
+    .select({
+      projectId: issues.projectId,
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  const gate =
+    landing === null
+      ? isNull(issues.mergedAt)
+      : and(
+          sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
+          sql`(${issues.mergedAt} IS NULL OR ${issues.mergedLanding} IS DISTINCT FROM ${landing})`,
+        );
+  const [wrote] = await executor
+    .update(issues)
+    .set({
+      mergedAt: sql`now()`,
+      ...(landing === null ? {} : { mergedLanding: landing }),
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(issues.id, issueId), gate))
+    .returning({
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    });
+  const before: MergeMarkColumns = {
+    mergedAt: prior?.mergedAt ?? null,
+    mergedCommitSha: prior?.mergedCommitSha ?? null,
+    mergedLanding: prior?.mergedLanding ?? null,
+  };
+  if (!wrote) return { wrote: false, ...(await readBack(executor, issueId)), before };
+  if (prior) {
+    await emitEvent(executor, 'issue.updated', {
+      issueId,
+      projectId: prior.projectId,
+      actor: args.actor,
+      fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      via: 'design',
+      before: { ...before },
+      after: { ...wrote },
+    });
+  }
+  return {
+    wrote: true,
+    mergedAt: wrote.mergedAt,
+    commitSha: wrote.mergedCommitSha,
+    landing: wrote.mergedLanding,
+    before,
+  };
+}
+
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
  *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */

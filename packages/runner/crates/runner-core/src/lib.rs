@@ -8,6 +8,7 @@ pub mod job_exit;
 pub mod job_unheard;
 pub mod ledger;
 pub mod pane_exit;
+pub mod stop_gate;
 pub mod subagent_end;
 pub mod transcript_age;
 pub mod turn_evidence;

@@ -18,7 +18,7 @@
 mod brief;
 
 use clap::{Args as ClapArgs, Subcommand};
-use runner_core::ledger::Ledger;
+use runner_core::ledger::{Ledger, Named, SHORT_ID_CHARS};
 use runner_daemon::{control, session_tokens};
 use runner_platform::config::Config;
 
@@ -104,8 +104,39 @@ pub struct ReleaseArgs {
 /// with nothing left to try, which is what it then says.
 fn release(run_id: &str) -> anyhow::Result<()> {
     let mut led = Ledger::open(&Ledger::default_path()?)?;
-    println!("{}", retract(&mut led, run_id)?);
+    let run_id = full_id(&led, run_id)?;
+    println!("{}", retract(&mut led, &run_id)?);
     Ok(())
+}
+
+/// The whole id of the run `typed` names — itself, or the one run whose id it
+/// begins — or the refusal saying why it names none. An id that names nothing
+/// is handed on as typed, so each verb refuses it exactly as it always has.
+pub(crate) fn full_id(led: &Ledger, typed: &str) -> anyhow::Result<String> {
+    Ok(match led.run_named(typed)? {
+        Named::Whole(id) | Named::Start(id) => id,
+        Named::Nothing => typed.to_string(),
+        Named::Ambiguous(ids) => anyhow::bail!(
+            "`{typed}` begins {} runs on this box: {} — give enough of the id to name one",
+            ids.len(),
+            ids.join(", ")
+        ),
+        Named::TooShort(ids) => anyhow::bail!(
+            "`{typed}` is shorter than the {SHORT_ID_CHARS} characters this box names a run by, \
+             so it is not taken as {} — give the run's first {SHORT_ID_CHARS} characters or its whole id",
+            ids.join(" or ")
+        ),
+    })
+}
+
+/// [`full_id`] against this box's ledger, read-only, for a verb the daemon
+/// answers. A ledger this pane cannot open leaves the id as typed, for the
+/// daemon to refuse by name if it names nothing.
+fn named_on_this_box(typed: &str) -> anyhow::Result<String> {
+    match Ledger::default_path().and_then(|p| Ledger::open_read_only(&p)) {
+        Ok(led) => full_id(&led, typed),
+        Err(_) => Ok(typed.to_string()),
+    }
 }
 
 /// The whole of the decision, split from opening the ledger so every refusal it
@@ -213,10 +244,12 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
             control::request_run_declare(&sock, &token, &o.project, &o.issue, &o.worktree).await?
         }
         Command::Choice(c) => {
-            control::request_run_choice(&sock, &token, &c.run_id, &c.choice, &c.reason).await?
+            let run_id = named_on_this_box(&c.run_id)?;
+            control::request_run_choice(&sock, &token, &run_id, &c.choice, &c.reason).await?
         }
         Command::Close(c) => {
-            control::request_run_close(&sock, &token, &c.run_id, c.reason.as_deref()).await?
+            let run_id = named_on_this_box(&c.run_id)?;
+            control::request_run_close(&sock, &token, &run_id, c.reason.as_deref()).await?
         }
         Command::Release(_) | Command::Brief(_) => {
             unreachable!("answered above, before the socket is opened")
@@ -232,8 +265,15 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     }
     match args.cmd {
         Command::Declare(_) => println!("{}", declared_id(reply.job_id)?),
-        Command::Choice(c) => println!("run {} recorded as {}", c.run_id, c.choice),
-        Command::Close(c) => println!("run {} closed", c.run_id),
+        Command::Choice(c) => println!(
+            "run {} recorded as {}",
+            reply.job_id.as_deref().unwrap_or(&c.run_id),
+            c.choice
+        ),
+        Command::Close(c) => println!(
+            "run {} closed",
+            reply.job_id.as_deref().unwrap_or(&c.run_id)
+        ),
         Command::Release(_) | Command::Brief(_) => {
             unreachable!("answered above, before the socket is opened")
         }
@@ -249,4 +289,82 @@ fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
              for what it recorded"
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ledger_with(name: &str, ids: &[&str]) -> Ledger {
+        let dir =
+            std::env::temp_dir().join(format!("forge-run-named-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut led = Ledger::open(&dir.join("ledger.sqlite")).unwrap();
+        for (n, id) in ids.iter().enumerate() {
+            led.create_run_group(runner_core::ledger::NewRun {
+                run_id: (*id).into(),
+                project_id: "p".into(),
+                master_session_id: format!("m{n}"),
+                worktree_path: format!("/r/w{n}").into(),
+                boot_id: "b".into(),
+                issue_keys: vec![format!("ISS-{n}")],
+            })
+            .unwrap();
+        }
+        led
+    }
+
+    #[test]
+    fn a_run_is_named_by_its_whole_id_or_the_first_eight_characters_of_one() {
+        let led = ledger_with(
+            "one",
+            &[
+                "296f5496-870e-428f-b386-d1c6007bfd9c",
+                "70d69d6e-1111-4222-8333-944455556666",
+            ],
+        );
+        assert_eq!(
+            full_id(&led, "296f5496").unwrap(),
+            "296f5496-870e-428f-b386-d1c6007bfd9c"
+        );
+        assert_eq!(
+            full_id(&led, "296f5496-870e").unwrap(),
+            "296f5496-870e-428f-b386-d1c6007bfd9c"
+        );
+        assert_eq!(
+            full_id(&led, "70d69d6e-1111-4222-8333-944455556666").unwrap(),
+            "70d69d6e-1111-4222-8333-944455556666"
+        );
+        // An id that names nothing goes on as typed, and its verb refuses it as before.
+        assert_eq!(full_id(&led, "deadbeef").unwrap(), "deadbeef");
+        assert_eq!(full_id(&led, "no-such-run").unwrap(), "no-such-run");
+        let short = full_id(&led, "296f").unwrap_err().to_string();
+        assert!(short.contains("shorter than the 8 characters"), "{short}");
+        assert!(
+            short.contains("296f5496-870e-428f-b386-d1c6007bfd9c"),
+            "{short}"
+        );
+    }
+
+    #[test]
+    fn a_start_that_begins_two_runs_is_refused_naming_both() {
+        let led = ledger_with(
+            "two",
+            &[
+                "296f5496-aaaa-4000-8000-000000000001",
+                "296f5496-bbbb-4000-8000-000000000002",
+            ],
+        );
+        let why = full_id(&led, "296f5496").unwrap_err().to_string();
+        assert!(why.contains("begins 2 runs"), "{why}");
+        assert!(
+            why.contains("296f5496-aaaa-4000-8000-000000000001")
+                && why.contains("296f5496-bbbb-4000-8000-000000000002"),
+            "{why}"
+        );
+        assert_eq!(
+            full_id(&led, "296f5496-b").unwrap(),
+            "296f5496-bbbb-4000-8000-000000000002"
+        );
+    }
 }

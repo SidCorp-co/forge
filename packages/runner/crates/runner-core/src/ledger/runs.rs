@@ -223,6 +223,38 @@ impl Ledger {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
+    /// Which run `typed` names: its whole id, or the start of exactly one.
+    ///
+    /// A person names a run the way this box writes one for them — its first
+    /// eight characters (`short_id`), as masters' comments do — and was told
+    /// "no run" for a run that stood (ISS-294's judge). A start shorter than
+    /// that is said to be too short rather than resolved, so a stray few
+    /// characters never close or brief a run nobody meant.
+    pub fn run_named(&self, typed: &str) -> Result<Named> {
+        if self.run(typed)?.is_some() {
+            return Ok(Named::Whole(typed.to_string()));
+        }
+        if typed.is_empty() || !typed.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            return Ok(Named::Nothing);
+        }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT run_id FROM runs WHERE substr(run_id, 1, ?2) = ?1 ORDER BY created_at, run_id")
+            .map_err(sql_err)?;
+        let len = i64::try_from(typed.chars().count()).unwrap_or(i64::MAX);
+        let ids = stmt
+            .query_map(params![typed, len], |row| row.get::<_, String>(0))
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(sql_err)?;
+        Ok(match ids.as_slice() {
+            [] => Named::Nothing,
+            _ if typed.chars().count() < SHORT_ID_CHARS => Named::TooShort(ids),
+            [one] => Named::Start(one.clone()),
+            _ => Named::Ambiguous(ids),
+        })
+    }
+
     /// One run by id.
     pub fn run(&self, run_id: &str) -> Result<Option<Run>> {
         self.conn

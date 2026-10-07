@@ -269,10 +269,29 @@ impl Unanswered {
     }
 }
 
+/// How many characters of an id this box writes when it names one for a
+/// person, and the fewest a person may name a run by.
+pub const SHORT_ID_CHARS: usize = 8;
+
 /// The first eight characters of an id, which is how a session is named in
 /// what this box writes for a person.
 pub fn short_id(id: &str) -> &str {
-    id.get(..8).unwrap_or(id)
+    id.get(..SHORT_ID_CHARS).unwrap_or(id)
+}
+
+/// What a run id a person typed names (`Ledger::run_named`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Named {
+    /// A run's whole id.
+    Whole(String),
+    /// The start of exactly one run's id, which is this one.
+    Start(String),
+    /// The start of several runs' ids, oldest first.
+    Ambiguous(Vec<String>),
+    /// The start of these runs' ids, and shorter than [`SHORT_ID_CHARS`].
+    TooShort(Vec<String>),
+    /// No run's id, whole or begun.
+    Nothing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

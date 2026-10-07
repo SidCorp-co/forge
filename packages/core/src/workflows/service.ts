@@ -5,13 +5,19 @@ import {
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import { db, type Tx } from '../db/client.js';
-import { resolveIssueRouteRef } from '../issues/index.js';
+import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { bindRefusalsIn } from './bind-check.js';
-import { designApproverRefusal, designFingerprint, designStatusAfterWrite } from './design.js';
+import {
+  designApproverRefusal,
+  designFingerprint,
+  designIssueLapsedRefusal,
+  designStatusAfterWrite,
+} from './design.js';
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
 import { reaskSupersededDesignQuestions } from './ports.js';
@@ -26,6 +32,7 @@ import {
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import {
   buildOfIssue,
+  designIssueToInherit,
   insertDesign,
   insertWorkflow,
   lockWorkflows,
@@ -160,6 +167,22 @@ export async function createWorkflow(input: {
   });
 }
 
+/**
+ * The issue a proposing write's revision is drawn under: the one it names, else the one it
+ * inherits. Where the superseded revision's issue is closed or dropped, the write is refused by name.
+ */
+export async function drawingIssueOf(
+  tx: Tx,
+  input: { projectId: string; workflowId: string; named: string | undefined },
+): Promise<{ issueId: string | null } | { refusal: ReturnType<typeof designIssueLapsedRefusal> }> {
+  if (input.named !== undefined) return { issueId: input.named };
+  const inherited = await designIssueToInherit(tx, input.workflowId);
+  if ('issueId' in inherited) return inherited;
+  const { issueId, issSeq, status } = inherited.lapsed;
+  const key = formatIssueRef(await activeIssuePrefix(input.projectId), issSeq);
+  return { refusal: designIssueLapsedRefusal(input.workflowId, { issueId, key, status }) };
+}
+
 async function issueOfProject(projectId: string, ref: string, userId: string): Promise<string> {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
   if (issue.projectId !== projectId) {
@@ -174,7 +197,8 @@ export async function updateWorkflow(input: {
   writer: WorkflowWriter;
   baseRevision: number | null;
   raw: unknown;
-  /** The issue a write that proposes the design again is drawn under; absent, it is inherited. */
+  /** The issue a write that proposes the design again is drawn under; absent, it is inherited while
+   *  that issue is still work, and the write is refused where it is closed or dropped. */
   issue?: string | undefined;
 }): Promise<WorkflowOutcome> {
   const { projectId, id, writer, baseRevision, raw } = input;
@@ -220,6 +244,12 @@ export async function updateWorkflow(input: {
     }
     const fingerprint = designFingerprint(doc, templateFor(doc, facts.templates));
     const design = designStatusAfterWrite(row.designStatus, row.designFingerprint !== fingerprint);
+    const drawing = design.proposes
+      ? await drawingIssueOf(tx, { projectId, workflowId: id, named: designIssueId })
+      : null;
+    if (drawing && 'refusal' in drawing) {
+      return { ok: false, refusals: [drawing.refusal] };
+    }
     const next = await replaceWorkflow(tx, {
       id,
       revision: row.revision,
@@ -236,13 +266,13 @@ export async function updateWorkflow(input: {
       design.proposes && row.designStatus === 'proposed'
         ? ((await revisionsOf(tx, id))[0]?.revision ?? null)
         : null;
-    if (design.proposes) {
+    if (drawing) {
       await insertDesign(tx, {
         workflowId: id,
         revision: next.revision,
         document: doc,
         userId: writer.userId,
-        designIssueId,
+        designIssueId: drawing.issueId,
       });
     }
     if (waiting !== null) {

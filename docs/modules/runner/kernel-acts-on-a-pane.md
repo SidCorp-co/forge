@@ -22,10 +22,10 @@ it cites. Where the two disagree, the code is right.
 | Dispatch gate: a shipped role dispatched with nothing declared is refused | the runner's `PreToolUse` hook, `forge-runner gate` (`packages/runner/crates/forge-runner/src/cmd/gate.rs:answer`, deciding in `packages/runner/crates/runner-core/src/dispatch_gate.rs:decide`) | served |
 | Holding the issue | the run session the box opens for a declared run (`packages/runner/crates/runner-transport/src/run_sessions.rs:beat`); core refuses `in_progress` with no holder (`NO_HOLDER`) | served |
 | Heartbeat | `packages/runner/crates/runner-transport/src/heartbeat.rs` | served |
-| Turn, subagent and transcript reports | the runner's `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `StopFailure`, `TeammateIdle` and `PostCompact` hooks, `forge-runner hook` (`packages/runner/crates/forge-runner/src/cmd/hook.rs:run`). They report and never refuse. | served |
+| Turn, subagent and transcript reports | the runner's `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `StopFailure`, `TeammateIdle` and `PostCompact` hooks, `forge-runner hook` (`packages/runner/crates/forge-runner/src/cmd/hook.rs:run`). They report; `SubagentStop` also answers the stop gate below, and a stop it refuses is not reported. | served |
 | Permission dialogs | the runner's `PermissionRequest` hook denies the dialog and says how to rephrase (`packages/runner/crates/forge-runner/src/cmd/hook.rs:answer`) | served |
 | A question for a person | `forge-runner question` (`packages/runner/crates/forge-runner/src/cmd/question.rs`) | served |
-| **Stop gate**: refuse a stop while a lease is held with nothing written since the claim, while the worktree is dirty, or while a started process is still running | **only the plugin's `Stop`/`SubagentStop` hook, `turn/stop-check`**. The runner's `Stop` hook only reports. | **not served**: a session can end holding work, and the box records the end only afterwards |
+| **Stop gate**: refuse a run's stop while it holds an `in_progress` issue with nothing written since it took it, while its worktree is dirty, or while a process it started still stands in its worktree | the runner's `SubagentStop` hook, `forge-runner hook` (`packages/runner/crates/forge-runner/src/cmd/hook/stop.rs:gate`, deciding in `packages/runner/crates/runner-core/src/stop_gate.rs:decide`). It finds the run in the box's ledger by the subagent's id, and reads the issue and its activity from core, the worktree from git, and the processes from `/proc`. Each refusal names `STOP_HELD_UNWRITTEN`, `STOP_WORKTREE_DIRTY` or `STOP_PROCESS_RUNNING`. A reading it cannot make refuses nothing. After three refusals in a row the next stop is let through. Every judged stop is written to `stop-gate.jsonl` in the runner's config directory. A pane's own `Stop` is its master's turn, and is not judged. While the plugin is installed, its `turn/stop-check` also runs. | served |
 | Learning gate: a session must record a learning before it ends | nothing, on either side. The plugin's `learning-gate` does the opposite: it pauses before a memory write. | not served, with or without the plugin |
 
 The plugin's other hooks are project policy, not kernel acts. They are: the destructive-shell
@@ -36,6 +36,6 @@ requires a brief printed by the plugin's own `forge brief` in the last ten minut
 is not a kernel act: on dev the brief comes from `forge-runner run brief`, and the declaration
 gate above is what refuses a dispatch.
 
-The stop gate is the one kernel act the plugin alone serves. Moving it to the runner is ISS-294's
-split, and so is the end-to-end check: one issue taken from `open` to `awaiting_release` with
-the pane's plugin CLI unavailable.
+No kernel act on a pane is now served by the plugin alone. Nothing yet shows the whole set
+holding with the plugin absent: no run has gone from `open` to `awaiting_release` on dev with the
+pane's plugin CLI and hooks unavailable (ISS-299).

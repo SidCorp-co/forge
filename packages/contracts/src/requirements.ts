@@ -4,6 +4,7 @@
 // labels, so one value keeps one badge on every screen.
 
 import { z } from "zod";
+import { REASON_TEXT_MAX } from "./comments.js";
 import type {
 	FeedbackKind,
 	FeedbackPhase,
@@ -419,40 +420,40 @@ export interface RequirementHistoryEntry {
 }
 
 export const acceptRevisionRequestSchema = z.strictObject({
-	reason: z.string().max(4_000).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const ACCEPT_REVISION_SHAPE =
 	"{ reason? } — the signer's reason, kept on the revision and on the re-baseline it writes";
 
 export const deferRequirementRequestSchema = z.strictObject({
-	reason: z.string().max(4_000),
+	reason: z.string().max(REASON_TEXT_MAX),
 	targetPhase: z.string().trim().min(1).max(200).nullable().optional(),
 });
 export const DEFER_REQUIREMENT_SHAPE =
 	"{ reason, targetPhase? } — why it leaves the current release, and the phase or release it is meant for";
 
 export const undeferRequirementRequestSchema = z.strictObject({
-	reason: z.string().max(4_000).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const UNDEFER_REQUIREMENT_SHAPE =
 	"{ reason? } — puts it back at the status it was deferred from";
 
 export const acceptRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
-	reason: z.string().max(4_000).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const ACCEPT_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision whose delivery is accepted";
 
 export const dropRequirementRequestSchema = z.strictObject({
-	reason: z.string().max(4_000),
+	reason: z.string().max(REASON_TEXT_MAX),
 });
 export const DROP_REQUIREMENT_SHAPE =
 	"{ reason } — why it is not going to be built";
 
 export const repinRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
-	reason: z.string().max(4_000).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
 });
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";

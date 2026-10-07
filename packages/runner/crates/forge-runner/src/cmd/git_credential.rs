@@ -18,7 +18,7 @@ use runner_platform::cred_store;
 use runner_transport::{git_credential, CoreClient};
 
 use super::Ctx;
-use runner_platform::clock::days_from_civil;
+use runner_platform::clock::rfc3339_ms;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -99,17 +99,7 @@ fn read_request() -> anyhow::Result<Vec<(String, String)>> {
     Ok(pairs)
 }
 
-/// `2026-09-08T16:04:05Z` → unix seconds, without pulling in a date crate.
+/// `2026-09-08T16:04:05Z` → unix seconds.
 fn parse_rfc3339_unix(s: &str) -> Option<i64> {
-    let (date, rest) = s.split_once('T')?;
-    let time = rest.trim_end_matches('Z');
-    let mut d = date.split('-');
-    let y: i64 = d.next()?.parse().ok()?;
-    let mo: i64 = d.next()?.parse().ok()?;
-    let da: i64 = d.next()?.parse().ok()?;
-    let mut t = time.split(':');
-    let h: i64 = t.next()?.parse().ok()?;
-    let mi: i64 = t.next()?.parse().ok()?;
-    let se: i64 = t.next()?.split('.').next()?.parse().ok()?;
-    Some(days_from_civil(y, mo, da) * 86_400 + h * 3600 + mi * 60 + se)
+    rfc3339_ms(s).map(|ms| ms.div_euclid(1000))
 }

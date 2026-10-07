@@ -105,19 +105,19 @@ impl Hosts for ProcHosts {
 }
 
 /// The fields of `<root>/<pid>/stat` this module reads.
-struct Stat {
-    state: char,
-    ppid: u32,
-    start: String,
+pub(crate) struct Stat {
+    pub(crate) state: char,
+    pub(crate) ppid: u32,
+    pub(crate) start: String,
 }
 
-enum StatRead {
+pub(crate) enum StatRead {
     Read(Stat),
     Missing,
     Unreadable,
 }
 
-fn stat(root: &Path, pid: u32) -> StatRead {
+pub(crate) fn stat(root: &Path, pid: u32) -> StatRead {
     let text = match std::fs::read_to_string(root.join(pid.to_string()).join("stat")) {
         Ok(t) => t,
         // A stat not found says the pid is gone only where the pid's own entry
@@ -165,7 +165,7 @@ fn cmdline(root: &Path, pid: u32) -> Vec<String> {
     read_cmdline(root, pid).unwrap_or_default()
 }
 
-fn read_cmdline(root: &Path, pid: u32) -> std::io::Result<Vec<String>> {
+pub(crate) fn read_cmdline(root: &Path, pid: u32) -> std::io::Result<Vec<String>> {
     std::fs::read(root.join(pid.to_string()).join("cmdline")).map(|raw| {
         raw.split(|b| *b == 0)
             .filter(|a| !a.is_empty())

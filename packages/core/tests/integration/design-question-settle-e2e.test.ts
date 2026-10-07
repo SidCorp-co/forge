@@ -317,9 +317,7 @@ describe('what else a design write or decision does to a waiting park', () => {
 
   it('reads the park inside the decision, and hands back by that reading once the issue has resumed', async () => {
     const { db } = await import('../../src/db/client.js');
-    const { parkedAtDecision, settleDesignIssue } = await import(
-      '../../src/workflows/design-issue.js'
-    );
+    const { parkedAtDecision, handBack } = await import('../../src/workflows/design-issue.js');
     const parked = await plantIssue('open');
     ok(await park(parked, { needs: 'which SLA applies?' }));
     const resumed = await plantIssue('awaiting_release', new Date('2026-10-02T09:19:03Z'));
@@ -327,11 +325,10 @@ describe('what else a design write or decision does to a waiting park', () => {
     expect(await db.transaction((tx) => parkedAtDecision(tx, resumed))).toBe(false);
     expect(await db.transaction((tx) => parkedAtDecision(tx, null))).toBe(false);
 
-    const handed = await settleDesignIssue({
+    const handed = await handBack({
       projectId,
       flow: 'resumed-before-hand-back-flow',
       revision: 1,
-      decision: 'return',
       reason: 'split the two pipelines',
       designIssueId: resumed,
       parked: true,

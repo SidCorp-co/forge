@@ -10,10 +10,18 @@
 //! reported as a question standing; a pane this box did not place, or one it
 //! cannot tell, is left to its person and reported as today.
 //!
+//! One more is answered since ISS-297: `SubagentStop` for a subagent this box
+//! bound to a declared run goes through the stop gate (`hook/stop.rs`,
+//! deciding in `runner_core::stop_gate`), and is refused while the run holds an
+//! issue with nothing written since the take, leaves its worktree dirty, or
+//! leaves a process it started standing in it. A refused stop did not happen,
+//! so it is not reported to the daemon as one.
+//!
 //! Everything here is subordinate to one rule: a hook must never be able to
 //! break the agent that runs it. So there is no failure path — no socket, no
 //! token, an unknown event, a daemon that refuses: every one of them exits 0
-//! having printed `{}` (or the deny), and the report is simply lost.
+//! having printed `{}` (or the deny, or the refusal), and the report is simply
+//! lost. A refusal is the hook's answer, not a failure of it.
 
 use clap::Args as ClapArgs;
 use runner_core::agent_activity::Event;
@@ -22,6 +30,9 @@ use runner_daemon::{control, session_tokens};
 use runner_platform::config::{config_dir, Config};
 
 use super::gate::{tokenless_here, Tokenless};
+use super::Ctx;
+
+mod stop;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -102,7 +113,17 @@ pub fn answer(
     ))
 }
 
-pub async fn run(args: Args) {
+/// What the hook prints for an event the stop gate answered with `refusal`,
+/// and whether the event is then reported to the daemon: a refused stop did
+/// not happen, so the daemon is not told the run stopped.
+pub fn said_for(refusal: Option<&str>) -> (String, bool) {
+    match refusal {
+        Some(reason) => (stop::block(reason), false),
+        None => ("{}".to_string(), true),
+    }
+}
+
+pub async fn run(ctx: Ctx, args: Args) {
     let payload = drain();
     let token = session_tokens::token_from_env().ok();
     if args.event == Event::PermissionRequested.wire() {
@@ -132,7 +153,17 @@ pub async fn run(args: Args) {
             return;
         }
     }
-    println!("{{}}");
+    let names = named_in(&payload);
+    let refusal = if args.event == Event::SubagentStopped.wire() {
+        stop::gate(&ctx, names.agent_id.as_deref()).await
+    } else {
+        None
+    };
+    let (out, report) = said_for(refusal.as_deref());
+    println!("{out}");
+    if !report {
+        return;
+    }
     let Some(token) = token else {
         return;
     };
@@ -143,7 +174,6 @@ pub async fn run(args: Args) {
     if !sock.exists() {
         return;
     }
-    let names = named_in(&payload);
     let _ = control::request_agent_event(&sock, &token, &args.event, &names).await;
 }
 
@@ -181,6 +211,19 @@ mod tests {
             answer("Stop", b"{}", &here).is_none(),
             "only a dialog is answered"
         );
+    }
+
+    #[test]
+    fn a_refused_stop_is_printed_as_a_block_and_never_reported_as_a_stop() {
+        let (out, report) = said_for(Some("STOP_WORKTREE_DIRTY: x"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["decision"], "block");
+        assert_eq!(v["reason"], "STOP_WORKTREE_DIRTY: x");
+        assert!(
+            !report,
+            "a refused stop was reported to the daemon as a stop"
+        );
+        assert_eq!(said_for(None), ("{}".to_string(), true));
     }
 
     #[test]

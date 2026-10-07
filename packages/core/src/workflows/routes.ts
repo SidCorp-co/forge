@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { WORKFLOW_STEP_ID } from '@forge/contracts/workflow-health';
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
@@ -10,7 +11,7 @@ import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
+import { DESIGN_DECISIONS } from './design.js';
 import {
   type DesignOutcome,
   decideDesignAs,
@@ -254,7 +255,7 @@ workflowRoutes.post(
     z.strictObject({
       revision: z.number().int().min(1),
       decision: z.enum(DESIGN_DECISIONS),
-      reason: z.string().max(DESIGN_REASON_MAX).nullable().optional(),
+      reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
     }),
     `{ revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason? } — a return carries its reason, and an approval may carry its approver's note`,
   ),
