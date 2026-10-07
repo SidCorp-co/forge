@@ -1,0 +1,1 @@
+**Help → Tours opens a tour while a project is open.** Show read "Open a project first" and stayed disabled, because the rail sat outside the current-project provider. The release tour now opens a release of the open project.

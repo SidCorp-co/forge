@@ -52,6 +52,8 @@ import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { HelpToursButton } from "@/features/tours/components/help-tours-button";
+import { TourReleaseProvider } from "@/features/tours/release-context";
+import { useReleases } from "@/features/releases/hooks";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
 import { tourShowMe } from "@/features/tours/components/tour-show-me";
 
@@ -124,6 +126,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject } =
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
+  const releases = useReleases(railProject?.id).data?.releases;
+  const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
   const needsYou = useNeedsYou(railProject?.id).data;
   const designsAwaiting = useDesignsAwaitingCount(railProject?.id);
   const slug = activeSlug(pathname);
@@ -217,6 +221,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
   return (
+    <CurrentProjectProvider project={railProject}>
+    <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>
     <TopBarSlotProvider>
     <div className="flex h-dvh overflow-hidden bg-app">
@@ -280,10 +286,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <CurrentProjectProvider project={railProject}>
-            {children}
-            <TourLauncher />
-          </CurrentProjectProvider>
+          {children}
+          <TourLauncher />
         </main>
       </div>
 
@@ -299,5 +303,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     </div>
     </TopBarSlotProvider>
     </ChatDockProvider>
+    </TourReleaseProvider>
+    </CurrentProjectProvider>
   );
 }
