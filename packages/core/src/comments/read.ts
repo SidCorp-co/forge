@@ -109,7 +109,7 @@ export async function listReplies(parentId: string, limit: number, offset: numbe
     .select(commentThreadColumns)
     .from(comments)
     .where(eq(comments.parentId, parentId))
-    .orderBy(asc(comments.createdAt))
+    .orderBy(asc(comments.createdAt), asc(comments.id))
     .limit(limit)
     .offset(offset);
   return { rows, total: Number(n) };

@@ -19,7 +19,6 @@ const standing = {
     passing: 1,
     judged: 2,
     criteria: 3,
-    issuesDone: 1,
     issuesRunning: 1,
     issuesTotal: 2,
     proposedRevision: 2,

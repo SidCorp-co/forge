@@ -29,14 +29,13 @@ const manual = { kind: "person" as const, mode: "manual" as const, who: "A proje
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
 const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-90) };
 
-const req: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-4", title: "The board keeps its cards", total: 3, landed: 1, forecast: range, next: null, delivery: delivery(range) };
+const req: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-4", title: "The board keeps its cards", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery(range) };
 const draftScope: ScopeForecast = {
   ...stamp,
   scope: "release",
   key: "draft",
   title: null,
-  total: 2,
-  landed: 2,
+  progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
   forecast: landed,
   next: { ...stamp, kind: "paused", who: "A project admin", act: "cut 0.1.0", reason: "r", ref: null, since: null, late: null },
   delivery: delivery(landed),
@@ -56,7 +55,7 @@ describe("Coming next on Releases", () => {
     expect(screen.getByTestId("coming-next-header").textContent).toContain("Dự kiến"); // i18n-allow: asserts the vi ETA copy
     const row = screen.getByTestId("coming-next-requirement");
     expect(row.getAttribute("data-key")).toBe("REQ-4");
-    expect(row.textContent).toContain("1/3 landed");
+    expect(within(row).getByTestId("issue-progress").textContent).toBe("0 shipped · 1 landed, awaiting release · 2 to do");
     const cell = within(row).getByTestId("eta-cell");
     expect(within(cell).getByTestId("eta-line").textContent).toBe("13:00");
     expect(within(cell).getByTestId("eta-sub").textContent).toBe("rồi chờ Admin project cắt"); // i18n-allow: asserts the vi ETA copy
@@ -68,10 +67,11 @@ describe("Coming next on Releases", () => {
     render(<ComingNext next={next} draft={draft} slug="hop" clock={clock} />);
     expect(screen.getByTestId("coming-next-draft-turn").textContent).toBe("Waiting on you: cut 0.1.0");
     const row = screen.getByTestId("coming-next-draft");
-    expect(row.textContent).toContain("2/2 landed");
+    expect(within(row).getByTestId("issue-progress").textContent).toBe("0 shipped · 2 landed, awaiting release · 0 to do");
     const cell = within(row).getByTestId("eta-cell");
-    expect(cell.getAttribute("data-kind")).toBe("done");
-    expect(cell.textContent).toBe("Hôm nay"); // i18n-allow: asserts the vi ETA copy
+    expect(cell.getAttribute("data-kind")).toBe("landed");
+    expect(cell.textContent).toBe("Xong code, chờ release"); // i18n-allow: asserts the vi ETA copy
+    expect(cell.querySelector("svg")).toBeNull();
     expect(cell.textContent).not.toContain("cut 0.1.0");
   });
 

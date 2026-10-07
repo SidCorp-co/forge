@@ -376,7 +376,9 @@ async function gatedBlockers(
       async () => await getActiveReleaseBatch(projectId),
       out,
     );
-    if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
+    if (active) {
+      out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId, version: active.version }));
+    }
     if (!issueIds && found) {
       await criteriaHold(
         projectId,

@@ -198,7 +198,13 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: () => 'declare a source probe on production' },
   RELEASE_POOL_EMPTY: { by: 'admin', act: () => 'pair a runner' },
   NO_RUNNER_ONLINE: { by: 'admin', act: () => 'bring a runner online' },
-  BATCH_IN_FLIGHT: { by: 'system', act: () => 'a release is running' },
+  BATCH_IN_FLIGHT: {
+    by: 'system',
+    act: (d) => {
+      const running = typeof d?.version === 'string' ? d.version : null;
+      return running ? `queued behind ${running}` : 'a release is running';
+    },
+  },
   RELEASE_CRITERIA_UNEARNED: { by: 'master', act: () => 'judge the criteria still owed' },
   RELEASE_RUNTIME_UNROUTED: { by: 'admin', act: () => 'give production a way to be read' },
   RELEASE_CHECK_UNEVALUATED: { by: 'system', act: () => 'a check could not run' },

@@ -82,7 +82,7 @@ function pageQuery(where: SQL | undefined, page: IssueListPage, search: string |
     .select(columns)
     .from(issues)
     .where(where)
-    .orderBy(buildIssueOrderBy(page.sort))
+    .orderBy(...buildIssueOrderBy(page.sort))
     .limit(page.limit)
     .offset(page.offset);
 }

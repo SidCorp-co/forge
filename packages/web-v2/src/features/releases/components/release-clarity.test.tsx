@@ -10,7 +10,7 @@ const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const stamp = { label: "forecast" as const, asOf: at(0) };
 const range = { ...stamp, kind: "forecast" as const, p50At: at(60), p85At: at(120), p50Minutes: 60, p85Minutes: 120, ahead: 0, aheadKeys: [], waitsOn: [], basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 1, concurrency: 1, concurrencyBasis: "t" }, late: null };
-const scope = { ...stamp, scope: "release", key: "0.1.0", title: "t", total: 3, landed: 0, forecast: range, next: null, delivery: null } as unknown as ScopeForecast;
+const scope = { ...stamp, scope: "release", key: "0.1.0", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 0, toDo: 3 }, forecast: range, next: null, delivery: null } as unknown as ScopeForecast;
 
 const release = {
   version: "0.1.0",

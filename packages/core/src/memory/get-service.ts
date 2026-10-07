@@ -92,7 +92,7 @@ export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResu
     })
     .from(memories)
     .where(where)
-    .orderBy(orderFn(orderColumn))
+    .orderBy(orderFn(orderColumn), asc(memories.id))
     .limit(input.limit)
     .offset(input.offset);
 

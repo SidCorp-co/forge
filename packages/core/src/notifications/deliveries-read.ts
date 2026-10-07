@@ -1,4 +1,4 @@
-import { and, countDistinct, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, countDistinct, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
@@ -62,7 +62,7 @@ export async function listDeliveries(
     .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
     .where(where)
     .groupBy(notificationDeliveries.id, notificationDeliveries.title)
-    .orderBy(desc(notificationDeliveries.createdAt))
+    .orderBy(desc(notificationDeliveries.createdAt), asc(notificationDeliveries.id))
     .limit(q.pageSize)
     .offset((q.page - 1) * q.pageSize);
 

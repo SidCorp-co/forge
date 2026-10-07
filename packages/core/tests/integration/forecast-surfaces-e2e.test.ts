@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Body } from '../helpers/api.js';
+import { userToken } from '../helpers/api.js';
+import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import {
   ago,
   DAY,
@@ -109,17 +111,27 @@ describe('a release a person cuts is named, never dated', () => {
     await shippedHistory(w);
     const open = await issue(w, { status: 'open', createdAt: ago(1) });
     const key = await feedback(w, [open.id]);
-    const d = byKey((await read(w, '/feedback')).items as Body[], key).delivery as Body;
+    const member = await createTestUser({ verified: true });
+    await addProjectMember(w.projectId, member.id, 'member');
+    const asMember = { ...w, token: await userToken(member.id) };
+    const d = byKey((await read(asMember, '/feedback')).items as Body[], key).delivery as Body;
     expect((d.landing as Body).kind).toBe('forecast');
     expect(d.release).toMatchObject({ kind: 'person', mode: 'manual', who: 'A project admin' });
     expect((d.release as Body).act).toMatch(/^cut \d+\.\d+\.\d+/);
     expect(d.inHands).toBeNull();
+    // JU-7: the admin reading it is the one who cuts, so it names them as You, never by their own name
+    const mine = byKey((await read(w, '/feedback')).items as Body[], key).delivery as Body;
+    expect(mine.release).toMatchObject({ kind: 'person', mode: 'manual', who: 'You' });
   });
 });
 
 describe('requirements list and what comes next on Releases', () => {
   let w: World;
-  const req = { open: { id: '', key: '' }, landed: { id: '', key: '' } };
+  const req = {
+    open: { id: '', key: '' },
+    landed: { id: '', key: '' },
+    mixed: { id: '', key: '' },
+  };
 
   beforeAll(async () => {
     w = await world();
@@ -127,6 +139,7 @@ describe('requirements list and what comes next on Releases', () => {
     await shippedHistory(w);
     req.open = await requirement(w, 'The board keeps its cards');
     req.landed = await requirement(w, 'The board loads fast');
+    req.mixed = await requirement(w, 'The board exports its cards');
     await issue(w, { status: 'open', createdAt: ago(2), requirementId: req.open.id });
     await issue(w, { status: 'open', createdAt: ago(1), requirementId: req.open.id });
     await issue(w, {
@@ -135,12 +148,32 @@ describe('requirements list and what comes next on Releases', () => {
       mergedAt: ago(0.2),
       requirementId: req.landed.id,
     });
+    // JU-2, hop REQ-19's shape: one shipped, two landed waiting on the release, one still to do
+    await issue(w, {
+      status: 'closed',
+      createdAt: ago(9),
+      mergedAt: ago(8),
+      requirementId: req.mixed.id,
+    });
+    for (const at of [7, 6]) {
+      await issue(w, {
+        status: 'awaiting_release',
+        createdAt: ago(at),
+        mergedAt: ago(at - 1),
+        requirementId: req.mixed.id,
+      });
+    }
+    await issue(w, { status: 'open', createdAt: ago(3), requirementId: req.mixed.id });
+    await issue(w, { status: 'dropped', createdAt: ago(3), requirementId: req.mixed.id });
   }, 120_000);
 
   it('gives every live requirement its end-to-end range on the list read', async () => {
     const list = (await read(w, '/requirements')).requirements as Body[];
     const open = byKey(list, req.open.key);
-    expect(open).toMatchObject({ title: 'The board keeps its cards', total: 2, landed: 0 });
+    expect(open).toMatchObject({
+      title: 'The board keeps its cards',
+      progress: { total: 2, shipped: 0, awaitingRelease: 0, toDo: 2 },
+    });
     expect(((open.delivery as Body).landing as Body).kind).toBe('forecast');
     expect((open.delivery as Body).inHands).not.toBeNull();
     expect(((byKey(list, req.landed.key).delivery as Body).landing as Body).kind).toBe('landed');
@@ -149,9 +182,37 @@ describe('requirements list and what comes next on Releases', () => {
   it('lists only the requirements with work still to land, and the draft release', async () => {
     const next = await read(w, '/releases/coming');
     const keys = (next.requirements as Body[]).map((r) => r.key);
-    expect(keys).toEqual([req.open.key]);
-    expect(next.draft).toMatchObject({ scope: 'release', key: 'draft', total: 1, landed: 1 });
+    expect(keys.sort()).toEqual([req.open.key, req.mixed.key].sort());
+    expect(next.draft).toMatchObject({
+      scope: 'release',
+      key: 'draft',
+      progress: { total: 3, shipped: 0, awaitingRelease: 3, toDo: 0 },
+    });
     expect(((next.draft as Body).delivery as Body).release).toMatchObject({ kind: 'automatic' });
+  });
+});
+
+describe('one progress on every surface', () => {
+  it('counts a requirement the same on the requirements list and on what comes next', async () => {
+    const w = await world();
+    await seedProductionDeployTrigger(w.projectId, w.userId, 'on-request');
+    const r = await requirement(w, 'Patients get a reminder');
+    for (const at of [7, 6, 5, 4, 3]) {
+      await issue(w, {
+        status: 'awaiting_release',
+        createdAt: ago(at),
+        mergedAt: ago(at - 1),
+        requirementId: r.id,
+      });
+    }
+    await issue(w, { status: 'open', createdAt: ago(1), requirementId: r.id });
+    const listed = byKey((await read(w, '/requirements')).requirements as Body[], r.key);
+    const coming = byKey((await read(w, '/releases/coming')).requirements as Body[], r.key);
+    const one = await read(w, `/requirements/${r.key}`);
+    const triple = { total: 6, shipped: 0, awaitingRelease: 5, toDo: 1 };
+    expect(listed.progress).toEqual(triple);
+    expect(coming.progress).toEqual(triple);
+    expect(one.progress).toEqual(triple);
   });
 });
 
