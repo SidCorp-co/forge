@@ -1,4 +1,4 @@
-import { runCriteriaBackfillOnce } from './issues/index.js';
+import { runActivityFieldChangesBackfillOnce, runCriteriaBackfillOnce } from './issues/index.js';
 import { logger } from './lib/logger.js';
 
 /**
@@ -22,4 +22,26 @@ export async function runOnceBackfills(): Promise<void> {
       'boot: criteria backfill ran',
     );
   }
+}
+
+/**
+ * The backfills too heavy to hold the boot (ISS-124): started after the server listens, off the
+ * request path, and never awaited. A failure is logged and the next boot continues; each is
+ * resumable by its own marker.
+ */
+export function startDeferredBackfills(): void {
+  void runActivityFieldChangesBackfillOnce()
+    .then((report) => {
+      if (!report) return;
+      for (const r of report.refusals)
+        logger.error(
+          { issueId: r.issueId, refusal: r.reason },
+          'boot: activity backfill refused an issue chain; the marker stays unset',
+        );
+      logger.info(
+        { chains: report.chains, rows: report.rows, refused: report.refusals.length },
+        'boot: activity field-changes backfill ran',
+      );
+    })
+    .catch((err) => logger.error({ err }, 'boot: activity field-changes backfill failed'));
 }

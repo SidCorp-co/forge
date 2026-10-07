@@ -1,7 +1,9 @@
+import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { issueArchiveSide } from './archive.js';
 
 const ACTIVITY_ROW_COLUMNS = {
@@ -26,6 +28,26 @@ export type ActivityRow = {
   createdAt: Date;
 };
 
+/**
+ * ISS-124 amnesty (`.forge/conformance.json` $amnesties, `activity-snapshot-read`): an
+ * `issue.updated` row the boot backfill has not converted yet reads as the changes it made. A row
+ * that is not the snapshot shape is returned as stored, named in the log, never dropped.
+ */
+function readable(rows: ActivityRow[]): ActivityRow[] {
+  return rows.map((row) => {
+    if (row.action !== 'issue.updated') return row;
+    try {
+      return { ...row, payload: issueUpdatedAsChanges(row.payload) };
+    } catch (err) {
+      logger.warn(
+        { err, activityId: row.id, issueId: row.issueId },
+        'activity: a snapshot row cannot be read as changes',
+      );
+      return row;
+    }
+  });
+}
+
 /** An issue's activity, newest first, older than `before` when given. */
 export async function listIssueActivity(
   issueId: string,
@@ -40,7 +62,7 @@ export async function listIssueActivity(
     .where(and(...conditions))
     .orderBy(desc(activityLog.createdAt))
     .limit(limit);
-  return rows as ActivityRow[];
+  return readable(rows as ActivityRow[]);
 }
 
 /** A project's activity over its live issues, newest first, optionally of one action family. */
@@ -60,5 +82,5 @@ export async function listProjectActivity(
     .where(and(...conditions))
     .orderBy(desc(activityLog.createdAt))
     .limit(limit);
-  return rows as ActivityRow[];
+  return readable(rows as ActivityRow[]);
 }

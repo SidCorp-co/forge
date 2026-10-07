@@ -12,21 +12,19 @@ import {
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
-  ErrorState,
   FactsRail,
-  ProjectLoader,
   StatusBadge,
   useUrlTab,
   FieldLabel,
   ViewHeading,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useEntityDecisions } from "@/features/comments/hooks";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
@@ -196,61 +194,53 @@ export function RequirementPage({
     1;
   const mockupTarget = { type: "requirement" as const, key: reqKey, revision: proposedAt };
   const mockups = useMockups(projectId, mockupTarget);
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading requirement…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const d = q.data;
-  const s = d.standing;
-  const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
-  const tabs = [
-    { value: "overview" as const, label: "Overview" },
-    { value: "criteria" as const, label: "Criteria", count: s.coverage.length },
-    { value: "revisions" as const, label: "Revisions", count: d.revisions.length },
-    { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
-    { value: "decisions" as const, label: "Decisions", count: decisions.data?.returned },
-    { value: "activity" as const, label: "Activity", count: d.history.length },
-  ];
   return (
-    <DetailLayout
-      testId="requirement-detail"
-      dataKey={d.key}
-      rail={
-        <FactsRail testId="relations-rail">
-          <RequirementFacts d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
-      {banner ? <RequirementBanner standing={s} className="px-8 py-2.5 max-md:px-4" /> : null}
-      <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
-        {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
-        {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
-        {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
-        {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
-        {tab === "decisions" ? (
-          <section data-testid="view-decisions" aria-label="Decisions">
-            <ViewHeading>Decisions</ViewHeading>
-            <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
-          </section>
-        ) : null}
-        {tab === "activity" ? (
-          <section data-testid="view-activity" aria-label="Activity">
-            <History entries={d.history} />
-          </section>
-        ) : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading requirement…">
+      {(data) => {
+        const d = data;
+        const s = d.standing;
+        const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
+        const tabs = [
+          { value: "overview" as const, label: "Overview" },
+          { value: "criteria" as const, label: "Criteria", count: s.coverage.length },
+          { value: "revisions" as const, label: "Revisions", count: d.revisions.length },
+          { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
+          { value: "decisions" as const, label: "Decisions", count: decisions.data?.returned },
+          { value: "activity" as const, label: "Activity", count: d.history.length },
+        ];
+        return (
+          <DetailLayout
+            testId="requirement-detail"
+            dataKey={d.key}
+            rail={
+              <FactsRail testId="relations-rail">
+                <RequirementFacts d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
+            {banner ? <RequirementBanner standing={s} className="px-8 py-2.5 max-md:px-4" /> : null}
+            <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+              {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
+              {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
+              {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
+              {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+              {tab === "decisions" ? (
+                <section data-testid="view-decisions" aria-label="Decisions">
+                  <ViewHeading>Decisions</ViewHeading>
+                  <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
+                </section>
+              ) : null}
+              {tab === "activity" ? (
+                <section data-testid="view-activity" aria-label="Activity">
+                  <History entries={d.history} />
+                </section>
+              ) : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

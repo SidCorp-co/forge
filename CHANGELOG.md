@@ -9,6 +9,36 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.78] - 2026-10-07
+
+One QueryBoundary draws every query-backed screen's loading and failed shells
+
+### Changed
+
+- **Loading and failed screens share one boundary.** About 30 web screens, peeks and detail pages draw their loader and error shell through `QueryBoundary` instead of repeating it; what a person sees is unchanged.
+
+### Fixed
+
+- **A refused stop's hints now take a run's own words as written.** Apostrophes, quotes and line breaks need no escaping: the comment goes through `forge-runner api -f body=@-`, the commit through `git commit -F -`, both over a quoted heredoc.
+
+## [0.4.0-dev.77] - 2026-10-07
+
+Migration 0344 no longer converts history at boot; a background backfill does
+
+### Fixed
+
+- **Migration 0344 no longer rewrites activity history at deploy.** A boot backfill converts one issue chain per transaction after the server is healthy and resumes after a kill; until it finishes, the activity feed converts unconverted rows on read.
+
+## [0.4.0-dev.76] - 2026-10-07
+
+Design approvals leave shipped marks intact; refused run stops give working hints
+
+### Fixed
+
+- **A design revision saved after an earlier one lost its issue no longer slips through with none.** If the most recent revision that named an issue names a closed one, the save is refused until it names the drawing issue.
+- **Approving a design no longer rewrites a closed issue's merged mark.** Released in dev.74, an approval re-pointed a shipped issue's landing and posted a false next step; it now leaves the mark as it shipped and says so.
+- **A refused run stop now suggests commands that work as written.** Its comment sends a JSON body, and its commit carries a message and runs without a terminal, after deleting scratch files.
+
 ## [0.4.0-dev.75] - 2026-10-07
 
 Read-only tokens cannot write through /mcp; outbox events no longer wait the poll

@@ -14,7 +14,7 @@ import {
   registerWebConversationAdapter,
 } from './assistant/index.js';
 import { agentAccountsAmong } from './auth/index.js';
-import { runOnceBackfills } from './boot-backfills.js';
+import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
@@ -315,6 +315,7 @@ if (isMain) {
   });
 
   attachWs(server as unknown as HttpServer);
+  startDeferredBackfills();
 
   void startRocketChatManager().catch((err) =>
     logger.error({ err }, 'rocketchat: manager start failed'),

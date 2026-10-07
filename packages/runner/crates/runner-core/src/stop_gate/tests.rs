@@ -86,6 +86,7 @@ fn facts<'a>(tree: &'a Path, issues: Vec<(String, Issue)>) -> Facts<'a> {
     Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
         tree,
+        runner: "/opt/forge runner/bin/forge-runner",
         issues,
         dirty: Ok(vec![]),
         standing: Ok(vec![]),
@@ -140,7 +141,14 @@ fn a_dirty_tree_refuses_naming_the_tree_and_its_paths() {
         "{r}"
     );
     assert!(r.contains("f9.rs, and 2 more."), "{r}");
-    assert!(!r.contains("f10.rs"), "{r}");
+    let sentence = r
+        .lines()
+        .find(|l| l.contains("STOP_WORKTREE_DIRTY"))
+        .unwrap();
+    assert!(!sentence.contains("f10.rs"), "{sentence}");
+    // The sentence shows ten; the command stages every path the gate saw.
+    let staged = r.lines().find(|l| l.starts_with("git -C")).unwrap();
+    assert!(staged.contains(" f9.rs f10.rs f11.rs && "), "{staged}");
 }
 
 #[test]
@@ -255,13 +263,21 @@ fn porcelain_names_each_changed_path_once() {
     assert!(porcelain_paths("").is_empty());
 }
 
-/// The backticked spans of a refusal: the commands it tells the run to type.
-fn commands(r: &str) -> Vec<&str> {
-    r.split('`').skip(1).step_by(2).collect()
+/// The lines of a refusal from the one starting `starts` through the heredoc
+/// terminator: the command a run is told to run, as it reads.
+fn heredoc<'r>(r: &'r str, starts: &str) -> Vec<&'r str> {
+    let lines: Vec<&str> = r.lines().skip_while(|l| !l.starts_with(starts)).collect();
+    let end = lines
+        .iter()
+        .position(|l| *l == TEXT_END)
+        .unwrap_or_else(|| panic!("no `{starts}` heredoc closed by {TEXT_END} in:\n{r}"));
+    lines[..=end].to_vec()
 }
 
+/// The text a run puts in a hint travels in a quoted heredoc, so nothing in it
+/// is the run's to quote; `stop_hints_through_sh.rs` runs both through `sh`.
 #[test]
-fn the_held_hint_sends_a_comment_body_core_accepts() {
+fn the_held_hint_reads_the_comment_from_a_quoted_heredoc_through_the_judging_binary() {
     let tree = PathBuf::from("/r/wt");
     let v = decide(&facts(
         &tree,
@@ -273,45 +289,45 @@ fn the_held_hint_sends_a_comment_body_core_accepts() {
         )],
     ));
     let r = refused(&v);
-    let cmd = commands(r)
-        .into_iter()
-        .find(|c| c.starts_with("forge-runner api"))
-        .unwrap_or_else(|| panic!("no api command in {r}"));
-    assert!(
-        cmd.starts_with(
-            "forge-runner api issues/0d9e6010-b39a-41c3-8702-1d1eab933311/comments -d '"
-        ),
-        "{cmd}"
+    assert_eq!(
+        heredoc(r, "'/opt/forge runner/bin/forge-runner' api"),
+        vec![
+            "'/opt/forge runner/bin/forge-runner' api issues/0d9e6010-b39a-41c3-8702-1d1eab933311/comments -f body=@- <<'FORGE_TEXT'",
+            HELD_TEXT,
+            TEXT_END,
+        ]
     );
-    // `-d` takes JSON only: the argument between the quotes must parse, and
-    // carry the comment's `body` as a string.
-    let data = cmd
-        .split_once("-d '")
-        .and_then(|(_, rest)| rest.strip_suffix('\''))
-        .unwrap_or_else(|| panic!("no quoted -d argument in {cmd}"));
-    let body: serde_json::Value =
-        serde_json::from_str(data).unwrap_or_else(|e| panic!("{data} is not JSON: {e}"));
-    assert!(body["body"].is_string(), "{data}");
+    assert!(
+        r.contains("apostrophes, quotes and line breaks need no escaping"),
+        "{r}"
+    );
+    assert!(
+        !r.contains(" -d "),
+        "the hint still asks for hand-quoted JSON:\n{r}"
+    );
 }
 
 #[test]
 fn the_dirty_hint_names_removing_scratch_first_and_quotes_the_tree_as_one_word() {
     let tree = PathBuf::from("/r/a tree/it's");
     let mut f = facts(&tree, vec![]);
-    f.dirty = Ok(vec!["notes.tmp".into()]);
+    f.dirty = Ok(vec!["notes.tmp".into(), "src/it's.rs".into()]);
     let v = decide(&f);
     let r = refused(&v);
     assert!(
-        r.contains("first delete what the run made and no longer needs"),
+        r.contains(
+            "first delete what the run made and no longer needs (scratch files, logs, \
+                    output) and take those paths out of the `git add` line"
+        ),
         "{r}"
     );
-    let cmd = commands(r)
-        .into_iter()
-        .find(|c| c.starts_with("git -C"))
-        .unwrap_or_else(|| panic!("no git command in {r}"));
     assert_eq!(
-        cmd,
-        r#"git -C '/r/a tree/it'\''s' add -A && git -C '/r/a tree/it'\''s' commit -m '<what the commit holds>'"#
+        heredoc(r, "git -C"),
+        vec![
+            r#"git -C '/r/a tree/it'\''s' add -A -- notes.tmp 'src/it'\''s.rs' && git -C '/r/a tree/it'\''s' commit -F - <<'FORGE_TEXT'"#,
+            COMMIT_TEXT,
+            TEXT_END,
+        ]
     );
 }
 

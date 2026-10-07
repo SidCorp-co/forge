@@ -12,16 +12,14 @@ import {
   DetailPane,
   DetailTabs,
   enumLabel,
-  ErrorState,
   FactsRail,
   LEGEND,
-  ProjectLoader,
   StatusBadge,
   useUrlTab,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
@@ -118,58 +116,50 @@ export function FeedbackPage({
 }) {
   const q = useFeedbackItem(projectId, fbKey);
   const mockups = useMockups(projectId, { type: "feedback", key: fbKey });
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading feedback…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const f = q.data.feedback;
-  const tabs = [
-    { value: "overview" as const, label: "Overview" },
-    { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
-    { value: "history" as const, label: "History", count: f.decisions.length },
-  ];
   return (
-    <DetailLayout
-      testId="feedback-detail"
-      dataKey={f.key}
-      rail={
-        <FactsRail>
-          <FeedbackFacts f={f} slug={slug} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={f.key} title={f.title} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
-      <FeedbackBanner f={f} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
-        {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
-        {tab === "overview" ? (
-          <div className="grid gap-8" data-testid="view-overview">
-            <Proposals projectId={projectId} f={f} />
-            {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
-              <section id="feedback-act">
-                <FeedbackActions projectId={projectId} f={f} />
-              </section>
-            ) : null}
-            <Body f={f} />
-          </div>
-        ) : null}
-        {tab === "history" ? (
-          <section aria-label="History">
-            <History f={f} />
-          </section>
-        ) : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading feedback…">
+      {(data) => {
+        const f = data.feedback;
+        const tabs = [
+          { value: "overview" as const, label: "Overview" },
+          { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
+          { value: "history" as const, label: "History", count: f.decisions.length },
+        ];
+        return (
+          <DetailLayout
+            testId="feedback-detail"
+            dataKey={f.key}
+            rail={
+              <FactsRail>
+                <FeedbackFacts f={f} slug={slug} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={f.key} title={f.title} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
+            <FeedbackBanner f={f} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+              {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
+              {tab === "overview" ? (
+                <div className="grid gap-8" data-testid="view-overview">
+                  <Proposals projectId={projectId} f={f} />
+                  {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
+                    <section id="feedback-act">
+                      <FeedbackActions projectId={projectId} f={f} />
+                    </section>
+                  ) : null}
+                  <Body f={f} />
+                </div>
+              ) : null}
+              {tab === "history" ? (
+                <section aria-label="History">
+                  <History f={f} />
+                </section>
+              ) : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

@@ -3,6 +3,7 @@
  * questions and status moves recorded on its linked issues.
  */
 
+import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
 import type { RequirementHistoryEntry } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -48,7 +49,14 @@ function leadOf(payload: unknown): string | null {
   return null;
 }
 
-function statusMoveOf(payload: unknown): { from: string; to: string } | null {
+function statusMoveOf(stored: unknown): { from: string; to: string } | null {
+  // ISS-124 amnesty (`activity-snapshot-read`): a row the boot backfill has not converted reads as its changes.
+  let payload: unknown;
+  try {
+    payload = issueUpdatedAsChanges(stored);
+  } catch {
+    return null;
+  }
   if (typeof payload !== 'object' || payload === null) return null;
   const changes = (payload as { changes?: unknown }).changes;
   if (!Array.isArray(changes)) return null;

@@ -2,11 +2,11 @@
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader, rememberListOrigin, Tooltip } from "@/design";
+import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useProjectDocument } from "@/features/project-config/hooks";
-import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
@@ -195,58 +195,49 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
   const q = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocument = useProjectDocument(projectId);
-
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading workflows…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
-  const templates = (templatesQ.data?.templates ?? []).map((t) => t.template);
-  const all = q.data.workflows;
-  const overview = (
-    <SystemOverviewRegion
-      records={all}
-      templates={templates}
-      projectId={projectId}
-      slug={slug}
-      projectName={projectName}
-      projectDocument={projectDocument.data}
-      canEdit={canEdit}
-      className="flex-1"
-    />
-  );
-
-  if (systemContextOf(all)) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
-        <PageTitle hint="What the system is, beside every design the project draws">Workflows</PageTitle>
-        <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
-          {overview}
-          <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
-            <Designs all={all} slug={slug} templates={templates} narrow />
-          </aside>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
-      <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
-      {overview}
-      {all.length === 0 ? (
-        <NoWorkflows projectId={projectId} />
-      ) : (
-        <Designs all={all} slug={slug} templates={templates} narrow={false} />
-      )}
-    </div>
+    <QueryBoundary query={q} loadingLabel="loading workflows…" height="60vh" retry="always">
+      {(data) => {
+        const templates = (templatesQ.data?.templates ?? []).map((t) => t.template);
+        const all = data.workflows;
+        const overview = (
+          <SystemOverviewRegion
+            records={all}
+            templates={templates}
+            projectId={projectId}
+            slug={slug}
+            projectName={projectName}
+            projectDocument={projectDocument.data}
+            canEdit={canEdit}
+            className="flex-1"
+          />
+        );
+
+        if (systemContextOf(all)) {
+          return (
+            <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
+              <PageTitle hint="What the system is, beside every design the project draws">Workflows</PageTitle>
+              <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
+                {overview}
+                <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
+                  <Designs all={all} slug={slug} templates={templates} narrow />
+                </aside>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
+            <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
+            {overview}
+            {all.length === 0 ? (
+              <NoWorkflows projectId={projectId} />
+            ) : (
+              <Designs all={all} slug={slug} templates={templates} narrow={false} />
+            )}
+          </div>
+        );
+      }}
+    </QueryBoundary>
   );
 }
