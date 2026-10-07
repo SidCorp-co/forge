@@ -27,8 +27,8 @@ import { DecisionPanel, focusDecisionPanel } from "@/features/questions/componen
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { useIssueProject } from "./use-issue-project";
+import { useIssueReads } from "./use-issue-reads";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
-import { useMockups } from "@/features/mockups/hooks";
 import type { MockupTarget } from "@/features/mockups/types";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -36,9 +36,9 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  canonicalIssueId,
   isLiveRun,
   issueQueryKey,
+  issueRekey,
   parseChecklist,
   runStatusChip,
   workStepOf,
@@ -48,16 +48,18 @@ import { deriveQueuedStep } from "../waiting";
 import {
   useActivity,
   useAttachments,
-  useComments,
+  type useComments,
   useCreateComment,
-  useIssue,
+  type useIssue,
 } from "../detail-hooks";
 import {
   useIssueCost,
   useIssueDeps,
-  useIssueStandingOf,
+  type useIssueStandingOf,
   usePatchIssue,
   useProjectMembers,
+  useProjectModules,
+  useReleaseRoster,
 } from "../hooks";
 import { ISSUES_LIST, issuesHref } from "@/lib/routes/issues";
 import { ReleaseApprovalProvider } from "../release-approval";
@@ -102,16 +104,8 @@ export function IssueDetailScreen({
   const { projectRole, canWrite, policyQ } = useIssueProject(projectId);
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
-  // ISS-1160 — `id` off the URL is the display key as often as the row uuid;
-  // `projectId` (already resolved from the route's slug) is what lets it
-  // resolve on every one of these reads.
-  const issueQ = useIssue(id, projectId);
-  const mockupTarget = { type: "issue" as const, key: issueQ.data?.displayId ?? id };
-  const mockupsQ = useMockups(projectId, mockupTarget);
-  const canonicalId = canonicalIssueId(id, issueQ.data?.id);
-  const commentsQ = useComments(canonicalId, projectId);
-  const depsQ = useIssueDeps(canonicalId, true, projectId);
-  const costQ = useIssueCost(canonicalId, true, projectId);
+  const { issueQ, mockupTarget, mockupsQ, canonicalId, switching, commentsQ, depsQ, costQ, standingQ, park, criteriaQ } =
+    useIssueReads(id, projectId);
 
   const patch = usePatchIssue();
   const {
@@ -134,17 +128,14 @@ export function IssueDetailScreen({
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
-  const standingQ = useIssueStandingOf(projectId, issue?.displayId);
-  // ISS-1310 — one reading of what a person owes this issue, for the banner, the status control and the decision panel.
-  const park = useIssuePark(issue?.id, issue?.status);
   const stickyHeader = useRef<HTMLDivElement>(null);
   const answerInThread = useCreateComment(issue?.id ?? "");
   const checklist = useMemo(() => keyedChecklist(issue?.acceptanceCriteria), [issue?.acceptanceCriteria]);
-  const criteriaQ = useCriteria(issue?.id);
   const hasCriteriaRows = (criteriaQ.data?.criteria.length ?? 0) > 0;
   useRememberIssue(id, slug, issue?.displayId, issue?.title);
 
   if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
+  if (switching) return <IssueUnread query={issueQ} switching />;
 
   const onTransition = (toStatus: IssueStatus) =>
     requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
@@ -386,11 +377,11 @@ function useRememberIssue(id: string, slug: string, displayId: string | undefine
   }, [displayId, title, id, slug, push]);
 }
 
-function IssueUnread({ query }: { query: ReturnType<typeof useIssue> }) {
+function IssueUnread({ query, switching = false }: { query: ReturnType<typeof useIssue>; switching?: boolean }) {
   const t = useCopy();
   return (
     <div className="grid min-h-[60vh] place-items-center">
-      {query.isLoading ? (
+      {query.isLoading || switching ? (
         <ProjectLoader label={t("issues.detail.loading")} />
       ) : (
         <ErrorState

@@ -11,6 +11,7 @@ import { MOCKUP_REFUSAL_STATUSES } from "./mockups.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
 import { PRODUCT_STATE_REFUSAL_STATUSES } from "./product-state.js";
 import { PROJECT_CONFIG_REFUSAL_STATUSES } from "./project-config.js";
+import { PROJECT_REFUSAL_STATUSES } from "./projects.js";
 import { QUESTION_REFUSAL_STATUSES } from "./questions.js";
 import type { RefusalStatus } from "./refusal.js";
 import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
@@ -39,6 +40,7 @@ const DECLARED: ReadonlyArray<
 	PIPELINE_REFUSAL_STATUSES,
 	PRODUCT_STATE_REFUSAL_STATUSES,
 	PROJECT_CONFIG_REFUSAL_STATUSES,
+	PROJECT_REFUSAL_STATUSES,
 	QUESTION_REFUSAL_STATUSES,
 	RELEASE_REFUSAL_STATUSES,
 	REQUIREMENT_REFUSAL_STATUSES,

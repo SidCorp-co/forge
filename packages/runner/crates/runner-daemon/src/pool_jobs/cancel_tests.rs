@@ -52,6 +52,13 @@ impl Panes for ScriptedPanes {
     async fn names(&self) -> Vec<String> {
         Vec::new()
     }
+    async fn send_line(
+        &self,
+        _name: &str,
+        _text: &str,
+    ) -> std::result::Result<terminal::Prompt, terminal::NotTyped> {
+        unreachable!("a cancel types nothing")
+    }
 }
 
 /// Core as the test scripts it: what a heartbeat is answered with and whether an ack is taken.

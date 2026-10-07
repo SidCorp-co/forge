@@ -1,31 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
-import { useMarkWhatsNewSeen, useWhatsNew } from "../hooks";
+import { useMarkWhatsNewSeen, useWhatsNew, useWhatsNewSummary } from "../hooks";
 import type { WhatsNewFeed } from "../types";
 import { type WhatsNewEntryAction, WhatsNewPanel } from "./whats-new-panel";
 
 /**
  * The rail's What's new entry: a dot while anything shipped after the reader's seen mark, never a
- * count. Opening it shows the feed as it stood and moves the mark to now, which clears the dot.
+ * count, read from the summary every page loads. Opening it reads the feed, shows it as it stood and
+ * moves the mark to now, which clears the dot.
  */
 export function WhatsNewButton({ compact = false, entryAction }: { compact?: boolean; entryAction?: WhatsNewEntryAction }) {
-  const query = useWhatsNew();
+  const summary = useWhatsNewSummary();
   const markSeen = useMarkWhatsNewSeen();
   const [open, setOpen] = useState(false);
+  const feedQ = useWhatsNew(open);
   const [shown, setShown] = useState<WhatsNewFeed | undefined>(undefined);
-  const feed = query.data;
-  const unread = feed?.unread ?? 0;
+  const openedAt = useRef(0);
+  const unread = summary.data?.unread ?? 0;
   const t = useCopy();
-  const failure = query.error ? "failed" : null;
+  const failure = open && feedQ.error ? "failed" : null;
+  const { mutate: markSeenNow } = markSeen;
+
+  useEffect(() => {
+    if (!open || shown || !feedQ.data || feedQ.isFetching || feedQ.dataUpdatedAt < openedAt.current) return;
+    setShown(feedQ.data);
+    markSeenNow();
+  }, [open, shown, feedQ.data, feedQ.isFetching, feedQ.dataUpdatedAt, markSeenNow]);
 
   function openPanel() {
-    setShown(feed);
+    openedAt.current = Date.now();
+    setShown(undefined);
     setOpen(true);
-    if (feed) markSeen.mutate();
   }
 
   return (
@@ -50,7 +59,14 @@ export function WhatsNewButton({ compact = false, entryAction }: { compact?: boo
           />
         )}
       </button>
-      <WhatsNewPanel open={open} onClose={() => setOpen(false)} feed={shown ?? feed} failure={failure} entryAction={entryAction} />
+      <WhatsNewPanel
+        open={open}
+        onClose={() => setOpen(false)}
+        feed={shown}
+        failure={failure}
+        loading={open && !shown && !failure}
+        entryAction={entryAction}
+      />
     </>
   );
 }

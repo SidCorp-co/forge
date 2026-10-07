@@ -95,6 +95,12 @@ export interface WhatsNewAway {
 	highlights: string[];
 }
 
+/**
+ * What a page loads on every view: whether anything is unread, without the entries. The feed itself
+ * is read when the reader opens What's new; for the same reader at the same moment the two agree.
+ */
+export type WhatsNewSummary = Pick<WhatsNewFeed, "version" | "seenAt" | "unread" | "counts">;
+
 export interface WhatsNewFeed {
 	/** The version of the build that answered: the newest section of its CHANGELOG.md. */
 	version: string | null;

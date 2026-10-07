@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuth } from '@/providers/auth-provider';
 import { wsClient } from './client';
-import { replayOnFirstOpen, replayOnReconnect, routeEvent } from './event-router';
+import { replayEverything, routeEvent } from './event-router';
 import { userRoom } from './rooms';
 
 export function useWebSocket(): void {
@@ -15,16 +15,13 @@ export function useWebSocket(): void {
     if (isLoading || !user) return;
     wsClient.connect();
     const room = userRoom(user.id);
-    wsClient.subscribe(room);
+    wsClient.subscribe(room, 0);
     const off = wsClient.on((env) => routeEvent(env, qc));
-    const offOpen = wsClient.onOpen(({ first, openedAt }) => {
-      if (first) replayOnFirstOpen(qc, openedAt);
-      else replayOnReconnect(qc);
-    });
+    const offGap = wsClient.onReplayGap(() => replayEverything(qc));
     return () => {
       wsClient.unsubscribe(room);
       off();
-      offOpen();
+      offGap();
     };
   }, [qc, user, isLoading]);
 }

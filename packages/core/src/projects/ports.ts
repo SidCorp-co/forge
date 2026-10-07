@@ -17,6 +17,8 @@ interface ProjectsPorts {
   /** Hold the prefix in the issues kernel's alias table; the caller then sets the active prefix. */
   claimIssuePrefix(projectId: string, raw: string, dbi: PrefixWriter): Promise<AssignPrefixResult>;
   notifyInvitee(notice: { userId: string; projectId: string; title: string }): Promise<void>;
+  /** Why no project route could address a project by this slug, or null when one can. */
+  unaddressableSlug(slug: string): string | null;
 }
 
 const slot = portSlot<ProjectsPorts>('projects', 'provideProjectsPorts');

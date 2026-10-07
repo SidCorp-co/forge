@@ -3,6 +3,11 @@
 -- view reads one. The status guards 0393 put on `reconcile_runs` and `rocketchat_comment_mirrors`
 -- go with their tables; their `kernel_transitions` history stays, as every machine's does.
 --
+-- The chat audit log is the one exception to "and what they stored": it is the only per-turn record
+-- of what a person asked and what the assistant did, so its rows are copied into
+-- `chat_turn_archive` (no transcript of the room, only the turn) before the table goes. A database
+-- that already ran this file before the copy was added gets the same empty table from 0448.
+--
 -- chat audit log, Rocket.Chat comment mirror, assistant agents, domain templates, skill
 -- registration/reconcile/update-packet lane, PM agent, runner release records, outbound webhooks,
 -- admin thresholds (now fixed defaults), notification silences, and five one-shot backups whose
@@ -43,6 +48,40 @@ BEGIN
   END LOOP;
 END $$;--> statement-breakpoint
 
+CREATE TABLE IF NOT EXISTS "chat_turn_archive" (
+  "id" uuid PRIMARY KEY NOT NULL,
+  "project_id" uuid REFERENCES "projects"("id") ON DELETE CASCADE,
+  "project_slug" text NOT NULL,
+  "session_id" text,
+  "user_key" text,
+  "source" text NOT NULL,
+  "query" text NOT NULL,
+  "reply" text,
+  "model" text,
+  "tool_calls" jsonb,
+  "usage" jsonb,
+  "iterations" integer NOT NULL,
+  "duration_ms" integer,
+  "error" text,
+  "created_at" timestamp with time zone NOT NULL,
+  "archived_at" timestamp with time zone DEFAULT now() NOT NULL
+);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "chat_turn_archive_project_created_idx" ON "chat_turn_archive" USING btree ("project_id","created_at");--> statement-breakpoint
+DO $$
+BEGIN
+  IF to_regclass('public.chat_logs') IS NOT NULL THEN
+    INSERT INTO "chat_turn_archive" (
+      "id", "project_id", "project_slug", "session_id", "user_key", "source", "query", "reply",
+      "model", "tool_calls", "usage", "iterations", "duration_ms", "error", "created_at"
+    )
+    SELECT l."id", p."id", l."project_slug", l."session_id", l."user_key", l."source", l."query",
+           l."reply", l."model", l."tool_calls", l."usage", l."iterations", l."duration_ms",
+           l."error", l."created_at"
+      FROM public.chat_logs l
+      LEFT JOIN "projects" p ON p."slug" = l."project_slug"
+    ON CONFLICT ("id") DO NOTHING;
+  END IF;
+END $$;--> statement-breakpoint
 DROP TABLE IF EXISTS "chat_logs" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "rocketchat_comment_mirrors" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "rocketchat_comment_mirror_state" CASCADE;--> statement-breakpoint
