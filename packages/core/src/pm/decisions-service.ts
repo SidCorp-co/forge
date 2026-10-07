@@ -7,6 +7,7 @@
  * keyed `source='decision'`, so a later PM turn can recall what was decided.
  */
 
+import { redactedMessage } from '@forge/observability';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ModelTier, pmDecisions, projects } from '../db/schema.js';
@@ -79,7 +80,7 @@ export async function writePmDecision(input: PmDecisionInput) {
       metadata: { cause: input.cause },
     }).catch((err) => {
       logger.error(
-        { err: (err as Error).message, decisionId, projectId: input.projectId },
+        { err: redactedMessage(err), decisionId, projectId: input.projectId },
         'writePmDecision: detached indexer failed',
       );
     });

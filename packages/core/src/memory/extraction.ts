@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { redactedMessage } from '@forge/observability';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, knowledgeEdges, memories } from '../db/schema.js';
@@ -258,7 +259,7 @@ export async function runExtractionForIssue(
       );
     } catch (err) {
       logger.warn(
-        { err: (err as Error).message, issueId, fact: f.fact.slice(0, 60) },
+        { err: redactedMessage(err), issueId, fact: f.fact.slice(0, 60) },
         'memory.extraction: fact write failed',
       );
     }
@@ -291,7 +292,7 @@ export async function runExtractionForIssue(
       edgesWritten++;
     } catch (err) {
       logger.warn(
-        { err: (err as Error).message, issueId, subject: e.subject },
+        { err: redactedMessage(err), issueId, subject: e.subject },
         'memory.extraction: edge write failed',
       );
     }
@@ -311,10 +312,7 @@ export function registerMemoryExtraction(bus: HooksBus): () => void {
     const { projectId, issueId, jobId } = p;
     queueMicrotask(() => {
       runExtractionForIssue(projectId, issueId as string).catch((err) => {
-        logger.warn(
-          { err: (err as Error).message, jobId, issueId },
-          'memory.extraction: run failed',
-        );
+        logger.warn({ err: redactedMessage(err), jobId, issueId }, 'memory.extraction: run failed');
       });
     });
   });

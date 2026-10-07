@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import { bodyText } from '../body/prepare.js';
 import { db } from '../db/client.js';
@@ -356,7 +357,7 @@ export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
     // warn, not error, so a bursty outage doesn't flood error counters.
     logger.warn(
       {
-        err: (err as Error).message,
+        err: redactedMessage(err),
         projectId: input.projectId,
         source: input.source,
         sourceRef: input.sourceRef,
@@ -407,7 +408,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
-        logger.error({ err: (err as Error).message }, 'memory.indexer: detached task failed');
+        logger.error({ err: redactedMessage(err) }, 'memory.indexer: detached task failed');
       });
     });
   const unsubs: Array<() => void> = [];

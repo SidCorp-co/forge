@@ -6,6 +6,7 @@
  * the 23505 sits on `cause`, and the failed statement's params ride on the wrapper's message.
  */
 
+import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { type LoggerOptions, pino } from 'pino';
@@ -106,14 +107,39 @@ describe('POST /api/auth/register for an email already registered', () => {
     expect(first.err.message).toContain('violates unique constraint "users_email_unique"');
   });
 
-  it('withholds a driver message that repeats a short bound value', async () => {
-    const err = await harness.db.execute(sql`select ${'abc'}::uuid`).then(
-      () => expect.unreachable('abc was read as a uuid'),
-      (e: unknown) => e,
+  /** What the database throws for a statement it refuses, through drizzle. */
+  function refused(statement: ReturnType<typeof sql>): Promise<Error> {
+    return harness.db.execute(statement).then(
+      () => expect.unreachable('the statement was accepted'),
+      (e: unknown) => e as Error,
     );
+  }
+
+  it('withholds a driver message that repeats a short bound value', async () => {
+    // No quoted-value anchor names this message: only the bound value read off the error does.
+    const err = await refused(sql`select ${'zq9'}::regclass`);
     const lines: string[] = [];
-    pino(loggerOptions, { write: (s: string) => lines.push(s) }).error({ err });
-    expect(lines[0]).not.toMatch(/"abc"|: abc/);
-    expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22P02');
+    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    log.error({ err });
+    log.error(err, 'failed');
+    log.error({ err: redactedMessage(err.cause) });
+    expect(lines).toHaveLength(3);
+    for (const line of lines) expect(line).not.toContain('zq9');
+    expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('42P01');
+  });
+
+  it("drops a value the database's own text quotes, with no error in the call to name it", async () => {
+    const err = await refused(sql`select ${'zq9'}::uuid`);
+    const driverMessage = (err.cause as Error).message;
+    expect(driverMessage).toContain('"zq9"');
+    const lines: string[] = [];
+    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    log.error({ err: err.message });
+    log.error({ err: driverMessage });
+    log.warn({ reason: driverMessage }, 'refused');
+    log.warn(`refused: ${driverMessage}`);
+    expect(lines).toHaveLength(4);
+    for (const line of lines) expect(line).not.toContain('zq9');
+    expect(lines[1]).toContain('invalid input syntax for type uuid');
   });
 });

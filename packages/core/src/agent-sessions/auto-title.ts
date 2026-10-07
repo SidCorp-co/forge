@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
@@ -80,7 +81,7 @@ export async function applyAutoTitleAsync(args: ApplyAutoTitleArgs): Promise<voi
     broadcastSession(row, 'agent-session.updated');
   } catch (err) {
     logger.warn(
-      { err: (err as Error).message, sessionId: args.sessionId },
+      { err: redactedMessage(err), sessionId: args.sessionId },
       'auto-title: failed to apply AI title',
     );
   }

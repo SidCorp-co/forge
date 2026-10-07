@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { redactedMessage } from '@forge/observability';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
@@ -213,10 +214,7 @@ async function applyCreates(
       created++;
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) throw err;
-      logger.warn(
-        { err: (err as Error).message, projectId },
-        'memory.consolidation: create failed',
-      );
+      logger.warn({ err: redactedMessage(err), projectId }, 'memory.consolidation: create failed');
     }
   }
   return { created, skipped };
@@ -345,10 +343,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
       });
       updated++;
     } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, projectId },
-        'memory.consolidation: update failed',
-      );
+      logger.warn({ err: redactedMessage(err), projectId }, 'memory.consolidation: update failed');
     }
   }
 
@@ -392,7 +387,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     await proposeKnowledgePromotions(projectId);
   } catch (err) {
     logger.warn(
-      { err: (err as Error).message, projectId },
+      { err: redactedMessage(err), projectId },
       'memory.consolidation: proposeKnowledgePromotions failed',
     );
   }
@@ -428,10 +423,7 @@ export async function runConsolidationSweep(): Promise<{
         logger.info({ projectId, ...result }, 'memory.consolidation: project complete');
       }
     } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, projectId },
-        'memory.consolidation: project failed',
-      );
+      logger.warn({ err: redactedMessage(err), projectId }, 'memory.consolidation: project failed');
     }
   }
   return { projects: projectRows.length, durationMs: Date.now() - t0 };
@@ -675,7 +667,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
       contradictedRefs.push(candidate.sourceRef);
     } catch (err) {
       logger.warn(
-        { err: (err as Error).message, projectId, issueId, memoryId: item.id },
+        { err: redactedMessage(err), projectId, issueId, memoryId: item.id },
         'memory.reconcile: contradicted archive failed',
       );
     }
@@ -703,7 +695,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
       if (updated.length > 0) staleRefs.push(candidate.sourceRef);
     } catch (err) {
       logger.warn(
-        { err: (err as Error).message, projectId, issueId, memoryId: item.id },
+        { err: redactedMessage(err), projectId, issueId, memoryId: item.id },
         'memory.reconcile: possibly-stale stamp failed',
       );
     }
@@ -748,7 +740,7 @@ export function registerMemoryReconcileTrigger(bus: HooksBus): () => void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
-        logger.warn({ err: (err as Error).message }, 'memory.reconcile: trigger failed');
+        logger.warn({ err: redactedMessage(err) }, 'memory.reconcile: trigger failed');
       });
     });
 

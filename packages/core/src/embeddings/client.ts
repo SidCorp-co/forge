@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { logger } from '../logger.js';
 
@@ -91,7 +92,7 @@ export class EmbeddingsClient {
       if (err instanceof EmbeddingUnavailableError) throw err;
       if (this.cfg.fallbackModel && !isRetriable(err)) {
         logger.warn(
-          { err: (err as Error).message, fallback: this.cfg.fallbackModel },
+          { err: redactedMessage(err), fallback: this.cfg.fallbackModel },
           'embeddings: primary failed, trying fallback',
         );
         try {
@@ -149,7 +150,7 @@ export class EmbeddingsClient {
         const delay = RETRY_DELAYS_MS[attempt];
         if (delay === undefined) break;
         logger.warn(
-          { attempt: attempt + 1, delay, err: (err as Error).message },
+          { attempt: attempt + 1, delay, err: redactedMessage(err) },
           'embeddings: retrying',
         );
         await sleep(delay);

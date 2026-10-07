@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -150,7 +151,7 @@ export function registerCiFixPatternLearner(bus: HooksBus): () => void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
-        logger.warn({ err: (err as Error).message }, 'ci_fix_pattern.learn: detached task failed');
+        logger.warn({ err: redactedMessage(err) }, 'ci_fix_pattern.learn: detached task failed');
       });
     });
 

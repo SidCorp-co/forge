@@ -4,6 +4,7 @@
  * rules import nothing that needs a database, and from the doors so both bind it the same way.
  */
 
+import { redactedMessage } from '@forge/observability';
 import { logger } from '../../logger.js';
 import type { PreCall } from '../run-turn-core.js';
 import { EXISTING_TOP_K, memoryNotePreCall } from './memory-note-gate.js';
@@ -25,7 +26,7 @@ export function memoryNoteGateFor(projectId: string): PreCall {
     },
     onSearchError: (err) =>
       logger.warn(
-        { projectId, err: err instanceof Error ? err.message : String(err) },
+        { projectId, err: redactedMessage(err) },
         'memory-note gate: existing-note search failed, judged without it',
       ),
   });

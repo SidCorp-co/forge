@@ -22,6 +22,7 @@
  * sweeper is a system actor without a device principal).
  */
 
+import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
@@ -269,7 +270,7 @@ async function recordTimeout(
       metadata: { cause: 'escalation-timeout', parentDecisionId: parent.id },
     }).catch((err) => {
       logger.error(
-        { err: (err as Error).message, decisionId, parentDecisionId: parent.id },
+        { err: redactedMessage(err), decisionId, parentDecisionId: parent.id },
         'pm-escalation-sweeper: detached indexer failed',
       );
     });

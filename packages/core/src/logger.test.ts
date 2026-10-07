@@ -164,3 +164,76 @@ describe('the core logger', () => {
     expect(JSON.parse(lines[0] ?? '').params).toEqual({ id: 7 });
   });
 });
+
+describe('the core logger, given what is not an Error', () => {
+  it.each([
+    ['a failed query', () => failedInsert().message],
+    ['a value the database quotes', () => 'invalid input syntax for type uuid: "zq9"'],
+  ])('reads an object under err again when it carries %s after a harmless line', (_, text) => {
+    const { lines, log } = capture();
+    const payload = { message: 'ordinary failure' };
+    log.warn({ err: payload }, 'first');
+    payload.message = text();
+    log.warn({ err: payload }, 'second');
+    log.child({ err: payload }).warn('third');
+    expect(lines).toHaveLength(3);
+    for (const line of lines.slice(1)) {
+      expect(line).not.toContain(HASH);
+      expect(line).not.toContain(EMAIL);
+      expect(line).not.toContain('zq9');
+    }
+  });
+
+  it.each([
+    ['its message', (log: Logger, err: Error) => log.warn({ err: err.message, id: 'm1' }, 'g')],
+    ['the message with no msg', (log: Logger, err: Error) => log.warn({ err: err.message })],
+    ['String(err)', (log: Logger, err: Error) => log.warn({ err: String(err) }, 'h')],
+    [
+      'its message beside a status, as an HTTP error logs it',
+      (log: Logger, err: Error) => log.warn({ status: 500, code: 'X', err: err.message }, 'e'),
+    ],
+    [
+      'a plain object holding its message',
+      (log: Logger, err: Error) => log.warn({ err: { message: err.message } }, 'p'),
+    ],
+    ['an array of its message', (log: Logger, err: Error) => log.warn({ err: [err.message] }, 'a')],
+    [
+      'a plain object holding the error itself',
+      (log: Logger, err: Error) => log.warn({ err: { inner: err } }, 'o'),
+    ],
+    [
+      'its message bound on a child',
+      (log: Logger, err: Error) => log.child({ err: err.message }).warn('c'),
+    ],
+  ])("writes no failed query's bound params when err holds %s", (_, write) => {
+    const { lines, log } = capture();
+    write(log, failedInsert());
+    expect(lines).toHaveLength(1);
+    const line = lines[0] ?? '';
+    JSON.parse(line);
+    expect(line).not.toContain(HASH);
+    expect(line).not.toContain(EMAIL);
+    expect(line).toContain('insert into');
+  });
+
+  it.each([
+    ['a unique violation', `Key (email)=(${EMAIL}) already exists.`],
+    ['a missing reference', `Key (owner_email)=(${EMAIL}) is not present in table "users".`],
+    ['a not-null violation', `Failing row contains (7, ${EMAIL}, ${HASH}).`],
+    ['a short value refused as a uuid', 'invalid input syntax for type uuid: "zq9"'],
+    ['a short value refused by an enum', 'invalid input value for enum role: "zq9"'],
+    ['a short value refused as an array', 'malformed array literal: "zq9"'],
+    ['a value out of range', 'value "zq9999" is out of range for type integer'],
+  ])("writes none of the values in %s's text copied into a field by hand", (_, text) => {
+    const { lines, log } = capture();
+    log.warn({ detail: text }, 'copied');
+    log.warn({ err: text });
+    log.warn(`refused: ${text}`);
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).not.toContain(EMAIL);
+      expect(line).not.toContain(HASH);
+      expect(line).not.toContain('zq9');
+    }
+  });
+});

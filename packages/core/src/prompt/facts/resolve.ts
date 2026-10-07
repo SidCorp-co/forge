@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
@@ -273,7 +274,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     projectFactKeys = [];
     missingObligations = [];
     logger.error(
-      { err: (err as Error).message, projectId },
+      { err: redactedMessage(err), projectId },
       'prompt.facts: knowledge store unreadable, the prompt says so in place of the guide index',
     );
   }

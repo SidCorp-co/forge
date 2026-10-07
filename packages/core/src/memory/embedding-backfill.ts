@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
@@ -71,7 +72,7 @@ async function backfillMemories(): Promise<{ reembedded: number; aborted: boolea
       // Row-level failure (e.g. dimension mismatch) — log and continue so one
       // poisoned row can't wedge the whole backlog.
       logger.error(
-        { err: (err as Error).message, memoryId: row.id },
+        { err: redactedMessage(err), memoryId: row.id },
         'memory.backfill: re-embed failed for row, skipping',
       );
     }
@@ -104,7 +105,7 @@ async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boole
         break;
       }
       logger.error(
-        { err: (err as Error).message, knowledgeEntryId: row.id },
+        { err: redactedMessage(err), knowledgeEntryId: row.id },
         'knowledge.backfill: re-embed failed for row, skipping',
       );
     }
@@ -152,7 +153,7 @@ export async function runChunkBackfill(): Promise<{
         break;
       }
       logger.error(
-        { err: (err as Error).message, memoryId: row.id },
+        { err: redactedMessage(err), memoryId: row.id },
         'memory.backfill: chunk publish failed for row, skipping',
       );
     }

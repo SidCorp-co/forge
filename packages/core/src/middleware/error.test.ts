@@ -114,6 +114,12 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
       },
     });
   });
+  app.get('/driver-message-plain-cause', () => {
+    throw new HTTPException(400, {
+      message: 'bad: invalid input syntax for type uuid: "zq9"',
+      cause: new Error('lookup failed'),
+    });
+  });
   app.notFound(notFoundHandler);
   app.onError(handler);
   return app;
@@ -212,6 +218,23 @@ describe('error middleware', () => {
     const text = await (await makeApp().request(path)).text();
     expect(text).not.toMatch(LEAKS);
     expect(text).toContain('[Redacted]');
+  });
+
+  it.each([
+    ['/failed-query-http', errorSpy],
+    ['/driver-message-plain-cause', warnSpy],
+  ])("logs %s's HTTPException with none of the failed query's bound values", async (path, spy) => {
+    await makeApp().request(path);
+    const text = JSON.stringify(spy.mock.calls);
+    expect(spy).toHaveBeenCalled();
+    expect(text).not.toMatch(LEAKS);
+    expect(text).not.toContain('zq9');
+  });
+
+  it('answers an HTTPException quoting a value the database refused with none of it', async () => {
+    const text = await (await makeApp().request('/driver-message-plain-cause')).text();
+    expect(text).not.toContain('zq9');
+    expect(text).toContain('invalid input syntax for type uuid');
   });
 
   it('names an unhandled failed query by its statement in the non-production details', async () => {

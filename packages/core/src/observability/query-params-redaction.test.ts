@@ -1,4 +1,4 @@
-import { REDACTED, redactQueryParams } from '@forge/observability';
+import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -121,6 +121,45 @@ describe('redactQueryParams', () => {
     const text = JSON.stringify(redactQueryParams(deep));
     expect(text).not.toContain(HASH);
     expect(text).toContain(REDACTED);
+  });
+
+  it.each([
+    [`Key (email)=(${EMAIL}) already exists.`, `Key (email)=(${REDACTED}`],
+    [`Key (a, b)=(1, ${EMAIL}) is still referenced from table "t".`, `Key (a, b)=(${REDACTED}`],
+    [`Failing row contains (7, ${EMAIL}, null).`, `Failing row contains (${REDACTED}`],
+    [
+      'invalid input syntax for type uuid: "zq9"',
+      `invalid input syntax for type uuid: ${REDACTED}`,
+    ],
+    ['invalid input value for enum role: "zq9"', `invalid input value for enum role: ${REDACTED}`],
+    ['malformed record literal: "zq9"', `malformed record literal: ${REDACTED}`],
+    [
+      'date/time field value out of range: "zq9"',
+      `date/time field value out of range: ${REDACTED}`,
+    ],
+    ['value "99999999999" is out of range for type integer', `value ${REDACTED}`],
+  ])("redacts a value the database's own text quotes, with no error to read: %s", (text, kept) => {
+    const out = redactQueryParams({ reason: `refused: ${text}` });
+    expect(out.reason).toBe(`refused: ${kept}`);
+  });
+
+  it('redacts a quoted value to the end of the text, trusting no quote inside it', () => {
+    const out = redactQueryParams('invalid input syntax for type uuid: "a" b\nSENTINEL"');
+    expect(out).not.toContain('SENTINEL');
+  });
+
+  it('keeps the reason a constraint names, which quotes no value', () => {
+    const text = 'duplicate key value violates unique constraint "users_email_unique"';
+    expect(redactQueryParams(text)).toBe(text);
+  });
+
+  it("redacts an error's message against the error itself, as a bare string no longer can be", () => {
+    const pg = driverError('relation "zq9" does not exist', { code: '42P01' });
+    Object.defineProperty(pg, 'parameters', { value: ['zq9'], enumerable: false });
+    expect(redactQueryParams(pg.message)).toBe(pg.message);
+    expect(redactedMessage(pg)).toBe(REDACTED);
+    expect(redactedMessage(duplicate())).toBe(`Failed query: ${STATEMENT}\nparams: ${REDACTED}`);
+    expect(redactedMessage('plain text')).toBe('plain text');
   });
 
   it('hands back the same value where there is nothing to redact', () => {
