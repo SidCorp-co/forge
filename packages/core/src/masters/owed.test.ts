@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
 
-// The owed-work read was the runner's: seven device inboxes read every sweep, hashed and composed on
-// the box (master_inbox.rs:inbox_line, nudge.rs:work_digest). These are those rules, now core's.
+// The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
+// owed.ts, and the box only carries the line core composed. These are those rules.
 
 const none = {
   designs: [],

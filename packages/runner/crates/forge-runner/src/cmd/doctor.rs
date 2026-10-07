@@ -374,21 +374,7 @@ async fn heartbeat_row(client: &CoreClient, core_url: &str) -> bool {
 /// The row for where one assigned project's checkout is. Returns `true` on failure.
 fn runner_path_row(r: &runners::MeRunner, cfg: &Config) -> bool {
     let mut failed = false;
-    let local_path = cfg
-        .bindings
-        .iter()
-        .find(|(_, b)| b.project_id.as_deref() == Some(r.project_id.as_str()))
-        .map(|(_, b)| b.repo_path.clone());
-    let server_path = r
-        .repo_path
-        .as_deref()
-        .filter(|p| !p.trim().is_empty())
-        .map(std::path::PathBuf::from);
-
-    // Prefer the server's repo_path (the source of truth web + CLI
-    // both write via PATCH /me/runners) over the local binding;
-    // matches the precedence in `cmd/runners.rs`.
-    match server_path.or(local_path) {
+    match r.checkout_in(cfg) {
         None => {
             println!(
                 "✖ runner       {} assigned on the server but missing local repo_path (run `forge-runner bind {} --path <dir>`)",

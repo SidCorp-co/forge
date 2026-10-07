@@ -26,25 +26,19 @@ only, or dropping it as today. That is a product call, not a repair.
 
 **What ends it:** that choice, recorded on whatever change carries it out.
 
-## 2. A turn core abandons at its timeout reads as the agent having nothing to add
+## 2. A turn core abandons at its timeout has no window decision of its own
 
-**Seen (older than ISS-1146):** a long Assistant turn ran 90 s. Its window closed with decision
-`nothing-to-say`, reason `This operation was aborted`. The thread said "The agent read this and had
-nothing to add", and then showed the Vietnamese fallback reply (`conversations/fallback-replies.ts`)
-in an English room.
+**Seen:** a long Assistant turn that runs to `TURN_TIMEOUT_MS` is aborted with the reason
+`TURN_TIMED_OUT` (`assistant/conversation-stops.ts`), and the thread's reply is
+`ASSISTANT_TURN_TIMED_OUT` in the room's own language (`conversations/fallback-replies.ts`,
+`replyLanguageOf`). The window it closes still records the generic `nothing-to-say`, so a reader of
+the window rows cannot tell a timeout from a turn that had nothing to add.
 
-**Mechanism:** `runConversationTurn` aborts on `TURN_TIMEOUT_MS` with no reason of its own. Because
-the abort carries no reason, `external-chat.ts` takes it for an ordinary failure and appends a
-silence row whose text is the abort's message. ISS-1146 gave a person's stop its own `stopped`
-decision. A timeout still has no decision of its own.
+**Why it is not built here:** a `timed-out` decision widens `conversation_windows_decision_known`
+(last set in migration 0309), which is a migration, and a migration's `when` is shared across every
+open branch.
 
-**Why it was not built here:** telling a timeout apart needs its own window decision, which means
-widening `conversation_windows_decision_known` in a migration. A migration's `when` is shared across
-every open branch. The fallback reply's language is a separate question: which language that door
-answers in.
-
-**What ends it:** a `timed-out` decision written by the timeout path, plus a fallback reply that
-follows the room's language.
+**What ends it:** a `timed-out` decision written by the timeout path.
 
 ## 3. Closing the dock discards the unsent draft
 

@@ -46,6 +46,24 @@ pub struct MeRunner {
     pub orientation: Option<String>,
 }
 
+impl MeRunner {
+    /// Where this project's checkout is on this box: the server's `repo_path` (the source
+    /// of truth that the web UI and the CLI both write through `PATCH /me/runners`) when it
+    /// names one, else this box's own binding. `None` where neither does.
+    pub fn checkout_in(&self, cfg: &runner_platform::config::Config) -> Option<std::path::PathBuf> {
+        self.repo_path
+            .as_deref()
+            .filter(|p| !p.trim().is_empty())
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                cfg.bindings
+                    .iter()
+                    .find(|(_, b)| b.project_id.as_deref() == Some(self.project_id.as_str()))
+                    .map(|(_, b)| b.repo_path.clone())
+            })
+    }
+}
+
 /// List the projects this device is assigned to. `401` maps to a clear
 /// `UNAUTHORIZED` error so callers can prompt a re-login.
 ///
@@ -96,4 +114,49 @@ fn lenient_seconds<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Optio
         serde_json::Value::String(s) => s.parse::<u64>().ok(),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_platform::config::{Binding, Config};
+
+    fn row(repo_path: Option<&str>) -> MeRunner {
+        serde_json::from_value(serde_json::json!({
+            "projectId": "p1", "runnerId": "r1", "slug": "s", "baseBranch": null,
+            "repoPath": repo_path, "branch": null, "status": "idle", "masterPolicy": null,
+        }))
+        .unwrap()
+    }
+
+    fn cfg_binding(path: &str) -> Config {
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "s".into(),
+            Binding {
+                repo_path: path.into(),
+                branch: None,
+                project_id: Some("p1".into()),
+            },
+        );
+        cfg
+    }
+
+    #[test]
+    fn the_servers_path_wins_and_a_blank_one_falls_back_to_the_binding() {
+        let cfg = cfg_binding("/local");
+        assert_eq!(
+            row(Some("/server")).checkout_in(&cfg).unwrap().to_str(),
+            Some("/server")
+        );
+        assert_eq!(
+            row(Some("  ")).checkout_in(&cfg).unwrap().to_str(),
+            Some("/local")
+        );
+        assert_eq!(
+            row(None).checkout_in(&cfg).unwrap().to_str(),
+            Some("/local")
+        );
+        assert!(row(None).checkout_in(&Config::default()).is_none());
+    }
 }

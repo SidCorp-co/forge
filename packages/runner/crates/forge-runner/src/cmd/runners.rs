@@ -38,17 +38,7 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     // Server assignments → ready / bound-on-server-no-local-path.
     for r in &server {
         shown = true;
-        let local_path = cfg
-            .bindings
-            .iter()
-            .find(|(_, b)| b.project_id.as_deref() == Some(r.project_id.as_str()))
-            .map(|(_, b)| b.repo_path.clone());
-        let server_path = r
-            .repo_path
-            .as_deref()
-            .filter(|p| !p.trim().is_empty())
-            .map(std::path::PathBuf::from);
-        let path = server_path.or(local_path);
+        let path = r.checkout_in(&cfg);
 
         match path {
             Some(p) => println!("  {:<24} ready  ({})", r.slug, p.display()),

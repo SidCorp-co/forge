@@ -1,0 +1,1 @@
+**`forge-runner doctor` and `forge-runner runners` now read one checkout rule.** The server's repo path wins and a blank one falls back to the box's binding; the two commands had each written that rule out and could drift apart.
