@@ -6,7 +6,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
-import { canonicalIssueId, issueQueryKey } from "./derive";
+import { canonicalIssueId, issueKeySegment, issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
 // what lets it resolve. Optional here (some callers hold only a uuid already),
@@ -32,7 +32,7 @@ export function useIssue(id: string | undefined, projectId?: string) {
 
 export function useComments(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["comments", id],
+    queryKey: ["comments", issueKeySegment(id, projectId)],
     queryFn: () => issueDetailApi.listComments(id as string, projectId),
     enabled: !!id,
   });
@@ -40,7 +40,7 @@ export function useComments(id: string | undefined, projectId?: string) {
 
 export function useActivity(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["activities", id],
+    queryKey: ["activities", issueKeySegment(id, projectId)],
     queryFn: () => issueDetailApi.listActivity(id as string, 50, projectId),
     enabled: !!id,
   });
@@ -48,7 +48,7 @@ export function useActivity(id: string | undefined, projectId?: string) {
 
 export function useAttachments(id: string | undefined, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", id, "attachments"],
+    queryKey: ["issue", issueKeySegment(id, projectId), "attachments"],
     queryFn: () => issueDetailApi.listAttachments(id as string, projectId),
     enabled: !!id,
   });

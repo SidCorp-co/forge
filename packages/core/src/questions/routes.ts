@@ -13,6 +13,7 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
+import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
@@ -74,7 +75,14 @@ const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
 const listQuery = z.object({
-  issueId: z.uuid({ error: 'issueId must be a uuid' }).optional(),
+  issueId: z
+    .string({
+      error: 'issueId is an issue uuid, or its display key with projectId naming its project',
+    })
+    .trim()
+    .min(1)
+    .max(200)
+    .optional(),
   projectId: z.uuid({ error: 'projectId must be a uuid' }).optional(),
   issue: z
     .literal('none', {
@@ -184,6 +192,10 @@ questionRoutes.use('*', requireAuth(), assertEmailVerified());
 questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
   const { issueId, projectId, issue: issueScope, status, limit, cursor } = c.req.valid('query');
   if (!issueId && !projectId) throw badRequest('issueId or projectId is required');
+  if (issueId && !isUuid(issueId)) {
+    const issue = await resolveIssueRouteRef(issueId, projectId, c.get('userId'));
+    return c.json(await issueQuestions(issue.id, c.get('userId'), c.get('agency')));
+  }
   if (issueId && projectId) {
     throw badRequest('name issueId or projectId, not both — they are two different questions');
   }
@@ -204,11 +216,14 @@ questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
       ),
     });
   }
-  const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));
-  if (!seen) throw notFound();
-  const agency = c.get('agency');
-  return c.json({ questions: await Promise.all(seen.map((q) => shown(agency, q))) });
+  return c.json(await issueQuestions(issueId as string, c.get('userId'), c.get('agency')));
 });
+
+async function issueQuestions(issueId: string, userId: string, agency: AuthVars['agency']) {
+  const seen = await readQuestionsForIssue(issueId, userId);
+  if (!seen) throw notFound();
+  return { questions: await Promise.all(seen.map((q) => shown(agency, q))) };
+}
 
 questionRoutes.post('/', zValidator('json', askSchema), async (c) => {
   const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } =

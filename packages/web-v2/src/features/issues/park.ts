@@ -3,30 +3,44 @@
 // The status control at a park: the decision the person has, then the transitions map behind one
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef } from "react";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { MenuItem } from "@/design";
 import type { Copy } from "@/lib/i18n/product-copy";
-import type { ParkReading } from "./derive";
+import { issueKeySegment, type ParkReading } from "./derive";
 import { issueDetailApi } from "./detail-api";
 import type { IssuePark, IssueStatus } from "./types";
 
 /**
  * Keyed under the issue's comments, so a park record posted after the move is read when the thread
- * refreshes, and on the status, so a move reads the park it lands in.
+ * refreshes. It is read with the page's first reads, before the issue's status is known; a later
+ * move of the status reads it again, so a move reads the park it lands in.
  */
-const parkQueryKey = (issueId: string | undefined, status: IssueStatus | undefined) =>
-	["comments", issueId, "park", status] as const;
+const parkQueryKey = (issueId: string | undefined, projectId: string | undefined) =>
+	["comments", issueKeySegment(issueId, projectId), "park"] as const;
 
+/** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
 export function useIssuePark(
 	issueId: string | undefined,
 	status: IssueStatus | undefined,
+	projectId?: string,
 ): ParkReading {
+	const qc = useQueryClient();
+	const key = useMemo(() => parkQueryKey(issueId, projectId), [issueId, projectId]);
 	const q = useQuery({
-		queryKey: parkQueryKey(issueId, status),
-		queryFn: () => issueDetailApi.getPark(issueId as string),
-		enabled: Boolean(issueId && status),
+		queryKey: key,
+		queryFn: () => issueDetailApi.getPark(issueId as string, projectId),
+		enabled: Boolean(issueId),
 	});
+	const readAt = useRef<{ key: readonly unknown[]; status: IssueStatus | undefined }>({ key, status });
+	useEffect(() => {
+		const prior = readAt.current;
+		readAt.current = { key, status };
+		if (prior.key === key && prior.status !== undefined && status !== undefined && prior.status !== status) {
+			void qc.invalidateQueries({ queryKey: key, exact: true });
+		}
+	}, [key, status, qc]);
 	if (q.isError) return { state: "error" };
 	if (q.isPending || !q.data) return { state: "loading" };
 	return { state: "ready", park: q.data.park };

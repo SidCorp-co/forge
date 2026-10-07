@@ -26,7 +26,8 @@ export const issueDetailApi = {
     apiClient<IssueDetail>(withProject(`/issues/${id}`, projectId)),
 
   /** `GET /api/issues/:id/park` — what a person owes this issue, or `{ park: null }` (ISS-1310). */
-  getPark: (id: string) => apiClient<IssueParkResponse>(`/issues/${id}/park`),
+  getPark: (id: string, projectId?: string) =>
+    apiClient<IssueParkResponse>(withProject(`/issues/${id}/park`, projectId)),
 
   listComments: (id: string, projectId?: string) =>
     apiClientCursorAll<CommentNode>(withProject(`/issues/${id}/comments`, projectId)),

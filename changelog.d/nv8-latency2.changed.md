@@ -1,0 +1,1 @@
+**Project and issue pages start loading at once.** Project routes take the slug (a slug no route can address is refused) and issue routes the display key; reconnects refetch only changes; What's new loads on open.
