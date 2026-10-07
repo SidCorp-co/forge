@@ -26,7 +26,10 @@ export function useCreateRequirement(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateRequirementBody) => requirementsApi.create(projectId, body),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["requirements", projectId] }),
+    // started, not awaited: a returned refetch keeps the form pending until the whole list is read again
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    },
   });
 }
 

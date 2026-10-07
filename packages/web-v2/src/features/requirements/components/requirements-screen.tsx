@@ -14,6 +14,7 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
@@ -30,6 +31,7 @@ import { revisionText } from "./standing-bits";
 export function CreateRequirementForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const t = useCopy();
   const create = useCreateRequirement(projectId);
+  const submitting = useSubmitGuard();
   const [title, setTitle] = useState("");
   const [reason, setReason] = useState("");
   const [criteria, setCriteria] = useState("");
@@ -43,9 +45,10 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
       data-testid="requirement-create"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!submitting.claim()) return;
         create.mutate(
           { title: title.trim(), reason: reason.trim(), criteria: lines.map((body) => ({ body })) },
-          { onSuccess: (d) => onDone(d.key) },
+          { onSuccess: (d) => onDone(d.key), onSettled: submitting.release },
         );
       }}
     >
@@ -63,7 +66,7 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
         <Button type="submit" variant="primary" size="sm" loading={create.isPending} disabled={!title.trim()}>
           {t("requirements.form.create")}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")} disabled={create.isPending}>
           {t("common.cancel")}
         </Button>
       </div>
