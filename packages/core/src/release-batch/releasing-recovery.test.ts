@@ -1,6 +1,8 @@
+import { sealQueryError } from '@forge/observability';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { TransitionError } from '../issues/apply-transition.js';
-import { closeRefusalOf, refusedCloseComment } from './releasing-recovery.js';
+import { closeFailureText, closeRefusalOf, refusedCloseComment } from './releasing-recovery.js';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 
@@ -28,9 +30,25 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     });
     expect(said).toContain('refused with `OPEN_QUESTIONS`');
     expect(said).toContain('Blocking it: blocking run r-9, open question q-1, open question q-2.');
-    expect(said).toContain('What clears it: answer them first');
     expect(said).toContain('shipped as version 1.4.0');
-    expect(said).toContain(`POST /api/projects/${PROJECT}/release-records`);
+  });
+
+  it('names a person’s acts for open questions and for the close, and no API route (ISS-1381 r2)', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(
+        new TransitionError('OPEN_QUESTIONS', 'send this move again with `voidQuestions`', {
+          openQuestionIds: ['q-1'],
+        }),
+      ),
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    expect(said).toContain('Decisions panel');
+    expect(said).toContain('move it to Closed from its status menu');
+    expect(said).toContain('next release');
+    expect(said).not.toMatch(/\/api\/|voidQuestions|POST /);
   });
 
   it('says a failure reached no decision, and that the close is sent again once it is gone', () => {
@@ -43,8 +61,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       version: null,
       destination: 'awaiting_release',
     });
-    expect(said).toContain('failed before it reached a decision, with: connection reset');
-    expect(said).toContain('send the close again once that error is gone');
+    expect(said).toContain('failed before it reached a decision: connection reset');
+    expect(said).toContain('the close can be made again once that is gone');
     expect(said).toContain('shipped with this batch');
   });
 
@@ -56,7 +74,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       destination: 'awaiting_release',
     });
     expect(said).toContain('The refusal named no blocking object.');
-    expect(said).toContain('What clears it: mark it merged');
+    expect(said).toContain('What clears it: mark the issue merged on its Properties rail');
   });
 
   it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
@@ -70,5 +88,160 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('This batch recorded a promotion; abort it to settle.');
     expect(said).toContain('Clear the reason above first');
     expect(said).not.toContain('The issue is at');
+  });
+});
+
+describe('what a failed write says, never its statement or a bound value (ISS-1381 r2)', () => {
+  it('names the database’s own reason for a failed write, and never its statement or a bound value (ISS-1381 r2)', () => {
+    const issueId = '9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f';
+    const failed = new DrizzleQueryError(
+      'update "issues" set "status" = $1, "updated_at" = $2 where ("issues"."id" = $3 and "issues"."status" = $4) returning "id"',
+      ['closed', '', issueId, 'releasing'],
+      Object.assign(new Error('judge planted failure: storage refused this row'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+
+    const refusal = closeRefusalOf(failed);
+    const said = refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    expect(said).toContain('judge planted failure: storage refused this row');
+    expect(said).toContain('P0001');
+    for (const leaked of ['Failed query', 'update "issues"', 'params', issueId, 'releasing']) {
+      expect(said).not.toContain(leaked);
+    }
+    expect(closeFailureText(refusal)).not.toContain('Failed query');
+  });
+
+  it('explains a database refusal that quotes its bound value without the value (ISS-1381 r2)', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "status" = $1 where "issues"."id" = $2',
+      ['closed', 'not-a-uuid-at-all'],
+      Object.assign(new Error('invalid input syntax for type uuid: "not-a-uuid-at-all"'), {
+        code: '22P02',
+        severity: 'ERROR',
+      }),
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toContain('22P02');
+    expect(text).toMatch(/invalid input syntax for type uuid|value it was given was invalid/);
+    expect(text).not.toContain('not-a-uuid-at-all');
+    expect(text).not.toContain('Failed query');
+  });
+
+  it('falls back to what the SQLSTATE class means when the reason itself carries a bound value', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "status" = $1 where "issues"."id" = $2',
+      ['closed', 'secret-tenant-name'],
+      Object.assign(new Error('tenant secret-tenant-name is frozen'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toContain('P0001');
+    expect(text).toContain('a database function or trigger raised an error');
+    expect(text).not.toContain('secret-tenant-name');
+  });
+
+  it('keeps a short bound value out when the reason also quotes another one (ISS-1381 r2)', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+      ['abc', 'bad'],
+      Object.assign(new Error('tenant abc: invalid input syntax for type uuid: "bad"'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+    const refusal = closeRefusalOf(failed);
+    const said = refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    for (const text of [said, closeFailureText(refusal)]) {
+      expect(text).not.toContain('abc');
+      expect(text).not.toContain('bad');
+      expect(text).toContain('P0001');
+      expect(text).toContain('a database function or trigger raised an error');
+    }
+  });
+
+  it('keeps a one-character bound value out, standing alone or inside a word (ISS-1381 r2)', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+      [7, 'bad'],
+      Object.assign(new Error('tenant 7: invalid input syntax for type uuid: "bad"'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+
+    const embedded = new DrizzleQueryError(
+      'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+      [7, 'bad'],
+      Object.assign(new Error('tenant-7: invalid input syntax for type uuid: "bad"'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+
+    for (const text of [
+      closeFailureText(closeRefusalOf(failed)),
+      closeFailureText(closeRefusalOf(embedded)),
+    ]) {
+      expect(text).not.toMatch(/tenant.?7/);
+      expect(text).toContain('a database function or trigger raised an error');
+    }
+  });
+
+  it('names the SQLSTATE’s class where the query-error seal withheld the whole reason', () => {
+    const failed = sealQueryError(
+      new DrizzleQueryError(
+        'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+        [7, 'bad'],
+        Object.assign(new Error('tenant-7: invalid input syntax for type uuid: "bad"'), {
+          code: 'P0001',
+          severity: 'ERROR',
+        }),
+      ),
+    );
+    const refusal = closeRefusalOf(failed);
+    const said = refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    for (const text of [said, closeFailureText(refusal)]) {
+      expect(text).toContain('a database function or trigger raised an error');
+      expect(text).not.toMatch(/tenant.?7|"bad"/);
+    }
+  });
+
+  it('says a database query failed without a reason when drizzle’s wrapper carries no driver error', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "status" = $1',
+      ['closed'],
+      new Error('x'),
+    );
+    (failed as { cause?: unknown }).cause = undefined;
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toBe('a database query failed without saying why');
   });
 });

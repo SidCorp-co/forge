@@ -238,6 +238,15 @@ describe('loadReleaseReadiness', () => {
     expect(out?.hasVerify).toBe(false);
   });
 
+  it('says the carried range was not read, and why, on a publish project (ISS-1386 r2)', async () => {
+    project({ releaseChain: [{ branch: 'main' }] });
+    liveBinding({ releaseRunnerLabel: 'epod-prod' });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.carried).toEqual({ kind: 'not-read', why: 'not read in this suite' });
+  });
+
   it('names a declared release with nowhere to land as its own gap', async () => {
     project({ releaseChain: [{ branch: 'main' }] });
     listBindings.mockResolvedValue([]);

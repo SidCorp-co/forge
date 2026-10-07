@@ -3145,6 +3145,18 @@
 ### Fixed
 
 - **`forge-runner top` reads master panes under any locale.** A detail opened with Enter stays on its first page for a whole refresh, and where no model has a rate the cost reads as unread, never `$0.00` (ISS-1341, ISS-1375).
+- **A release run's page reads plainly.** Times are in your clock, a release aborted before it
+  started says who aborted it and why, the roster is the run's own, and the page is one flat
+  column of sections (ISS-1323).
+
+- **Deciding what else a release ships is easier.** Each issue shows its title, each choice says
+  what it does, a refused choice says why on its own row, and the shipped-unverified note names
+  who decided (ISS-1386).
+
+- **A release that could not close an issue says what to do, and leaks nothing.** Its comment
+  names the database's own reason, never the query or its values, and the steps to take in the
+  product (ISS-1381).
+
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
 - **A release checks every issue it names, however its id is capitalised.** An issue named by an

@@ -29,9 +29,11 @@ reaches production, named or not. So the create reads that range first:
 - `packages/core/src/release-batch/carried.ts:judgeCarried` requires a decision for each, sent in the create body's `carried`:
   - `ship-unverified` with `why`: what is unverified. It goes on the run's `metadata.carried`, and
     `packages/core/src/release-batch/carried.ts:noteShipUnverified` writes a comment on the issue naming the release version, the
-    run and the reason.
+    run, the person who decided (their display name, else their email) and the reason.
   - `revert`: holds only where the range holds an effective revert of the landing — a commit whose
-    message says `This reverts commit <landing>` that no later commit reverts in turn.
+    message says `This reverts commit <landing>` that no later commit reverts in turn. Where the
+    revert was itself reverted, the refusal names both commits and offers reverting the landing
+    again, `ship-unverified` or `cut-below`; only where no revert exists does it say to revert first.
   - `cut-below`: moves the cut to the first parent of the earliest such landing and reads the range
     again to that cut. It is refused where a roster member's landing would fall above the new cut.
 
@@ -42,15 +44,22 @@ Each outcome has its own code:
 | an issue in the range holds no decision | `RELEASE_CARRIES_UNDECIDED` (409), each issue named with its status and the ways out |
 | a decision that does not hold | `RELEASE_CARRIED_DECISION_REFUSED` (409), the issue and why |
 | a cut-below that drops a roster member | `RELEASE_CUT_DROPS_ROSTER` (409), each member it drops |
-| the repository fails to answer, on either route | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503) |
+| the repository fails to answer, on either route | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503), its message naming the read's own reason |
 | the project has neither a GitHub binding nor a deploy key | not refused: warning `RELEASE_CARRIED_UNREAD`, naming what to attach under Git access, and the GitHub binding only for a github.com remote |
 | a publish chain or a cherry-pick crossing | not refused: `carried.kind` is `not-read` with its reason |
 
-The create answer carries `carried` (the cut and each issue with its decision) and the warnings. The
-release job's prompt (`packages/core/src/release-batch/prompt.ts`) tells the agent the exact cut to promote, not the branch head. The
-release screen's readiness (`packages/core/src/release-batch/readiness.ts:loadReleaseReadiness`) runs the same check before anyone
-presses. The batch release dialog lists each carried issue with Ship unverified (a reason is
-required), Reverted or Cut below, and sends the decisions when release is pressed again. Once the
+Each carried issue is named with its display id, title and status. The create answer carries
+`carried` (the cut and each issue with its decision) and the warnings. The release job's prompt
+(`packages/core/src/release-batch/prompt.ts`) tells the agent the exact cut to promote, not the
+branch head. The release screen's readiness
+(`packages/core/src/release-batch/readiness.ts:loadReleaseReadiness`) runs the same check before
+anyone presses and answers the same `carried` reading, so a range that was not read says so there
+with its reason. The batch release dialog
+(`packages/web-v2/src/features/issues/components/batch-release-dialog.tsx`) lists each carried
+issue by its title with Ship unverified (a reason is required), Reverted or Cut below, each choice
+explained before it is picked, and sends the decisions when release is pressed again. A refusal is
+said directly above the Release button, and a decision the server refused is marked on its own row
+with why. Once the
 batch opens, its notice names the cut and each warning the create answered with. A create takes a
 decision for as many issues as the range can hold commits, which is more than a roster may name.
 
@@ -95,16 +104,27 @@ started can therefore be told apart from one whose agent is working:
 | queued, nobody holds it | `waiting`, with when it was queued, when it is handed back, and a reason: `no-eligible-box` (each box and what holds it), `no-box`, or `eligible-not-taken` (the eligible boxes, named) |
 | queued, a box holds the claim | `claimed`, held but not started |
 | cancelled by the unstarted deadline | `handed-back`, with that deadline's own reason |
+| never dispatched, under a run a person aborted | `aborted`, with when, who (their display name, else their email) and the reason they gave, read off the run's abort stamp |
 | any other end, never dispatched | `ended`, with the job's error |
 | no release job under the run | `none` |
 
 `packages/core/src/release-batch/unstarted-recovery.ts:recoverUnstartedReleaseBatches` hands back a batch still `waiting` after
 `packages/core/src/release-batch/job-start.ts:RELEASE_UNSTARTED_DEADLINE_MS`. It finds those batches with the same predicate,
 `packages/core/src/release-batch/job-start.ts:unpickedJobSql`, so the reading and the hand-back cannot disagree about which batch
-is unstarted. The run screen prints `waiting` and `claimed` as "No box has started this release",
-`handed-back` and `ended` as "This release never started", and `none` as "This run holds no release
-job", each with the reading's own why and, for `waiting`, the hand-back time. It prints nothing for
-`taken`. On the release gate, a claimed issue reads "in a release", not "shipping now".
+is unstarted. Each reading's `why` is written for the person who pressed: no runner term, and no
+timestamp inside the sentence — the screen prints the times itself.
+
+The run screen (`packages/web-v2/src/features/releases/components/release-run-screen.tsx`) prints
+`waiting` and `claimed` as "No box has started this release", `handed-back` as "Handed back to the
+release gate", `aborted` as "Aborted before it started" with who, when and why, `ended` as "This
+release never started", and `none` as "This run holds no release job", each with the reading's own
+why, its code spans shown as code and its times in the reader's local time with how long ago or
+until. It prints nothing for `taken`. Where the release never started, its Method section says no
+method was announced for that reason. Its Roster lists the issues the run was opened with
+(`runIssues`, read off the run's `metadata.issueIds` by
+`packages/core/src/release-batch/queries.ts:loadRunIssues`), each as it stands now, not the
+release gate. The screen is flat: sections under hairlines, no cards. On the release gate, a
+claimed issue reads "in a release", not "shipping now".
 
 ## 3. The finish
 
@@ -123,17 +143,25 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
 - that the release it was in has shipped, with its version;
 - the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
   each id under a `*Ids` key of its details, labelled (`open question <id>`);
-- what clears it, which is the refusal's own detail;
-- how it closes once cleared: a release record naming the commit production serves, or the next
-  batch.
+- what clears it, as the act a person takes in the product — for `OPEN_QUESTIONS`, answer them in the
+  issue's Decisions panel or withdraw them with a reason when moving it to Closed; for
+  `CLOSE_REQUIRES_SHIPPED`, mark it merged on its Properties rail; a code with no such act keeps the
+  refusal's own detail (`packages/core/src/release-batch/releasing-recovery.ts:personClears`);
+- how it closes once cleared: move it to Closed from its status menu, or leave it at the release
+  gate for the next release. It names no API route.
 
 Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
 `releasing`, still claimed, because the code may be on production. Its comment names the same
-refusal, and in place of the last point it says how to settle a promoted roster: abort the batch
-with `promotedRoster: return-to-gate`, or settle the issue by hand.
+refusal, and in place of the last point it says that settling a promoted roster is an operator's
+act no screen offers yet — abort the batch with `promotedRoster: return-to-gate`, or settle the
+issue by hand (`docs/proposals/a-promoted-roster-is-settled-only-through-the-api.md`).
 
-A close that failed without a refusal names the error and says the close is sent again once that
-error is gone. The comment is written as the finishing person or, for a finish a box reported, as
+A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
+the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
+passed through `@forge/observability`'s redaction; where a bound value would survive in it, the
+SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
+The SQL statement and its bound values reach neither the comment nor the finish answer's
+`failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.
 
 ## 4. Which route reads the repository (ISS-1398)

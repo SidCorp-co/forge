@@ -75,15 +75,26 @@ export type ReleaseStart =
 	  }
 	| { kind: "claimed"; since: string; why: string }
 	| { kind: "handed-back"; at: string; why: string }
+	| { kind: "aborted"; at: string; by: string; why: string }
 	| { kind: "ended"; status: string; at: string | null; why: string }
 	| { kind: "none"; why: string };
+
+export interface ReleaseRunIssue {
+	id: string;
+	displayId: string;
+	title: string;
+	status: string;
+}
 
 /** `GET /api/projects/:projectId/release-batches/:runId/state`. */
 export interface ReleaseRunState {
 	runId: string;
 	projectId: string;
 	runStatus: string;
+	/** The release gate as it stands now — not this run's roster. */
 	roster: ReleaseRoster;
+	/** The issues this run was opened with, each as it stands now. */
+	runIssues: ReleaseRunIssue[];
 	/** Oldest first, by `startedAt` then `id` — core's own order. */
 	attempts: ReleaseAttempt[];
 	/** `null` when the project declares no probes, or none that can be read. */

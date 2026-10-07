@@ -38,6 +38,7 @@ function state(over: Partial<ReleaseRunState>) {
 			method: null,
 			methodUnloaded: false,
 			start: { kind: "taken", at: "2026-09-26T11:59:00.000Z", device: "box-1" },
+			runIssues: [],
 			...over,
 		} satisfies ReleaseRunState,
 		isLoading: false,
@@ -190,17 +191,18 @@ describe("the start line (ISS-1323)", () => {
 
 		const line = screen.getByTestId("start-line");
 		expect(line).toHaveTextContent("No box has started this release");
-		expect(line).toHaveTextContent("`box-1` is `draining`");
-		expect(line).toHaveTextContent("handed back at 2026-09-26T12:20:00.000Z");
+		expect(line).toHaveTextContent("box-1 is draining");
+		expect(line).toHaveTextContent("handed back at");
+		expect(line.querySelector('time[datetime="2026-09-26T12:20:00.000Z"]')).not.toBeNull();
 	});
 
-	it("says a handed-back release never started, without the waiting copy", () => {
+	it("says a handed-back release went back to the gate, without the waiting copy", () => {
 		state({ start: { kind: "handed-back", at: "2026-09-26T12:20:00.000Z", why: "no box took it." } });
 
 		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
 
 		const line = screen.getByTestId("start-line");
-		expect(line).toHaveTextContent("This release never started");
+		expect(line).toHaveTextContent("Handed back to the release gate");
 		expect(line).toHaveTextContent("no box took it.");
 		expect(line.textContent).not.toMatch(/handed back at|No box has started/);
 	});
@@ -248,5 +250,130 @@ describe("an empty timeline, in the tense of the run's own status", () => {
 		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
 
 		expect(screen.getByText(/has not started one/)).toBeInTheDocument();
+	});
+});
+
+// ISS-1323 r2 — the judge's findings at a89a4f1 (comment 894d3e50) and the owner's flat-UI rule.
+describe("the run screen, read by the person who pressed (ISS-1323 r2)", () => {
+	it("shows the start line's code as code, with no backtick left", () => {
+		state({
+			start: {
+				kind: "waiting",
+				since: "2026-09-26T11:50:00.000Z",
+				handedBackAt: "2026-09-26T12:20:00.000Z",
+				reason: "eligible-not-taken",
+				why: "`judge-box` can run it and has not picked it up yet.",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line");
+		expect(line.textContent).not.toContain("`");
+		expect(line.querySelector("code")?.textContent).toBe("judge-box");
+	});
+
+	it("prints its times in local time with how long ago and how long until, not raw UTC", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-09-26T12:00:00.000Z"));
+		try {
+			state({
+				start: {
+					kind: "waiting",
+					since: "2026-09-26T11:50:00.000Z",
+					handedBackAt: "2026-09-26T12:20:00.000Z",
+					reason: "eligible-not-taken",
+					why: "No box has picked it up yet.",
+				},
+			});
+
+			render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+			const line = screen.getByTestId("start-line").textContent ?? "";
+			expect(line).not.toContain("2026-09-26T");
+			expect(line).toContain("10m ago");
+			expect(line).toContain("in 20 min");
+			expect(line).toContain(new Date("2026-09-26T12:20:00.000Z").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("says never started once for a handed-back release", () => {
+		state({
+			runStatus: "cancelled",
+			start: {
+				kind: "handed-back",
+				at: "2026-09-26T12:20:00.000Z",
+				why: "Handed back because no box took this release batch before its deadline, so it never started.",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line").textContent ?? "";
+		expect(line.match(/never started/gi) ?? []).toHaveLength(1);
+	});
+
+	it("says a batch aborted before any box took it was aborted, by whom and why", () => {
+		state({
+			runStatus: "cancelled",
+			start: {
+				kind: "aborted",
+				at: "2026-09-26T12:05:00.000Z",
+				by: "Ana Lima",
+				why: "wrong roster",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const line = screen.getByTestId("start-line");
+		expect(line).toHaveTextContent("Aborted before it started");
+		expect(line).toHaveTextContent("Ana Lima");
+		expect(line).toHaveTextContent("wrong roster");
+	});
+
+	it("says no method was announced because the release never started", () => {
+		state({
+			runStatus: "cancelled",
+			start: { kind: "ended", status: "cancelled", at: null, why: "It ended before any box took it." },
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const method = screen.getByTestId("method-line").textContent ?? "";
+		expect(method).toMatch(/never started/);
+		expect(method).not.toMatch(/can still be finished/);
+	});
+
+	it("lists the issues the run was opened with, not those at the gate now", () => {
+		state({
+			roster: {
+				gateStatus: "awaiting_release",
+				channels: [],
+				releaseRunnerLabel: null,
+				baseBranch: "main",
+				nextCutAt: null,
+				issues: [{ id: "g-5", displayId: "ISS-5", title: "At the gate now", mergedAt: null, waitingDays: null, claimedByRunId: null, closeRefusals: [] }],
+			} as ReleaseRunState["roster"],
+			runIssues: [{ id: "r-1", displayId: "ISS-1", title: "Opened with the run", status: "releasing" }],
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const roster = screen.getByTestId("roster");
+		expect(roster).toHaveTextContent("ISS-1");
+		expect(roster).toHaveTextContent("Opened with the run");
+		expect(roster).not.toHaveTextContent("ISS-5");
+	});
+
+	it("lays its sections out flat, with no card surface", () => {
+		state({});
+
+		const { container } = render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(container.querySelector(".shadow-sm")).toBeNull();
+		expect(container.querySelector(".rounded-lg.border")).toBeNull();
 	});
 });

@@ -283,8 +283,8 @@ const CARRIES = {
   message: "This release promotes `main` onto `production`, and that range carries ISS-7 at `needs_info`.",
   details: {
     carried: [
-      { issueId: "iss-7", displayId: "ISS-7", status: "needs_info", landing: "b".repeat(40) },
-      { issueId: "iss-8", displayId: "ISS-8", status: "testing", landing: "c".repeat(40) },
+      { issueId: "iss-7", displayId: "ISS-7", title: "Payroll export rounds down", status: "needs_info", landing: "b".repeat(40) },
+      { issueId: "iss-8", displayId: "ISS-8", title: "Invoice PDF loses its footer", status: "testing", landing: "c".repeat(40) },
     ],
   },
 };
@@ -302,7 +302,7 @@ describe("issues the release would ship without naming them", () => {
     for (const row of [seven, screen.getByTestId("carried-ISS-8")]) {
       for (const label of ["Ship unverified", "Reverted", "Cut below"]) expect(row).toHaveTextContent(label);
     }
-    expect(seven).toHaveTextContent("at needs_info");
+    expect(seven).toHaveTextContent("Needs info");
   });
 
   it("holds the release until each is decided, and a Ship unverified carries its reason", async () => {
@@ -368,5 +368,68 @@ describe("issues the release would ship without naming them", () => {
         { issueId: "iss-8", decision: "revert" },
       ],
     });
+  });
+});
+
+// ISS-1386 r2 — the judge's findings at a89a4f1 (comment 038ef2fd): the second refusal out of
+// sight, rows known only by number, and three choices nobody explained.
+const REFUSED_REVERT = {
+  code: "RELEASE_CARRIED_DECISION_REFUSED",
+  message: "1 decision(s) sent with this batch do not hold — `ISS-7` `revert`: no revert.",
+  details: {
+    refused: [
+      { issueId: "iss-7", displayId: "ISS-7", decision: "revert", why: "its landing bbbbbbbbbbbb was reverted by dddddddddddd, and that revert was reverted by eeeeeeeeeeee" },
+    ],
+    alsoBlocking: [{ code: "RELEASE_CARRIES_UNDECIDED", details: { carried: [CARRIES.details.carried[1]] } }],
+  },
+};
+
+describe("a carried decision the server refuses (ISS-1386 r2)", () => {
+  it("shows the refusal directly above the Release button, after the carried list", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+    const list = await screen.findByRole("region", { name: "Issues this release carries" });
+
+    const alert = screen.getByRole("alert");
+    const button = screen.getByRole("button", { name: /release 2 now/i });
+    expect(list.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("marks the refused row with why, and still lists the undecided ones riding behind it", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+    await screen.findByTestId("carried-ISS-7");
+    fireEvent.click(radios("ISS-7")[1] as Element);
+    fireEvent.click(radios("ISS-8")[1] as Element);
+    answer(409, REFUSED_REVERT);
+    press();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("carried-ISS-7")).toHaveTextContent("that revert was reverted by eeeeeeeeeeee"),
+    );
+    expect(screen.getByTestId("carried-ISS-8")).not.toHaveTextContent("reverted by");
+  });
+
+  it("names each carried issue by its title as well as its number", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+
+    expect(await screen.findByTestId("carried-ISS-7")).toHaveTextContent("Payroll export rounds down");
+    expect(screen.getByTestId("carried-ISS-8")).toHaveTextContent("Invoice PDF loses its footer");
+  });
+
+  it("explains each choice before one is made", async () => {
+    answer(409, CARRIES);
+    draw();
+    press();
+
+    const row = await screen.findByTestId("carried-ISS-7");
+    expect(row).toHaveTextContent(/every landing above it/i);
+    expect(row).toHaveTextContent(/revert .*already on/i);
+    expect(row).toHaveTextContent(/ships as it is/i);
   });
 });

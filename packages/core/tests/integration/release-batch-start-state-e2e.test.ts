@@ -24,6 +24,7 @@ let harness: TestDatabase;
 let server: TestServer;
 let projectId: string;
 let ownerId: string;
+let ownerEmail: string;
 let jwt: string;
 
 const fx = releaseBatchFixture(
@@ -52,6 +53,7 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   const owner = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
   ownerId = owner.id;
+  ownerEmail = owner.email;
   projectId = (await createTestProject(harness.db, owner.id)).id;
   const { signUserToken } = await import('../../src/auth/jwt.js');
   jwt = await signUserToken(owner.id);
@@ -102,6 +104,9 @@ describe('the state of a release batch says whether a box has started it', () =>
     expect(Date.parse(String(start.handedBackAt)) - Date.parse(String(start.since))).toBe(
       RELEASE_UNSTARTED_DEADLINE_MS,
     );
+    // r2: the person who pressed reads it, so no runner term and no timestamp the screen prints.
+    expect(start.why).not.toMatch(/pool job|slot|claimed/);
+    expect(start.why).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
   it('reads `waiting` and names what holds each box when none can take it', async () => {
@@ -154,7 +159,46 @@ describe('the state of a release batch says whether a box has started it', () =>
 
     expect(start.kind).toBe('handed-back');
     expect(start.why).toContain(UNSTARTED_HANDBACK_REASON);
+    expect(String(start.why).match(/never started/g) ?? []).toHaveLength(1);
     expect(crossed).not.toContain('stall');
+  });
+
+  it('reads `aborted`, naming who aborted it, when and why, for a batch aborted before any box took it (r2)', async () => {
+    const { runId } = await opened();
+    const reason = 'wrong roster, pressing again with ISS-9';
+
+    const res = await fetch(
+      `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/abort`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      },
+    );
+    expect(res.status).toBe(200);
+
+    const { start } = await startOf(runId);
+
+    expect(start.kind).toBe('aborted');
+    expect(start.by).toBe(ownerEmail);
+    expect(start.why).toBe(reason);
+    expect(typeof start.at).toBe('string');
+  });
+
+  it('names the issues the run was opened with, not those now at the gate (r2)', async () => {
+    const mine = await fx.insertIssue();
+    const { runId } = await fx.claim([mine], { deploy: false });
+    const later = await fx.insertIssue();
+
+    const res = await fetch(
+      `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/state`,
+      { headers: { authorization: `Bearer ${jwt}` } },
+    );
+    const body = (await res.json()) as { runIssues?: Array<{ id: string; status: string }> };
+
+    expect(body.runIssues?.map((i) => i.id)).toEqual([mine]);
+    expect(body.runIssues?.[0]?.status).toBe('releasing');
+    expect(body.runIssues?.map((i) => i.id)).not.toContain(later);
   });
 
   it('reads `ended` with the job’s own error when it failed before any box took it', async () => {

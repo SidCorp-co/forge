@@ -373,7 +373,12 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const urls = details?.urls;
   if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
   const check = details?.check;
-  if (typeof check === 'string') return `The \`${check}\` check could not be run. ${remedy}`;
+  if (typeof check === 'string') {
+    // The reading's own reason, which is the one thing a person can act on (ISS-1386 r2).
+    const detail =
+      typeof details?.detail === 'string' ? `: ${details.detail.replace(/\.$/, '')}` : '';
+    return `The \`${check}\` check could not be run${detail}. ${remedy}`;
+  }
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;

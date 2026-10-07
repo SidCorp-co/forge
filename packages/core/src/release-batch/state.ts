@@ -9,7 +9,12 @@ import { type ReleaseStart, readReleaseStart } from './job-start.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import type { ReleaseVerification } from './plan.js';
-import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
+import {
+  loadReleaseRoster,
+  loadRunIssues,
+  type ReleaseRoster,
+  type ReleaseRunIssue,
+} from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 
 export interface ReleaseRunState {
@@ -18,7 +23,9 @@ export interface ReleaseRunState {
   runStatus: string;
   /** The version this release cut. `null` only on a release row nothing versioned. */
   version: string | null;
+  /** The release gate now, not this run; the run's own roster is `runIssues`. */
   roster: ReleaseRoster;
+  runIssues: ReleaseRunIssue[];
   attempts: ReleaseAttemptRow[];
   /** Read at request time from the probes the close reads; `null` where there are none to read. */
   live: LiveState | null;
@@ -88,13 +95,16 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
 
   const channels = await resolveReleaseChannels(first.projectId);
   const verify = liveProbes(channels);
-  const [roster, attempts, live, start] = await Promise.all([
+  const [roster, attempts, live] = await Promise.all([
     loadReleaseRoster(first.projectId),
     listAttempts(runId),
     verify ? readLiveState(verify) : Promise.resolve(null),
-    readReleaseStart(runId, first.projectId),
   ]);
   const run = (await readRun(runId)) ?? first;
+  const [start, runIssues] = await Promise.all([
+    readReleaseStart(runId, run.projectId, run.metadata),
+    loadRunIssues(run.metadata),
+  ]);
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   const method = readMethod(meta);
 
@@ -104,6 +114,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     runStatus: run.status,
     version: run.releaseVersion,
     roster,
+    runIssues,
     attempts,
     live,
     verification: recordedVerification(meta, runId),

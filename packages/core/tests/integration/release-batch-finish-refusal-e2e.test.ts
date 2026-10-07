@@ -82,9 +82,69 @@ describe('a release finish that cannot close an issue', () => {
     expect(said).toContain('`OPEN_QUESTIONS`');
     expect(said).toContain(`open question ${first}`);
     expect(said).toContain(`open question ${second}`);
-    expect(said).toContain('What clears it: this issue holds 2 open questions');
+    expect(said).toContain('Decisions panel');
     expect(said).toContain(`shipped as version ${version}`);
-    expect(said).toContain(`POST /api/projects/${projectId}/release-records`);
+    expect(said).toContain('move it to Closed from its status menu');
+    expect(said).not.toMatch(/\/api\/|voidQuestions/);
+  });
+
+  it('closes the refused issue the way its comment says: withdrawing its questions while moving it to Closed', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
+    const held = await fx.insertIssue();
+    const { runId } = await fx.claim([held]);
+    const question = await askOn(held);
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+    expect((await fx.stored(held)).status).toBe('awaiting_release');
+
+    await transitionIssueStatus(
+      { id: held, projectId, status: 'awaiting_release', reopenCount: 0 },
+      'closed',
+      { type: 'user', id: ownerId },
+      { voidQuestions: 'the release shipped it; the question no longer decides anything' },
+    );
+
+    expect((await fx.stored(held)).status).toBe('closed');
+    const [q] = await harness.db.execute(
+      sql`SELECT status FROM agent_questions WHERE id = ${question}`,
+    );
+    expect(q?.status).not.toBe('open');
+  });
+
+  it('names the database’s reason for a close that failed, and never the statement or a bound value', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const broken = await fx.insertIssue();
+    const free = await fx.insertIssue();
+    const { runId } = await fx.claim([broken, free]);
+    await harness.db.execute(
+      sql.raw(`
+      CREATE OR REPLACE FUNCTION planted_close_failure() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.status = 'closed' AND NEW.id = '${broken}' THEN
+          RAISE EXCEPTION 'planted failure: storage refused this row';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER planted_close_failure BEFORE UPDATE ON issues
+        FOR EACH ROW EXECUTE FUNCTION planted_close_failure();
+    `),
+    );
+    try {
+      const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+
+      expect(result.closed).toEqual([free]);
+      const said = await lastComment(broken);
+      const reason = result.failed.find((f) => f.id === broken)?.reason ?? '';
+      for (const text of [said, reason]) {
+        expect(text).toContain('planted failure: storage refused this row');
+        expect(text).toContain('P0001');
+        for (const leaked of ['Failed query', 'update "issues"', 'params:', broken]) {
+          expect(text).not.toContain(leaked);
+        }
+      }
+    } finally {
+      await harness.db.execute(sql.raw('DROP TRIGGER IF EXISTS planted_close_failure ON issues'));
+    }
   });
 
   it('names the refusal on a batch that recorded a promotion, where the issue stays claimed', async () => {
@@ -108,7 +168,7 @@ describe('a release finish that cannot close an issue', () => {
     const said = await lastComment(held);
     expect(said).toContain('`OPEN_QUESTIONS`');
     expect(said).toContain(`open question ${question}`);
-    expect(said).toContain('What clears it: this issue holds 1 open question');
+    expect(said).toContain('What clears it: answer each open question in the Decisions panel');
     expect(said).toContain(`shipped as version ${version}`);
     expect(said).toContain('stay at `releasing`');
     expect(said).toContain(`/release-batches/${runId}/abort`);
