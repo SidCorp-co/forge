@@ -4,6 +4,16 @@ export const RANGE_COMMIT_LIMIT = 1000;
 
 export type RepositoryRoute = 'binding' | 'deploy_key';
 
+/** Why a read was refused, and the act that clears it held apart, so several causes say it once. */
+export interface Refused {
+  readonly cause: string;
+  readonly clears?: string;
+}
+
+export function saying(refused: Refused): string {
+  return refused.clears === undefined ? refused.cause : `${refused.cause} — ${refused.clears}`;
+}
+
 export interface FoundCommit {
   sha: string;
   message: string;
@@ -31,11 +41,11 @@ export type Carriage =
   | { readonly kind: 'descends' }
   /** `paths`: every file the two trees may differ in, each side's since their merge base. */
   | { readonly kind: 'differs'; readonly paths: readonly string[] }
-  | { readonly kind: 'unread'; readonly why: string };
+  | { readonly kind: 'unread'; readonly why: string; readonly clears?: string };
 
 export type ChangedPaths =
   | { readonly kind: 'read'; readonly paths: readonly string[] }
-  | { readonly kind: 'unread'; readonly why: string };
+  | { readonly kind: 'unread'; readonly why: string; readonly clears?: string };
 
 export interface RangeCommit {
   sha: string;
@@ -60,4 +70,4 @@ export interface RepositoryReader {
 export type RepositoryAccess =
   | { kind: 'reader'; reader: RepositoryReader }
   /** `unbound`: neither a GitHub binding nor a deploy key was declared. */
-  | { kind: 'refused'; why: string; unbound: boolean; route: RepositoryRoute };
+  | ({ kind: 'refused'; unbound: boolean; route: RepositoryRoute } & Refused);

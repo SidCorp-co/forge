@@ -58,16 +58,19 @@ date, and the mark reads `observed`. Every other answer is a refusal by name and
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
 evidence unchecked. On the git route the cause is one of four, read from what the host said
-(`packages/core/src/git/bounded-fetch.ts:fetchRefusal`) and quoted in its words past any `remote:`
-banner: the host refused the key, it took the key but will not let it read that repository (or none
-is there), it could not be reached, or the repository lacks a branch. That refusal names two routes:
-mark again once the repository can be read — or, where a branch is missing, once the repository has
-it or the project names only branches it has —
-through the GitHub binding where the project reads through one, else with the deploy key over the SSH
-clone URL under Git access, and never telling a project with no binding to bind GitHub, except
-beside the key for a github.com remote — (or, where the project names no base branch, once it does), or have a person mark it merged naming
-no commit and move it through `developed` and `testing`, which hold an agent to this evidence and not
-a person; a person's mark naming a commit is checked against the same repository (below). GitHub
+(`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words past any `remote:`
+banner: the host refused the key; it took the key but will not let it read that repository, or
+none is there; the host the URL names could not be reached; or the repository lacks a branch. Each
+of the first three says what clears it, and where that is access for the key it asks for write
+access, as Test connection under Git access does, since the runner pushes with the same key.
+The refusal then names two routes. The first is to mark again once the tracker can read the
+repository: through the GitHub binding where the project has one, otherwise with the deploy key
+over the SSH clone URL under Git access; where a branch is missing, once the repository has it or
+the project's base branch and release chain name only branches it has; and where the project names
+no base branch, once it does. A project with no binding is told to bind GitHub only beside the key,
+and only for a github.com remote. The second is to have a person mark it merged naming no commit
+and move it through `developed` and `testing`, which hold an agent to this evidence and not a
+person; a person's mark naming a commit is checked against the same repository (below). GitHub
 answers an abbreviated sha that no commit starts with and one that
 several commits start with alike, and git resolves a prefix only against the commits its branches
 hold, so on either route such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as

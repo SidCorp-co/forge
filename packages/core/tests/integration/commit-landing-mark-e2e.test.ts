@@ -98,7 +98,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   it.each([
     [
       'no_binding',
-      'names no repository URL, so there are no branches to read',
+      'names no repository URL, so there is no repository to read',
       " with the deploy key attached under the project's Settings → Runners → Git access, over the SSH clone URL set there",
     ],
     ['read', 'HTTP 502', ', through a GitHub binding whose installation can read it'],

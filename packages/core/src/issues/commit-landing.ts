@@ -9,7 +9,11 @@ import {
   readableThrough,
   withRepository,
 } from '../projects/repository-access.js';
-import type { RepositoryReader, RepositoryRoute } from '../projects/repository-reader.js';
+import {
+  type RepositoryReader,
+  type RepositoryRoute,
+  saying,
+} from '../projects/repository-reader.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
 export type CommitLandingRefusalCode =
@@ -94,7 +98,7 @@ export async function readCommitLanding(
     projectId,
     async (access) => {
       if (access.kind === 'refused') {
-        return unreadable(commit, access.why, readableThrough(access.route));
+        return unreadable(commit, saying(access), readableThrough(access.route));
       }
       return landingIn(access.reader, { projectId, issSeq, commit, baseBranch, branches });
     },
@@ -190,7 +194,7 @@ export async function resolveMarkCommit(
   return withRepository(
     projectId,
     async (access) => {
-      if (access.kind === 'refused') return unresolved(access.why, access.route);
+      if (access.kind === 'refused') return unresolved(saying(access), access.route);
       const { reader } = access;
       const looked = await reader.commit(commit);
       if (looked.kind === 'unreadable') return unresolved(looked.why, reader.route);

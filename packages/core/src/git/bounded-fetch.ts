@@ -1,10 +1,31 @@
 import { spawn } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { type Refused, saying } from '../projects/repository-reader.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
 /** Where in Forge a project's deploy key is attached, for a sentence telling an operator to fix it. */
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
+
+/**
+ * What every sentence asks the git host to give the key attached under Git access, and why. Write,
+ * not read: core only reads with it, but it is the key the project's runner is provisioned with and
+ * pushes with, so a key given read alone clears a read and breaks the next push.
+ */
+export const KEY_ACCESS = 'write access';
+export const WHY_KEY_ACCESS =
+  "since Forge reads the repository with it and the project's runner pushes with it";
+
+/** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
+export function hostOf(repoUrl: string): string {
+  const u = repoUrl.trim();
+  try {
+    if (u.includes('://')) return new URL(u).hostname || u;
+  } catch {
+    return u;
+  }
+  return u.match(/^[^@\s]+@([^:\s/]+):/)?.[1] ?? u;
+}
 
 /**
  * What one fetch may spend before it is stopped and the reading refused. The byte budget is what
@@ -25,7 +46,16 @@ export const REMOTE_FETCH_LIMITS: FetchLimits = { timeoutMs: 60_000, maxBytes: 2
 /** The pack, its index and its reverse index share the budget; each file may take this fraction. */
 const PER_FILE_SHARE = 5;
 
-export class GitRefusal extends Error {}
+/** A git read that failed, its cause and the act that clears it held apart (`refused`). */
+export class GitRefusal extends Error {
+  readonly refused: Refused;
+
+  constructor(said: string | Refused) {
+    const refused = typeof said === 'string' ? { cause: said } : said;
+    super(saying(refused));
+    this.refused = refused;
+  }
+}
 
 export interface GitFailure {
   stderr?: string | Buffer;
@@ -82,27 +112,50 @@ export function readingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   };
 }
 
-/** What a failed fetch of `remote` means to an operator: its cause, in the host's words, and the fix. */
-export function fetchRefusal(err: GitFailure, remote: string): string {
+/** What a failed fetch of `remote` means to an operator: its cause, in the host's words, and apart
+ *  from it the act that clears it, so a sentence naming several causes gives that act once. */
+export function hostRefusal(err: GitFailure, remote: string): Refused {
   const answer = readHostRefusal((err.stderr ?? '').toString());
   const { said } = answer;
   switch (answer.kind) {
     case 'no_branch':
-      return `the repository has no branch ${answer.branch}, so it cannot be compared`;
+      return { cause: `the repository has no branch ${answer.branch}, so it cannot be compared` };
     case 'key_refused':
-      return `the git host refused the deploy key attached to this project (${said}) — give its public key read access to ${remote}; the key is the one attached under ${GIT_ACCESS}`;
+      return {
+        cause: `the git host refused the deploy key attached to this project (${said})`,
+        clears: `give its public key ${KEY_ACCESS} to ${remote}, ${WHY_KEY_ACCESS}; the key is the one attached under ${GIT_ACCESS}`,
+      };
     case 'no_access':
-      return `the git host took the deploy key attached to this project but will not let it read ${remote} (${said}) — on the git host, give the deploy key attached under ${GIT_ACCESS} read access to that repository; if no repository lives at that URL, correct the SSH clone URL set there`;
+      return {
+        cause: `the git host took the deploy key attached to this project but will not let it read ${remote} (${said})`,
+        clears: `on the git host, give the deploy key attached under ${GIT_ACCESS} ${KEY_ACCESS} to that repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL set there`,
+      };
     case 'unreachable':
-      return `the git host ${remote} names could not be reached (${said}), so the deploy key was never offered — check that the SSH clone URL under ${GIT_ACCESS} names the right host and that it is up, then read again`;
+      return {
+        cause: `the git host ${hostOf(remote)} could not be reached (${said}), so the deploy key was never offered`,
+        clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that the host is up`,
+      };
     default:
-      return `the git host answered the fetch with: ${said || `git exited ${String(err.code ?? 'abnormally')}`}`;
+      return {
+        cause: `the git host answered the fetch with: ${said || `git exited ${String(err.code ?? 'abnormally')}`}`,
+      };
   }
+}
+
+export function fetchRefusal(err: GitFailure, remote: string): string {
+  return saying(hostRefusal(err, remote));
 }
 
 /** git names the address ssh was pinned to; an operator knows the repository by its URL's host. */
 export function namingTheHost(reason: string, pin: PinnedSshHost): string {
   return pin.address === pin.host ? reason : reason.replaceAll(pin.address, pin.host);
+}
+
+export function refusedNamingTheHost(refused: Refused, pin: PinnedSshHost): Refused {
+  const cause = namingTheHost(refused.cause, pin);
+  return refused.clears === undefined
+    ? { cause }
+    : { cause, clears: namingTheHost(refused.clears, pin) };
 }
 
 async function largestFile(dir: string): Promise<number> {
@@ -128,7 +181,7 @@ export interface BoundedFetch {
   repo: string;
   /** The filter the host was asked for, as an operator reads it: "commits-only". */
   filter: string;
-  refusal?: (err: GitFailure) => string;
+  refusal?: (err: GitFailure) => string | Refused;
 }
 
 /** `git <args>` in a process group of its own under `ulimit -f`, killed whole past the time budget. */
@@ -179,7 +232,7 @@ export function boundedFetch(
           new GitRefusal(
             n >= blocks * 512
               ? overBudget
-              : (fetch.refusal ?? ((e) => fetchRefusal(e, fetch.remote)))({ stderr, code }),
+              : (fetch.refusal ?? ((e) => hostRefusal(e, fetch.remote)))({ stderr, code }),
           ),
         ),
       );

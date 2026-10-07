@@ -329,7 +329,7 @@ describe('readRemoteDivergence', () => {
       expect(d).toEqual({
         ok: false,
         reason:
-          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key read access to git@gitlab.com:sid/desk.git; the key is the one attached under the project's Settings → Runners → Git access",
+          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key write access to git@gitlab.com:sid/desk.git, since Forge reads the repository with it and the project's runner pushes with it; the key is the one attached under the project's Settings → Runners → Git access",
       });
     } finally {
       process.env.PATH = path;

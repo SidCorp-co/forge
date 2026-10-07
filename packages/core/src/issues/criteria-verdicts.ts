@@ -87,6 +87,8 @@ export interface UnearnedCriterion {
   /** How that verdict's identity resolved, or null where there is no verdict. */
   readonly standing: VerdictStanding | null;
   readonly why: string;
+  /** The acts that clear a repository read `why` names as failed; the remedy says each once. */
+  readonly clears?: readonly string[];
 }
 
 /** One criterion whose verdict cites something the tracker cannot resolve, and which citation. */
@@ -218,7 +220,15 @@ function findingsFor(
     const reasons = reasonsAgainst(said, w, identities, unresolved);
     if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
     if (reasons.length === 0) continue;
-    unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
+    const why = reasons.join('; and ');
+    // `reasonsAgainst` says the weighing's `beside` only for an earned verdict that does not stand.
+    const weighedSaid = EARNED_VERDICTS.has(pair.verdict) && !EARNED_STANDINGS.has(standing);
+    const clears = weighedSaid ? w.clears : [];
+    unearned.push(
+      clears.length === 0
+        ? { criterion, verdict: pair.verdict, standing, why }
+        : { criterion, verdict: pair.verdict, standing, why, clears },
+    );
   }
   return { unearned, broken, uncorroborated };
 }

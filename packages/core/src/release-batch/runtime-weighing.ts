@@ -127,10 +127,16 @@ async function judgedCommits(rows: readonly WaitingRow[]): Promise<string[]> {
   return [...judged];
 }
 
-type Reader = { reader: RepositoryReader } | { why: string };
+type Unread = Extract<Carriage, { kind: 'unread' }>;
+
+type Reader = { reader: RepositoryReader } | { unread: Unread };
 
 function readerOf(access: RepositoryAccess): Reader {
-  return access.kind === 'reader' ? { reader: access.reader } : { why: access.why };
+  if (access.kind === 'reader') return { reader: access.reader };
+  const { cause: why, clears } = access;
+  return {
+    unread: clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears },
+  };
 }
 
 const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads of a kind, and each pass starts its reads one place further along`;
@@ -157,8 +163,8 @@ async function readChanged(
     const landing = issueIdentities(row).source;
     if (!landing) {
       out.set(row.id, { kind: 'unread', why: 'this issue records no landing commit' });
-    } else if ('why' in reader) {
-      out.set(row.id, { kind: 'unread', why: reader.why });
+    } else if ('unread' in reader) {
+      out.set(row.id, reader.unread);
     } else {
       out.set(row.id, await changedPathsOf(reader.reader, landing, spend));
     }
@@ -177,7 +183,7 @@ async function readCarriage(
   for (const [j, s] of rotated(pairs, passes) as Array<[string, string]>) {
     const key = carriageKey(j, s);
     if (out.has(key)) continue;
-    if ('why' in reader) out.set(key, { kind: 'unread', why: reader.why });
+    if ('unread' in reader) out.set(key, reader.unread);
     else out.set(key, await carriageOf(reader.reader, j, s, spend));
   }
   return out;

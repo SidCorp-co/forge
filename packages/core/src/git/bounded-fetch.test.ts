@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fetchRefusal, hostSaid } from './bounded-fetch.js';
+import { fetchRefusal, hostRefusal, hostSaid } from './bounded-fetch.js';
 import {
   GIT_TRAILER,
   GITHUB_NOT_FOUND,
@@ -12,6 +12,9 @@ import {
 
 const REMOTE = 'git@gitlab.com:sid/desk.git';
 const GIT_ACCESS = "the project's Settings → Runners → Git access";
+/** What every sentence asks the key be given: Test connection's too (`ssh-keys.test.ts`). */
+const ASK =
+  "write access to that repository, since Forge reads the repository with it and the project's runner pushes with it";
 
 const refusalOf = (a: HostAnswer) =>
   fetchRefusal({ stderr: a.stderr + GIT_TRAILER, code: 128 }, REMOTE);
@@ -65,9 +68,7 @@ describe('fetchRefusal, in the words each host sends', () => {
       expect(why).toContain(
         `the git host took the deploy key attached to this project but will not let it read ${REMOTE}`,
       );
-      expect(why).toContain(
-        `give the deploy key attached under ${GIT_ACCESS} read access to that repository`,
-      );
+      expect(why).toContain(`give the deploy key attached under ${GIT_ACCESS} ${ASK}`);
       expect(why).toContain('correct the SSH clone URL set there');
     },
   );
@@ -76,17 +77,43 @@ describe('fetchRefusal, in the words each host sends', () => {
     'reads $name as a key the host refused, naming the repository to add it to',
     (answer) => {
       expect(refusalOf(answer)).toBe(
-        `the git host refused the deploy key attached to this project (${answer.said}) — give its public key read access to ${REMOTE}; the key is the one attached under ${GIT_ACCESS}`,
+        `the git host refused the deploy key attached to this project (${answer.said}) — give its public key write access to ${REMOTE}, since Forge reads the repository with it and the project's runner pushes with it; the key is the one attached under ${GIT_ACCESS}`,
       );
     },
   );
 
-  it('reads a host that cannot be reached as no answer about the key at all', () => {
+  // ISS-1398 judge j2 finding 2: "the git host <url> names could not be reached" did not parse.
+  it('names the host that could not be reached, then the URL to check, with no word about access', () => {
     const answer = unreachable('172.65.251.78');
     const why = refusalOf(answer);
-    expect(why).toContain(`the git host ${REMOTE} names could not be reached`);
+    expect(why).toMatch(/^the git host gitlab\.com could not be reached \(ssh: connect to host /);
+    expect(why).toContain(answer.said);
+    expect(why).not.toContain(`${REMOTE} names`);
     expect(why).toContain('the deploy key was never offered');
-    expect(why).not.toContain('read access');
+    expect(why).toContain(`check that the SSH clone URL ${REMOTE}, set under ${GIT_ACCESS}`);
+    expect(why).not.toMatch(/(read|write) access/);
+  });
+
+  // ISS-1398 judge j2 finding 1: the mark and the hold asked for read access, Test connection for write.
+  it.each([GITLAB_NO_ACCESS, keyUnknown('gitlab.com')])(
+    'asks for write access for $name, as Test connection does, and never for read access',
+    (answer) => {
+      const why = refusalOf(answer);
+      expect(why).toContain('write access');
+      expect(why).toContain(
+        "since Forge reads the repository with it and the project's runner pushes with it",
+      );
+      expect(why).not.toContain('read access');
+    },
+  );
+
+  it('holds the act that clears a refusal apart from its cause', () => {
+    const said = hostRefusal({ stderr: GITLAB_NO_ACCESS.stderr + GIT_TRAILER, code: 128 }, REMOTE);
+    expect(said.cause).toBe(
+      `the git host took the deploy key attached to this project but will not let it read ${REMOTE} (${GITLAB_NO_ACCESS.said})`,
+    );
+    expect(said.clears).toContain(ASK);
+    expect(refusalOf(GITLAB_NO_ACCESS)).toBe(`${said.cause} — ${said.clears}`);
   });
 
   it.each([

@@ -24,18 +24,20 @@ import {
   RANGE_COMMIT_LIMIT,
   type RangeCommit,
   type RangeRead,
+  type Refused,
   type RepositoryReader,
+  saying,
 } from '../projects/repository-reader.js';
 import {
   boundedFetch,
   type FetchLimits,
-  fetchRefusal,
   type GitFailure,
   GitRefusal,
+  hostRefusal,
   hostSaid,
-  namingTheHost,
   REMOTE_FETCH_LIMITS,
   readingEnv,
+  refusedNamingTheHost,
 } from './bounded-fetch.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
@@ -153,7 +155,7 @@ class GitReading {
           refusal: (err) =>
             UNREACHABLE.test((err.stderr ?? '').toString())
               ? ABSENT
-              : fetchRefusal(err, this.remote),
+              : hostRefusal(err, this.remote),
         },
         this.limits,
       );
@@ -270,13 +272,19 @@ class GitReading {
     return out.split('\0').filter((p) => p !== '');
   }
 
-  /** The reason a read failed, in the words of whatever failed, naming the host the URL names. */
-  failed(err: unknown): string {
-    const say = (reason: string) => (this.opts.pin ? namingTheHost(reason, this.opts.pin) : reason);
-    if (err instanceof GitRefusal) return say(err.message);
+  /** Why a read failed, in the words of whatever failed, naming the host the URL names; the act
+   *  that clears it apart, where there is one. */
+  refusedBy(err: unknown): Refused {
+    const named = (r: Refused) => (this.opts.pin ? refusedNamingTheHost(r, this.opts.pin) : r);
+    if (err instanceof GitRefusal) return named(err.refused);
     const stderr = hostSaid(((err as GitFailure).stderr ?? '').toString());
     const cause = stderr || (err instanceof Error ? err.message : String(err));
-    return say(`reading ${this.remote} failed: ${cause}`);
+    return named({ cause: `reading ${this.remote} failed: ${cause}` });
+  }
+
+  /** `refusedBy` as one sentence. */
+  failed(err: unknown): string {
+    return saying(this.refusedBy(err));
   }
 }
 
@@ -385,8 +393,9 @@ export function gitRepositoryReader(
       try {
         return await carriageIn(g, judged, served);
       } catch (err) {
-        const why = `${remote} could not compare ${judged} with ${served}: ${g.failed(err)}`;
-        return { kind: 'unread', why };
+        const { cause, clears } = g.refusedBy(err);
+        const why = `${remote} could not compare ${judged} with ${served}: ${cause}`;
+        return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
 
@@ -394,8 +403,9 @@ export function gitRepositoryReader(
       try {
         return await changedIn(g, landing);
       } catch (err) {
-        const why = `${remote} could not read what ${landing} changed: ${g.failed(err)}`;
-        return { kind: 'unread', why };
+        const { cause, clears } = g.refusedBy(err);
+        const why = `${remote} could not read what ${landing} changed: ${cause}`;
+        return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
 

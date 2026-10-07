@@ -101,4 +101,23 @@ describe('testSshConnection, in the words each host refuses with', () => {
     expect(test.message).toContain(answer.said.replace('172.65.251.78', 'gitlab.com'));
     expect(test.message).not.toMatch(/^remote:|remote:\s*(\.|\))/);
   });
+
+  // ISS-1398 judge j2 finding 1: Test connection asked for write access, the mark and hold for read.
+  it.each([
+    [GITLAB_NO_ACCESS.name, GITLAB_NO_ACCESS],
+    ['a key the host does not know', keyUnknown('gitlab.com')],
+  ] as const)(
+    'asks for %s the access the mark and the hold ask for, and why',
+    async (_n, answer) => {
+      lookup.mockResolvedValue([{ address: '172.65.251.78', family: 4 }]);
+      answering(answer);
+
+      const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
+
+      expect(test.message).toContain(
+        "write access to the repository, since Forge reads the repository with it and the project's runner pushes with it",
+      );
+      expect(test.message).not.toContain('read access');
+    },
+  );
 });
