@@ -99,12 +99,12 @@ describe('messages', () => {
   });
 
   it('builds the reporter’s notices from the item and the words given, nothing else', () => {
-    expect(declinedNotice('FB-2', 'Blue board', ' Brand guide. ')).toEqual({
+    expect(declinedNotice('en', 'FB-2', 'Blue board', ' Brand guide. ')).toEqual({
       title: 'FB-2 was declined: Blue board',
       body: 'It will not be done.\nReason: Brand guide.',
     });
-    expect(duplicateNotice('FB-3', 'Slow export', 'FB-1').body).toContain('FB-1');
-    expect(messageNotice('FB-2', 'Blue board', '  Hello.  ')).toEqual({
+    expect(duplicateNotice('en', 'FB-3', 'Slow export', 'FB-1').body).toContain('FB-1');
+    expect(messageNotice('en', 'FB-2', 'Blue board', '  Hello.  ')).toEqual({
       title: 'A message about FB-2: Blue board',
       body: 'Hello.',
     });

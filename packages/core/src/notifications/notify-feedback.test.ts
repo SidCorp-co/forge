@@ -19,6 +19,12 @@ vi.mock('./auto-resolve.js', () => ({
   },
 }));
 
+vi.mock('../feedback/index.js', async () => {
+  const { noticeCopy } = await import('../feedback/reporter-language.js');
+  const { shippedNotice } = await import('../feedback/reporter-notices.js');
+  return { noticeCopy, shippedNotice, reporterLanguageOf: async () => 'vi' };
+});
+
 const { consumerOf } = await import('../outbox/consumers.js');
 const { registerFeedbackNotifications } = await import('./notify-feedback.js');
 
@@ -44,7 +50,9 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
       resolutionKey: 'feedback-verify:f1',
       dedupeKey: 'feedback-verify-ask:e1',
     });
-    expect(String(state.notices[0]?.title)).toContain('FB-4');
+    expect(String(state.notices[0]?.title), 'in the language the reporter reads').toBe(
+      'FB-4 đã được giải quyết: Export breaks', // i18n-allow: the Vietnamese notice a vi reporter reads
+    );
   });
 
   it('settles the ask when the item is verified or reopened', async () => {

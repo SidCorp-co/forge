@@ -300,6 +300,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_SNOOZE_REASON_REQUIRED",
 	"FEEDBACK_MESSAGE_EMPTY",
 	"FEEDBACK_MESSAGE_NO_RECIPIENT",
+	"FEEDBACK_RELAY_NOT_TO_REPORTERS",
+	"FEEDBACK_ALREADY_TOLD",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
 	"FEEDBACK_VERIFY_ASK_SELF",
@@ -468,12 +470,17 @@ export const FEEDBACK_MESSAGE_AUDIENCES = [
 export type FeedbackMessageAudience =
 	(typeof FEEDBACK_MESSAGE_AUDIENCES)[number];
 
-/** `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing. */
+/**
+ * `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing.
+ * `relayed` records what a person told reporters outside Forge (one no bell reaches, an agent, or a
+ * person who turned the notice off): it is kept on the thread and sends no notice.
+ */
 export const feedbackMessageRequestSchema = z.strictObject({
 	audience: z.enum(FEEDBACK_MESSAGE_AUDIENCES),
 	text: z.string().max(FEEDBACK_LIMITS.message),
+	relayed: z.boolean().optional(),
 });
-export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text }`;
+export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text, relayed?: boolean }`;
 
 export const feedbackEmptyRequestSchema = z.strictObject({});
 export const FEEDBACK_EMPTY_SHAPE = "{}";
@@ -579,8 +586,10 @@ export interface FeedbackMessageView {
 	sentByName: string | null;
 	sentAgency: "human" | "agent";
 	sentAt: string;
-	/** The reporters it was addressed to; empty for an internal note, which reaches no one. */
+	/** The reporters it was addressed to; empty for an internal note, which reaches no one, and for a relay. */
 	recipients: { id: string; name: string | null }[];
+	/** A person told the reporters outside Forge and recorded what they said; no bell carried it. */
+	relayed: boolean;
 }
 
 /** The exact notice a send would deliver, as its reporters will read it, and who gets it. */
@@ -636,6 +645,8 @@ export type FeedbackWaitingKind = (typeof FEEDBACK_WAITING_KINDS)[number];
 /** One item as a list row reads it; the derived facts are the server's, never the client's. */
 export interface FeedbackSummary
 	extends Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
+	/** Set on a shipped issue-routed item nothing told its reporter, by which of the two it is. */
+	reporterNotTold: FeedbackNotTold | null;
 	id: string;
 	key: string;
 	title: string;
@@ -655,21 +666,42 @@ export interface FeedbackSummary
 	updatedAt: string;
 }
 
+/** How the reporter heard the work shipped: the release's own notice, a message to reporters, or a relay a person recorded. */
+export const FEEDBACK_TOLD_HOWS = ["notice", "message", "relayed"] as const;
+export type FeedbackToldHow = (typeof FEEDBACK_TOLD_HOWS)[number];
+
 /**
- * Whether the reporter was told the work shipped: the notice a release sent, when and for which
- * release; or why nobody was told, so a reporter Forge cannot reach is named, never skipped.
+ * Whether the reporter was told the work shipped: how, when and for which release; or why nobody was
+ * told, so a reporter Forge cannot reach is named, never skipped.
  */
 export type FeedbackShipNotice =
-	| { state: "told"; at: string; release: string | null }
+	| {
+			state: "told";
+			how: FeedbackToldHow;
+			at: string;
+			release: string | null;
+			/** Who sent the message or recorded the relay; null for the release's own notice. */
+			by: string | null;
+			/** When and in which release the work shipped, as the not-told reading names it. */
+			shipped: { at: string | null; release: string | null };
+			/** How a person told them, in English (`a message from Dana`); null for the release's own notice. */
+			told: string | null;
+			says: { told: Said | null };
+	  }
 	| {
 			state: "not_told";
 			reason: string;
 			says: { reason: Said };
 			/** What the record says about the ship itself: when, and in which release (null when no release carries it). */
 			shipped: { at: string | null; release: string | null };
-			/** The work shipped before Forge told reporters at all, so no release owed this reporter a notice. */
+			/** The work shipped before this project's first release notice, so no release owed this reporter one; nobody owes a relay. */
 			beforeNotices: boolean;
+			/** This project's first release notice, the cutoff `beforeNotices` is read against; null while none was sent. */
+			noticesBegan: string | null;
 	  };
+
+/** Why a shipped item's reporter was not told: a relay is owed, or it shipped before release notices existed. */
+export type FeedbackNotTold = "owed" | "before_notices";
 
 /** The confirmation of the fix: who and when, or that nobody did within the window and Forge did. */
 export interface FeedbackVerifiedView {
@@ -724,6 +756,8 @@ export interface FeedbackView extends FeedbackSummary {
 		snooze: boolean;
 		/** Send a message to its reporters. */
 		message: boolean;
+		/** Tell its reporters now that the work shipped: a shipped item nothing told yet, with a reporter a bell reaches. */
+		tellShipped: boolean;
 		/** Write an internal note, which no reporter is ever sent. */
 		note: boolean;
 		/** Add an attachment: a project writer, while the reporter's data stands. */
@@ -739,6 +773,8 @@ export interface FeedbackResponse {
 export interface FeedbackListResponse {
 	feedback: FeedbackSummary[];
 	counts: Record<FeedbackAttentionGroup, number>;
+	/** Shipped items whose reporter nothing told, counted apart: owed a relay, or shipped before release notices existed (since `noticesBegan`). */
+	untold: { owed: number; beforeNotices: number; noticesBegan: string | null };
 	sensitive: boolean;
 }
 

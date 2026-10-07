@@ -65,7 +65,7 @@ describe("feedback follows its work to the release", () => {
   });
 
   it("says when the reporter was told, and for which release", () => {
-    const f = view({ shipNotice: { state: "told", at: at(-5), release: "0.1.0" } });
+    const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" }, told: null, says: { told: null } } });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const fact = screen.getByTestId("facts-ship-notice");
     expect(fact.textContent).toContain("Reporter told");
@@ -80,6 +80,7 @@ describe("feedback follows its work to the release", () => {
         says: { reason: say("feedback.notice.agent") },
         shipped: { at: null, release: null },
         beforeNotices: false,
+        noticesBegan: null,
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
@@ -90,16 +91,17 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: sentence(say("feedback.notice.before")),
-        says: { reason: say("feedback.notice.before") },
+        reason: sentence(say("feedback.notice.before", { date: "2026-10-07" })),
+        says: { reason: say("feedback.notice.before", { date: "2026-10-07" }) },
         shipped: { at: "2026-10-07T04:13:32.795Z", release: "0.4.0-dev.89" },
         beforeNotices: true,
+        noticesBegan: "2026-10-07T07:39:54.217Z",
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const line = screen.getByTestId("ship-notice-not-told");
     expect(line.textContent).toContain("Shipped in 0.4.0-dev.89 on ");
-    expect(line.textContent).toContain("before Forge told reporters");
+    expect(screen.getByTestId("ship-notice-before").textContent).toBe("Shipped before release notices existed on this project (2026-10-07).");
     expect(line.textContent).not.toContain("No release has told");
     expect(within(line).getByRole("link", { name: "0.4.0-dev.89" }).getAttribute("href")).toBe("/projects/hop/releases/0.4.0-dev.89");
   });

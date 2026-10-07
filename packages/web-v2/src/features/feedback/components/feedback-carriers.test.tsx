@@ -10,7 +10,7 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
 import { FeedbackFacts } from "./feedback-facts";
 
-const NONE = { triage: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, note: false, attach: false };
+const NONE = { triage: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
 
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({

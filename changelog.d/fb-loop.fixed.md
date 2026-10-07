@@ -1,0 +1,1 @@
+**A reporter hears their feedback shipped**: every reporter notice reads in their language; one ship notice per item; untold items owe a relay on Needs you, or, shipped before release notices, read a dated state with "Tell the reporter now".
