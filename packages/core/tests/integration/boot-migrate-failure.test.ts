@@ -11,7 +11,7 @@ import postgres from 'postgres';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrateAtBoot } from '../../src/db/migrate.js';
 import { provideErrorTracker } from '../../src/lib/error-tracking.js';
-import { MIGRATIONS_FOLDER } from '../helpers/global-setup.js';
+import { MIGRATIONS_FOLDER } from '../helpers/migrations.js';
 
 const DAY = 86_400_000;
 const shipped = JSON.parse(readFileSync(join(MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'));
