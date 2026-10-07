@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import product from "./product-copy.json";
-import { historyText, historyWho, localizeWaiting, STANDING_RULES, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
+import { feedbackNote, historyText, historyWho, localizeWaiting, STANDING_RULES, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
 
 // One sentence core really writes for each pattern: in en it is returned as core wrote it, in vi it
 // is a Vietnamese sentence with the names, keys, versions and numbers carried over untouched.
@@ -19,6 +19,16 @@ const ACT = [
 ];
 const EFFECT = ["Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then."];
 
+const FEEDBACK_NOTE = [
+  "The reporter has turned this notice off, so it reached nobody: tell them yourself.",
+  "The reporter is an agent, which has no bell: tell it where it listens.",
+  "It shipped before Forge told reporters when a release shipped.",
+  "0.2.0 shipped it and sent the reporter no notice.",
+  "No release carries it, so none told the reporter: tell them yourself.",
+  "Verified automatically after 14 days with no reply",
+  "triage without dedup: the item's vector is pending",
+];
+
 const vi = product.vi as Record<string, string>;
 const looksEnglish = (s: string) => /\b(the|and|then|it|of)\b/.test(s);
 
@@ -33,6 +43,19 @@ describe("the standing words, mapped by the shape of core's English", () => {
     for (const w of WHO) expect(standingRead("who", w, "en"), w).toBe(w);
     for (const a of ACT) expect(standingRead("act", a, "en"), a).toBe(a);
     for (const e of EFFECT) expect(standingRead("effect", e, "en"), e).toBe(e);
+    for (const n of FEEDBACK_NOTE) expect(standingRead("feedbackNote", n, "en"), n).toBe(n);
+  });
+
+  it("reads a feedback item's own core sentences in vi, carrying the version and the days over", () => {
+    for (const n of FEEDBACK_NOTE) {
+      expect(feedbackNote(n, "en")).toBe(n);
+      const read = feedbackNote(n, "vi");
+      expect(read, n).not.toBe(n);
+      expect(looksEnglish(read), read).toBe(false);
+    }
+    expect(feedbackNote("0.2.0 shipped it and sent the reporter no notice.", "vi")).toContain("0.2.0");
+    expect(feedbackNote("Verified automatically after 14 days with no reply", "vi")).toContain("14");
+    expect(feedbackNote("a reason a person wrote", "vi")).toBe("a reason a person wrote");
   });
 
   it("reads every sentence in vi, carrying names and numbers over", () => {
@@ -97,6 +120,10 @@ describe("a requirement's history, mapped by the shape of core's record", () => 
   it("leaves a record it does not know as core wrote it", () => {
     expect(historyText("Re-pinned r1 onto the approved designs (ready)", "vi")).toBe("Re-pinned r1 onto the approved designs (ready)");
     expect(historyText("", "vi")).toBe("");
+  });
+
+  it("holds one sentence to every feedback note pattern", () => {
+    for (const rule of STANDING_RULES.feedbackNote) expect(FEEDBACK_NOTE.some((n) => rule.re.test(n)), String(rule.re)).toBe(true);
   });
 
   it("holds one record to every history pattern", () => {

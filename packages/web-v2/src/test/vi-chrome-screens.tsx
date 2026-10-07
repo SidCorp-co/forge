@@ -11,6 +11,7 @@ import { RequirementPeek } from "@/features/requirements/components/requirement-
 import { RequirementScreen } from "@/features/requirements/components/requirement-screen";
 import { RequirementPage } from "@/features/requirements/components/requirement-detail";
 import { REQ_PROJECT, reqQueries, Seeded } from "./vi-chrome-requirements";
+import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
 // returns it filled with data that carries NO English words of its own (fixture content is not chrome).
@@ -68,4 +69,10 @@ export const CHROME_SCREENS: ChromeScreen[] = [
       </Seeded>
     ),
   })),
+  { name: "Feedback list", render: feedbackList },
+  { name: "Feedback detail", render: feedbackDetail },
+  { name: "Feedback peek", render: feedbackPeek },
+  { name: "Feedback facts and history", render: feedbackFacts },
+  { name: "Feedback triage and message forms", render: feedbackForms },
+  { name: "Feedback filing form", render: feedbackFilingForm },
 ];

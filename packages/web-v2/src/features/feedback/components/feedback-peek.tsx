@@ -5,6 +5,7 @@
 
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useEtaClock, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
@@ -24,18 +25,19 @@ export function FeedbackPeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   const q = useFeedbackItem(projectId, fbKey);
   const forecasts = useFeedbackForecasts(projectId);
   const clock = useEtaClock();
   return (
-    <PeekPanel peek={peek} listLabel="Feedback" noun="Feedback" onOpenFull={onOpenFull} testId="feedback-peek">
-      <QueryBoundary query={q} loadingLabel="loading feedback…">
+    <PeekPanel peek={peek} listLabel={t("feedback.title")} noun={t("feedback.title")} onOpenFull={onOpenFull} testId="feedback-peek">
+      <QueryBoundary query={q} loadingLabel={t("feedback.loading")}>
         {(data) => {
           const f = data.feedback;
           return (
             <>
               <PeekHead
-                noun="Feedback"
+                noun={t("feedback.title")}
                 itemKey={f.key}
                 badge={<StatusBadge family="feedbackPhase" value={f.phase} />}
                 title={f.title}

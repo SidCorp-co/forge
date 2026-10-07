@@ -4,6 +4,7 @@ import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";
 import { enumLabel, Input, NativeSelect } from "@/design";
 import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import type { TargetChoice } from "../api";
@@ -13,8 +14,6 @@ import type { FeedbackTargetType } from "../types";
 /** Every target a person may name; a contract version is core's alone (E3). */
 export type PickableTarget = Exclude<FeedbackTargetType, "contract">;
 const PICKABLE_TARGETS = FEEDBACK_TARGET_TYPES.filter((t): t is PickableTarget => t !== "contract");
-
-export const TARGET_HINT = "Pick a requirement, workflow or release by its title, or name a route or tool the project serves, or a screen";
 
 /** The kinds a person picks by title from the project's own list, never by a typed key. */
 const LISTED: ReadonlySet<PickableTarget> = new Set<PickableTarget>(["requirement", "workflow", "release"]);
@@ -53,6 +52,8 @@ export function TargetPicker({
   value: string;
   onValue: (v: string) => void;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const listId = useId();
   const endpoints = useFeedbackEndpoints(projectId, type === "endpoint");
   const served = type === "endpoint" ? (endpoints.data?.endpoints ?? []) : [];
@@ -78,26 +79,26 @@ export function TargetPicker({
     [text, listed, picked?.key, pickedIssue, onValue],
   );
   const unmatched = listed && loaded && text.trim() !== "" && !picked;
-  const noun = enumLabel("feedbackTarget", type).toLowerCase();
+  const noun = enumLabel("feedbackTarget", type, language).toLowerCase();
   return (
     <span className="grid gap-1">
       <span className="flex gap-2">
         <NativeSelect
-          aria-label="Target type"
+          aria-label={t("feedback.target.typeAria")}
           value={type}
           onChange={(e) => onType(e.target.value as PickableTarget)}
-          options={kinds.map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
+          options={kinds.map((k) => ({ value: k, label: enumLabel("feedbackTarget", k, language) }))}
         />
         {type === "issue" ? (
           <span className="min-w-0 flex-1">
-            <IssuePicker projectId={projectId} value={issues} onChange={setIssues} ariaLabel="Target" single />
+            <IssuePicker projectId={projectId} value={issues} onChange={setIssues} ariaLabel={t("feedback.target.aria")} single />
           </span>
         ) : (
           <Input
-            aria-label="Target"
+            aria-label={t("feedback.target.aria")}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={listed ? `Search ${noun}s by title` : undefined}
+            placeholder={listed ? t("feedback.target.search", { noun }) : undefined}
             list={served.length || (listed && choices.length) ? listId : undefined}
           />
         )}
@@ -105,7 +106,7 @@ export function TargetPicker({
           <datalist id={listId} data-testid="feedback-endpoints">
             {served.map((s) => (
               <option key={s.key} value={s.key}>
-                {`${s.type === "openapi" ? "Route" : "Tool"} ${s.element} · ${s.contract} ${s.version}`}
+                {t(s.type === "openapi" ? "feedback.target.route" : "feedback.target.tool", { element: s.element, contract: s.contract, version: s.version })}
               </option>
             ))}
           </datalist>
@@ -120,12 +121,12 @@ export function TargetPicker({
       </span>
       {unmatched ? (
         <span className="text-12 text-danger" data-testid="feedback-target-unmatched" role="alert">
-          {`No ${noun} of this project is titled or keyed “${text.trim()}”: pick one from the list.`}
+          {t("feedback.target.unmatched", { noun, text: text.trim() })}
         </span>
       ) : null}
       {servesNone ? (
         <span className="text-12 text-muted" data-testid="feedback-endpoints-none">
-          This project publishes no API routes or tools, so there is none to name here. File it as a Screen instead.
+          {t("feedback.target.servesNone")}
         </span>
       ) : null}
     </span>

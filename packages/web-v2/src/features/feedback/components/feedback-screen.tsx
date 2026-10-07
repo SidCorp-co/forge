@@ -5,7 +5,8 @@
 // whose turn it is or by what each item is about. Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
-import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES } from "@forge/contracts/feedback";
+import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
+import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -37,7 +38,8 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
-import { formatAge, formatStamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
@@ -51,16 +53,18 @@ import { FeedbackPeek } from "./feedback-peek";
 const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
 
 function Funnel({ rows }: { rows: FeedbackSummary[] }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const n = (p: string) => rows.filter((r) => r.phase === p).length;
   const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
   return (
     <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
       <p className="text-12 text-muted">
-        <span className="font-semibold text-fg">Triage funnel</span> Every item, counted once
+        <span className="font-semibold text-fg">{t("feedback.funnel.title")}</span> {t("feedback.funnel.hint")}
       </p>
       <div className="grid grid-cols-5 gap-3">
         {FUNNEL.map((p) => {
-          const r = statusReading("feedbackPhase", p);
+          const r = statusReading("feedbackPhase", p, language);
           return (
             <div key={p} className="grid gap-1">
               <span
@@ -74,24 +78,42 @@ function Funnel({ rows }: { rows: FeedbackSummary[] }) {
         })}
       </div>
       <p className="text-12 text-muted">
-        Off the funnel: Declined {n("declined")} · Reopened {n("reopened")}
+        {t("feedback.funnel.off", {
+          declined: statusReading("feedbackPhase", "declined", language).label,
+          nDeclined: n("declined"),
+          reopened: statusReading("feedbackPhase", "reopened", language).label,
+          nReopened: n("reopened"),
+        })}
       </p>
     </div>
   );
 }
 
-const aboutLine = (r: FeedbackSummary) =>
-  r.target.type === "screen" ? `Screen “${r.target.key}”` : `${enumLabel("feedbackTarget", r.target.type)} ${r.target.key}`;
+const aboutLine = (r: FeedbackSummary, t: Copy, language: string) =>
+  r.target.type === "screen"
+    ? t("feedback.target.screen", { label: enumLabel("feedbackTarget", "screen", language), key: r.target.key })
+    : `${enumLabel("feedbackTarget", r.target.type, language)} ${r.target.key}`;
 
-const GROUP_MODES = [
-  { value: "attention" as const, label: "Attention", title: "Grouped by whose turn it is" },
-  { value: "subject" as const, label: "Subject", title: "Grouped by what each item is about" },
+type Grouping = "attention" | "subject";
+
+/** The two groupings, named in the interface language. */
+const groupModes = (t: Copy) => [
+  { value: "attention" as const, label: t("feedback.group.attention"), title: t("feedback.group.attentionTitle") },
+  { value: "subject" as const, label: t("feedback.group.subject"), title: t("feedback.group.subjectTitle") },
 ];
-type Grouping = (typeof GROUP_MODES)[number]["value"];
 
-function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSummary>[] {
+/** Core's attention groups with their label and hint in the interface language. */
+const attentionLabels = (label: ReturnType<typeof useLabel>): StandingGroupLabels<FeedbackAttentionGroup> =>
+  Object.fromEntries(
+    FEEDBACK_ATTENTION_GROUPS.map((g) => [
+      g,
+      { ...FEEDBACK_ATTENTION_LABELS[g], label: label("feedbackAttention", g), hint: FEEDBACK_ATTENTION_LABELS[g].hint ? label("feedbackAttentionHint", g) : FEEDBACK_ATTENTION_LABELS[g].hint },
+    ]),
+  ) as StandingGroupLabels<FeedbackAttentionGroup>;
+
+function groupsOf(rows: FeedbackSummary[], by: Grouping, label: ReturnType<typeof useLabel>, t: Copy, language: string): ListGroup<FeedbackSummary>[] {
   if (by === "attention") {
-    return standingGroups(rows, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS);
+    return standingGroups(rows, FEEDBACK_ATTENTION_GROUPS, attentionLabels(label));
   }
   const byTarget = new Map<string, FeedbackSummary[]>();
   for (const r of rows) {
@@ -102,36 +124,49 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSumm
     const you = list.filter(needsViewer).length;
     return {
       id: `subject:${id}`,
-      label: aboutLine(list[0] as FeedbackSummary),
+      label: aboutLine(list[0] as FeedbackSummary, t, language),
       tone: you ? ("you" as const) : null,
-      summary: you ? [{ label: "Needs you", count: you, tone: "you" as const }] : undefined,
+      summary: you ? [{ label: label("feedbackAttention", "needs_you"), count: you, tone: "you" as const }] : undefined,
       rows: list,
     };
   });
 }
 
 const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: ReturnType<typeof useTimeFormat>) =>
   (r: FeedbackSummary): ListRowView => {
+    const language = clock.lang;
+    const reporter = r.reporter.name ?? t("feedback.unknownReporter");
     return {
-    key: r.key,
-    href: feedbackHref(slug, r.key),
-    title: r.title,
-    facts: [...(r.snoozed ? [`Snoozed until ${formatStamp(r.snoozed.until)}`] : []), enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
-    eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
-    state: <StatusBadge family="feedbackPhase" value={r.phase} />,
-    waitingOn: <WaitingOn w={r.waitingOn} />,
-    owner: <ActorChip name={r.reporter.name ?? "Unknown reporter"} kind={r.reporter.agency} size={20} />,
-    age: { text: formatAge(r.updatedAt), title: `Sent ${formatStamp(r.createdAt)} · last changed ${formatStamp(r.updatedAt)}` },
-    dim: r.attentionGroup === "done",
+      key: r.key,
+      href: feedbackHref(slug, r.key),
+      title: r.title,
+      facts: [
+        ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
+        enumLabel("feedbackKind", r.kind, language),
+        t("feedback.row.about", { about: aboutLine(r, t, language) }),
+        reporter,
+        t("feedback.row.severity", { severity: statusReading("severity", r.severity, language).label }),
+      ],
+      eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
+      state: <StatusBadge family="feedbackPhase" value={r.phase} />,
+      waitingOn: <WaitingOn w={r.waitingOn} />,
+      owner: <ActorChip name={reporter} kind={r.reporter.agency} size={20} />,
+      age: { text: time.age(r.updatedAt), title: t("feedback.row.ageTitle", { sent: time.dateTime(r.createdAt), changed: time.dateTime(r.updatedAt) }) },
+      dim: r.attentionGroup === "done",
     };
   };
 
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
+  const language = useInterfaceLanguage();
+  const modes = useMemo(() => groupModes(t), [t]);
   const q = useFeedbackList(projectId);
   const router = useRouter();
   const [params, setParams] = useUrlParams();
-  const [grouping, setGrouping] = useViewMode(GROUP_MODES);
+  const [grouping, setGrouping] = useViewMode(modes);
   const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
   const fold = useGroupFold("web-v2:feedback-fold");
@@ -147,13 +182,13 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => etaOfFeedback(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {
-    const plain = groupsOf(rows, grouping);
+    const plain = groupsOf(rows, grouping, label, t, language);
     return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, grouping, etaSorted, etaOf]);
+  }, [rows, grouping, etaSorted, etaOf, label, t, language]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, etaOf, clock), [slug, etaOf, clock]);
+  const row = useMemo(() => rowOf(slug, etaOf, clock, t, time), [slug, etaOf, clock, t, time]);
 
   const openFull = useCallback(
     (key: string) => {
@@ -166,16 +201,16 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
 
   const title = (
     <>
-      <PageTitle after={<ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="header" />}>Feedback</PageTitle>
+      <PageTitle after={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}>{t("feedback.title")}</PageTitle>
       <TopBarActions>
         <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
-          Feedback
+          {t("feedback.title")}
         </Button>
       </TopBarActions>
     </>
   );
   return (
-    <QueryBoundary query={q} loadingLabel="loading feedback…" title={title} height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("feedback.loading")} title={title} height="60vh" retry="always">
       {() => (
         <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
           {title}
@@ -191,25 +226,25 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-                <ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="toolbar" />
-                <ListSearch noun="feedback" value={text} onChange={(q) => setParams({ q: q || null })} />
+                <ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="toolbar" />
+                <ListSearch noun={t("feedback.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
               </div>
               {all.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState title="No feedback yet" message="Feedback is what a BA, a tester or a user says about a requirement, an issue, a release, a workflow or a screen." />
+                  <EmptyState title={t("feedback.empty.title")} message={t("feedback.empty.message")} />
                 </div>
               ) : (
                 <>
                   <Funnel rows={all} />
                   <GroupedList
-                    ariaLabel="Feedback"
+                    ariaLabel={t("feedback.title")}
                     groups={groups}
                     fold={fold}
                     row={row}
                     eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                     selected={peek.open}
                     onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                    empty="Nothing matches this search."
+                    empty={t("feedback.noMatch")}
                   />
                 </>
               )}

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Icon, useDebounced } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { type IssuePick, pickIssues } from "./api";
 
 export type { IssuePick } from "./api";
@@ -42,7 +42,7 @@ export function IssuePicker({
   single?: boolean;
   id?: string;
 }) {
-  const t = productCopy();
+  const t = useCopy();
   const [text, setText] = useState("");
   const { q, query } = useIssuePick(projectId, text);
   const found = q.length > 0 ? (query.data ?? []) : [];
