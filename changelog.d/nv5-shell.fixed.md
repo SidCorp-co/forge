@@ -1,1 +1,0 @@
-**The workspace shell reads in the interface language you chose.** Navigation, command palette, Ask Agent, notifications, account preferences, shared badges and release gates show Vietnamese; the feedback rail's two forecast rows read distinctly, and step-bar labels wrap instead of truncating.
