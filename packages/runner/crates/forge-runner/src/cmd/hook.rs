@@ -50,19 +50,24 @@ pub async fn run(args: Args) {
     let Ok(token) = session_tokens::token_from_env() else {
         return;
     };
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "connects to the daemon's socket beside the config"
-    )]
-    let Ok(cfg_path) = Config::path() else {
+    let Some(sock) = daemon_socket() else {
         return;
     };
-    let sock = cfg_path.with_file_name("control.sock");
     if !sock.exists() {
         return;
     }
     let names = named_in(&payload);
     let _ = control::request_agent_event(&sock, &token, &args.event, &names).await;
+}
+
+/// The daemon's socket beside the config, outside `run`, whose body admits no attribute a panic
+/// check could mistake for an `expect(`.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "connects to the daemon's socket beside the config"
+)]
+fn daemon_socket() -> Option<std::path::PathBuf> {
+    Some(Config::path().ok()?.with_file_name("control.sock"))
 }
 
 #[cfg(test)]
