@@ -15,12 +15,10 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
   Button,
-  ErrorState,
   GroupedList,
   type ListGroup,
   ListSearch,
   PageTitle,
-  ProjectLoader,
   rememberListOrigin,
   standingGroups,
   Tabs,
@@ -30,9 +28,9 @@ import {
   useUrlParams,
   useUrlTab,
   visibleRows,
+  QueryBoundary,
 } from "@/design";
 import { useCreateSchedule } from "@/features/automation/schedule-hooks";
-import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
 import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
@@ -100,106 +98,95 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle hint="What fires, what each fire produced, and what needs a person.">Automation</PageTitle>;
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ProjectLoader label="loading automation…" />
-      </div>
-    );
-  }
-  if (q.isError || !d) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
-
-  const tabs = [
-    { value: "schedules", label: "Schedules", count: d.schedules.length },
-    { value: "fires", label: "Fires", count: d.firesTotal },
-    { value: "reports", label: "Reports", count: d.reportCounts.new },
-  ];
-  const row = (r: ScheduleStanding | FireStanding | ReportStanding) =>
-    tab === "schedules"
-      ? scheduleRow(hrefOf.schedules)(r as ScheduleStanding)
-      : tab === "fires"
-        ? fireRow(hrefOf.fires)(r as FireStanding)
-        : reportRow(hrefOf.reports)(r as ReportStanding);
-  const open = peek.open ? groups.flatMap((g) => g.rows).find((r) => r.id === peek.open) : undefined;
-  const scheduleOf = (id: string) => d.schedules.find((s) => s.id === id);
-
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="automation-screen">
-      {title}
-      <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="automation-tabs">
-        <Tabs tabs={tabs} value={tab} onChange={(t) => setTab(t as AutomationTab)} />
-      </div>
-      <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <ListSearch noun={NOUN[tab]} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
-            {tab === "schedules" && access.canManage && !creating ? (
-              <Button type="button" variant="primary" size="sm" icon="plus" className="ml-auto" onClick={() => setCreating(true)} data-testid="schedule-new">
-                New schedule
-              </Button>
-            ) : null}
-            {tab === "fires" && d.firesHasMore ? (
-              <span className="text-12-5 text-subtle">
-                The newest {d.fires.length} of {d.firesTotal}
-              </span>
-            ) : null}
-          </div>
-          {tab === "schedules" && creating ? (
-            <div className="border-b border-line-subtle px-5 py-4 max-md:px-3">
-              <ScheduleForm
-                submitLabel="Create schedule"
-                pending={create.isPending}
-                error={create.error}
-                testId="schedule-create"
-                onCancel={() => setCreating(false)}
-                onSubmit={(input) => create.mutate(input, { onSuccess: () => setCreating(false) })}
-              />
+    <QueryBoundary query={q} loadingLabel="loading automation…" title={title} height="60vh" retry="always">
+      {(d) => {
+        const tabs = [
+          { value: "schedules", label: "Schedules", count: d.schedules.length },
+          { value: "fires", label: "Fires", count: d.firesTotal },
+          { value: "reports", label: "Reports", count: d.reportCounts.new },
+        ];
+        const row = (r: ScheduleStanding | FireStanding | ReportStanding) =>
+          tab === "schedules"
+            ? scheduleRow(hrefOf.schedules)(r as ScheduleStanding)
+            : tab === "fires"
+              ? fireRow(hrefOf.fires)(r as FireStanding)
+              : reportRow(hrefOf.reports)(r as ReportStanding);
+        const open = peek.open ? groups.flatMap((g) => g.rows).find((r) => r.id === peek.open) : undefined;
+        const scheduleOf = (id: string) => d.schedules.find((s) => s.id === id);
+
+        return (
+          <div className="grid min-h-full content-start bg-app" data-testid="automation-screen">
+            {title}
+            <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="automation-tabs">
+              <Tabs tabs={tabs} value={tab} onChange={(t) => setTab(t as AutomationTab)} />
             </div>
-          ) : null}
-          <GroupedList
-            ariaLabel={`Automation ${NOUN[tab]}`}
-            groups={groups}
-            fold={fold}
-            row={row}
-            selected={peek.open}
-            onPeek={(k) => peek.set(k === peek.open ? null : k)}
-            empty={text ? "Nothing matches this search." : `No ${NOUN[tab]} yet.`}
-            columns={COLUMNS[tab]}
-          />
-        </div>
-        {open && tab === "schedules" ? (
-          <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
-        ) : null}
-        {open && tab === "fires" ? (
-          <FirePeek
-            key={open.id}
-            f={open as FireStanding}
-            schedule={scheduleOf((open as FireStanding).scheduleId)}
-            slug={slug}
-            peek={peek}
-            onOpenFull={() => openFull(open.id)}
-          />
-        ) : null}
-        {open && tab === "reports" ? (
-          <ReportPeek
-            key={open.id}
-            r={open as ReportStanding}
-            projectId={projectId}
-            slug={slug}
-            canWrite={access.canWrite}
-            peek={peek}
-            onOpenFull={() => openFull(open.id)}
-          />
-        ) : null}
-      </div>
-    </div>
+            <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+                  <ListSearch noun={NOUN[tab]} value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
+                  {tab === "schedules" && access.canManage && !creating ? (
+                    <Button type="button" variant="primary" size="sm" icon="plus" className="ml-auto" onClick={() => setCreating(true)} data-testid="schedule-new">
+                      New schedule
+                    </Button>
+                  ) : null}
+                  {tab === "fires" && d.firesHasMore ? (
+                    <span className="text-12-5 text-subtle">
+                      The newest {d.fires.length} of {d.firesTotal}
+                    </span>
+                  ) : null}
+                </div>
+                {tab === "schedules" && creating ? (
+                  <div className="border-b border-line-subtle px-5 py-4 max-md:px-3">
+                    <ScheduleForm
+                      submitLabel="Create schedule"
+                      pending={create.isPending}
+                      error={create.error}
+                      testId="schedule-create"
+                      onCancel={() => setCreating(false)}
+                      onSubmit={(input) => create.mutate(input, { onSuccess: () => setCreating(false) })}
+                    />
+                  </div>
+                ) : null}
+                <GroupedList
+                  ariaLabel={`Automation ${NOUN[tab]}`}
+                  groups={groups}
+                  fold={fold}
+                  row={row}
+                  selected={peek.open}
+                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  empty={text ? "Nothing matches this search." : `No ${NOUN[tab]} yet.`}
+                  columns={COLUMNS[tab]}
+                />
+              </div>
+              {open && tab === "schedules" ? (
+                <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
+              ) : null}
+              {open && tab === "fires" ? (
+                <FirePeek
+                  key={open.id}
+                  f={open as FireStanding}
+                  schedule={scheduleOf((open as FireStanding).scheduleId)}
+                  slug={slug}
+                  peek={peek}
+                  onOpenFull={() => openFull(open.id)}
+                />
+              ) : null}
+              {open && tab === "reports" ? (
+                <ReportPeek
+                  key={open.id}
+                  r={open as ReportStanding}
+                  projectId={projectId}
+                  slug={slug}
+                  canWrite={access.canWrite}
+                  peek={peek}
+                  onOpenFull={() => openFull(open.id)}
+                />
+              ) : null}
+            </div>
+          </div>
+        );
+      }}
+    </QueryBoundary>
   );
 }

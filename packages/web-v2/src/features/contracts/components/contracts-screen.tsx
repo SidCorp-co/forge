@@ -5,14 +5,12 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useMemo } from "react";
 import {
   EmptyState,
-  ErrorState,
   GroupedList,
   type ListGroup,
   type ListRowView,
   ListSearch,
   EnumBadge,
   PageTitle,
-  ProjectLoader,
   StatusBadge,
   rememberListOrigin,
   useGroupFold,
@@ -23,8 +21,8 @@ import {
   ViewModeSwitcher,
   visibleRows,
   WaitingOn,
+  QueryBoundary,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useContractStanding } from "../hooks";
@@ -113,58 +111,44 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle after={<ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="header" />}>Contracts</PageTitle>;
-
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ProjectLoader label="loading contracts…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
-
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="contracts-screen">
-      {title}
-      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
-            <ListSearch noun="contracts" value={text} onChange={(v) => setParams({ q: v || null })} />
-            <span className="ml-auto text-12 text-subtle" title="Read from the interface document, the consumer links, the recorded versions and the issues that wait on a version">
-              {q.data.declared ? "Interface document declared" : "No interface document: this project provides nothing"}
-            </span>
-          </div>
-          {all.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState
-                title="No contract yet"
-                message="A contract appears here once the interface document publishes one, the project consumes one in an ecosystem, or an issue waits on a version of one."
-              />
+    <QueryBoundary query={q} loadingLabel="loading contracts…" title={title} height="60vh" retry="always">
+      {(data) => (
+        <div className="grid min-h-full content-start bg-app" data-testid="contracts-screen">
+          {title}
+          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+                <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
+                <ListSearch noun="contracts" value={text} onChange={(v) => setParams({ q: v || null })} />
+                <span className="ml-auto text-12 text-subtle" title="Read from the interface document, the consumer links, the recorded versions and the issues that wait on a version">
+                  {data.declared ? "Interface document declared" : "No interface document: this project provides nothing"}
+                </span>
+              </div>
+              {all.length === 0 ? (
+                <div className="px-5 py-10">
+                  <EmptyState
+                    title="No contract yet"
+                    message="A contract appears here once the interface document publishes one, the project consumes one in an ecosystem, or an issue waits on a version of one."
+                  />
+                </div>
+              ) : (
+                <GroupedList
+                  ariaLabel="Contracts"
+                  groups={groups}
+                  fold={fold}
+                  row={row}
+                  selected={peek.open}
+                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  empty="Nothing matches this search."
+                  columns={COLUMNS}
+                />
+              )}
             </div>
-          ) : (
-            <GroupedList
-              ariaLabel="Contracts"
-              groups={groups}
-              fold={fold}
-              row={row}
-              selected={peek.open}
-              onPeek={(k) => peek.set(k === peek.open ? null : k)}
-              empty="Nothing matches this search."
-              columns={COLUMNS}
-            />
-          )}
+            {peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
+          </div>
         </div>
-        {peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
-      </div>
-    </div>
+      )}
+    </QueryBoundary>
   );
 }
