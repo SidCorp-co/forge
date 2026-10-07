@@ -306,7 +306,7 @@ fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
     std::fs::write(
         &tmux,
         format!(
-            "#!/bin/sh\necho \"$@\" >> '{}'\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            "#!/bin/sh\necho \"$@\" >> '{}'\nprintf '{}:forge-master-alpha\\n'\n",
             tmux_log.display(),
             now_secs() - 3600
         ),
@@ -1119,7 +1119,7 @@ fn a_ctrl_c_sent_while_a_frame_is_gathered_ends_the_view() {
     std::fs::write(
         &tmux,
         format!(
-            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf '{}:forge-master-alpha\\n'\n",
             now_secs() - 3600,
             c = count.display()
         ),
@@ -1273,7 +1273,7 @@ fn the_live_view_says_it_is_reading_before_its_first_frame() {
     std::fs::write(
         b.root.join("bin/tmux"),
         format!(
-            "#!/bin/sh\nsleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            "#!/bin/sh\nsleep 3\nprintf '{}:forge-master-alpha\\n'\n",
             now_secs() - 3600
         ),
     )
@@ -1762,7 +1762,7 @@ fn slow_after_the_first_gather(b: &PlantedBox) -> PathBuf {
     std::fs::write(
         b.root.join("bin/tmux"),
         format!(
-            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf '{}:forge-master-alpha\\n'\n",
             now_secs() - 3600,
             c = count.display()
         ),

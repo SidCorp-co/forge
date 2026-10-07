@@ -23,13 +23,18 @@ pub fn list() -> Read<Sessions> {
         Some(s) => format!("tmux list-sessions on {}", s.display()),
         None => "tmux list-sessions on the default socket".to_string(),
     };
+    asked(cmd, &source)
+}
+
+/// `list-sessions` asked of the tmux `cmd` names, its socket already given.
+fn asked(mut cmd: Command, source: &str) -> Read<Sessions> {
     let out = cmd
-        .args(["list-sessions", "-F", "#{session_name}\t#{session_created}"])
+        .args(["list-sessions", "-F", "#{session_created}:#{session_name}"])
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| Unreadable::new(&source, format!("tmux could not be run ({e})")))?;
+        .map_err(|e| Unreadable::new(source, format!("tmux could not be run ({e})")))?;
     parse(
-        &source,
+        source,
         out.status.success(),
         &String::from_utf8_lossy(&out.stdout),
         &String::from_utf8_lossy(&out.stderr),
@@ -51,9 +56,13 @@ pub fn parse(source: &str, ok: bool, stdout: &str, stderr: &str) -> Read<Session
         }
         return Err(Unreadable::new(source, stderr.trim()));
     }
+    // The creation time first and a colon after it: a tmux client with no
+    // UTF-8 locale writes a tab in a format as `_`, and a colon it passes
+    // through under any locale, as `daemon::terminal` reads a session too.
+    // The time is digits, so the first colon ends it whatever the name holds.
     let mut out = Sessions::new();
     for line in stdout.lines() {
-        let Some((name, created)) = line.split_once('\t') else {
+        let Some((created, name)) = line.split_once(':') else {
             return Err(Unreadable::new(
                 source,
                 format!("tmux answered a line this view cannot read: {line:?}"),
@@ -77,7 +86,7 @@ mod tests {
         let got = parse(
             "t",
             true,
-            "forge-master-a\t1790000000\nforge-job-j\t1790000100\n",
+            "1790000000:forge-master-a\n1790000100:forge-job-j\n",
             "",
         )
         .unwrap();
@@ -117,5 +126,50 @@ mod tests {
         .unwrap_err();
         assert!(e.reason.contains("Permission denied"), "{e}");
         assert!(parse("t", true, "garbage\n", "").is_err());
+    }
+    /// Judge iss-1341+1375-cd92ac72, finding 2: a tmux client with no UTF-8
+    /// locale writes a control character in a format as `_`, so a tab
+    /// between the fields reached this view as `_` and every master pane read
+    /// UNREADABLE. Asked of a real server, under no LANG and under LC_ALL=C.
+    #[test]
+    fn sessions_are_read_under_any_locale() {
+        if !cfg!(unix) || Command::new("tmux").arg("-V").output().is_err() {
+            assert!(
+                !std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty()),
+                "tmux is not installed here, and FORGE_TEST_REQUIRE_TMUX promised this run one"
+            );
+            eprintln!("skipped: tmux is not installed here");
+            return;
+        }
+        let scratch = forge_runner_core::test_scratch::Scratch::short("tp");
+        let dir = scratch.path();
+        let sock = dir.join("t.sock");
+        let tmux = |locale: Option<&str>| {
+            let mut c = Command::new("tmux");
+            c.env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                .env("HOME", dir)
+                .arg("-S")
+                .arg(&sock);
+            if let Some(l) = locale {
+                c.env("LC_ALL", l);
+            }
+            c
+        };
+        let started = tmux(None)
+            .args(["new-session", "-d", "-s", "forge-master-locale", "sleep 60"])
+            .status()
+            .unwrap();
+        let read = [None, Some("C")].map(|l| asked(tmux(l), "t"));
+        let _ = tmux(None).arg("kill-server").status();
+        assert!(started.success(), "a server of the test's own");
+        for (locale, got) in ["no LANG", "LC_ALL=C"].iter().zip(read) {
+            let got = got.unwrap_or_else(|e| panic!("{locale}: {e}"));
+            assert!(
+                got.get("forge-master-locale")
+                    .is_some_and(|t| *t > 1_600_000_000),
+                "{locale}: {got:?}"
+            );
+        }
     }
 }
