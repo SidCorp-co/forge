@@ -56,6 +56,7 @@ describe("What changes", () => {
     expect(within(deployed).getAllByTestId("release-surface").map((r) => r.getAttribute("data-surface"))).toEqual(["ui", "data"]);
     const apart = screen.getByTestId("release-ships-nothing");
     expect(within(apart).getByTestId("release-surface").getAttribute("data-surface")).toBe("design");
+    fireEvent.click(screen.getByTestId("release-unclassified-toggle"));
     expect(screen.getByTestId("release-unclassified").textContent).toContain("ISS-4");
     expect(screen.getByTestId("release-box-read").textContent).toContain("ISS-1");
   });

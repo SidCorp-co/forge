@@ -14,6 +14,7 @@ import {
   FORECAST_WINDOW_DAYS,
   type Forecast,
   type ForecastSpan,
+  type ReleaseHolder,
   type ReleaseLeg,
   type ReleaseMode,
 } from '@forge/contracts/forecast';
@@ -25,6 +26,8 @@ export interface ReleaseFacts {
   mode: ReleaseMode;
   /** The number the next cut takes, named in the act a person owes. */
   nextVersion: string | null;
+  /** Who holds `releases.approve`, humans first; empty when the mode needs no approval or none could be resolved. */
+  holders?: readonly ReleaseHolder[];
   /** Landed→released minutes of the project's issues shipped in the window. */
   lags: readonly number[];
   floor?: number;
@@ -36,6 +39,20 @@ export interface Shipped {
 }
 
 const ascending = (values: readonly number[]) => [...values].sort((a, b) => a - b);
+
+/** One or two holders by name, more as a count: a person a reader can go and ask, never a role alone. */
+export function holdersPhrase(
+  holders: readonly ReleaseHolder[],
+  role: string,
+  plural: string,
+): string {
+  const people = [...holders].sort(
+    (a, b) => Number(a.kind === 'agent') - Number(b.kind === 'agent'),
+  );
+  if (people.length === 0) return role;
+  if (people.length <= 2) return people.map((h) => h.name).join(' or ');
+  return `${people.length} ${plural}`;
+}
 
 export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
   const floor = r.floor ?? FORECAST_HISTORY_FLOOR;
@@ -59,10 +76,11 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
       return {
         kind: 'person',
         mode: 'approval',
-        who: 'A release approver',
+        who: holdersPhrase(r.holders ?? [], 'A release approver', 'release approvers'),
         act: `cut ${version}, then approve it`,
-        reason:
-          'this project requires a holder of releases.approve to approve each release, so no date is forecast for it',
+        reason: `this project requires a holder of releases.approve to approve each release${(r.holders ?? []).length > 0 ? ` (${(r.holders ?? []).map((h) => h.name).join(', ')})` : ''}, so no date is forecast for it`,
+        version: r.nextVersion,
+        holders: [...(r.holders ?? [])],
       };
     case 'manual':
       return {
@@ -72,6 +90,8 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
         act: `cut ${version}`,
         reason:
           "this project's production does not deploy on land, so an admin cuts each release and no date is forecast for it",
+        version: r.nextVersion,
+        holders: [],
       };
     case 'none':
       return {
@@ -81,6 +101,8 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
         act: 'release it by hand and close it',
         reason:
           'this project declares no production environment, so no release carries a landed change',
+        version: null,
+        holders: [],
       };
   }
 }

@@ -75,7 +75,7 @@ describe("the item's line as its reporter means done", () => {
       delivery: {
         ...stamp,
         landing: { ...stamp, kind: "landed" as const, landedAt: stamp.asOf },
-        release: { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.4.0", reason: "an admin cuts each release" },
+        release: { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.4.0", reason: "an admin cuts each release", version: "0.4.0", holders: [] },
         inHands: null,
         shipped: null,
       },

@@ -76,21 +76,40 @@ function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
   );
 }
 
+/** One line per reason with a count and the issues behind it on a toggle, never a row per issue. */
 function Unclassified({ items, slug }: { items: ReleaseChanges["unclassified"]; slug?: string }) {
+  const byWhy = new Map<string, ReleaseChanges["unclassified"]>();
+  for (const u of items) byWhy.set(u.why, [...(byWhy.get(u.why) ?? []), u]);
   return (
-    <ul className="border-t border-line-subtle">
-      {items.map((u) => (
-        <li key={u.key} className="grid gap-0.5 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
-          <span className="flex flex-wrap items-baseline gap-x-2">
-            <IssueKeys keys={[u.key]} slug={slug} />
-            <span className="min-w-0 flex-1 text-12-5 text-muted">{u.why}</span>
-          </span>
-          {u.paths.length > 0 ? (
-            <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span>
-          ) : null}
-        </li>
+    <ul className="border-t border-line-subtle" data-testid="release-unclassified-list">
+      {[...byWhy.entries()].map(([why, group]) => (
+        <UnclassifiedReason key={why} why={why} group={group} slug={slug} />
       ))}
     </ul>
+  );
+}
+
+function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseChanges["unclassified"]; slug?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="grid gap-1 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
+          {plural(group.length, "issue")}
+        </DisclosureToggle>
+        <span className="min-w-0 flex-1 text-12-5 text-muted">{why}</span>
+      </span>
+      {open ? (
+        <ul className="grid gap-1 pl-4">
+          {group.map((u) => (
+            <li key={u.key} className="grid gap-0.5">
+              <IssueKeys keys={[u.key]} slug={slug} />
+              {u.paths.length > 0 ? <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 

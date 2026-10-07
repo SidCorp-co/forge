@@ -2836,6 +2836,13 @@
       "when": 1820793600000,
       "tag": "0438_a_tour_run_leaves_its_events",
       "breakpoints": true
+    },
+    {
+      "idx": 440,
+      "version": "7",
+      "when": 1820966400000,
+      "tag": "0440_a_shipped_release_tells_the_reporters_it_closed",
+      "breakpoints": true
     }
   ]
 }

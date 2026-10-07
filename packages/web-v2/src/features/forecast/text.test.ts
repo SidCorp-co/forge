@@ -74,7 +74,7 @@ const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(
 const lag = { kind: "automatic" as const, basis: { n: 14, floor: 10, windowDays: 60, lagP50Minutes: 30, lagP85Minutes: 90 } };
 const span = (lo: number, hi: number) => ({ p50At: at(lo), p85At: at(hi), p50Minutes: lo, p85Minutes: hi });
 const delivery = (over: Partial<DeliveryForecast>): DeliveryForecast => ({ ...stamp, landing: range, release: lag, inHands: span(150, 390), shipped: null, ...over });
-const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release" };
+const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
 
 describe("delivery text: in people's hands, not merged", () => {
   it("ranges to people's hands where production releases on its own, labelled a forecast", () => {

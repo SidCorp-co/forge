@@ -22,7 +22,8 @@ import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
 import { TourHint } from "@/features/tours/components/tour-hint";
-import { WhatChanges } from "./release-changes";
+import { changesSentence, WhatChanges } from "./release-changes";
+import { WhatUsersGet } from "./release-users-get";
 import { ReleaseTrain } from "./release-train";
 
 export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
@@ -65,13 +66,30 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
   );
 }
 
+/** How the release is built, for the engineers: collapsed, so a reader of the release reads what users get first. */
+function TechnicalDetail({ r, slug }: { r: ReleaseDetail; slug: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-label="Technical detail" data-testid="release-technical">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
+        Technical detail
+      </DisclosureToggle>
+      <span className="ml-2 text-12-5 text-muted">{changesSentence(r.changes)}</span>
+      {open ? (
+        <div className="mt-3">
+          <TourHint tourId="release-what-changes" />
+          <WhatChanges changes={r.changes} slug={slug} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
-      <div>
-        <TourHint tourId="release-what-changes" />
-        <WhatChanges changes={r.changes} slug={slug} />
-      </div>
+      <WhatUsersGet r={r} slug={slug} />
+      <TechnicalDetail r={r} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">
           <ViewHeading hint={r.state === "draft" ? "Each reason holds the cut until it is answered" : undefined}>

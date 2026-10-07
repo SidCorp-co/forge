@@ -21,7 +21,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
-import { useFeedbackForecasts } from "@/features/forecast/hooks";
+import { useEtaClock, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
@@ -118,6 +118,7 @@ export function FeedbackPage({
 }) {
   const q = useFeedbackItem(projectId, fbKey);
   const forecasts = useFeedbackForecasts(projectId);
+  const clock = useEtaClock(projectId);
   const mockups = useMockups(projectId, { type: "feedback", key: fbKey });
   return (
     <QueryBoundary query={q} loadingLabel="loading feedback…">
@@ -134,7 +135,7 @@ export function FeedbackPage({
             dataKey={f.key}
             rail={
               <FactsRail>
-                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} />
+                <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </FactsRail>
             }
           >

@@ -28,6 +28,7 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
   it('is declared on the outbox', () => {
     expect(OUTBOX_CONSUMERS['feedback.verifyAsked']).toContain('notify-feedback');
     expect(OUTBOX_CONSUMERS['feedback.verifySettled']).toContain('notify-feedback');
+    expect(OUTBOX_CONSUMERS['release.shipped']).toContain('notify-feedback');
   });
 
   it("sends the ask to the reporter's bell and nobody else", async () => {

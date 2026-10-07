@@ -145,6 +145,13 @@ interface ReleaseLagBasis {
 	lagP85Minutes: number;
 }
 
+/** A person who owes the release act, named where core could resolve who holds the permission. */
+export interface ReleaseHolder {
+	id: string;
+	name: string;
+	kind: "human" | "agent";
+}
+
 /** What follows a landing before the change is in people's hands. */
 export type ReleaseLeg =
 	| { kind: "automatic"; basis: ReleaseLagBasis }
@@ -152,9 +159,14 @@ export type ReleaseLeg =
 	| {
 			kind: "person";
 			mode: Exclude<ReleaseMode, "automatic">;
+			/** The holder named when one or two hold it, the count when more, the role when none could be resolved. */
 			who: string;
 			act: string;
 			reason: string;
+			/** The version the act cuts, the page its line links to; null where no cut is owed (`none`). */
+			version: string | null;
+			/** Everyone holding the permission the act takes; empty where the mode names a role only. */
+			holders: ReleaseHolder[];
 	  };
 
 /** A p50–p85 span from now, with no basis of its own: the parts it adds carry theirs. */

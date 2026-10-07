@@ -337,6 +337,8 @@ export interface ReleaseIssueCriteria {
 
 export interface ReleaseNoteEntry {
 	key: string;
+	/** The issue's title, so a reader names the change by it and not by the bare key. */
+	title: string;
 	userFacing: string;
 	technical: string | null;
 }
