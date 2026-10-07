@@ -1,1 +1,1 @@
-**A failed query no longer leaks its bound values into logs.** The logger, error bodies, Sentry, the outbox and the assistant's tool errors redact a failed query's params, and the database's quoted values, against the error they came from (ISS-1383).
+**Failed-query values stay out of logs, and the device router no longer guards every /api route.** Logs, error bodies, Sentry, the outbox and tool errors redact bound params (ISS-1383); each device-owner route carries its own guard (ISS-1373).

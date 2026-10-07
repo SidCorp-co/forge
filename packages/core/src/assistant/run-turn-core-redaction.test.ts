@@ -1,6 +1,6 @@
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
-import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
+import type { ChatProvider, ChatStreamEvent } from '../integrations/llm/index.js';
 import { runTurnEvents } from './run-turn-core.js';
 import { thrownMessage } from './tools/mcp-adapter.js';
 

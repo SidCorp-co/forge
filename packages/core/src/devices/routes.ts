@@ -55,32 +55,41 @@ async function ownedDevice(id: string, userId: string) {
   return device;
 }
 
+/**
+ * Mounted at `/api`, so each route carries its own guard: a `use('*')` here would run ahead of
+ * every `/api` route mounted after this router, whatever that route admits.
+ */
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
-deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const ownerDevicesQuery = z.object({ orgId: z.uuid().optional() });
 
-deviceOwnerRoutes.get('/me/devices', zValidator('query', ownerDevicesQuery), async (c) => {
-  const userId = c.get('userId');
-  // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
-  // sits on top of `devices.ownerId`, so the answer is always a subset of the
-  // caller's own, and an unassigned box has no runner row and so falls under no
-  // org scope at all. The organisation's devices are a different population,
-  // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
-  const { orgId } = c.req.valid('query');
-  if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+deviceOwnerRoutes.get(
+  '/me/devices',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('query', ownerDevicesQuery),
+  async (c) => {
+    const userId = c.get('userId');
+    // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
+    // sits on top of `devices.ownerId`, so the answer is always a subset of the
+    // caller's own, and an unassigned box has no runner row and so falls under no
+    // org scope at all. The organisation's devices are a different population,
+    // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
+    const { orgId } = c.req.valid('query');
+    if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
-  const rows = await listOwnedDevices(userId, orgId);
-  // ISS-392, widened by ISS-1165 — each box is compared against the published
-  // release AND the runner head on the default branch. The second is what catches
-  // a release that was never cut, where every box reports the number the last one
-  // carried and nothing reads as behind.
-  const annotated = withDeviceDisk(
-    withDeviceBinaries(withDeviceGate(await annotateDeviceBuilds(rows))),
-  );
-  // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
-  return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
-});
+    const rows = await listOwnedDevices(userId, orgId);
+    // ISS-392, widened by ISS-1165 — each box is compared against the published
+    // release AND the runner head on the default branch. The second is what catches
+    // a release that was never cut, where every box reports the number the last one
+    // carried and nothing reads as behind.
+    const annotated = withDeviceDisk(
+      withDeviceBinaries(withDeviceGate(await annotateDeviceBuilds(rows))),
+    );
+    // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
+    return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
+  },
+);
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });
 
@@ -98,6 +107,8 @@ const updateDeviceSchema = z
 
 deviceOwnerRoutes.patch(
   '/devices/:id',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', deviceIdParamSchema),
   zValidator('json', updateDeviceSchema),
   async (c) => {
@@ -144,16 +155,22 @@ deviceOwnerRoutes.patch(
   },
 );
 
-deviceOwnerRoutes.delete('/devices/:id', zValidator('param', deviceIdParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+deviceOwnerRoutes.delete(
+  '/devices/:id',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('param', deviceIdParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  await ownedDevice(id, userId);
+    await ownedDevice(id, userId);
 
-  await revokeDevice(id, restActor(c));
+    await revokeDevice(id, restActor(c));
 
-  return c.body(null, 204);
-});
+    return c.body(null, 204);
+  },
+);
 
 // ISS-273 — owner-scoped runner discovery for the web device-management page.
 // Mirrors the device-token `GET /me/runners` (above) but authed by the user
@@ -162,6 +179,8 @@ deviceOwnerRoutes.delete('/devices/:id', zValidator('param', deviceIdParamSchema
 // online/offline status.
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
+  requireAuth(),
+  assertEmailVerified(),
   zValidator('param', deviceIdParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
