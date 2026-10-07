@@ -44,6 +44,17 @@ describe('a figure that counts something other than issues is not a progress cla
       'Lô Football trước (ISS-47) đã hoàn tất **30 sản phẩm mới**, còn 5 dòng Open khi đó đã có trên site.', // i18n-allow: production reply, anonymised
       snapshot(26, 8, 4, 10),
     ],
+    [
+      // b2 on 2026-10-07: refused, then sent as a fallback, for the criteria fraction a status read gave
+      'a requirement’s proven criteria as a fraction',
+      '**REQ-19 đang hoàn thành 9/11 tiêu chí (khoảng 82%)** và ở trạng thái `in_delivery`.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
+      snapshot(83, 5, 37, 11),
+    ],
+    [
+      'proven criteria of a total, in English',
+      'REQ-17 has completed 0 of 28 criteria so far.',
+      snapshot(83, 5, 37, 11),
+    ],
   ])('passes %s', (_case, text, progress) => {
     expect(judged(text, progress)).toEqual([]);
   });
@@ -64,6 +75,10 @@ describe('a figure is read whole in either thousands notation', () => {
 });
 
 describe('an issue count the snapshot does not hold is still refused, naming the claim', () => {
+  it('still refuses a fraction of issues no snapshot figure grounds', () => {
+    expect(judged('Completed 9/11 issues so far.', snapshot(83, 5, 37, 11))).toHaveLength(1);
+  });
+
   it('refuses a closed count no snapshot figure grounds', () => {
     const [refusal, ...rest] = judged(
       '- Open: **683**\n- Closed: **486**\n- Drafts: **3**',

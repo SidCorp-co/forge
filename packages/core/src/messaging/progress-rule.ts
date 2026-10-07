@@ -64,13 +64,17 @@ const WORD_AHEAD_RE = new RegExp(`^${EMPHASIS}[ \\t]*${EMPHASIS}\\p{L}`, 'u');
 /** `1.061`, `1,061` and `1061` are the same figure; a separator only ever groups thousands here. */
 const figure = (digits: string): number => Number(digits.replace(/[.,]/g, ''));
 
+/** `/11`, ` of 11`: the denominator of a fraction, whose noun is what the fraction counts. */
+const DENOMINATOR_AHEAD_RE = new RegExp(`^${EMPHASIS}\\s*(?:\\/|of\\s)\\s*\\d+`, 'i');
+
 /**
  * Whether the figure ending at `end` counts issues: it is followed by an issue noun, or by no word
  * at all. A figure followed by any other word counts that word (`366 products`), and is not a claim
- * about the project's progress.
+ * about the project's progress; a fraction counts the noun after its denominator (`9/11 criteria`).
  */
 function countsIssues(scanText: string, end: number): boolean {
-  const after = scanText.slice(end, end + 40);
+  const ahead = scanText.slice(end, end + 60);
+  const after = ahead.replace(DENOMINATOR_AHEAD_RE, '').slice(0, 40);
   if (ISSUE_NOUN_AHEAD_RE.test(after)) return true;
   return !WORD_AHEAD_RE.test(after);
 }
