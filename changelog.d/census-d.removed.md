@@ -1,1 +1,0 @@
-**A Coolify binding with no deploy targets is now refused by name in the delivery status** instead of answering one integration-level row. Production read 0 of 17 bindings, dev 0 of 2, and the write schema never admits one.
