@@ -1,7 +1,9 @@
 /**
- * The rule that screens a stated completion figure against the deterministic
- * snapshot the model was actually shown. Moved out of the adapter tree
- * unchanged; `legacy-verdicts.fixture.json` is the baseline that says so.
+ * The rule that screens a stated issue-progress figure against the deterministic snapshot the
+ * model was actually shown. Only a figure that counts issues is a progress claim: a figure bound to
+ * another unit (products, rows, pages) is the reply's own subject and is never judged, and a figure
+ * is read whole in either thousands notation, so `1.061` and `1,061` are both one thousand and
+ * sixty-one.
  */
 
 // every frozen comment in this file is an `i18n-allow` pragma carrying the Vietnamese phrasing its regex matches; deleting one to pay the drain reds the language gate instead.
@@ -14,8 +16,14 @@ const ISS_TOKEN_RE = /\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b/gi;
 const ISO_DATE_RE =
   /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
 
+const blank = (m: string): string => ' '.repeat(m.length);
+
+/** The reply with ids and dates blanked in place, so every offset still points into the reply. */
 function stripNonFigureTokens(reply: string): string {
-  return reply.replace(UUID_TOKEN_RE, ' ').replace(ISS_TOKEN_RE, ' ').replace(ISO_DATE_RE, ' ');
+  return reply
+    .replace(UUID_TOKEN_RE, blank)
+    .replace(ISS_TOKEN_RE, blank)
+    .replace(ISO_DATE_RE, blank);
 }
 
 const DENIAL_RE =
@@ -28,14 +36,44 @@ const PROGRESS_KEYWORDS =
 
 const EMPHASIS = '[*_`~]*';
 
+const NUMBER = '(?<![\\d.,])(\\d{1,3}(?:[.,]\\d{3})+(?!\\d|[.,]\\d)|\\d+)';
+
+const ISSUE_NOUNS =
+  // i18n-allow: the literal must contain the Vietnamese nouns that count issues
+  'issues?|tickets?|tasks?|đầu\\s+việc|công\\s+việc|việc|hạng\\s+mục|yêu\\s+cầu'; // i18n-allow: the Vietnamese nouns that count issues
+
+const LINKS =
+  // i18n-allow: the literal must contain the Vietnamese auxiliaries that join a count to its state
+  '(?:(?:đã|đang|chưa|được|vẫn|are|is|were|was|have\\s+been|has\\s+been|have|has)\\s+)*'; // i18n-allow: the Vietnamese auxiliaries that join a count to its state
+
 const NUMBER_AFTER_KEYWORD_RE = new RegExp(
-  `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}(\\d+)`,
+  `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}${NUMBER}`,
   'gi',
 );
 const NUMBER_BEFORE_KEYWORD_RE = new RegExp(
-  `(\\d+)${EMPHASIS}\\s+${EMPHASIS}(${PROGRESS_KEYWORDS})`,
+  `${NUMBER}${EMPHASIS}\\s+${EMPHASIS}(?:(?:${ISSUE_NOUNS})${EMPHASIS}\\s+${LINKS})?(${PROGRESS_KEYWORDS})`,
   'gi',
 );
+
+const ISSUE_NOUN_AHEAD_RE = new RegExp(
+  `^${EMPHASIS}\\s*(?:${ISSUE_NOUNS})(?![\\p{L}\\p{N}])`,
+  'iu',
+);
+const WORD_AHEAD_RE = new RegExp(`^${EMPHASIS}[ \\t]*${EMPHASIS}\\p{L}`, 'u');
+
+/** `1.061`, `1,061` and `1061` are the same figure; a separator only ever groups thousands here. */
+const figure = (digits: string): number => Number(digits.replace(/[.,]/g, ''));
+
+/**
+ * Whether the figure ending at `end` counts issues: it is followed by an issue noun, or by no word
+ * at all. A figure followed by any other word counts that word (`366 products`), and is not a claim
+ * about the project's progress.
+ */
+function countsIssues(scanText: string, end: number): boolean {
+  const after = scanText.slice(end, end + 40);
+  if (ISSUE_NOUN_AHEAD_RE.test(after)) return true;
+  return !WORD_AHEAD_RE.test(after);
+}
 
 // // i18n-allow: quotes the Vietnamese example phrase being guarded against
 const PERCENT_AFTER_KEYWORD_RE = new RegExp(
@@ -60,19 +98,32 @@ function withoutFigureContexts(scanText: string): string {
     .replace(PERCENT_BEFORE_KEYWORD_RE, ' ');
 }
 
-function progressContextNumbers(scanText: string): Array<{ n: number; keyword: string }> {
-  const found: Array<{ n: number; keyword: string }> = [];
-  const isPercent = (numIndex: number, numStr: string): boolean =>
-    /^\s*%/.test(scanText.slice(numIndex + numStr.length));
+interface FigureClaim {
+  readonly n: number;
+  readonly keyword: string;
+  /** The claim as the reply wrote it, for the refusal to quote back. */
+  readonly claim: string;
+}
+
+/** Every figure the reply states about how many issues sit in a progress state. */
+function progressContextNumbers(reply: string, scanText: string): FigureClaim[] {
+  const found: FigureClaim[] = [];
+  const spoken = (m: RegExpMatchArray): string => {
+    const at = m.index ?? 0;
+    const end = at + m[0].length;
+    const closing = /^[*_`~]*/.exec(reply.slice(end))?.[0].length ?? 0;
+    return reply.slice(at, end + closing).trim();
+  };
   for (const m of scanText.matchAll(NUMBER_AFTER_KEYWORD_RE)) {
     const [whole, keyword, numStr] = m as unknown as [string, string, string];
-    const numIndex = (m.index ?? 0) + whole.length - numStr.length;
-    if (isPercent(numIndex, numStr)) continue;
-    found.push({ n: Number(numStr), keyword });
+    const end = (m.index ?? 0) + whole.length;
+    if (/^\s*%/.test(scanText.slice(end))) continue;
+    if (!countsIssues(scanText, end)) continue;
+    found.push({ n: figure(numStr), keyword, claim: spoken(m) });
   }
   for (const m of scanText.matchAll(NUMBER_BEFORE_KEYWORD_RE)) {
     const [, numStr, keyword] = m as unknown as [string, string, string];
-    found.push({ n: Number(numStr), keyword });
+    found.push({ n: figure(numStr), keyword, claim: spoken(m) });
   }
   return found;
 }
@@ -101,7 +152,7 @@ function expectedPercents(f: ProgressFacts): number[] {
 function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
   const scanText = stripNonFigureTokens(reply);
   if (facts === null) {
-    const numbers = progressContextNumbers(scanText);
+    const numbers = progressContextNumbers(reply, scanText);
     const percents = progressContextPercents(scanText);
     if (numbers.length === 0 && percents.length === 0) return [];
     return [
@@ -129,11 +180,11 @@ function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
     facts.remaining,
     facts.total,
   ]);
-  for (const { n, keyword } of progressContextNumbers(scanText)) {
+  for (const { n, keyword, claim } of progressContextNumbers(reply, scanText)) {
     if (!allowed.has(n)) {
       add(
-        `stated "${n}" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,
-        `${keyword} ${n}`,
+        `the claim "${claim}" states ${n} issues ${keyword}, and no figure in this turn's progress snapshot is ${n} (${authoritativeSummary(facts)}) — restate it from these figures, or leave the figure out`,
+        claim,
       );
     }
   }

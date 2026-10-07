@@ -75,6 +75,7 @@ export {
 export {
   applyRoomPresence,
   foldPresence,
+  groupHearing,
   replyTargetsOf,
   validateRoomPresence,
   windowAddressesAHandle,
@@ -111,6 +112,7 @@ export {
   type StoredConversationMessage,
   setConversationArchived,
   setConversationPresence,
+  setRoomQuiet,
   settleConversationMode,
 } from './store.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
