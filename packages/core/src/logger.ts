@@ -244,7 +244,9 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
             (msgPrefix as string).length,
           );
         return String(v);
-      } catch {
+      } catch (error) {
+        // What it threw still names the values to find in the rest of the call.
+        if (error instanceof Error) found.push(error);
         return REDACTED;
       }
     }

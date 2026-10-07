@@ -258,12 +258,19 @@ function driverFieldWithheld(key: string, v: unknown): boolean {
 const UNREADABLE = Symbol('unreadable');
 const CIRCULAR = '[Circular]';
 
-function attempt<T>(read: () => T): T | typeof UNREADABLE {
+/** `read()`, or `UNREADABLE` where it threw; an `Error` it threw goes to `thrown`, a hint to redact by. */
+function attempt<T>(read: () => T, thrown?: unknown[]): T | typeof UNREADABLE {
   try {
     return read();
-  } catch {
+  } catch (error) {
+    if (thrown && error instanceof Error) thrown.push(error);
     return UNREADABLE;
   }
+}
+
+/** A getter's read that threw, remembered with what it threw. */
+class Thrown {
+  constructor(readonly error: unknown) {}
 }
 
 /** Which primitive `value` boxes, read by its brand alone, so none of its own code runs. */
@@ -278,14 +285,14 @@ function boxed(value: object): 'string' | 'number' | 'boolean' | null {
 }
 
 /** A boxed primitive's value as `JSON.stringify` unboxes it, through its toPrimitive; else none. */
-function unboxed(value: object): { value: unknown } | null {
+function unboxed(value: object, thrown?: unknown[]): { value: unknown } | null {
   const brand = boxed(value);
   if (brand === null) return null;
   const out =
     brand === 'string'
-      ? attempt(() => String(value))
+      ? attempt(() => String(value), thrown)
       : brand === 'number'
-        ? attempt(() => Number(value))
+        ? attempt(() => Number(value), thrown)
         : Boolean.prototype.valueOf.call(value);
   return { value: out === UNREADABLE ? REDACTED : out };
 }
@@ -312,19 +319,20 @@ export type FieldReads = WeakMap<object, Map<string, unknown>>;
 /**
  * `holder[key]` as JSON reads it, a getter called at most once across every call sharing `reads`:
  * an own data field as it stands, anything else (a getter, own or inherited, or an inherited
- * field) read once and remembered, one that throws `[Redacted]` and `threw`. Where `run` is
- * false nothing is read that would run code: what has no answer yet is `[Redacted]`.
+ * field) read once and remembered, one that throws `[Redacted]` and `threw`, with the `error` it
+ * threw. Where `run` is false nothing is read that would run code: what has no answer yet is
+ * `[Redacted]`.
  */
 export function readOnce(
   holder: object,
   key: string,
   reads?: FieldReads,
   run = true,
-): { value: unknown; called: boolean; threw: boolean } {
+): { value: unknown; called: boolean; threw: boolean; error?: unknown } {
   const known = reads?.get(holder);
   const answer = (read: unknown) =>
-    read === UNREADABLE
-      ? { value: REDACTED, called: true, threw: true }
+    read instanceof Thrown
+      ? { value: REDACTED, called: true, threw: true, error: read.error }
       : { value: read, called: true, threw: false };
   if (known?.has(key)) return answer(known.get(key));
   const own = attempt(() => Object.getOwnPropertyDescriptor(holder, key));
@@ -332,7 +340,12 @@ export function readOnce(
     return { value: own.value, called: false, threw: false };
   }
   if (!run) return { value: REDACTED, called: true, threw: false };
-  const read = attempt(() => (holder as Record<string, unknown>)[key]);
+  let read: unknown;
+  try {
+    read = (holder as Record<string, unknown>)[key];
+  } catch (error) {
+    read = new Thrown(error);
+  }
   if (reads) reads.set(holder, (known ?? new Map()).set(key, read));
   return answer(read);
 }
@@ -366,6 +379,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     copy = own !== undefined && field === undefined;
     if (held && (copy || typeof field?.value === 'function' || boxed(value))) return REDACTED;
     const toJSON = readOnce(value, 'toJSON', walk.reads, !held);
+    if (toJSON.error instanceof Error) walk.errors.push(toJSON.error);
     if (toJSON.threw) return REDACTED;
     if (typeof toJSON.value === 'function') {
       const call = toJSON.value;
@@ -373,7 +387,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
       // Open while its hook and what that renders are read: a way back to it is a cycle.
       walk.open.add(value);
       try {
-        const out = attempt(() => call.call(value, key) as unknown);
+        const out = attempt(() => call.call(value, key) as unknown, walk.errors);
         return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk, value);
       } finally {
         walk.open.delete(value);
@@ -382,7 +396,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   }
   // A function a serializer writes as nothing, unless its toJSON getter may answer otherwise later.
   if (typeof value === 'function') return copy ? undefined : value;
-  const box = unboxed(value);
+  const box = unboxed(value, walk.errors);
   if (box) return box.value;
   if (asError) return value;
   walk.open.add(value);
@@ -432,7 +446,7 @@ function renderResult(rendered: unknown, depth: number, walk: Walk, source: obje
   if (typeof rendered === 'function') return undefined;
   if (rendered === null || typeof rendered !== 'object') return rendered;
   if (rendered instanceof Error) walk.errors.push(rendered);
-  const box = unboxed(rendered);
+  const box = unboxed(rendered, walk.errors);
   if (box) return box.value;
   if (rendered === source) return renderFields(rendered, depth, walk, true);
   if (walk.open.has(rendered)) return CIRCULAR;
@@ -455,10 +469,10 @@ function renderFields(
   separately = false,
 ): unknown {
   const array = Array.isArray(value);
-  const length = array ? attempt(() => value.length) : 0;
+  const length = array ? attempt(() => value.length, walk.errors) : 0;
   const keys = array
     ? Array.from({ length: length === UNREADABLE ? 0 : length }, (_, i) => String(i))
-    : attempt(() => Object.keys(value));
+    : attempt(() => Object.keys(value), walk.errors);
   if (keys === UNREADABLE || length === UNREADABLE) return REDACTED;
   let changed = copy;
   const held = walk.withheld?.has(value) === true;
@@ -466,6 +480,7 @@ function renderFields(
   const items: unknown[] = [];
   for (const key of keys) {
     const field = readOnce(value, key, walk.reads, !held);
+    if (field.error instanceof Error) walk.errors.push(field.error);
     if (field.called) changed = true;
     const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;

@@ -805,6 +805,23 @@ describe('the core logger, given a value whose text only a serializer renders', 
     expect(kept.password).toBe('ordinary-password');
   });
 
+  it('reads the rest of a call against the error a coercion threw', () => {
+    const { lines, log } = capture();
+    const throwing = {
+      toString(): string {
+        throw failedInsert();
+      },
+    };
+    log.warn('read %s %s', throwing, HASH);
+    log.warn({ reason: HASH }, 'read %s', throwing);
+    log.child({}, { msgPrefix: 'read: ' }).warn({ reason: HASH }, throwing as never);
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).not.toContain(HASH);
+      expect(line).not.toContain('Failed query');
+    }
+  });
+
   it('writes a text whose coercion throws as redacted, throwing nothing itself', () => {
     const { lines, log } = capture();
     const throwing = () => ({

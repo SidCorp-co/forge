@@ -444,6 +444,29 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     expect(asked).toBe(3);
   });
 
+  it('reads a value against the error a hook of it threw, writing the hook redacted', () => {
+    const thrower = () => () => {
+      throw duplicate();
+    };
+    const values = [
+      { reason: HASH, held: Object.defineProperty({}, 'reason', { get: thrower(), enumerable: true }) },
+      { reason: HASH, held: { toJSON: thrower() } },
+      { reason: HASH, held: Object.defineProperty({ note: 'kept' }, 'toJSON', { get: thrower() }) },
+      {
+        reason: HASH,
+        held: new Proxy([], {
+          get: (target, key) => (key === 'length' ? thrower()() : Reflect.get(target, key)),
+        }),
+      },
+      { reason: HASH, held: Object.assign(new String('kept'), { toString: thrower() }) },
+    ];
+    for (const value of values) {
+      const rendered = JSON.stringify(redactQueryParams(value));
+      expect(rendered).not.toContain(HASH);
+      expect(rendered).not.toContain('Failed query');
+    }
+  });
+
   it('reads an enumerable toJSON getter once, for the hook and for the fields alike', () => {
     let reads = 0;
     const reading = Object.defineProperty({ note: 'kept' }, 'toJSON', {
@@ -568,8 +591,10 @@ describe('readOnce', () => {
       },
     });
     const seen: FieldReads = new WeakMap();
-    expect(readOnce(broken, 'reason', seen)).toEqual({ value: REDACTED, called: true, threw: true });
-    expect(readOnce(broken, 'reason', seen).threw).toBe(true);
+    const first = readOnce(broken, 'reason', seen);
+    expect(first).toMatchObject({ value: REDACTED, called: true, threw: true });
+    expect((first.error as Error).message).toBe(duplicate().message);
+    expect(readOnce(broken, 'reason', seen).error).toBe(first.error);
     expect(asked).toBe(1);
   });
 

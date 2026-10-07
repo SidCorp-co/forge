@@ -196,17 +196,23 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
  * anywhere in it, the hint's exception naming them, which also renders whatever a serializer would
  * call into plain fields (a copy where anything changed); then the same scrub over that copy, for
  * a secret only the rendering showed. An event holding a secret a fixed field will not give up is
- * dropped (`null`, which `beforeSend` reads as "do not send"), never sent with it. Generic over the
- * event shape so this works across @sentry/react, @sentry/node, and @sentry/nextjs.
+ * dropped (`null`, which `beforeSend` reads as "do not send"), never sent with it, and so is one
+ * the scrub cannot read through. Generic over the event shape so this works across
+ * @sentry/react, @sentry/node, and @sentry/nextjs.
  */
 export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E | null {
-  if (!scrubInPlace(event)) return null;
-  const out = redactQueryParams(event, hint?.originalException);
-  if (out !== event && !scrubInPlace(out)) return null;
-  return out;
+  // A scrub that cannot read through the event is one that cannot vouch for it.
+  try {
+    if (!scrubInPlace(event)) return null;
+    const out = redactQueryParams(event, hint?.originalException);
+    if (out !== event && !scrubInPlace(out)) return null;
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 /** The event's request and breadcrumbs scrubbed in place; false where a field refused it. */

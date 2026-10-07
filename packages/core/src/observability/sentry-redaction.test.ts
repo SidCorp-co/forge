@@ -163,6 +163,27 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect(JSON.stringify(scrubSentryEvent(event))).toContain('kept');
   });
 
+  it('drops an event the scrub cannot read through, throwing nothing itself', () => {
+    const broken = Object.defineProperty({ note: 'kept' }, 'reason', {
+      get: () => {
+        throw new Error('unreadable');
+      },
+      enumerable: true,
+    });
+    const unlisted = new Proxy(
+      { note: 'kept' },
+      {
+        ownKeys: () => {
+          throw new Error('unreadable');
+        },
+      },
+    );
+    for (const data of [broken, unlisted]) {
+      expect(() => scrubSentryEvent({ request: { data } })).not.toThrow();
+      expect(scrubSentryEvent({ request: { data } })).toBeNull();
+    }
+  });
+
   it('drops an event whose body gives a key-named secret only through a getter', () => {
     const data = Object.defineProperty({}, 'password', {
       get: () => 'getter-password',
