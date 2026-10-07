@@ -1,1 +1,0 @@
-**Pressing Preview no longer files a new issue.** Buttons submit only when marked submit; a comment takes every file chosen; an issue's category is set on its Properties rail; a decision survives the page closing mid-send.

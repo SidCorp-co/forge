@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.116] - 2026-10-07
+
+Preview and editor buttons stop filing issues; category, attachments and decisions fixed
+
+### Fixed
+
+- **Pressing Preview no longer files a new issue.** Buttons submit only when marked submit; a comment takes every file chosen; an issue's category is set on its Properties rail; a decision survives the page closing mid-send.
+
 ## [0.4.0-dev.115] - 2026-10-07
 
 Image builds stop corrupting the Next SWC binding through a shared pnpm store
