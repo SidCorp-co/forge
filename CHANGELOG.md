@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.83] - 2026-10-07
+
+Failed-query values redacted, device-owner guard scoped, refusals hold a runner
+
+### Fixed
+
+- **A runner refused by its account is tried again at the next nudge, not at the reset the account printed.** Runners and passes show when it was refused and when it is tried next, and mark the pass that recovered.
+
+### Security
+
+- **Failed-query values stay out of logs, and the device router no longer guards every /api route.** Logs, error bodies, Sentry, the outbox and tool errors redact bound params (ISS-1383); each device-owner route carries its own guard (ISS-1373).
+
 ## [0.4.0-dev.82] - 2026-10-07
 
 Dev workflow designs follow what dev.78–dev.81 shipped
