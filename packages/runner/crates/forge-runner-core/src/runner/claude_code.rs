@@ -1865,22 +1865,41 @@ mod tests {
         (rx, turn_done)
     }
 
+    /// How many messages session `id` has been written, where it is there.
+    async fn sends_of(runner: &ClaudeCodeRunner, id: &str) -> Option<u64> {
+        runner.sessions.lock().await.get(id).map(|s| s.sends)
+    }
+
+    /// Until one of `ids` has been written its checkpoint request: that one.
+    async fn first_checkpointed(runner: &ClaudeCodeRunner, ids: &[&'static str]) -> &'static str {
+        loop {
+            for id in ids {
+                if sends_of(runner, id).await == Some(1) {
+                    return id;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+
     /// ISS-1223 criterion 29: a session started while the parked sessions
     /// close was not parked when the close began, so the close leaves it open
-    /// and does not count it.
+    /// and does not count it. The close is held on its first checkpoint until
+    /// the new session stands, so the session is started inside it.
     #[tokio::test]
     async fn a_session_started_during_the_close_is_not_closed_by_it() {
-        let runner = Arc::new(ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1));
-        let _j1 = park(&runner, "j1").await;
-        let arriving = runner.clone();
-        let started = tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            park(&arriving, "j2").await
-        });
-        let closed = runner
-            .checkpoint_and_close(std::time::Duration::from_millis(300))
-            .await;
-        let _j2 = started.await.unwrap();
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let (_rx, done) = park(&runner, "j1").await;
+        let arrive = async {
+            first_checkpointed(&runner, &["j1"]).await;
+            let j2 = park(&runner, "j2").await;
+            done.notify_waiters();
+            j2
+        };
+        let (closed, _j2) = tokio::join!(
+            runner.checkpoint_and_close(std::time::Duration::from_secs(30)),
+            arrive
+        );
         assert_eq!(
             closed,
             vec!["j1".to_string()],
@@ -1894,28 +1913,43 @@ mod tests {
 
     /// ISS-1223 criterion 30: a parked session that is sent a person's message
     /// after the close began is no longer parked, whether the message came
-    /// before its checkpoint request or after it, so the close leaves it open.
+    /// after its checkpoint request or before it, so the close leaves it open.
+    /// The close is held on its first checkpoint while both are sent one.
     #[tokio::test]
     async fn a_parked_session_sent_a_message_during_the_close_is_not_closed_by_it() {
-        let runner = Arc::new(ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1));
-        let _a = park(&runner, "a").await;
-        let _b = park(&runner, "b").await;
-        let sender = runner.clone();
-        // Each checkpoint holds its whole budget, so the message at 50ms lands
-        // after the first session's checkpoint request and before the second's.
-        let sent = tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let (_ra, done_a) = park(&runner, "a").await;
+        let (_rb, done_b) = park(&runner, "b").await;
+        let send = async {
+            let first = first_checkpointed(&runner, &["a", "b"]).await;
             for id in ["a", "b"] {
-                sender
+                runner
                     .send_resident(&id.to_string(), "a person's message", None)
                     .await
                     .expect("the session is resident");
             }
-        });
-        let closed = runner
-            .checkpoint_and_close(std::time::Duration::from_millis(300))
-            .await;
-        sent.await.unwrap();
+            if first == "a" {
+                done_a.notify_waiters();
+            } else {
+                done_b.notify_waiters();
+            }
+            first
+        };
+        let (closed, first) = tokio::join!(
+            runner.checkpoint_and_close(std::time::Duration::from_secs(30)),
+            send
+        );
+        let second = if first == "a" { "b" } else { "a" };
+        assert_eq!(
+            sends_of(&runner, first).await,
+            Some(2),
+            "{first}: its checkpoint request, then the person's message"
+        );
+        assert_eq!(
+            sends_of(&runner, second).await,
+            Some(1),
+            "{second}: the person's message, and no checkpoint request after it"
+        );
         assert!(closed.is_empty(), "closed {closed:?}");
         for id in ["a", "b"] {
             assert!(
