@@ -2,6 +2,7 @@
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { providerLabel } from "./providers/registry";
 import type { DirectoryStatus } from "./derive";
+import type { Copy } from "@/lib/i18n/product-copy";
 
 /** Which of the header's two tallies a directory state counts toward, if either. */
 export type GroupTally = "attention" | "off" | null;
@@ -42,14 +43,14 @@ export interface ConnectionGroup {
   off: number;
 }
 
-export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): ConnectionGroup[] {
+export function groupConnectionsByApp(items: ConnectionDirectoryItem[], language?: string): ConnectionGroup[] {
   const byProvider = new Map<string, ConnectionGroup>();
   for (const connection of items) {
     let group = byProvider.get(connection.provider);
     if (!group) {
       group = {
         provider: connection.provider,
-        label: providerLabel(connection.provider),
+        label: providerLabel(connection.provider, language),
         connections: [],
         needsAttention: 0,
         off: 0,
@@ -66,11 +67,11 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): Connect
   );
 }
 
-export function groupSummary(group: Pick<ConnectionGroup, "connections" | "needsAttention" | "off">): string {
+export function groupSummary(group: Pick<ConnectionGroup, "connections" | "needsAttention" | "off">, t: Copy): string {
   const count = group.connections.length;
-  const parts = [`${count} connection${count === 1 ? "" : "s"}`];
+  const parts = [count === 1 ? t("integrations.group.oneConnection") : t("integrations.group.connections", { n: count })];
   if (group.needsAttention > 0)
-    parts.push(`${group.needsAttention} need${group.needsAttention === 1 ? "s" : ""} attention`);
-  if (group.off > 0) parts.push(`${group.off} off`);
+    parts.push(group.needsAttention === 1 ? t("integrations.group.needsAttentionOne") : t("integrations.group.needsAttention", { n: group.needsAttention }));
+  if (group.off > 0) parts.push(t("integrations.group.off", { n: group.off }));
   return parts.join(" · ");
 }

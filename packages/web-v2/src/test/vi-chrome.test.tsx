@@ -47,12 +47,18 @@ const ENGLISH_CHROME = [
   "device", "devices", "paired", "pair", "revoke", "manage", "turn on", "turn off", "last seen", "provision", "labels", "pool",
   "resident", "unassign", "copy", "repo path", "disk", "binaries", "missing", "version", "drained", "retired", "mine", "organisation",
   "counting", "read only", "unknown device", "untitled", "remove", "heartbeat", "failed pool", "rate limited", "usage limit", "next try", "refused",
+  "connection", "connections", "connected", "not connected", "credential", "integration", "integrations", "binding", "rotate", "disconnect",
+  "connect", "refresh", "configuration", "repository", "verify", "grant", "granted", "storefront", "room", "rooms", "site", "target",
+  "targets", "deliveries", "payload", "response", "enabled", "disabled", "inherited", "danger zone", "test connection", "store", "themes",
+  "commerce", "scopes", "access token", "refresh token", "api key", "server url", "base url", "project path", "secret token",
+  "trigger", "share", "will inject", "shadowed", "untested", "breaker", "application", "deploy target", "delivered", "inbound", "outbound",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
   const out: string[] = [];
   const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) out.push(n.textContent ?? "");
+  // text the page marks `translate="no"` (a scope, an event name, another product's menu path) is an identifier, not chrome
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest('[translate="no"]')) out.push(n.textContent ?? "");
   for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
     for (const a of ["aria-label", "title", "placeholder"]) {
       const v = el.getAttribute(a);

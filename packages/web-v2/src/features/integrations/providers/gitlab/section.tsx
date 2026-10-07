@@ -2,6 +2,7 @@
 
 import { Banner, Field, Input } from "@/design";
 import { useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import type { IntegrationSummary } from "../../types";
 import { activeBadge, OrgLockedNote, ProviderCard, TestOutcome } from "../shared";
@@ -35,6 +36,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
   const b = useSingleBinding(projectId, gitlab, initialForm);
   const { existing, form, set, orgLocked } = b;
   const [pathError, setPathError] = useState<string | null>(null);
+  const t = useCopy();
   const canSave =
     (existing !== undefined || form.token.trim().length >= 8) &&
     form.projectPath.trim().length > 0 &&
@@ -48,9 +50,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
       projectPath: form.projectPath.trim().replace(/^\/+|\/+$/g, ""),
     };
     if (!GITLAB_PROJECT_PATH.test(config.projectPath)) {
-      setPathError(
-        `"${config.projectPath}" is not a GitLab project path. Write it as it appears in the project's URL after the host, e.g. my-group/my-project.`,
-      );
+      setPathError(t("integrations.gitlab.badPath", { path: config.projectPath }));
       return;
     }
     setPathError(null);
@@ -60,25 +60,17 @@ export function GitlabSection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <ProviderCard title="GitLab" badge={activeBadge(existing)}>
-      <p className="fg-body-sm text-muted">
-        Connect one GitLab project as this project&apos;s source host. Forge reads its branches, merge
-        requests and pipelines, and merges through it. Agents reach it through Forge only once the grant
-        below is on.
-      </p>
+    <ProviderCard title="GitLab" badge={activeBadge(existing, t)}>
+      <p className="fg-body-sm text-muted">{t("integrations.gitlab.intro")}</p>
       <Field
-        label="Access token"
-        hint={
-          existing
-            ? "A token is stored. Leave blank to keep it; enter a new one to replace it."
-            : "A project or group access token with the api scope. Stored encrypted; never shown again."
-        }
+        label={t("integrations.autoflow.token")}
+        hint={existing ? t("integrations.provider.tokenStored") : t("integrations.gitlab.tokenHint")}
         required={!existing}
       >
         <Input
           type="password"
           autoComplete="off"
-          placeholder={existing ? "•••••••• (unchanged)" : (gitlab.secretPlaceholder ?? undefined)}
+          placeholder={existing ? t("integrations.provider.unchanged") : (gitlab.secretPlaceholder ?? undefined)}
           value={form.token}
           onChange={(e) => set("token", e.target.value)}
           disabled={orgLocked}
@@ -86,7 +78,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
       </Field>
       {orgLocked && <OrgLockedNote />}
       {!existing && <ConnectionOwnerField projectId={projectId} value={b.ownerOrgId} onChange={b.setOwnerOrgId} />}
-      <Field label="Base URL" hint="Your GitLab instance. Leave as gitlab.com unless you self-host.">
+      <Field label={t("integrations.gitlab.baseUrl")} hint={t("integrations.gitlab.baseUrlHint")}>
         <Input
           value={form.baseUrl}
           onChange={(e) => set("baseUrl", e.target.value)}
@@ -94,7 +86,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
           disabled={orgLocked}
         />
       </Field>
-      <Field label="Project path" hint="The part of the project's URL after the host, e.g. my-group/my-project." required>
+      <Field label={t("integrations.gitlab.path")} hint={t("integrations.gitlab.pathHint")} required>
         <Input
           value={form.projectPath}
           onChange={(e) => {
@@ -105,7 +97,7 @@ export function GitlabSection({ projectId }: { projectId: string }) {
         />
       </Field>
       {pathError && <Banner tone="danger">{pathError}</Banner>}
-      <TestOutcome error={b.test.error} result={b.test.result} okText={`Connected to ${gitlabHost(form.baseUrl)}.`} />
+      <TestOutcome error={b.test.error} result={b.test.result} okText={t("integrations.gitlab.connectedTo", { host: gitlabHost(form.baseUrl) })} />
       {existing && <GitlabWebhookPanel projectId={projectId} bindingId={existing.id} />}
       <SingleBindingFooter b={b} canSave={canSave} onSave={handleSave} />
     </ProviderCard>

@@ -4,7 +4,8 @@
 import { useId, useState } from "react";
 import { Badge, Button, Icon, statusReading } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
@@ -22,10 +23,11 @@ function UsageLine({
   emptyId: string;
 }) {
   const bindings = connection.usage.bindings;
+  const t = useCopy();
   if (bindings.length === 0) {
     return (
       <span id={emptyId} className="fg-body-sm text-subtle">
-        Not used by any project — share it from a project&apos;s settings → Integrations.
+        {t("integrations.row.unused")}
       </span>
     );
   }
@@ -35,11 +37,11 @@ function UsageLine({
         <span
           key={b.id}
           className="fg-body-sm inline-flex items-center gap-1 rounded-pill border border-line bg-surface px-2 py-0.5"
-          title={b.active ? undefined : "this project has the integration switched off"}
+          title={b.active ? undefined : t("integrations.row.offTitle")}
         >
           <span>{projectName(b.projectId)}</span>
           <span className="text-subtle">{b.name}</span>
-          {!b.active && <span className="text-subtle">· off</span>}
+          {!b.active && <span className="text-subtle">· {t("integrations.row.off")}</span>}
         </span>
       ))}
     </>
@@ -49,13 +51,15 @@ function UsageLine({
 export function connectionRowLabel(
   connection: ConnectionDirectoryItem,
   projectName: (id: string) => string,
+  t: Copy,
+  language?: string,
 ): string {
-  const title = connectionTitle(connection);
-  const parts = [`Manage connection ${title}`];
+  const title = connectionTitle(connection, language);
+  const parts = [t("integrations.row.manage", { title })];
   // The same condition the visible provider pill renders under: two credentials
   // an operator called "Production", one Coolify and one GitHub, are told apart
   // on screen by that pill and by nothing else.
-  const providerLabel = labelFor(connection.provider);
+  const providerLabel = labelFor(connection.provider, language);
   if (title !== providerLabel) parts.push(providerLabel);
   const target = connectionTarget(connection);
   if (target) parts.push(target);
@@ -65,15 +69,16 @@ export function connectionRowLabel(
   // a target.
   if (connection.usage.bindings.length > 0) {
     const used = connection.usage.bindings.map((b) => {
-      return `${projectName(b.projectId)} ${b.name}${b.active ? "" : " (off)"}`;
+      return `${projectName(b.projectId)} ${b.name}${b.active ? "" : ` (${t("integrations.row.off")})`}`;
     });
-    parts.push(`used by ${used.join(", ")}`);
+    parts.push(t("integrations.row.usedBy", { list: used.join(", ") }));
   }
   return parts.join(" — ");
 }
 
 function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   const remove = useRemoveConnection();
+  const t = useCopy();
   const [armed, setArmed] = useState(false);
   const count = connection.usage.bindings.length;
 
@@ -87,14 +92,14 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
           setArmed(true);
         }}
       >
-        Remove
+        {t("runners.row.remove")}
       </Button>
     );
   }
   return (
     <span className="flex items-center gap-2">
       <span className="fg-body-sm text-muted">
-        {count > 0 ? `Disconnects ${count} project${count > 1 ? "s" : ""}.` : "Delete it?"}
+        {count === 0 ? t("integrations.row.deleteIt") : count === 1 ? t("integrations.row.disconnectsOne") : t("integrations.row.disconnects", { n: count })}
       </span>
       <Button
         variant="danger"
@@ -105,7 +110,7 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
           remove.mutate(connection.id);
         }}
       >
-        Delete
+        {t("integrations.row.delete")}
       </Button>
       <Button
         variant="ghost"
@@ -115,7 +120,7 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
           setArmed(false);
         }}
       >
-        Cancel
+        {t("common.cancel")}
       </Button>
     </span>
   );
@@ -143,16 +148,19 @@ export function ConnectionRow({
   const usageEmptyId = useId();
   const healthId = useId();
   const statusId = useId();
-  const checked = formatRelativeTime(connection.lastHealthAt);
-  const title = connectionTitle(connection);
+  const t = useCopy();
+  const time = useTimeFormat();
+  const language = useInterfaceLanguage();
+  const checked = time.relative(connection.lastHealthAt);
+  const title = connectionTitle(connection, language);
   const target = connectionTarget(connection);
-  const providerLabel = labelFor(connection.provider);
+  const providerLabel = labelFor(connection.provider, language);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
-        aria-label={connectionRowLabel(connection, projectName)}
+        aria-label={connectionRowLabel(connection, projectName, t, language)}
         aria-describedby={[
           ownerId,
           // Only when it renders: an id naming no element is ignored by the
@@ -192,9 +200,9 @@ export function ConnectionRow({
           <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
           <span id={healthId} className="fg-body-sm text-subtle">
             {connection.lastHealthStatus
-              ? `Last health: ${statusReading("connection", connection.lastHealthStatus).label}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
-            {!connection.hasSecrets && " · no credential stored"}
+              ? `${t("integrations.row.lastHealth", { status: statusReading("connection", connection.lastHealthStatus, language).label })}${checked ? ` · ${checked}` : ""}`
+              : t("integrations.row.neverChecked")}
+            {!connection.hasSecrets && ` · ${t("integrations.row.noCredential")}`}
           </span>
         </span>
       </button>
@@ -216,7 +224,7 @@ export function ConnectionRow({
                   update.mutate({ id: connection.id, body: { active: false } });
                 }}
               >
-                Disable
+                {t("integrations.row.disable")}
               </Button>
             ) : (
               <Button
@@ -228,14 +236,14 @@ export function ConnectionRow({
                   update.mutate({ id: connection.id, body: { active: true } });
                 }}
               >
-                Enable
+                {t("integrations.row.enable")}
               </Button>
             )}
             <RemoveButton connection={connection} />
           </>
         ) : (
           <span className="fg-body-sm text-subtle">
-            Read-only — only an admin of {ownerLabel} can change this credential.
+            {t("integrations.row.readOnly", { owner: ownerLabel })}
           </span>
         )}
       </span>

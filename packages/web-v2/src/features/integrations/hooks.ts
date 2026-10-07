@@ -5,6 +5,7 @@ import { invalidateBindingChange } from "@/features/project-config/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
@@ -163,15 +164,16 @@ export function useRotateIntegrationSecret(projectId: string | undefined) {
 export function useCreateProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (body: CreateIntegrationInput) => createIntegration(projectId as string, body),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Integration saved", tone: "success" });
+      toast({ title: t("integrations.toast.saved"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't save integration",
+        title: t("integrations.toast.saveFailed"),
         description: bindingRefusalText(err),
         tone: "error",
       }),
@@ -182,16 +184,17 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
 export function useUpdateProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateIntegrationInput }) =>
       updateIntegration(projectId as string, id, body),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Integration saved", tone: "success" });
+      toast({ title: t("integrations.toast.saved"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't save integration",
+        title: t("integrations.toast.saveFailed"),
         description: bindingRefusalText(err),
         tone: "error",
       }),
@@ -202,16 +205,17 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
 export function useDeleteProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (binding: Pick<IntegrationSummary, "id" | "revision">) =>
       integrationsApi.remove(projectId as string, binding),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Integration removed", tone: "success" });
+      toast({ title: t("integrations.toast.removed"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't remove integration",
+        title: t("integrations.toast.removeFailed"),
         description: formatApiError(err),
         tone: "error",
       }),
@@ -223,21 +227,20 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
 export function useConfirmProdDeploy(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (id: string) =>
       integrationsApi.confirmProdDeploy(projectId as string, id),
     onSuccess: (res) => {
       invalidate();
       toast({
-        title: res.confirmed
-          ? "Live deploy confirmed"
-          : "No pending deploy to confirm",
+        title: res.confirmed ? t("integrations.toast.liveConfirmed") : t("integrations.toast.nothingToConfirm"),
         tone: res.confirmed ? "success" : "info",
       });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't confirm deploy",
+        title: t("integrations.toast.confirmFailed"),
         description: formatApiError(err),
         tone: "error",
       }),
@@ -332,16 +335,17 @@ function useInvalidateConnections() {
 export function useUpdateConnection() {
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ConnectionUpdateInput }) =>
       integrationConnectionsApi.update(id, body),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Connection saved", tone: "success" });
+      toast({ title: t("integrations.toast.connectionSaved"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't save connection",
+        title: t("integrations.toast.connectionSaveFailed"),
         description: formatApiError(err),
         tone: "error",
       }),
@@ -360,15 +364,16 @@ export function useTestConnection() {
 export function useRemoveConnection() {
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: integrationConnectionsApi.remove,
     onSuccess: () => {
       invalidate();
-      toast({ title: "Connection removed", tone: "success" });
+      toast({ title: t("integrations.toast.connectionRemoved"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't remove connection",
+        title: t("integrations.toast.connectionRemoveFailed"),
         description: formatApiError(err),
         tone: "error",
       }),
@@ -394,16 +399,17 @@ export function useBindConnection(projectId: string | undefined) {
   const qc = useQueryClient();
   const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (input: BindConnectionInput) => bindConnection(projectId as string, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integration-connections"] });
       invalidate();
-      toast({ title: "Connection bound", tone: "success" });
+      toast({ title: t("integrations.toast.bound"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't bind the connection",
+        title: t("integrations.toast.bindFailed"),
         description: bindingRefusalText(err),
         tone: "error",
       }),

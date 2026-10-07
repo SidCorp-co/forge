@@ -2,35 +2,28 @@
 
 import { Banner, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useState } from "react";
 import { AgentAccessControl, agentAccessDeniedReason } from "../../components/agent-access-control";
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
 import { text } from "../config-read";
 import { BindingRowHeader, MultiBindingSection } from "../multi-binding";
-import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, useBindingTest } from "../shared";
+import { BindingRowActions, healthBadge, OrgLockedNote, TestOutcome, Ticked, useBindingTest } from "../shared";
 import { AddAutoflowForm } from "./add-form";
 import { EMPTY_TOKENS, RefreshPairFields, tokenSecrets, tokensValid } from "./tokens";
 
 /** Autoflow sites bound to this project: the site a project runs on, and its Backend Builder flows. */
 export function AutoflowSection({ projectId }: { projectId: string }) {
+  const t = useCopy();
   return (
     <MultiBindingSection
       projectId={projectId}
       provider="autoflow"
-      title="Autoflow sites"
-      intro={
-        <>
-          A project that runs on Autoflow builds one site and its flows through the shop MCP. Each binding
-          names the site (<span className="font-mono">shop</span>, the{" "}
-          <span className="font-mono">&lt;shop&gt;</span> of{" "}
-          <span className="font-mono">&lt;shop&gt;.auto.sidcorp.co</span>) and holds the OAuth access token (
-          <span className="font-mono">sat_…</span>) minted for that site. An access token lives 12 hours;
-          stored with its refresh token (<span className="font-mono">srt_…</span>), Forge renews it itself.
-        </>
-      }
-      emptyText="No Autoflow site configured."
-      addLabel="Add site"
+      title={t("integrations.autoflow.title")}
+      intro={<Ticked text={t("integrations.autoflow.intro")} />}
+      emptyText={t("integrations.autoflow.empty")}
+      addLabel={t("integrations.autoflow.add")}
       renderRow={(binding, isDefault) => (
         <AutoflowBindingRow key={binding.id} projectId={projectId} binding={binding} isDefault={isDefault} />
       )}
@@ -56,9 +49,10 @@ function AutoflowBindingRow({
   const [rotating, setRotating] = useState(false);
   const config = binding.config ?? {};
   const storeName = text(config, "storeName");
-  const badge = healthBadge(binding, {
-    ok: storeName ? `Connected to ${storeName}` : "Connected",
-    needsReauth: "Needs sign-in",
+  const t = useCopy();
+  const badge = healthBadge(binding, t, {
+    ok: storeName ? t("integrations.provider.connectedTo", { target: storeName }) : t("integrations.status.connected"),
+    needsReauth: t("integrations.autoflow.needsSignIn"),
   });
 
   async function saveToken() {
@@ -83,7 +77,7 @@ function AutoflowBindingRow({
       <SiteFacts config={config} />
       {rotating && (
         <>
-          <Field label="New access token" hint="A sat_ token minted for this same site.">
+          <Field label={t("integrations.autoflow.newToken")} hint={t("integrations.autoflow.newTokenHint")}>
             <Input
               type="password"
               autoComplete="new-password"
@@ -102,14 +96,14 @@ function AutoflowBindingRow({
         orgLocked={orgLocked}
         rotating={rotating}
         setRotating={setRotating}
-        rotateLabel="Replace token"
-        saveLabel="Save token"
+        rotateLabel={t("integrations.autoflow.replaceToken")}
+        saveLabel={t("integrations.autoflow.saveToken")}
         onSave={saveToken}
         saving={update.isPending}
         saveDisabled={!tokensValid(tokens)}
         onTest={() => test.run(binding.id)}
         testing={test.pending}
-        confirmDelete={`Delete the "${binding.label || "default"}" Autoflow site binding for this project?`}
+        confirmDelete={t("integrations.autoflow.confirmDelete", { label: binding.label || "default" })}
       />
       <AgentAccessControl
         projectId={projectId}
@@ -123,17 +117,18 @@ function AutoflowBindingRow({
 
 function SiteFacts({ config }: { config: Record<string, unknown> }) {
   const storeName = text(config, "storeName");
+  const t = useCopy();
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
-      <dt className="text-subtle">Site</dt>
+      <dt className="text-subtle">{t("integrations.autoflow.site")}</dt>
       <dd>
         {text(config, "shop") ?? "—"}
         {storeName && <span className="text-subtle"> · {storeName}</span>}
         {text(config, "storeId") && <span className="text-subtle"> · #{text(config, "storeId")}</span>}
       </dd>
-      <dt className="text-subtle">Workspace</dt>
-      <dd>{text(config, "orgId") ?? "— (run Test)"}</dd>
-      <dt className="text-subtle">Platform</dt>
+      <dt className="text-subtle">{t("integrations.autoflow.workspace")}</dt>
+      <dd>{text(config, "orgId") ?? t("integrations.autoflow.runTest")}</dd>
+      <dt className="text-subtle">{t("integrations.autoflow.platform")}</dt>
       <dd>{text(config, "baseUrl") ?? "https://auto.sidcorp.co"}</dd>
     </dl>
   );

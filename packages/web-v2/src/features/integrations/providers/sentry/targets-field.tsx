@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Field, Input, Textarea } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { SentryConfig, SentryTarget } from "../../types";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
@@ -62,9 +63,10 @@ export function SentryTargetsField({
   onChange: (next: TargetRow[]) => void;
   disabled: boolean;
 }) {
+  const t = useCopy();
   const setTarget = (index: number, key: keyof TargetRow, value: string) =>
-    onChange(targets.map((t, i) => (i === index ? { ...t, [key]: value } : t)));
-  const input = (i: number, key: keyof TargetRow, placeholder = "(optional)") => (
+    onChange(targets.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
+  const input = (i: number, key: keyof TargetRow, placeholder = t("integrations.sentry.optional")) => (
     <Input
       value={targets[i]?.[key] ?? ""}
       onChange={(e) => setTarget(i, key, e.target.value)}
@@ -76,55 +78,54 @@ export function SentryTargetsField({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="fg-label text-muted">Sentry projects</span>
+        <span className="fg-label text-muted">{t("integrations.sentry.projects")}</span>
         <Button variant="secondary" icon="plus" onClick={() => onChange([...targets, emptyRow()])} disabled={disabled}>
-          Add project
+          {t("integrations.sentry.addProject")}
         </Button>
       </div>
       {targets.length === 0 ? (
         <p className="fg-body-sm text-muted rounded-md border border-dashed border-subtle p-4 text-center">
-          No Sentry projects registered yet. Add one (e.g. “Backend” → org/project slug) so agents know
-          which Sentry project to query.
+          {t("integrations.sentry.noProjects")}
         </p>
       ) : (
-        targets.map((t, i) => (
+        targets.map((row, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
           <div key={i} className="flex flex-col gap-3 border-t border-line-subtle pt-3">
             <div className="flex items-start justify-between gap-2">
-              <span className="fg-label text-muted">Project {i + 1}</span>
+              <span className="fg-label text-muted">{t("integrations.sentry.projectN", { n: i + 1 })}</span>
               <Button
                 variant="ghost"
                 icon="trash"
                 onClick={() => onChange(targets.filter((_, j) => j !== i))}
                 disabled={disabled}
-                aria-label={`Remove project ${i + 1}`}
+                aria-label={t("integrations.sentry.removeProject", { n: i + 1 })}
               />
             </div>
             <Field
-              label="Label"
-              hint="A name the agent recognizes, e.g. Backend prod."
+              label={t("integrations.provider.label")}
+              hint={t("integrations.sentry.labelHint")}
               required
-              error={rowInvalid(t) ? "A label is required for this project." : undefined}
+              error={rowInvalid(row) ? t("integrations.sentry.labelRequired") : undefined}
             >
               {input(i, "label", "Backend prod")}
             </Field>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Organization slug" hint="Optional — scopes the Sentry org.">
+              <Field label={t("integrations.sentry.orgSlug")} hint={t("integrations.sentry.orgSlugHint")}>
                 {input(i, "organizationSlug")}
               </Field>
-              <Field label="Project slug" hint="Optional — scopes the Sentry project.">
+              <Field label={t("integrations.sentry.projectSlug")} hint={t("integrations.sentry.projectSlugHint")}>
                 {input(i, "projectSlug")}
               </Field>
             </div>
-            <Field label="Environment" hint="Optional label only (e.g. prod, staging) — not a separate token.">
+            <Field label={t("integrations.sentry.environment")} hint={t("integrations.sentry.environmentHint")}>
               {input(i, "environment")}
             </Field>
-            <Field label="Notes" hint="Optional free text shared with agents (e.g. what lives in this project).">
+            <Field label={t("integrations.sentry.notes")} hint={t("integrations.sentry.notesHint")}>
               <Textarea
-                value={t.notes}
+                value={row.notes}
                 onChange={(e) => setTarget(i, "notes", e.target.value)}
                 rows={2}
-                placeholder="(optional)"
+                placeholder={t("integrations.sentry.optional")}
                 disabled={disabled}
               />
             </Field>

@@ -3,6 +3,7 @@
 import { Button } from "@/design";
 import type { AgentPathKind } from "@forge/contracts/integrations";
 import { useMemo, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
@@ -103,6 +104,7 @@ export function SingleBindingFooter({
 }) {
   const { projectId, existing, pathKind } = b;
   const disabledReason = agentAccessDeniedReason(pathKind);
+  const t = useCopy();
   return (
     <>
       {existing ? (
@@ -119,11 +121,11 @@ export function SingleBindingFooter({
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div className="flex items-center gap-3">
           <Button variant="primary" onClick={onSave} loading={b.saving} disabled={!canSave}>
-            {existing ? "Save" : "Create integration"}
+            {existing ? t("integrations.edit.save") : t("integrations.provider.create")}
           </Button>
           {existing && (
             <Button variant="secondary" onClick={() => b.test.run(existing.id)} loading={b.test.pending}>
-              Test connection
+              {t("integrations.edit.test")}
             </Button>
           )}
         </div>
@@ -131,7 +133,7 @@ export function SingleBindingFooter({
           <div className="flex items-center gap-4">
             <IntegrationEnabledControl projectId={projectId} binding={existing} />
             <Button variant="danger" icon="trash" loading={b.remove.isPending} onClick={() => b.remove.mutate(existing)}>
-              Remove
+              {t("integrations.provider.remove")}
             </Button>
           </div>
         )}

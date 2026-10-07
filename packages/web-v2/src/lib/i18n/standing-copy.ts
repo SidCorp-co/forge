@@ -1,3 +1,4 @@
+import { INTEGRATION_DETAIL } from "./integration-detail-copy";
 import { ISSUE_RULE } from "./issue-rule-copy";
 import { BLOCKER, ISSUE_ACT, ISSUE_WHO } from "./issue-standing-rules";
 import { baseOf, productCopy, type ProductCopyKey } from "./product-copy";
@@ -358,6 +359,8 @@ export const standingEffect = (effect: string, language: string) => localize(EFF
 export const feedbackNote = (note: string, language: string) => localize(FEEDBACK_NOTE, note, language);
 /** Why an issue is not moving, who moves it, and the banner's button, in `language`; one no pattern names reads as core wrote it. */
 export const blockerText = (text: string, language: string) => localize(BLOCKER, text, language);
+/** Core's sentence on one integration row's health in `language`; one no pattern names reads as core wrote it. */
+export const integrationDetail = (text: string, language: string) => localize(INTEGRATION_DETAIL, text, language);
 /** A release gate's title and sentence, and a data risk's sentence, in `language`; one no pattern names reads as core wrote it. */
 export const gateTitle = (title: string, language: string) => localize(GATE_TITLE, title, language);
 export const gateSentence = (sentence: string, language: string) => localize(GATE_SENTENCE, sentence, language);

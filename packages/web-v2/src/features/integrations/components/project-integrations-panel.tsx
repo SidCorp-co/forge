@@ -25,8 +25,9 @@ import {
   Table,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { productCopy } from "@/lib/i18n/product-copy";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { integrationDetail } from "@/lib/i18n/standing-copy";
 import { useIntegrationsList, useIntegrationsStatus } from "../hooks";
 import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
 import { connectionTargetFor, providerIcon, providerLabel } from "../providers/registry";
@@ -57,10 +58,18 @@ function bindingName(card: StatusCard): string | null {
   return name && !ROLE_WORDS.has(name) ? name : null;
 }
 
-function healthText(card: StatusCard): string | null {
+/** Core's sentence on the binding's health in the reader's words, then when it last synced. */
+function healthText(card: StatusCard, words: RowWords): string | null {
   if (!card.configured && !isRepositoryCard(card)) return null;
-  const synced = formatRelativeTime(card.lastSyncAt);
-  return synced ? `${card.detail} · ${synced}` : card.detail;
+  const detail = integrationDetail(card.detail, words.language);
+  const synced = words.relative(card.lastSyncAt);
+  return synced ? `${detail} · ${synced}` : detail;
+}
+
+interface RowWords {
+  t: Copy;
+  language: string;
+  relative: (iso: string | null | undefined) => string;
 }
 
 interface Row {
@@ -73,7 +82,7 @@ interface Row {
   health: string | null;
 }
 
-function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>): Row[] {
+function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>, words: RowWords): Row[] {
   const repository = cards.filter(isRepositoryCard);
   const providers = cards.filter((c) => !isRepositoryCard(c));
   const connected = providers.filter((c) => c.configured);
@@ -82,11 +91,11 @@ function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>): Row
     ...repository.map((card) => ({
       card,
       icon: "branch" as IconName,
-      name: "Repository",
-      sub: metaText(card, "provider") ? providerLabel(metaText(card, "provider") as string) : null,
+      name: words.t("integrations.github.repository"),
+      sub: metaText(card, "provider") ? providerLabel(metaText(card, "provider") as string, words.language) : null,
       target: metaText(card, "repository"),
       targetHref: metaText(card, "remoteUrl")?.startsWith("https://") ? metaText(card, "remoteUrl") : null,
-      health: healthText(card),
+      health: healthText(card, words),
     })),
     ...[...connected, ...open].map((card) => {
       const provider = cardProvider(card.key);
@@ -99,7 +108,7 @@ function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>): Row
         sub: bindingName(card),
         target: binding ? connectionTargetFor(provider, binding.config) : null,
         targetHref: null,
-        health: healthText(card),
+        health: healthText(card, words),
       };
     }),
   ];
@@ -130,7 +139,7 @@ function RepositoryAction({
   canEdit: boolean;
   owner: StatusCard | null;
 }) {
-  const t = productCopy();
+  const t = useCopy();
   const remote = metaText(card, "remoteUrl");
   if (deriveDirectoryStatus(card) === "connected") {
     return remote?.startsWith("https://") ? (
@@ -140,7 +149,7 @@ function RepositoryAction({
         rel="noreferrer"
         className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
       >
-        Open repo
+        {t("integrations.panel.openRepo")}
         <Icon name="arrowRight" size={13} />
       </a>
     ) : null;
@@ -172,7 +181,7 @@ function RepositoryAction({
   }
   return (
     <Link href="?tab=repo" className="text-13 font-semibold text-accent hover:underline">
-      Set repository
+      {t("integrations.panel.setRepo")}
     </Link>
   );
 }
@@ -190,6 +199,7 @@ function IntegrationRow({
   owner: StatusCard | null;
 }) {
   const { card } = row;
+  const t = useCopy();
   const label = row.sub ? `${row.name} ${row.sub}` : row.name;
   const target = row.target ? (
     row.targetHref ? (
@@ -229,17 +239,17 @@ function IntegrationRow({
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} owner={owner} />
         ) : !isProviderCard(card.key) ? null : card.configured ? (
-          <Button variant="ghost" size="sm" aria-label={`Manage ${label}`} onClick={() => onOpen(card)}>
-            Manage
+          <Button variant="ghost" size="sm" aria-label={t("integrations.panel.manageLabel", { name: label })} onClick={() => onOpen(card)}>
+            {t("integrations.panel.manage")}
           </Button>
         ) : canEdit ? (
           <Button
             variant={ownsRepositoryConnect ? "primary" : "secondary"}
             size="sm"
-            aria-label={`Connect ${label}`}
+            aria-label={t("integrations.mcp.connect", { provider: label })}
             onClick={() => onOpen(card)}
           >
-            Connect
+            {t("integrations.panel.connect")}
           </Button>
         ) : null}
       </TD>
@@ -261,12 +271,18 @@ export function ProjectIntegrationsPanel({
   const status = useIntegrationsStatus(projectId);
   const list = useIntegrationsList(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const cards = useMemo(() => status.data?.cards ?? [], [status.data]);
   const bindings = useMemo(
     () => new Map((list.data?.bindings ?? []).map((b) => [b.id, b])),
     [list.data],
   );
-  const rows = useMemo(() => rowsOf(cards, bindings), [cards, bindings]);
+  const rows = useMemo(
+    () => rowsOf(cards, bindings, { t, language, relative: (iso) => time.relative(iso) }),
+    [cards, bindings, t, language, time],
+  );
   const owner = useMemo(() => connectOwner(cards), [cards]);
   const connectedCount = rows.filter((r) => deriveDirectoryStatus(r.card) === "connected").length;
 
@@ -280,15 +296,15 @@ export function ProjectIntegrationsPanel({
       <PageSection>
         <PageSectionHeader className="border-b-0 pt-0">
           <span className="flex items-baseline gap-3">
-            <PageSectionTitle>Integrations</PageSectionTitle>
+            <PageSectionTitle>{t("integrations.title")}</PageSectionTitle>
             {status.data && (
               <span className="fg-body-sm text-subtle">
-                {connectedCount} of {rows.length} connected
+                {t("integrations.panel.connectedOf", { n: connectedCount, total: rows.length })}
               </span>
             )}
           </span>
           <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
-            Refresh
+            {t("integrations.panel.refresh")}
           </Button>
         </PageSectionHeader>
         {status.isLoading ? (
@@ -300,15 +316,15 @@ export function ProjectIntegrationsPanel({
         ) : status.isError ? (
           <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
         ) : (
-          <Table aria-label="Integrations" data-tour="int-status">
+          <Table aria-label={t("integrations.title")} data-tour="int-status">
             <THead>
               <TR>
-                <TH>Integration</TH>
-                <TH className="hidden sm:table-cell">Status</TH>
-                <TH className="hidden sm:table-cell">Target</TH>
-                <TH className="hidden sm:table-cell">Health</TH>
+                <TH>{t("integrations.panel.integration")}</TH>
+                <TH className="hidden sm:table-cell">{t("integrations.panel.status")}</TH>
+                <TH className="hidden sm:table-cell">{t("integrations.panel.target")}</TH>
+                <TH className="hidden sm:table-cell">{t("integrations.panel.health")}</TH>
                 <TH className="text-right">
-                  <span className="sr-only">Action</span>
+                  <span className="sr-only">{t("integrations.panel.action")}</span>
                 </TH>
               </TR>
             </THead>

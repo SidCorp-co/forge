@@ -6,6 +6,7 @@
 // one requires org admin — the server enforces both).
 import { Field, Select } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export function ConnectionOwnerField({
   projectId,
@@ -18,6 +19,7 @@ export function ConnectionOwnerField({
   onChange: (orgId: string | undefined) => void;
 }) {
   const projectsQ = useProjects();
+  const t = useCopy();
   const project = projectsQ.data?.find((p) => p.id === projectId);
   const canCreateOrgOwned =
     project &&
@@ -28,15 +30,15 @@ export function ConnectionOwnerField({
 
   return (
     <Field
-      label="Credential owner"
-      hint="Org-owned connections are shared with every project in the org."
+      label={t("integrations.owner.label")}
+      hint={t("integrations.owner.hint")}
     >
       <Select
         value={value ?? ""}
         onChange={(v) => onChange(v === "" ? undefined : v)}
         options={[
-          { value: "", label: "Personal (only me)" },
-          { value: project.orgId, label: `Organization — ${project.orgName}` },
+          { value: "", label: t("integrations.owner.personal") },
+          { value: project.orgId, label: t("integrations.owner.orgNamed", { org: project.orgName }) },
         ]}
       />
     </Field>

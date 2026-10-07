@@ -9,22 +9,13 @@
 import { useState } from "react";
 import { Button, PageSectionTitle, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useUpdateConnection, useUpdateProviderIntegration } from "../hooks";
 import type { BindingSummary, ConnectionSummary, IntegrationSummary } from "../types";
 
 /** The config key itself, so no screen spells it differently from the API. */
 export const RELEASE_RUNNER_LABEL_KEY = "releaseRunnerLabel";
-
-export const RELEASE_RUNNER_HEADING = "Release runner label";
-
-/** The same words the Release card uses for the same state (ISS-1275). */
-export const NO_RELEASE_RUNNER_LABEL =
-  "none — a release goes to any box in this project's pool";
-
-export const NO_CONNECTION_RUNNER_LABEL =
-  "none — each project bound to this credential uses its own binding, or its own pool";
-
-const WHERE_THE_CONNECTION_IS_EDITED = "Integrations in the workspace rail";
 
 function declaredIn(config: Record<string, unknown> | undefined | null): string | null {
   const value = config?.[RELEASE_RUNNER_LABEL_KEY];
@@ -56,44 +47,43 @@ function Editor({
   /** The label in force from the tier underneath, shown only where this one is silent. */
   inherited?: string | null;
   canEdit: boolean;
-  disabledReason: string;
-  hint: string;
+  disabledReason: ProductCopyKey;
+  hint: ProductCopyKey;
   /** What this tier's silence means, which differs between a project and a shared credential. */
-  none: string;
+  none: ProductCopyKey;
   busy: boolean;
   failure: string | null;
   onSave: (label: string) => void;
   onClear: () => void;
 }) {
   const [draft, setDraft] = useState(declared ?? "");
+  const t = useCopy();
+  const heading = t("integrations.releaseRunner.heading");
 
   return (
     <section className="flex flex-col gap-2">
-      <PageSectionTitle>{RELEASE_RUNNER_HEADING}</PageSectionTitle>
+      <PageSectionTitle>{heading}</PageSectionTitle>
       <p className="fg-body-sm text-muted">
         {declared ? (
           <>
-            <span className="font-mono">{declared}</span> — a release prefers a box carrying
-            it, and still runs on the pool it has where no box does.
+            <span className="font-mono">{declared}</span> — {t("integrations.releaseRunner.declared")}
           </>
         ) : inherited ? (
           <>
-            <span className="font-mono">{inherited}</span> — inherited from the shared
-            connection behind this binding, which is where it is declared. Clearing it here
-            removes nothing: change that one under {WHERE_THE_CONNECTION_IS_EDITED}.
+            <span className="font-mono">{inherited}</span> — {t("integrations.releaseRunner.inherited")}
           </>
         ) : (
-          none
+          t(none)
         )}
       </p>
       {canEdit ? (
-        <Field label={RELEASE_RUNNER_HEADING} hint={hint}>
+        <Field label={heading} hint={t(hint)}>
           <div className="flex items-center gap-2">
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="release"
-              aria-label={RELEASE_RUNNER_HEADING}
+              aria-label={heading}
               disabled={busy}
             />
             <Button
@@ -102,17 +92,17 @@ function Editor({
               disabled={busy || draft.trim().length === 0}
               onClick={() => onSave(draft.trim())}
             >
-              Save
+              {t("integrations.edit.save")}
             </Button>
             {declared && (
               <Button variant="ghost" size="sm" disabled={busy} onClick={onClear}>
-                Clear
+                {t("integrations.releaseRunner.clear")}
               </Button>
             )}
           </div>
         </Field>
       ) : (
-        <p className="fg-body-sm text-subtle">{disabledReason}</p>
+        <p className="fg-body-sm text-subtle">{t(disabledReason)}</p>
       )}
       {failure && <p className="fg-body-sm text-[var(--red-600)]">{failure}</p>}
     </section>
@@ -157,9 +147,9 @@ export function BindingReleaseRunnerField({
       declared={declared}
       inherited={declared === null ? effective : null}
       canEdit={canEdit}
-      disabledReason="Only a project admin can change this."
-      hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Clearing it falls back to the shared connection's label where that declares one, and otherwise to any box in this project's pool."
-      none={NO_RELEASE_RUNNER_LABEL}
+      disabledReason="integrations.access.deniedProject"
+      hint="integrations.releaseRunner.bindingHint"
+      none="integrations.releaseRunner.noneBinding"
       busy={update.isPending}
       failure={failure}
       onSave={(label) => write(label)}
@@ -203,9 +193,9 @@ export function ConnectionReleaseRunnerField({
       key={declared ?? ""}
       declared={declared}
       canEdit={canManage}
-      disabledReason="Only the credential's owner, or an org owner or admin, can change this."
-      hint="The release runner every project bound to this credential prefers. A project's own live deploy binding overrides it."
-      none={NO_CONNECTION_RUNNER_LABEL}
+      disabledReason="integrations.releaseRunner.deniedConnection"
+      hint="integrations.releaseRunner.connectionHint"
+      none="integrations.releaseRunner.noneConnection"
       busy={update.isPending}
       failure={failure}
       onSave={(label) => write(label)}

@@ -1,1 +1,1 @@
-**Issues, the overviews and Runners read in the interface language you chose.** Issue pages and lists, the Development overview, the workspace Overview, the device fleet and project runners show Vietnamese, including core's sentences on whom an issue waits and why.
+**Issues, the overviews, Runners and Integrations read in the interface language you chose.** Issue pages, both overviews, the device fleet, project runners, connections and every provider's settings show Vietnamese, including core's sentences on whom an issue waits and integration health.

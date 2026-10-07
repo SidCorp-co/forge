@@ -3,6 +3,7 @@
 import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, Input } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useState } from "react";
 import { useGitHubConnect } from "../../hooks";
 import type { GitHubConnectStart } from "../../types";
@@ -37,12 +38,13 @@ function permissionRows(manifest: Record<string, unknown>): [string, string][] {
 function AppOwner({ projectId }: { projectId: string }) {
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
+  const t = useCopy();
   if (!project) return null;
   return (
     <p className="fg-body-sm text-muted">
       {project.orgIsPersonal
-        ? "The App will belong to you, and this project is the only one that uses it."
-        : `The App will belong to ${project.orgName}, so every admin of this project can use and change it. Creating it needs org admin there.`}
+        ? t("integrations.github.ownerYou")
+        : t("integrations.github.ownerOrg", { org: project.orgName })}
     </p>
   );
 }
@@ -50,6 +52,7 @@ function AppOwner({ projectId }: { projectId: string }) {
 export function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
+  const t = useCopy();
 
   const start = async () => {
     const res = await connect.mutateAsync({ org: org.trim() || undefined });
@@ -59,22 +62,21 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Create a GitHub App</PageSectionTitle>
+        <PageSectionTitle>{t("integrations.github.createTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Forge creates one GitHub App for your organization, not one per project. You approve it on
-          GitHub and choose which repositories it may see — no token is typed here.
+          {t("integrations.github.createIntro")}
         </p>
 
         <AppOwner projectId={projectId} />
 
-        <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
+        <Field label={t("integrations.github.org")} hint={t("integrations.github.orgHint")}>
           <Input
             value={org}
             onChange={(e) => setOrg(e.target.value)}
             placeholder="SidCorp-co"
-            aria-label="GitHub organization"
+            aria-label={t("integrations.github.org")}
           />
         </Field>
 
@@ -82,18 +84,18 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
 
         <div className="flex items-center gap-3">
           <Button onClick={start} disabled={connect.isPending}>
-            {connect.isPending ? "Preparing…" : "Create GitHub App"}
+            {connect.isPending ? t("integrations.github.preparing") : t("integrations.github.create")}
           </Button>
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack}>
-              Use an existing App
+              {t("integrations.github.useExisting")}
             </Button>
           )}
         </div>
 
         {connect.data && (
           <div className="flex flex-col gap-1">
-            <span className="fg-body-sm font-semibold">Permissions requested</span>
+            <span className="fg-body-sm font-semibold">{t("integrations.github.permissions")}</span>
             {permissionRows(connect.data.manifest).map(([name, level]) => (
               <span key={name} className="fg-body-sm text-muted">
                 {name}: <span className="font-mono">{level}</span>

@@ -2,6 +2,8 @@
 
 import { Button, Field, Input, SegmentedControl } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useMemo, useState } from "react";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import {
@@ -13,6 +15,7 @@ import {
   useUpdateProviderIntegration,
 } from "../../hooks";
 import type { CoolifyTargetInput, IntegrationSummary } from "../../types";
+import { providerLabel } from "../registry";
 import { healthBadge, OrgLockedNote, ProviderCard, TestOutcome, useBindingTest } from "../shared";
 import type { CoolifyReadConfig } from "./config";
 import { DeployConfirmationHint, ProdGateSection } from "./gates";
@@ -20,12 +23,15 @@ import { CoolifyTargetsField } from "./targets-field";
 
 const NEW_BINDING = "new";
 
-function bindingName(row: IntegrationSummary): string {
-  return row.label || `binding ${row.id.slice(0, 8)}`;
+function bindingName(row: IntegrationSummary, t: Copy): string {
+  return row.label || t("integrations.coolify.bindingN", { id: row.id.slice(0, 8) });
 }
 
-function badgeFor(existing: IntegrationSummary | undefined) {
-  return healthBadge(existing, { inactive: { label: "Breaker open", tone: "red" }, error: "Last deploy failed" });
+function badgeFor(existing: IntegrationSummary | undefined, t: Copy) {
+  return healthBadge(existing, t, {
+    inactive: { label: t("integrations.coolify.breakerOpen"), tone: "red" },
+    error: t("integrations.coolify.lastDeployFailed"),
+  });
 }
 
 export function CoolifySection({ projectId }: { projectId: string }) {
@@ -34,13 +40,15 @@ export function CoolifySection({ projectId }: { projectId: string }) {
   const [picked, setPicked] = useState<string | null>(null);
   const selected = picked ?? rows[0]?.id ?? NEW_BINDING;
   const existing = useMemo(() => rows.find((i) => i.id === selected), [rows, selected]);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const options = [
-    ...rows.map((r) => ({ value: r.id, label: bindingName(r) })),
-    { value: NEW_BINDING, label: "New binding" },
+    ...rows.map((r) => ({ value: r.id, label: bindingName(r, t) })),
+    { value: NEW_BINDING, label: t("integrations.coolify.newBinding") },
   ];
 
   return (
-    <ProviderCard title="Coolify deploy" badge={badgeFor(existing)}>
+    <ProviderCard title={providerLabel("coolify", language)} badge={badgeFor(existing, t)}>
       {rows.length > 0 && <SegmentedControl<string> value={selected} onChange={setPicked} options={options} />}
       {/* Remount the panel per binding so its form state re-seeds. */}
       <BindingPanel key={selected} projectId={projectId} existing={existing} onRefetch={() => list.refetch()} />
@@ -95,6 +103,7 @@ function BindingPanel({
   const update = useUpdateProviderIntegration(projectId);
   const test = useBindingTest(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
+  const t = useCopy();
 
   const cfg = (existing?.config ?? {}) as CoolifyReadConfig;
   const { baseUrl, setBaseUrl, targets, setTargets, apiToken, setApiToken } = useCoolifyForm(existing);
@@ -107,7 +116,7 @@ function BindingPanel({
   async function handleSave() {
     test.reset();
     const clean = cleanTargets(targets);
-    if (clean.length === 0) return test.setError("Add at least one deploy target (label + resource UUID).");
+    if (clean.length === 0) return test.setError(t("integrations.coolify.needTarget"));
     try {
       if (existing) {
         const config: Record<string, unknown> = { targets: clean };
@@ -115,7 +124,7 @@ function BindingPanel({
         const secrets = apiToken.trim() && !orgLocked ? { secrets: { apiToken: apiToken.trim() } } : {};
         await update.mutateAsync({ id: existing.id, body: { config, ...secrets } });
       } else {
-        if (!apiToken.trim()) return test.setError("API token is required for the first save");
+        if (!apiToken.trim()) return test.setError(t("integrations.coolify.needToken"));
         await create.mutateAsync({
           provider: "coolify",
           role: "deploy",
@@ -178,15 +187,13 @@ function CoolifyServerFields(p: {
   setApiToken: (v: string) => void;
   orgLocked: boolean;
 }) {
+  const t = useCopy();
   return (
     <fieldset className="flex flex-col gap-3 border-t border-line-subtle pt-3">
-      <legend className="fg-label px-1 text-subtle">Coolify server · shared credential</legend>
-      <p className="fg-body-sm text-muted">
-        One Coolify server + API token, reused by every project bound to this connection. Forge calls it to
-        trigger deploys (Forge → Coolify).
-      </p>
+      <legend className="fg-label px-1 text-subtle">{t("integrations.coolify.server")}</legend>
+      <p className="fg-body-sm text-muted">{t("integrations.coolify.serverIntro")}</p>
       {!p.existing && <ConnectionOwnerField projectId={p.projectId} value={p.ownerOrgId} onChange={p.setOwnerOrgId} />}
-      <Field label="Base URL" required>
+      <Field label={t("integrations.gitlab.baseUrl")} required>
         <Input
           type="url"
           value={p.baseUrl}
@@ -196,12 +203,8 @@ function CoolifyServerFields(p: {
         />
       </Field>
       <Field
-        label="API token"
-        hint={
-          p.existing
-            ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
-            : "Coolify API token. Stored encrypted; never shown again."
-        }
+        label={t("integrations.coolify.token")}
+        hint={p.existing ? t("integrations.provider.tokenStored") : t("integrations.coolify.tokenHint")}
         required={!p.existing}
       >
         <Input
@@ -209,31 +212,29 @@ function CoolifyServerFields(p: {
           autoComplete="new-password"
           value={p.apiToken}
           onChange={(e) => p.setApiToken(e.target.value)}
-          placeholder={p.existing ? "•••••••• (unchanged)" : "Coolify API token"}
+          placeholder={p.existing ? t("integrations.provider.unchanged") : t("integrations.secret.coolify")}
           disabled={p.orgLocked}
         />
       </Field>
       {p.orgLocked && (
-        <OrgLockedNote>
-          Org-shared credential — only an org owner/admin can change the base URL or API token. The deploy
-          targets below are yours to configure per project.
-        </OrgLockedNote>
+        <OrgLockedNote>{t("integrations.coolify.orgLocked")}</OrgLockedNote>
       )}
     </fieldset>
   );
 }
 
 function EnvironmentNote({ bindingId }: { bindingId: string | undefined }) {
+  const t = useCopy();
   return (
     <p className="fg-body-sm text-muted">
-      Which environment this binding deploys is the project document&apos;s: name it in{" "}
-      <code>environments.&lt;name&gt;.deployment.binding</code>
+      {t("integrations.coolify.envWhere.lead")} <code>environments.&lt;name&gt;.deployment.binding</code>
       {bindingId && (
         <>
-          {" "}as <code>{bindingId}</code>
+          {" "}
+          {t("integrations.coolify.envWhere.as")} <code>{bindingId}</code>
         </>
       )}{" "}
-      on the Configuration tab of project settings. A binding no environment names is never dispatched.
+      {t("integrations.coolify.envWhere.tail")}
     </p>
   );
 }
@@ -256,26 +257,27 @@ function PanelActions({
 }) {
   const remove = useDeleteProviderIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
+  const t = useCopy();
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary" onClick={onSave} loading={saving}>
-          {existing ? "Save" : "Create integration"}
+          {existing ? t("integrations.edit.save") : t("integrations.provider.create")}
         </Button>
         {existing && (
           <>
             <Button variant="secondary" onClick={onTest} loading={testing}>
-              Test connection
+              {t("integrations.edit.test")}
             </Button>
             <Button
               variant="danger"
               icon="trash"
               loading={remove.isPending}
               onClick={() =>
-                window.confirm(`Delete the Coolify integration ${bindingName(existing)}?`) && remove.mutate(existing)
+                window.confirm(t("integrations.coolify.confirmDelete", { name: bindingName(existing, t) })) && remove.mutate(existing)
               }
             >
-              Delete
+              {t("integrations.row.delete")}
             </Button>
           </>
         )}

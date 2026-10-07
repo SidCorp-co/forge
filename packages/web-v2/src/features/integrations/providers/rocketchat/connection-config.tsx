@@ -7,20 +7,22 @@ import {
   Field,
   Input,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useUpdateConnection } from "../../hooks";
 import type { ConnectionSection } from "../registry";
 
 /** The connection tier of a Rocket.Chat bot: the chat server. Rooms are binding-tier. */
 export const RocketchatConnectionConfig: ConnectionSection = ({ connection, canManage }) => {
   const update = useUpdateConnection();
+  const t = useCopy();
   const [serverUrl, setServerUrl] = useState(
     typeof connection.config?.serverUrl === "string" ? connection.config.serverUrl : "",
   );
 
   return (
     <section className="flex flex-col gap-3">
-      <PageSectionTitle>Configuration</PageSectionTitle>
-      <Field label="Server URL" hint="e.g. https://chat.example.com">
+      <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
+      <Field label={t("integrations.rocket.server")} hint={t("integrations.rocket.serverHint")}>
         <Input
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}
@@ -28,8 +30,7 @@ export const RocketchatConnectionConfig: ConnectionSection = ({ connection, canM
         />
       </Field>
       <p className="fg-body-sm text-muted">
-        This is the shared bot credential (server URL + bot token). The room each project listens on
-        is configured per project under project settings → Integrations.
+        {t("integrations.rocket.connectionNote")}
       </p>
       {canManage && (
         <div>
@@ -44,7 +45,7 @@ export const RocketchatConnectionConfig: ConnectionSection = ({ connection, canM
               })
             }
           >
-            Save configuration
+            {t("integrations.rocket.saveConfig")}
           </Button>
         </div>
       )}

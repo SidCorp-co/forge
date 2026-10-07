@@ -7,20 +7,22 @@ import {
   Field,
   Input,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useUpdateConnection } from "../../hooks";
 import type { ConnectionSection } from "../registry";
 
 /** The connection tier of a Coolify credential: the server it points at, and nothing else. */
 export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canManage }) => {
   const update = useUpdateConnection();
+  const t = useCopy();
   const [baseUrl, setBaseUrl] = useState(
     typeof connection.config?.baseUrl === "string" ? connection.config.baseUrl : "",
   );
 
   return (
     <section className="flex flex-col gap-3">
-      <PageSectionTitle>Configuration</PageSectionTitle>
-      <Field label="Base URL">
+      <PageSectionTitle>{t("integrations.detail.config")}</PageSectionTitle>
+      <Field label={t("integrations.gitlab.baseUrl")}>
         <Input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
@@ -28,9 +30,7 @@ export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canMana
         />
       </Field>
       <p className="fg-body-sm text-muted">
-        This is the shared credential (server URL + API token only). Deploy targets — the Coolify
-        application(s) each project deploys, including a split backend/frontend — are configured per
-        project under project settings → Integrations.
+        {t("integrations.coolify.connectionNote")}
       </p>
       {canManage && (
         <div>
@@ -42,7 +42,7 @@ export const CoolifyConnectionConfig: ConnectionSection = ({ connection, canMana
               update.mutate({ id: connection.id, body: { config: { baseUrl: baseUrl.trim() } } })
             }
           >
-            Save configuration
+            {t("integrations.rocket.saveConfig")}
           </Button>
         </div>
       )}
