@@ -65,8 +65,6 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
-  /** Workflow designs awaiting their approver. */
-  designsAwaiting?: number | undefined;
 }
 
 const AREA_OF: Record<string, NeedsYouAreaKey> = {
@@ -76,6 +74,7 @@ const AREA_OF: Record<string, NeedsYouAreaKey> = {
   "proj-issues": "issues",
   "proj-contracts": "contracts",
   "proj-automation": "automation",
+  "proj-workflows": "designs",
 };
 
 function badgeOf(key: string, badges: ProjectBadges): Pick<NavItem, "badge" | "badgeHint"> {
@@ -83,9 +82,6 @@ function badgeOf(key: string, badges: ProjectBadges): Pick<NavItem, "badge" | "b
   if (area) {
     const read = badges.needsYou?.areas[area];
     return read ? { badge: read.you, badgeHint: needsYouHint(NEEDS_YOU_AREA_LABELS[area], read) } : {};
-  }
-  if (key === "proj-workflows" && badges.designsAwaiting !== undefined) {
-    return { badge: badges.designsAwaiting, badgeHint: `Workflows · designs awaiting approval ${badges.designsAwaiting}` };
   }
   return {};
 }

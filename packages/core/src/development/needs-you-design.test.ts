@@ -35,7 +35,7 @@ describe('the design row on Needs you', () => {
     expect(row).toMatchObject({
       entity: 'workflow',
       key: 'hop-staff-shell-ux',
-      title: 'Staff shell',
+      title: 'Staff shell · revision 3 proposed',
       touchedAt: '2026-10-06T08:00:00.000Z',
       standing: {
         attentionGroup: 'needs_you',

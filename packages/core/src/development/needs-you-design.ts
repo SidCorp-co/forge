@@ -22,7 +22,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     return {
       entity: 'workflow',
       key: h.flow,
-      title: p.title,
+      title: `${p.title} · revision ${p.revision} proposed`,
       standing: { attentionGroup: 'needs_you', waitingOn: p.waitingOn },
       touchedAt: p.proposedAt,
     };

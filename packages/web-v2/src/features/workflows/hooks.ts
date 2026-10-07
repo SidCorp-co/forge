@@ -90,9 +90,3 @@ export function useDesignDecision(projectId: string, workflowId: string) {
     },
   });
 }
-
-/** Designs waiting on their approver, for the Workflows menu badge. */
-export function useDesignsAwaitingCount(projectId: string | undefined): number | undefined {
-  const q = useWorkflows(projectId);
-  return q.data?.workflows.filter((w) => w.design.status === "proposed").length;
-}

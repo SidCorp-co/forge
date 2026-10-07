@@ -60,6 +60,8 @@ describe("where a needs-you row leads", () => {
   it("opens its own page for everything but an issue", () => {
     expect(needsYouHref("hop", { entity: "requirement", key: "REQ-2" })).toBe("/projects/hop/requirements/REQ-2");
     expect(needsYouPeekHref("hop", { entity: "feedback", key: "FB-9" })).toBe(needsYouHref("hop", { entity: "feedback", key: "FB-9" }));
+    expect(needsYouHref("hop", { entity: "workflow", key: "shell", waitingOn: { kind: "you" } })).toBe("/projects/hop/workflows/shell?tab=revisions");
+    expect(needsYouHref("hop", { entity: "workflow", key: "shell", waitingOn: { kind: "person" } })).toBe("/projects/hop/workflows/shell");
     expect(needsYouPeekHref("hop", { entity: "issue", key: "ISS-7" })).toBe("/projects/hop/issues?peek=ISS-7");
   });
 });

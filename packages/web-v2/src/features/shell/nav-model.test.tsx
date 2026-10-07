@@ -38,6 +38,12 @@ describe("the nav model", () => {
     expect(dev?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
     expect(dev?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
   });
+
+  it("badges Workflows with the same designs rows the Dashboard draws", () => {
+    const needsYou = { areas: { designs: { you: 1, acts: [{ act: "approve or return revision 3", count: 1 }] } } } as never;
+    const wf = projectMenu({ needsYou }).flatMap((e) => (isNavGroup(e) ? e.items : [e])).find((it) => it.key === "proj-workflows");
+    expect(wf).toMatchObject({ badge: 1 });
+  });
 });
 
 describe("the project switcher", () => {

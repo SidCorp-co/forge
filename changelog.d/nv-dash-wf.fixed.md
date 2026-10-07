@@ -1,0 +1,1 @@
+**A workflow revision waiting on you now appears on the Dashboard as a Workflows row** opening the revisions tab. The header and the Workflows menu badge count the rows drawn; a row of an unknown area is refused by name.
