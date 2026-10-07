@@ -21,6 +21,7 @@ import {
 import {
   clearIssueMerge,
   describeMergeMark,
+  designOnlyStamp,
   type MergeMarkKind,
   type MergeRecord,
   mergeMarkKindOf,
@@ -136,6 +137,10 @@ async function preflightMark(
   }
   const drift = await contractDrift(prior, args.contracts ?? []);
   if (drift) throw refuse(drift.code, drift.detail, '/contracts');
+  const design = shape === 'git' && args.commit ? designOnlyStamp(prior) : null;
+  if (design && args.commit) {
+    return { shape, fromRepository: await overDesign(args, args.commit, design) };
+  }
   if (args.actor.agency !== 'agent') return { shape, fromRepository: null };
   const missing = await findMissingWorkEvidence(issueId);
   if (!missing) return { shape, fromRepository: null };
@@ -143,6 +148,27 @@ async function preflightMark(
   const read = await readCommitLanding({ issueId, commit: args.commit });
   if (!read.ok) throw refuse(read.code, read.detail, '/commit');
   return { shape, fromRepository: read };
+}
+
+/**
+ * A commit marked over a design approval's stamp is read from the repository whoever marks it, and
+ * stamped as observed beside the revision, so the approval that stamped first never shadows the code
+ * that landed after it. Where the repository cannot vouch for it the mark is refused, unless the box
+ * sent the paths it read at that commit, which the stamp still takes (`recordReadPaths`).
+ */
+async function overDesign(
+  args: MergeMarkArgs,
+  commit: string,
+  design: string[],
+): Promise<RepositoryLanding | null> {
+  const read = await readCommitLanding({ issueId: args.issue.id, commit });
+  if (read.ok) return read;
+  if (args.changedPaths) return null;
+  throw refuse(
+    'MARK_ALREADY_STANDS',
+    `this issue's mark is the approval of design ${design.join(', ')}, which records no commit, and commit ${commit} was not recorded over it because the repository could not vouch for it (${read.code}: ${read.detail}). Nothing changed. Mark again naming the commit that landed this issue's code, or send the paths the box read at it as \`changedPaths\`.`,
+    '/commit',
+  );
 }
 
 /** The merge record a mark writes: an observed merge, the repository's commit, a landing, or a

@@ -113,9 +113,12 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
 - **A design approval** writes the revision's `design` artifact on either shape (below). On git, an
   observed commit on the same issue is still read, and its artifacts are named beside the revision;
   with no observed commit and no box-read paths the revision is named and the rest reads unread, so
-  the issue is listed under `unclassified` and the release never reads as shipping nothing. The
-  approval stamps first, so a run's later claim of a commit reaches no column (FB-105: ISS-350 in
-  0.4.0-dev.113 changed code and read as a design revision alone).
+  the issue is listed under `unclassified` and the release never reads as shipping nothing. A mark
+  naming a `commit` over that design-only stamp is read from the repository whoever marks it
+  (`designOnlyStamp`, `overDesign` in `merge-marker.ts`) and stamped `observed` beside the revision;
+  where the repository cannot vouch for the commit and no box-read `changedPaths` came with it, the
+  mark is refused `MARK_ALREADY_STANDS` naming the revision and the read's refusal, never answered
+  `already_merged` (FB-105: ISS-350 in 0.4.0-dev.113 changed code and read as a design revision alone).
 
 The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
 `changes`: per surface its artifacts and the issues touching each, `design` marked as shipping
