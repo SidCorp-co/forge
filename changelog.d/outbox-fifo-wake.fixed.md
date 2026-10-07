@@ -1,1 +1,1 @@
-**An issue's next outbox delivery runs as soon as the one before it settles.** Deliveries keyed by issue are strict FIFO and the worker fetched one at a time, so each event queued behind another waited out the 10-second backstop poll.
+**An issue's next outbox delivery runs as soon as the one before it settles.** Deliveries keyed by issue run in strict order one at a time, so each event queued behind another used to wait out the 10-second poll.
