@@ -138,13 +138,28 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect(sent).not.toContain(HASH);
   });
 
-  it('censors a key-named secret only the rendering shows', () => {
+  it('drops an event whose fixed body will not give up a key-named secret', () => {
+    const data = Object.freeze({
+      password: 'ordinary-password',
+      toJSON() {
+        return this.password;
+      },
+    });
+    expect(scrubSentryEvent({ request: { data } })).toBeNull();
+    const request = Object.freeze({ data: Object.freeze({ token: 'ordinary-token' }) });
+    expect(scrubSentryEvent({ request })).toBeNull();
+  });
+
+  it('sends an event whose fixed fields hold nothing to scrub', () => {
+    const event = { request: Object.freeze({ url: '/x', data: Object.freeze({ note: 'kept' }) }) };
+    expect(JSON.stringify(scrubSentryEvent(event))).toContain('kept');
+  });
+
+  it('drops an event whose body gives a key-named secret only through a getter', () => {
     const data = Object.defineProperty({}, 'password', {
       get: () => 'getter-password',
       enumerable: true,
     });
-    const sent = JSON.stringify(scrubSentryEvent({ request: { data } }));
-    expect(sent).not.toContain('getter-password');
-    expect(sent).toContain('[Filtered]');
+    expect(scrubSentryEvent({ request: { data } })).toBeNull();
   });
 });

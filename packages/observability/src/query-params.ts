@@ -306,7 +306,10 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (depth > MAX_DEPTH) return REDACTED;
   if (value instanceof Error) walk.errors.push(value);
   const asError = value instanceof Error && walk.errorsAsThemselves;
+  // A toJSON read through a getter may answer otherwise when the serializer reads it again.
+  let copy = false;
   if (!(top && walk.fields) && !asError) {
+    copy = toJSONByGetter(value);
     const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
@@ -321,9 +324,23 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (walk.open.has(value)) return CIRCULAR;
   if (asError) return value;
   walk.open.add(value);
-  const out = renderFields(value, depth, walk, false);
+  const out = renderFields(value, depth, walk, copy);
   walk.open.delete(value);
   return out;
+}
+
+/** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */
+function toJSONByGetter(value: object): boolean {
+  let at: object | null = value;
+  while (at) {
+    const here: object = at;
+    const own = attempt(() => Object.getOwnPropertyDescriptor(here, 'toJSON'));
+    if (own === UNREADABLE) return true;
+    if (own) return !('value' in own);
+    const next = attempt((): object | null => Object.getPrototypeOf(here));
+    at = next === UNREADABLE ? null : next;
+  }
+  return false;
 }
 
 /**

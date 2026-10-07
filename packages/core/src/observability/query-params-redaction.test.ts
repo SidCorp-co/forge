@@ -387,6 +387,16 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     expect(JSON.stringify(redactQueryParams({ direct, reading: pg.message }))).not.toContain('zq');
   });
 
+  it('leaves no toJSON getter for a serializer to read again, though it gave no function', () => {
+    let reads = 0;
+    const reading = Object.defineProperty({ note: 'kept' }, 'toJSON', {
+      get: () => (++reads === 1 ? undefined : () => duplicate().message),
+    });
+    const rendered = JSON.stringify(redactQueryParams({ reading }));
+    expect(reads).toBe(1);
+    expect(rendered).toBe('{"reading":{"note":"kept"}}');
+  });
+
   it('reads an array as JSON does: each index once, one that throws written redacted', () => {
     let reads = 0;
     const items: unknown[] = ['kept'];

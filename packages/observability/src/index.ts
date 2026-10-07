@@ -73,30 +73,40 @@ export const ENV_SECRET_ASSIGNMENT_PATTERN =
 
 export const FILTERED = '[Filtered]';
 
-/** Sets a field in place where the field allows it: a getter-only or frozen one is left to the copy. */
-function put(target: object, key: string | number, value: unknown): void {
+/** Sets a field in place, and says whether it now holds `value`: a fixed field refuses it. */
+function put(target: object, key: string | number, value: unknown): boolean {
   try {
     (target as Record<string | number, unknown>)[key] = value;
-  } catch {}
+  } catch {
+    return false;
+  }
+  return Object.getOwnPropertyDescriptor(target, key)?.value === value;
 }
 
-export function scrubStringValues(obj: unknown, depth = 0): void {
-  if (depth > 8 || !obj) return;
-  if (typeof obj !== 'object') return;
+/** Scrubs every string in `obj` in place; false where a field refused the scrubbed text. */
+export function scrubStringValues(obj: unknown, depth = 0): boolean {
+  if (depth > 8 || !obj) return true;
+  if (typeof obj !== 'object') return true;
+  let whole = true;
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       const v = obj[i];
-      if (typeof v === 'string') put(obj, i, scrubPatInString(v));
-      else scrubStringValues(v, depth + 1);
+      if (typeof v === 'string') {
+        const out = scrubPatInString(v);
+        if (out !== v && !put(obj, i, out)) whole = false;
+      } else if (!scrubStringValues(v, depth + 1)) whole = false;
     }
-    return;
+    return whole;
   }
   const rec = obj as Record<string, unknown>;
   for (const k of Object.keys(rec)) {
     const v = rec[k];
-    if (typeof v === 'string') put(rec, k, scrubPatInString(v));
-    else scrubStringValues(v, depth + 1);
+    if (typeof v === 'string') {
+      const out = scrubPatInString(v);
+      if (out !== v && !put(rec, k, out)) whole = false;
+    } else if (!scrubStringValues(v, depth + 1)) whole = false;
   }
+  return whole;
 }
 
 /** Redact PAT plaintext inside a single string (URL, log line, breadcrumb message). */
@@ -114,28 +124,32 @@ export function scrubPatInString(s: string): string {
     .replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
-export function scrubBodyKeys(obj: unknown, depth = 0): void {
-  if (depth > 8 || !obj || typeof obj !== 'object') return;
+/** Censors every key-named secret in `obj` in place; false where a field refused it. */
+export function scrubBodyKeys(obj: unknown, depth = 0): boolean {
+  if (depth > 8 || !obj || typeof obj !== 'object') return true;
+  let whole = true;
   if (Array.isArray(obj)) {
-    for (const item of obj) scrubBodyKeys(item, depth + 1);
-    return;
+    for (const item of obj) if (!scrubBodyKeys(item, depth + 1)) whole = false;
+    return whole;
   }
   const rec = obj as Record<string, unknown>;
   for (const key of Object.keys(rec)) {
     if (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase())) {
-      put(rec, key, FILTERED);
+      if (!put(rec, key, FILTERED)) whole = false;
       continue;
     }
-    scrubBodyKeys(rec[key], depth + 1);
+    if (!scrubBodyKeys(rec[key], depth + 1)) whole = false;
   }
+  return whole;
 }
 
-export function scrubHeaders(headers: Record<string, string | string[] | undefined>): void {
+/** Censors every secret-named header in place; false where a header refused it. */
+export function scrubHeaders(headers: Record<string, string | string[] | undefined>): boolean {
+  let whole = true;
   for (const k of Object.keys(headers)) {
-    if (SCRUB_HEADER_KEYS.has(k.toLowerCase())) {
-      put(headers, k, FILTERED);
-    }
+    if (SCRUB_HEADER_KEYS.has(k.toLowerCase()) && !put(headers, k, FILTERED)) whole = false;
   }
+  return whole;
 }
 
 /** Returns `url` with token-shaped query params replaced. */
@@ -179,51 +193,69 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
  * is censored before any of the event's own code renders it; then a failed query's bound params
  * anywhere in it, the hint's exception naming them, which also renders whatever a serializer would
  * call into plain fields (a copy where anything changed); then the same scrub over that copy, for
- * a secret only the rendering showed. Generic over the event shape so this works across
- * @sentry/react, @sentry/node, and @sentry/nextjs.
+ * a secret only the rendering showed. An event holding a secret a fixed field will not give up is
+ * dropped (`null`, which `beforeSend` reads as "do not send"), never sent with it. Generic over the
+ * event shape so this works across @sentry/react, @sentry/node, and @sentry/nextjs.
  */
 export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
-): E {
-  scrubInPlace(event);
+): E | null {
+  if (!scrubInPlace(event)) return null;
   const out = redactQueryParams(event, hint?.originalException);
   if (out !== event) scrubInPlace(out);
   return out;
 }
 
-function scrubInPlace(event: SentryLikeEvent): void {
+/** The event's request and breadcrumbs scrubbed in place; false where a field refused it. */
+function scrubInPlace(event: SentryLikeEvent): boolean {
+  let whole = true;
+  const keep = (done: boolean) => {
+    if (!done) whole = false;
+  };
   const req = event.request;
-  if (req?.headers) scrubHeaders(req.headers);
-  if (typeof req?.url === 'string') put(req, 'url', scrubPatInString(scrubUrl(req.url)));
+  if (req?.headers) keep(scrubHeaders(req.headers));
+  if (typeof req?.url === 'string') {
+    const url = scrubPatInString(scrubUrl(req.url));
+    if (url !== req.url) keep(put(req, 'url', url));
+  }
   if (req && req.data !== undefined && req.data !== null) {
     if (typeof req.data === 'string') {
       const rawData = req.data;
+      let data: string;
       try {
         const parsed = JSON.parse(rawData);
         scrubBodyKeys(parsed);
         scrubStringValues(parsed);
-        put(req, 'data', JSON.stringify(parsed));
+        data = JSON.stringify(parsed);
       } catch {
         // not JSON — still scan for raw PAT plaintext.
-        put(req, 'data', scrubPatInString(rawData));
+        data = scrubPatInString(rawData);
       }
+      if (data !== rawData) keep(put(req, 'data', data));
     } else {
-      scrubBodyKeys(req.data);
-      scrubStringValues(req.data);
+      keep(scrubBodyKeys(req.data));
+      keep(scrubStringValues(req.data));
     }
   }
   if (Array.isArray(event.breadcrumbs)) {
     for (const b of event.breadcrumbs) {
-      if (typeof b?.message === 'string') put(b, 'message', scrubPatInString(b.message));
+      if (typeof b?.message === 'string') {
+        const message = scrubPatInString(b.message);
+        if (message !== b.message) keep(put(b, 'message', message));
+      }
       if (b?.data && typeof b.data === 'object') {
         const d = b.data as Record<string, unknown>;
-        if (typeof d.url === 'string') put(d, 'url', scrubPatInString(scrubUrl(d.url)));
-        scrubBodyKeys(d);
-        scrubStringValues(d);
+        if (typeof d.url === 'string') {
+          const url = scrubPatInString(scrubUrl(d.url));
+          if (url !== d.url) keep(put(d, 'url', url));
+        }
+        keep(scrubBodyKeys(d));
+        keep(scrubStringValues(d));
       }
     }
   }
+  return whole;
 }
 
 interface SentryLikeEvent {
