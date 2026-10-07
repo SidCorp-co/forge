@@ -420,6 +420,69 @@ export type StorefrontPublishedReading =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unreadable'; readonly detail: string };
 
+type Unanswered =
+  | { readonly kind: 'missing'; readonly detail: string }
+  | { readonly kind: 'unreadable'; readonly detail: string };
+
+/** One backend route the provider holds now, and whether it answers live traffic. */
+export type StorefrontRouteReading =
+  | {
+      readonly kind: 'published' | 'unpublished';
+      readonly method: string;
+      readonly path: string;
+      readonly workflowCode: string;
+    }
+  | Unanswered;
+
+/** One page the provider holds now: whether it is live, since when, and whether a draft waits on it. */
+export type StorefrontPageReading =
+  | {
+      readonly kind: 'published';
+      readonly handle: string;
+      readonly publishedAt: string | null;
+      readonly unpublishedChanges: boolean;
+    }
+  | { readonly kind: 'unpublished'; readonly handle: string }
+  | Unanswered;
+
+/**
+ * The theme the provider serves now — the one live tree, files read from its published surface by
+ * path with their sha-256 — and when that surface was published (the snapshot it points at was
+ * taken), so a rollback to an old snapshot reads as old.
+ */
+export type StorefrontThemeReading =
+  | {
+      readonly kind: 'served';
+      readonly themeId: string;
+      readonly publishedAt: string | null;
+      readonly files: ReadonlyMap<string, string>;
+    }
+  | { readonly kind: 'unreadable'; readonly detail: string };
+
+/** One store setting's value as the provider holds it now, written as JSON scalars are. */
+export type StorefrontSettingReading =
+  | { readonly kind: 'value'; readonly value: string }
+  | Unanswered;
+
+/** What a provider verification asks of what production serves, each kind read once for all. */
+export interface StorefrontServedAsk {
+  readonly workflowIds: readonly string[];
+  readonly routeIds: readonly string[];
+  readonly pageIds: readonly string[];
+  /** Whether any landing names a theme: the served theme is one read, whatever it names. */
+  readonly theme: boolean;
+  readonly settingKeys: readonly string[];
+}
+
+/** What production serves of everything asked, every asked key answered, never absent. */
+export interface StorefrontServed {
+  readonly workflows: ReadonlyMap<string, StorefrontPublishedReading>;
+  readonly routes: ReadonlyMap<string, StorefrontRouteReading>;
+  readonly pages: ReadonlyMap<string, StorefrontPageReading>;
+  readonly theme: StorefrontThemeReading | null;
+  readonly settings: ReadonlyMap<string, StorefrontSettingReading>;
+}
+
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */
 export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
@@ -518,11 +581,12 @@ export interface IntegrationDeclaration<
   readonly storefrontDrafts?: (
     args: StorefrontTargetArgs & { workflowIds: readonly string[] },
   ) => Promise<Map<string, StorefrontDraftReading>>;
-  /** What the provider publishes now of each workflow named, read once for all of them: a release
-   *  on a storefront is proved by it (`release-batch/provider-verify.ts`). */
+  /** What the provider serves now of every workflow, route, page, theme and setting asked, each
+   *  kind read once for all: a release on a storefront is proved by it
+   *  (`release-batch/provider-verify.ts`). */
   readonly storefrontPublished?: (
-    args: StorefrontTargetArgs & { workflowIds: readonly string[] },
-  ) => Promise<Map<string, StorefrontPublishedReading>>;
+    args: StorefrontTargetArgs & { ask: StorefrontServedAsk },
+  ) => Promise<StorefrontServed>;
   /** Present where a binding of this provider is the host a project's repository lives on. */
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */

@@ -1,0 +1,1322 @@
+{
+  "$comment": "HOP release 0.3.0 (dev, run 41d111dd, 2026-10-07): the 26 claimed issues as the tracker held them when finish was refused RELEASE_NOT_VERIFIED (request 0392503b) — each merged mark, and the latest verdicts per criterion grouped by identity. Read-only extract; ids are the issue keys.",
+  "approvals": {
+    "hop-complaint-ux@rev2": "2026-10-07T17:29:16.775Z",
+    "hop-staff-shell-ux@rev3": "2026-10-07T12:33:02.886Z",
+    "hop-staff-shell-ux@rev7": "2026-10-07T17:13:34.377Z",
+    "hop-loyalty-ux@rev4": "2026-10-07T19:41:13.816Z"
+  },
+  "issues": [
+    {
+      "key": "ISS-41",
+      "mergedAt": "2026-10-07T17:18:45.754Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 160 hop_consent draft dcd8033d and workflow 153 hop_record_action draft 2fbc2e70, route 205 POST/GET /hop/consents and route 199 POST /hop/actions (unpublished); tables 87, 91, 114, 115 on the draft. Nothing published. Repo record: branch ISS-41 at 3eef278, not merged into main.",
+      "artifacts": [
+        {
+          "ref": "workflow 160 hop_consent: draft dcd8033d616aa3c097aaad71b42e62037581f84ab3410cd1f3b99f29ebfeee7e (was d183556e); live stays version 1",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 153 hop_record_action: draft 2fbc2e7009d930239f8d4194f12cf38ea47b33cc88c7d9931896a79c4014b727 (was 6ba649b5); live stays version 1",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "table 87 hop_tasks: columns block_reason (indexed), blocked_at, blocked_by, blocked_actor, unblocked_at (draft)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 91 hop_roles: columns ended_by, end_reason, request_id (indexed) (draft)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 114 hop_stub_outbox: status option cancelled, column cancel_reason (draft)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 115 hop_attention_types row 21028 contact_opted_out:contact_channel: design_ref text (draft)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "TEST rows: seed hop_iss41_seed.json (rows 21705-21740), identity mappings P-TEST-ISS41-0001..0007, trial grants and roles TEST-ISS41-*, all test=true (draft)",
+          "change": "added",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T17:17:14.308Z",
+          "workflowId": "153",
+          "draft": "2fbc2e7009d930239f8d4194f12cf38ea47b33cc88c7d9931896a79c4014b727"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T17:17:13.411Z",
+          "workflowId": "160",
+          "draft": "dcd8033d616aa3c097aaad71b42e62037581f84ab3410cd1f3b99f29ebfeee7e"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-54",
+      "mergedAt": "2026-10-07T18:43:05.039Z",
+      "landing": "Outside git, on the hop Autoflow DRAFT site (store 11): 24 workflow drafts saved through save_workflow.py and read back equal to branch ISS-54 at 5740ebf; tables 115 and 67 changed live on the draft. Drafted, not live: nothing is published, production is untouched, and the scheduled sweeps on the draft still run the published versions until a release publishes these.",
+      "artifacts": [
+        {
+          "ref": "autoflow hop draft workflow 96 @d00d9028: stamp block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 100 @17117588: stamp block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 102 @837b5670: access and stamp blocks; close fields in finish, apply_case, apply_override",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 105 @4d507909: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 106 @ea8a22a6: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 107 @8f9aaf0b: stamp block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 111 @b42b0bbf: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 117 @096d7b4b: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 131 @e7596cc0: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 151 @02e4dc8b: access and stamp blocks; close fields on case close",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 153 @385aaca9: access and stamp blocks",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 155 @1a63bbd5: working-day SLA, chain over the case type",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 158 @2524deed: item scopes in queue, drill, act; resolve refused on closes_only_by",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 160 @aebbd78b: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 161 @6fc77770: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 167 @404279d7: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 170 @2822aeba: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 172 @b943568d: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 178 @6b9ffd33: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 187 @a23d4626: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 190 @e5e15e69: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 193 @999dcf6d: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 220 @7c4f5a8a: access block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "autoflow hop draft workflow 240 @ba3e16ae: stamp block",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "hop_attention_types (table 115): columns attention_due_working_days, sla_over_case_type, closes_only_by; row 21028 set to 1 working day, over the case type, closes only by POST /hop/consents",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "hop_attention (table 67): close_kind, close_reason, closed_at backfilled on 16 resolved TEST/SYN rows, basis in detail.close_backfill",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T18:41:36.201Z",
+          "workflowId": "102",
+          "draft": "837b5670ea0397fee9802aa37c0e4f935d224f690f69e4c1c6f50ffda07bb247"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T18:41:40.253Z",
+          "workflowId": "155",
+          "draft": "1a63bbd5284394cde0246fd1bed9c1f7f977c406086d9fedb029d15d5be1bab7"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T18:41:37.513Z",
+          "workflowId": "158",
+          "draft": "2524deed2a4394af64a572726553fa4fac954ffd20d2abe0bbba4ac809ee0370"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-76",
+      "mergedAt": "2026-10-07T17:12:46.960Z",
+      "landing": "hop draft (store 11, MCP autoflow), nothing published: workflow 111 draft d6ee4272 on top of live version 1, routes 338/339 unpublished, draft theme 815 (copy of served 812, snapshot 417 of 812 first), draft page 25; repo copy on branch ISS-76 head 46de1689 for the master to fold",
+      "artifacts": [
+        {
+          "ref": "workflow 111 hop_rule_trace (draft d6ee4272; live stays version 1)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 338 GET /hop/rules/dry-run (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 339 POST /hop/rules/dry-run (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "draft theme 815 sections/hop-rule-test.liquid",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 815 assets/hop-rule-test.js",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 815 assets/hop-rule-test.css",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 815 assets/hop-staff-shell.js (one selector)",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 815 assets/hop-staff-shell.css (one selector)",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft page 25 /pages/rule-test (theme 815)",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T17:11:55.226Z",
+          "workflowId": "111",
+          "draft": "d6ee42727dc98a7e72f6760af2946ff60e311e28eda5eef0bdd5a8defd06709e"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-78",
+      "mergedAt": "2026-10-07T07:19:20.109Z",
+      "landing": "Autoflow hop draft (store 11, environment preview): workflow 187 hop_patient_360 draft af5e7547, route 265 GET /hop/patients/:hop_patient_key (unpublished); branch ISS-78 head 10846a2",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 @ draft af5e754739b3fb7d7408adc01fc3dcb20f6cb6a7a8ac266f4b2e68e9ec475b4d",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 102 hop_derived_state @ draft 487e4d01703d278de8920cf47260f46e6837a87bfc3f2511198f1d1ec67a629d (was 662d7cdb)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 265 GET /hop/patients/:hop_patient_key (end_user, unpublished) -> hop_patient_360",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "TEST rows P360-TEST-0001/0002 (seed hop_iss78_seed, removed) in existing tables: identity, context, discharge event, episode, facts, snapshot, cases, tasks, contacts, outbox, actors, roles; 102-derived rows; one 155 attention item. No table created",
+          "change": "added",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T07:23:41.555Z",
+          "workflowId": "187",
+          "draft": "af5e754739b3fb7d7408adc01fc3dcb20f6cb6a7a8ac266f4b2e68e9ec475b4d"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-79",
+      "mergedAt": "2026-10-07T08:02:33.555Z",
+      "landing": "187@draft:b5dd604a0848ff21e14d0c158bcba8efaa580c9a4d3a6abac95ece44ec9823bf",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 @draft b5dd604a0848ff21e14d0c158bcba8efaa580c9a4d3a6abac95ece44ec9823bf",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 265 GET /hop/patients/:hop_patient_key (workflow 187, unpublished): consent block, identity decision, export refusal",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "table hop_access_log: one row per Patient 360 read (no schema change)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "tables hop_consent_grants, hop_loyalty_accounts: TEST rows of P360-TEST-0003 written through 160 and 170 (no schema change)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "tables hop_patient_identity, hop_patient_context, hop_cases, hop_tasks, hop_actors, hop_roles: TEST rows of hop_iss79_seed (no schema change)",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T08:00:44.225Z",
+          "workflowId": "187",
+          "draft": "b5dd604a0848ff21e14d0c158bcba8efaa580c9a4d3a6abac95ece44ec9823bf"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-80",
+      "mergedAt": "2026-10-07T11:45:35.453Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 187 hop_patient_360 draft 6dd59ac7, now dbd9d62d with ISS-82 on top; draft theme 597. Nothing published. Repo record: branch ISS-80 at 96a6da3, not merged into main per the brief.",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 @ draft 6dd59ac7553e14bfed63c0b6339cfbfa7ed3d419c8b363b62e5b4193da0a8fc6 (live draft dbd9d62dbb39b5d4f98a4088e15302def1ec8051c76b01be893c011e0edc1649 with ISS-82)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-patient-360.js sha256 856e1c5685bf45fcf34c77498a9bbded412611597f66295b7ea368e48ea7eb87",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-patient-360.css sha256 985329bb4389d611b18b27b1c55f77d98aeff1b6bf41107627b251878e3a8f35",
+          "change": "changed",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T11:43:50.815Z",
+          "workflowId": "187",
+          "draft": "dbd9d62dbb39b5d4f98a4088e15302def1ec8051c76b01be893c011e0edc1649"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-81",
+      "mergedAt": "2026-10-07T16:08:02.209Z",
+      "landing": "hop draft site (store 11): workflow 187 hop_patient_360 draft 8a1b444e0422dc348803dfc3a318c5ab8e3f94577f01e9d33cf84acb220af8bd, unpublished; repo main 9d6d6ce holds graphs/187.json (same sha) and theme/assets/hop-patient-360.js",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360, draft 8a1b444e on store 11: DRAFTED ONLY, NOT PUBLISHED (live is still v2 dbd9d62d)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "assets/hop-patient-360.js sha256 8bca1d54, repo main 9d6d6ce: REPO ONLY, on no theme and NOT PUBLISHED (served theme 812 has a3648281, the version before ISS-81)",
+          "change": "changed",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T13:53:19.101Z",
+          "workflowId": "187",
+          "draft": "8a1b444e0422dc348803dfc3a318c5ab8e3f94577f01e9d33cf84acb220af8bd"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-82",
+      "mergedAt": "2026-10-07T11:59:42.040Z",
+      "landing": "Autoflow hop draft (store 11, environment preview): workflow 187 hop_patient_360 draft dbd9d62dbb39b5d4f98a4088e15302def1ec8051c76b01be893c011e0edc1649 (from ISS-80's 6dd59ac7); draft theme 597 assets/hop-patient-360.js a3648281 and assets/hop-patient-360.css 06ec7f7f; route 265, page 20 and live theme 568 unchanged, nothing published; branch ISS-82 head 31bf1d8",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 @ dbd9d62dbb39b5d4f98a4088e15302def1ec8051c76b01be893c011e0edc1649",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-patient-360.js @ a36482818793f42d9e270c2f95f5153aff92652112eaf1dcd5872b53d59a920b",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-patient-360.css @ 06ec7f7fd2935fed4ee9100438de408831e4a4fafbeb7bcb050ce6a16add3321",
+          "change": "changed",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T11:58:07.710Z",
+          "workflowId": "187",
+          "draft": "dbd9d62dbb39b5d4f98a4088e15302def1ec8051c76b01be893c011e0edc1649"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-83",
+      "mergedAt": "2026-10-07T08:36:17.728Z",
+      "landing": "branch ISS-83 at 149c1dfdfbd94e12c3a78993c3a110b9942990bd (one commit on main 60deb59; not merged into main and not pushed, per the dispatch); built on the Autoflow hop DRAFT (store 11): draft theme 568 (not the served 520) and draft page 20 /pages/patients, over workflow 187 hop_patient_360 at draft b5dd604a (unchanged) and route 265 (unpublished); nothing published",
+      "artifacts": [
+        {
+          "ref": "draft theme 568 sections/hop-patient-360.liquid (sha256 b9bec199)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 568 assets/hop-patient-360.js (sha256 4e14cdad)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 568 assets/hop-patient-360.css (sha256 31c2be64)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft page 20 /pages/patients (section hop-patient-360, draft theme 568)",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T08:35:57.367Z",
+          "workflowId": "187",
+          "draft": "b5dd604a0848ff21e14d0c158bcba8efaa580c9a4d3a6abac95ece44ec9823bf"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-84",
+      "mergedAt": "2026-10-07T12:17:33.700Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 100 hop_his_adapter draft 62422927; routes 320, 321, 322 (unpublished); tables 191 hop_appointments, 192 hop_appointment_events; table 113 hop_outcomes code no_show. Nothing published. Repo record: branch ISS-84 at fb62bdc, not merged into main per the brief.",
+      "artifacts": [
+        {
+          "ref": "workflow 100 hop_his_adapter @ draft 624229279966ab22c51f141d6b77322e50cc8daa5e499a064340253a446dcd0c (from eab42459)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 320 POST /hop/his/appointments/events (signed, sidcorp, his_webhook_secret; unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 321 POST /hop/his/appointments/requests (api_key; unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 322 GET /hop/his/appointments (api_key; unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "table 191 hop_appointments (st-appt)",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 192 hop_appointment_events",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 113 hop_outcomes: code enum gains no_show",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T12:16:19.925Z",
+          "workflowId": "100",
+          "draft": "624229279966ab22c51f141d6b77322e50cc8daa5e499a064340253a446dcd0c"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-85",
+      "mergedAt": "2026-10-07T13:56:49.312Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 153 hop_record_action draft 5255fa8f; workflow 100 hop_his_adapter draft e0af8eb0; table 87 hop_tasks type book_appointment. Routes 199 and 320 serve it unchanged and unpublished. Nothing published. Repo record: branch ISS-85 at 7017b38, not pushed or merged into main per the brief.",
+      "artifacts": [
+        {
+          "ref": "workflow 153 hop_record_action @ draft 5255fa8ff5ed2e64b580cb6517bc7eaa9fa2c085f9e1b5d367b630a744def24a (from 221504c2)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 100 hop_his_adapter @ draft e0af8eb070b76581cd2ddd11772c9422dd8013197a6790fe383278b41866d23b (from 62422927)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 199 POST /hop/actions: declaration unchanged, now carries kind book ops via workflow 153; unpublished",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "route 320 POST /hop/his/appointments/events: declaration unchanged, row 1 now closes the booking task via workflow 100; unpublished",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "table 87 hop_tasks: type option book_appointment",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T13:54:55.883Z",
+          "workflowId": "153",
+          "draft": "5255fa8ff5ed2e64b580cb6517bc7eaa9fa2c085f9e1b5d367b630a744def24a"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-86",
+      "mergedAt": "2026-10-07T14:41:25.161Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 100 hop_his_adapter draft bf54c6f7; workflow 153 hop_record_action draft 0dad582a; workflow 240 hop_booking_expiry (new) draft 8f5b4efe; table 191 hop_appointments columns open_request_key (unique), failure, attention_id; table 115 hop_attention_types rows booking_overdue:task, booking_request_failed:appointment_request, booking_reopen_blocked:appointment_request and row 13195 excluding book_appointment. Routes 199 and 320 serve it unchanged and unpublished. Nothing published. Repo record: branch ISS-86 at 42f4fb48b3e87557bae95e36fd3b5e43077b3592, not pushed or merged into main per the brief.",
+      "artifacts": [
+        {
+          "ref": "workflow 100 hop_his_adapter @ draft bf54c6f780f0217244aeecd9dfd1ea874c00f03919c1d1b719c85a35215694c9 (from e0af8eb0)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 153 hop_record_action @ draft 0dad582aee64b5e98100a634439820142c1fd871a058a70d80b54834e7b07fb6 (from 5255fa8f)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 240 hop_booking_expiry @ draft 8f5b4efe7dc81354b3ffa92c1b4de9ef54a83a14cb1717af638ea8a7fd82427f (new, schedule every 5 minutes once published)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 320 POST /hop/his/appointments/events: declaration unchanged, now carries rule-booking rows 3 and 4 via workflow 100; unpublished",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "route 199 POST /hop/actions: declaration unchanged, a book now reserves under the unique open_request_key via workflow 153; unpublished",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "table 191 hop_appointments: columns open_request_key (unique, indexed), failure, attention_id",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 115 hop_attention_types: rows 19494 booking_overdue:task, 19495 booking_request_failed:appointment_request, 19496 booking_reopen_blocked:appointment_request; row 13195 task_sla_breach:task excludes book_appointment",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T14:41:04.237Z",
+          "workflowId": "100",
+          "draft": "bf54c6f780f0217244aeecd9dfd1ea874c00f03919c1d1b719c85a35215694c9"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T14:41:07.298Z",
+          "workflowId": "153",
+          "draft": "0dad582aee64b5e98100a634439820142c1fd871a058a70d80b54834e7b07fb6"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T14:41:00.231Z",
+          "workflowId": "155",
+          "draft": "432160e0f91f93c338d5dff0603584324b0f1740c327b62d95865938df3effbd"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T14:41:05.880Z",
+          "workflowId": "240",
+          "draft": "8f5b4efe7dc81354b3ffa92c1b4de9ef54a83a14cb1717af638ea8a7fd82427f"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-87",
+      "mergedAt": "2026-10-07T17:49:24.886Z",
+      "landing": "outside_git",
+      "artifacts": [
+        {
+          "ref": "workflow 100 hop_his_adapter: draft 609943a9bc77736fcdd7414a8b78ba1125a4f9892834423f1ef4ac97cf3d8498 (was 53b24156, before that bf54c6f7); live stays version 1",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 153 hop_record_action: draft 6ba649b5 by this issue, now carried by ISS-41's draft 2fbc2e70; live stays version 1",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "table 87 hop_tasks: type option remind_appointment, column appointment_id (draft site declaration)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 119 hop_contacts: column appointment_id (draft site declaration)",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "table 115 hop_attention_types row 21028 contact_opted_out:contact_channel, attention_due_minutes 1440 (draft site)",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 121 hop_zns_templates: columns body and demo; [DEMO] row 21897 appt_reminder_demo_v1 approved; [TEST] rows 21029, 21030 (draft site)",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T17:48:29.957Z",
+          "workflowId": "100",
+          "draft": "609943a9bc77736fcdd7414a8b78ba1125a4f9892834423f1ef4ac97cf3d8498"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T17:48:33.468Z",
+          "workflowId": "153",
+          "draft": "2fbc2e7009d930239f8d4194f12cf38ea47b33cc88c7d9931896a79c4014b727"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-90",
+      "mergedAt": "2026-10-07T12:58:42.789Z",
+      "landing": "hop Autoflow DRAFT, store 11 (MCP autoflow): workflow 167 hop_campaign draft 636a9bcb (from 7fc3dafe), the new sign action on the existing route 214, an additive change to table 138 hop_campaign_catalog, and TEST seed rows in tables 75, 76, 77 and 138. Nothing published. Repo record: branch ISS-90 at 246f8e8, rebased on main 17278c8 and not merged into main, per the brief.",
+      "artifacts": [
+        {
+          "ref": "workflow 167 hop_campaign @ draft 636a9bcbfd65f6e7081f85b58f2eae2a36ae0de329fd20b5944befca6f8f570b (from 7fc3dafe)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 214 POST /hop/campaigns/:action gains action sign (route unchanged, unpublished change in 167)",
+          "change": "changed",
+          "surface": "api"
+        },
+        {
+          "ref": "table 138 hop_campaign_catalog: kind += service, call_script; status += draft; columns category, promotable, list_price",
+          "change": "changed",
+          "surface": "data"
+        },
+        {
+          "ref": "TEST rows: hop_rule_vocabulary (75) marketing_consent, loyalty_tier, segment_member; hop_rule_registry (76) and hop_rule_lifecycle (77) seg-TEST-01@3, seg-TEST-02@1, seg-TEST-SENS@1, seg-TEST-VOCAB@1, seg-TEST-OFF@1; hop_campaign_catalog services, call scripts, tpl-TEST-MKT-03",
+          "change": "added",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T12:58:28.371Z",
+          "workflowId": "167",
+          "draft": "636a9bcbfd65f6e7081f85b58f2eae2a36ae0de329fd20b5944befca6f8f570b"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-102",
+      "mergedAt": "2026-10-07T07:09:17.259Z",
+      "landing": "branch ISS-102 at 874fa0e0910e0e5b678d47fb219c98b991109c72 (two commits on main 70396a6; not merged into main and not pushed, per the dispatch); built on the Autoflow hop DRAFT (store 11): workflow 178 at draft bfc42ab7, routes 221-222 unpublished, tables 150-152, draft theme 520 (not live 496), draft page 17 /pages/reports; nothing published",
+      "artifacts": [
+        {
+          "ref": "workflow 178 hop_report @ draft bfc42ab7c3903900d10975571f7132162df4a2d1c252574993c2a1560e035582",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 221 GET /hop/reports (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 222 POST /hop/reports/:action (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "table 150 hop_report_definitions",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 151 hop_report_attribution",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 152 hop_report_test_facts",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "draft page 17 /pages/reports",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 520 sections/hop-reports.liquid",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 520 assets/hop-reports.js",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 520 assets/hop-reports.css",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T07:11:20.982Z",
+          "workflowId": "178",
+          "draft": "bfc42ab7c3903900d10975571f7132162df4a2d1c252574993c2a1560e035582"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-106",
+      "mergedAt": "2026-10-07T08:09:51.247Z",
+      "landing": "branch ISS-106 at d29141fdd0a4d3ee075d9743a2548f31d2e2a558 (one commit on main f36f880; not merged into main and not pushed, per the dispatch); built on the Autoflow hop DRAFT (store 11): workflow 190 hop_lead at draft 402a6166, routes 268-269 unpublished, table 161 hop_leads, draft theme 568 (not the served 520), draft page 19 /pages/leads; nothing published",
+      "artifacts": [
+        {
+          "ref": "workflow 190 hop_lead @ draft 402a6166d4942140cdbfbafa481d99801c613aa2b714f82028a47ba218de29e8 (graphs/190.json)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 268 GET /hop/leads (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 269 POST /hop/leads/:action (end_user, unpublished)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "table 161 hop_leads (TEST rows from tools/autoflow/seeds/hop_iss106_seed.json)",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "draft theme 568 sections/hop-leads.liquid",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 568 assets/hop-leads.js (sha256 cab548ae)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 568 assets/hop-leads.css (sha256 dae7a519)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft page 19 /pages/leads (section hop-leads, draft theme 568)",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T08:05:43.212Z",
+          "workflowId": "190",
+          "draft": "402a6166d4942140cdbfbafa481d99801c613aa2b714f82028a47ba218de29e8"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-116",
+      "mergedAt": "2026-10-07T09:39:07.571Z",
+      "landing": "hop draft (store 11, MCP autoflow), nothing published; repo copy on branch ISS-116 head 422829ee for the master to fold",
+      "artifacts": [
+        {
+          "ref": "workflow 220 hop_recovery (draft 9424a3a7)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 284 (hop_recovery reads)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 285 (hop_recovery writes)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "table 180 hop_recovery_cases",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "table 181 hop_recovery_tasks",
+          "change": "added",
+          "surface": "data"
+        },
+        {
+          "ref": "draft theme 597 sections/hop-recovery.liquid",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-recovery.js",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft theme 597 assets/hop-recovery.css",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft page 23 /pages/recovery (theme 597)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "draft page 24 /pages/department-quality (theme 597)",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T09:36:48.677Z",
+          "workflowId": "220",
+          "draft": "9424a3a73eb9bb46078b98d1f6f3b8bc73eced1102aff3e7b5023c0d5708a546"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-119",
+      "mergedAt": "2026-10-07T17:29:16.775Z",
+      "landing": "workflow design `hop-complaint-ux` revision 2, approved",
+      "artifacts": [
+        {
+          "ref": "hop-complaint-ux@rev2",
+          "change": "changed",
+          "surface": "design"
+        }
+      ],
+      "verdicts": [],
+      "unjudged": 4
+    },
+    {
+      "key": "ISS-120",
+      "mergedAt": "2026-10-07T13:03:30.158Z",
+      "landing": "hop dev site (Autoflow store 11, MCP autoflow): workflow 166 hop_staff published at 4f8b0ac1 (version 2) on route 212; theme 796 published as the served theme after snapshot 394 of live 597; design hop-staff-shell-ux r3 approved and r5 (text-only labels, access r10 re-pin) proposed. Repo: branch ISS-120 at 55a2dc63 (two commits on main 17278c8), not merged into main and not pushed, per the dispatch.",
+      "artifacts": [
+        {
+          "ref": "workflow 166 hop_staff @4f8b0ac1 (published v2)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "theme 796 assets/hop-staff-shell.js 336f999b, assets/hop-staff-shell.css b5750549 (published)",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "hop-staff-shell-ux@rev3",
+          "change": "changed",
+          "surface": "design"
+        },
+        {
+          "ref": "hop-staff-shell-ux@rev5 (proposed)",
+          "change": "changed",
+          "surface": "design"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "design",
+          "at": "2026-10-07T13:01:02.150Z"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T13:01:21.862Z",
+          "workflowId": "166",
+          "draft": "4f8b0ac144540de1614f876028f19fd3becf160aa70f9cc591f38033ce221727"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-121",
+      "mergedAt": "2026-10-07T06:40:03.171Z",
+      "landing": "https://hop.auto.sidcorp.co/pages/staff",
+      "artifacts": [
+        {
+          "ref": "api-hop.auto.sidcorp.co (backend domain 244)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "workflow 166 hop_staff@9b34a8f4",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 167 hop_campaign@7fc3dafe",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 170 hop_loyalty@6039707a",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 171 hop_survey@f448f5f1",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 172 hop_evaluation@2d0dd064",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 212 GET /hop/staff/me",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 213 GET /hop/campaigns",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 214 POST /hop/campaigns/:action",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 215 GET /hop/loyalty",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 216 POST /hop/loyalty/:action",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 217 GET /hop/survey/:token",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 218 POST /hop/survey/:token",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 219 GET /hop/evaluation",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 220 POST /hop/evaluation/:action",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "page 12 /pages/staff",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 13 /pages/campaigns",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 14 /pages/loyalty",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 15 /pages/evaluation",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 16 /pages/survey",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "theme 496",
+          "change": "added",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T06:41:31.715Z",
+          "workflowId": "166",
+          "draft": "9b34a8f4afc1d86691f4cafec1f5dfb49d45f20ed389409f490a5b1acd7fd539"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T06:39:27.194Z",
+          "workflowId": "167",
+          "draft": "7fc3dafe399db1e567c0e60ece7a6efd034a8ab16f489ba1db776ae4f43f2e6b"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T06:39:27.956Z",
+          "workflowId": "170",
+          "draft": "6039707a38746ba440dd9fd77654b8ad16b6a0229a54ec1f7cd01fa98d030e28"
+        },
+        {
+          "kind": "storefront_draft",
+          "at": "2026-10-07T06:39:30.857Z",
+          "workflowId": "172",
+          "draft": "2d0dd06452dc98dae1a019d7357be3564852739b5a3658c84f757e1dbca25cdc"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-122",
+      "mergedAt": "2026-10-07T07:30:31.838Z",
+      "landing": "https://hop.auto.sidcorp.co/pages/reports",
+      "artifacts": [
+        {
+          "ref": "workflow 178 hop_report (published version 1)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 221 GET /hop/reports (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 222 POST /hop/reports/:action (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "page 17 /pages/reports (published)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "theme 520 published as main (adds sections/hop-reports.liquid, assets/hop-reports.js, assets/hop-reports.css; replaces 496)",
+          "change": "changed",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T07:30:04.420Z",
+          "commit": "97085b45ac9aecb8ef9fe99086107363918cd8d7"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-123",
+      "mergedAt": "2026-10-07T09:33:35.021Z",
+      "landing": "https://hop.auto.sidcorp.co/pages/patients",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 (published version 1)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 190 hop_lead (published version 1)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 265 GET /hop/patients/:hop_patient_key (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 268 GET /hop/leads (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 269 POST /hop/leads/:action (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "page 20 /pages/patients (published)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 19 /pages/leads (published)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "theme 568 published as main (adds hop-patient-360, hop-leads and the unmounted hop-referrals section and assets; replaces 520)",
+          "change": "changed",
+          "surface": "ui"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T09:33:21.618Z",
+          "commit": "0cf05f95d53afd02cef1aab218c98f9196f461d2"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-124",
+      "mergedAt": "2026-10-07T12:29:20.166Z",
+      "landing": "https://hop.auto.sidcorp.co/pages/recovery",
+      "artifacts": [
+        {
+          "ref": "workflow 187 hop_patient_360 (published version 2, dbd9d62d)",
+          "change": "changed",
+          "surface": "logic"
+        },
+        {
+          "ref": "workflow 220 hop_recovery (published version 1, 9424a3a7)",
+          "change": "added",
+          "surface": "logic"
+        },
+        {
+          "ref": "route 284 GET /hop/recovery (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "route 285 POST /hop/recovery/:action (is_published true)",
+          "change": "added",
+          "surface": "api"
+        },
+        {
+          "ref": "page 23 /pages/recovery (published)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "page 24 /pages/department-quality (published)",
+          "change": "added",
+          "surface": "ui"
+        },
+        {
+          "ref": "theme 597 published as main (adds hop-recovery section and assets, Patient 360 assets with timeline, clinical and CRM cards; replaces 568, snapshot 391)",
+          "change": "changed",
+          "surface": "ui"
+        },
+        {
+          "ref": "TEST logins eu:72-75: hop_actors and hop_roles rows re-pointed from u-TEST-ISS116-PR1/OPS1/DH-LAB/DH-OPD (29 fields in 18 rows)",
+          "change": "changed",
+          "surface": "data"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T12:28:47.692Z",
+          "commit": "17278c8be41ab2c31079cc7be097213e70888665"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-125",
+      "mergedAt": "2026-10-07T13:23:32.025Z",
+      "landing": "ui: https://hop.auto.sidcorp.co/ served by theme 800 (templates/index.json, the hop-staff-shell section); setting: store 11 commerce_enabled false",
+      "artifacts": null,
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T13:21:39.793Z",
+          "commit": "a4c2da33fdb64a3a237d9accde32c12297e39f2d"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-126",
+      "mergedAt": "2026-10-07T17:13:34.377Z",
+      "landing": "workflow design `hop-staff-shell-ux` revision 7, approved",
+      "artifacts": [
+        {
+          "ref": "hop-staff-shell-ux@rev7",
+          "change": "changed",
+          "surface": "design"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T15:44:36.398Z",
+          "commit": "bde8b07c55309026f4fecaa3a73fc3be3a18b703"
+        }
+      ],
+      "unjudged": 0
+    },
+    {
+      "key": "ISS-128",
+      "mergedAt": "2026-10-07T19:41:13.816Z",
+      "landing": "workflow design `hop-loyalty-ux` revision 4, approved",
+      "artifacts": [
+        {
+          "ref": "hop-loyalty-ux@rev4",
+          "change": "changed",
+          "surface": "design"
+        }
+      ],
+      "verdicts": [
+        {
+          "kind": "commit",
+          "at": "2026-10-07T18:38:21.824Z",
+          "commit": "0414b9a981a8bfa55f95c9b5c0d6b95c39f712e3"
+        }
+      ],
+      "unjudged": 0
+    }
+  ]
+}

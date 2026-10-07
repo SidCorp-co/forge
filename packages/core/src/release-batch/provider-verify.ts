@@ -1,207 +1,153 @@
-// A release whose work lives on a storefront is proved by what the provider reports it publishes,
-// never by a commit: a storefront keeps no deployment record and no commit. Each claimed issue's
-// landing is the storefront draft its newest verdict judged (`storefront_draft` identity); the
-// provider must publish that graph, or one that first went live after the landing was judged —
-// the one mutable draft slot moved forward from it. Anything else is `RELEASE_NOT_VERIFIED`,
-// naming the issue, the workflow and both identities.
+// A release whose work lives on a storefront is proved by what the provider serves, never by a
+// commit: a storefront keeps no deployment record and no commit. Each claimed issue is proved
+// through what it landed (`provider-landings.ts`) — the storefront draft its verdicts judged, and
+// every workflow, route, page, theme and setting its mark names — read against what production's
+// provider serves now (`provider-judge.ts`); an issue whose mark is only a design approval, through
+// that approval's record. Anything else is `RELEASE_NOT_VERIFIED`, naming the issue, the thing it
+// landed and both identities.
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
   getIntegration,
   readStorefrontPublished,
-  type StorefrontPublishedReading,
+  type StorefrontServed,
 } from '../integrations/index.js';
-import { activeIssuePrefix, type CriterionWithVerdict, listCriteriaOf } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import type { ReleaseChannel } from './plan.js';
+import {
+  type Judged,
+  judgePage,
+  judgeRoute,
+  judgeSetting,
+  judgeTheme,
+  judgeWorkflow,
+} from './provider-judge.js';
+import {
+  type DesignLanding,
+  type Landings,
+  landingsOf,
+  type ProviderMismatch,
+} from './provider-landings.js';
+import { readDesignApprovals, readProviderRoster } from './provider-roster.js';
 
-/** One storefront workflow an issue landed: the draft its newest verdict on it judged, and when. */
-export interface StorefrontLanding {
-  issue: string;
-  workflowId: string;
-  draftVersion: string;
-  judgedAt: string;
-}
-
-/** A landing what the provider publishes does not carry, or an issue that names no landing. */
-export interface ProviderMismatch {
-  issue: string;
-  workflow: string | null;
-  workflowCode: string | null;
-  landed: string | null;
-  served: string | null;
-  why: string;
-}
+export type { ProviderMismatch } from './provider-landings.js';
 
 export type ProviderOutcome =
   | { ok: true; identity: string; readings: string[] }
   | { ok: false; reason: string; mismatches: ProviderMismatch[] };
 
-export interface RosterCriteria {
-  key: string;
-  criteria: readonly CriterionWithVerdict[];
-}
-
-interface Landings {
-  landings: StorefrontLanding[];
-  /** Issues whose every verdict judged a design revision: they ship nothing a storefront serves. */
-  shipsNothing: string[];
-  unprovable: ProviderMismatch[];
-}
-
-/** Each issue's storefront landings from its criteria's latest verdicts, newest draft per workflow. */
-export function landingsOf(roster: readonly RosterCriteria[]): Landings {
-  const landings: StorefrontLanding[] = [];
-  const shipsNothing: string[] = [];
-  const unprovable: ProviderMismatch[] = [];
-  for (const { key, criteria } of roster) {
-    const latest = criteria.map((c) => c.latest);
-    const byWorkflow = new Map<string, StorefrontLanding>();
-    for (const v of latest) {
-      if (v?.identityKind !== 'storefront_draft') continue;
-      if (!v.storefrontWorkflowId || !v.storefrontDraftVersion) continue;
-      const held = byWorkflow.get(v.storefrontWorkflowId);
-      if (held && Date.parse(held.judgedAt) >= Date.parse(v.createdAt)) continue;
-      byWorkflow.set(v.storefrontWorkflowId, {
-        issue: key,
-        workflowId: v.storefrontWorkflowId,
-        draftVersion: v.storefrontDraftVersion.trim(),
-        judgedAt: v.createdAt,
-      });
+/** One sentence per mismatch, naming the issue, what it landed and both identities. */
+export function mismatchSentence(m: ProviderMismatch): string {
+  switch (m.kind) {
+    case 'workflow': {
+      const code = m.workflowCode ? ` (\`${m.workflowCode}\`)` : '';
+      const at = m.landed ? ` at draft \`${m.landed}\`` : '';
+      return `${m.issue} landed workflow \`${m.workflow}\`${code}${at}, and ${m.why}`;
     }
-    if (byWorkflow.size > 0) {
-      landings.push(...byWorkflow.values());
-      continue;
-    }
-    if (latest.length > 0 && latest.every((v) => v?.identityKind === 'design')) {
-      shipsNothing.push(key);
-      continue;
-    }
-    const kinds = [...new Set(latest.map((v) => v?.identityKind ?? 'unjudged'))];
-    unprovable.push({
-      issue: key,
-      workflow: null,
-      workflowCode: null,
-      landed: null,
-      served: null,
-      why:
-        latest.length === 0
-          ? `${key} has no criterion, so no verdict names the storefront draft it landed`
-          : `${key}'s verdicts name no storefront draft (${kinds.join(', ')}), so nothing names the workflow and draft it landed`,
-    });
+    case 'theme':
+      return `${m.issue} landed ${m.landed ?? `theme ${m.ref}`}, and ${m.why}`;
+    case 'setting':
+      return `${m.issue} landed setting \`${m.ref}\` = \`${m.landed}\`, and ${m.why}`;
+    case 'route':
+    case 'page':
+    case 'design':
+      return `${m.issue} landed ${m.kind} \`${m.ref}\`, and ${m.why}`;
+    default:
+      return m.why;
   }
-  return { landings, shipsNothing, unprovable };
 }
 
-type Judged = { carried: true; how: string } | { carried: false; mismatch: ProviderMismatch };
-
-function judgeLanding(
-  landing: StorefrontLanding,
-  reading: StorefrontPublishedReading | undefined,
+/** Each design-only issue against the approval record of every revision its mark names. */
+function judgeDesign(
+  landing: DesignLanding,
+  approvals: ReadonlyMap<string, string>,
   label: string,
 ): Judged {
-  const base = {
-    issue: landing.issue,
-    workflow: landing.workflowId,
-    landed: landing.draftVersion,
-  };
-  const at = `workflow \`${landing.workflowId}\``;
-  if (!reading || reading.kind === 'unreadable' || reading.kind === 'missing') {
-    const why = reading?.detail ?? `${label} answered no reading of ${at}`;
-    return { carried: false, mismatch: { ...base, workflowCode: null, served: null, why } };
-  }
-  const code = reading.workflowCode;
-  if (reading.kind === 'unpublished') {
+  const missing = landing.refs.filter((r) => !approvals.has(r));
+  if (missing.length > 0) {
     return {
       carried: false,
       mismatch: {
-        ...base,
-        workflowCode: code,
+        issue: landing.issue,
+        kind: 'design',
+        ref: missing.join(', '),
+        workflow: null,
+        workflowCode: null,
+        landed: missing.join(', '),
         served: null,
-        why: `${label} publishes no version of ${at} (\`${code}\`): nothing of it is live`,
+        why: `no approval of ${missing.map((r) => `\`${r}\``).join(', ')} is recorded in this project, and a design deploys nothing ${label} could show instead`,
       },
     };
   }
-  const served = reading.graphVersion;
-  if (served === landing.draftVersion) {
-    return { carried: true, how: `serves draft \`${served}\` itself` };
-  }
-  const firstLive = Date.parse(reading.firstLiveAt);
-  const judged = Date.parse(landing.judgedAt);
-  if (firstLive > judged) {
-    return {
-      carried: true,
-      how: `serves \`${served}\`, first live at ${reading.firstLiveAt}, after the landing was judged at ${landing.judgedAt}`,
-    };
-  }
-  const revert =
-    reading.firstLiveAt === reading.publishedAt
-      ? ''
-      : `, republished at ${reading.publishedAt} as a revert to a graph first live then`;
+  const approved = landing.refs.map((r) => `${r} (approved ${approvals.get(r)})`).join(', ');
+  const commits =
+    landing.judgedCommits.length > 0
+      ? `; its verdicts judged commit ${landing.judgedCommits.map((c) => c.slice(0, 12)).join(', ')}, and its mark names nothing that commit shipped, so none of it is attested here`
+      : '';
   return {
-    carried: false,
-    mismatch: {
-      ...base,
-      workflowCode: code,
-      served,
-      why: `${label} serves version ${reading.version} at \`${served}\`, live since ${reading.firstLiveAt}${revert}, which is not after the landing was judged at ${landing.judgedAt}, so the published graph cannot carry it`,
-    },
+    carried: true,
+    how: `its landing is the approval of design ${approved}, which deploys nothing ${label} serves${commits}`,
   };
 }
 
-/** One sentence per mismatch, naming the issue, the resource and both identities. */
-export function mismatchSentence(m: ProviderMismatch): string {
-  if (m.workflow === null) return m.why;
-  const code = m.workflowCode ? ` (\`${m.workflowCode}\`)` : '';
-  return `${m.issue} landed workflow \`${m.workflow}\`${code} at draft \`${m.landed}\`, and ${m.why}`;
-}
-
-/** Every landing against what the provider publishes; green only where every one is carried. */
+/** Every landing against what the provider serves; green only where every one is carried. */
 export function judgeProviderRecord(
   found: Landings,
-  readings: ReadonlyMap<string, StorefrontPublishedReading>,
+  served: StorefrontServed,
+  approvals: ReadonlyMap<string, string>,
   label: string,
 ): ProviderOutcome {
   const mismatches = [...found.unprovable];
   const lines: string[] = [];
-  for (const landing of found.landings) {
-    const judged = judgeLanding(landing, readings.get(landing.workflowId), label);
-    if (judged.carried) {
-      lines.push(
-        `${landing.issue}: workflow ${landing.workflowId} at draft ${landing.draftVersion} — ${label} ${judged.how}`,
-      );
-    } else {
-      mismatches.push(judged.mismatch);
-    }
+  const take = (issue: string, ref: string, judged: Judged) => {
+    if (judged.carried) lines.push(`${issue}: ${ref} — ${label} ${judged.how}`);
+    else mismatches.push(judged.mismatch);
+  };
+  for (const w of found.workflows) {
+    take(w.issue, w.ref, judgeWorkflow(w, served.workflows.get(w.workflowId), label));
+  }
+  for (const r of found.routes) take(r.issue, r.ref, judgeRoute(r, served.routes.get(r.id), label));
+  for (const p of found.pages) take(p.issue, p.ref, judgePage(p, served.pages.get(p.id), label));
+  for (const t of found.themes) {
+    for (const judged of judgeTheme(t, served.theme, label)) take(t.issue, t.ref, judged);
+  }
+  for (const s of found.settings) {
+    take(s.issue, s.ref, judgeSetting(s, served.settings.get(s.key), label));
+  }
+  for (const d of found.design) {
+    const judged = judgeDesign(d, approvals, label);
+    if (judged.carried) lines.push(`${d.issue}: ${judged.how}`);
+    else mismatches.push(judged.mismatch);
   }
   if (mismatches.length > 0) {
     return {
       ok: false,
-      reason: `what ${label} publishes does not carry ${mismatches.length} landing(s) of this release: ${mismatches.map(mismatchSentence).join('; ')}`,
+      reason: `what ${label} serves does not carry ${mismatches.length} landing(s) of this release: ${mismatches.map(mismatchSentence).join('; ')}`,
       mismatches,
     };
   }
-  if (found.landings.length === 0) {
+  const read =
+    found.workflows.length + found.routes.length + found.pages.length + found.themes.length;
+  if (read + found.settings.length === 0) {
     return {
       ok: false,
-      reason: `no issue of this release landed a storefront draft, so nothing it carries can be checked against what ${label} publishes`,
+      reason: `no issue of this release landed anything ${label} serves, so nothing it carries can be checked against what ${label} serves`,
       mismatches: [],
     };
   }
-  const served = new Map<string, string>();
-  for (const [id, r] of readings) {
-    if (r.kind === 'published') served.set(id, `${id}@${r.graphVersion}`);
+  for (const u of found.unattested) {
+    lines.push(
+      `${u.issue}: ${u.ref} — ${label} reports no state for this, so it is not attested here`,
+    );
   }
-  for (const key of found.shipsNothing) {
-    lines.push(`${key}: judged on design revisions only; it ships nothing ${label} serves`);
+  const identity: string[] = [];
+  for (const [id, r] of served.workflows) {
+    if (r.kind === 'published') identity.push(`${id}@${r.graphVersion}`);
   }
-  return {
-    ok: true,
-    identity: [...served.values()].sort().join(', '),
-    readings: lines,
-  };
+  identity.sort();
+  if (served.theme?.kind === 'served') identity.push(`theme ${served.theme.themeId}`);
+  return { ok: true, identity: identity.join(', '), readings: lines };
 }
 
 /** The issues a batch run still claims: the roster its finish closes. */
@@ -214,7 +160,7 @@ export async function rosterOfRun(runId: string): Promise<string[]> {
 }
 
 /**
- * Whether what production's storefront provider publishes, read once, now, carries every landing of
+ * Whether what production's storefront provider serves, read once, now, carries every landing of
  * these issues.
  */
 export async function verifyByProviderRecord(args: {
@@ -227,30 +173,35 @@ export async function verifyByProviderRecord(args: {
   if (args.issueIds.length === 0) {
     return {
       ok: false,
-      reason: `this release claims no issue, so nothing it carries can be checked against what ${label} publishes`,
+      reason: `this release claims no issue, so nothing it carries can be checked against what ${label} serves`,
       mismatches: [],
     };
   }
-  const [rows, prefix, criteria] = await Promise.all([
-    db
-      .select({ id: issues.id, seq: issues.issSeq })
-      .from(issues)
-      .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...args.issueIds]))),
-    activeIssuePrefix(projectId),
-    listCriteriaOf(db, args.issueIds),
+  const found = landingsOf(await readProviderRoster(projectId, args.issueIds), label);
+  const ask = {
+    workflowIds: found.workflows.map((w) => w.workflowId),
+    routeIds: found.routes.map((r) => r.id),
+    pageIds: found.pages.map((p) => p.id),
+    theme: found.themes.length > 0,
+    settingKeys: found.settings.map((s) => s.key),
+  };
+  const asking =
+    ask.workflowIds.length + ask.routeIds.length + ask.pageIds.length + ask.settingKeys.length >
+      0 || ask.theme;
+  const [served, approvals] = await Promise.all([
+    asking
+      ? readStorefrontPublished({ provider: channel.provider, binding: channel.bindingId, ask })
+      : Promise.resolve<StorefrontServed>({
+          workflows: new Map(),
+          routes: new Map(),
+          pages: new Map(),
+          theme: null,
+          settings: new Map(),
+        }),
+    readDesignApprovals(
+      projectId,
+      found.design.flatMap((d) => d.refs),
+    ),
   ]);
-  const roster = rows.map((r) => ({
-    key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
-    criteria: criteria.get(r.id) ?? [],
-  }));
-  const found = landingsOf(roster);
-  const readings =
-    found.landings.length === 0
-      ? new Map<string, StorefrontPublishedReading>()
-      : await readStorefrontPublished({
-          provider: channel.provider,
-          binding: channel.bindingId,
-          workflowIds: found.landings.map((l) => l.workflowId),
-        });
-  return judgeProviderRecord(found, readings, label);
+  return judgeProviderRecord(found, served, approvals, label);
 }
